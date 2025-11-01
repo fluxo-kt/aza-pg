@@ -22,7 +22,7 @@ CREATE EXTENSION IF NOT EXISTS "btree_gin";
 CREATE EXTENSION IF NOT EXISTS "btree_gist";
 
 -- Verify extensions
-DO $$
+DO $body$
 DECLARE
     ext_count integer;
 BEGIN
@@ -31,8 +31,8 @@ BEGIN
     WHERE extname IN ('vector', 'pg_trgm', 'pg_cron', 'pgaudit', 'pg_stat_statements', 'uuid-ossp');
 
     IF ext_count < 6 THEN
-        RAISE EXCEPTION 'Required extensions not installed correctly. Expected 6, found ' || ext_count;
+        RAISE EXCEPTION 'Required extensions not installed correctly. Expected 6, found %', ext_count;
     END IF;
 
     RAISE NOTICE 'Extensions installed successfully: vector, pg_trgm, pg_cron, pgaudit, pg_stat_statements, uuid-ossp';
-END $$;
+END $body$;

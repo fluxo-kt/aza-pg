@@ -1,10 +1,38 @@
 #!/bin/bash
 # Test script: Validate auto-config RAM/CPU detection and scaling
 # Usage: ./test-auto-config.sh [image-tag]
+#
+# Examples:
+#   ./test-auto-config.sh                    # Use default tag 'aza-pg:pg18'
+#   ./test-auto-config.sh my-custom:tag       # Use custom tag
 
-set -e
+set -euo pipefail
+
+# Guard: Check required commands
+for cmd in docker; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "❌ ERROR: Required command '$cmd' not found"
+    echo "   Install Docker: https://docs.docker.com/get-docker/"
+    exit 1
+  fi
+done
+
+# Guard: Check Docker daemon is running
+if ! docker info >/dev/null 2>&1; then
+  echo "❌ ERROR: Docker daemon is not running"
+  echo "   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)"
+  exit 1
+fi
 
 IMAGE_TAG="${1:-aza-pg:pg18}"
+
+# Guard: Verify image exists
+if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Docker image not found: $IMAGE_TAG"
+  echo "   Build image first: cd docker/postgres && docker build -t $IMAGE_TAG ."
+  echo "   Or run: ./scripts/test/test-build.sh $IMAGE_TAG"
+  exit 1
+fi
 
 echo "========================================"
 echo "Auto-Config Detection & Scaling Test"
@@ -14,12 +42,17 @@ echo
 
 # Test Case 1: No memory limit (should use 50% of host RAM)
 echo "Test 1: No memory limit (shared VPS mode)"
-echo "=========================================="""
+echo "=========================================="
 CONTAINER_NAME="pg-autoconfig-test-1-$$"
-docker run -d \
+
+if ! docker run -d \
   --name "$CONTAINER_NAME" \
   -e POSTGRES_PASSWORD=test \
-  "$IMAGE_TAG" >/dev/null
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container"
+  docker logs "$CONTAINER_NAME" 2>&1 || true
+  exit 1
+fi
 
 sleep 5
 
@@ -43,11 +76,18 @@ echo
 echo "Test 2: 2GB memory limit (dedicated mode)"
 echo "==========================================="
 CONTAINER_NAME="pg-autoconfig-test-2-$$"
-docker run -d \
+
+if ! docker run -d \
   --name "$CONTAINER_NAME" \
   --memory="2g" \
   -e POSTGRES_PASSWORD=test \
-  "$IMAGE_TAG" >/dev/null
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with 2GB memory limit"
+  echo "   Your Docker daemon may not support memory limits"
+  echo "   Check Docker settings: docker info | grep -i memory"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 sleep 5
 
@@ -61,6 +101,7 @@ if echo "$LOGS" | grep -q "RAM: 204[0-9]MB.*dedicated"; then
   echo "✅ Detected 2GB RAM in dedicated mode"
 else
   echo "❌ FAILED: Should detect 2GB RAM"
+  echo "   Logs: $LOGS"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -80,11 +121,16 @@ echo
 echo "Test 3: 4GB memory limit (scaled settings)"
 echo "==========================================="
 CONTAINER_NAME="pg-autoconfig-test-3-$$"
-docker run -d \
+
+if ! docker run -d \
   --name "$CONTAINER_NAME" \
   --memory="4g" \
   -e POSTGRES_PASSWORD=test \
-  "$IMAGE_TAG" >/dev/null
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with 4GB memory limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 sleep 5
 
@@ -117,12 +163,17 @@ echo
 echo "Test 4: CPU detection and scaling"
 echo "=================================="
 CONTAINER_NAME="pg-autoconfig-test-4-$$"
-docker run -d \
+
+if ! docker run -d \
   --name "$CONTAINER_NAME" \
   --memory="2g" \
   --cpus="2" \
   -e POSTGRES_PASSWORD=test \
-  "$IMAGE_TAG" >/dev/null
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with CPU limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 sleep 5
 
@@ -155,12 +206,17 @@ echo
 echo "Test 5: POSTGRES_SKIP_AUTOCONFIG=true"
 echo "======================================"
 CONTAINER_NAME="pg-autoconfig-test-5-$$"
-docker run -d \
+
+if ! docker run -d \
   --name "$CONTAINER_NAME" \
   --memory="2g" \
   -e POSTGRES_PASSWORD=test \
   -e POSTGRES_SKIP_AUTOCONFIG=true \
-  "$IMAGE_TAG" >/dev/null
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with POSTGRES_SKIP_AUTOCONFIG"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 sleep 5
 

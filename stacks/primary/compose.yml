@@ -1,0 +1,134 @@
+services:
+  postgres:
+    env_file:
+      - .env
+    image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres-primary}
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD}
+      PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS}
+
+    volumes:
+      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql/data
+      - ${POSTGRES_BACKUP_VOLUME:-postgres_backup}:/backup
+      - ./configs/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
+      - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./configs/initdb/01-pgbouncer-auth.sh:/docker-entrypoint-initdb.d/01-pgbouncer-auth.sh:ro
+      - ./configs/initdb/pgbouncer_auth.sql.template:/docker-entrypoint-initdb.d/pgbouncer_auth.sql.template:ro
+
+    command: >
+      postgres -c config_file=/etc/postgresql/postgresql.conf -c
+      hba_file=/etc/postgresql/pg_hba.conf
+
+    networks:
+      - postgres_net
+
+    ports:
+      - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432'
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-800m}
+        reservations:
+          memory: ${POSTGRES_MEMORY_RESERVATION:-512m}
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  pgbouncer:
+    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1}
+    container_name: ${PGBOUNCER_CONTAINER_NAME:-pgbouncer-primary}
+    restart: unless-stopped
+
+    volumes:
+      - ./configs/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+
+    networks:
+      - postgres_net
+
+    ports:
+      - '${PGBOUNCER_BIND_IP:-127.0.0.1}:${PGBOUNCER_PORT:-6432}:6432'
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          memory: ${PGBOUNCER_MEMORY_LIMIT:-200m}
+        reservations:
+          memory: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
+
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "psql postgres://postgres:${POSTGRES_PASSWORD}@localhost:6432/postgres -c 'SELECT 1' ||
+          exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  postgres_exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
+    container_name: ${POSTGRES_EXPORTER_CONTAINER_NAME:-postgres-exporter-primary}
+    restart: unless-stopped
+
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable'
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: 'false'
+      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: 'false'
+
+    volumes:
+      - ./configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+
+    networks:
+      - postgres_net
+      - ${MONITORING_NETWORK:-monitoring}
+
+    ports:
+      - '${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9187}:9187'
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+        reservations:
+          memory: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:9187/metrics || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  postgres_net:
+    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+    driver: bridge
+  monitoring:
+    external: true
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_DATA_VOLUME:-postgres-primary-data}
+  postgres_backup:
+    name: ${POSTGRES_BACKUP_VOLUME:-postgres-primary-backup}

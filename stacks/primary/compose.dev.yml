@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-aza-pg:pg18-dev}
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_DEV_MEMORY_LIMIT:-2000m}
+        reservations:
+          memory: 512m
+
+    ports: !override
+      - '5433:5432'
+
+    networks:
+      - postgres-replication
+
+  pgbouncer:
+    ports: !override
+      - '6433:6432'
+
+    networks:
+      - postgres-replication
+
+  postgres_exporter:
+    ports: !override
+      - '9188:9187'
+
+    networks:
+      - postgres-replication
+
+networks:
+  postgres-replication:
+    name: postgres-replication
+    driver: bridge

@@ -1,0 +1,34 @@
+# Prometheus scrape configuration for PostgreSQL monitoring
+# Add this to your prometheus.yml scrape_configs section
+
+scrape_configs:
+  # PostgreSQL metrics via postgres_exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - 'localhost:9187' # postgres_exporter from primary stack
+        labels:
+          instance: 'postgres-primary'
+          environment: 'production'
+
+  # If you have a replica with exporter
+  # - job_name: 'postgres-replica'
+  #   static_configs:
+  #     - targets:
+  #         - 'postgres-replica-host:9187'
+  #       labels:
+  #         instance: 'postgres-replica'
+  #         environment: 'production'
+  #         role: 'replica'
+
+  # PgBouncer metrics (if exposing metrics)
+  # - job_name: 'pgbouncer'
+  #   static_configs:
+  #     - targets:
+  #         - 'localhost:9127'  # pgbouncer_exporter port
+  #       labels:
+  #         instance: 'pgbouncer-primary'
+# Alert rules for PostgreSQL
+# Create alerts.yml with the following content and reference it in prometheus.yml:
+# rule_files:
+#   - 'alerts.yml'

@@ -1,0 +1,67 @@
+# PostgreSQL Replica Stack
+# Streaming replication from primary instance
+# Read-only replica for load distribution and high availability
+
+services:
+  postgres-replica:
+    image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres-replica}
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PG_REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
+      PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}
+      PRIMARY_HOST: ${PRIMARY_HOST:?PRIMARY_HOST is required}
+      PRIMARY_PORT: ${PRIMARY_PORT:-5432}
+      POSTGRES_SKIP_AUTOCONFIG: ${POSTGRES_SKIP_AUTOCONFIG:-false}
+
+    ports:
+      - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432'
+
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+      - ./configs/postgresql-replica.conf:/etc/postgresql/postgresql.conf:ro
+      - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./scripts/setup-replica.sh:/docker-entrypoint-initdb.d/99-setup-replica.sh:ro
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-512M}
+          cpus: '${POSTGRES_CPU_LIMIT:-0.5}'
+        reservations:
+          memory: ${POSTGRES_MEMORY_RESERVATION:-256M}
+
+    depends_on:
+      - primary-check
+
+  # Helper service to verify primary is accessible before starting replica
+  primary-check:
+    image: postgres:18-bookworm
+    container_name: primary-check
+    command: >
+      sh -c " echo 'Checking primary availability at ${PRIMARY_HOST}:${PRIMARY_PORT}...'; for i in
+      \$(seq 1 30); do
+        if pg_isready -h ${PRIMARY_HOST} -p ${PRIMARY_PORT} -U ${PG_REPLICATION_USER}; then
+          echo 'Primary is ready';
+          exit 0;
+        fi;
+        echo 'Waiting for primary... attempt $$i/30';
+        sleep 2;
+      done; echo 'Primary not reachable after 60 seconds'; exit 1; "
+    environment:
+      PGPASSWORD: ${PG_REPLICATION_PASSWORD}
+
+volumes:
+  postgres-replica-data:
+    driver: local

@@ -1,0 +1,41 @@
+# Single PostgreSQL Instance Stack
+# Minimal setup for development or small deployments
+# No PgBouncer, no monitoring - just Postgres with auto-config
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres-single}
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_SKIP_AUTOCONFIG: ${POSTGRES_SKIP_AUTOCONFIG:-false}
+
+    ports:
+      - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432'
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-512M}
+          cpus: '${POSTGRES_CPU_LIMIT:-0.5}'
+        reservations:
+          memory: ${POSTGRES_MEMORY_RESERVATION:-256M}
+
+volumes:
+  postgres-data:
+    driver: local

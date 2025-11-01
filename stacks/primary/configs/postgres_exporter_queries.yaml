@@ -1,0 +1,42 @@
+# PostgreSQL Exporter Custom Queries
+
+pg_replication:
+  query: 'SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) as lag'
+  master: true
+  metrics:
+    - lag:
+        usage: 'GAUGE'
+        description: 'Replication lag behind master in seconds'
+
+pg_postmaster:
+  query: 'SELECT pg_postmaster_start_time as start_time_seconds from pg_postmaster_start_time()'
+  master: true
+  metrics:
+    - start_time_seconds:
+        usage: 'GAUGE'
+        description: 'Time at which postmaster started'
+
+pg_memory_settings:
+  query: |
+    SELECT
+      name,
+      CASE
+        WHEN unit = '8kB' THEN (setting::bigint * 8 * 1024)
+        WHEN unit = 'kB' THEN (setting::bigint * 1024)
+        WHEN unit = 'MB' THEN (setting::bigint * 1024 * 1024)
+        WHEN unit = 'GB' THEN (setting::bigint * 1024 * 1024 * 1024)
+        ELSE setting::bigint
+      END as value_bytes,
+      source as config_source
+    FROM pg_settings
+    WHERE name IN ('shared_buffers', 'effective_cache_size', 'maintenance_work_mem', 'work_mem')
+  metrics:
+    - name:
+        usage: 'LABEL'
+        description: 'PostgreSQL setting name'
+    - config_source:
+        usage: 'LABEL'
+        description: 'Configuration source (configuration file, command line, etc.)'
+    - value_bytes:
+        usage: 'GAUGE'
+        description: 'Memory setting value in bytes'

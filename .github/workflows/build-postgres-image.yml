@@ -1,0 +1,160 @@
+name: Build PostgreSQL Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      pg_version:
+        description: 'PostgreSQL version'
+        required: false
+        default: '18'
+      pgvector_version:
+        description: 'pgvector version'
+        required: false
+        default: '0.8.1'
+      pg_cron_version:
+        description: 'pg_cron version'
+        required: false
+        default: '1.6.7'
+      pgaudit_version:
+        description: 'pgAudit version'
+        required: false
+        default: '18.0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/aza-pg
+
+jobs:
+  build:
+    name: Build and Push PostgreSQL Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-,format=short
+            type=raw,value=pg18-pgvector0.8.1
+            type=raw,value=pg18
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=aza-pg PostgreSQL Production Image
+            org.opencontainers.image.description=PostgreSQL 18 with pgvector, pg_cron, pgAudit, pg_stat_statements, auto_explain, pg_trgm
+            org.opencontainers.image.vendor=aza-pg
+
+      - name: Determine build args
+        id: build-args
+        run: |
+          PG_VERSION="${{ github.event.inputs.pg_version || '18' }}"
+          PGVECTOR_VERSION="${{ github.event.inputs.pgvector_version || '0.8.1' }}"
+          PG_CRON_VERSION="${{ github.event.inputs.pg_cron_version || '1.6.7' }}"
+          PGAUDIT_VERSION="${{ github.event.inputs.pgaudit_version || '18.0' }}"
+          echo "pg_version=${PG_VERSION}" >> $GITHUB_OUTPUT
+          echo "pgvector_version=${PGVECTOR_VERSION}" >> $GITHUB_OUTPUT
+          echo "pg_cron_version=${PG_CRON_VERSION}" >> $GITHUB_OUTPUT
+          echo "pgaudit_version=${PGAUDIT_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker/postgres
+          file: ./docker/postgres/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PG_VERSION=${{ steps.build-args.outputs.pg_version }}
+            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}
+            PG_CRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}
+            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Output image digest
+        run: |
+          echo "### PostgreSQL Image Built Successfully :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
+          echo "- pgvector ${{ steps.build-args.outputs.pgvector_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_cron ${{ steps.build-args.outputs.pg_cron_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- pgAudit ${{ steps.build-args.outputs.pgaudit_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_stat_statements (contrib)" >> $GITHUB_STEP_SUMMARY
+          echo "- auto_explain (contrib)" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_trgm (contrib)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
+          echo "✅ Image pulled and PostgreSQL version verified"
+
+          docker run -d --name pg-test \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          echo "⏳ Waiting for PostgreSQL to start..."
+          for i in {1..30}; do
+            if docker exec pg-test pg_isready -U postgres > /dev/null 2>&1; then
+              echo "✅ PostgreSQL ready"
+              break
+            fi
+            sleep 2
+          done
+
+          echo "🧪 Testing extension loading..."
+          docker exec pg-test psql -U postgres -c "CREATE EXTENSION vector;"
+          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_trgm;"
+          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_stat_statements;"
+          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_cron;"
+          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pgaudit;"
+
+          echo "🔍 Verifying extensions functional..."
+          docker exec pg-test psql -U postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname IN ('vector', 'pg_trgm', 'pg_stat_statements', 'pg_cron', 'pgaudit') ORDER BY extname;"
+          docker exec pg-test psql -U postgres -c "SELECT similarity('test', 'test') as trgm_test;"
+          docker exec pg-test psql -U postgres -c "SELECT '[1,2,3]'::vector;"
+
+          docker stop pg-test
+          docker rm pg-test
+
+          echo "✅ All extensions loaded and functional!"

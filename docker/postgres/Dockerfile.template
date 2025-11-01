@@ -1,0 +1,262 @@
+# PostgreSQL {{PG_VERSION}} with comprehensive extension suite
+
+FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
+
+# Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Disable apt cache auto-deletion (required for cache mount effectiveness)
+RUN set -euo pipefail && \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+# Copy build package list first (stable, needed for apt-get)
+COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
+
+# Install build dependencies
+# Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
+# dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      git \
+      curl \
+      ca-certificates \
+      rsync \
+      unzip \
+      postgresql-server-dev-{{PG_MAJOR}} \
+      $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
+    apt-get clean && \
+    rm -f /tmp/extensions.build-packages.txt
+
+# Install Rust toolchain (separate layer for better caching, ~60s install time)
+# Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
+RUN set -euo pipefail && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+
+# Add Rust/Cargo to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Bun for running TypeScript build scripts (separate layer)
+# Extracts version from project .tool-versions file (single source of truth)
+# Placed BEFORE manifests to maximize cache hits (~30s install)
+COPY .tool-versions /tmp/.tool-versions
+RUN set -euo pipefail && \
+    BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
+    echo "Installing Bun v${BUN_VERSION}" && \
+    curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
+    rm /tmp/.tool-versions
+
+# Copy build script and manifests AFTER expensive tool installations
+# Manifests change frequently (~20% of builds), tools rarely change
+# This ordering maximizes cache hits for Rust/Bun layers when manifests update
+COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
+COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
+
+# Make build script executable (after COPY to ensure file exists)
+RUN set -euo pipefail && chmod +x /usr/local/bin/build-extensions.ts
+
+# Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
+FROM builder-base AS builder-pgxs
+
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Copy full manifest for cross-stage dependency validation
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
+    bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
+
+RUN set -euo pipefail && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib && \
+    mkdir -p /opt/ext-out/usr/local/bin && \
+    mkdir -p /opt/ext-out/usr/local/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb && \
+    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/contrib/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib/ && \
+    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
+    if [ -d /usr/share/postgresql/{{PG_MAJOR}}/timescaledb ]; then \
+      rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
+    fi && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
+    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
+
+# Stage for cargo-pgrx builds
+FROM builder-base AS builder-cargo
+
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Copy full manifest for cross-stage dependency validation
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+# OPT#3+4: Inline Rust optimization flags and add cargo registry cache mount
+# Reduces 3 ENV layers and accelerates dependency downloads
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    CARGO_PROFILE_RELEASE_LTO=thin \
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
+    CARGO_PROFILE_RELEASE_STRIP=symbols \
+    bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
+
+RUN set -euo pipefail && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
+    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
+
+# Stage for version info generation using standalone TypeScript script
+# This ensures consistency between local testing and Docker builds
+FROM builder-base AS builder-version-info
+
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Copy the standalone version info generation script and manifest (script needs to read manifest)
+COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+# Generate version-info files with hardcoded PostgreSQL version
+RUN set -euo pipefail && \
+    echo "Generating version info for PostgreSQL {{PG_VERSION}}..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="{{PG_VERSION}}" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="{{PG_VERSION}}" > /tmp/version-info.json && \
+    echo "Version info files generated successfully"
+
+# Final runtime stage
+FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
+
+# Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
+# Declared ONLY in final stage to prevent builder stage cache invalidation
+ARG BUILD_DATE
+ARG VCS_REF
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime libraries for compiled extensions (final stage)
+COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
+
+# Install runtime libraries for compiled extensions (final stage)
+# Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
+# Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
+# are intentional for multi-stage build optimization. DO NOT consolidate.
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
+    apt-get install -y --no-install-recommends \
+      # postgresql-client provides psql CLI tool (base postgres image only has server)
+      # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
+      postgresql-client-{{PG_MAJOR}} \
+      ${RUNTIME_PKGS} && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -f /tmp/extensions.runtime-packages.txt
+
+# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
+# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
+# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+{{PGDG_PACKAGES_INSTALL}}
+
+# Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
+{{PGDG_TOOLS_INSTALL}}
+
+COPY --from=builder-pgxs /opt/ext-out/ /
+COPY --from=builder-cargo /opt/ext-out/ /
+
+# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
+# Moved here (right after builder COPYs) to clean up before remaining operations
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+
+# Create stub pgsodium_getkey script (required when pgsodium is preloaded)
+# pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
+# This stub script returns a test key in hex format (64 hex characters = 32 bytes).
+# Production deployments using Transparent Column Encryption (TCE) should replace this
+# with a proper key management script that fetches the server secret securely from vault/KMS.
+# See: https://github.com/michelp/pgsodium/tree/main/getkey_scripts for examples
+RUN set -euo pipefail && \
+    echo '#!/bin/sh' > /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    chmod +x /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey
+
+# Create backup directory with proper ownership
+RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
+
+# OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
+# Base PostgreSQL config (most stable - rarely modified)
+COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
+
+# Healthcheck script (stable - rarely modified)
+COPY docker/postgres/healthcheck.sh /usr/local/bin/healthcheck.sh
+
+# Auto-config entrypoint (moderate - occasionally updated for new features)
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto-config-entrypoint.sh
+
+# Runtime init scripts
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+
+# Consolidate all chmod operations into single RUN (better layer caching)
+RUN set -euo pipefail && \
+    chmod +x /usr/local/bin/healthcheck.sh && \
+    chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
+    chmod +x /docker-entrypoint-initdb.d/*.sh
+
+# Copy runtime metadata files LATE (frequently change with any manifest update)
+# Version info files (stable - only change with manifest updates)
+COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
+
+# Extension manifest (volatile - changes frequently)
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+
+# Switch to postgres user for security (fixes CIS-DI-0001)
+# All setup is complete, now run as non-root user
+USER postgres
+
+# OCI image labels with build metadata
+# Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
+# Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
+LABEL org.opencontainers.image.vendor="fluxo-kt"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+
+# Health check and port exposure moved to end (metadata operations)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
+    CMD /usr/local/bin/healthcheck.sh
+
+EXPOSE 5432
+
+ENTRYPOINT ["/usr/local/bin/docker-auto-config-entrypoint.sh"]
+CMD ["postgres"]

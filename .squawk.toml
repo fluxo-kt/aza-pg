@@ -1,0 +1,52 @@
+# Squawk PostgreSQL Linter Configuration
+# Tailored for aza-pg initialization scripts (not live database migrations)
+#
+# Context: Our SQL files are initialization scripts that run once on empty databases
+# during container startup. They are NOT migrations on live databases with traffic.
+
+# PostgreSQL version target
+pg_version = "18.0"
+
+# Assume code is wrapped in transaction (reduces false positives for ALTER statements)
+# Our init scripts run in docker-entrypoint-initdb.d which uses implicit transactions
+assume_in_transaction = true
+
+# Rules excluded because they don't apply to initialization scripts:
+excluded_rules = [
+  # CONCURRENT index creation is for live databases with traffic.
+  # Our init scripts run on empty databases during startup - no traffic to block.
+  "require-concurrent-index-creation",
+  "require-concurrent-index-deletion",
+
+  # BIGINT vs INT: Not all integers need 64-bit.
+  # Retry counts, timeout seconds, etc. don't need BIGINT.
+  # We'll use BIGINT only where it actually makes sense (IDs, large counts).
+  "prefer-bigint-over-int",
+
+  # NOT VALID constraints are for migrations on existing data.
+  # Init scripts add constraints to empty tables - immediate validation is fine.
+  "constraint-missing-not-valid",
+
+  # Timeout settings are good practice for migrations but not critical for init scripts.
+  # Init scripts are short-lived during container startup.
+  "require-timeout-settings",
+
+  # Foreign key constraint warnings are for live databases with traffic.
+  # Init scripts run on empty databases during startup - no traffic to block.
+  "adding-foreign-key-constraint",
+]
+
+# We want robust, idempotent init scripts - keep these rules:
+# - prefer-robust-stmts: Enforce IF NOT EXISTS for idempotency
+# - prefer-identity: Use IDENTITY over deprecated SERIAL
+# - adding-foreign-key-constraint: Evaluate FK warnings case-by-case
+#
+# Remaining warnings (64 in pgflow files) are from ALTER TABLE migration sections.
+# These are acceptable because:
+# 1. They're in vendored pgflow schema upgrade migrations (not fresh installations)
+# 2. ALTER TABLE operations inherently can't use IF NOT EXISTS
+# 3. Warnings are about NOT VALID and transaction wrapping (migration-specific advice)
+# 4. Our fresh installations don't execute these ALTER sections (tables created fresh)
+#
+# Configuration reference: https://github.com/sbdchd/squawk/blob/master/docs/docs/cli.md
+# Rules documentation: https://squawkhq.com/docs/rules

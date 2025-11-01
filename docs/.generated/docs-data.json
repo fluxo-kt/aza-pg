@@ -1,0 +1,137 @@
+{
+  "catalog": {
+    "total": 40,
+    "enabled": 34,
+    "disabled": 6
+  },
+  "byKind": {
+    "builtin": 6,
+    "extension": 24,
+    "tool": 4
+  },
+  "builtins": [
+    "auto_explain",
+    "btree_gin",
+    "btree_gist",
+    "pg_stat_statements",
+    "pg_trgm",
+    "plpgsql"
+  ],
+  "extensions": [
+    "hll",
+    "http",
+    "hypopg",
+    "index_advisor",
+    "pg_cron",
+    "pg_hashids",
+    "pg_jsonschema",
+    "pg_net",
+    "pg_partman",
+    "pg_repack",
+    "pg_stat_monitor",
+    "pgaudit",
+    "pgmq",
+    "pgroonga",
+    "pgsodium",
+    "plpgsql_check",
+    "rum",
+    "set_user",
+    "supabase_vault",
+    "timescaledb",
+    "timescaledb_toolkit",
+    "vector",
+    "vectorscale",
+    "wrappers"
+  ],
+  "tools": ["pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
+  "disabled": {
+    "extensions": ["pgflow", "pgq", "pgrouting", "postgis", "supautils"],
+    "tools": ["pg_plan_filter"]
+  },
+  "preloaded": {
+    "modules": ["auto_explain"],
+    "extensions": [
+      "pg_cron",
+      "pg_safeupdate",
+      "pg_stat_monitor",
+      "pg_stat_statements",
+      "pgaudit",
+      "timescaledb"
+    ]
+  },
+  "autoCreated": [
+    "pg_cron",
+    "pg_safeupdate",
+    "pg_stat_monitor",
+    "pg_stat_statements",
+    "pg_trgm",
+    "pgaudit",
+    "pgmq",
+    "plpgsql",
+    "timescaledb",
+    "vector",
+    "vectorscale"
+  ],
+  "byCategory": {
+    "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements", "pgbadger"],
+    "indexing": ["btree_gin", "btree_gist"],
+    "analytics": ["hll"],
+    "integration": ["http", "pg_net", "wrappers"],
+    "performance": ["hypopg", "index_advisor"],
+    "operations": ["pg_cron", "pgbackrest"],
+    "utilities": ["pg_hashids"],
+    "validation": ["pg_jsonschema"],
+    "maintenance": ["pg_partman", "pg_repack"],
+    "safety": ["pg_safeupdate"],
+    "search": ["pg_trgm", "pgroonga", "rum"],
+    "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
+    "queueing": ["pgmq"],
+    "language": ["plpgsql"],
+    "quality": ["plpgsql_check"],
+    "timeseries": ["timescaledb", "timescaledb_toolkit"],
+    "ai": ["vector", "vectorscale"],
+    "cdc": ["wal2json"]
+  },
+  "memoryTiers": [
+    {
+      "ram": "2GB",
+      "shared_buffers": "512MB",
+      "effective_cache_size": "1536MB",
+      "work_mem": "4MB",
+      "maintenance_work_mem": "64MB",
+      "max_connections": 120
+    },
+    {
+      "ram": "4GB",
+      "shared_buffers": "1024MB",
+      "effective_cache_size": "3072MB",
+      "work_mem": "5MB",
+      "maintenance_work_mem": "128MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "8GB",
+      "shared_buffers": "2048MB",
+      "effective_cache_size": "6144MB",
+      "work_mem": "10MB",
+      "maintenance_work_mem": "256MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "16GB",
+      "shared_buffers": "4096MB",
+      "effective_cache_size": "12288MB",
+      "work_mem": "20MB",
+      "maintenance_work_mem": "512MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "32GB",
+      "shared_buffers": "6553MB",
+      "effective_cache_size": "24576MB",
+      "work_mem": "32MB",
+      "maintenance_work_mem": "1024MB",
+      "max_connections": 200
+    }
+  ]
+}

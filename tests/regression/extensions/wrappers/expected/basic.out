@@ -1,0 +1,90 @@
+--
+-- wrappers - Basic regression test
+-- Tests Supabase FDW framework infrastructure (no external connections)
+--
+-- Verify extension is installed
+SELECT
+  extname,
+  extversion
+FROM
+  pg_extension
+WHERE
+  extname = 'wrappers';
+ extname  | extversion 
+----------+------------
+ wrappers | 0.5.7
+(1 row)
+
+-- Verify pg_stat_statements dependency (required by wrappers)
+SELECT
+  extname
+FROM
+  pg_extension
+WHERE
+  extname = 'pg_stat_statements';
+      extname       
+--------------------
+ pg_stat_statements
+(1 row)
+
+-- Verify wrappers_fdw_stats table exists
+SELECT
+  count(*)
+FROM
+  pg_tables
+WHERE
+  tablename = 'wrappers_fdw_stats'
+  AND schemaname = 'public';
+ count 
+-------
+     1
+(1 row)
+
+-- Check wrappers_fdw_stats table structure
+SELECT
+  column_name,
+  data_type
+FROM
+  information_schema.columns
+WHERE
+  table_name = 'wrappers_fdw_stats'
+ORDER BY
+  ordinal_position;
+ column_name  |        data_type         
+--------------+--------------------------
+ fdw_name     | text
+ create_times | bigint
+ rows_in      | bigint
+ rows_out     | bigint
+ bytes_in     | bigint
+ bytes_out    | bigint
+ metadata     | jsonb
+ created_at   | timestamp with time zone
+ updated_at   | timestamp with time zone
+(9 rows)
+
+-- Verify extension is in available extensions catalog
+SELECT
+  name,
+  default_version IS NOT NULL AS has_default_version
+FROM
+  pg_available_extensions
+WHERE
+  name = 'wrappers';
+   name   | has_default_version 
+----------+---------------------
+ wrappers | t
+(1 row)
+
+-- Count wrappers-related objects in pg_class
+SELECT
+  count(*) > 0 AS has_wrappers_objects
+FROM
+  pg_class
+WHERE
+  relname LIKE 'wrappers%';
+ has_wrappers_objects 
+----------------------
+ t
+(1 row)
+

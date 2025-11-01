@@ -1,0 +1,390 @@
+{
+  "entries": [
+    {
+      "name": "index_advisor",
+      "kind": "extension",
+      "category": "performance",
+      "description": "Suggest indexes by pairing HypoPG simulations with cost heuristics.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/index_advisor.git",
+        "tag": "v0.2.0",
+        "commit": "d37723555e6425f18e6a45cb0956ced2250a3fe7"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "dependencies": ["hypopg"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG or Pigsty (Supabase-specific extension)", "Source build required"]
+      },
+      "sourceUrl": "https://github.com/supabase/index_advisor",
+      "docsUrl": "https://supabase.com/docs/guides/database/extensions/index_advisor"
+    },
+    {
+      "name": "pg_hashids",
+      "kind": "extension",
+      "category": "utilities",
+      "description": "Encode integers into short hashids for obfuscated identifiers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/iCyberon/pg_hashids.git",
+        "tag": "v1.2.1",
+        "commit": "16907249ccbc300b31c89c3eccd6042c5674505f"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v1.2.1 (same version)",
+          "Source build or Pigsty package"
+        ]
+      },
+      "sourceUrl": "https://github.com/iCyberon/pg_hashids",
+      "docsUrl": "https://github.com/iCyberon/pg_hashids#readme"
+    },
+    {
+      "name": "pg_net",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/pg_net.git",
+        "tag": "v0.20.2",
+        "commit": "8203cb72c87479d39c9e3e47ce3e493242110f83"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": ["libcurl4-openssl-dev"],
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "preloadInComprehensiveTest": true,
+        "notes": [
+          "NOT in PGDG (Supabase-specific). Source build required.",
+          "Requires shared_preload_libraries for background worker",
+          "Powers async HTTP webhooks from triggers",
+          "Use net.http_post() for outbound API calls"
+        ]
+      },
+      "sourceUrl": "https://github.com/supabase/pg_net",
+      "docsUrl": "https://supabase.github.io/pg_net/"
+    },
+    {
+      "name": "pg_plan_filter",
+      "kind": "tool",
+      "category": "safety",
+      "description": "Block high-cost plans or disallowed operations using planner hooks.",
+      "enabled": false,
+      "disabledReason": "Not compatible with PostgreSQL 18. Last updated for PG13 (2021). Maintainer inactive. Enable when updated upstream.",
+      "source": {
+        "type": "git-ref",
+        "repository": "https://github.com/pgexperts/pg_plan_filter.git",
+        "ref": "5081a7b5cb890876e67d8e7486b6a64c38c9a492",
+        "commit": "5081a7b5cb890876e67d8e7486b6a64c38c9a492"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG. Source build required."]
+      },
+      "sourceUrl": "https://github.com/pgexperts/pg_plan_filter",
+      "docsUrl": "https://github.com/pgexperts/pg_plan_filter#readme"
+    },
+    {
+      "name": "pg_safeupdate",
+      "kind": "tool",
+      "category": "safety",
+      "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/eradman/pg-safeupdate.git",
+        "tag": "1.5",
+        "commit": "fbea44215425dc1092f5c98c28471eba90d0c1eb"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "preloadInComprehensiveTest": true,
+        "preloadLibraryName": "safeupdate",
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v1.5 (same version)",
+          "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
+        ]
+      },
+      "sourceUrl": "https://github.com/eradman/pg-safeupdate",
+      "docsUrl": "https://github.com/eradman/pg-safeupdate#readme"
+    },
+    {
+      "name": "pg_stat_monitor",
+      "kind": "extension",
+      "category": "observability",
+      "description": "Enhanced query performance telemetry with bucketed metrics.",
+      "source": {
+        "type": "git-ref",
+        "repository": "https://github.com/percona/pg_stat_monitor.git",
+        "ref": "b00caafb684b3bd64f020ccd057303cd8a7af0d8",
+        "commit": "b00caafb684b3bd64f020ccd057303cd8a7af0d8"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v2.1 (behind). Alt: Percona repo - NO PG18 packages yet",
+          "Pinned to pre-release commit for PG18 support",
+          "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
+        ]
+      },
+      "sourceUrl": "https://github.com/percona/pg_stat_monitor",
+      "docsUrl": "https://docs.percona.com/pg-stat-monitor"
+    },
+    {
+      "name": "pgmq",
+      "kind": "extension",
+      "category": "queueing",
+      "description": "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/tembo-io/pgmq.git",
+        "tag": "v1.7.0",
+        "commit": "e359dc936ec5b5c746de61498b5275bebd483bcd"
+      },
+      "build": {
+        "type": "pgxs",
+        "subdir": "pgmq-extension"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v1.6 (1 minor version behind)",
+          "Source build for latest v1.7.0"
+        ]
+      },
+      "sourceUrl": "https://github.com/pgmq/pgmq",
+      "docsUrl": "https://github.com/pgmq/pgmq#readme"
+    },
+    {
+      "name": "pgq",
+      "displayName": "PgQ",
+      "kind": "extension",
+      "category": "queueing",
+      "description": "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
+      "enabled": false,
+      "enabledInComprehensiveTest": true,
+      "disabledReason": "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgq/pgq.git",
+        "tag": "v3.5.1",
+        "commit": "d23425f10e39f8e9cca178f1a94d9162e473fd45"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v3.5.1 (same version)",
+          "Pure PLpgSQL extension with no external dependencies",
+          "Installs into pg_catalog schema (non-relocatable)"
+        ]
+      },
+      "sourceUrl": "https://github.com/pgq/pgq",
+      "docsUrl": "https://wiki.postgresql.org/wiki/PGQ_Tutorial"
+    },
+    {
+      "name": "pgroonga",
+      "kind": "extension",
+      "category": "search",
+      "description": "Full-text search powered by Groonga for multilingual workloads.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgroonga/pgroonga.git",
+        "tag": "4.0.4",
+        "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": [
+        "cmake",
+        "ninja-build",
+        "pkg-config",
+        "libgroonga-dev",
+        "liblz4-dev",
+        "libmecab-dev",
+        "libmsgpack-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": [
+        "NOT available in PGDG for PostgreSQL 18",
+        "Alt: Pigsty v4.0.0 - PG13-17 only, NO PG18 packages",
+        "Source build required for PG18"
+      ],
+      "sourceUrl": "https://github.com/pgroonga/pgroonga",
+      "docsUrl": "https://pgroonga.github.io"
+    },
+    {
+      "name": "pgsodium",
+      "kind": "extension",
+      "category": "security",
+      "description": "Modern cryptography and envelope encryption with libsodium.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/michelp/pgsodium.git",
+        "tag": "v3.1.9",
+        "commit": "7222ebc5ed87084a68d526aef977be0f4eb319a2"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": ["libsodium-dev"],
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "preloadInComprehensiveTest": true,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
+          "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+          "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
+          "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
+          "Basic cryptography functions work without preload or getkey script"
+        ]
+      },
+      "sourceUrl": "https://github.com/michelp/pgsodium",
+      "docsUrl": "https://michelp.github.io/pgsodium"
+    },
+    {
+      "name": "supabase_vault",
+      "displayName": "vault",
+      "kind": "extension",
+      "category": "security",
+      "description": "Supabase secret store for encrypted application credentials.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/vault.git",
+        "tag": "v0.3.1",
+        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "dependencies": ["pgsodium"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
+          "Source build required"
+        ]
+      },
+      "sourceUrl": "https://github.com/supabase/vault",
+      "docsUrl": "https://supabase.com/docs/guides/database/vault"
+    },
+    {
+      "name": "supautils",
+      "kind": "extension",
+      "category": "safety",
+      "description": "Shared superuser guards and hooks for managed Postgres environments.",
+      "enabled": false,
+      "disabledReason": "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/supautils.git",
+        "tag": "v3.0.2",
+        "commit": "1b071b72cc50ecee36ac9e4b782cb84212ae6d20"
+      },
+      "build": {
+        "type": "pgxs",
+        "patches": [
+          "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+        ]
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "preloadOnly": true,
+        "defaultEnable": false,
+        "notes": ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."]
+      },
+      "sourceUrl": "https://github.com/supabase/supautils",
+      "docsUrl": "https://github.com/supabase/supautils#readme"
+    },
+    {
+      "name": "timescaledb",
+      "kind": "extension",
+      "install_via": "source",
+      "category": "timeseries",
+      "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/timescaledb.git",
+        "tag": "2.23.1",
+        "commit": "9cec3ac3211e340097ae3605b62cfd73130bb6b7"
+      },
+      "build": {
+        "type": "timescaledb"
+      },
+      "aptPackages": ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "excludeFromAutoTests": false,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v2.20.0 (Apache 2.0 only, no TSL features)",
+          "Alt: Timescale repo v2.23.1 (full TSL license) - timescaledb-2-postgresql-18",
+          "Source build for TSL-licensed v2.23.1",
+          "Preloaded for optimal hypertable performance",
+          "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
+        ]
+      },
+      "sourceUrl": "https://github.com/timescale/timescaledb",
+      "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
+    },
+    {
+      "name": "wal2json",
+      "kind": "tool",
+      "category": "cdc",
+      "description": "Logical decoding output plugin streaming JSON data for CDC.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/eulerto/wal2json.git",
+        "tag": "wal2json_2_6",
+        "commit": "75629c2e1e81a12350cc9d63782fc53252185d8d"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG. Alt: Pigsty v2.6 (same version)",
+          "Requires wal_level=logical in postgresql.conf for CDC functionality."
+        ]
+      },
+      "sourceUrl": "https://github.com/eulerto/wal2json",
+      "docsUrl": "https://github.com/eulerto/wal2json#readme"
+    }
+  ]
+}

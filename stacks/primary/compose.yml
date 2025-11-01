@@ -1,0 +1,162 @@
+services:
+  postgres:
+    env_file:
+      - .env
+    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-primary
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}
+      PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS:?PGBOUNCER_AUTH_PASS is required}
+      REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-replica_slot_1}
+      POSTGRES_WAL_LEVEL: ${POSTGRES_WAL_LEVEL:-logical} # logical for CDC and replication
+
+    volumes:
+      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
+      - ${POSTGRES_BACKUP_VOLUME:-postgres_backup}:/backup
+      - ./configs/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
+      - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./configs/initdb/03-pgbouncer-auth.sh:/docker-entrypoint-initdb.d/03-pgbouncer-auth.sh:ro
+
+    command: >
+      postgres -c config_file=/etc/postgresql/postgresql.conf -c
+      hba_file=/etc/postgresql/pg_hba.conf
+
+    networks:
+      - postgres_net
+
+    ports:
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-2048m}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-1024m}
+    cpus: ${POSTGRES_CPU_LIMIT:-2}
+
+    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
+
+  pgbouncer:
+    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
+    restart: unless-stopped
+
+    environment:
+      PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS:?PGBOUNCER_AUTH_PASS is required}
+      PGBOUNCER_LISTEN_ADDR: ${PGBOUNCER_LISTEN_ADDR:-0.0.0.0}
+      PGBOUNCER_SERVER_SSLMODE: ${PGBOUNCER_SERVER_SSLMODE:-prefer}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-200}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+
+    volumes:
+      - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
+      - ./scripts/pgbouncer-entrypoint.sh:/opt/pgbouncer-entrypoint.sh:ro
+
+    entrypoint: ["/bin/sh", "/opt/pgbouncer-entrypoint.sh"]
+
+    networks:
+      - postgres_net
+
+    ports:
+      - "${PGBOUNCER_BIND_IP:-127.0.0.1}:${PGBOUNCER_PORT:-6432}:6432"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    mem_limit: ${PGBOUNCER_MEMORY_LIMIT:-200m}
+    mem_reservation: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
+
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'PGPASSWORD="${PGBOUNCER_AUTH_PASS}" psql -U pgbouncer_auth -d postgres -h localhost -p 6432 -c "SELECT 1" || exit 1'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres_exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
+    restart: unless-stopped
+
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres@postgres:5432/postgres?sslmode=disable"
+      # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
+      # monitoring on private Docker networks. For production, consider Docker secrets.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
+      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: "false"
+
+    volumes:
+      - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+
+    networks:
+      - postgres_net
+      - ${MONITORING_NETWORK:-monitoring}
+
+    ports:
+      - "${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9187}:9187"
+
+    mem_limit: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+    mem_reservation: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  pgbouncer_exporter:
+    image: ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0@sha256:bf9a5189cc1d8be3f5f1cd4695f4cfec267318a3d7e340b9073a0ee7bf2efb44}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
+    restart: unless-stopped
+
+    environment:
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: "postgres://pgbouncer_auth@pgbouncer:6432/pgbouncer?sslmode=disable"
+      # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
+      # monitoring on private Docker networks. For production, consider Docker secrets.
+      PGPASSWORD: ${PGBOUNCER_AUTH_PASS:?PGBOUNCER_AUTH_PASS is required}
+
+    networks:
+      - postgres_net
+      - ${MONITORING_NETWORK:-monitoring}
+
+    ports:
+      - "${PGBOUNCER_EXPORTER_BIND_IP:-127.0.0.1}:${PGBOUNCER_EXPORTER_PORT:-9127}:9127"
+
+    mem_limit: ${PGBOUNCER_EXPORTER_MEMORY_LIMIT:-32m}
+    mem_reservation: ${PGBOUNCER_EXPORTER_MEMORY_RESERVATION:-16m}
+
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9127/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  postgres_net:
+    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+    driver: bridge
+    attachable: true
+  monitoring:
+    external: true
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_DATA_VOLUME:-postgres_data}
+  postgres_backup:
+    name: ${POSTGRES_BACKUP_VOLUME:-postgres_backup}

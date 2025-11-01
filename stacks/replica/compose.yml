@@ -1,0 +1,92 @@
+# PostgreSQL Replica Stack
+# Streaming replication from primary instance
+# Read-only replica for load distribution and high availability
+
+services:
+  postgres-replica:
+    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-replica
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      PG_REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
+      PG_REPLICATION_PASSWORD: "${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}"
+      PRIMARY_HOST: ${PRIMARY_HOST:?PRIMARY_HOST is required}
+      PRIMARY_PORT: ${PRIMARY_PORT:-5432}
+      REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-replica_slot_1}
+      POSTGRES_WAL_LEVEL: ${POSTGRES_WAL_LEVEL:-replica} # replica level for read-only standby
+
+    ports:
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432"
+
+    volumes:
+      - ${POSTGRES_DATA_VOLUME:-postgres-replica-data}:/var/lib/postgresql
+      - ./configs/postgresql-replica.conf:/etc/postgresql/postgresql.conf:ro
+      - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./scripts/00-setup-replica.sh:/docker-entrypoint-initdb.d/00-setup-replica.sh:ro
+
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256m}
+
+    cpus: ${POSTGRES_CPU_LIMIT:-0.5}
+
+    networks:
+      - postgres_net
+
+    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
+
+  postgres_exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-replica
+    restart: unless-stopped
+
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres@postgres-replica:5432/postgres?sslmode=disable"
+      # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
+      # monitoring on private Docker networks. For production, consider Docker secrets.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
+      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: "false"
+
+    volumes:
+      - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+
+    networks:
+      - postgres_net
+      - ${MONITORING_NETWORK:-monitoring}
+
+    ports:
+      - "${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9188}:9187"
+
+    mem_limit: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+    mem_reservation: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  postgres_net:
+    name: ${POSTGRES_NETWORK_NAME:-postgres-replica-net}
+    external: true # Uses network created by primary stack
+  monitoring:
+    external: true
+
+volumes:
+  postgres-replica-data:
+    name: ${POSTGRES_DATA_VOLUME:-postgres-replica-data}
+    driver: local

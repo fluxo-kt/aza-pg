@@ -1,0 +1,333 @@
+# ============================================================================
+# Regression Tests - Reusable Workflow
+# ============================================================================
+#
+# PURPOSE:
+# --------
+# Comprehensive regression testing for release validation. Runs all tier 1-3
+# regression tests in production mode to validate release image behavior before
+# deployment to production.
+#
+# WHEN IT RUNS:
+# -------------
+# 1. Called by publish.yml - Blocks production release if tests fail
+# 2. Manual trigger (workflow_dispatch) - On-demand validation
+#
+# WHAT IT TESTS:
+# --------------
+# Tier 1: Core PostgreSQL regression tests (12 fast tests in CI mode, or 30 full tests)
+# Tier 2: Extension-specific regression tests (10-13 extensions)
+# Tier 3: Extension interaction tests (4-14 tests)
+#
+# TEST MODE:
+# ----------
+# Production mode only - tests exact release image behavior with enabled
+# extensions and default preloads. This matches what end users will experience.
+#
+# DURATION:
+# ---------
+# Approximately 10-15 minutes total
+#
+# OUTPUTS:
+# --------
+# - Test reports (passed/failed tests, timing)
+# - Regression diffs (if any test fails)
+# - Artifacts uploaded on failure for debugging
+# - tests_passed output (boolean): true if all tiers passed, false otherwise
+#
+# USAGE:
+# ------
+# As reusable workflow:
+#   jobs:
+#     regression-tests:
+#       uses: ./.github/workflows/regression-tests.yml
+#       with:
+#         image_ref: ghcr.io/fluxo-kt/aza-pg-testing:testing-abc123
+#
+# As manual workflow:
+#   gh workflow run regression-tests.yml -f image_ref=ghcr.io/fluxo-kt/aza-pg:18-single-node
+#
+# ============================================================================
+
+name: Regression Tests
+
+on:
+  workflow_call:
+    inputs:
+      image_ref:
+        description: "Full image reference to test (registry/repository:tag or @digest)"
+        required: true
+        type: string
+    outputs:
+      tests_passed:
+        description: "Whether all regression tests passed (true/false)"
+        value: ${{ jobs.complete.outputs.tests_passed }}
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Full image reference to test (e.g., ghcr.io/fluxo-kt/aza-pg:18-single-node)"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # ==========================================================================
+  # Job 1: Run Tier 1 regression tests
+  # ==========================================================================
+  tier-1:
+    name: Tier 1 - Core PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
+
+      - name: Run Tier 1 regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 1 regression tests (Core PostgreSQL)..."
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
+          # Use --fast mode for 12 core tests with minimal_setup
+          # Full mode (30 tests) requires data files not yet implemented
+          bun scripts/test/run-all-regression-tests.ts --tier=1 --mode=production --fast
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: regression-tier1
+          containers: all
+          artifact-prefix: tier1-regression
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 1 Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production (fast)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 12 official PostgreSQL regression tests (boolean, int2/4/8, float4/8, text, varchar, numeric, json, strings, numerology)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 2: Run Tier 2 regression tests
+  # ==========================================================================
+  tier-2:
+    name: Tier 2 - Extension Tests
+    runs-on: ubuntu-latest
+    needs: tier-1
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
+
+      - name: Run Tier 2 regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 2 regression tests (Extension-specific)..."
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
+          bun scripts/test/run-all-regression-tests.ts --tier=2 --mode=production
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: regression-tier2
+          containers: all
+          artifact-prefix: tier2-regression
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 2 Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 2 (Extension-specific)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Extensions:** 10-13 extensions with regression tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 3: Run Tier 3 regression tests
+  # ==========================================================================
+  tier-3:
+    name: Tier 3 - Extension Interactions
+    runs-on: ubuntu-latest
+    needs: tier-1
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
+
+      - name: Run Tier 3 regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 3 regression tests (Extension interactions)..."
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
+          bun scripts/test/run-all-regression-tests.ts --tier=3 --mode=production
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: regression-tier3
+          containers: all
+          artifact-prefix: tier3-regression
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier3-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 3 Summary :arrows_counterclockwise:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 3 (Extension interactions)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 4-14 cross-extension interaction tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 4: Regression tests complete
+  # ==========================================================================
+  complete:
+    name: Regression Tests Complete
+    runs-on: ubuntu-latest
+    needs: [tier-1, tier-2, tier-3]
+    timeout-minutes: 1
+    if: always()
+    outputs:
+      tests_passed: ${{ steps.check-results.outputs.passed }}
+
+    steps:
+      - name: Check all tier results
+        id: check-results
+        run: |
+          set -euo pipefail
+          echo "Checking regression test results..."
+
+          FAILED=0
+
+          if [ "${{ needs.tier-1.result }}" != "success" ]; then
+            echo "::error::Tier 1 (Core PostgreSQL) tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.tier-2.result }}" != "success" ]; then
+            echo "::error::Tier 2 (Extension-specific) tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.tier-3.result }}" != "success" ]; then
+            echo "::error::Tier 3 (Extension interactions) tests failed"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ One or more regression test tiers failed"
+            exit 1
+          fi
+
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "✅ All regression tests passed"
+
+      - name: Generate final summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "# Regression Tests Complete :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier | Description | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 1 | Core PostgreSQL (12 fast tests) | ${{ needs.tier-1.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 2 | Extension-specific (10-13 extensions) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 3 | Extension interactions (4-14 tests) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ inputs.image_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.tier-1.result }}" = "success" ] && \
+             [ "${{ needs.tier-2.result }}" = "success" ] && \
+             [ "${{ needs.tier-3.result }}" = "success" ]; then
+            echo "## ✅ All Regression Tests Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Release validation complete. Image is ready for production deployment." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Regression Tests Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more test tiers failed. Review test logs and regression diffs before deploying." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Fix regressions or verify expected behavior changes." >> $GITHUB_STEP_SUMMARY
+          fi

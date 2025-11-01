@@ -1,0 +1,87 @@
+name: Check Extension Updates
+
+on:
+  schedule:
+    - cron: "0 9 * * MON" # Weekly on Monday 9am UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Check for extension updates
+        id: check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          bun scripts/extensions/check-updates.ts --format=json > updates.json
+          UPDATE_COUNT=$(cat updates.json | jq '[.[] | select(.updateAvailable and .enabled)] | length')
+          echo "count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub issue if updates found
+        if: steps.check.outputs.count > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const updates = JSON.parse(fs.readFileSync('updates.json', 'utf8'));
+
+            const withUpdates = updates.filter(u => u.updateAvailable && u.enabled);
+            const commitRefs = updates.filter(u => u.latest === null && u.current.length === 8);
+
+            const updatesList = withUpdates.map(u =>
+              `### ${u.name}\n` +
+              `- **Current**: \`${u.current}\`\n` +
+              `- **Latest**: \`${u.latest}\`\n` +
+              `- **Source**: ${u.source}\n` +
+              (u.releaseUrl ? `- [View Release](${u.releaseUrl})\n` : '')
+            ).join('\n');
+
+            const commitList = commitRefs.map(u =>
+              `- **${u.name}**: \`${u.current}\` (commit-based, check manually)\n` +
+              `  - Source: ${u.source}`
+            ).join('\n');
+
+            const body =
+              `## 🔄 Extension Updates Available\n\n` +
+              `Found **${withUpdates.length}** extension(s) with newer versions:\n\n` +
+              `${updatesList}\n\n` +
+              `## ℹ️ Commit-Based Extensions\n\n` +
+              `These extensions use commit SHAs and should be reviewed manually:\n\n` +
+              `${commitList}\n\n` +
+              `---\n\n` +
+              `### Update Instructions\n\n` +
+              `1. Review each update above for compatibility and breaking changes\n` +
+              `2. Update versions in \`scripts/extensions/manifest-data.ts\`\n` +
+              `3. Run \`bun run generate\` to regenerate manifests\n` +
+              `4. Run \`bun run validate\` to verify changes\n` +
+              `5. Test locally if critical extensions\n` +
+              `6. Commit and push changes\n\n` +
+              `---\n\n` +
+              `*Automated check run: ${new Date().toISOString()}*`;
+
+            const date = new Date().toISOString().split('T')[0];
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📦 ${withUpdates.length} extension update(s) available - ${date}`,
+              body: body,
+              labels: ['dependencies', 'extensions', 'automated']
+            });
+
+      - name: No updates found
+        if: steps.check.outputs.count == 0
+        run: |
+          set -euo pipefail
+          echo "✅ All extensions are up to date!"

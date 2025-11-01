@@ -1,0 +1,48 @@
+--
+-- hypopg - Basic regression test
+-- Tests hypothetical index creation and visibility
+--
+-- Create extension
+CREATE EXTENSION IF NOT EXISTS hypopg;
+-- Create test table
+CREATE TABLE test_hypopg (id serial PRIMARY KEY, value INTEGER);
+-- Insert test data
+INSERT INTO
+test_hypopg (value)
+SELECT
+generate_series(1, 100);
+-- Create hypothetical index
+SELECT
+indexname
+FROM
+hypopg_create_index ('CREATE INDEX ON test_hypopg (value)');
+indexname
+--------------------------------
+<13640>btree_test_hypopg_value
+(1 row)
+-- Verify hypothetical index exists (in same session)
+SELECT
+count(*) > 0 AS hypo_index_exists
+FROM
+hypopg_list_indexes;
+hypo_index_exists
+-------------------
+t
+(1 row)
+-- Reset hypothetical indexes
+SELECT
+hypopg_reset ();
+hypopg_reset
+--------------
+(1 row)
+-- Verify reset worked
+SELECT
+count(*) = 0 AS hypo_indexes_cleared
+FROM
+hypopg_list_indexes;
+hypo_indexes_cleared
+----------------------
+t
+(1 row)
+-- Cleanup
+DROP TABLE test_hypopg;

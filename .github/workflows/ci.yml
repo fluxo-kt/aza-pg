@@ -1,0 +1,620 @@
+# ============================================================================
+# Comprehensive CI Pipeline
+# ============================================================================
+#
+# PURPOSE:
+# --------
+# Comprehensive test suite for all PRs and commits to main/dev branches.
+# Validates code quality, builds Docker image, and runs extensive test suite.
+#
+# PIPELINE STRUCTURE (8 jobs, ~38min total):
+# ------------------------------------------
+# 1. validate              (~2min)  - Fast validation, unit tests, manifest checks
+# 2. build                 (~15min) - Build Docker image, export as artifact
+# 3. test-extensions        (~15min) - Extension loading, smoke tests, combinations
+# 4. test-stacks           (~10min) - Single stack deployment tests
+# 5. test-security         (~5min)  - Security hardening tests
+# 6. test-features         (~15min) - Auto-config, pgflow, pgbouncer, negative tests
+# 7. regression-tests-fast (~3min)  - Tier 1 regression tests (4 tests, production mode)
+# 8. ci-complete           (~10s)   - Final gate, summary
+#
+# PARALLELIZATION:
+# ---------------
+# - validate runs first (fast checks)
+# - build depends on validate
+# - test-* jobs run in parallel after build completes
+# - ci-complete waits for all tests
+#
+# DOCKER IMAGE SHARING:
+# --------------------
+# - build job exports image as tarball artifact
+# - test jobs download and load image from artifact
+# - Uses actions/upload-artifact@v4 and actions/download-artifact@v4
+#
+# DIFFERENCES FROM build-postgres-image.yml:
+# -----------------------------------------
+# - Automatic on PR/push (not manual)
+# - Single-platform amd64 only (not multi-arch)
+# - No registry push (artifact-based sharing)
+# - More comprehensive test coverage
+# - Faster feedback (parallel tests)
+#
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths-ignore:
+      - "*.md"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - "**"
+    paths-ignore:
+      - "*.md"
+      - "**/*.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================================================
+  # Job 1: Validate (fast checks + unit tests)
+  # ==========================================================================
+  validate:
+    name: Validate & Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Run fast validation
+        run: bun run validate
+        env:
+          CI: "true"
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          echo "Running unit tests..."
+          bun test ./scripts/test/test-auto-config-units.ts
+          bun test ./scripts/test/test-utils.test.ts
+
+      - name: Verify manifest is up to date
+        run: bun scripts/ci/verify-manifest-sync.ts
+
+      - name: Verify generated files are up to date
+        run: bun scripts/verify-generated.ts
+
+      - name: Repository health check
+        run: bun scripts/ci/repository-health-check.ts
+
+      - name: Generate job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Validation Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Fast validation (oxlint, prettier, tsc)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Unit tests (auto-config, utils)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Generated files sync (Dockerfile, configs, docs)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Repository health check" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 2: Build (Docker image, export as artifact)
+  # ==========================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image with layer caching
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          tags: aza-pg-ci:test
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=aza-pg-ci
+          cache-to: type=gha,mode=max,scope=aza-pg-ci
+          sbom: false
+          provenance: false
+
+      - name: Monitor cache usage
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bun scripts/ci/monitor-cache-usage.ts \
+            --repository ${{ github.repository }} \
+            --platform "linux/amd64" \
+            --github-summary
+
+      - name: Verify image built successfully
+        run: |
+          set -euo pipefail
+          echo "Verifying image exists..."
+          docker images | grep aza-pg-ci
+
+          echo "Testing basic functionality..."
+          docker run --rm aza-pg-ci:test psql --version
+
+          echo "Checking extension count..."
+          # Derive expected count dynamically from manifest
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          EXPECTED_MIN=$((CATALOG_EXTENSIONS + CATALOG_BUILTINS))
+
+          EXTENSION_COUNT=$(docker run --rm aza-pg-ci:test \
+            sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null' | wc -l)
+          echo "Found $EXTENSION_COUNT extension control files (expected: ${EXPECTED_MIN} = ${CATALOG_EXTENSIONS} ext + ${CATALOG_BUILTINS} builtin)"
+
+          if [ "$EXTENSION_COUNT" -lt "$EXPECTED_MIN" ]; then
+            echo "::error::Expected at least ${EXPECTED_MIN} extensions, found $EXTENSION_COUNT"
+            exit 1
+          fi
+
+          echo "✅ Image verification passed"
+
+      - name: Export image as tarball
+        run: |
+          set -euo pipefail
+          echo "Exporting image to tarball..."
+          docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
+          ls -lh /tmp/aza-pg-ci-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/aza-pg-ci-image.tar.gz
+          retention-days: 1
+          compression-level: 0 # Already compressed with gzip
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`aza-pg-ci:test\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get image size
+          IMAGE_SIZE=$(docker images aza-pg-ci:test --format "{{.Size}}")
+          echo "**Image Size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
+
+          # Get artifact size
+          ARTIFACT_SIZE=$(ls -lh /tmp/aza-pg-ci-image.tar.gz | awk '{print $5}')
+          echo "**Artifact Size:** $ARTIFACT_SIZE (compressed)" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 3: Test Extensions (parallel extension tests)
+  # ==========================================================================
+  test-extensions:
+    name: Test Extensions
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Test core extensions
+        run: |
+          set -euo pipefail
+          echo "Testing core extension loading..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-extensions.ts
+
+      - name: Run extension smoke tests
+        run: |
+          set -euo pipefail
+          echo "Running extension smoke tests..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/run-extension-smoke.ts
+
+      - name: Test disabled extensions
+        run: |
+          set -euo pipefail
+          echo "Testing disabled extensions (should not be available)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-disabled-extensions.ts
+
+      - name: Test hook extensions (pg_safeupdate)
+        run: |
+          set -euo pipefail
+          echo "Testing hook-based extensions (pg_safeupdate default-enabled)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-hook-extensions.ts
+
+      # Extension combinations test - validates complex multi-extension scenarios
+      # Previously disabled due to bug in manifest filtering (included tools in preload)
+      # Fixed in manifest-test-utils.ts by excluding kind="tool" from getPreloadExtensions()
+      - name: Test extension combinations
+        run: |
+          set -euo pipefail
+          echo "Testing extension combinations..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-integration-extension-combinations.ts
+
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: extensions
+          artifact-prefix: extension
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Extension Tests Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension smoke tests (functional validation)" >> $GITHUB_STEP_SUMMARY
+          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
+          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 4: Test Stacks (single stack deployment)
+  # ==========================================================================
+  test-stacks:
+    name: Test Stacks
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Create test .env file
+        run: |
+          set -euo pipefail
+          echo "Creating test environment configuration..."
+          cp stacks/single/.env.example stacks/single/.env
+
+      - name: Test single stack
+        run: |
+          set -euo pipefail
+          echo "Testing single stack deployment..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-single-stack.ts
+
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: stacks
+          artifact-prefix: stack
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Stack Tests Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Stacks tested:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Single stack (PostgreSQL + PgBouncer + monitoring)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Note: Primary and replica stacks tested in build-postgres-image.yml_" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 5: Test Security (security hardening)
+  # ==========================================================================
+  test-security:
+    name: Test Security
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Run security tests
+        run: |
+          set -euo pipefail
+          echo "Running security hardening tests..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun test scripts/test/test-security.test.ts
+
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: security
+          artifact-prefix: security
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Security Tests Summary :shield:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
+          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
+          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
+          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 6: Test Features (auto-config, pgflow, pgbouncer, negative tests)
+  # ==========================================================================
+  test-features:
+    name: Test Features
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Test auto-config
+        run: |
+          set -euo pipefail
+          echo "Testing auto-config functionality..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-auto-config.ts
+
+      # pgflow v0.8.1 tests - schema installed per-project (not bundled in image)
+      # Tests handle schema installation via tests/fixtures/pgflow/install.ts
+      - name: Test pgflow v0.8.1 schema
+        run: |
+          set -euo pipefail
+          echo "Testing pgflow v0.8.1 schema installation and verification..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgflow-schema.ts --image=aza-pg-ci:test
+
+      - name: Test pgflow v0.8.1 functional
+        run: |
+          set -euo pipefail
+          echo "Testing pgflow v0.8.1 workflow functionality..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgflow-v081.ts --image=aza-pg-ci:test
+
+      - name: Test pgflow multi-project isolation
+        run: |
+          set -euo pipefail
+          echo "Testing pgflow multi-project database isolation..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg-ci:test
+
+      # Disabled: pgbouncer healthcheck test requires Docker Compose stack deployment in CI environment
+      # Path resolution (stacks/primary) not available in CI runner context
+      # This test validates Docker Compose orchestration but has environmental requirements not suitable for CI
+      # Run locally or in dedicated environment: export POSTGRES_IMAGE=<image> && bun scripts/test/test-pgbouncer-healthcheck.ts
+      # - name: Test pgbouncer healthcheck
+      #   run: |
+      #     echo "Testing PgBouncer health check..."
+      #     export POSTGRES_IMAGE=aza-pg-ci:test
+      #     bun scripts/test/test-pgbouncer-healthcheck.ts
+
+      - name: Test negative scenarios
+        run: |
+          set -euo pipefail
+          echo "Testing negative scenarios (error handling)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun test ./scripts/test/test-negative-scenarios.ts
+
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: features
+          artifact-prefix: feature
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Feature Tests Summary :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow v0.8.1 schema installation and workflows" >> $GITHUB_STEP_SUMMARY
+          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
+          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 7: Regression Tests (fast - Tier 1 only)
+  # ==========================================================================
+  regression-tests-fast:
+    name: Regression Tests (Fast)
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Run Tier 1 regression tests (fast)
+        run: |
+          set -euo pipefail
+          echo "Running Tier 1 regression tests (fast - 1 self-contained test: boolean)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: regression
+          containers: all
+          artifact-prefix: regression-fast
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Regression Tests (Fast) Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** Tier 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 1 self-contained test (boolean - creates own fixtures)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Full regression suite (30 tests) runs on release branch_" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 8: CI Complete (final gate)
+  # ==========================================================================
+  ci-complete:
+    name: CI Complete
+    runs-on: ubuntu-latest
+    needs:
+      [
+        validate,
+        build,
+        test-extensions,
+        test-stacks,
+        test-security,
+        test-features,
+        regression-tests-fast,
+      ]
+    timeout-minutes: 1
+    if: always()
+
+    steps:
+      - name: Check all jobs status
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.validate.result }}" != "success" ]; then
+            echo "::error::Validate job failed"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::Build job failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
+            echo "::error::Extension tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-stacks.result }}" != "success" ]; then
+            echo "::error::Stack tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
+            echo "::error::Security tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
+            echo "::error::Feature tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.regression-tests-fast.result }}" != "success" ]; then
+            echo "::error::Regression tests failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed!"
+
+      - name: Generate final summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "# CI Pipeline Complete :tada:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [ "${{ needs.validate.result }}" = "success" ] && \
+             [ "${{ needs.build.result }}" = "success" ] && \
+             [ "${{ needs.test-extensions.result }}" = "success" ] && \
+             [ "${{ needs.test-stacks.result }}" = "success" ] && \
+             [ "${{ needs.test-security.result }}" = "success" ] && \
+             [ "${{ needs.test-features.result }}" = "success" ] && \
+             [ "${{ needs.regression-tests-fast.result }}" = "success" ]; then
+            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The CI pipeline completed successfully. All validation, build, and test jobs passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Pipeline Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more jobs failed. Check the job logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi

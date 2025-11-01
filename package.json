@@ -1,0 +1,49 @@
+{
+  "name": "aza-pg",
+  "version": "1.0.0",
+  "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with extensions and tools",
+  "type": "module",
+  "author": "Art Shendrik",
+  "license": "MIT",
+  "scripts": {
+    "validate": "bun scripts/validate.ts",
+    "validate:all": "bun scripts/validate.ts --all",
+    "validate:fix": "bun scripts/validate.ts --fix",
+    "format": "bun scripts/validate.ts --fix",
+    "lint": "bun scripts/validate.ts",
+    "test": "bun scripts/test-all.ts --skip-build",
+    "test:all": "bun scripts/test-all.ts",
+    "test:unit": "bun test ./scripts/config-generator/manifest-generator.test.ts ./scripts/test/test-auto-config-units.ts ./scripts/test/test-utils.test.ts ./scripts/docker/test-image-lib.test.ts",
+    "test:pgflow": "bun scripts/test/test-pgflow-schema.ts && bun scripts/test/test-pgflow-v081.ts && bun scripts/test/test-pgflow-multiproject.ts",
+    "build": "bun scripts/build.ts",
+    "generate": "bun scripts/generate-all.ts",
+    "hooks:install": "bun-git-hooks",
+    "postinstall": "bun-git-hooks"
+  },
+  "devDependencies": {
+    "@bun-security-scanner/osv": "^1.0.0",
+    "@pgflow/client": "0.8.1",
+    "@pgflow/dsl": "0.8.1",
+    "@types/bun": "^1.3.3",
+    "arktype": "^2.1.27",
+    "bun-git-hooks": "^0.3.1",
+    "oxlint": "^1.30.0",
+    "prettier": "^3.6.2",
+    "sql-formatter": "^15.6.10",
+    "squawk-cli": "^2.31.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "keywords": [
+    "postgresql",
+    "postgres",
+    "database",
+    "docker",
+    "pgbouncer",
+    "extensions",
+    "infrastructure",
+    "production"
+  ]
+}

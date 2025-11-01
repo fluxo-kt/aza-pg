@@ -1,0 +1,1401 @@
+name: Publish Single-Node Image
+
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: publish-single-node
+  cancel-in-progress: true # Cancel any in-progress publish to start fresh
+
+permissions:
+  contents: write # Required for creating GitHub Releases
+  packages: write
+  id-token: write # Required for Sigstore certificate (Cosign + attestations)
+  attestations: write # Required for v3 attestation persistence
+  security-events: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME_TESTING: fluxo-kt/aza-pg-testing
+
+jobs:
+  prep:
+    name: Prepare Build Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+    outputs:
+      pg_version_major: ${{ steps.pg-version.outputs.major }}
+      pg_version_minor: ${{ steps.pg-version.outputs.minor }}
+      pg_version_full: ${{ steps.pg-version.outputs.full }}
+      base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
+      base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
+      timestamp: ${{ steps.timestamp.outputs.timestamp }}
+      version_tag: ${{ steps.tags.outputs.version_tag }}
+      image_tag: ${{ steps.tags.outputs.image_tag }}
+      tag_convenience: ${{ steps.tags.outputs.convenience }}
+      catalog_total: ${{ steps.catalog.outputs.total }}
+      catalog_enabled: ${{ steps.catalog.outputs.enabled }}
+      catalog_disabled: ${{ steps.catalog.outputs.disabled }}
+      catalog_extensions: ${{ steps.catalog.outputs.extensions }}
+      catalog_tools: ${{ steps.catalog.outputs.tools }}
+      catalog_builtins: ${{ steps.catalog.outputs.builtins }}
+      catalog_modules: ${{ steps.catalog.outputs.modules }}
+      catalog_enabled_extensions: ${{ steps.catalog.outputs.enabled_extensions }}
+      catalog_enabled_tools: ${{ steps.catalog.outputs.enabled_tools }}
+      catalog_enabled_builtins: ${{ steps.catalog.outputs.enabled_builtins }}
+      catalog_enabled_modules: ${{ steps.catalog.outputs.enabled_modules }}
+      cache_key: ${{ steps.cache-key.outputs.key }}
+      content_hash: ${{ steps.cache-key.outputs.content_hash }}
+      meta_labels: ${{ steps.meta.outputs.labels }}
+      meta_annotations: ${{ steps.meta.outputs.annotations }}
+      bun_version: ${{ steps.bun-version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        id: bun-version
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
+
+      # Pre-flight cleanup: Remove orphaned testing tags from cancelled workflows.
+      # This protects against the GitHub Actions limitation where `if: always()`
+      # cleanup jobs don't run for cancelled workflows (cancel-in-progress: true).
+      # Deletes any testing-* tags older than 6 hours (current workflow's tag
+      # won't exist yet, so can't accidentally delete it).
+      - name: Cleanup orphaned testing tags from previous runs
+        id: cleanup-orphans
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::group::Cleanup Orphaned Tags"
+          echo "Cleaning up testing-* tags from cancelled or failed workflows..."
+
+          # Delete testing-* tags older than 6 hours (catches cancelled workflows)
+          bun scripts/release/cleanup-old-testing-tags.ts \
+            --repository "fluxo-kt/aza-pg-testing" \
+            --pattern "testing-*" \
+            --days 0.25 \
+            --continue-on-error \
+            || echo "::warning::Orphan cleanup failed - continuing anyway"
+
+          echo "::endgroup::"
+
+      - name: Report orphan cleanup
+        if: steps.cleanup-orphans.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "::warning::Pre-flight cleanup encountered errors"
+          echo "This is non-critical - workflow will continue"
+          echo "Orphaned tags may require manual cleanup"
+
+      - name: Verify Dockerfile generation is current
+        run: bun scripts/verify-generated.ts
+
+      - name: Validate manifest
+        run: bun run validate
+
+      - name: Derive catalog statistics
+        id: catalog
+        run: |
+          set -euo pipefail
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
+          echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
+          echo "disabled=${CATALOG_DISABLED}" >> $GITHUB_OUTPUT
+          echo "extensions=${CATALOG_EXTENSIONS}" >> $GITHUB_OUTPUT
+          echo "tools=${CATALOG_TOOLS}" >> $GITHUB_OUTPUT
+          echo "builtins=${CATALOG_BUILTINS}" >> $GITHUB_OUTPUT
+          echo "modules=${CATALOG_MODULES}" >> $GITHUB_OUTPUT
+          echo "enabled_extensions=${CATALOG_ENABLED_EXTENSIONS}" >> $GITHUB_OUTPUT
+          echo "enabled_tools=${CATALOG_ENABLED_TOOLS}" >> $GITHUB_OUTPUT
+          echo "enabled_builtins=${CATALOG_ENABLED_BUILTINS}" >> $GITHUB_OUTPUT
+          echo "enabled_modules=${CATALOG_ENABLED_MODULES}" >> $GITHUB_OUTPUT
+          echo "Catalog: ${CATALOG_ENABLED} enabled (${CATALOG_ENABLED_EXTENSIONS} ext, ${CATALOG_ENABLED_BUILTINS} builtin, ${CATALOG_ENABLED_TOOLS} tools), ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
+
+      - name: Extract PostgreSQL version from base image
+        id: pg-version
+        run: |
+          set -euo pipefail
+          # Extract base image directly from Dockerfile FROM statement
+          # Pattern: FROM postgres:18.1-trixie@sha256:...
+          BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | \
+            awk '{print $2}' | head -1)
+
+          bun scripts/build/extract-pg-version.ts \
+            --image "$BASE_IMAGE" \
+            --github-output
+
+      - name: Generate build timestamp
+        id: timestamp
+        run: |
+          set -euo pipefail
+          # Human-readable timestamp for container tags (no special chars)
+          BUILD_TS=$(date -u '+%Y%m%d%H%M')
+
+          # RFC 3339 compliant timestamp for OCI metadata
+          BUILD_TS_RFC3339=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+          # Output both formats
+          echo "value=${BUILD_TS}" >> $GITHUB_OUTPUT
+          echo "timestamp=${BUILD_TS_RFC3339}" >> $GITHUB_OUTPUT
+
+          echo "Build timestamp (human): ${BUILD_TS}"
+          echo "Build timestamp (RFC 3339): ${BUILD_TS_RFC3339}"
+
+      - name: Generate version tags
+        id: tags
+        run: |
+          set -euo pipefail
+          bun scripts/release/generate-version-tags.ts \
+            --pg-version="${{ steps.pg-version.outputs.full }}" \
+            --timestamp="${{ steps.timestamp.outputs.value }}" \
+            --github-output
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tags.outputs.image_tag }},priority=1000
+            type=raw,value=${{ steps.pg-version.outputs.full }}-single-node,priority=900
+            type=raw,value=${{ steps.pg-version.outputs.major }}-single-node,priority=800
+            type=raw,value=${{ steps.pg-version.outputs.full }},priority=700
+            type=raw,value=${{ steps.pg-version.outputs.major }},priority=600
+          labels: |
+            org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} \
+              with ${{ steps.catalog.outputs.total }} extensions - Single-Node
+            org.opencontainers.image.vendor=fluxo-kt
+            org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
+            org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
+            io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
+            io.fluxo-kt.aza-pg.build.type=single-node
+            io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
+            io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
+            index,manifest:org.opencontainers.image.vendor=fluxo-kt
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
+            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
+            index,manifest:org.opencontainers.image.licenses=MIT
+            index,manifest:org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            index,manifest:org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
+            index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
+            index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
+
+      - name: Generate cache key
+        id: cache-key
+        run: |
+          set -euo pipefail
+          bun scripts/release/generate-cache-key.ts \
+            --branch="${{ github.ref_name }}" \
+            --content-hash="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}" \
+            --github-output
+
+      - name: Document existing tags (for rollback reference)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          bun scripts/release/document-tag-overwrites.ts \
+            --registry="${{ env.REGISTRY }}" \
+            --repository="${{ env.IMAGE_NAME }}" \
+            --tags="${{ steps.pg-version.outputs.full }}-single-node,${{ steps.pg-version.outputs.major }}-single-node,${{ steps.pg-version.outputs.full }},${{ steps.pg-version.outputs.major }}" \
+            --github-summary
+
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: prep
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.prep.outputs.meta_labels }}
+          annotations: ${{ needs.prep.outputs.meta_annotations }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
+          build-args: |
+            BUILD_DATE=${{ needs.prep.outputs.timestamp }}
+            VCS_REF=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=aza-pg-${{ matrix.artifact }}
+            type=gha,scope=aza-pg-base
+          cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
+          # BuildKit provenance disabled - using GitHub attestation (SLSA v1.0) instead
+          # GitHub attestation provides superior workflow-level provenance without risk of leaking build args
+          # Supply chain security layers:
+          #   1. SBOM (BuildKit) - software bill of materials
+          #   2. GitHub attestation (actions/attest-build-provenance@v3) - SLSA build provenance
+          #   3. Cosign signatures (keyless OIDC) - image integrity verification
+          provenance: false
+          sbom: true
+
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          echo "Exported digest: ${digest}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v5
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Monitor cache usage
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun scripts/ci/monitor-cache-usage.ts \
+            --repository ${{ github.repository }} \
+            --platform "${{ matrix.platform }}" \
+            --github-summary
+
+  merge:
+    name: Create Multi-Platform Manifest
+    runs-on: ubuntu-latest
+    needs: [prep, build]
+    timeout-minutes: 15
+    outputs:
+      image_digest: ${{ steps.merge.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Download digests
+        uses: actions/download-artifact@v6
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push (testing tag)
+        id: merge
+        run: |
+          set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+          echo "=== Pre-merge Validation ==="
+
+          # Verify we have exactly 2 digest files (amd64 + arm64)
+          DIGEST_COUNT=$(ls -1 ${{ runner.temp }}/digests | wc -l)
+          echo "Digest files found: ${DIGEST_COUNT}"
+          ls -1 ${{ runner.temp }}/digests
+
+          if [ "${DIGEST_COUNT}" -ne 2 ]; then
+            echo "❌ ERROR: Expected 2 digest files (amd64 + arm64), found ${DIGEST_COUNT}"
+            exit 1
+          fi
+          echo "✅ Confirmed 2 platform digests present"
+
+          echo ""
+          echo "=== Creating Multi-Arch Manifest ==="
+
+          # Build source digest list (from digests directory)
+          cd ${{ runner.temp }}/digests
+          SOURCES=$(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s,' * | sed 's/,$//')
+          cd -  # Return to repository root (needed for script execution)
+
+          # Create manifest using TypeScript script (now runs from repo root)
+          bun scripts/docker/create-manifest.ts \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --sources "$SOURCES" \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ github.sha }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}" \
+            --github-output
+
+      - name: Verify manifest annotations and platforms
+        run: |
+          set -euo pipefail
+          bun scripts/docker/validate-manifest.ts \
+            --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --platforms "linux/amd64,linux/arm64" \
+            --require-annotations
+
+      - name: Verify PostgreSQL version in merged image
+        run: |
+          set -euo pipefail
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --max-retries 3
+
+          # Extract PostgreSQL version from built image
+          PG_VERSION_OUTPUT=$(docker run --rm \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
+            psql --version)
+          echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
+
+          # Parse version
+          ACTUAL_VERSION=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
+
+          # Verify version matches what we used for tagging
+          if [ "${ACTUAL_VERSION}" != "${{ needs.prep.outputs.pg_version_full }}" ]; then
+            echo "❌ ERROR: Version mismatch (expected ${{ needs.prep.outputs.pg_version_full }}, got ${ACTUAL_VERSION})"
+            exit 1
+          fi
+
+          echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
+
+  # ==========================================================================
+  # COMPREHENSIVE TEST GATE - Production Release Validation
+  # ==========================================================================
+  # These tests run BEFORE promotion to production registry to ensure the
+  # multi-arch image is fully validated. Tests run sequentially to maintain
+  # clear error reporting and avoid resource contention.
+  # ==========================================================================
+
+  test-smoke:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge]
+    if: needs.merge.result == 'success'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Set up QEMU (for arm64 testing)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Run basic smoke tests
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          echo "Running basic smoke tests on multi-arch image..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: smoke
+          containers: all
+          artifact-prefix: smoke-test
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-extensions:
+    name: Extension Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Test core extensions
+        run: |
+          set -euo pipefail
+          echo "Testing core extension loading..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+
+      - name: Run extension smoke tests
+        run: |
+          set -euo pipefail
+          echo "Running extension functional validation..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/run-extension-smoke.ts
+
+      - name: Test disabled extensions
+        run: |
+          set -euo pipefail
+          echo "Verifying disabled extensions are not available..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-disabled-extensions.ts
+
+      - name: Test hook extensions
+        run: |
+          set -euo pipefail
+          echo "Testing hook-based extensions..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun test ./scripts/test/test-hook-extensions.ts
+
+      - name: Test extension combinations
+        run: |
+          set -euo pipefail
+          echo "Testing extension combinations..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-integration-extension-combinations.ts
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: extensions
+          containers: all
+          artifact-prefix: extension-test
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Extension Tests :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension functional validation" >> $GITHUB_STEP_SUMMARY
+          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
+          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-features:
+    name: Feature Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Test auto-config
+        run: |
+          set -euo pipefail
+          echo "Testing auto-config functionality..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-auto-config.ts
+
+      - name: Setup pgflow test container
+        run: |
+          set -euo pipefail
+          # Setup container for pgflow v0.8.1 tests (per-project installation)
+          bun scripts/docker/setup-pgflow-container.ts \
+            --name publish-pgflow-test \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --password test_pgflow_pass \
+            --database pgflow_test \
+            --memory 2048 \
+            --timeout 120 \
+            --diagnostic-dir ${{ runner.temp }}/pgflow-setup-logs
+
+      - name: Test pgflow v0.8.1
+        run: |
+          set -euo pipefail
+          echo "Testing pgflow v0.8.1 (per-project installation)..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test
+          bun scripts/test/test-pgflow-v081.ts --container=publish-pgflow-test --database=pgflow_test
+
+      - name: Test PgBouncer healthcheck
+        continue-on-error: true # Non-critical test (critical: false in test-all.ts)
+        run: |
+          set -euo pipefail
+          echo "Testing PgBouncer health check..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-pgbouncer-healthcheck.ts
+
+      - name: Test negative scenarios
+        run: |
+          set -euo pipefail
+          echo "Testing negative scenarios (error handling)..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun test ./scripts/test/test-negative-scenarios.ts
+
+      - name: Cleanup pgflow test containers
+        if: always()
+        run: |
+          set -euo pipefail
+          bun scripts/docker/setup-pgflow-container.ts --name publish-pgflow-test --cleanup-only
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: features
+          containers: publish-pgflow-test
+          artifact-prefix: feature-test
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Feature Tests :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow v0.8.1 schema installation and workflows" >> $GITHUB_STEP_SUMMARY
+          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
+          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-security:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Run security tests
+        run: |
+          set -euo pipefail
+          echo "Running security hardening tests..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun test scripts/test/test-security.test.ts
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: security
+          containers: all
+          artifact-prefix: security-test
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Security Tests :shield:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
+          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
+          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
+          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  regression-tests:
+    name: Regression Tests (Blocking Gate)
+    uses: ./.github/workflows/regression-tests.yml
+    needs: [prep, merge, test-smoke]
+    with:
+      image_ref: ghcr.io/fluxo-kt/aza-pg-testing:testing-${{ github.sha }}
+    secrets: inherit
+
+  test-complete:
+    name: All Tests Complete
+    runs-on: ubuntu-latest
+    needs: [test-smoke, test-extensions, test-features, test-security, regression-tests]
+    timeout-minutes: 1
+    if: always()
+
+    steps:
+      - name: Check all test results
+        run: |
+          set -euo pipefail
+          echo "Checking comprehensive test results..."
+
+          FAILED=0
+
+          if [ "${{ needs.test-smoke.result }}" != "success" ]; then
+            echo "::error::Smoke tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
+            echo "::error::Extension tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
+            echo "::error::Feature tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
+            echo "::error::Security tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.regression-tests.result }}" != "success" ]; then
+            echo "::error::Regression tests failed"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ One or more test suites failed - blocking production release"
+            exit 1
+          fi
+
+          echo "✅ All comprehensive tests passed - image ready for production"
+
+      - name: Generate test gate summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "# Production Test Gate :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ needs.test-smoke.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extension Tests | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Feature Tests | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Tests | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests | ${{ needs.regression-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.test-smoke.result }}" = "success" ] && \
+             [ "${{ needs.test-extensions.result }}" = "success" ] && \
+             [ "${{ needs.test-features.result }}" = "success" ] && \
+             [ "${{ needs.test-security.result }}" = "success" ] && \
+             [ "${{ needs.regression-tests.result }}" = "success" ]; then
+            echo "## ✅ Test Gate: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All comprehensive tests passed. Image approved for production release." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more test suites failed. Production release blocked." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Review test failures above and fix issues before retrying release." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-complete]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate merge digest
+        run: |
+          set -euo pipefail
+          if [ -z "${{ needs.merge.outputs.image_digest }}" ]; then
+            echo "ERROR: Merge job did not provide valid digest"
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/publish.yml') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Best practices scan (Dockle)
+        uses: erzz/dockle-action@v1
+        with:
+          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          exit-code: "1"
+          failure-threshold: WARN
+          accept-keywords: key
+          accept-filenames: /docker-entrypoint-initdb.d
+
+      - name: Security scan (SARIF for GitHub Security)
+        uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Security scan (blocking on failures)
+        uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          format: "table"
+          severity: "CRITICAL"
+          exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
+
+      - name: Capture security scan diagnostics on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          mkdir -p ${{ runner.temp }}/scan-diagnostics
+
+          echo "=== Capturing Security Scan Diagnostics ==="
+
+          # Capture full Trivy scan output (all severities)
+          echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
+          docker run --rm \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
+            aquasec/trivy:latest image \
+            --format table \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
+
+          # Capture Trivy scan in JSON format for detailed analysis
+          echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
+          docker run --rm \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
+            aquasec/trivy:latest image \
+            --format json \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
+
+          # Capture image metadata
+          echo "=== Image Metadata ===" | tee ${{ runner.temp }}/scan-diagnostics/image-metadata.txt
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/image-metadata.txt || true
+
+          # Copy SARIF file if it exists
+          if [ -f "trivy-results.sarif" ]; then
+            cp trivy-results.sarif ${{ runner.temp }}/scan-diagnostics/
+          fi
+
+          echo "✅ Security scan diagnostics captured"
+
+      - name: Upload security scan failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: scan-failure-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/scan-diagnostics/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Mark scan failure for cleanup
+        if: failure()
+        run: |
+          set -euo pipefail
+          echo "⚠️ Security scan failed - marking for cleanup"
+          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          # The dedicated cleanup job will handle the actual deletion
+          # This avoids redundant tool installations and ensures consistent cleanup
+
+  release:
+    name: Sign and Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, scan, test-complete]
+    timeout-minutes: 20
+    outputs:
+      compressed_size: ${{ steps.promote.outputs.compressed_size }}
+      uncompressed_size: ${{ steps.promote.outputs.uncompressed_size }}
+      layer_count: ${{ steps.promote.outputs.layer_count }}
+      base_image_name: ${{ steps.promote.outputs.base_image_name }}
+      base_image_digest: ${{ steps.promote.outputs.base_image_digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign container image with Cosign (keyless OIDC)
+        env:
+          DIGEST: ${{ needs.merge.outputs.image_digest }}
+          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
+        run: |
+          set -euo pipefail  # Exit on any error
+          # Sign by digest using testing repository reference (immutable reference)
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
+
+          echo "✅ Image signed successfully with keyless OIDC"
+          echo "📝 Signature uploaded to Rekor transparency log"
+
+      - name: Promote testing image to production tags
+        id: promote
+        run: |
+          set -euo pipefail
+          bun scripts/release/promote-image.ts \
+            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ github.sha }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}"
+
+      - name: Sign all convenience tags
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          bun scripts/release/sign-tags.ts \
+            --repository "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --yes
+
+      - name: Attest container image provenance
+        id: attest
+        if: success()
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          # Fully-qualified production image name (no tags per README requirement)
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Multi-platform manifest digest (immutable reference)
+          subject-digest: ${{ needs.merge.outputs.image_digest }}
+          # Push attestation to OCI registry (enables cosign verification)
+          push-to-registry: true
+          # Display attestation summary in workflow run (default: true, explicit for clarity)
+          show-summary: true
+
+      - name: Generate release summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # PostgreSQL Single-Node Image Published :rocket:
+
+          ## Image Details
+
+          **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
+          **Digest:** `${{ needs.merge.outputs.image_digest }}`
+          **PostgreSQL Version:** ${{ needs.prep.outputs.pg_version_full }} (verified from image)
+          **Build Timestamp:** ${{ needs.prep.outputs.timestamp }}
+          **Build Type:** single-node
+          **Build Method:** Native ARM64 runners (parallel builds, no QEMU)
+
+          ## Tags Published
+
+          - `${{ needs.prep.outputs.image_tag }}` (primary)
+          - `${{ needs.prep.outputs.pg_version_full }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_major }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_full }}`
+          - `${{ needs.prep.outputs.pg_version_major }}`
+
+          ## Pull Commands
+
+          ```bash
+          # Full versioned tag (recommended for production)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+
+          # By digest (immutable)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+
+          # Convenience tags (may change)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}
+          ```
+
+          ## Extensions
+
+          - **Total catalog entries:** ${{ needs.prep.outputs.catalog_total }}
+          - **Enabled extensions:** ${{ needs.prep.outputs.catalog_enabled }}
+          - **Disabled extensions:** ${{ needs.prep.outputs.catalog_disabled }}
+          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
+          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+
+          ## Platforms
+
+          - linux/amd64 (native build on ubuntu-latest)
+          - linux/arm64 (native build on ubuntu-24.04-arm)
+
+          ## Verification
+
+          ```bash
+          # Verify PostgreSQL version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }} psql --version
+
+          # Test basic functionality
+          docker run -d --name pg-test \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+
+          # Wait for startup
+          sleep 10
+
+          # Check extensions
+          docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
+
+          # Cleanup
+          docker rm -f pg-test
+          ```
+
+          ## Deployment
+
+          Update your compose file or Kubernetes manifests:
+
+          ```yaml
+          # Docker Compose
+          services:
+            postgres:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+              # ... other config
+          ```
+
+          ```yaml
+          # Kubernetes
+          spec:
+            containers:
+            - name: postgres
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+              # ... other config
+          ```
+
+          ## Signature Verification
+
+          This image is signed with Cosign using keyless OIDC. Verify the signature before deploying:
+
+          ```bash
+          # Install Cosign (if not already installed)
+          # macOS: brew install cosign
+          # Linux: https://docs.sigstore.dev/cosign/installation/
+          # Windows: https://docs.sigstore.dev/cosign/installation/
+
+          # Verify signature (keyless OIDC)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+
+          # Verify specific tag
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+
+          # Verify by digest (immutable reference)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+
+          **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
+
+          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
+
+          ```bash
+          # Search Rekor for this image
+          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+          ```
+
+          ## Supply Chain Verification
+
+          ### Build Provenance Attestation
+
+          This image has a signed SLSA build provenance attestation. Verify it using GitHub CLI (recommended) or Cosign:
+
+          ```bash
+          # Verify with GitHub CLI (recommended)
+          gh attestation verify oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }} \
+            --owner fluxo-kt
+
+          # Verify with Cosign
+          cosign verify-attestation \
+            --type slsaprovenance \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+
+          **Attestation Details:**
+          - **Attestation URL:** ${{ steps.attest.outputs.attestation-url }}
+          - **Format:** SLSA Build Provenance v1.0
+          - **Storage:** OCI registry + GitHub attestations API
+
+          ### SBOM
+
+          View the Software Bill of Materials (generated by BuildKit during build):
+
+          ```bash
+          # Download SBOM
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
+
+          # Or view SBOM by digest
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+
+          ### Download Attestation Bundle
+
+          Download the complete SLSA provenance attestation bundle for offline analysis:
+
+          ```bash
+          # Download as JSON
+          gh attestation download oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+          EOF
+
+      - name: Publish release notes
+        run: |
+          set -euo pipefail
+          echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Primary tag: ${{ needs.prep.outputs.image_tag }}"
+          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
+          echo "Platforms: linux/amd64, linux/arm64 (native builds)"
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, release]
+    if: success()
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ needs.prep.outputs.bun_version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Get GHCR package version ID
+        id: package_version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Query GitHub Packages API to get numeric version ID for GHCR package link
+          VERSION_ID=$(bun scripts/release/get-package-version-id.ts \
+            --repository "${{ github.repository }}" \
+            --tag "${{ needs.prep.outputs.image_tag }}" | tail -n 1)
+
+          echo "package_version_id=${VERSION_ID}" >> $GITHUB_OUTPUT
+          echo "✅ Found package version ID: ${VERSION_ID}"
+
+      - name: Use metrics from promotion
+        id: metrics
+        run: |
+          set -euo pipefail
+          # Metrics were extracted during promotion in release job
+          echo "compressed_size=${{ needs.release.outputs.compressed_size }}" >> $GITHUB_OUTPUT
+          echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}" >> $GITHUB_OUTPUT
+          echo "layer_count=${{ needs.release.outputs.layer_count }}" >> $GITHUB_OUTPUT
+          echo "base_image_name=${{ needs.release.outputs.base_image_name }}" >> $GITHUB_OUTPUT
+          echo "base_image_digest=${{ needs.release.outputs.base_image_digest }}" >> $GITHUB_OUTPUT
+
+          echo "✅ Using metrics from release job:"
+          echo "   Compressed: ${{ needs.release.outputs.compressed_size }}"
+          echo "   Uncompressed: ${{ needs.release.outputs.uncompressed_size }}"
+          echo "   Layers: ${{ needs.release.outputs.layer_count }}"
+          echo "   Base Image: ${{ needs.release.outputs.base_image_name }}"
+          echo "   Base Digest: ${{ needs.release.outputs.base_image_digest }}"
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+          bun scripts/generate-release-notes.ts \
+            --pg-version="${{ needs.prep.outputs.pg_version_full }}" \
+            --tag="${{ needs.prep.outputs.image_tag }}" \
+            --digest="${{ needs.merge.outputs.image_digest }}" \
+            --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
+            --package-version-id="${{ steps.package_version.outputs.package_version_id }}" \
+            --compressed-size="${{ steps.metrics.outputs.compressed_size }}" \
+            --uncompressed-size="${{ steps.metrics.outputs.uncompressed_size }}" \
+            --layer-count="${{ steps.metrics.outputs.layer_count }}" \
+            --base-image-name="${{ steps.metrics.outputs.base_image_name }}" \
+            --base-image-digest="${{ steps.metrics.outputs.base_image_digest }}" \
+            --output=release-notes.md
+
+          echo "✅ Release notes generated"
+          echo ""
+          echo "Preview (first 20 lines):"
+          head -n 20 release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Create release with generated notes
+          gh release create "v${{ needs.prep.outputs.version_tag }}" \
+            --title "aza-pg ${{ needs.prep.outputs.version_tag }}" \
+            --notes-file release-notes.md \
+            --latest \
+            --verify-tag || {
+              echo "⚠️ Tag v${{ needs.prep.outputs.version_tag }} does not exist yet"
+              echo "Creating lightweight tag for release..."
+              git tag "v${{ needs.prep.outputs.version_tag }}"
+              git push origin "v${{ needs.prep.outputs.version_tag }}"
+
+              # Retry release creation
+              gh release create "v${{ needs.prep.outputs.version_tag }}" \
+                --title "aza-pg ${{ needs.prep.outputs.version_tag }}" \
+                --notes-file release-notes.md \
+                --latest
+            }
+
+          echo "✅ GitHub Release created: v${{ needs.prep.outputs.version_tag }}"
+          echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.version_tag }}"
+
+  cleanup:
+    name: Cleanup Testing Artifacts
+    runs-on: ubuntu-latest
+    needs:
+      [
+        merge,
+        test-smoke,
+        test-extensions,
+        test-features,
+        test-security,
+        test-complete,
+        scan,
+        release,
+      ]
+    # ALWAYS run cleanup regardless of any job failures or skips
+    # With 'if: always()', this runs even if tests/scan are skipped due to merge failure
+    # Waits for all jobs including release to complete before deleting testing artifacts
+    if: always()
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Delete testing tag using GitHub Packages API
+        id: cleanup-step
+        continue-on-error: true # Don't fail workflow if cleanup fails
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun scripts/release/cleanup-testing-tags.ts \
+            --repository "fluxo-kt/aza-pg-testing" \
+            --tags "testing-${{ github.sha }}" \
+            --continue-on-error # Script continues on individual tag failures
+
+      - name: Validate cleanup outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
+            echo "✅ Testing tag deleted successfully"
+          elif [ "${{ steps.cleanup-step.outcome }}" = "failure" ]; then
+            echo "::warning::Cleanup failed - tag may remain in registry"
+            echo "Tag: testing-${{ github.sha }}"
+            echo "Repository: ghcr.io/fluxo-kt/aza-pg-testing"
+            echo "Weekly cleanup will remove orphaned tags"
+          else
+            echo "::warning::Cleanup skipped or cancelled"
+          fi
+
+      - name: Report cleanup status
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
+            echo "✅ **Cleanup completed successfully**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Testing tag \`testing-${{ github.sha }}\` was deleted from registry." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Cleanup encountered issues**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Repository**: \`ghcr.io/fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Action**: Weekly scheduled cleanup will remove orphaned tags" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This does not affect the release. All images are published to production." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Testing Tag:** \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY

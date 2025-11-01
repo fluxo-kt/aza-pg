@@ -1,0 +1,464 @@
+# ============================================================================
+# Nightly Regression Tests - Comprehensive Coverage
+# ============================================================================
+#
+# PURPOSE:
+# --------
+# Comprehensive nightly regression testing with maximum coverage. Tests ALL
+# extensions (including disabled ones) and ALL optional preload libraries to
+# catch regressions early before they affect production.
+#
+# WHEN IT RUNS:
+# -------------
+# 1. Scheduled: Daily at 2:00 AM UTC (cron: '0 2 * * *')
+# 2. Manual trigger (workflow_dispatch) - On-demand comprehensive validation
+#
+# WHAT IT TESTS:
+# --------------
+# Tier 1: Core PostgreSQL regression tests (12 fast tests) - Full suite requires data files (not yet implemented)
+# Tier 2: Extension-specific regression tests (ALL extensions, not just enabled)
+# Tier 3: Extension interaction tests (comprehensive cross-extension coverage)
+#
+# TEST MODE:
+# ----------
+# Regression mode - tests ALL extensions including disabled ones, ALL optional
+# preload libraries. This provides maximum coverage to detect potential issues
+# before they reach production.
+#
+# Key differences from production mode:
+# - Tests disabled extensions (pgq, supautils, etc.)
+# - Enables ALL optional preload libraries (safeupdate, pgsodium, set_user, etc.)
+# - More thorough extension interaction testing
+#
+# DURATION:
+# ---------
+# Approximately 20-30 minutes total
+#
+# OUTPUTS:
+# --------
+# - Comprehensive test reports (passed/failed tests, timing)
+# - Regression diffs (if any test fails)
+# - Artifacts uploaded on failure for debugging
+# - Email notifications on failure (if configured)
+#
+# DIFFERENCES FROM OTHER WORKFLOWS:
+# ---------------------------------
+# vs ci.yml:                Only runs Tier 1 fast tests (4 tests), production mode
+# vs regression-tests.yml:   Production mode, Tiers 1-3, enabled extensions only
+# vs nightly (this):         Regression mode, Tiers 1-3, ALL extensions
+#
+# ============================================================================
+
+name: Nightly Regression Tests
+
+on:
+  schedule:
+    # Daily at 2:00 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to test (default: 18-single-node)"
+        required: false
+        type: string
+        default: "18-single-node"
+      skip_tier:
+        description: "Skip a specific tier (1, 2, or 3)"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  TEST_MODE: regression
+
+jobs:
+  # ==========================================================================
+  # Job 1: Build comprehensive regression test image
+  # ==========================================================================
+  build:
+    name: Build Comprehensive Test Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          driver-opts: network=host
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          else
+            # Default to 18-single-node for scheduled runs
+            TAG="18-single-node"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Using image tag: ${TAG}"
+
+      - name: Build Docker image with layer caching
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          tags: aza-pg-comprehensive:test
+          load: true
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=aza-pg-comprehensive
+          cache-to: type=gha,mode=max,scope=aza-pg-comprehensive
+
+      - name: Verify image built successfully
+        run: |
+          set -euo pipefail
+          echo "Verifying image exists..."
+          docker images | grep aza-pg-comprehensive
+
+          echo "Testing basic functionality..."
+          docker run --rm aza-pg-comprehensive:test psql --version
+
+          echo "Checking extension count..."
+          # Derive expected count dynamically from manifest
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          EXPECTED_MIN=$((CATALOG_EXTENSIONS + CATALOG_BUILTINS))
+
+          EXTENSION_COUNT=$(docker run --rm aza-pg-comprehensive:test \
+            sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null' | wc -l)
+          echo "Found $EXTENSION_COUNT extension control files (expected: ${EXPECTED_MIN} = ${CATALOG_EXTENSIONS} ext + ${CATALOG_BUILTINS} builtin)"
+
+          if [ "$EXTENSION_COUNT" -lt "$EXPECTED_MIN" ]; then
+            echo "::error::Expected at least ${EXPECTED_MIN} extensions, found $EXTENSION_COUNT"
+            exit 1
+          fi
+
+          echo "✅ Image verification passed"
+
+      - name: Export image as tarball
+        run: |
+          set -euo pipefail
+          echo "Exporting image to tarball..."
+          docker save aza-pg-comprehensive:test | gzip > /tmp/aza-pg-comprehensive-image.tar.gz
+          ls -lh /tmp/aza-pg-comprehensive-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: comprehensive-image
+          path: /tmp/aza-pg-comprehensive-image.tar.gz
+          retention-days: 1
+          compression-level: 0 # Already compressed with gzip
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`aza-pg-comprehensive:test\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Comprehensive regression testing (ALL extensions)" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Mode:** \`TEST_MODE=regression\`" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 2: Run Tier 1 comprehensive regression tests
+  # ==========================================================================
+  tier-1:
+    name: Tier 1 - Core PostgreSQL (Comprehensive)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.skip_tier != '1'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-comprehensive:test
+          artifact-name: comprehensive-image
+
+      - name: Run Tier 1 comprehensive regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 1 comprehensive regression tests..."
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          export TEST_MODE=regression
+          # Use --fast mode for 12 core tests with minimal_setup
+          # Full mode (30 tests) requires data files not yet implemented
+          bun scripts/test/run-all-regression-tests.ts --tier=1 --mode=regression --fast
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: nightly-tier1
+          containers: all
+          artifact-prefix: nightly-tier1
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-tier1-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 1 Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Regression (comprehensive, fast)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 12 official PostgreSQL regression tests (boolean, int2/4/8, float4/8, text, varchar, numeric, json, strings, numerology)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 3: Run Tier 2 comprehensive regression tests
+  # ==========================================================================
+  tier-2:
+    name: Tier 2 - All Extensions (Comprehensive)
+    runs-on: ubuntu-latest
+    needs: [build, tier-1]
+    if: github.event.inputs.skip_tier != '2' && (success() || needs.tier-1.result == 'skipped')
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-comprehensive:test
+          artifact-name: comprehensive-image
+
+      - name: Run Tier 2 comprehensive regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 2 comprehensive regression tests..."
+          echo "Testing ALL extensions (including disabled ones)"
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          export TEST_MODE=regression
+          bun scripts/test/run-all-regression-tests.ts --tier=2 --mode=regression
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: nightly-tier2
+          containers: all
+          artifact-prefix: nightly-tier2
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-tier2-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 2 Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 2 (Extension-specific)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Regression (comprehensive - ALL extensions)" >> $GITHUB_STEP_SUMMARY
+          echo "**Extensions:** ALL extensions including disabled ones" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 4: Run Tier 3 comprehensive regression tests
+  # ==========================================================================
+  tier-3:
+    name: Tier 3 - Extension Interactions (Comprehensive)
+    runs-on: ubuntu-latest
+    needs: [build, tier-1]
+    if: github.event.inputs.skip_tier != '3' && (success() || needs.tier-1.result == 'skipped')
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-comprehensive:test
+          artifact-name: comprehensive-image
+
+      - name: Run Tier 3 comprehensive regression tests
+        run: |
+          set -euo pipefail
+          echo "Running Tier 3 comprehensive regression tests..."
+          echo "Testing extension interactions with ALL preload libraries"
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          export TEST_MODE=regression
+          bun scripts/test/run-all-regression-tests.ts --tier=3 --mode=regression
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: nightly-tier3
+          containers: all
+          artifact-prefix: nightly-tier3
+
+      - name: Upload regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-tier3-regression-diffs
+          path: /tmp/pg-regression/*.diffs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Tier 3 Summary :arrows_counterclockwise:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** 3 (Extension interactions)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Regression (comprehensive - ALL preloads)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** Comprehensive cross-extension interaction tests" >> $GITHUB_STEP_SUMMARY
+          echo "**Preload Libraries:** ALL optional preloads enabled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 5: Comprehensive regression tests complete
+  # ==========================================================================
+  complete:
+    name: Nightly Regression Tests Complete
+    runs-on: ubuntu-latest
+    needs: [tier-1, tier-2, tier-3]
+    timeout-minutes: 1
+    if: always()
+
+    steps:
+      - name: Check all tier results
+        run: |
+          set -euo pipefail
+          echo "Checking comprehensive regression test results..."
+
+          FAILED=0
+
+          if [ "${{ needs.tier-1.result }}" != "success" ] && [ "${{ needs.tier-1.result }}" != "skipped" ]; then
+            echo "::error::Tier 1 (Core PostgreSQL) tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.tier-2.result }}" != "success" ] && [ "${{ needs.tier-2.result }}" != "skipped" ]; then
+            echo "::error::Tier 2 (All extensions) tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.tier-3.result }}" != "success" ] && [ "${{ needs.tier-3.result }}" != "skipped" ]; then
+            echo "::error::Tier 3 (Extension interactions) tests failed"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ One or more comprehensive regression test tiers failed"
+            exit 1
+          fi
+
+          echo "✅ All comprehensive regression tests passed"
+
+      - name: Generate final summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "# Nightly Regression Tests Complete :crescent_moon:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Comprehensive Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier | Description | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 1 | Core PostgreSQL (12 fast tests) | ${{ needs.tier-1.result == 'success' && '✅ Passed' || needs.tier-1.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 2 | ALL Extensions (comprehensive) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || needs.tier-2.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 3 | Extension interactions (ALL preloads) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || needs.tier-3.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Regression (comprehensive - ALL extensions and preloads)" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** Daily at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count test results
+          PASSED=0
+          FAILED=0
+          SKIPPED=0
+
+          if [ "${{ needs.tier-1.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
+          if [ "${{ needs.tier-2.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
+          if [ "${{ needs.tier-3.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
+
+          if [ "${{ needs.tier-1.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
+          if [ "${{ needs.tier-2.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
+          if [ "${{ needs.tier-3.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
+
+          if [ "${{ needs.tier-1.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
+          if [ "${{ needs.tier-2.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
+          if [ "${{ needs.tier-3.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
+
+          if [ $FAILED -eq 0 ]; then
+            echo "## ✅ All Comprehensive Regression Tests Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Summary:** ${PASSED} tiers passed" >> $GITHUB_STEP_SUMMARY
+            if [ $SKIPPED -gt 0 ]; then
+              echo "**Note:** ${SKIPPED} tiers skipped (manual trigger)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Comprehensive nightly validation complete. No regressions detected." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Comprehensive Regression Tests Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Summary:** ${PASSED} tiers passed, ${FAILED} tiers failed" >> $GITHUB_STEP_SUMMARY
+            if [ $SKIPPED -gt 0 ]; then
+              echo "**Note:** ${SKIPPED} tiers skipped" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more test tiers failed. Review test logs and regression diffs." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Investigate regressions before next release." >> $GITHUB_STEP_SUMMARY
+          fi

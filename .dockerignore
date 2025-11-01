@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# GitHub
+.github
+
+# Documentation
+*.md
+!docker/postgres/README.md
+docs
+
+# Examples and scripts
+examples
+scripts
+!scripts/generate-version-info.ts
+stacks
+
+# Build artifacts
+*.log
+*.sql
+*.dump
+
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
+*~

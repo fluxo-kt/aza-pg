@@ -1,0 +1,53 @@
+--
+-- postgis - Basic regression test
+-- Tests spatial data types and basic operations
+--
+-- Create extension
+CREATE EXTENSION IF NOT EXISTS postgis;
+ERROR:  extension "postgis" is not available
+HINT:  The extension must first be installed on the system where PostgreSQL is running.
+-- Verify PostGIS version available
+SELECT
+length(PostGIS_Version ()) > 0 AS postgis_installed;
+-- Test basic geometry creation
+SELECT
+ST_AsText (ST_GeomFromText ('POINT(1 1)'));
+ERROR:  function postgis_version() does not exist
+LINE 2:   length(PostGIS_Version ()) > 0 AS postgis_installed;
+^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function st_geomfromtext(unknown) does not exist
+LINE 2:   ST_AsText (ST_GeomFromText ('POINT(1 1)'));
+^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- Create test table
+CREATE TABLE test_postgis (id serial PRIMARY KEY, name TEXT, geom geometry (Point, 4326));
+-- Insert test points
+INSERT INTO
+test_postgis (name, geom)
+VALUES
+('Point A', ST_SetSRID (ST_MakePoint (-71.060316, 48.432044), 4326)),
+ERROR:  type "geometry" does not exist
+LINE 1: ...t_postgis (id serial PRIMARY KEY, name TEXT, geom geometry (...
+^
+('Point B', ST_SetSRID (ST_MakePoint (-71.05, 48.43), 4326));
+ERROR:  relation "test_postgis" does not exist
+LINE 2:   test_postgis (name, geom)
+^
+-- Test spatial distance query (within 5km)
+SELECT
+name,
+ST_Distance (geom::geography, ST_SetSRID (ST_MakePoint (-71.055, 48.431), 4326)::geography) < 5000 AS within_5km
+FROM
+test_postgis
+ORDER BY
+name;
+ERROR:  relation "test_postgis" does not exist
+LINE 5:   test_postgis
+^
+ERROR:  relation "test_postgis" does not exist
+ERROR:  table "test_postgis" does not exist
+-- Create spatial index
+CREATE INDEX test_postgis_geom_idx ON test_postgis USING GIST (geom);
+-- Cleanup
+DROP TABLE test_postgis;

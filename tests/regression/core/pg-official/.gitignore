@@ -1,0 +1,13 @@
+# PostgreSQL official regression tests (fetched on-demand)
+# Run: bun scripts/ci/fetch-pg-regression-tests.ts
+#
+# We ignore ALL downloaded PostgreSQL test files (*.sql, *.out)
+# EXCEPT for our custom minimal_setup files needed for fast mode
+#
+# Use specific patterns instead of whole directories to allow negation
+sql/*
+expected/*
+
+# Our custom files (NOT from PostgreSQL) - keep these
+!sql/minimal_setup.sql
+!expected/minimal_setup.out

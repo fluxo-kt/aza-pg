@@ -1,0 +1,35 @@
+# Hadolint configuration for aza-pg
+# Evidence-based exception list - all ignores require documented justification
+
+ignored:
+  # SC2046: Quote to prevent word splitting
+  # Rationale: Intentional command substitution expansion for apt-get package lists.
+  # Pattern: $(tr '\n' ' ' < packages.txt) deliberately converts newlines to spaces
+  # for argument expansion. Quoting would break functionality.
+  # Safety: Package names validated in generate-dockerfile.ts (alphanumeric + [-_=.+:] only).
+  # Context: Trusted internal manifest files only (TypeScript-generated).
+  - SC2046
+
+  # SC2086: Double quote to prevent globbing and word splitting
+  # Rationale: Intentional word splitting for dynamic package list expansion.
+  # Pattern: ${RUNTIME_PKGS} expands to multiple apt-get arguments by design.
+  # Safety: Package names validated in generate-dockerfile.ts (alphanumeric + [-_=.+:] only).
+  # Context: Variables populated from trusted internal manifests (TypeScript-generated).
+  - SC2086
+
+  # DL3059: Multiple consecutive RUN instructions
+  # Rationale: Multi-stage build structure is optimized for Docker layer caching.
+  # Each RUN command is separated for valid cache efficiency reasons (e.g., COPY
+  # artifacts separate from package installs). Consolidation would hurt performance.
+  # Verified: Structure is already optimized.
+  - DL3059
+# Rules now ENABLED (removed from ignore list):
+# - DL3003: Use WORKDIR (removed: no 'cd' commands in current Dockerfile)
+# - DL4006: Set pipefail (removed: now using 'set -euo pipefail' everywhere)
+# - DL3008: Pin versions - Use inline ignores with justification for exceptions
+# - DL3015: Use --no-install-recommends - Applied globally, inline ignores if needed
+
+# Keep these rules enabled (security-critical):
+# - DL3000-DL3007: FROM/MAINTAINER/apt best practices
+# - DL3020: Use COPY instead of ADD
+# - DL3025: Use JSON notation for CMD/ENTRYPOINT

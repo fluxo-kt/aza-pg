@@ -1,0 +1,46 @@
+# Bun configuration for aza-pg
+# See: https://bun.sh/docs/runtime/bunfig
+
+[install]
+linker = "hoisted"
+#linkWorkspacePackages = false # optimization for CI
+
+# Production-focused install (exclude devDependencies in prod)
+production = false
+
+# 1 day delay by default to harden against supply chain attacks.
+# https://bun.com/blog/bun-v1.3#minimum-release-age
+#minimumReleaseAge = 86400 # 1 day in seconds
+
+[install.security]
+scanner = "@bun-security-scanner/osv"
+#scanner = "@acme/bun-security-scanner"
+
+[console]
+depth = 5
+
+[run]
+# Shell to use for executing scripts (bun = Bun's shell, system = default system shell)
+shell = "system"
+
+# Enable hot reloading for development
+hot = false
+
+[test]
+# Test coverage disabled by default (no unit test framework currently)
+coverage = false
+# Global test timeout to prevent hanging on container startup
+timeout = 120000  # 2 minutes per test (in milliseconds)
+
+# Preload files for tests (if needed later)
+# preload = ["./scripts/test/setup.ts"]
+
+[build]
+# Minify output when bundling
+minify = true
+
+# Target ES2024 (matches tsconfig.json)
+target = "bun"
+
+# Source maps for debugging
+sourcemap = "external"

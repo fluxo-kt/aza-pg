@@ -1,0 +1,57 @@
+# PostgreSQL alerting rules for Prometheus
+# Reference this file in prometheus.yml under rule_files
+
+groups:
+  - name: postgresql
+    interval: 30s
+    rules:
+      # Instance down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL instance {{ $labels.instance }} is down"
+          description: "PostgreSQL has been unavailable for more than 1 minute"
+
+      # Too many connections
+      - alert: PostgreSQLTooManyConnections
+        expr: pg_connection_usage_current_conn / pg_connection_usage_max_conn > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL instance {{ $labels.instance }} has too many connections"
+          description: "{{ $labels.instance }} is using {{ $value | humanizePercentage }} of max_connections"
+
+      # Replication lag (if using replicas)
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_lag_seconds > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL replication lag on {{ $labels.instance }}"
+          description: "Replication is lagging by {{ $value }} seconds"
+
+      # Dead tuple accumulation
+      - alert: PostgreSQLDeadTuples
+        expr: ((pg_stat_user_tables_n_dead_tup > 1000) / (pg_stat_user_tables_n_live_tup +
+          pg_stat_user_tables_n_dead_tup)) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL table {{ $labels.table }} has high dead tuple ratio"
+          description: "Table has {{ $value | humanizePercentage }} dead tuples"
+
+      # Slow queries
+      - alert: PostgreSQLSlowQueries
+        expr: pg_stat_activity_max_tx_duration_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL has slow queries on {{ $labels.instance }}"
+          description: "Long-running queries detected (>5 minutes)"

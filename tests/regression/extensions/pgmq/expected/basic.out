@@ -1,0 +1,68 @@
+--
+-- pgmq - Basic regression test
+-- Tests queue creation, message send/read operations
+--
+-- Create extension
+CREATE EXTENSION IF NOT EXISTS pgmq;
+-- Verify extension created
+SELECT
+extname
+FROM
+pg_extension
+WHERE
+extname = 'pgmq';
+extname
+---------
+pgmq
+(1 row)
+-- Create queue
+SELECT
+pgmq.create ('test_queue');
+create
+--------
+(1 row)
+-- Verify queue exists
+SELECT
+queue_name
+FROM
+pgmq.list_queues ()
+WHERE
+queue_name = 'test_queue';
+queue_name
+------------
+test_queue
+(1 row)
+-- Send message
+SELECT
+pgmq.send ('test_queue', '{"task": "test", "id": 123}'::JSONB) AS msg_id;
+msg_id
+--------
+1
+(1 row)
+-- Read message (with 5 second visibility timeout)
+SELECT
+msg_id > 0 AS has_message
+FROM
+pgmq.read ('test_queue', 5, 1);
+has_message
+-------------
+t
+(1 row)
+-- Drop queue (cleanup)
+SELECT
+pgmq.drop_queue ('test_queue');
+drop_queue
+------------
+t
+(1 row)
+-- Verify queue dropped
+SELECT
+count(*) = 0 AS queue_dropped
+FROM
+pgmq.list_queues ()
+WHERE
+queue_name = 'test_queue';
+queue_dropped
+---------------
+t
+(1 row)

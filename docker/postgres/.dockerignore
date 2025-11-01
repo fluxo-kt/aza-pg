@@ -1,0 +1,7 @@
+README.md
+*.md
+.git
+.gitignore
+.env
+.env.*
+!.env.example

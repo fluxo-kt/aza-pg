@@ -1,0 +1,71 @@
+name: "Test Job Setup"
+description: "Set up Bun, login to GHCR (optional), and load Docker test image"
+author: "fluxo-kt"
+
+inputs:
+  ghcr-login:
+    description: "Whether to login to GHCR (default: false)"
+    required: false
+    default: "false"
+  ghcr-token:
+    description: "GitHub token for GHCR auth (required if ghcr-login=true)"
+    required: false
+  image-source:
+    description: "Image source: 'artifact' or 'registry'"
+    required: true
+  image-name:
+    description: "Docker image name/tag to use locally"
+    required: true
+  artifact-name:
+    description: "Artifact name (required if image-source=artifact)"
+    required: false
+    default: "docker-image"
+  artifact-path:
+    description: "Artifact download path (used if image-source=artifact)"
+    required: false
+    default: "/tmp"
+  registry-image:
+    description: "Full registry image reference (required if image-source=registry)"
+    required: false
+  max-retries:
+    description: "Max retries for registry pull (default: 3)"
+    required: false
+    default: "3"
+
+outputs:
+  bun-version:
+    description: "The Bun version that was installed (only set if image-source=artifact)"
+    value: ${{ steps.setup-bun-artifact.outputs.bun-version }}
+  cache-hit:
+    description: "Whether there was a Bun cache hit (only set if image-source=artifact)"
+    value: ${{ steps.setup-bun-artifact.outputs.cache-hit }}
+
+runs:
+  using: "composite"
+  steps:
+    # Step 1: Always set up Bun (unless load-test-image will do it)
+    # NOTE: load-test-image calls setup-bun internally when source=registry,
+    # so we only call it here when source=artifact
+    - name: Set up Bun and dependencies
+      id: setup-bun-artifact
+      if: inputs.image-source == 'artifact'
+      uses: ./.github/actions/setup-bun
+
+    # Step 2: Conditionally login to GHCR
+    - name: Log in to GitHub Container Registry
+      if: inputs.ghcr-login == 'true'
+      uses: ./.github/actions/ghcr-login
+      with:
+        token: ${{ inputs.ghcr-token }}
+
+    # Step 3: Load test image (from artifact or registry)
+    # NOTE: When source=registry, this step calls setup-bun internally
+    - name: Load test image
+      uses: ./.github/actions/load-test-image
+      with:
+        source: ${{ inputs.image-source }}
+        image-name: ${{ inputs.image-name }}
+        artifact-name: ${{ inputs.artifact-name }}
+        artifact-path: ${{ inputs.artifact-path }}
+        registry-image: ${{ inputs.registry-image }}
+        max-retries: ${{ inputs.max-retries }}

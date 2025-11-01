@@ -21,13 +21,14 @@ scrape_configs:
   #         environment: 'production'
   #         role: 'replica'
 
-  # PgBouncer metrics (if exposing metrics)
-  # - job_name: 'pgbouncer'
-  #   static_configs:
-  #     - targets:
-  #         - 'localhost:9127'  # pgbouncer_exporter port
-  #       labels:
-  #         instance: 'pgbouncer-primary'
+  # PgBouncer metrics via pgbouncer_exporter
+  - job_name: 'pgbouncer'
+    static_configs:
+      - targets:
+          - 'localhost:9127'
+        labels:
+          instance: 'pgbouncer-primary'
+          environment: 'production'
 # Alert rules for PostgreSQL
 # Create alerts.yml with the following content and reference it in prometheus.yml:
 # rule_files:

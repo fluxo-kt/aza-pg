@@ -3,7 +3,7 @@
 Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extensions, and complete deployment stacks.
 
 ## Design Goals
-
+ 
 **Purpose:** Universal Postgres stack eliminating manual tuning across 2GB VPS → 128GB burst nodes.
 
 **Targets:** Solo devs, small teams, multi-project fleets. Optimized for Docker Compose (not K8s). RAM: 2-16GB sweet spot, scales to 128GB. CPUs: 1-64 cores.

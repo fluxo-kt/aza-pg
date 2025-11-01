@@ -1,20 +1,23 @@
 # PostgreSQL Exporter Custom Queries
 
-pg_replication:
-  query: 'SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) as lag'
-  master: true
+pg_replication_lag:
+  query: |
+    SELECT CASE
+      WHEN pg_is_in_recovery()
+      THEN COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())), 0)
+      ELSE 0
+    END as lag_seconds
   metrics:
-    - lag:
+    - lag_seconds:
         usage: 'GAUGE'
-        description: 'Replication lag behind master in seconds'
+        description: 'Replication lag in seconds (0 on primary or if no replay yet)'
 
-pg_postmaster:
-  query: 'SELECT pg_postmaster_start_time as start_time_seconds from pg_postmaster_start_time()'
-  master: true
+pg_postmaster_uptime:
+  query: 'SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint as uptime_seconds'
   metrics:
-    - start_time_seconds:
-        usage: 'GAUGE'
-        description: 'Time at which postmaster started'
+    - uptime_seconds:
+        usage: 'COUNTER'
+        description: 'PostgreSQL uptime in seconds since postmaster start'
 
 pg_memory_settings:
   query: |

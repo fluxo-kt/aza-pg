@@ -52,17 +52,44 @@ detect_ram() {
 }
 
 detect_cpu() {
-    local cpu_cores=$(nproc 2>/dev/null || echo "1")
-    echo "$cpu_cores"
+    local cpu_cores=0
+    local source="unknown"
+
+    if [ -f /sys/fs/cgroup/cpu.max ]; then
+        local cpu_quota=$(cut -d' ' -f1 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "max")
+        local cpu_period=$(cut -d' ' -f2 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "100000")
+
+        if [ "$cpu_quota" != "max" ] && [ -n "$cpu_quota" ] && [ "$cpu_quota" != "0" ]; then
+            cpu_cores=$(( (cpu_quota + cpu_period - 1) / cpu_period ))
+            [ "$cpu_cores" -lt 1 ] && cpu_cores=1
+            source="cgroup-v2"
+        fi
+    fi
+
+    if [ "$cpu_cores" -eq 0 ]; then
+        cpu_cores=$(nproc 2>/dev/null || echo "1")
+        source="nproc"
+    fi
+
+    echo "$cpu_cores:$source"
 }
 
 RAM_INFO=$(detect_ram)
 TOTAL_RAM_MB=$(echo "$RAM_INFO" | cut -d: -f1)
 RAM_SOURCE=$(echo "$RAM_INFO" | cut -d: -f2)
 RAM_MODE=$(echo "$RAM_INFO" | cut -d: -f3)
-CPU_CORES=$(detect_cpu)
 
-echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB (${RAM_SOURCE}, ${RAM_MODE}), CPU: ${CPU_CORES} cores"
+CPU_INFO=$(detect_cpu)
+CPU_CORES=$(echo "$CPU_INFO" | cut -d: -f1)
+CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
+
+echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB (${RAM_SOURCE}, ${RAM_MODE}), CPU: ${CPU_CORES} cores (${CPU_SOURCE})"
+
+if [ "$TOTAL_RAM_MB" -lt 1024 ]; then
+    echo "[AUTO-CONFIG] ERROR: Detected ${TOTAL_RAM_MB}MB RAM - minimum 1GB required for production"
+    echo "[AUTO-CONFIG] Set memory limit: docker run -m 1g OR deploy.resources.limits.memory: 1g"
+    echo "[AUTO-CONFIG] Continuing with baseline config (may be unstable)..."
+fi
 
 if [ "$TOTAL_RAM_MB" -gt "$BASELINE_RAM_MB" ]; then
     SHARED_BUFFERS_MB=$((TOTAL_RAM_MB * BASELINE_SHARED_BUFFERS_MB / BASELINE_RAM_MB))

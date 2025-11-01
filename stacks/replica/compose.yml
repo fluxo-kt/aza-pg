@@ -50,15 +50,19 @@ services:
     image: postgres:18-bookworm
     container_name: primary-check
     command: >
-      sh -c " echo 'Checking primary availability at ${PRIMARY_HOST}:${PRIMARY_PORT}...'; for i in
-      \$(seq 1 30); do
+      sh -c "
+      echo 'Checking primary availability at ${PRIMARY_HOST}:${PRIMARY_PORT}...';
+      for i in \$(seq 1 30); do
         if pg_isready -h ${PRIMARY_HOST} -p ${PRIMARY_PORT} -U ${PG_REPLICATION_USER}; then
           echo 'Primary is ready';
           exit 0;
         fi;
-        echo 'Waiting for primary... attempt $$i/30';
+        echo 'Waiting for primary... attempt \$i/30';
         sleep 2;
-      done; echo 'Primary not reachable after 60 seconds'; exit 1; "
+      done;
+      echo 'Primary not reachable after 60 seconds';
+      exit 1;
+      "
     environment:
       PGPASSWORD: ${PG_REPLICATION_PASSWORD}
 

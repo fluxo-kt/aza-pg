@@ -88,6 +88,7 @@ RUN set -e && \
 RUN set -e && mkdir -p /backup && chown postgres:postgres /backup
 
 COPY docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+RUN set -e && chmod +x /docker-entrypoint-initdb.d/*.sh
 
 COPY docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN set -e && chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh

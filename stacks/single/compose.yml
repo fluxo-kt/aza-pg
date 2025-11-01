@@ -21,6 +21,8 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
 
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}']
       interval: 10s

@@ -55,7 +55,7 @@ services:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
 
     command: >
-      sh -c "envsubst < /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini &&
+      sh -c "sed \"s/\${PGBOUNCER_AUTH_PASS}/$${PGBOUNCER_AUTH_PASS}/g\" /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini &&
       exec pgbouncer /tmp/pgbouncer.ini"
 
     networks:
@@ -133,11 +133,11 @@ services:
     restart: unless-stopped
 
     environment:
-      PGBOUNCER_EXPORTER_HOST: pgbouncer
-      PGBOUNCER_EXPORTER_PORT: 6432
-      PGBOUNCER_EXPORTER_DATABASE: pgbouncer
-      PGBOUNCER_EXPORTER_USER: ${POSTGRES_USER:-postgres}
-      PGBOUNCER_EXPORTER_PASSWORD: ${POSTGRES_PASSWORD}
+      PGBOUNCER_HOST: pgbouncer
+      PGBOUNCER_PORT: 6432
+      PGBOUNCER_DATABASE: pgbouncer
+      PGBOUNCER_USER: ${POSTGRES_USER:-postgres}
+      PGBOUNCER_PASS: ${POSTGRES_PASSWORD}
 
     networks:
       - postgres_net

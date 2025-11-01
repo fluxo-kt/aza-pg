@@ -1,0 +1,80 @@
+# yamllint Configuration for aza-pg
+# ==================================
+# YAML linting for Docker Compose files, Kubernetes configs, and CI/CD pipelines
+# Extends default rules with project-specific adjustments
+
+extends: default
+
+ignore: |
+  /node_modules/
+  /.archived/
+  /.git/
+
+rules:
+  # Line length: Practical limit with warning threshold
+  # Docker Compose can have long environment variable definitions
+  line-length:
+    max: 120
+    level: warning
+    # Allow long URLs and heredocs without breaking
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: false
+
+  # Indentation: Standard 2-space (YAML convention)
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Comments: Require 1 space after #, allow commented content
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: true
+    ignore-shebangs: true
+    level: warning
+
+  # Brackets: Consistent spacing
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+    level: warning
+
+  # Braces: Consistent spacing
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    level: warning
+
+  # Colons: No space before, at least 1 after (YAML standard)
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+    level: error
+
+  # Empty lines: Reasonable limits
+  empty-lines:
+    max: 2
+    level: warning
+
+  # New line at end of file
+  new-line-at-end-of-file:
+    level: error
+
+  # Truthy values: Allow common YAML values
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    level: warning
+
+  # Document start: Not required (single-document files)
+  document-start: disable
+
+  # Document end: Not required
+  document-end: disable
+
+  # Trailing spaces
+  trailing-spaces:
+    level: error
+
+  # Key duplicates: Disallow duplicate keys
+  key-duplicates:
+    level: error

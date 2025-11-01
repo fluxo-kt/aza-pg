@@ -1,0 +1,16 @@
+ca-certificates
+groonga-tokenizer-mecab
+libbz2-1.0
+libgroonga0t64
+libjson-xs-perl
+liblz4-1
+libmecab2
+libmsgpack-c2
+libsodium23
+libssl3t64
+libtext-csv-xs-perl
+libyaml-0-2
+libzstd1
+lz4
+perl
+zstd

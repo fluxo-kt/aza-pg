@@ -1,0 +1,47 @@
+{
+  "timescaledb": {
+    "min": 0.03,
+    "max": 0.1,
+    "description": "TimescaleDB time-series extension (optimized build)"
+  },
+  "pg_stat_monitor": {
+    "min": 0.05,
+    "max": 0.12,
+    "description": "Enhanced query performance monitoring (optimized build)"
+  },
+  "vector": {
+    "min": 0.1,
+    "max": 0.3,
+    "description": "pgvector - vector similarity search (optimized build)"
+  },
+  "postgis": {
+    "min": 4.0,
+    "max": 6.0,
+    "description": "PostGIS spatial database extension"
+  },
+  "pgroonga": {
+    "min": 0.25,
+    "max": 0.7,
+    "description": "PGroonga full-text search (optimized build)"
+  },
+  "timescaledb_toolkit": {
+    "min": 2.0,
+    "max": 4.0,
+    "description": "TimescaleDB analytical hyperfunctions"
+  },
+  "pg_jsonschema": {
+    "min": 2.5,
+    "max": 3.5,
+    "description": "JSON Schema validation (Rust/pgrx, optimized build)"
+  },
+  "wrappers": {
+    "min": 1.5,
+    "max": 3.0,
+    "description": "Supabase foreign data wrappers (Rust/pgrx)"
+  },
+  "vectorscale": {
+    "min": 1.0,
+    "max": 2.5,
+    "description": "pgvectorscale DiskANN index (Rust/pgrx)"
+  }
+}

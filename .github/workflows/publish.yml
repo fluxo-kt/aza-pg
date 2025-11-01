@@ -1,0 +1,1074 @@
+name: Publish Single-Node Image
+
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: publish-single-node
+  cancel-in-progress: true # Cancel any in-progress publish to start fresh
+
+permissions:
+  contents: write # Required for creating GitHub Releases
+  packages: write
+  id-token: write
+  security-events: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  prep:
+    name: Prepare Build Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+    outputs:
+      pg_version_major: ${{ steps.pg-version.outputs.major }}
+      pg_version_minor: ${{ steps.pg-version.outputs.minor }}
+      pg_version_full: ${{ steps.pg-version.outputs.full }}
+      base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
+      base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
+      timestamp: ${{ steps.timestamp.outputs.value }}
+      tag_versioned: ${{ steps.tags.outputs.versioned }}
+      tag_convenience: ${{ steps.tags.outputs.convenience }}
+      catalog_total: ${{ steps.catalog.outputs.total }}
+      catalog_enabled: ${{ steps.catalog.outputs.enabled }}
+      catalog_disabled: ${{ steps.catalog.outputs.disabled }}
+      cache_key: ${{ steps.cache-key.outputs.key }}
+      content_hash: ${{ steps.cache-key.outputs.content_hash }}
+      meta_labels: ${{ steps.meta.outputs.labels }}
+      meta_annotations: ${{ steps.meta.outputs.annotations }}
+      bun_version: ${{ steps.bun-version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Parse Bun version from .tool-versions
+        id: bun-version
+        run: |
+          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
+          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
+
+      - name: Validate manifest
+        run: bun run validate
+
+      - name: Derive catalog statistics
+        id: catalog
+        run: |
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
+          echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
+          echo "disabled=${CATALOG_DISABLED}" >> $GITHUB_OUTPUT
+          echo "Catalog: ${CATALOG_ENABLED} enabled, ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
+
+      - name: Extract PostgreSQL version from base image
+        id: pg-version
+        run: |
+          # Extract major version and SHA from Dockerfile
+          PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
+          PG_BASE_SHA=$(grep -m1 '^ARG PG_BASE_IMAGE_SHA=' docker/postgres/Dockerfile | cut -d'=' -f2)
+
+          echo "Pulling base image to determine actual PostgreSQL version..."
+          for i in {1..3}; do
+            if docker pull postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA}; then
+              echo "✅ Base image pulled successfully"
+              break
+            else
+              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
+              sleep $((i * 5))
+              if [ $i -eq 3 ]; then
+                echo "❌ Failed to pull base image after 3 attempts"
+                exit 1
+              fi
+            fi
+          done
+
+          # Extract actual PostgreSQL version from base image
+          PG_VERSION_OUTPUT=$(docker run --rm postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA} psql --version)
+          echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
+
+          # Parse version (format: "psql (PostgreSQL) 18.1 (Debian 18.1-1.pgdg130+1)")
+          PG_FULL=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
+          PG_MINOR=$(echo "${PG_FULL}" | cut -d'.' -f2)
+
+          # Capture base image digest for provenance
+          BASE_IMAGE="docker.io/library/postgres:${PG_MAJOR}-trixie"
+          BASE_DIGEST=$(docker inspect postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA} \
+            --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+
+          echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
+          echo "full=${PG_FULL}" >> $GITHUB_OUTPUT
+          echo "base_image_name=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "base_image_digest=${BASE_DIGEST}" >> $GITHUB_OUTPUT
+          echo "✅ Actual PostgreSQL version from base image: ${PG_FULL}"
+          echo "✅ Base image digest: ${BASE_DIGEST}"
+
+      - name: Generate build timestamp
+        id: timestamp
+        run: |
+          BUILD_TS=$(date -u '+%Y%m%d%H%M')
+          echo "value=${BUILD_TS}" >> $GITHUB_OUTPUT
+          echo "Build timestamp: ${BUILD_TS}"
+
+      - name: Generate version tags
+        id: tags
+        run: |
+          PG_FULL="${{ steps.pg-version.outputs.full }}"
+          PG_MAJOR="${{ steps.pg-version.outputs.major }}"
+          BUILD_TS="${{ steps.timestamp.outputs.value }}"
+
+          # Primary versioned tag: MM.mm-TS-TYPE
+          VERSIONED_TAG="${PG_FULL}-${BUILD_TS}-single-node"
+
+          # Convenience tags
+          CONVENIENCE_TAGS="${PG_FULL}-single-node,${PG_MAJOR}-single-node,${PG_FULL},${PG_MAJOR}"
+
+          echo "versioned=${VERSIONED_TAG}" >> $GITHUB_OUTPUT
+          echo "convenience=${CONVENIENCE_TAGS}" >> $GITHUB_OUTPUT
+
+          echo "Primary tag: ${VERSIONED_TAG}"
+          echo "Convenience tags: ${CONVENIENCE_TAGS}"
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tags.outputs.versioned }},priority=1000
+            type=raw,value=${{ steps.pg-version.outputs.full }}-single-node,priority=900
+            type=raw,value=${{ steps.pg-version.outputs.major }}-single-node,priority=800
+            type=raw,value=${{ steps.pg-version.outputs.full }},priority=700
+            type=raw,value=${{ steps.pg-version.outputs.major }},priority=600
+          labels: |
+            org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} \
+              with ${{ steps.catalog.outputs.total }} extensions - Single-Node
+            org.opencontainers.image.vendor=fluxo-kt
+            org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
+            io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
+            io.fluxo-kt.aza-pg.build.type=single-node
+            io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
+            io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
+            index,manifest:org.opencontainers.image.vendor=fluxo-kt
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
+            index,manifest:org.opencontainers.image.licenses=MIT
+            index,manifest:org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            index,manifest:org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
+            index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
+            index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
+
+      - name: Generate cache key
+        id: cache-key
+        run: |
+          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
+          CACHE_KEY="publish-cache-${{ github.ref_name }}-${CONTENT_HASH}"
+          echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
+          echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
+          echo "Generated cache key: ${CACHE_KEY}"
+
+      - name: Document existing tags (for rollback reference)
+        continue-on-error: true
+        run: |
+          echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for TAG in "${{ steps.pg-version.outputs.full }}-single-node" \
+                     "${{ steps.pg-version.outputs.major }}-single-node" \
+                     "${{ steps.pg-version.outputs.full }}" \
+                     "${{ steps.pg-version.outputs.major }}"; do
+            if PREV_DIGEST=$(docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} 2>/dev/null | \
+                             jq -r '.manifests[0].digest // .digest' 2>/dev/null); then
+              echo "- **${TAG}**: Previous digest \`${PREV_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+              echo "Previous ${TAG}: ${PREV_DIGEST}"
+            else
+              echo "- **${TAG}**: New tag (no previous version)" >> $GITHUB_STEP_SUMMARY
+              echo "${TAG}: New tag"
+            fi
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: prep
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.prep.outputs.meta_labels }}
+          annotations: ${{ needs.prep.outputs.meta_annotations }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            PG_VERSION=${{ needs.prep.outputs.pg_version_major }}
+            BUILD_DATE=${{ needs.prep.outputs.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ needs.prep.outputs.tag_versioned }}
+          cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          # Disable buildx attestations to prevent "unknown/unknown" architecture entries
+          # We use Cosign for supply chain security instead (see release job)
+          provenance: false
+          sbom: false
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          echo "Exported digest: ${digest}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v5
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Monitor cache usage
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking GitHub Actions cache usage..."
+
+          # Get cache usage from GitHub API
+          if CACHE_DATA=$(gh api repos/${{ github.repository }}/actions/cache/usage 2>/dev/null); then
+            CACHE_USAGE=$(echo "$CACHE_DATA" | jq -r '.active_caches_size_in_bytes // 0')
+
+            if command -v bc >/dev/null 2>&1; then
+              CACHE_GB=$(echo "scale=2; $CACHE_USAGE / 1073741824" | bc)
+            else
+              # Fallback if bc not available
+              CACHE_GB=$(awk "BEGIN {printf \"%.2f\", $CACHE_USAGE / 1073741824}")
+            fi
+
+            echo "Current cache usage: ${CACHE_GB}GB"
+
+            # Check if approaching limit
+            if command -v bc >/dev/null 2>&1; then
+              if (( $(echo "$CACHE_GB > 4" | bc -l) )); then
+                echo "⚠️ WARNING: Cache usage approaching GitHub limit (5GB)"
+                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit"
+              fi
+            fi
+
+            # Add to step summary
+            echo "### Cache Usage (${{ matrix.platform }}): ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Unable to fetch cache usage data from GitHub API"
+          fi
+
+  merge:
+    name: Create Multi-Platform Manifest
+    runs-on: ubuntu-latest
+    needs: [prep, build]
+    timeout-minutes: 15
+    outputs:
+      image_digest: ${{ steps.merge.outputs.digest }}
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v6
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push (testing tag)
+        id: merge
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+          echo "=== Pre-merge Validation ==="
+
+          # Verify we have exactly 2 digest files (amd64 + arm64)
+          DIGEST_COUNT=$(ls -1 | wc -l)
+          echo "Digest files found: ${DIGEST_COUNT}"
+          ls -1
+
+          if [ "${DIGEST_COUNT}" -ne 2 ]; then
+            echo "❌ ERROR: Expected 2 digest files (amd64 + arm64), found ${DIGEST_COUNT}"
+            exit 1
+          fi
+          echo "✅ Confirmed 2 platform digests present"
+
+          echo ""
+          echo "=== Creating Multi-Arch Manifest ==="
+
+          # Create testing tag from digests with OCI annotations
+          # Annotations are required for GitHub Container Registry to display package metadata
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
+            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
+            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
+            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
+            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
+            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+          echo ""
+          echo "=== Extracting Manifest Digest ==="
+
+          # Get the digest of the manifest list
+          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --format '{{json .}}' | jq -r '.manifest.digest // empty')
+
+          if [ -z "$MANIFEST_DIGEST" ]; then
+            echo "❌ ERROR: Failed to extract manifest digest"
+            exit 1
+          fi
+
+          echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
+          echo "✅ Multi-platform manifest created with OCI annotations"
+          echo "   Digest: ${MANIFEST_DIGEST}"
+
+      - name: Verify manifest annotations and platforms
+        run: |
+          set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+          echo "=== Verifying Multi-Arch Manifest Structure ==="
+
+          # Get manifest in raw format
+          MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} --raw)
+
+          # Verify it's a multi-arch manifest (OCI Image Index)
+          MEDIA_TYPE=$(echo "$MANIFEST_JSON" | jq -r '.mediaType')
+          echo "Media Type: ${MEDIA_TYPE}"
+
+          if [[ "$MEDIA_TYPE" != "application/vnd.oci.image.index.v1+json" && "$MEDIA_TYPE" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
+            echo "❌ ERROR: Not a multi-arch manifest"
+            echo "   Expected: application/vnd.oci.image.index.v1+json or application/vnd.docker.distribution.manifest.list.v2+json"
+            echo "   Got: ${MEDIA_TYPE}"
+            exit 1
+          fi
+          echo "✅ Confirmed multi-arch manifest type: ${MEDIA_TYPE}"
+
+          echo ""
+          echo "=== Verifying Platforms ==="
+
+          # Verify both platforms are present
+          PLATFORM_COUNT=$(echo "$MANIFEST_JSON" | jq '.manifests | length')
+          echo "Platform count: ${PLATFORM_COUNT}"
+
+          if [ "${PLATFORM_COUNT}" -ne 2 ]; then
+            echo "❌ ERROR: Expected 2 platforms, found ${PLATFORM_COUNT}"
+            exit 1
+          fi
+
+          PLATFORMS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"')
+          echo "Platforms found:"
+          echo "$PLATFORMS" | sed 's/^/  - /'
+
+          if ! echo "$PLATFORMS" | grep -q "linux/amd64"; then
+            echo "❌ ERROR: linux/amd64 platform missing"
+            exit 1
+          fi
+          if ! echo "$PLATFORMS" | grep -q "linux/arm64"; then
+            echo "❌ ERROR: linux/arm64 platform missing"
+            exit 1
+          fi
+          echo "✅ Both linux/amd64 and linux/arm64 platforms confirmed"
+
+          echo ""
+          echo "=== Verifying OCI Annotations ==="
+
+          # Verify annotations are present
+          ANNOTATIONS=$(echo "$MANIFEST_JSON" | jq -r '.annotations // {}')
+          ANNOTATION_COUNT=$(echo "$ANNOTATIONS" | jq 'length')
+          echo "Annotation count: ${ANNOTATION_COUNT}"
+
+          if [ "${ANNOTATION_COUNT}" -eq 0 ]; then
+            echo "❌ ERROR: No annotations found on manifest index"
+            echo "   This will cause GitHub to show 'No description provided'"
+            exit 1
+          fi
+
+          # Verify critical annotations
+          DESCRIPTION=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.description" // empty')
+          VENDOR=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.vendor" // empty')
+          LICENSE=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.licenses" // empty')
+
+          MISSING_ANNOTATIONS=()
+          [ -z "$DESCRIPTION" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.description")
+          [ -z "$VENDOR" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.vendor")
+          [ -z "$LICENSE" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.licenses")
+
+          if [ ${#MISSING_ANNOTATIONS[@]} -gt 0 ]; then
+            echo "❌ ERROR: Critical annotations missing:"
+            printf '  - %s\n' "${MISSING_ANNOTATIONS[@]}"
+            echo ""
+            echo "All annotations present:"
+            echo "$ANNOTATIONS" | jq '.'
+            exit 1
+          fi
+
+          echo "✅ Critical annotations verified:"
+          echo "  - Description: ${DESCRIPTION}"
+          echo "  - Vendor: ${VENDOR}"
+          echo "  - License: ${LICENSE}"
+
+          echo ""
+          echo "=== All Annotations ==="
+          echo "$ANNOTATIONS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+
+          echo ""
+          echo "✅ Manifest validation complete - ready for testing"
+
+      - name: Verify PostgreSQL version in merged image
+        run: |
+          echo "Pulling merged image to verify PostgreSQL version..."
+          for i in {1..3}; do
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}; then
+              echo "✅ Merged image pulled successfully"
+              break
+            else
+              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
+              sleep $((i * 5))
+              if [ $i -eq 3 ]; then
+                echo "❌ Failed to pull merged image after 3 attempts"
+                exit 1
+              fi
+            fi
+          done
+
+          # Extract PostgreSQL version from built image
+          PG_VERSION_OUTPUT=$(docker run --rm \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            psql --version)
+          echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
+
+          # Parse version
+          ACTUAL_VERSION=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
+
+          # Verify version matches what we used for tagging
+          if [ "${ACTUAL_VERSION}" != "${{ needs.prep.outputs.pg_version_full }}" ]; then
+            echo "❌ ERROR: Version mismatch (expected ${{ needs.prep.outputs.pg_version_full }}, got ${ACTUAL_VERSION})"
+            exit 1
+          fi
+
+          echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
+
+  test:
+    name: Test Multi-Platform Image
+    runs-on: ubuntu-latest
+    needs: [prep, merge]
+    if: needs.merge.result == 'success'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Parse Bun version from .tool-versions
+        id: bun-version
+        run: |
+          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
+          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Set up QEMU (for arm64 testing only)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test image with unified test suite
+        timeout-minutes: 5
+        run: |
+          # Use the same test infrastructure as local development
+          # This ensures CI and local tests are always in sync
+          bun scripts/docker/test-image.ts \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --fast
+
+      - name: Mark test failure for cleanup
+        if: failure()
+        run: |
+          echo "⚠️ Tests failed - marking for cleanup"
+          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          # The dedicated cleanup job will handle the actual deletion
+          # This avoids redundant tool installations and ensures consistent cleanup
+
+  scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test]
+    timeout-minutes: 20
+
+    steps:
+      - name: Validate merge digest
+        run: |
+          if [ -z "${{ needs.merge.outputs.image_digest }}" ]; then
+            echo "ERROR: Merge job did not provide valid digest"
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/publish.yml') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Best practices scan (Dockle)
+        uses: erzz/dockle-action@v1
+        with:
+          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          exit-code: "1"
+          failure-threshold: WARN
+          accept-keywords: key
+          accept-filenames: /docker-entrypoint-initdb.d
+
+      - name: Security scan (SARIF for GitHub Security)
+        uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Security scan (blocking on failures)
+        uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          format: "table"
+          severity: "CRITICAL"
+          exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
+
+      - name: Mark scan failure for cleanup
+        if: failure()
+        run: |
+          echo "⚠️ Security scan failed - marking for cleanup"
+          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          # The dedicated cleanup job will handle the actual deletion
+          # This avoids redundant tool installations and ensures consistent cleanup
+
+  release:
+    name: Sign and Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, scan, test]
+    timeout-minutes: 15
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign container image with Cosign (keyless OIDC)
+        env:
+          DIGEST: ${{ needs.merge.outputs.image_digest }}
+          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
+        run: |
+          set -e  # Exit on any error
+          # Sign by digest (immutable reference)
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+
+          echo "✅ Image signed successfully with keyless OIDC"
+          echo "📝 Signature uploaded to Rekor transparency log"
+
+      - name: Promote testing image to production tags
+        run: |
+          echo "✅ All security scans passed. Promoting testing image to production tags..."
+
+          # Use docker buildx imagetools to create production tags with OCI annotations
+          # This points new tags to the same manifest digest (no re-push needed)
+          # Annotations must be reapplied when creating new tags to ensure GitHub displays metadata
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }} \
+            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
+            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
+            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
+            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
+            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
+            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
+
+          echo "✅ Production tags created successfully with OCI annotations"
+          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
+          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
+
+      - name: Clean up testing tag
+        run: |
+          echo "Removing temporary testing tag after successful promotion..."
+          # Install regclient for proper tag deletion
+          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
+            echo "⚠️ Failed to download regctl, skipping inline cleanup"
+            echo "The cleanup job will handle removal"
+            exit 0
+          fi
+          chmod +x regctl
+          sudo mv regctl /usr/local/bin/
+
+          # Delete the testing tag now that promotion is complete
+          if regctl tag delete "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}" 2>/dev/null; then
+            echo "✅ Successfully deleted testing tag after promotion"
+          else
+            echo "ℹ️ Testing tag may already be deleted or will be cleaned by cleanup job"
+          fi
+
+      - name: Sign all convenience tags
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -e  # Exit on any error
+          echo "Signing convenience tags..."
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}"
+
+          echo "✅ All convenience tags signed"
+
+      - name: Generate release summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # PostgreSQL Single-Node Image Published :rocket:
+
+          ## Image Details
+
+          **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
+          **Digest:** `${{ needs.merge.outputs.image_digest }}`
+          **PostgreSQL Version:** ${{ needs.prep.outputs.pg_version_full }} (verified from image)
+          **Build Timestamp:** ${{ needs.prep.outputs.timestamp }}
+          **Build Type:** single-node
+          **Build Method:** Native ARM64 runners (parallel builds, no QEMU)
+
+          ## Tags Published
+
+          - `${{ needs.prep.outputs.tag_versioned }}` (primary)
+          - `${{ needs.prep.outputs.pg_version_full }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_major }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_full }}`
+          - `${{ needs.prep.outputs.pg_version_major }}`
+
+          ## Pull Commands
+
+          ```bash
+          # Full versioned tag (recommended for production)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # By digest (immutable)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+
+          # Convenience tags (may change)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}
+          ```
+
+          ## Extensions
+
+          - **Total catalog entries:** ${{ needs.prep.outputs.catalog_total }}
+          - **Enabled extensions:** ${{ needs.prep.outputs.catalog_enabled }}
+          - **Disabled extensions:** ${{ needs.prep.outputs.catalog_disabled }}
+          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
+          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+
+          ## Platforms
+
+          - linux/amd64 (native build on ubuntu-latest)
+          - linux/arm64 (native build on ubuntu-24.04-arm)
+
+          ## Verification
+
+          ```bash
+          # Verify PostgreSQL version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} psql --version
+
+          # Test basic functionality
+          docker run -d --name pg-test \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # Wait for startup
+          sleep 10
+
+          # Check extensions
+          docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
+
+          # Cleanup
+          docker rm -f pg-test
+          ```
+
+          ## Deployment
+
+          Update your compose file or Kubernetes manifests:
+
+          ```yaml
+          # Docker Compose
+          services:
+            postgres:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              # ... other config
+          ```
+
+          ```yaml
+          # Kubernetes
+          spec:
+            containers:
+            - name: postgres
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              # ... other config
+          ```
+
+          ## Signature Verification
+
+          This image is signed with Cosign using keyless OIDC. Verify the signature before deploying:
+
+          ```bash
+          # Install Cosign (if not already installed)
+          # macOS: brew install cosign
+          # Linux: https://docs.sigstore.dev/cosign/installation/
+          # Windows: https://docs.sigstore.dev/cosign/installation/
+
+          # Verify signature (keyless OIDC)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # Verify specific tag
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+
+          # Verify by digest (immutable reference)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+
+          **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
+
+          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
+
+          ```bash
+          # Search Rekor for this image
+          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          ```
+
+          ## Supply Chain Verification
+
+          View SBOM and provenance attestations:
+
+          ```bash
+          # View SBOM
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # View provenance
+          cosign download attestation \
+            --predicate-type=https://slsa.dev/provenance/v0.2 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          ```
+          EOF
+
+      - name: Publish release notes
+        run: |
+          echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
+          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
+          echo "Platforms: linux/amd64, linux/arm64 (native builds)"
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, release]
+    if: success()
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ needs.prep.outputs.bun_version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Generate release notes
+        run: |
+          bun scripts/generate-release-notes.ts \
+            --pg-version="${{ needs.prep.outputs.pg_version_full }}" \
+            --tag="${{ needs.prep.outputs.tag_versioned }}" \
+            --digest="${{ needs.merge.outputs.image_digest }}" \
+            --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total="${{ needs.prep.outputs.catalog_total }}" \
+            --output=release-notes.md
+
+          echo "✅ Release notes generated"
+          echo ""
+          echo "Preview (first 20 lines):"
+          head -n 20 release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create release with generated notes
+          gh release create "v${{ needs.prep.outputs.tag_versioned }}" \
+            --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
+            --notes-file release-notes.md \
+            --latest \
+            --verify-tag || {
+              echo "⚠️ Tag v${{ needs.prep.outputs.tag_versioned }} does not exist yet"
+              echo "Creating lightweight tag for release..."
+              git tag "v${{ needs.prep.outputs.tag_versioned }}"
+              git push origin "v${{ needs.prep.outputs.tag_versioned }}"
+
+              # Retry release creation
+              gh release create "v${{ needs.prep.outputs.tag_versioned }}" \
+                --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
+                --notes-file release-notes.md \
+                --latest
+            }
+
+          echo "✅ GitHub Release created: v${{ needs.prep.outputs.tag_versioned }}"
+          echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.tag_versioned }}"
+
+  cleanup:
+    name: Cleanup Testing Artifacts
+    runs-on: ubuntu-latest
+    needs: [merge, test, scan]
+    # ALWAYS run cleanup regardless of any job failures or skips
+    # With 'if: always()', this runs even if test/scan are skipped due to merge failure
+    # Waits for test/scan to complete if they run, preventing race conditions
+    if: always()
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup cleanup tools
+        run: |
+          # Install regclient for proper registry operations
+          # This tool is required because docker/buildx cannot delete tags directly
+          echo "Installing regclient for registry operations..."
+          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
+            echo "❌ Failed to download regctl"
+            exit 1
+          fi
+          chmod +x regctl
+          sudo mv regctl /usr/local/bin/
+
+          # Verify installation
+          if ! regctl version; then
+            echo "❌ regctl installation failed"
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete testing tag if it exists
+        run: |
+          echo "🧹 Cleanup job: Ensuring ALL testing artifacts are removed"
+          TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}"
+
+          # This job runs with 'if: always()' to guarantee cleanup regardless of:
+          # - Build failures
+          # - Partial image pushes
+          # - Test/scan failures
+          # - Any job being cancelled or timing out
+          # Even if merge only partially completed, we still attempt cleanup.
+
+          # Check if the tag exists
+          echo "Checking for testing tag: testing-${{ github.sha }}"
+          if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+            echo "Found testing tag: $TESTING_TAG"
+
+            # Delete the tag
+            if regctl tag delete "$TESTING_TAG"; then
+              echo "✅ Successfully deleted testing tag"
+
+              # Verify deletion
+              sleep 2  # Brief pause for registry to update
+              if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+                echo "⚠️ Tag still exists after deletion attempt - may need manual cleanup"
+                # Don't fail the workflow for cleanup issues
+              else
+                echo "✅ Verified: Tag has been removed from registry"
+              fi
+            else
+              echo "⚠️ Failed to delete testing tag - will be garbage collected"
+              # Don't fail the workflow for cleanup issues
+            fi
+          else
+            echo "✅ Testing tag not found (already cleaned or never created)"
+          fi
+
+      - name: Report cleanup status
+        if: always()
+        run: |
+          echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup attempted but may have encountered issues" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Testing Tag:** \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY

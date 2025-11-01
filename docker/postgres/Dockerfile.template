@@ -1,0 +1,192 @@
+# PostgreSQL 18 with comprehensive extension suite
+
+ARG PG_VERSION=18
+ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+
+# Build metadata for OCI labels
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION=18
+
+# PGDG extension versions (14 pre-compiled extensions)
+{{PGDG_VERSION_ARGS}}
+
+FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
+
+# Re-declare ARGs after FROM to make them available in this stage
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# OCI image labels
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.title="aza-pg"
+LABEL org.opencontainers.image.description="PostgreSQL 18 with 38 extensions (36 enabled)"
+LABEL org.opencontainers.image.vendor="fluxo-kt"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
+COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+RUN chmod +x /usr/local/bin/build-extensions.ts
+
+# Install build dependencies for builder-base stage
+# Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
+# dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
+RUN set -eu && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
+    apt-get install -y \
+      build-essential \
+      git \
+      jq \
+      curl \
+      ca-certificates \
+      rsync \
+      unzip \
+      postgresql-server-dev-${PG_MAJOR} \
+      $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN set -eu && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+
+# Add Rust/Cargo to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Bun for running TypeScript build scripts
+RUN set -eu && \
+    curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
+# Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
+FROM builder-base AS builder-pgxs
+RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select((.build.type == "pgxs") or (.build.type == "autotools") or (.build.type == "cmake") or (.build.type == "meson") or (.build.type == "make") or (.build.type == "timescaledb")) ]}' /tmp/extensions.manifest.json > /tmp/extensions.pgxs.manifest.json
+
+RUN --mount=type=cache,target=/root/.cache \
+    /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
+
+RUN set -eu && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib && \
+    mkdir -p /opt/ext-out/usr/local/bin && \
+    mkdir -p /opt/ext-out/usr/local/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb && \
+    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
+    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
+    rsync -a /usr/share/postgresql/${PG_MAJOR}/contrib/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib/ && \
+    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
+    if [ -d /usr/share/postgresql/${PG_MAJOR}/timescaledb ]; then \
+      rsync -a /usr/share/postgresql/${PG_MAJOR}/timescaledb/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb/; \
+    fi && \
+    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    find /opt/ext-out/usr/local/lib -name '*.so' -exec strip --strip-debug {} \; 2>/dev/null || true && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
+
+# Stage for cargo-pgrx builds
+FROM builder-base AS builder-cargo
+
+# Rust optimization flags for smaller binaries (Phase 11.1)
+# Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
+# opt-level=s: Optimize for size (less aggressive than 'z', more compatible)
+# lto=thin: Enable thin link-time optimization
+# strip=symbols: Strip debug symbols from binaries
+ENV CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=s
+ENV CARGO_PROFILE_RELEASE_STRIP=symbols
+
+RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select(.build.type == "cargo-pgrx") ]}' /tmp/extensions.manifest.json > /tmp/extensions.cargo.manifest.json
+
+RUN --mount=type=cache,target=/root/.cache \
+    /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
+
+RUN set -eu && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
+    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
+    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
+
+# Version info will be generated in final stage where PostgreSQL is available
+
+ARG PG_VERSION
+ARG PG_BASE_IMAGE_SHA
+FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
+LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="${PG_VERSION}"
+LABEL org.opencontainers.image.vendor="fluxo-kt"
+
+COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
+
+# Install runtime libraries for compiled extensions (final stage)
+# Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
+# Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
+# are intentional for multi-stage build optimization. DO NOT consolidate.
+RUN set -eu && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
+    RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
+    apt-get install -y \
+      # postgresql-client provides psql CLI tool (base postgres image only has server)
+      # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
+      postgresql-client-${PG_MAJOR} \
+      ${RUNTIME_PKGS} && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
+
+# Pre-compiled extensions from PGDG repository
+{{PGDG_VERSION_ARG_REDECLARE}}
+
+# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
+# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+{{PGDG_PACKAGES_INSTALL}}
+
+COPY --from=builder-pgxs /opt/ext-out/ /
+COPY --from=builder-cargo /opt/ext-out/ /
+
+# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
+RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
+
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+
+# Generate version-info files in final stage with actual PostgreSQL version
+{{VERSION_INFO_GENERATION}}
+
+RUN mkdir -p /backup && chown postgres:postgres /backup
+
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+RUN chmod +x /docker-entrypoint-initdb.d/*.sh
+
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
+COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
+
+# Verify Bun is not present in final image (build-time tool should not leak)
+RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
+
+# Switch to postgres user for security (fixes CIS-DI-0001)
+# All setup is complete, now run as non-root user
+USER postgres
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
+    CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1
+
+EXPOSE 5432
+
+ENTRYPOINT ["/usr/local/bin/docker-auto-config-entrypoint.sh"]
+CMD ["postgres"]

@@ -54,9 +54,7 @@ services:
     volumes:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
 
-    command: >
-      sh -c "sed \"s/\${PGBOUNCER_AUTH_PASS}/$${PGBOUNCER_AUTH_PASS}/g\" /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini &&
-      exec pgbouncer /tmp/pgbouncer.ini"
+    command: sh -c 'sed "s/\$${PGBOUNCER_AUTH_PASS}/$PGBOUNCER_AUTH_PASS/g" /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini && exec pgbouncer /tmp/pgbouncer.ini'
 
     networks:
       - postgres_net
@@ -133,11 +131,7 @@ services:
     restart: unless-stopped
 
     environment:
-      PGBOUNCER_HOST: pgbouncer
-      PGBOUNCER_PORT: 6432
-      PGBOUNCER_DATABASE: pgbouncer
-      PGBOUNCER_USER: ${POSTGRES_USER:-postgres}
-      PGBOUNCER_PASS: ${POSTGRES_PASSWORD}
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: 'postgres://pgbouncer_auth:${PGBOUNCER_AUTH_PASS}@pgbouncer:6432/pgbouncer?sslmode=disable'
 
     networks:
       - postgres_net
@@ -163,60 +157,6 @@ services:
       timeout: 5s
       retries: 3
 
-  # Automated Backup Service (optional - uncomment to enable)
-  # postgres-backup:
-  #   image: postgres:18-bookworm
-  #   container_name: ${POSTGRES_BACKUP_CONTAINER_NAME:-postgres-backup}
-  #   restart: unless-stopped
-  #
-  #   environment:
-  #     POSTGRES_HOST: postgres
-  #     POSTGRES_PORT: 5432
-  #     POSTGRES_DB: ${POSTGRES_DB:-postgres}
-  #     POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  #     BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-86400}
-  #     BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
-  #
-  #   volumes:
-  #     - postgres_backups:/backup
-  #
-  #   command: |
-  #     sh -c "
-  #     echo 'Automated backup service started';
-  #     echo 'Schedule: every \$BACKUP_SCHEDULE seconds';
-  #     echo 'Retention: \$BACKUP_RETENTION_DAYS days';
-  #     while true; do
-  #       TIMESTAMP=\$(date +%Y%m%d_%H%M%S);
-  #       echo \"[\$TIMESTAMP] Starting backup...\";
-  #       PGPASSWORD=\$POSTGRES_PASSWORD pg_dump -h \$POSTGRES_HOST -p \$POSTGRES_PORT -U \$POSTGRES_USER -d \$POSTGRES_DB | \
-  #         gzip > /backup/backup_\${TIMESTAMP}.sql.gz;
-  #       if [ \$? -eq 0 ]; then
-  #         echo \"[\$TIMESTAMP] Backup completed: backup_\${TIMESTAMP}.sql.gz\";
-  #       else
-  #         echo \"[\$TIMESTAMP] ERROR: Backup failed\";
-  #       fi;
-  #       echo \"[\$TIMESTAMP] Cleaning old backups (>\$BACKUP_RETENTION_DAYS days)...\";
-  #       find /backup -name 'backup_*.sql.gz' -mtime +\$BACKUP_RETENTION_DAYS -delete;
-  #       echo \"[\$TIMESTAMP] Next backup in \$BACKUP_SCHEDULE seconds\";
-  #       sleep \$BACKUP_SCHEDULE;
-  #     done
-  #     "
-  #
-  #   networks:
-  #     - postgres_net
-  #
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: ${POSTGRES_BACKUP_MEMORY_LIMIT:-128m}
-  #       reservations:
-  #         memory: ${POSTGRES_BACKUP_MEMORY_RESERVATION:-64m}
-
 networks:
   postgres_net:
     name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
@@ -229,6 +169,3 @@ volumes:
     name: ${POSTGRES_DATA_VOLUME:-postgres-primary-data}
   postgres_backup:
     name: ${POSTGRES_BACKUP_VOLUME:-postgres-primary-backup}
-  # Uncomment if using automated backup service
-  # postgres_backups:
-  #   name: ${POSTGRES_BACKUPS_VOLUME:-postgres-primary-backups}

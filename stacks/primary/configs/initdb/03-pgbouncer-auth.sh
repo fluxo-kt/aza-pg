@@ -14,16 +14,20 @@ echo "[pgbouncer-auth] Creating PgBouncer auth user and lookup function..."
 
 psql -v ON_ERROR_STOP=1 -v pgbouncer_password="$PGBOUNCER_AUTH_PASS" \
   --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    DO \$BODY\$
+    CREATE OR REPLACE FUNCTION pg_temp.setup_pgbouncer_auth(p_password TEXT)
+    RETURNS void AS \$func\$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pgbouncer_auth') THEN
-        CREATE ROLE pgbouncer_auth LOGIN PASSWORD '$PGBOUNCER_AUTH_PASS' NOINHERIT;
+        EXECUTE format('CREATE ROLE pgbouncer_auth LOGIN PASSWORD %L NOINHERIT', p_password);
         RAISE NOTICE 'PgBouncer auth user created';
       ELSE
-        ALTER ROLE pgbouncer_auth WITH PASSWORD '$PGBOUNCER_AUTH_PASS';
+        EXECUTE format('ALTER ROLE pgbouncer_auth WITH PASSWORD %L', p_password);
         RAISE NOTICE 'PgBouncer auth user password updated';
       END IF;
-    END \$BODY\$;
+    END
+    \$func\$ LANGUAGE plpgsql;
+
+    SELECT pg_temp.setup_pgbouncer_auth(:'pgbouncer_password');
 
     CREATE OR REPLACE FUNCTION pgbouncer_lookup(user_name TEXT)
     RETURNS TABLE(username TEXT, password TEXT)

@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
 
     environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD}
@@ -32,9 +33,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${POSTGRES_MEMORY_LIMIT:-800m}
+          memory: ${POSTGRES_MEMORY_LIMIT:-2048m}
         reservations:
-          memory: ${POSTGRES_MEMORY_RESERVATION:-512m}
+          memory: ${POSTGRES_MEMORY_RESERVATION:-1024m}
 
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
@@ -77,7 +78,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          "PGPASSWORD=${POSTGRES_PASSWORD} psql -h localhost -p 6432 -U postgres -d postgres -c 'SELECT 1' ||
+          "PGPASSWORD=${PGBOUNCER_AUTH_PASS} psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1' ||
           exit 1",
         ]
       interval: 10s

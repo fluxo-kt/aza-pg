@@ -5,7 +5,7 @@
 set -e
 
 readonly BASELINE_RAM_MB=2048
-readonly BASELINE_SHARED_BUFFERS_MB=256
+readonly BASELINE_SHARED_BUFFERS_MB=512
 readonly BASELINE_EFFECTIVE_CACHE_MB=768
 readonly BASELINE_MAINTENANCE_WORK_MEM_MB=64
 readonly BASELINE_WORK_MEM_MB=4
@@ -13,6 +13,8 @@ readonly BASELINE_WORK_MEM_MB=4
 readonly SHARED_BUFFERS_CAP_MB=8192
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
+
+export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --data-checksums"
 
 if [ "${POSTGRES_SKIP_AUTOCONFIG:-false}" = "true" ]; then
     echo "[AUTO-CONFIG] Disabled via POSTGRES_SKIP_AUTOCONFIG=true"
@@ -86,9 +88,9 @@ CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
 echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB (${RAM_SOURCE}, ${RAM_MODE}), CPU: ${CPU_CORES} cores (${CPU_SOURCE})"
 
 if [ "$TOTAL_RAM_MB" -lt 1024 ]; then
-    echo "[AUTO-CONFIG] ERROR: Detected ${TOTAL_RAM_MB}MB RAM - minimum 1GB required for production"
+    echo "[AUTO-CONFIG] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 1GB REQUIRED"
     echo "[AUTO-CONFIG] Set memory limit: docker run -m 1g OR deploy.resources.limits.memory: 1g"
-    echo "[AUTO-CONFIG] Continuing with baseline config (may be unstable)..."
+    exit 1
 fi
 
 if [ "$TOTAL_RAM_MB" -gt "$BASELINE_RAM_MB" ]; then
@@ -112,6 +114,15 @@ else
     MAINTENANCE_WORK_MEM_MB=$BASELINE_MAINTENANCE_WORK_MEM_MB
     WORK_MEM_MB=$BASELINE_WORK_MEM_MB
     echo "[AUTO-CONFIG] Using baseline (≤${BASELINE_RAM_MB}MB)"
+fi
+
+[ "$WORK_MEM_MB" -lt 1 ] && WORK_MEM_MB=1
+TOTAL_POTENTIAL_MEM=$((SHARED_BUFFERS_MB + (200 * WORK_MEM_MB)))
+SAFE_LIMIT=$((TOTAL_RAM_MB * 90 / 100))
+if [ "$TOTAL_POTENTIAL_MEM" -gt "$SAFE_LIMIT" ]; then
+    echo "[AUTO-CONFIG] FATAL: Config exceeds 90% RAM (${TOTAL_POTENTIAL_MEM}MB > ${SAFE_LIMIT}MB)"
+    echo "[AUTO-CONFIG] Increase memory limit or set POSTGRES_SKIP_AUTOCONFIG=true"
+    exit 1
 fi
 
 MAX_WORKER_PROCESSES=$((CPU_CORES * 2))

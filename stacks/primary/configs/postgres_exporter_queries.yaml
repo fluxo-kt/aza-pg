@@ -43,3 +43,34 @@ pg_memory_settings:
     - value_bytes:
         usage: 'GAUGE'
         description: 'Memory setting value in bytes'
+
+pg_wal_directory_size:
+  query: 'SELECT COALESCE((SELECT SUM(size) FROM pg_ls_waldir()), 0) as wal_size_bytes'
+  metrics:
+    - wal_size_bytes:
+        usage: 'GAUGE'
+        description: 'Total size of WAL directory in bytes'
+
+pg_temp_files:
+  query: 'SELECT COALESCE(SUM(temp_bytes), 0) as temp_bytes_total FROM pg_stat_database'
+  metrics:
+    - temp_bytes_total:
+        usage: 'COUNTER'
+        description: 'Total bytes written to temp files'
+
+pg_connection_usage:
+  query: |
+    SELECT
+      (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_conn,
+      (SELECT COUNT(*) FROM pg_stat_activity) as current_conn,
+      (SELECT setting::int FROM pg_settings WHERE name = 'superuser_reserved_connections') as reserved_conn
+  metrics:
+    - max_conn:
+        usage: 'GAUGE'
+        description: 'Maximum allowed connections'
+    - current_conn:
+        usage: 'GAUGE'
+        description: 'Current active connections'
+    - reserved_conn:
+        usage: 'GAUGE'
+        description: 'Reserved connections for superuser'

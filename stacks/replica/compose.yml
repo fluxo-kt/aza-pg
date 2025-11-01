@@ -8,6 +8,9 @@ services:
     container_name: ${POSTGRES_CONTAINER_NAME:-postgres-replica}
     restart: unless-stopped
 
+    env_file:
+      - .env
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -25,7 +28,10 @@ services:
       - postgres-replica-data:/var/lib/postgresql/data
       - ./configs/postgresql-replica.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
-      - ./scripts/setup-replica.sh:/docker-entrypoint-initdb.d/99-setup-replica.sh:ro
+      - ./scripts/00-setup-replica.sh:/docker-entrypoint-initdb.d/00-setup-replica.sh:ro
+
+    networks:
+      - postgres_net
 
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
@@ -65,6 +71,14 @@ services:
       "
     environment:
       PGPASSWORD: ${PG_REPLICATION_PASSWORD}
+
+    networks:
+      - postgres_net
+
+networks:
+  postgres_net:
+    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+    external: true
 
 volumes:
   postgres-replica-data:

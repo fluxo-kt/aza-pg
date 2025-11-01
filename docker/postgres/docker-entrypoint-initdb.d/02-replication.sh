@@ -13,26 +13,27 @@ echo "[02-replication] Configuring replication user..."
 
 REPLICATION_SLOT_NAME="${REPLICATION_SLOT_NAME:-replica_slot_1}"
 
-psql -v ON_ERROR_STOP=1 \
+psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name="$REPLICATION_SLOT_NAME" \
   --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    DO \$BODY\$
+    CREATE OR REPLACE FUNCTION pg_temp.setup_replication(p_password TEXT, p_slot_name TEXT)
+    RETURNS void AS \$func\$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-            CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '$PG_REPLICATION_PASSWORD';
+            EXECUTE format('CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD %L', p_password);
             RAISE NOTICE 'Replication user created: replicator';
         ELSE
             RAISE NOTICE 'Replication user already exists: replicator';
-            ALTER ROLE replicator WITH PASSWORD '$PG_REPLICATION_PASSWORD';
+            EXECUTE format('ALTER ROLE replicator WITH PASSWORD %L', p_password);
             RAISE NOTICE 'Replication user password updated';
         END IF;
-    END \$BODY\$;
 
+        PERFORM pg_create_physical_replication_slot(p_slot_name)
+        WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = p_slot_name);
+    END
+    \$func\$ LANGUAGE plpgsql;
+
+    SELECT pg_temp.setup_replication(:'repl_password', :'slot_name');
     GRANT CONNECT ON DATABASE postgres TO replicator;
-
-    SELECT pg_create_physical_replication_slot("$REPLICATION_SLOT_NAME")
-    WHERE NOT EXISTS (
-        SELECT 1 FROM pg_replication_slots WHERE slot_name = '$REPLICATION_SLOT_NAME'
-    );
 EOSQL
 
 echo "[02-replication] Replication configuration complete (slot: $REPLICATION_SLOT_NAME)"

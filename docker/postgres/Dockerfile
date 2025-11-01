@@ -72,7 +72,6 @@ RUN set -e && \
     apt-get update && apt-get install -y \
     curl \
     ca-certificates \
-    restic \
     zstd \
     lz4 \
     netcat-openbsd \

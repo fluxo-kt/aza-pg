@@ -8,7 +8,7 @@ This document outlines PostgreSQL 18-specific features leveraged by aza-pg.
 ```conf
 io_method = 'worker'
 io_combine_limit = 128
-io_max_combine_limit = 256
+io_max_combine_limit = 128
 ```
 
 **Impact:** 2-3x I/O performance improvement on modern storage (NVMe SSDs, cloud block storage).

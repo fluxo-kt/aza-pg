@@ -29,18 +29,26 @@ RUN set -e && \
     libkrb5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Build all extensions in parallel
 RUN set -e && \
     git clone https://github.com/pgvector/pgvector.git /tmp/pgvector && \
+    cd /tmp/pgvector && \
+    git checkout ${PGVECTOR_COMMIT_SHA} && \
+    make -j$(nproc) && \
+    make install
+
+RUN set -e && \
     git clone https://github.com/citusdata/pg_cron.git /tmp/pg_cron && \
+    cd /tmp/pg_cron && \
+    git checkout ${PG_CRON_COMMIT_SHA} && \
+    make -j$(nproc) && \
+    make install
+
+RUN set -e && \
     git clone https://github.com/pgaudit/pgaudit.git /tmp/pgaudit && \
-    cd /tmp/pgvector && git checkout ${PGVECTOR_COMMIT_SHA} && \
-    cd /tmp/pg_cron && git checkout ${PG_CRON_COMMIT_SHA} && \
-    cd /tmp/pgaudit && git checkout ${PGAUDIT_COMMIT_SHA} && \
-    (cd /tmp/pgvector && make -j$(nproc) && make install) & \
-    (cd /tmp/pg_cron && make -j$(nproc) && make install) & \
-    (cd /tmp/pgaudit && make USE_PGXS=1 -j$(nproc) && make USE_PGXS=1 install) & \
-    wait
+    cd /tmp/pgaudit && \
+    git checkout ${PGAUDIT_COMMIT_SHA} && \
+    make USE_PGXS=1 -j$(nproc) && \
+    make USE_PGXS=1 install
 
 FROM postgres:${PG_VERSION}-bookworm
 

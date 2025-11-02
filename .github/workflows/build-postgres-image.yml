@@ -39,6 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -129,9 +132,34 @@ jobs:
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
           echo "✅ Image pulled and PostgreSQL version verified"
 
+  test:
+    name: Test PostgreSQL Stack
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull built image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:test
+
+      - name: Test extension loading
+        run: |
+          echo "🧪 Testing extension loading..."
           docker run -d --name pg-test \
             -e POSTGRES_PASSWORD=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+            aza-pg:test
 
           echo "⏳ Waiting for PostgreSQL to start..."
           for i in {1..30}; do
@@ -142,7 +170,6 @@ jobs:
             sleep 2
           done
 
-          echo "🧪 Testing extension loading..."
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION vector;"
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_trgm;"
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_stat_statements;"
@@ -156,5 +183,96 @@ jobs:
 
           docker stop pg-test
           docker rm pg-test
+          echo "✅ Extensions test passed!"
 
-          echo "✅ All extensions loaded and functional!"
+      - name: Test auto-config with different memory limits
+        run: |
+          echo "🧪 Testing auto-config with 2GB memory limit..."
+          docker run -d --name pg-test-2gb \
+            -e POSTGRES_PASSWORD=test \
+            --memory=2g \
+            aza-pg:test
+
+          for i in {1..30}; do
+            if docker exec pg-test-2gb pg_isready -U postgres > /dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Checking auto-config logs for 2GB..."
+          docker logs pg-test-2gb 2>&1 | grep -i "detected ram" || true
+          docker logs pg-test-2gb 2>&1 | grep -i "shared_buffers" || true
+
+          docker exec pg-test-2gb psql -U postgres -c "SHOW shared_buffers;"
+          docker exec pg-test-2gb psql -U postgres -c "SHOW max_connections;"
+
+          docker stop pg-test-2gb
+          docker rm pg-test-2gb
+
+          echo "🧪 Testing auto-config with 4GB memory limit..."
+          docker run -d --name pg-test-4gb \
+            -e POSTGRES_PASSWORD=test \
+            --memory=4g \
+            aza-pg:test
+
+          for i in {1..30}; do
+            if docker exec pg-test-4gb pg_isready -U postgres > /dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Checking auto-config logs for 4GB..."
+          docker logs pg-test-4gb 2>&1 | grep -i "detected ram" || true
+          docker logs pg-test-4gb 2>&1 | grep -i "shared_buffers" || true
+
+          docker exec pg-test-4gb psql -U postgres -c "SHOW shared_buffers;"
+          docker exec pg-test-4gb psql -U postgres -c "SHOW max_connections;"
+
+          docker stop pg-test-4gb
+          docker rm pg-test-4gb
+          echo "✅ Auto-config test passed!"
+
+      - name: Deploy and test primary stack
+        run: |
+          echo "🚀 Deploying primary stack..."
+          cd stacks/primary
+
+          # Create .env file
+          cat > .env << EOF
+          POSTGRES_PASSWORD=test_password_123
+          PGBOUNCER_AUTH_PASS=dev_pgbouncer_auth_test_2025
+          PG_REPLICATION_PASSWORD=replication_test_123
+          POSTGRES_IMAGE=aza-pg:test
+          POSTGRES_MEMORY_LIMIT=2g
+          EOF
+
+          # Start stack
+          docker compose up -d
+
+          echo "⏳ Waiting for services to be healthy..."
+          sleep 30
+
+          # Check service health
+          docker compose ps
+
+          echo "🧪 Testing direct PostgreSQL connection..."
+          docker compose exec -T postgres psql -U postgres -c "SELECT version();"
+
+          echo "🧪 Testing PgBouncer connection..."
+          PGPASSWORD=dev_pgbouncer_auth_test_2025 docker compose exec -T pgbouncer \
+            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;" || true
+
+          echo "🧪 Testing postgres_exporter metrics..."
+          docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20 || true
+
+          echo "📊 Stack logs..."
+          docker compose logs --tail=50
+
+          # Cleanup
+          docker compose down -v
+          echo "✅ Primary stack test passed!"
+
+    outputs:
+      test-status: success

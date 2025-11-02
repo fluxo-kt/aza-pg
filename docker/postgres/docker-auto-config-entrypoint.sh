@@ -9,10 +9,16 @@ readonly BASELINE_SHARED_BUFFERS_MB=256
 readonly BASELINE_EFFECTIVE_CACHE_MB=768
 readonly BASELINE_MAINTENANCE_WORK_MEM_MB=64
 readonly BASELINE_WORK_MEM_MB=4
+readonly DEFAULT_RAM_MB=1024
 
 readonly SHARED_BUFFERS_CAP_MB=8192
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
+
+if [ "$BASELINE_RAM_MB" -le 0 ] || [ "$BASELINE_SHARED_BUFFERS_MB" -le 0 ]; then
+    echo "[AUTO-CONFIG] FATAL: Invalid baseline configuration"
+    exit 1
+fi
 
 # PostgreSQL 18 enables data checksums by default
 # Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended)
@@ -28,34 +34,21 @@ fi
 detect_ram() {
     local ram_mb=0
     local source="unknown"
-    local shared_vps=false
 
     if [ -f /sys/fs/cgroup/memory.max ]; then
-        local limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "max")
+        local limit
+        limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "max")
         if [ "$limit" != "max" ] && [ -n "$limit" ]; then
             ram_mb=$((limit / 1024 / 1024))
             source="cgroup-v2"
+            echo "$ram_mb:$source"
+            return
         fi
     fi
 
-    if [ "$ram_mb" -eq 0 ] && [ -f /proc/meminfo ]; then
-        ram_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "0")
-        source="proc-meminfo"
-        shared_vps=true
-    fi
-
-    if [ -z "$ram_mb" ] || [ "$ram_mb" -eq 0 ]; then
-        echo "[AUTO-CONFIG] ERROR: Failed to detect RAM"
-        exec /usr/local/bin/docker-entrypoint.sh "$@"
-    fi
-
-    if [ "$shared_vps" = true ]; then
-        SHARED_VPS_RAM_PERCENT=${SHARED_VPS_RAM_PERCENT:-50}
-        ram_mb=$((ram_mb * SHARED_VPS_RAM_PERCENT / 100))
-        echo "$ram_mb:$source:shared"
-    else
-        echo "$ram_mb:$source:dedicated"
-    fi
+    ram_mb=${POSTGRES_MEMORY:-$DEFAULT_RAM_MB}
+    source="default"
+    echo "$ram_mb:$source"
 }
 
 detect_cpu() {
@@ -63,8 +56,10 @@ detect_cpu() {
     local source="unknown"
 
     if [ -f /sys/fs/cgroup/cpu.max ]; then
-        local cpu_quota=$(cut -d' ' -f1 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "max")
-        local cpu_period=$(cut -d' ' -f2 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "100000")
+        local cpu_quota
+        local cpu_period
+        cpu_quota=$(cut -d' ' -f1 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "max")
+        cpu_period=$(cut -d' ' -f2 /sys/fs/cgroup/cpu.max 2>/dev/null || echo "100000")
 
         if [ "$cpu_quota" != "max" ] && [ -n "$cpu_quota" ] && [ "$cpu_quota" != "0" ]; then
             cpu_cores=$(( (cpu_quota + cpu_period - 1) / cpu_period ))
@@ -84,13 +79,10 @@ detect_cpu() {
 RAM_INFO=$(detect_ram)
 TOTAL_RAM_MB=$(echo "$RAM_INFO" | cut -d: -f1)
 RAM_SOURCE=$(echo "$RAM_INFO" | cut -d: -f2)
-RAM_MODE=$(echo "$RAM_INFO" | cut -d: -f3)
 
 CPU_INFO=$(detect_cpu)
 CPU_CORES=$(echo "$CPU_INFO" | cut -d: -f1)
 CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
-
-echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB (${RAM_SOURCE}, ${RAM_MODE}), CPU: ${CPU_CORES} cores (${CPU_SOURCE})"
 
 if [ "$TOTAL_RAM_MB" -lt 1024 ]; then
     echo "[AUTO-CONFIG] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 1GB REQUIRED"
@@ -107,43 +99,24 @@ if [ "$TOTAL_RAM_MB" -gt "$BASELINE_RAM_MB" ]; then
     [ "$SHARED_BUFFERS_MB" -gt "$SHARED_BUFFERS_CAP_MB" ] && SHARED_BUFFERS_MB=$SHARED_BUFFERS_CAP_MB
     [ "$MAINTENANCE_WORK_MEM_MB" -gt "$MAINTENANCE_WORK_MEM_CAP_MB" ] && MAINTENANCE_WORK_MEM_MB=$MAINTENANCE_WORK_MEM_CAP_MB
     [ "$WORK_MEM_MB" -gt "$WORK_MEM_CAP_MB" ] && WORK_MEM_MB=$WORK_MEM_CAP_MB
-
-    echo "[AUTO-CONFIG] Scaled settings:"
-    echo "[AUTO-CONFIG]   shared_buffers: ${SHARED_BUFFERS_MB}MB"
-    echo "[AUTO-CONFIG]   effective_cache_size: ${EFFECTIVE_CACHE_MB}MB"
-    echo "[AUTO-CONFIG]   maintenance_work_mem: ${MAINTENANCE_WORK_MEM_MB}MB"
-    echo "[AUTO-CONFIG]   work_mem: ${WORK_MEM_MB}MB"
 else
     SHARED_BUFFERS_MB=$BASELINE_SHARED_BUFFERS_MB
     EFFECTIVE_CACHE_MB=$BASELINE_EFFECTIVE_CACHE_MB
     MAINTENANCE_WORK_MEM_MB=$BASELINE_MAINTENANCE_WORK_MEM_MB
     WORK_MEM_MB=$BASELINE_WORK_MEM_MB
-    echo "[AUTO-CONFIG] Using baseline (≤${BASELINE_RAM_MB}MB)"
 fi
 
 [ "$WORK_MEM_MB" -lt 1 ] && WORK_MEM_MB=1
-TOTAL_POTENTIAL_MEM=$((SHARED_BUFFERS_MB + (200 * WORK_MEM_MB)))
-SAFE_LIMIT=$((TOTAL_RAM_MB * 90 / 100))
-if [ "$TOTAL_POTENTIAL_MEM" -gt "$SAFE_LIMIT" ]; then
-    echo "[AUTO-CONFIG] FATAL: Config exceeds 90% RAM (${TOTAL_POTENTIAL_MEM}MB > ${SAFE_LIMIT}MB)"
-    echo "[AUTO-CONFIG] Increase memory limit or set POSTGRES_SKIP_AUTOCONFIG=true"
-    exit 1
-fi
 
 MAX_WORKER_PROCESSES=$((CPU_CORES * 2))
 MAX_PARALLEL_WORKERS=$CPU_CORES
 MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
 
-# Connection limit: Use fixed value (PgBouncer multiplexes connections)
 MAX_CONNECTIONS=200
 [ "$TOTAL_RAM_MB" -lt 2048 ] && MAX_CONNECTIONS=100
 
-echo "[AUTO-CONFIG] CPU settings:"
-echo "[AUTO-CONFIG]   max_worker_processes: ${MAX_WORKER_PROCESSES}"
-echo "[AUTO-CONFIG]   max_parallel_workers: ${MAX_PARALLEL_WORKERS}"
-echo "[AUTO-CONFIG]   max_parallel_workers_per_gather: ${MAX_PARALLEL_WORKERS_PER_GATHER}"
-echo "[AUTO-CONFIG]   max_connections: ${MAX_CONNECTIONS}"
+echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \

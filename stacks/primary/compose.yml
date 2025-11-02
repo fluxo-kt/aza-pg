@@ -3,15 +3,16 @@ services:
     env_file:
       - .env
     image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
-    container_name: ${POSTGRES_CONTAINER_NAME:-postgres-primary}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-primary
     restart: unless-stopped
 
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
-      PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD}
-      PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS}
+      PG_REPLICATION_PASSWORD: "${PG_REPLICATION_PASSWORD}"
+      PGBOUNCER_AUTH_PASS: "${PGBOUNCER_AUTH_PASS}"
+      REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-replica_slot_1}
 
     volumes:
       - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql/data
@@ -38,7 +39,7 @@ services:
           memory: ${POSTGRES_MEMORY_RESERVATION:-1024m}
 
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -46,16 +47,16 @@ services:
 
   pgbouncer:
     image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1}
-    container_name: ${PGBOUNCER_CONTAINER_NAME:-pgbouncer-primary}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
 
     environment:
-      PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS}
+      PGBOUNCER_AUTH_PASS: "${PGBOUNCER_AUTH_PASS}"
 
     volumes:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
 
-    command: sh -c 'sed "s/\$${PGBOUNCER_AUTH_PASS}/$PGBOUNCER_AUTH_PASS/g" /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini && exec pgbouncer /tmp/pgbouncer.ini'
+    command: sh -c 'awk -v pass="$$PGBOUNCER_AUTH_PASS" '\''{gsub(/\$${PGBOUNCER_AUTH_PASS}/, pass); print}'\'' /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini && exec pgbouncer /tmp/pgbouncer.ini'
 
     networks:
       - postgres_net
@@ -88,19 +89,19 @@ services:
 
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
-    container_name: ${POSTGRES_EXPORTER_CONTAINER_NAME:-postgres-exporter-primary}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
     restart: unless-stopped
 
     environment:
       DATA_SOURCE_NAME: 'postgresql://postgres@postgres:5432/postgres?sslmode=disable'
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
       PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'
       PG_EXPORTER_DISABLE_SETTINGS_METRICS: 'false'
       PG_EXPORTER_COLLECTOR_STAT_BGWRITER: 'false'
 
     volumes:
-      - ./configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+      - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
 
     networks:
       - postgres_net
@@ -128,11 +129,11 @@ services:
 
   pgbouncer_exporter:
     image: ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0}
-    container_name: ${PGBOUNCER_EXPORTER_CONTAINER_NAME:-pgbouncer-exporter-primary}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
     restart: unless-stopped
 
     environment:
-      PGBOUNCER_EXPORTER_CONNECTION_STRING: 'postgres://pgbouncer_auth:${PGBOUNCER_AUTH_PASS}@pgbouncer:6432/pgbouncer?sslmode=disable'
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: 'postgres://pgbouncer_auth:"${PGBOUNCER_AUTH_PASS}"@pgbouncer:6432/pgbouncer?sslmode=disable'
 
     networks:
       - postgres_net

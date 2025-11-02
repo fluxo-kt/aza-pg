@@ -1,0 +1,99 @@
+# Dependabot configuration for aza-pg PostgreSQL repository
+# Automatically checks for updates to GitHub Actions and Docker dependencies
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+
+updates:
+  # Monitor GitHub Actions versions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    reviewers:
+      - "art"
+
+  # Monitor Docker base images and dependencies
+  - package-ecosystem: "docker"
+    directory: "/docker/postgres"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    reviewers:
+      - "art"
+
+  # Monitor primary stack compose dependencies
+  - package-ecosystem: "docker"
+    directory: "/stacks/primary"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "stack-primary"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    reviewers:
+      - "art"
+
+  # Monitor replica stack compose dependencies
+  - package-ecosystem: "docker"
+    directory: "/stacks/replica"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "stack-replica"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    reviewers:
+      - "art"
+
+  # Monitor single stack compose dependencies
+  - package-ecosystem: "docker"
+    directory: "/stacks/single"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "stack-single"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    reviewers:
+      - "art"

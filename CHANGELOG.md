@@ -4,21 +4,26 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Unreleased]
 
-### Added (Post-Audit Improvements - 2025-01-31)
+### Added (Pre-Release Improvements)
 - Single instance stack (`stacks/single/`) with minimal Postgres-only deployment
 - Replica stack (`stacks/replica/`) with streaming replication and auto-setup
 - Test scripts: `test-build.sh`, `test-auto-config.sh`, `wait-for-postgres.sh`
-- Tool scripts: `backup-postgres.sh`, `restore-postgres.sh`
+- Backup examples directory (`examples/backup/`) with pgBackRest setup
 - Prometheus scrape config and alert rules (`examples/prometheus/`)
 - Grafana dashboard guide (`examples/grafana/README.md`)
 - .dockerignore to optimize Docker build context
-- UPGRADING.md guide for major version upgrades
-- Init script execution order documentation in CLAUDE.md
+- Init script execution order documentation in CLAUDE.md/AGENTS.md
+- Architecture diagram in `docs/architecture.md`
 
-### Fixed (Post-Audit - 2025-01-31)
+### Fixed (Pre-Release)
+- Auto-config documentation: Clarified 1GB default when no memory limit detected
+- Added `POSTGRES_MEMORY` env var override documentation
+- Updated init script references: `03-pgbouncer-auth.sh` is stack-specific
+- Added TLS security warning to README (not enabled by default)
+- Added localhost binding documentation (127.0.0.1 default, not 0.0.0.0)
+- Replaced "zero config" claims with "minimal config"
+- Added explicit "build image first" step to Quick Start
 - Added pg_cron, pgaudit, pg_stat_statements to extension creation in init script
-- Added build verification commands to README Quick Start
-- Added prominent warning about `ghcr.io/your-org` placeholder
 
 ### Initial Release (Extracted from Wordian)
 - Multi-stage Docker build for PostgreSQL 18

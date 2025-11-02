@@ -9,13 +9,11 @@
 set -euo pipefail
 
 # Guard: Check required commands
-for cmd in docker; do
-  if ! command -v "$cmd" &>/dev/null; then
-    echo "❌ ERROR: Required command '$cmd' not found"
-    echo "   Install Docker: https://docs.docker.com/get-docker/"
-    exit 1
-  fi
-done
+if ! command -v docker &>/dev/null; then
+  echo "❌ ERROR: Required command 'docker' not found"
+  echo "   Install Docker: https://docs.docker.com/get-docker/"
+  exit 1
+fi
 
 # Guard: Check Docker daemon is running
 if ! docker info >/dev/null 2>&1; then

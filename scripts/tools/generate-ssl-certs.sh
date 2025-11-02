@@ -40,7 +40,7 @@ openssl req -new -x509 -days "$DAYS_VALID" -nodes -text \
   -keyout "$CERT_DIR/server.key" \
   -subj "/CN=$HOSTNAME/O=PostgreSQL/C=US"
 
-if [ $? -ne 0 ]; then
+if ! [ -f "$CERT_DIR/server.key" ]; then
   echo "[SSL] ERROR: Failed to generate certificates"
   exit 1
 fi

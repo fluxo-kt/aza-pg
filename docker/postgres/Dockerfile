@@ -20,14 +20,15 @@ ARG PGVECTOR_COMMIT_SHA
 ARG PG_CRON_COMMIT_SHA
 ARG PGAUDIT_COMMIT_SHA
 
-RUN set -e && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -e && \
     apt-get update && apt-get install -y \
     build-essential \
     git \
     postgresql-server-dev-${PG_MAJOR} \
     libssl-dev \
-    libkrb5-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libkrb5-dev
 
 RUN set -e && \
     git clone https://github.com/pgvector/pgvector.git /tmp/pgvector && \
@@ -68,18 +69,13 @@ COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/pg_cron.so /usr/lib/post
 COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/extension/pgaudit* /usr/share/postgresql/${PG_MAJOR}/extension/
 COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/pgaudit.so /usr/lib/postgresql/${PG_MAJOR}/lib/
 
-RUN set -e && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -e && \
     apt-get update && apt-get install -y \
     ca-certificates \
     zstd \
-    lz4 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN set -e && \
-    psql --version && \
-    echo "Checking extensions..." && \
-    ls -la /usr/share/postgresql/${PG_MAJOR}/extension/ | grep -E "(vector|pg_cron|pgaudit|pg_trgm|pg_stat_statements|auto_explain)" && \
-    echo "All extensions installed successfully"
+    lz4
 
 RUN set -e && mkdir -p /backup && chown postgres:postgres /backup
 

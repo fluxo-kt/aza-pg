@@ -1,0 +1,15 @@
+{
+  "name": "aza-pg-config-generator",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "bun run generator.ts",
+    "validate": "bun run validator.ts"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

@@ -4,12 +4,12 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 
 ## Design Goals
  
-**Purpose:** Universal Postgres stack eliminating manual tuning across 2GB VPS → 128GB burst nodes.
+**Purpose:** Universal Postgres stack minimizing manual tuning across 2GB VPS → 128GB burst nodes.
 
 **Targets:** Solo devs, small teams, multi-project fleets. Optimized for Docker Compose (not K8s). RAM: 2-16GB sweet spot, scales to 128GB. CPUs: 1-64 cores.
 
 **Criteria:**
-- Zero config drift: One image + env vars adapts to any hardware
+- Minimal config drift: One image + env vars adapts to any hardware
 - Supply chain hardened: SHA-pinned extensions (immutable), SBOM/provenance
 - Production-grade: PgBouncer pooling, replication, monitoring, SCRAM-SHA-256
 
@@ -19,13 +19,13 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - Custom extension compilation at runtime (pre-compiled in image)
 
 **Limitations:**
-- Auto-config requires cgroup v2 (falls back to host RAM detection)
-- Connection limit capped at 200 (prevent OOM on shared VPS)
+- Auto-config requires cgroup v2 (falls back to 1GB default if no limit detected)
+- Connection limit capped at 100-200 (prevent OOM on shared VPS)
 - PgBouncer transaction mode (no prepared statements, advisory locks, LISTEN/NOTIFY)
 
 ## Features
 
-- **Auto-Configuration**: Detects RAM and CPU cores, automatically scales settings
+- **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (defaults to 1GB if no memory limit detected, override with `POSTGRES_MEMORY` env var)
 - **Production Extensions**: pgvector 0.8.1, pg_cron 1.6.7, pgAudit 18.0, pg_stat_statements, auto_explain, pg_trgm
 - **Complete Stacks**: Single instance, Primary with PgBouncer + Exporter, Replica
 - **Supply Chain Security**: SHA-pinned extension sources, multi-platform builds (amd64/arm64)
@@ -52,9 +52,14 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 
 ## Quick Start
 
-**⚠️ IMPORTANT:** Before deploying, replace `ghcr.io/your-org` in compose files with your actual GitHub organization name, or use a local image tag.
+**⚠️ SECURITY WARNINGS:**
+1. **TLS Not Enabled by Default**: Connections use plaintext. For production with network exposure, enable TLS (see `docker/postgres/configs/postgresql-*.conf` for TLS settings). Requires valid certificates.
+2. **Local Binding Default**: Services bind to `127.0.0.1` by default (localhost only). To allow network access, change `POSTGRES_BIND_IP=0.0.0.0` in `.env` AND ensure firewall/network security is configured.
+3. **Image Placeholder**: Replace `ghcr.io/your-org` in compose files with your actual registry or use a local image tag.
 
-### Build Image Locally
+### Build Image First
+
+**IMPORTANT:** Build the image locally before deploying any stack:
 
 ```bash
 cd docker/postgres
@@ -70,7 +75,8 @@ docker run --rm aza-pg:pg18 postgres --version
 ```bash
 cd stacks/primary
 cp .env.example .env
-# Edit .env with your passwords
+# Edit .env with your passwords (REQUIRED: POSTGRES_PASSWORD, PGBOUNCER_AUTH_PASS, PG_REPLICATION_PASSWORD)
+# Optional: Set POSTGRES_BIND_IP=0.0.0.0 for network access (localhost by default)
 docker compose up -d
 ```
 
@@ -139,11 +145,10 @@ docker compose up
 **Adapts at runtime** (container start on VPS, not build time). Same image auto-tunes to deployment environment.
 
 Detects at container start:
-- **RAM**: cgroup v2 limit of running container (preferred) or host RAM where deployed
-- **Shared VPS Protection**: No memory limit → uses 50% of deployment host RAM (assumes coexistence with apps)
-- **CPU**: Core count on running container → scales max_worker_processes, max_parallel_workers, max_connections
+- **RAM**: cgroup v2 memory limit (preferred) → defaults to 1GB if no limit detected
+- **CPU**: Core count → scales max_worker_processes, max_parallel_workers, max_connections
 
-Baseline (2GB RAM with memory limit):
+Baseline settings (2GB RAM with memory limit):
 - shared_buffers: 256MB
 - effective_cache: 768MB
 - maintenance_work_mem: 64MB
@@ -153,8 +158,13 @@ Scales proportionally for larger allocations with caps:
 - shared_buffers: max 8GB
 - maintenance_work_mem: max 2GB
 - work_mem: max 32MB
+- max_connections: 100-200 (based on RAM)
 
-**Example:** 2GB VPS without memory limit → detects 2GB → uses 1GB for calculations (leaves 1GB for apps)
+**Default Behavior (no memory limit):** Uses 1GB baseline → shared_buffers=128MB, effective_cache=384MB
+
+**Manual Override:** Set `POSTGRES_MEMORY=<MB>` env var to specify RAM when cgroup detection unavailable
+
+**Example:** 4GB memory limit → shared_buffers=512MB, effective_cache=1536MB, max_connections=200
 
 ### Disable Auto-Config
 
@@ -213,4 +223,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Production-ready PostgreSQL with intelligent defaults and zero-config auto-adaptation.**
+**Production-ready PostgreSQL with intelligent defaults and minimal-config auto-adaptation.**

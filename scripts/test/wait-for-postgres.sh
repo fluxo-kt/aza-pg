@@ -12,13 +12,11 @@
 set -euo pipefail
 
 # Guard: Check required commands
-for cmd in pg_isready; do
-  if ! command -v "$cmd" &>/dev/null; then
-    echo "❌ ERROR: Required command '$cmd' not found"
-    echo "   Install PostgreSQL client tools: https://www.postgresql.org/download/"
-    exit 1
-  fi
-done
+if ! command -v pg_isready &>/dev/null; then
+  echo "❌ ERROR: Required command 'pg_isready' not found"
+  echo "   Install PostgreSQL client tools: https://www.postgresql.org/download/"
+  exit 1
+fi
 
 HOST="${1:-${PGHOST:-localhost}}"
 PORT="${2:-${PGPORT:-5432}}"

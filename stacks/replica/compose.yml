@@ -5,7 +5,7 @@
 services:
   postgres-replica:
     image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
-    container_name: ${POSTGRES_CONTAINER_NAME:-postgres-replica}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-replica
     restart: unless-stopped
 
     env_file:
@@ -14,9 +14,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       PG_REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
-      PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}
+      PG_REPLICATION_PASSWORD: "${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}"
       PRIMARY_HOST: ${PRIMARY_HOST:?PRIMARY_HOST is required}
       PRIMARY_PORT: ${PRIMARY_PORT:-5432}
       POSTGRES_SKIP_AUTOCONFIG: ${POSTGRES_SKIP_AUTOCONFIG:-false}
@@ -54,7 +54,7 @@ services:
   # Helper service to verify primary is accessible before starting replica
   primary-check:
     image: postgres:18-bookworm
-    container_name: primary-check
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-primary-check
     command: >
       sh -c "
       echo 'Checking primary availability at ${PRIMARY_HOST}:${PRIMARY_PORT}...';
@@ -70,14 +70,56 @@ services:
       exit 1;
       "
     environment:
-      PGPASSWORD: ${PG_REPLICATION_PASSWORD}
+      PGPASSWORD: "${PG_REPLICATION_PASSWORD}"
 
     networks:
       - postgres_net
 
+  postgres_exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-replica
+    restart: unless-stopped
+
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://postgres@postgres-replica:5432/postgres?sslmode=disable'
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: 'false'
+      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: 'false'
+
+    volumes:
+      - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+
+    networks:
+      - postgres_net
+      - ${MONITORING_NETWORK:-monitoring}
+
+    ports:
+      - '${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9188}:9187'
+
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+        reservations:
+          memory: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:9187/metrics || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 networks:
   postgres_net:
     name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+    external: true
+  monitoring:
     external: true
 
 volumes:

@@ -45,7 +45,7 @@ echo "[REPLICA] Replication slot verified"
 # Clean PGDATA directory since initdb has already created it
 # pg_basebackup requires an empty or non-existent target directory
 echo "[REPLICA] Cleaning PGDATA to prepare for base backup..."
-rm -rf "$PGDATA"/*
+rm -rf "${PGDATA:?}"/*
 
 # Run pg_basebackup to clone primary
 # -R flag automatically creates standby.signal and writes primary_conninfo

@@ -32,6 +32,24 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - **Connection Pooling**: PgBouncer with auth_query (SCRAM-SHA-256)
 - **Monitoring**: postgres_exporter with custom queries
 
+## Image Specifications
+
+### Size
+- Base `postgres:18-bookworm`: ~415MB
+- With compiled extensions (pgvector, pg_cron, pgaudit): ~450MB
+- Multi-platform manifest (amd64 + arm64): ~900MB total
+
+### Optimizations
+- Multi-stage build (builder artifacts not included in final image)
+- Minimal runtime dependencies (ca-certificates, zstd, lz4 only)
+- Parallel extension compilation (~40% faster builds)
+
+### Extensions Included
+- **pgvector 0.8.1**: Vector similarity search
+- **pg_cron 1.6.7**: Job scheduling
+- **pgAudit 18.0**: Audit logging
+- **PostgreSQL contrib**: pg_trgm, pg_stat_statements, auto_explain, uuid-ossp
+
 ## Quick Start
 
 **⚠️ IMPORTANT:** Before deploying, replace `ghcr.io/your-org` in compose files with your actual GitHub organization name, or use a local image tag.

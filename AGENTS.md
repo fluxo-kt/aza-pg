@@ -63,6 +63,62 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Usage:** `docker compose -f compose.yml -f compose.dev.yml up` merges configs (dev wins on conflicts).
 
+### Shared Base Configuration Pattern
+**Pattern:** Extract common PostgreSQL settings to `docker/postgres/configs/postgresql-base.conf`, use `include` directive in stack-specific configs.
+
+**Files:**
+- Base: `docker/postgres/configs/postgresql-base.conf` (71 lines)
+- Primary: Stack-specific overrides only (100 lines total)
+- Replica: Stack-specific overrides only (57 lines total)
+- Single: Stack-specific overrides only (49 lines total)
+
+**Usage:** `include = '/etc/postgresql/postgresql-base.conf'` at top of each config
+
+**Benefits:** DRY, single source of truth, no config drift. Common settings (I/O, logging, extensions, autovacuum) defined once.
+
+**What goes in base:** Universal settings (listen_addresses, io_method, WAL compression, TLS config, pg_stat_statements, auto_explain, logging format).
+
+**What stays in stack configs:** Deployment-specific (replication settings, synchronous_commit, max_wal_senders, hot_standby delays, pg_cron).
+
+### Auto-Config Memory Allocation
+**VPS Detection:** Detects cgroup v2 limits. If no limit: assumes shared VPS, uses 50% of host RAM (configurable via `SHARED_VPS_RAM_PERCENT`).
+
+**Override:** `POSTGRES_SKIP_AUTOCONFIG=true` uses static `postgresql.conf` values
+
+**Baseline:** 2GB RAM = 256MB shared_buffers (12.5% ratio), scales linearly up to 8GB cap
+
+**Shared VPS Protection:** No memory limit detected → multiplies RAM by `SHARED_VPS_RAM_PERCENT` (default 50%) → prevents overcommit when coexisting with apps on same node.
+
+**Example:** 4GB VPS without memory limit → detects 4GB host RAM → uses 2GB for calculations (50%) → shared_buffers=512MB, effective_cache=1536MB.
+
+### PostgreSQL 18 Optimizations Applied
+- **Async I/O:** `io_method = 'worker'` (2-3x I/O performance on NVMe/cloud storage)
+- **LZ4 WAL compression:** Faster than legacy `pglz`, reduces WAL volume 30-60%
+- **Data checksums:** Enabled by default (opt-out via `DISABLE_DATA_CHECKSUMS=true`)
+- **TLS 1.3 support:** Configured (commented out, requires cert setup)
+- **Enhanced monitoring:** `pg_stat_io` and `pg_stat_wal` views for I/O/WAL analysis
+- **Idle replication slot timeout:** Prevents WAL bloat from abandoned slots (48h)
+- **pgAudit log_statement_once:** Reduces duplicate audit log entries (PG18 feature)
+
+### Security Hardening Pattern
+**User isolation:**
+- `NOINHERIT` on replicator and pgbouncer_auth users (prevents privilege escalation)
+- Per-user connection limits (postgres: 50, replicator: 5, pgbouncer_auth: 10)
+
+**Audit logging:**
+- pgAudit tracks DDL, write operations, and role changes
+- `pgaudit.log_statement_once = on` reduces log duplication (PostgreSQL 18 feature)
+- Output to stderr (captured by Docker logs)
+
+**Network isolation:**
+- Production: private IPs only (no 127.0.0.1 exposure)
+- Development: localhost override via `compose.dev.yml`
+
+**Secrets management:**
+- All passwords via env vars (never committed)
+- Dev test password (`dev_pgbouncer_auth_test_2025`) safe for local testing only
+- Production: `${PGBOUNCER_AUTH_PASS}`, `${POSTGRES_PASSWORD}` injected at runtime
+
 ## Key Workflows
 
 **Extension Testing:** CREATE EXTENSION + functional query → grep logs for RAM/CPU detection → test PgBouncer via :6432 → verify SHOW POOLS.

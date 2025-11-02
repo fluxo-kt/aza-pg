@@ -91,6 +91,7 @@ RUN set -e && chmod +x /docker-entrypoint-initdb.d/*.sh
 
 COPY docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN set -e && chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
+COPY configs/postgresql-base.conf /etc/postgresql/
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1

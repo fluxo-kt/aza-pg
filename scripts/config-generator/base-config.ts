@@ -62,11 +62,13 @@ export const BASE_CONFIG: BaseConfig = {
 
     // WAL Settings
     walLevel: 'replica',
-    walCompression: 'lz4',
   },
 
   stacks: {
     primary: {
+      // WAL
+      walCompression: 'lz4',
+
       // Replication
       maxWalSenders: 10,
       maxReplicationSlots: 10,
@@ -93,6 +95,9 @@ export const BASE_CONFIG: BaseConfig = {
     },
 
     replica: {
+      // WAL
+      walCompression: 'lz4',
+
       // Hot Standby
       hotStandby: 'on',
       maxStandbyArchiveDelay: '300s',

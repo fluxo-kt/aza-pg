@@ -79,10 +79,10 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Pattern:** Extract common PostgreSQL settings to `docker/postgres/configs/postgresql-base.conf`, use `include` directive in stack-specific configs.
 
 **Files:**
-- Base: `docker/postgres/configs/postgresql-base.conf` (71 lines)
-- Primary: Stack-specific overrides only (100 lines total)
-- Replica: Stack-specific overrides only (57 lines total)
-- Single: Stack-specific overrides only (49 lines total)
+- Base: `docker/postgres/configs/postgresql-base.conf` (61 lines)
+- Primary: Stack-specific overrides only (45 lines total)
+- Replica: Stack-specific overrides only (33 lines total)
+- Single: Stack-specific overrides only (24 lines total)
 
 **Usage:** `include = '/etc/postgresql/postgresql-base.conf'` at top of each config
 

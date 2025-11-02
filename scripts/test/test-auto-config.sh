@@ -244,6 +244,156 @@ fi
 docker rm -f "$CONTAINER_NAME" >/dev/null
 echo
 
+# Test Case 6: 512MB memory limit (minimum supported)
+echo "Test 6: 512MB memory limit (minimum)"
+echo "======================================"
+CONTAINER_NAME="pg-autoconfig-test-6-$$"
+
+if ! docker run -d \
+  --name "$CONTAINER_NAME" \
+  --memory="512m" \
+  -e POSTGRES_PASSWORD=test \
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with 512MB memory limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+sleep 5
+
+echo "Auto-config logs:"
+docker logs "$CONTAINER_NAME" 2>&1 | grep "\[AUTO-CONFIG\]"
+echo
+
+# Verify 512MB settings
+LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
+if echo "$LOGS" | grep -q "RAM: 512MB.*cgroup"; then
+  echo "✅ Detected 512MB RAM via cgroup-v2"
+else
+  echo "❌ FAILED: Should detect 512MB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "shared_buffers=64MB"; then
+  echo "✅ Minimum shared_buffers (64MB) correct"
+else
+  echo "❌ FAILED: shared_buffers should be 64MB for 512MB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "max_connections=100"; then
+  echo "✅ Connections limited to 100 for low RAM"
+else
+  echo "❌ FAILED: max_connections should be 100 for 512MB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+docker rm -f "$CONTAINER_NAME" >/dev/null
+echo
+
+# Test Case 7: 1GB memory limit (sub-baseline)
+echo "Test 7: 1GB memory limit (sub-baseline)"
+echo "========================================="
+CONTAINER_NAME="pg-autoconfig-test-7-$$"
+
+if ! docker run -d \
+  --name "$CONTAINER_NAME" \
+  --memory="1g" \
+  -e POSTGRES_PASSWORD=test \
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with 1GB memory limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+sleep 5
+
+echo "Auto-config logs:"
+docker logs "$CONTAINER_NAME" 2>&1 | grep "\[AUTO-CONFIG\]"
+echo
+
+# Verify 1GB settings
+LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
+if echo "$LOGS" | grep -q "RAM: 102[0-9]MB.*cgroup"; then
+  echo "✅ Detected 1GB RAM via cgroup-v2"
+else
+  echo "❌ FAILED: Should detect 1GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "shared_buffers=128MB"; then
+  echo "✅ Sub-baseline shared_buffers (128MB = 50% of baseline) correct"
+else
+  echo "❌ FAILED: shared_buffers should be 128MB for 1GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "max_connections=100"; then
+  echo "✅ Connections limited to 100 for <2GB RAM"
+else
+  echo "❌ FAILED: max_connections should be 100 for 1GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+docker rm -f "$CONTAINER_NAME" >/dev/null
+echo
+
+# Test Case 8: 8GB memory limit (high memory, uncapped)
+echo "Test 8: 8GB memory limit (high memory)"
+echo "======================================="
+CONTAINER_NAME="pg-autoconfig-test-8-$$"
+
+if ! docker run -d \
+  --name "$CONTAINER_NAME" \
+  --memory="8g" \
+  -e POSTGRES_PASSWORD=test \
+  "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Failed to start container with 8GB memory limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+sleep 5
+
+echo "Auto-config logs:"
+docker logs "$CONTAINER_NAME" 2>&1 | grep "\[AUTO-CONFIG\]"
+echo
+
+# Verify 8GB settings
+LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
+if echo "$LOGS" | grep -q "RAM: 819[0-9]MB.*cgroup"; then
+  echo "✅ Detected 8GB RAM via cgroup-v2"
+else
+  echo "❌ FAILED: Should detect 8GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "shared_buffers=1024MB"; then
+  echo "✅ High memory shared_buffers (1024MB = 4x baseline) correct"
+else
+  echo "❌ FAILED: shared_buffers should be 1024MB for 8GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "max_connections=200"; then
+  echo "✅ Connections scaled to 200 for >=2GB RAM"
+else
+  echo "❌ FAILED: max_connections should be 200 for 8GB RAM"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+docker rm -f "$CONTAINER_NAME" >/dev/null
+echo
+
 echo "========================================"
 echo "✅ All auto-config tests passed!"
 echo "========================================"

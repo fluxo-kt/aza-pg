@@ -80,9 +80,9 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Files:**
 - Base: `docker/postgres/configs/postgresql-base.conf` (61 lines)
-- Primary: Stack-specific overrides only (45 lines total)
-- Replica: Stack-specific overrides only (33 lines total)
-- Single: Stack-specific overrides only (24 lines total)
+- Primary: Stack-specific overrides only (44 lines total)
+- Replica: Stack-specific overrides only (32 lines total)
+- Single: Stack-specific overrides only (26 lines total)
 
 **Usage:** `include = '/etc/postgresql/postgresql-base.conf'` at top of each config
 

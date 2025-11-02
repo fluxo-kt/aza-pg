@@ -38,9 +38,9 @@ echo "========================================"
 echo "Image tag: $IMAGE_TAG"
 echo
 
-# Test Case 1: No memory limit (should use 50% of host RAM)
-echo "Test 1: No memory limit (shared VPS mode)"
-echo "=========================================="
+# Test Case 1: No memory limit (should default to 1GB)
+echo "Test 1: No memory limit (default 1GB)"
+echo "======================================"
 CONTAINER_NAME="pg-autoconfig-test-1-$$"
 
 if ! docker run -d \
@@ -58,11 +58,20 @@ echo "Auto-config logs:"
 docker logs "$CONTAINER_NAME" 2>&1 | grep "\[AUTO-CONFIG\]"
 echo
 
-# Verify it detected "shared" mode
-if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "shared"; then
-  echo "✅ Correctly detected shared VPS mode (no memory limit)"
+# Verify it used default 1GB
+LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
+if echo "$LOGS" | grep -q "RAM: 1024MB.*default"; then
+  echo "✅ Correctly used 1GB default (no memory limit detected)"
 else
-  echo "❌ FAILED: Should detect shared VPS mode"
+  echo "❌ FAILED: Should default to 1GB when no memory limit"
+  docker rm -f "$CONTAINER_NAME" >/dev/null
+  exit 1
+fi
+
+if echo "$LOGS" | grep -q "shared_buffers=128MB"; then
+  echo "✅ Default shared_buffers (128MB for 1GB) correct"
+else
+  echo "❌ FAILED: shared_buffers should be 128MB for 1GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -70,9 +79,9 @@ fi
 docker rm -f "$CONTAINER_NAME" >/dev/null
 echo
 
-# Test Case 2: 2GB memory limit (dedicated mode)
-echo "Test 2: 2GB memory limit (dedicated mode)"
-echo "==========================================="
+# Test Case 2: 2GB memory limit (baseline)
+echo "Test 2: 2GB memory limit (baseline)"
+echo "===================================="
 CONTAINER_NAME="pg-autoconfig-test-2-$$"
 
 if ! docker run -d \
@@ -95,8 +104,8 @@ echo
 
 # Verify baseline settings (2GB RAM)
 LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
-if echo "$LOGS" | grep -q "RAM: 204[0-9]MB.*dedicated"; then
-  echo "✅ Detected 2GB RAM in dedicated mode"
+if echo "$LOGS" | grep -q "RAM: 204[0-9]MB.*cgroup"; then
+  echo "✅ Detected 2GB RAM via cgroup-v2"
 else
   echo "❌ FAILED: Should detect 2GB RAM"
   echo "   Logs: $LOGS"
@@ -104,7 +113,7 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers: 256MB"; then
+if echo "$LOGS" | grep -q "shared_buffers=256MB"; then
   echo "✅ Baseline shared_buffers (256MB) correct"
 else
   echo "❌ FAILED: shared_buffers should be 256MB for 2GB RAM"
@@ -138,15 +147,15 @@ echo
 
 # Verify scaled settings (4GB = 2x baseline)
 LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
-if echo "$LOGS" | grep -q "RAM: 409[0-9]MB.*dedicated"; then
-  echo "✅ Detected 4GB RAM in dedicated mode"
+if echo "$LOGS" | grep -q "RAM: 409[0-9]MB.*cgroup"; then
+  echo "✅ Detected 4GB RAM via cgroup-v2"
 else
   echo "❌ FAILED: Should detect 4GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers: 512MB"; then
+if echo "$LOGS" | grep -q "shared_buffers=512MB"; then
   echo "✅ Scaled shared_buffers (512MB = 2x baseline) correct"
 else
   echo "❌ FAILED: shared_buffers should be 512MB for 4GB RAM"
@@ -181,7 +190,7 @@ echo
 
 # Verify CPU settings
 LOGS=$(docker logs "$CONTAINER_NAME" 2>&1)
-if echo "$LOGS" | grep -q "CPU: [0-9] cores"; then
+if echo "$LOGS" | grep -q "CPU: [0-9]* cores"; then
   echo "✅ Detected CPU cores"
 else
   echo "❌ FAILED: Should detect CPU cores"
@@ -189,10 +198,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "max_worker_processes:"; then
-  echo "✅ CPU settings configured"
+if echo "$LOGS" | grep -q "workers=[0-9]*"; then
+  echo "✅ CPU worker settings configured"
 else
-  echo "❌ FAILED: Should configure CPU-based settings"
+  echo "❌ FAILED: Should configure CPU-based worker settings"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi

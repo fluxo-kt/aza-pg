@@ -29,6 +29,8 @@ psql -v ON_ERROR_STOP=1 -v pgbouncer_password="$PGBOUNCER_AUTH_PASS" \
 
     SELECT pg_temp.setup_pgbouncer_auth(:'pgbouncer_password');
 
+    ALTER ROLE pgbouncer_auth CONNECTION LIMIT 10;
+
     CREATE OR REPLACE FUNCTION pgbouncer_lookup(user_name TEXT)
     RETURNS TABLE(username TEXT, password TEXT)
     LANGUAGE sql SECURITY DEFINER

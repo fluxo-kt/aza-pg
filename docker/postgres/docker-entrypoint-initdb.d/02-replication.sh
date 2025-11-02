@@ -19,7 +19,7 @@ psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name
     RETURNS void AS \$func\$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-            EXECUTE format('CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD %L', p_password);
+            EXECUTE format('CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD %L NOINHERIT', p_password);
             RAISE NOTICE 'Replication user created: replicator';
         ELSE
             RAISE NOTICE 'Replication user already exists: replicator';
@@ -33,6 +33,11 @@ psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name
     \$func\$ LANGUAGE plpgsql;
 
     SELECT pg_temp.setup_replication(:'repl_password', :'slot_name');
+
+    -- Security: Limit connections per user
+    ALTER ROLE postgres CONNECTION LIMIT 50;
+    ALTER ROLE replicator CONNECTION LIMIT 5;
+
     GRANT CONNECT ON DATABASE postgres TO replicator;
 EOSQL
 

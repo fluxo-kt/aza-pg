@@ -14,7 +14,11 @@ readonly SHARED_BUFFERS_CAP_MB=8192
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
 
-export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --data-checksums"
+# PostgreSQL 18 enables data checksums by default
+# Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended)
+if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
+    export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --no-data-checksums"
+fi
 
 if [ "${POSTGRES_SKIP_AUTOCONFIG:-false}" = "true" ]; then
     echo "[AUTO-CONFIG] Disabled via POSTGRES_SKIP_AUTOCONFIG=true"
@@ -46,7 +50,8 @@ detect_ram() {
     fi
 
     if [ "$shared_vps" = true ]; then
-        ram_mb=$((ram_mb / 2))
+        SHARED_VPS_RAM_PERCENT=${SHARED_VPS_RAM_PERCENT:-50}
+        ram_mb=$((ram_mb * SHARED_VPS_RAM_PERCENT / 100))
         echo "$ram_mb:$source:shared"
     else
         echo "$ram_mb:$source:dedicated"
@@ -130,10 +135,9 @@ MAX_PARALLEL_WORKERS=$CPU_CORES
 MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
 
-AVAILABLE_FOR_CONNS=$((TOTAL_RAM_MB - SHARED_BUFFERS_MB))
-MAX_CONNECTIONS=$((AVAILABLE_FOR_CONNS / WORK_MEM_MB))
-[ "$MAX_CONNECTIONS" -lt 20 ] && MAX_CONNECTIONS=20
-[ "$MAX_CONNECTIONS" -gt 200 ] && MAX_CONNECTIONS=200
+# Connection limit: Use fixed value (PgBouncer multiplexes connections)
+MAX_CONNECTIONS=200
+[ "$TOTAL_RAM_MB" -lt 2048 ] && MAX_CONNECTIONS=100
 
 echo "[AUTO-CONFIG] CPU settings:"
 echo "[AUTO-CONFIG]   max_worker_processes: ${MAX_WORKER_PROCESSES}"

@@ -29,26 +29,18 @@ RUN set -e && \
     libkrb5-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Build all extensions in parallel
 RUN set -e && \
     git clone https://github.com/pgvector/pgvector.git /tmp/pgvector && \
-    cd /tmp/pgvector && \
-    git checkout ${PGVECTOR_COMMIT_SHA} && \
-    make && \
-    make install
-
-RUN set -e && \
     git clone https://github.com/citusdata/pg_cron.git /tmp/pg_cron && \
-    cd /tmp/pg_cron && \
-    git checkout ${PG_CRON_COMMIT_SHA} && \
-    make && \
-    make install
-
-RUN set -e && \
     git clone https://github.com/pgaudit/pgaudit.git /tmp/pgaudit && \
-    cd /tmp/pgaudit && \
-    git checkout ${PGAUDIT_COMMIT_SHA} && \
-    make USE_PGXS=1 && \
-    make USE_PGXS=1 install
+    cd /tmp/pgvector && git checkout ${PGVECTOR_COMMIT_SHA} && \
+    cd /tmp/pg_cron && git checkout ${PG_CRON_COMMIT_SHA} && \
+    cd /tmp/pgaudit && git checkout ${PGAUDIT_COMMIT_SHA} && \
+    (cd /tmp/pgvector && make -j$(nproc) && make install) & \
+    (cd /tmp/pg_cron && make -j$(nproc) && make install) & \
+    (cd /tmp/pgaudit && make USE_PGXS=1 -j$(nproc) && make USE_PGXS=1 install) & \
+    wait
 
 FROM postgres:${PG_VERSION}-bookworm
 
@@ -70,12 +62,9 @@ COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/pgaudit.so /usr/lib/post
 
 RUN set -e && \
     apt-get update && apt-get install -y \
-    curl \
     ca-certificates \
     zstd \
     lz4 \
-    netcat-openbsd \
-    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -e && \
@@ -93,7 +82,7 @@ COPY docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN set -e && chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
 COPY configs/postgresql-base.conf /etc/postgresql/
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1
 
 EXPOSE 5432

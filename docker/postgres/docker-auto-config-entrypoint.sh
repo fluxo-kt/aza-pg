@@ -4,21 +4,11 @@
 
 set -e
 
-readonly BASELINE_RAM_MB=2048
-readonly BASELINE_SHARED_BUFFERS_MB=256
-readonly BASELINE_EFFECTIVE_CACHE_MB=768
-readonly BASELINE_MAINTENANCE_WORK_MEM_MB=64
-readonly BASELINE_WORK_MEM_MB=4
 readonly DEFAULT_RAM_MB=1024
 
 readonly SHARED_BUFFERS_CAP_MB=8192
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
-
-if [ "$BASELINE_RAM_MB" -le 0 ] || [ "$BASELINE_SHARED_BUFFERS_MB" -le 0 ]; then
-    echo "[AUTO-CONFIG] FATAL: Invalid baseline configuration"
-    exit 1
-fi
 
 # PostgreSQL 18 enables data checksums by default
 # Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended)
@@ -90,28 +80,72 @@ if [ "$TOTAL_RAM_MB" -lt 512 ]; then
     exit 1
 fi
 
-# Always scale proportionally based on RAM (works for both up and down scaling)
-SHARED_BUFFERS_MB=$((TOTAL_RAM_MB * BASELINE_SHARED_BUFFERS_MB / BASELINE_RAM_MB))
-EFFECTIVE_CACHE_MB=$((TOTAL_RAM_MB * BASELINE_EFFECTIVE_CACHE_MB / BASELINE_RAM_MB))
-MAINTENANCE_WORK_MEM_MB=$((TOTAL_RAM_MB * BASELINE_MAINTENANCE_WORK_MEM_MB / BASELINE_RAM_MB))
-WORK_MEM_MB=$((TOTAL_RAM_MB * BASELINE_WORK_MEM_MB / BASELINE_RAM_MB))
+MAX_CONNECTIONS=200
+[ "$TOTAL_RAM_MB" -lt 2048 ] && MAX_CONNECTIONS=100
 
-# Apply caps (only affects RAM > 16GB)
-[ "$SHARED_BUFFERS_MB" -gt "$SHARED_BUFFERS_CAP_MB" ] && SHARED_BUFFERS_MB=$SHARED_BUFFERS_CAP_MB
-[ "$MAINTENANCE_WORK_MEM_MB" -gt "$MAINTENANCE_WORK_MEM_CAP_MB" ] && MAINTENANCE_WORK_MEM_MB=$MAINTENANCE_WORK_MEM_CAP_MB
-[ "$WORK_MEM_MB" -gt "$WORK_MEM_CAP_MB" ] && WORK_MEM_MB=$WORK_MEM_CAP_MB
+calculate_shared_buffers() {
+    local ratio
 
-[ "$WORK_MEM_MB" -lt 1 ] && WORK_MEM_MB=1
+    if [ "$TOTAL_RAM_MB" -le 1024 ]; then
+        ratio=25
+    elif [ "$TOTAL_RAM_MB" -le 8192 ]; then
+        ratio=25
+    elif [ "$TOTAL_RAM_MB" -le 32768 ]; then
+        ratio=20
+    else
+        ratio=15
+    fi
+
+    local value=$((TOTAL_RAM_MB * ratio / 100))
+
+    [ "$value" -lt 64 ] && value=64
+    [ "$value" -gt "$SHARED_BUFFERS_CAP_MB" ] && value=$SHARED_BUFFERS_CAP_MB
+
+    echo "$value"
+}
+
+calculate_effective_cache() {
+    local value=$((TOTAL_RAM_MB - SHARED_BUFFERS_MB))
+    local min_value=$((SHARED_BUFFERS_MB * 2))
+
+    [ "$value" -lt "$min_value" ] && value=$min_value
+    [ "$value" -lt 0 ] && value=0
+
+    echo "$value"
+}
+
+calculate_maintenance_work_mem() {
+    local value=$((TOTAL_RAM_MB / 32))
+
+    [ "$value" -lt 32 ] && value=32
+    [ "$value" -gt "$MAINTENANCE_WORK_MEM_CAP_MB" ] && value=$MAINTENANCE_WORK_MEM_CAP_MB
+
+    echo "$value"
+}
+
+calculate_work_mem() {
+    local divisor=$((MAX_CONNECTIONS * 4))
+    [ "$divisor" -lt 1 ] && divisor=1
+
+    local value=$((TOTAL_RAM_MB / divisor))
+
+    [ "$value" -lt 1 ] && value=1
+    [ "$value" -gt "$WORK_MEM_CAP_MB" ] && value=$WORK_MEM_CAP_MB
+
+    echo "$value"
+}
+
+SHARED_BUFFERS_MB=$(calculate_shared_buffers)
+EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
+MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
+WORK_MEM_MB=$(calculate_work_mem)
 
 MAX_WORKER_PROCESSES=$((CPU_CORES * 2))
 MAX_PARALLEL_WORKERS=$CPU_CORES
 MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
 
-MAX_CONNECTIONS=200
-[ "$TOTAL_RAM_MB" -lt 2048 ] && MAX_CONNECTIONS=100
-
-echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
+echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \

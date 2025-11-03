@@ -59,13 +59,15 @@ export const BASE_CONFIG: BaseConfig = {
 
     // Checkpoints
     checkpointCompletionTarget: 0.9,
+
+    // WAL
+    walCompression: 'lz4',
   },
 
   stacks: {
     primary: {
       // WAL
       walLevel: 'replica',
-      walCompression: 'lz4',
 
       // Replication
       maxWalSenders: 10,
@@ -95,7 +97,6 @@ export const BASE_CONFIG: BaseConfig = {
     replica: {
       // WAL
       walLevel: 'replica',
-      walCompression: 'lz4',
 
       // Hot Standby
       hotStandby: 'on',
@@ -121,7 +122,6 @@ export const BASE_CONFIG: BaseConfig = {
     single: {
       // Simplified WAL for non-replicated setup
       walLevel: 'minimal',
-      walCompression: 'lz4',
       maxWalSenders: 0,
 
       // pgAudit (disabled)

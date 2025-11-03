@@ -5,6 +5,21 @@ import { join } from 'path';
 import type { StackType, PostgreSQLSettings } from './types.js';
 import { BASE_CONFIG } from './base-config.js';
 
+const SHARED_CATEGORY_FIELDS = {
+  io: ['ioMethod', 'ioCombineLimit'] as const,
+  pg_stat_statements: ['pgStatStatementsMax', 'pgStatStatementsTrack'] as const,
+  autovacuum: [
+    'autovacuum',
+    'autovacuumNaptime',
+    'autovacuumVacuumCostDelay',
+    'autovacuumVacuumCostLimit',
+    'autovacuumVacuumScaleFactor',
+    'autovacuumAnalyzeScaleFactor',
+    'autovacuumFreezeMaxAge',
+  ] as const,
+  checkpoints: ['checkpointCompletionTarget'] as const,
+};
+
 const REPO_ROOT = join(import.meta.dir, '../..');
 
 function mergeSettings(
@@ -40,7 +55,11 @@ function formatSetting(key: string, value: any): string {
   return `${snakeKey} = '${value}'`;
 }
 
-function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings): string {
+function generatePostgresqlConf(
+  stack: StackType,
+  settings: PostgreSQLSettings,
+  overrides: Partial<PostgreSQLSettings>
+): string {
   const lines: string[] = [];
 
   lines.push('# PostgreSQL Configuration');
@@ -56,24 +75,20 @@ function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings):
 
   const categories = {
     connection: ['listenAddresses', 'port', 'sharedPreloadLibraries', 'idleSessionTimeout'],
-    io: ['ioMethod', 'ioCombineLimit'],
+    io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
       'logDestination', 'loggingCollector', 'logMinDurationStatement', 'logLinePrefix',
       'logLockWaits', 'logTempFiles', 'logTimezone', 'logCheckpoints', 'logConnections',
       'logDisconnections', 'logAutovacuumMinDuration', 'logReplicationCommands'
     ],
     locale: ['timezone', 'lcMessages', 'lcMonetary', 'lcNumeric', 'lcTime', 'defaultTextSearchConfig'],
-    pg_stat_statements: ['pgStatStatementsMax', 'pgStatStatementsTrack'],
+    pg_stat_statements: [...SHARED_CATEGORY_FIELDS.pg_stat_statements],
     auto_explain: [
       'autoExplainLogMinDuration', 'autoExplainLogAnalyze', 'autoExplainLogBuffers',
       'autoExplainLogNestedStatements', 'autoExplainLogTiming'
     ],
-    autovacuum: [
-      'autovacuum', 'autovacuumNaptime', 'autovacuumVacuumCostDelay',
-      'autovacuumVacuumCostLimit', 'autovacuumVacuumScaleFactor',
-      'autovacuumAnalyzeScaleFactor', 'autovacuumFreezeMaxAge'
-    ],
-    checkpoints: ['checkpointCompletionTarget'],
+    autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
+    checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
     wal: [
       'walLevel', 'walCompression', 'maxWalSize', 'minWalSize',
       'maxWalSenders', 'walKeepSize', 'archiveMode', 'archiveCommand'
@@ -99,6 +114,10 @@ function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings):
     const categoryLines: string[] = [];
 
     for (const key of categoryKeys) {
+      if (overrides[key as keyof PostgreSQLSettings] === undefined) {
+        continue;
+      }
+
       const value = settings[key as keyof PostgreSQLSettings];
       if (value !== undefined) {
         const formatted = formatSetting(key, value);
@@ -116,14 +135,14 @@ function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings):
   }
 
   if (stack === 'replica' || stack === 'single') {
-    if (settings.autoExplainLogTiming !== undefined) {
+    if (overrides.autoExplainLogTiming !== undefined) {
       lines.push('# AUTO EXPLAIN');
       lines.push(formatSetting('autoExplainLogTiming', settings.autoExplainLogTiming));
       lines.push('');
     }
   }
 
-  if (stack === 'primary' && settings.archiveMode === 'off') {
+  if (stack === 'primary' && overrides.archiveMode !== undefined && settings.archiveMode === 'off') {
     lines.push('# WAL Archiving (disabled by default)');
     lines.push('# Uncomment and configure for Point-in-Time Recovery (PITR):');
     lines.push("# archive_mode = 'on'");
@@ -154,24 +173,20 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
 
   const categories = {
     connection: ['listenAddresses', 'sharedPreloadLibraries'],
-    io: ['ioMethod', 'ioCombineLimit'],
+    io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
       'logDestination', 'loggingCollector', 'logMinDurationStatement', 'logLinePrefix',
       'logLockWaits', 'logTempFiles', 'logCheckpoints', 'logConnections',
       'logDisconnections', 'logAutovacuumMinDuration'
     ],
     locale: ['timezone', 'logTimezone', 'lcMessages', 'lcMonetary', 'lcNumeric', 'lcTime', 'defaultTextSearchConfig'],
-    pg_stat_statements: ['pgStatStatementsMax', 'pgStatStatementsTrack'],
+    pg_stat_statements: [...SHARED_CATEGORY_FIELDS.pg_stat_statements],
     auto_explain: [
       'autoExplainLogMinDuration', 'autoExplainLogAnalyze', 'autoExplainLogBuffers',
       'autoExplainLogNestedStatements'
     ],
-    autovacuum: [
-      'autovacuum', 'autovacuumNaptime', 'autovacuumVacuumCostDelay',
-      'autovacuumVacuumCostLimit', 'autovacuumVacuumScaleFactor',
-      'autovacuumAnalyzeScaleFactor', 'autovacuumFreezeMaxAge'
-    ],
-    checkpoints: ['checkpointCompletionTarget'],
+    autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
+    checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
     wal: ['walLevel', 'walCompression'],
   };
 
@@ -250,8 +265,9 @@ function generateConfigs() {
   for (const stack of stacks) {
     console.log(`\n📝 Generating ${stack} stack configurations...`);
 
-    const settings = mergeSettings(BASE_CONFIG.common, BASE_CONFIG.stacks[stack]);
-    const postgresqlConf = generatePostgresqlConf(stack, settings);
+    const stackOverrides = BASE_CONFIG.stacks[stack];
+    const settings = mergeSettings(BASE_CONFIG.common, stackOverrides);
+    const postgresqlConf = generatePostgresqlConf(stack, settings, stackOverrides);
 
     let confDir: string;
     let confName: string;

@@ -48,33 +48,6 @@ services:
         reservations:
           memory: ${POSTGRES_MEMORY_RESERVATION:-256M}
 
-    depends_on:
-      - primary-check
-
-  # Helper service to verify primary is accessible before starting replica
-  primary-check:
-    image: postgres:18-bookworm
-    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-primary-check
-    command: >
-      sh -c "
-      echo 'Checking primary availability at ${PRIMARY_HOST}:${PRIMARY_PORT}...';
-      for i in \$(seq 1 30); do
-        if pg_isready -h ${PRIMARY_HOST} -p ${PRIMARY_PORT} -U ${PG_REPLICATION_USER}; then
-          echo 'Primary is ready';
-          exit 0;
-        fi;
-        echo 'Waiting for primary... attempt \$i/30';
-        sleep 2;
-      done;
-      echo 'Primary not reachable after 60 seconds';
-      exit 1;
-      "
-    environment:
-      PGPASSWORD: "${PG_REPLICATION_PASSWORD}"
-
-    networks:
-      - postgres_net
-
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-replica

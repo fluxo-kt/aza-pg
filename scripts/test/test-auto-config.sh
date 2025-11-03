@@ -68,10 +68,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=128MB"; then
-  echo "✅ Default shared_buffers (128MB for 1GB) correct"
+if echo "$LOGS" | grep -q "shared_buffers=256MB"; then
+  echo "✅ Default shared_buffers (256MB for 1GB assumption) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 128MB for 1GB RAM"
+  echo "❌ FAILED: shared_buffers should be 256MB for 1GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -113,10 +113,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=256MB"; then
-  echo "✅ Baseline shared_buffers (256MB) correct"
+if echo "$LOGS" | grep -q "shared_buffers=512MB"; then
+  echo "✅ Baseline shared_buffers (512MB) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 256MB for 2GB RAM"
+  echo "❌ FAILED: shared_buffers should be 512MB for 2GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -155,10 +155,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=512MB"; then
-  echo "✅ Scaled shared_buffers (512MB = 2x baseline) correct"
+if echo "$LOGS" | grep -q "shared_buffers=1024MB"; then
+  echo "✅ Scaled shared_buffers (1024MB) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 512MB for 4GB RAM"
+  echo "❌ FAILED: shared_buffers should be 1024MB for 4GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -275,10 +275,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=64MB"; then
-  echo "✅ Minimum shared_buffers (64MB) correct"
+if echo "$LOGS" | grep -q "shared_buffers=128MB"; then
+  echo "✅ Minimum shared_buffers (128MB) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 64MB for 512MB RAM"
+  echo "❌ FAILED: shared_buffers should be 128MB for 512MB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -325,10 +325,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=128MB"; then
-  echo "✅ Sub-baseline shared_buffers (128MB = 50% of baseline) correct"
+if echo "$LOGS" | grep -q "shared_buffers=256MB"; then
+  echo "✅ Sub-baseline shared_buffers (256MB) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 128MB for 1GB RAM"
+  echo "❌ FAILED: shared_buffers should be 256MB for 1GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi
@@ -375,10 +375,10 @@ else
   exit 1
 fi
 
-if echo "$LOGS" | grep -q "shared_buffers=1024MB"; then
-  echo "✅ High memory shared_buffers (1024MB = 4x baseline) correct"
+if echo "$LOGS" | grep -q "shared_buffers=2048MB"; then
+  echo "✅ High memory shared_buffers (2048MB) correct"
 else
-  echo "❌ FAILED: shared_buffers should be 1024MB for 8GB RAM"
+  echo "❌ FAILED: shared_buffers should be 2048MB for 8GB RAM"
   docker rm -f "$CONTAINER_NAME" >/dev/null
   exit 1
 fi

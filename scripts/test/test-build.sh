@@ -25,6 +25,7 @@ fi
 IMAGE_TAG="${1:-aza-pg:pg18}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TEST_PASSWORD="test_password_123"
 
 # Guard: Verify Dockerfile exists
 DOCKERFILE_PATH="$PROJECT_ROOT/docker/postgres/Dockerfile"
@@ -78,7 +79,7 @@ echo "🚀 Starting test container..."
 CONTAINER_NAME="pg-test-$$"
 if ! docker run -d \
   --name "$CONTAINER_NAME" \
-  -e POSTGRES_PASSWORD=test_password_123 \
+  -e POSTGRES_PASSWORD="$TEST_PASSWORD" \
   -e POSTGRES_SKIP_AUTOCONFIG=false \
   "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "❌ ERROR: Failed to start test container"
@@ -126,7 +127,8 @@ echo "Creating extensions..."
 FAILED_EXTENSIONS=()
 for ext in "${EXTENSIONS[@]}"; do
   echo -n "  - $ext: "
-  if docker exec "$CONTAINER_NAME" psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS $ext;" >/dev/null 2>&1; then
+  SQL="CREATE EXTENSION IF NOT EXISTS \"$ext\";"
+  if docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "$SQL" >/dev/null 2>&1; then
     echo "✅"
   else
     echo "❌ FAILED"
@@ -148,7 +150,7 @@ echo "🔬 Verifying extension functionality..."
 
 # pgvector
 echo -n "  - pgvector (vector type): "
-if docker exec "$CONTAINER_NAME" psql -U postgres -c "SELECT '[1,2,3]'::vector;" >/dev/null 2>&1; then
+if docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "SELECT '[1,2,3]'::vector;" >/dev/null 2>&1; then
   echo "✅"
 else
   echo "❌ FAILED"
@@ -157,7 +159,7 @@ fi
 
 # pg_trgm
 echo -n "  - pg_trgm (similarity): "
-if docker exec "$CONTAINER_NAME" psql -U postgres -c "SELECT similarity('test', 'test');" >/dev/null 2>&1; then
+if docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "SELECT similarity('test', 'test');" >/dev/null 2>&1; then
   echo "✅"
 else
   echo "❌ FAILED"
@@ -166,7 +168,7 @@ fi
 
 # pg_stat_statements
 echo -n "  - pg_stat_statements (view): "
-if docker exec "$CONTAINER_NAME" psql -U postgres -c "SELECT COUNT(*) FROM pg_stat_statements;" >/dev/null 2>&1; then
+if docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "SELECT COUNT(*) FROM pg_stat_statements;" >/dev/null 2>&1; then
   echo "✅"
 else
   echo "❌ FAILED"
@@ -175,7 +177,7 @@ fi
 
 # pg_cron
 echo -n "  - pg_cron (cron.job table): "
-if docker exec "$CONTAINER_NAME" psql -U postgres -c "SELECT COUNT(*) FROM cron.job;" >/dev/null 2>&1; then
+if docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "SELECT COUNT(*) FROM cron.job;" >/dev/null 2>&1; then
   echo "✅"
 else
   echo "❌ FAILED"
@@ -186,7 +188,7 @@ echo
 
 # List all installed extensions
 echo "📦 Installed extensions:"
-docker exec "$CONTAINER_NAME" psql -U postgres -c "SELECT extname, extversion FROM pg_extension ORDER BY extname;" | grep -v "row"
+docker exec -e PGPASSWORD="$TEST_PASSWORD" "$CONTAINER_NAME" psql -U postgres -c "SELECT extname, extversion FROM pg_extension ORDER BY extname;" | grep -v "row"
 echo
 
 echo "========================================"

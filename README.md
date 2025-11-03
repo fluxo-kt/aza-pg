@@ -145,26 +145,19 @@ docker compose up
 **Adapts at runtime** (container start on VPS, not build time). Same image auto-tunes to deployment environment.
 
 Detects at container start:
-- **RAM**: cgroup v2 memory limit (preferred) → defaults to 1GB if no limit detected
-- **CPU**: Core count → scales max_worker_processes, max_parallel_workers, max_connections
+- **RAM**: cgroup v2 memory limit (preferred) → defaults to 1GB if no limit detected, or use `POSTGRES_MEMORY=<MB>` to override manually
+- **CPU**: Core count → scales `max_worker_processes`, `max_parallel_workers`, `max_connections`
 
-Baseline settings (2GB RAM with memory limit):
-- shared_buffers: 256MB
-- effective_cache: 768MB
-- maintenance_work_mem: 64MB
-- work_mem: 4MB
+The entrypoint targets ~25% of available RAM for `shared_buffers` (capped at 8GB) and derives other settings from that baseline (maintenance_work_mem capped at 2GB, work_mem at 32MB).
 
-Scales proportionally for larger allocations with caps:
-- shared_buffers: max 8GB
-- maintenance_work_mem: max 2GB
-- work_mem: max 32MB
-- max_connections: 100-200 (based on RAM)
+Reference points:
+- 512MB limit → `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=1MB`, `max_connections=100`
+- 1GB limit / default → `shared_buffers=256MB`, `effective_cache_size=768MB`, `work_mem=2MB`, `max_connections=100`
+- 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=2MB`, `max_connections=200`
+- 4GB limit → `shared_buffers=1024MB`, `effective_cache_size=3072MB`, `work_mem≈5MB`, `max_connections=200`
+- 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
 
-**Default Behavior (no memory limit):** Uses 1GB baseline → shared_buffers=128MB, effective_cache=384MB
-
-**Manual Override:** Set `POSTGRES_MEMORY=<MB>` env var to specify RAM when cgroup detection unavailable
-
-**Example:** 4GB memory limit → shared_buffers=512MB, effective_cache=1536MB, max_connections=200
+`shared_preload_libraries` is enforced at runtime (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift.
 
 ### Disable Auto-Config
 

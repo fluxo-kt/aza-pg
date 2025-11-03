@@ -5,10 +5,21 @@
 set -e
 
 readonly DEFAULT_RAM_MB=1024
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit"
 
 readonly SHARED_BUFFERS_CAP_MB=8192
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
+
+if [ "$#" -eq 0 ]; then
+    set -- postgres
+elif [ "${1#-}" != "$1" ]; then
+    set -- postgres "$@"
+fi
+
+if [ "$1" != "postgres" ]; then
+    exec /usr/local/bin/docker-entrypoint.sh "$@"
+fi
 
 # PostgreSQL 18 enables data checksums by default
 # Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended)
@@ -145,6 +156,8 @@ MAX_PARALLEL_WORKERS=$CPU_CORES
 MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
 
+SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
+
 echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
@@ -155,6 +168,7 @@ set -- "$@" \
     -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
     -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
     -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
-    -c "max_connections=${MAX_CONNECTIONS}"
+    -c "max_connections=${MAX_CONNECTIONS}" \
+    -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
 
 exec /usr/local/bin/docker-entrypoint.sh "$@"

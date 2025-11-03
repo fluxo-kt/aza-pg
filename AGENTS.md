@@ -16,9 +16,9 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **When:** RUNTIME (container start on VPS), NOT build-time. Same image adapts to any deployment environment.
 
 **How:**
-- Detects RAM: cgroup v2 limit of RUNNING container → fallback to 1GB default if no limit
-- Detects CPU: `nproc` on RUNNING container → scales workers/parallelism
-- Injects: `-c shared_buffers=XMB -c max_connections=Y` flags to postgres command at START
+- Detects RAM: cgroup v2 limit of the running container → fallback to 1GB default if no limit, optional manual override with `POSTGRES_MEMORY=<MB>`
+- Detects CPU: `nproc` fallback when no quota is set → sizes worker counts
+- Injects runtime flags for buffers, cache, maintenance/work memory, connection caps, worker counts, **and** `shared_preload_libraries` so pg_cron/pgAudit stay loaded even if static configs drift
 
 **Default Behavior:** No memory limit detected → defaults to 1GB (conservative baseline)
 
@@ -99,11 +99,14 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - `POSTGRES_SKIP_AUTOCONFIG=true` — Uses static `postgresql.conf` values
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override when cgroup detection unavailable
 
-**Baseline:** 2GB RAM = 256MB shared_buffers (12.5% ratio), scales linearly up to 8GB cap
+**Baseline ratios:** ~25% of detected RAM allocated to shared_buffers up to 8GB, with effective_cache consuming the remainder (minimum 2× buffers). Caps retain 32MB work_mem and 2GB maintenance_work_mem for large nodes.
 
-**Default Behavior:** No memory limit detected → uses 1GB default → shared_buffers=128MB, effective_cache=384MB, maintenance_work_mem=32MB.
-
-**Example with limit:** 4GB memory limit → shared_buffers=512MB, effective_cache=1536MB, maintenance_work_mem=128MB.
+**Common cases:**
+- 512MB limit → shared_buffers 128MB, effective_cache 384MB, work_mem 1MB, max_connections 100
+- 1GB limit (or default) → shared_buffers 256MB, effective_cache 768MB, work_mem 2MB, max_connections 100
+- 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 2MB, max_connections 200
+- 4GB limit → shared_buffers 1GB, effective_cache 3GB, work_mem ~5MB, max_connections 200
+- 8GB limit → shared_buffers 2GB, effective_cache 6GB, work_mem ~10MB, max_connections 200
 
 ### PostgreSQL 18 Optimizations Applied
 - **Async I/O:** `io_method = 'worker'` (2-3x I/O performance on NVMe/cloud storage)

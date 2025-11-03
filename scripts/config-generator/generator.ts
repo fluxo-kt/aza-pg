@@ -75,7 +75,7 @@ function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings):
     ],
     checkpoints: ['checkpointCompletionTarget'],
     wal: [
-      'walCompression', 'maxWalSize', 'minWalSize',
+      'walLevel', 'walCompression', 'maxWalSize', 'minWalSize',
       'maxWalSenders', 'walKeepSize', 'archiveMode', 'archiveCommand'
     ],
     replication: [
@@ -113,13 +113,6 @@ function generatePostgresqlConf(stack: StackType, settings: PostgreSQLSettings):
       lines.push(...categoryLines);
       lines.push('');
     }
-  }
-
-  // Add stack-specific single-setting overrides (not part of categories to avoid duplication)
-  if (stack === 'single' && settings.walLevel !== undefined) {
-    lines.push('# WAL');
-    lines.push(formatSetting('walLevel', settings.walLevel));
-    lines.push('');
   }
 
   if (stack === 'replica' || stack === 'single') {

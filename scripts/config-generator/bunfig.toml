@@ -1,0 +1,14 @@
+[install]
+linker = "hoisted"
+#linkWorkspacePackages = false # optimization for CI
+
+# 1 day delay by default to harden against supply chain attacks.
+# https://bun.com/blog/bun-v1.3#minimum-release-age
+minimumReleaseAge = 86400 # 1 day in seconds
+
+[install.security]
+scanner = "bun-osv-scanner"
+#scanner = "@acme/bun-security-scanner"
+
+[console]
+depth = 5

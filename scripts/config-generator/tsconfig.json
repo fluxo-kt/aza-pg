@@ -1,0 +1,66 @@
+{
+  // tsconfig.json uses JSON with Comments (JSONC)
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  "compilerOptions": {
+
+    "target": "ES2024",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "lib": ["ES2024"],
+    "types": ["@types/bun"],
+    "customConditions": ["@dev/source"],
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Build / emit & declarations
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "incremental": true,
+    "inlineSources": true,
+    "noEmitOnError": true,
+    "removeComments": false,
+    "sourceMap": true,
+    "stripInternal": true, // Remove @internal marked exports
+
+    // JavaScript input/interop
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Module isolation & bundler-friendly settings
+    "isolatedModules": true,
+    "noPropertyAccessFromIndexSignature": false,
+
+    // Strictness & correctness checks
+    "strict": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Diagnostics & tooling/performance
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true
+  },
+  "tsc-alias": {
+    "resolveFullPaths": true,
+    "verbose": false
+  },
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
+}

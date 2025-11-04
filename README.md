@@ -40,7 +40,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Image Specifications
 
 ### Size
-- Base `postgres:18-bookworm`: ~415MB
+- Base `postgres:18-trixie`: ~93-154MB
 - With compiled extensions (pgvector, pg_cron, pgaudit): ~450MB
 - Multi-platform manifest (amd64 + arm64): ~900MB total
 
@@ -60,7 +60,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 **⚠️ SECURITY WARNINGS:**
 1. **TLS Not Enabled by Default**: Connections use plaintext. For production with network exposure, enable TLS (see `docker/postgres/configs/postgresql-*.conf` for TLS settings). Requires valid certificates.
 2. **Local Binding Default**: Services bind to `127.0.0.1` by default (localhost only). To allow network access, change `POSTGRES_BIND_IP=0.0.0.0` in `.env` AND ensure firewall/network security is configured.
-3. **Image Placeholder**: Replace `ghcr.io/your-org` in compose files with your actual registry or use a local image tag.
+3. **Image Placeholder**: Replace `ghcr.io/fluxo-kt` in compose files with your actual registry or use a local image tag.
 
 ### Build Image First
 
@@ -213,7 +213,7 @@ Trigger manually via GitHub Actions UI or:
 gh workflow run build-postgres-image.yml
 ```
 
-Images pushed to: `ghcr.io/your-org/aza-pg:pg18`
+Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 
 ## License
 

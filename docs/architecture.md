@@ -239,7 +239,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 ┌────────────────────────────────────────────────────────────┐
 │                    Supply Chain                            │
 │  - Extensions: SHA-pinned (immutable commits)              │
-│  - Base image: postgres:18-bookworm (official)             │
+│  - Base image: postgres:18-trixie (official)             │
 │  - SBOM/Provenance: Attestation via GitHub Actions         │
 └────────────────────────────────────────────────────────────┘
                               │

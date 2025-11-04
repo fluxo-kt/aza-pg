@@ -169,7 +169,7 @@ docker compose exec postgres psql -U postgres -c "SELECT extname, extversion FRO
 
 ```bash
 # Deploy new image
-docker pull ghcr.io/your-org/aza-pg:pg18-latest
+docker pull ghcr.io/fluxo-kt/aza-pg:pg18-latest
 
 # Rolling update (one instance at a time)
 docker compose up -d --no-deps postgres
@@ -244,7 +244,7 @@ docker compose up -d  # Using old tag/digest
 
 ```bash
 # Deploy old version
-docker pull ghcr.io/your-org/aza-pg:pg18
+docker pull ghcr.io/fluxo-kt/aza-pg:pg18
 
 # Create new data directory
 docker volume create postgres-data-rollback

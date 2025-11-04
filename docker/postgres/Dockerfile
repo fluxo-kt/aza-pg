@@ -2,7 +2,7 @@
 
 ARG PG_VERSION=18
 
-FROM postgres:${PG_VERSION}-bookworm AS builder
+FROM postgres:${PG_VERSION}-trixie AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.sh /tmp/extensions.manifest.json /tmp/extensions-build
 
 
-FROM postgres:${PG_VERSION}-bookworm
+FROM postgres:${PG_VERSION}-trixie
 
 ENV DEBIAN_FRONTEND=noninteractive
 

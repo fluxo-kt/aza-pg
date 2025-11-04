@@ -14,7 +14,7 @@
   - `POSTGRES_PASSWORD` - Database superuser password
   - `PG_REPLICATION_PASSWORD` - Replication user password (if using replica)
   - `PGBOUNCER_AUTH_PASS` - PgBouncer auth function password
-- [ ] Replace `ghcr.io/your-org` with your actual registry URL
+- [ ] Replace `ghcr.io/fluxo-kt` with your actual registry URL
 - [ ] Review and adjust memory limits based on available RAM
 - [ ] Ensure firewall rules allow only necessary connections
 
@@ -303,5 +303,4 @@ volumes:
 ## Getting Help
 
 - Check logs: `docker compose logs -f`
-- Review CLAUDE.md for architecture details
-- Check GitHub issues: [github.com/your-org/aza-pg/issues](https://github.com/your-org/aza-pg/issues)
+- Review AGENTS.md for architecture details

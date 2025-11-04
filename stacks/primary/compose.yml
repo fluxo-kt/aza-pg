@@ -2,7 +2,7 @@ services:
   postgres:
     env_file:
       - .env
-    image: ${POSTGRES_IMAGE:-ghcr.io/your-org/aza-pg:pg18}
+    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-primary
     restart: unless-stopped
 

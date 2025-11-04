@@ -1,47 +1,8 @@
-# CODEOWNERS for aza-pg PostgreSQL Repository
-#
-# These owners will be the default owners for everything in the repo.
-# Unless a later match takes precedence, these users will be requested for
-# review when someone opens a pull request.
+# CODEOWNERS
 #
 # Format: path @github-username
 # Lines starting with '#' are comments.
 # Each line is a file pattern followed by one or more owners.
 
 # Global owners (fallback for all files)
-* @art
-
-# Critical Docker configuration
-/docker/postgres/Dockerfile @art
-/docker/postgres/docker-auto-config-entrypoint.sh @art
-/docker/postgres/docker-entrypoint-initdb.d/ @art
-
-# PostgreSQL configuration files
-/docker/postgres/configs/ @art
-/stacks/*/configs/*.conf @art
-/stacks/*/configs/pg_hba.conf @art
-
-# Security-critical files
-/stacks/*/configs/initdb/*-pgbouncer-auth.sh @art
-/stacks/*/configs/initdb/*-replication.sh @art
-/docker/postgres/docker-entrypoint-initdb.d/*-replication.sh @art
-
-# PgBouncer configuration
-/stacks/primary/configs/pgbouncer.ini.template @art
-
-# CI/CD workflows
-/.github/workflows/ @art
-
-# Stack deployments
-/stacks/primary/ @art
-/stacks/replica/ @art
-/stacks/single/ @art
-
-# Documentation (require review for major changes)
-/README.md @art
-/CLAUDE.md @art
-/CHANGELOG.md @art
-
-# Security and dependency files
-/.github/dependabot.yml @art
-/.github/CODEOWNERS @art
+* @amal

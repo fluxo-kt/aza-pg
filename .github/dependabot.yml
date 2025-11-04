@@ -20,8 +20,6 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
-    reviewers:
-      - "art"
 
   # Monitor Docker base images and dependencies
   - package-ecosystem: "docker"
@@ -38,8 +36,6 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
-    reviewers:
-      - "art"
 
   # Monitor primary stack compose dependencies
   - package-ecosystem: "docker"
@@ -57,8 +53,6 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
-    reviewers:
-      - "art"
 
   # Monitor replica stack compose dependencies
   - package-ecosystem: "docker"
@@ -76,8 +70,6 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
-    reviewers:
-      - "art"
 
   # Monitor single stack compose dependencies
   - package-ecosystem: "docker"
@@ -95,5 +87,3 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
-    reviewers:
-      - "art"

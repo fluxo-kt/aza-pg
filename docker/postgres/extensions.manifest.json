@@ -1,0 +1,847 @@
+{
+  "generatedAt": "2025-11-04T20:28:46.266Z",
+  "entries": [
+    {
+      "name": "auto_explain",
+      "kind": "builtin",
+      "category": "observability",
+      "description": "Logs plans for slow statements automatically.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "btree_gin",
+      "kind": "builtin",
+      "category": "indexing",
+      "description": "Adds B-tree emulation operator classes for GIN indexes.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "btree_gist",
+      "kind": "builtin",
+      "category": "indexing",
+      "description": "Adds B-tree emulation operator classes for GiST indexes.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "citus",
+      "kind": "extension",
+      "category": "distributed",
+      "description": "Distributed sharding and parallel execution across worker nodes.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/citusdata/citus.git",
+        "tag": "v13.2.0",
+        "commit": "e8e06d8d0cc103b1150feeac7250efc488a3cd5b"
+      },
+      "build": {
+        "type": "autotools"
+      },
+      "aptPackages": [
+        "python3",
+        "pkg-config"
+      ],
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "notes": [
+          "Requires coordinator/worker topology before enabling citus."
+        ]
+      }
+    },
+    {
+      "name": "hypopg",
+      "kind": "extension",
+      "category": "performance",
+      "description": "Simulate hypothetical indexes for planner what-if analysis.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/HypoPG/hypopg.git",
+        "tag": "1.4.2",
+        "commit": "8d7ca569185edc7549b983736c8862fbe211144f"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "index_advisor",
+      "kind": "extension",
+      "category": "performance",
+      "description": "Suggest indexes by pairing HypoPG simulations with cost heuristics.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/index_advisor.git",
+        "tag": "v0.2.0",
+        "commit": "d37723555e6425f18e6a45cb0956ced2250a3fe7"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "dependencies": [
+        "hypopg"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_cron",
+      "kind": "extension",
+      "category": "operations",
+      "description": "Lightweight cron-based job runner inside PostgreSQL.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/citusdata/pg_cron.git",
+        "tag": "v1.6.7",
+        "commit": "465b38c737f584d520229f5a1d69d1d44649e4e5"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "notes": [
+          "Enable via shared_preload_libraries to activate scheduler workers."
+        ]
+      }
+    },
+    {
+      "name": "pg_hashids",
+      "kind": "extension",
+      "category": "utilities",
+      "description": "Encode integers into short hashids for obfuscated identifiers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/iCyberon/pg_hashids.git",
+        "tag": "v1.2.1",
+        "commit": "16907249ccbc300b31c89c3eccd6042c5674505f"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_jsonschema",
+      "kind": "extension",
+      "category": "validation",
+      "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/pg_jsonschema.git",
+        "tag": "v0.3.3",
+        "commit": "dcbe58ebfe6712746162253770167cfa7a73667a"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_net",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Async HTTP client inside PostgreSQL for webhooks and callbacks.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/pg_net.git",
+        "tag": "v0.9.3",
+        "commit": "6cfa1c33d0f94896b4d071ce1f1c2a0c1068a614"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": [
+        "libcurl4-openssl-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_partman",
+      "kind": "extension",
+      "category": "maintenance",
+      "description": "Declarative partition maintenance with optional background worker.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgpartman/pg_partman.git",
+        "tag": "v5.3.1",
+        "commit": "b5be3ddac25e809e5e23469124f7eb6463d44406"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "notes": [
+          "Set pg_partman_bgw.role and interval to enable background worker."
+        ]
+      }
+    },
+    {
+      "name": "pg_plan_filter",
+      "kind": "extension",
+      "category": "safety",
+      "description": "Block high-cost plans or disallowed operations using planner hooks.",
+      "source": {
+        "type": "git-ref",
+        "repository": "https://github.com/pgexperts/pg_plan_filter.git",
+        "ref": "5081a7b5cb890876e67d8e7486b6a64c38c9a492",
+        "commit": "5081a7b5cb890876e67d8e7486b6a64c38c9a492"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_repack",
+      "kind": "extension",
+      "category": "maintenance",
+      "description": "Online table/index reorganization without long locks.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/reorg/pg_repack.git",
+        "tag": "ver_1.5.3",
+        "commit": "6902ab313aeb49227867087dca99cf107f7be23b"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": [
+        "libzstd-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_safeupdate",
+      "kind": "extension",
+      "category": "safety",
+      "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/eradman/pg-safeupdate.git",
+        "tag": "1.5",
+        "commit": "fbea44215425dc1092f5c98c28471eba90d0c1eb"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pg_stat_monitor",
+      "kind": "extension",
+      "category": "observability",
+      "description": "Enhanced query performance telemetry with bucketed metrics.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/percona/pg_stat_monitor.git",
+        "tag": "v0.6.0",
+        "commit": "2d4a92432fa79944354c3ebadf856a16642e6607"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false
+      },
+      "notes": [
+        "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
+      ]
+    },
+    {
+      "name": "pg_stat_statements",
+      "kind": "builtin",
+      "category": "observability",
+      "description": "Tracks execution statistics for normalized SQL statements.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "pg_trgm",
+      "kind": "builtin",
+      "category": "search",
+      "description": "Trigram-based fuzzy matching indexes.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "pgaudit",
+      "kind": "extension",
+      "category": "security",
+      "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgaudit/pgaudit.git",
+        "tag": "18.0",
+        "commit": "f39f8dbb15dc5bd4cbe5f1e5abe0d930ed7593a8"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "notes": [
+          "Tune pgaudit.log to control verbosity."
+        ]
+      }
+    },
+    {
+      "name": "pgaudit_set_user",
+      "kind": "extension",
+      "category": "security",
+      "description": "Audited SET ROLE helper complementing pgaudit.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgaudit/set_user.git",
+        "tag": "REL4_2_0",
+        "commit": "db4e871528c4b62bba672abaf9044f4cc618ae8c"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgbackrest",
+      "kind": "tool",
+      "category": "operations",
+      "description": "Parallel, incremental backup and restore CLI.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgbackrest/pgbackrest.git",
+        "tag": "release/2.57.0",
+        "commit": "d9773a31c97077761ee8e7d06e073b0b0734e26f"
+      },
+      "build": {
+        "type": "meson"
+      },
+      "aptPackages": [
+        "meson",
+        "ninja-build",
+        "libssl-dev",
+        "liblz4-dev",
+        "libzstd-dev"
+      ],
+      "notes": [
+        "Installs /usr/bin/pgbackrest."
+      ]
+    },
+    {
+      "name": "pgbadger",
+      "kind": "tool",
+      "category": "observability",
+      "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/darold/pgbadger.git",
+        "tag": "v13.1",
+        "commit": "8a2b87193cbf80bc426e584c238aefa581af5fe8"
+      },
+      "build": {
+        "type": "make"
+      },
+      "aptPackages": [
+        "perl",
+        "libtext-csv-xs-perl",
+        "libjson-xs-perl"
+      ],
+      "notes": [
+        "Binary installed to /usr/local/bin/pgbadger."
+      ]
+    },
+    {
+      "name": "pgmq",
+      "kind": "extension",
+      "category": "queueing",
+      "description": "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/tembo-io/pgmq.git",
+        "tag": "v1.7.0",
+        "commit": "e359dc936ec5b5c746de61498b5275bebd483bcd"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgroonga",
+      "kind": "extension",
+      "category": "search",
+      "description": "Full-text search powered by Groonga for multilingual workloads.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgroonga/pgroonga.git",
+        "tag": "4.0.4",
+        "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
+      },
+      "build": {
+        "type": "cmake"
+      },
+      "aptPackages": [
+        "cmake",
+        "ninja-build",
+        "pkg-config",
+        "libgroonga-dev",
+        "liblz4-dev",
+        "libmecab-dev",
+        "libmsgpack-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgrouting",
+      "kind": "extension",
+      "category": "gis",
+      "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgRouting/pgrouting.git",
+        "tag": "v3.8.0",
+        "commit": "e7108597bf99fe725bb1c00b1e3125e9ba691aee"
+      },
+      "build": {
+        "type": "cmake"
+      },
+      "dependencies": [
+        "postgis"
+      ],
+      "aptPackages": [
+        "cmake",
+        "libboost-graph-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgsodium",
+      "kind": "extension",
+      "category": "security",
+      "description": "Modern cryptography and envelope encryption with libsodium.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/michelp/pgsodium.git",
+        "tag": "v3.1.9",
+        "commit": "7222ebc5ed87084a68d526aef977be0f4eb319a2"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": [
+        "libsodium-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgsql-http",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pramsey/pgsql-http.git",
+        "tag": "v1.7.0",
+        "commit": "fbea6fe46c9e1db5a18103606ec00a9809e91d11"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "aptPackages": [
+        "libcurl4-openssl-dev",
+        "libjson-c-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "pgvector",
+      "kind": "extension",
+      "category": "ai",
+      "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgvector/pgvector.git",
+        "tag": "v0.8.1",
+        "commit": "778dacf20c07caf904557a88705142631818d8cb"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "pgvectorscale",
+      "kind": "extension",
+      "category": "ai",
+      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/pgvectorscale.git",
+        "tag": "0.9.0",
+        "commit": "c66cae4b621664b68546587da9fafd80b791e643"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "pgvectorscale",
+        "features": [
+          "pg18"
+        ]
+      },
+      "aptPackages": [
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
+      ],
+      "dependencies": [
+        "pgvector"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "plpgsql",
+      "kind": "builtin",
+      "category": "language",
+      "description": "Built-in procedural language for PostgreSQL.",
+      "source": {
+        "type": "builtin"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "plpgsql_check",
+      "kind": "extension",
+      "category": "quality",
+      "description": "Static analyzer for PL/pgSQL functions and triggers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/okbob/plpgsql_check.git",
+        "tag": "v2.8.3",
+        "commit": "c7ce7004c54feeae0fe8b7b7bd58464be061e48d"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "postgis",
+      "kind": "extension",
+      "category": "gis",
+      "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/postgis/postgis.git",
+        "tag": "3.6.0",
+        "commit": "4c1967d95be2e1a473f638eb5fe6d7a6a1e1b842"
+      },
+      "build": {
+        "type": "autotools"
+      },
+      "aptPackages": [
+        "autoconf",
+        "automake",
+        "libtool",
+        "g++",
+        "libgeos-dev",
+        "libproj-dev",
+        "libjson-c-dev",
+        "libprotobuf-c-dev",
+        "protobuf-c-compiler",
+        "libxml2-dev",
+        "libgdal-dev",
+        "liblz4-dev",
+        "libzstd-dev"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "postgresql-hll",
+      "kind": "extension",
+      "category": "analytics",
+      "description": "HyperLogLog probabilistic counting data type.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/citusdata/postgresql-hll.git",
+        "tag": "v2.19",
+        "commit": "be7ef6fbc882afa1f60b1bbe5203209e1f450cd6"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "rum",
+      "kind": "extension",
+      "category": "search",
+      "description": "RUM GiST access method for ranked full-text search.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/postgrespro/rum.git",
+        "tag": "1.3.15",
+        "commit": "d66640112d88572d21dc93ff873cafe3b11c9521"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "supabase-wrappers",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Rust FDW framework powering Supabase foreign wrappers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/wrappers.git",
+        "tag": "v0.5.6",
+        "commit": "21709a60dccd2b784e495d209a3b3e1dfda9751b"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "features": [
+          "pg18"
+        ],
+        "noDefaultFeatures": true,
+        "subdir": "supabase-wrappers"
+      },
+      "aptPackages": [
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
+      ],
+      "dependencies": [
+        "pg_stat_statements"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": [
+        "Requires cargo-pgrx 0.16.1 aligned with PG18."
+      ]
+    },
+    {
+      "name": "supautils",
+      "kind": "extension",
+      "category": "safety",
+      "description": "Shared superuser guards and hooks for managed Postgres environments.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/supautils.git",
+        "tag": "v3.0.2",
+        "commit": "1b071b72cc50ecee36ac9e4b782cb84212ae6d20"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "notes": [
+          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
+        ]
+      }
+    },
+    {
+      "name": "timescaledb",
+      "kind": "extension",
+      "category": "timeseries",
+      "description": "Hypertables, compression, and continuous aggregates for time-series workloads.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/timescaledb.git",
+        "tag": "2.23.0",
+        "commit": "ba5dcfd1c69f3529d0cc9de3028e1a12a36042ba"
+      },
+      "build": {
+        "type": "timescaledb"
+      },
+      "aptPackages": [
+        "cmake",
+        "ninja-build",
+        "llvm",
+        "clang",
+        "perl",
+        "python3"
+      ],
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": true,
+        "notes": [
+          "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
+        ]
+      }
+    },
+    {
+      "name": "timescaledb_toolkit",
+      "kind": "extension",
+      "category": "timeseries",
+      "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/timescaledb-toolkit.git",
+        "tag": "1.21.0",
+        "commit": "0f2f4dc6bded7a4daa11cdfebe7fbe00c066e450"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "extension",
+        "features": [
+          "pg18"
+        ],
+        "noDefaultFeatures": true
+      },
+      "aptPackages": [
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
+      ],
+      "dependencies": [
+        "timescaledb"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "vault",
+      "kind": "extension",
+      "category": "security",
+      "description": "Supabase secret store for encrypted application credentials.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/vault.git",
+        "tag": "v0.3.1",
+        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "dependencies": [
+        "pgsodium"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "wal2json",
+      "kind": "extension",
+      "category": "cdc",
+      "description": "Logical decoding output plugin streaming JSON data for CDC.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/eulerto/wal2json.git",
+        "tag": "wal2json_2_6",
+        "commit": "75629c2e1e81a12350cc9d63782fc53252185d8d"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    }
+  ]
+}

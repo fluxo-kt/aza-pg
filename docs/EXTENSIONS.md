@@ -1,169 +1,173 @@
-# Postgres Extensions Chosen
+# PostgreSQL Extension Inventory
 
-All these extensions should be installed and available in the Postgres instance.
-- Disabled by default when possible.
-- All with last versions, tailored for PG 18 compatibility.
-- Auto-configured and optimized for the container limits.
+The `aza-pg` image ships a curated, SHA-pinned bundle of PostgreSQL extensions covering AI search, time-series analytics, geospatial processing, observability, security, and operations tooling. Every extension is compiled in the builder stage from an immutable source revision and listed in a single source of truth manifest.
 
+Key principles:
 
-## From Supabase
+- **Manifest driven.** Edit `scripts/extensions/manifest-data.ts` to change versions or metadata. Regenerate all derived assets with:
+  ```bash
+  bun scripts/extensions/generate-manifest.ts
+  bun scripts/extensions/render-markdown.ts
+  ```
+- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and commit for each entry. `docker/postgres/build-extensions.sh` consumes this manifest during the Docker build.
+- **Runtime minimalism.** Only a small baseline is enabled automatically; everything else is installed but disabled by default so teams can opt in without rebuilding the image.
 
-**Research**
-  - **https://github.com/supabase/postgres#postgresql-17-extensions**
-  - https://arc.net/l/quote/dzmqgqng
-  - https://www.perplexity.ai/search/zGJi32hzSnywVRc6qbZLBg
+## Extension Matrix
 
-**Extensions List**
-- **hypopg**  
-  Hypothetical indexes for query planning (no I/O, no writes). Test if a proposed index would matter before adding it.  
-  [source](https://github.com/HypoPG/hypopg)
+The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.
 
-- **index_advisor**
-  Automatic index suggestions for a single query, using hypopg to simulate/test.  
-  [source](https://github.com/supabase/index_advisor)
+<!-- extensions-table:start -->
 
-- **plpgsql_check**  
-  Lint/static analyzer for PL/pgSQL code. Catches runtime, injection, and logic errors pre-deploy.  
-  [source](https://github.com/okbob/plpgsql_check)
+### ai
 
-- **pg-safeupdate**  
-  Enforces WHERE clause for UPDATE/DELETE. Prevents accidental data wipeouts.  
-  [source](https://github.com/eradman/pg-safeupdate)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pgvector` | v0.8.1 | Yes | No | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| `pgvectorscale` | 0.9.0 | No | No | DiskANN-inspired ANN index and quantization for pgvector embeddings. |
 
-- **pgAudit**  
-  Fine-grained audit logging for security/compliance.  
-  [source](https://github.com/pgaudit/pgaudit)
+### analytics
 
-- **supautils**  
-  Enables triggers/events/extensions/publications without SUPERUSER via privileged role hooks (cloud safety). Required for managed/hosted Postgres safety.  
-  [source](https://github.com/supabase/supautils)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `postgresql-hll` | v2.19 | No | No | HyperLogLog probabilistic counting data type. |
 
-- **pg_cron**  
-  Native, job-scheduler. Schedule SQL/maintenance via cron syntax from inside PG.  
-  [source](https://github.com/citusdata/pg_cron)
+### cdc
 
-- **pg_net**  
-  Async HTTP client for PG (non-blocking webhooks/triggers, supports GET/POST/DELETE). Triggers ALLOWED, doesn't block transaction.  
-  [source](https://github.com/supabase/pg_net)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `wal2json` | wal2json_2_6 | No | No | Logical decoding output plugin streaming JSON data for CDC. |
 
-- **pgsql-http**  
-  Synchronous HTTP client for PG. Straightforward GET/POST; CURL underneath. Use only for sync, non-trigger calls.  
-  [source](https://github.com/pramsey/pgsql-http)
+### distributed
 
-- **supabase-wrappers**  
-  Rust-based FDW framework for API/db integration (Stripe, Firebase, BQ, etc). Query remote APIs like tables. Still pre-release—evaluate for prod stability.  
-  [source](https://github.com/supabase/wrappers)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `citus` | v13.2.0 | No | Yes | Distributed sharding and parallel execution across worker nodes. |
 
-- **pgroonga**  
-  Fast, full-text, multi-language search (excellent for Asian languages). Index supports LIKE/join/phrase.  
-  [source](https://github.com/pgroonga/pgroonga)
+### gis
 
-- **rum**  
-  Advanced full-text index for phrase search—stores position/rank info in index, allows true ORDER BY ranking, not heap-scan.  
-  [source](https://github.com/postgrespro/rum)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pgrouting` | v3.8.0 | No | No | Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs. |
+| `postgis` | 3.6.0 | No | No | Spatial types, functions, raster, and topology for PostgreSQL. |
 
-- **postgis**  
-  Geographic/spatial data, GIS topology, KNN, vector ops—industry-standard.  
-  [source](https://github.com/postgis/postgis)
+### integration
 
-- **pgrouting**  
-  Classic geospatial routing—Dijkstra/A*/TSP with PostGIS graphs.  
-  [source](https://github.com/pgRouting/pgrouting)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_net` | v0.9.3 | No | No | Async HTTP client inside PostgreSQL for webhooks and callbacks. |
+| `pgsql-http` | v1.7.0 | No | No | Synchronous HTTP client for PostgreSQL built on libcurl. |
+| `supabase-wrappers` | v0.5.6 | No | No | Rust FDW framework powering Supabase foreign wrappers. |
 
-- **pgsodium**  
-  Modern symmetric/asymmetric/key management and secrets (libsodium backed). Encrypted-by-role, built for compliance workloads. Superior to `pgcrypto`. 
-  [source](https://github.com/michelp/pgsodium)
+### maintenance
 
-- **vault**  
-  Encrypted secret store for API keys, tokens, etc. (Supabase only; not HashiCorp Vault).  
-  [source](https://github.com/supabase/vault)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_partman` | v5.3.1 | No | Yes | Declarative partition maintenance with optional background worker. |
+| `pg_repack` | ver_1.5.3 | No | No | Online table/index reorganization without long locks. |
 
-- **pg_jsonschema**  
-  JSON schema validation at insert/update; bridges schema/no-schema gap for JSONB columns.  
-  [source](https://github.com/supabase/pg_jsonschema)
+### observability
 
-- **pg_hashids**  
-  Short, non-sequential UID encoding of ints—hide PKs in API/URLs.   
-  [source](https://github.com/iCyberon/pg_hashids)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_stat_monitor` | v0.6.0 | No | Yes | Enhanced query performance telemetry with bucketed metrics. |
+| `pgbadger` | v13.1 | No | No | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
-- **pgmq**  
-  Simple, persistent queue (SQS-like) using LISTEN/NOTIFY and sticky tables.  
-  [source](https://github.com/tembo-io/pgmq)
+### operations
 
-- **pg_repack**  
-  Online table/index reorg for bloat—does not require exclusive locks (reclaims, reclusters).  
-  [source](https://github.com/reorg/pg_repack)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_cron` | v1.6.7 | Yes | Yes | Lightweight cron-based job runner inside PostgreSQL. |
+| `pgbackrest` | release/2.57.0 | No | No | Parallel, incremental backup and restore CLI. |
 
-- **pg_stat_monitor**  
-  Next-gen query profiling/statistics with time buckets, param captures, multi-dimensional grouping.  
-  [source](https://github.com/percona/pg_stat_monitor)
+### performance
 
-- **pg_plan_filter**  
-  Policy: block/disallow queries above a cost threshold, block non-SELECT, etc—protection for resource abuse.  
-  [source](https://github.com/pgexperts/pg_plan_filter)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `hypopg` | 1.4.2 | No | No | Simulate hypothetical indexes for planner what-if analysis. |
+| `index_advisor` | v0.2.0 | No | No | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
 
-- **pgvector**  
-  Dense/sparse vector search for ML embeddings; L2/cosine, HNSW/IVFFlat, production search at scale.  
-  [source](https://github.com/pgvector/pgvector)
+### quality
 
-- **timescaledb**  
-  Time-series optimized storage, hypertables, native time-bucket and compression.
-  Enriched with additional [timescaledb-toolkit](https://github.com/timescale/timescaledb-toolkit) — helper functions extension.
-  [source](https://github.com/timescale/timescaledb)
-  see https://github.com/timescale/timescaledb-tune for tuning
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `plpgsql_check` | v2.8.3 | No | No | Static analyzer for PL/pgSQL functions and triggers. |
 
-- **wal2json**  
-  Logical decoding output plugin: emits compact JSON DML events for CDC—real-time change feeds.  
-  [source](https://github.com/eulerto/wal2json)
+### queueing
 
-- Realtime
-  WS polling for PG changes; Is it an extension, though?
-  [source](https://github.com/supabase/realtime)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pgmq` | v1.7.0 | No | No | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY. |
 
+### safety
 
-## From Percona
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_plan_filter` | 5081a7b5 | No | Yes | Block high-cost plans or disallowed operations using planner hooks. |
+| `pg_safeupdate` | 1.5 | No | No | Guards UPDATE/DELETE without WHERE clause or LIMIT. |
+| `supautils` | v3.0.2 | Yes | Yes | Shared superuser guards and hooks for managed Postgres environments. |
 
-**Research**
-  - https://www.percona.com/postgresql/software/postgresql-distribution#components_include
+### search
 
-**List**
-- **pgbackrest**  
-  Full/differential/incremental backup and restore with encryption, parallel processing, multi-repository, PITR. Production-grade disaster recovery.  
-  [source](https://github.com/pgbackrest/pgbackrest)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pgroonga` | 4.0.4 | No | No | Full-text search powered by Groonga for multilingual workloads. |
+| `rum` | 1.3.15 | No | No | RUM GiST access method for ranked full-text search. |
 
-- **pgbadger**  
-  Fast PostgreSQL log analyzer producing HTML/JSON reports: query slowness, error trends, connection patterns, load distribution over time. No external DB required.  
-  [source](https://github.com/darold/pgbadger)
+### security
 
-- **pgaudit_set_user**  
-  Privilege escalation extension allowing safe sudo-like role switching with detailed logging. Blocks dangerous ops (ALTER SYSTEM, COPY PROGRAM) by default, configurable allowlists.  
-  [source](https://github.com/pgaudit/set_user)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pgaudit` | 18.0 | Yes | Yes | Detailed auditing for DDL/DML activity with class-level granularity. |
+| `pgaudit_set_user` | REL4_2_0 | No | Yes | Audited SET ROLE helper complementing pgaudit. |
+| `pgsodium` | v3.1.9 | No | No | Modern cryptography and envelope encryption with libsodium. |
+| `vault` | v0.3.1 | No | No | Supabase secret store for encrypted application credentials. |
 
+### timeseries
 
-## Other extensions that should be installed and available
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `timescaledb` | 2.23.0 | Yes | Yes | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| `timescaledb_toolkit` | 1.21.0 | No | No | Analytical hyperfunctions and sketches extending TimescaleDB. |
 
-- pg_trgm            | Trigram fuzzy text search
-- pg_stat_statements | Query performance monitoring
-- auto_explain       | Auto-log slow query plans
-- btree_gin          | GIN index enhancements
-- btree_gist         | GIST index enhancements
-- plpgsql            | Default procedural language
+### utilities
 
-- **pg_partman**
-  Automated declarative partition management  
-  [source](https://github.com/pgpartman/pg_partman/)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_hashids` | v1.2.1 | No | No | Encode integers into short hashids for obfuscated identifiers. |
 
-- **pgVectorScale**
-  A complement to pgvector for high performance, cost efficient vector search
-  [source](https://github.com/timescale/pgvectorscale)
+### validation
 
-- **Citus**
-  distributed Postgres via extension
-  [source](https://github.com/citusdata/citus)
+| Extension | Version | Enabled by Default | Shared Preload | Notes |
+|-----------|---------|--------------------|----------------|-------|
+| `pg_jsonschema` | v0.3.3 | No | No | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
-- **postgresql-hll**
-  **HyperLogLog** data type, A probabilistic cardinality estimator (distinct count). Typically 1.2KB estimates billions of distinct values with ±4% error.
-  [source](https://github.com/citusdata/postgresql-hll)
-  https://agkn.wordpress.com/2012/10/25/sketch-of-the-day-hyperloglog-cornerstone-of-a-big-data-infrastructure/
+<!-- extensions-table:end -->
 
-_`uuid-ossp` IS NOT needed_.
+> **Tip:** The Markdown table is auto-generated. After modifying the manifest, rerun `bun scripts/extensions/render-markdown.ts` to refresh this section.
+
+## Runtime Defaults
+
+- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, and `pgvector` are created automatically during cluster bootstrap.
+- Default `shared_preload_libraries` is `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb,citus`. Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a slimmer set.
+- Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module.
+
+## Installation Notes by Category
+
+- **AI / Vector** – `pgvector` ships enabled; `pgvectorscale` depends on `pgvector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
+- **Time-series** – `timescaledb` is preloaded; use `CREATE EXTENSION timescaledb` to initialize in user databases. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
+- **Distributed** – `citus` is preloaded but left disabled. Configure worker topology (`citus.enable_shared_responsibilities`) before running `CREATE EXTENSION citus`.
+- **Security** – `supautils` and `pgaudit` run by default to guard superuser operations. `pgsodium` and `vault` remain optional.
+- **Operations** – `pgbackrest` binary lives in `/usr/local/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available for offline log analysis.
+- **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
+
+## Upgrade Workflow
+
+1. Update the desired entry in `scripts/extensions/manifest-data.ts` (new tag or metadata).
+2. Regenerate derived artifacts:
+   ```bash
+   bun scripts/extensions/generate-manifest.ts
+   bun scripts/extensions/render-markdown.ts
+   ```
+3. Build the Docker image locally to verify (`docker build -f docker/postgres/Dockerfile .`).
+4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
+5. Commit both the manifest/data changes and the regenerated docs.

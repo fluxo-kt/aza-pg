@@ -31,12 +31,8 @@ services:
     ports:
       - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432'
 
-    deploy:
-      resources:
-        limits:
-          memory: ${POSTGRES_MEMORY_LIMIT:-2048m}
-        reservations:
-          memory: ${POSTGRES_MEMORY_RESERVATION:-1024m}
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-2048m}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-1024m}
 
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
@@ -55,8 +51,9 @@ services:
 
     volumes:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
+      - ./scripts/pgbouncer-entrypoint.sh:/opt/pgbouncer-entrypoint.sh:ro
 
-    command: sh -c 'awk -v pass="$$PGBOUNCER_AUTH_PASS" '\''{gsub(/\$${PGBOUNCER_AUTH_PASS}/, pass); print}'\'' /etc/pgbouncer/pgbouncer.ini.template > /tmp/pgbouncer.ini && exec pgbouncer /tmp/pgbouncer.ini'
+    entrypoint: ['/bin/sh', '/opt/pgbouncer-entrypoint.sh']
 
     networks:
       - postgres_net
@@ -68,12 +65,8 @@ services:
       postgres:
         condition: service_healthy
 
-    deploy:
-      resources:
-        limits:
-          memory: ${PGBOUNCER_MEMORY_LIMIT:-200m}
-        reservations:
-          memory: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
+    mem_limit: ${PGBOUNCER_MEMORY_LIMIT:-200m}
+    mem_reservation: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
 
     healthcheck:
       test:
@@ -110,16 +103,12 @@ services:
     ports:
       - '${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9187}:9187'
 
+    mem_limit: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+    mem_reservation: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
     depends_on:
       postgres:
         condition: service_healthy
-
-    deploy:
-      resources:
-        limits:
-          memory: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
-        reservations:
-          memory: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
 
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:9187/metrics || exit 1']
@@ -133,7 +122,8 @@ services:
     restart: unless-stopped
 
     environment:
-      PGBOUNCER_EXPORTER_CONNECTION_STRING: 'postgres://pgbouncer_auth:"${PGBOUNCER_AUTH_PASS}"@pgbouncer:6432/pgbouncer?sslmode=disable'
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: 'postgres://pgbouncer_auth@pgbouncer:6432/pgbouncer?sslmode=disable'
+      PGPASSWORD: "${PGBOUNCER_AUTH_PASS}"
 
     networks:
       - postgres_net
@@ -142,16 +132,12 @@ services:
     ports:
       - '${PGBOUNCER_EXPORTER_BIND_IP:-127.0.0.1}:${PGBOUNCER_EXPORTER_PORT:-9127}:9127'
 
+    mem_limit: ${PGBOUNCER_EXPORTER_MEMORY_LIMIT:-32m}
+    mem_reservation: ${PGBOUNCER_EXPORTER_MEMORY_RESERVATION:-16m}
+
     depends_on:
       pgbouncer:
         condition: service_healthy
-
-    deploy:
-      resources:
-        limits:
-          memory: ${PGBOUNCER_EXPORTER_MEMORY_LIMIT:-32m}
-        reservations:
-          memory: ${PGBOUNCER_EXPORTER_MEMORY_RESERVATION:-16m}
 
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:9127/metrics || exit 1']

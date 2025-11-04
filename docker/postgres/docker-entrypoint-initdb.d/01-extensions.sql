@@ -28,11 +28,11 @@ DECLARE
 BEGIN
     SELECT COUNT(*) INTO ext_count
     FROM pg_extension
-    WHERE extname IN ('vector', 'pg_trgm', 'pg_cron', 'pgaudit', 'pg_stat_statements', 'uuid-ossp');
+    WHERE extname IN ('vector', 'pg_trgm', 'pg_cron', 'pgaudit', 'pg_stat_statements', 'uuid-ossp', 'btree_gin', 'btree_gist');
 
-    IF ext_count < 6 THEN
-        RAISE EXCEPTION 'Required extensions not installed correctly. Expected 6, found %', ext_count;
+    IF ext_count < 8 THEN
+        RAISE EXCEPTION 'Required extensions not installed correctly. Expected 8, found %', ext_count;
     END IF;
 
-    RAISE NOTICE 'Extensions installed successfully: vector, pg_trgm, pg_cron, pgaudit, pg_stat_statements, uuid-ossp';
+    RAISE NOTICE 'Extensions installed successfully: vector, pg_trgm, pg_cron, pgaudit, pg_stat_statements, uuid-ossp, btree_gin, btree_gist';
 END $body$;

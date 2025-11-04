@@ -92,9 +92,10 @@ scrape_configs:
 
 **Postgres (port 9187):**
 - `pg_up` - Database is up
-- `pg_replication_lag_seconds` - Replication lag
+- `pg_replication_lag_lag_seconds` - Replication lag (seconds)
 - `pg_postmaster_uptime_seconds` - Uptime
 - `pg_memory_settings_value_bytes` - Memory config values
+- `pg_connection_usage_current_conn` / `pg_connection_usage_max_conn` - Active vs allowed connections
 
 **PgBouncer (port 9127):**
 - `pgbouncer_pools_cl_active` - Active client connections
@@ -115,19 +116,18 @@ docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
 
 ### Automated Backups
 
-Uncomment the `postgres-backup` service in `stacks/primary/compose.yml`.
+Use the pgBackRest helper stack under `examples/backup/`:
 
-**Configuration:**
-```env
-BACKUP_SCHEDULE=86400        # Daily (seconds)
-BACKUP_RETENTION_DAYS=7      # Keep 7 days
-```
-
-**Verify:**
 ```bash
-docker logs postgres-backup  # Check backup logs
-docker exec postgres-backup ls -lh /backup  # List backups
+# Run alongside the primary stack
+docker compose -f compose.yml -f ../examples/backup/compose.yml up -d pgbackrest
+
+# Initialize and schedule backups
+docker compose exec pgbackrest pgbackrest stanza-create --stanza=main
+docker compose exec pgbackrest pgbackrest backup --stanza=main --type=full
 ```
+
+See `examples/backup/README.md` for retention policies, cron snippets, and PITR restores.
 
 ## Troubleshooting
 
@@ -141,7 +141,10 @@ docker logs pgbouncer-primary | grep -i error
 docker exec postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles WHERE rolname = 'pgbouncer_auth';"
 ```
 
-**Fix:** Ensure `PGBOUNCER_AUTH_PASS` is set in primary stack `.env`
+**Fix:** Ensure `PGBOUNCER_AUTH_PASS` is set in `.env` and that PgBouncer rendered `/tmp/.pgpass`:
+```bash
+docker exec pgbouncer-primary ls -l /tmp/.pgpass
+```
 
 ### Replica Won't Connect
 
@@ -162,15 +165,9 @@ docker exec postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles W
 docker logs postgres-primary | grep AUTO-CONFIG
 ```
 
-Look for source: `cgroup-v2` (correct) vs `proc-meminfo` (fallback).
+Look for source markers: `manual`, `cgroup-v2`, or `meminfo`. If you see `meminfo` with unexpectedly large RAM, Docker is not applying limits.
 
-**Fix:** Set explicit memory limit in compose.yml:
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 2048m
-```
+**Fix:** Either set `mem_limit` / `mem_reservation` in compose (already provided in the sample files) or export `POSTGRES_MEMORY=<MB>` to pin the value.
 
 ### Extensions Not Loading
 
@@ -258,7 +255,7 @@ Recommended Prometheus alerts:
   for: 1m
 
 - alert: ReplicationLag
-  expr: pg_replication_lag_seconds > 60
+  expr: pg_replication_lag_lag_seconds > 60
   for: 5m
 
 - alert: PgBouncerHighWait
@@ -266,7 +263,7 @@ Recommended Prometheus alerts:
   for: 2m
 
 - alert: HighConnections
-  expr: pg_settings_max_connections - pg_stat_activity_count < 10
+  expr: pg_connection_usage_current_conn / pg_connection_usage_max_conn > 0.85
   for: 5m
 ```
 

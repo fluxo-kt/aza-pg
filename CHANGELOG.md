@@ -14,6 +14,7 @@ All notable changes to aza-pg will be documented in this file.
 - .dockerignore to optimize Docker build context
 - Init script execution order documentation in CLAUDE.md/AGENTS.md
 - Architecture diagram in `docs/architecture.md`
+- PgBouncer bootstrap script that renders `.pgpass` safely (`stacks/primary/scripts/pgbouncer-entrypoint.sh`)
 
 ### Fixed (Pre-Release)
 - Auto-config documentation: Clarified 1GB default when no memory limit detected
@@ -24,6 +25,11 @@ All notable changes to aza-pg will be documented in this file.
 - Replaced "zero config" claims with "minimal config"
 - Added explicit "build image first" step to Quick Start
 - Added pg_cron, pgaudit, pg_stat_statements to extension creation in init script
+- Auto-config tuning now supports manual overrides, `/proc/meminfo` fallback, and large (>32GB) shared buffers with updated docs/tests
+- Compose files use `mem_limit`/`mem_reservation` so Docker enforces memory caps
+- PgBouncer configuration no longer inlines passwords; exporter and templates updated to avoid quoting pitfalls
+- Prometheus/Grafana examples align with exported metric names
+- Production guide backup instructions point to pgBackRest example stack
 
 ### Initial Release (Extracted from Wordian)
 - Multi-stage Docker build for PostgreSQL 18

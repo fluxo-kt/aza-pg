@@ -7,7 +7,7 @@ set -e
 readonly DEFAULT_RAM_MB=1024
 readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit"
 
-readonly SHARED_BUFFERS_CAP_MB=8192
+readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
 
@@ -36,6 +36,21 @@ detect_ram() {
     local ram_mb=0
     local source="unknown"
 
+    if [ -n "${POSTGRES_MEMORY:-}" ]; then
+        if ! [[ "${POSTGRES_MEMORY}" =~ ^[0-9]+$ ]]; then
+            echo "[AUTO-CONFIG] ERROR: POSTGRES_MEMORY must be an integer value in MB" >&2
+            exit 1
+        fi
+        if [ "${POSTGRES_MEMORY}" -lt 1 ]; then
+            echo "[AUTO-CONFIG] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
+            exit 1
+        fi
+        ram_mb=${POSTGRES_MEMORY}
+        source="manual"
+        echo "$ram_mb:$source"
+        return
+    fi
+
     if [ -f /sys/fs/cgroup/memory.max ]; then
         local limit
         limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "max")
@@ -47,7 +62,18 @@ detect_ram() {
         fi
     fi
 
-    ram_mb=${POSTGRES_MEMORY:-$DEFAULT_RAM_MB}
+    if [ -r /proc/meminfo ]; then
+        local mem_total_kb
+        mem_total_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")
+        if [ "$mem_total_kb" -gt 0 ]; then
+            ram_mb=$((mem_total_kb / 1024))
+            source="meminfo"
+            echo "$ram_mb:$source"
+            return
+        fi
+    fi
+
+    ram_mb=$DEFAULT_RAM_MB
     source="default"
     echo "$ram_mb:$source"
 }
@@ -87,12 +113,17 @@ CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
 
 if [ "$TOTAL_RAM_MB" -lt 512 ]; then
     echo "[AUTO-CONFIG] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 512MB REQUIRED"
-    echo "[AUTO-CONFIG] Set memory limit: docker run -m 512m OR deploy.resources.limits.memory: 512m"
+    echo "[AUTO-CONFIG] Set memory limit: docker run -m 512m OR compose mem_limit: 512m"
     exit 1
 fi
 
-MAX_CONNECTIONS=200
-[ "$TOTAL_RAM_MB" -lt 2048 ] && MAX_CONNECTIONS=100
+if [ "$TOTAL_RAM_MB" -lt 1024 ]; then
+    MAX_CONNECTIONS=80
+elif [ "$TOTAL_RAM_MB" -lt 4096 ]; then
+    MAX_CONNECTIONS=120
+else
+    MAX_CONNECTIONS=200
+fi
 
 calculate_shared_buffers() {
     local ratio

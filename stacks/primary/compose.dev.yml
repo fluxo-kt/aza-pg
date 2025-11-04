@@ -2,12 +2,8 @@ services:
   postgres:
     image: ${POSTGRES_IMAGE:-aza-pg:pg18-dev}
 
-    deploy:
-      resources:
-        limits:
-          memory: ${POSTGRES_DEV_MEMORY_LIMIT:-2000m}
-        reservations:
-          memory: 512m
+    mem_limit: ${POSTGRES_DEV_MEMORY_LIMIT:-2000m}
+    mem_reservation: 512m
 
     ports: !override
       - '5433:5432'

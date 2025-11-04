@@ -17,7 +17,7 @@ groups:
 
       # Too many connections
       - alert: PostgreSQLTooManyConnections
-        expr: sum by (instance) (pg_stat_activity_count) > (pg_settings_max_connections * 0.8)
+        expr: pg_connection_usage_current_conn / pg_connection_usage_max_conn > 0.8
         for: 5m
         labels:
           severity: warning
@@ -28,7 +28,7 @@ groups:
 
       # Replication lag (if using replicas)
       - alert: PostgreSQLReplicationLag
-        expr: pg_replication_lag > 300
+        expr: pg_replication_lag_lag_seconds > 300
         for: 2m
         labels:
           severity: warning
@@ -50,7 +50,7 @@ groups:
 
       # Slow queries
       - alert: PostgreSQLSlowQueries
-        expr: rate(pg_stat_activity_max_tx_duration{datname!=""}[5m]) > 300
+        expr: pg_stat_activity_max_tx_duration_seconds > 300
         for: 5m
         labels:
           severity: warning

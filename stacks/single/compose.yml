@@ -22,6 +22,9 @@ services:
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512M}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256M}
+
     command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
 
     networks:
@@ -34,13 +37,7 @@ services:
       retries: 5
       start_period: 60s
 
-    deploy:
-      resources:
-        limits:
-          memory: ${POSTGRES_MEMORY_LIMIT:-512M}
-          cpus: '${POSTGRES_CPU_LIMIT:-0.5}'
-        reservations:
-          memory: ${POSTGRES_MEMORY_RESERVATION:-256M}
+    cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
@@ -65,16 +62,12 @@ services:
     ports:
       - '${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9189}:9187'
 
+    mem_limit: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
+    mem_reservation: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
+
     depends_on:
       postgres:
         condition: service_healthy
-
-    deploy:
-      resources:
-        limits:
-          memory: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
-        reservations:
-          memory: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
 
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:9187/metrics || exit 1']

@@ -33,10 +33,7 @@ sum(pgbouncer_pools_cl_waiting) by (database)
 ### Replication Lag
 ```promql
 # Lag in seconds
-pg_replication_lag
-
-# Lag in bytes
-pg_replication_lag_bytes
+pg_replication_lag_lag_seconds
 ```
 
 ### Dead Tuples Ratio
@@ -54,10 +51,10 @@ rate(pg_stat_database_blks_hit[5m]) / (rate(pg_stat_database_blks_hit[5m]) + rat
 ### Auto-Config Detection
 ```promql
 # Current shared_buffers setting
-pg_settings_shared_buffers_bytes / 1024 / 1024  # Convert to MB
+pg_memory_settings_value_bytes{ name="shared_buffers" } / 1024 / 1024
 
 # Max connections
-pg_settings_max_connections
+pg_connection_usage_max_conn
 ```
 
 ## Alternative Dashboards

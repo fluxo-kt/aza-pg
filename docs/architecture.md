@@ -43,19 +43,20 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 │                                                                     │
 │  docker-auto-config-entrypoint.sh                                   │
 │  ┌─────────────────────────────────────┐                            │
-│  │  1. Detect RAM (cgroup v2)          │                            │
-│  │     ├─ Memory limit? → Use it       │                            │
-│  │     └─ No limit? → Default 1GB      │                            │
+│  │  1. Detect RAM (cgroup v2/manual)   │                            │
+│  │     ├─ POSTGRES_MEMORY? → Use it    │                            │
+│  │     ├─ Memory limit? → Use cgroup   │                            │
+│  │     └─ Else → Read /proc/meminfo    │                            │
 │  │                                     │                            │
 │  │  2. Detect CPU (nproc)              │                            │
 │  │     └─ Scale workers/parallelism    │                            │
 │  │                                     │                            │
 │  │  3. Calculate Settings              │                            │
-│  │     ├─ shared_buffers (max 8GB)     │                            │
+│  │     ├─ shared_buffers (max 32GB)    │                            │
 │  │     ├─ effective_cache              │                            │
 │  │     ├─ maintenance_work_mem         │                            │
 │  │     ├─ work_mem                     │                            │
-│  │     └─ max_connections (100-200)    │                            │
+│  │     └─ max_connections (80/120/200) │                            │
 │  │                                     │                            │
 │  │  4. Inject -c flags                 │                            │
 │  │     └─ Override postgresql.conf     │                            │
@@ -119,9 +120,10 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 - Entrypoint script runs BEFORE postgres starts
 - Detects actual hardware of deployment environment:
   - cgroup v2 memory limit (if set)
+  - Manual override via `POSTGRES_MEMORY`
   - CPU cores via `nproc`
-- Calculates proportional settings (baseline: 2GB = 256MB shared_buffers)
-- Defaults to 1GB if no memory limit detected
+- Calculates proportional settings (baseline: 25% RAM to shared_buffers, capped at 32GB)
+- Falls back to `/proc/meminfo` when no limit/override is present
 - Injects settings as `-c` command-line flags
 
 **Output:** PostgreSQL process with auto-tuned configuration
@@ -300,25 +302,26 @@ Deployment Environment
        │
        ├─ cgroup v2 memory limit SET
        │  └─► Use limit value
-       │     Example: 4GB → shared_buffers=512MB
+       │     Example: 4GB → shared_buffers=1024MB
        │
        └─ cgroup v2 memory limit NOT SET
-          └─► Default to 1GB baseline
-              Example: shared_buffers=128MB
-              Override: POSTGRES_MEMORY=4096
+          ├─ POSTGRES_MEMORY set? ─► Use override
+          │    Example: 1024 → shared_buffers=256MB
+          └─► Read /proc/meminfo (host RAM)
+               Example: 64GB host → shared_buffers≈9830MB
 ```
 
 **Baseline Ratio (2GB):**
-- shared_buffers: 12.5% (256MB)
-- effective_cache: 37.5% (768MB)
-- maintenance_work_mem: 3.1% (64MB)
-- work_mem: 0.2% (4MB)
+- shared_buffers: 25% (512MB)
+- effective_cache: ~75% (1536MB)
+- maintenance_work_mem: ~3% (64MB, capped at 2GB)
+- work_mem: total RAM / (connections×4) → 2MB with 120 connections
 
 **Caps:**
-- shared_buffers: max 8GB
+- shared_buffers: max 32GB
+- max_connections: 80 (≤512MB), 120 (<4GB), 200 (≥4GB)
 - maintenance_work_mem: max 2GB
 - work_mem: max 32MB
-- max_connections: 100-200 (based on RAM)
 
 ## Monitoring Data Flow
 

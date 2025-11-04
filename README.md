@@ -13,19 +13,24 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - Supply chain hardened: SHA-pinned extensions (immutable), SBOM/provenance
 - Production-grade: PgBouncer pooling, replication, monitoring, SCRAM-SHA-256
 
+## Requirements
+- Docker Engine 24+ with Docker Compose v2
+- GNU/Linux or macOS host (Windows via WSL2)
+- `bun` for regenerating configs (`curl -fsSL https://bun.sh/install | bash`)
+
 **Non-Goals:**
 - Kubernetes manifests (use Compose stacks)
 - Multi-version support (PostgreSQL 18 only)
 - Custom extension compilation at runtime (pre-compiled in image)
 
 **Limitations:**
-- Auto-config requires cgroup v2 (falls back to 1GB default if no limit detected)
-- Connection limit capped at 100-200 (prevent OOM on shared VPS)
-- PgBouncer transaction mode (no prepared statements, advisory locks, LISTEN/NOTIFY)
+- Auto-config reads cgroup v2 limits or `/proc/meminfo`; set `POSTGRES_MEMORY` when neither is available.
+- Connection limit tiers at 80/120/200 to protect low-memory nodes (PgBouncer recommended for concurrency).
+- PgBouncer runs in transaction mode (no prepared statements, advisory locks, LISTEN/NOTIFY).
 
 ## Features
 
-- **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (defaults to 1GB if no memory limit detected, override with `POSTGRES_MEMORY` env var)
+- **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (cgroup v2 preferred, `/proc/meminfo` fallback, or manual `POSTGRES_MEMORY` override)
 - **Production Extensions**: pgvector 0.8.1, pg_cron 1.6.7, pgAudit 18.0, pg_stat_statements, auto_explain, pg_trgm
 - **Complete Stacks**: Single instance, Primary with PgBouncer + Exporter, Replica
 - **Supply Chain Security**: SHA-pinned extension sources, multi-platform builds (amd64/arm64)
@@ -84,6 +89,8 @@ Access:
 - **Postgres**: `127.0.0.1:5432`
 - **PgBouncer**: `127.0.0.1:6432`
 - **Metrics**: `127.0.0.1:9187/metrics`
+
+> The compose files set `mem_limit`/`mem_reservation` so Docker applies cgroup v2 limits. If you modify memory values or use a different orchestrator, make sure a limit (or `POSTGRES_MEMORY`) is present so auto-config can size itself correctly.
 
 ### Local Quick Start (Development)
 
@@ -145,23 +152,28 @@ docker compose up
 **Adapts at runtime** (container start on VPS, not build time). Same image auto-tunes to deployment environment.
 
 Detects at container start:
-- **RAM**: cgroup v2 memory limit (preferred) → defaults to 1GB if no limit detected, or use `POSTGRES_MEMORY=<MB>` to override manually
+- **RAM**: cgroup v2 memory limit (preferred). Set `POSTGRES_MEMORY=<MB>` to override, or fall back to `/proc/meminfo` when running without limits.
 - **CPU**: Core count → scales `max_worker_processes`, `max_parallel_workers`, `max_connections`
 
-The entrypoint targets ~25% of available RAM for `shared_buffers` (capped at 8GB) and derives other settings from that baseline (maintenance_work_mem capped at 2GB, work_mem at 32MB).
+The entrypoint targets ~25% of available RAM for `shared_buffers` (capped at 32GB) and derives other settings from that baseline (maintenance_work_mem capped at 2GB, work_mem at 32MB). Connection ceilings tier with memory: 80 (≤512MB), 120 (<4GB), 200 (≥4GB).
 
 Reference points:
-- 512MB limit → `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=1MB`, `max_connections=100`
-- 1GB limit / default → `shared_buffers=256MB`, `effective_cache_size=768MB`, `work_mem=2MB`, `max_connections=100`
-- 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=2MB`, `max_connections=200`
+- 512MB limit → `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=1MB`, `max_connections=80`
+- 1GB manual override (`POSTGRES_MEMORY=1024`) → `shared_buffers=256MB`, `effective_cache_size=768MB`, `work_mem=2MB`, `max_connections=120`
+- 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=2MB`, `max_connections=120`
 - 4GB limit → `shared_buffers=1024MB`, `effective_cache_size=3072MB`, `work_mem≈5MB`, `max_connections=200`
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
+- 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈55706MB`, `work_mem≈32MB`, `max_connections=200`
 
 `shared_preload_libraries` is enforced at runtime (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift.
 
 ### Disable Auto-Config
 
 Set `POSTGRES_SKIP_AUTOCONFIG=true` to use static postgresql.conf values.
+
+### PgBouncer Auth
+
+The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/scripts/pgbouncer-entrypoint.sh`). Provide `PGBOUNCER_AUTH_PASS` in `.env`; passwords may include special characters because they are escaped before being written to `.pgpass`. The rendered config never stores credentials in plaintext.
 
 ## Extensions
 
@@ -211,8 +223,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 1. Fork the repository
 2. Create a feature branch
 3. Make changes
-4. Test locally (build image + deploy stack)
-5. Submit pull request
+4. Regenerate configs if you touch `scripts/config-generator` (`./scripts/generate-configs.sh`, requires `bun`)
+5. Test locally (build image + deploy stack)
+6. Submit pull request
 
 ---
 

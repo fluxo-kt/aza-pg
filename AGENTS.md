@@ -16,28 +16,28 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **When:** RUNTIME (container start on VPS), NOT build-time. Same image adapts to any deployment environment.
 
 **How:**
-- Detects RAM: cgroup v2 limit of the running container → fallback to 1GB default if no limit, optional manual override with `POSTGRES_MEMORY=<MB>`
+- Detects RAM: cgroup v2 limit of the running container → manual override via `POSTGRES_MEMORY=<MB>` takes precedence → falls back to `/proc/meminfo` if no limit.
 - Detects CPU: `nproc` fallback when no quota is set → sizes worker counts
 - Injects runtime flags for buffers, cache, maintenance/work memory, connection caps, worker counts, **and** `shared_preload_libraries` so pg_cron/pgAudit stay loaded even if static configs drift
 
-**Default Behavior:** No memory limit detected → defaults to 1GB (conservative baseline)
+**Default Behavior:** Honors actual machine RAM (via cgroup or `/proc/meminfo`) or explicit `POSTGRES_MEMORY`.
 
-**Caps:** shared_buffers max 8GB, maintenance_work_mem max 2GB, work_mem max 32MB, max_connections 100-200
+**Caps:** shared_buffers capped at 32GB, maintenance_work_mem max 2GB, work_mem max 32MB, max_connections tiers at 80/120/200
 
 **Overrides:**
 - `POSTGRES_SKIP_AUTOCONFIG=true` — Uses static postgresql.conf values
-- `POSTGRES_MEMORY=<MB>` — Manual RAM override when cgroup detection unavailable
+- `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 
 ### PgBouncer Auth Pattern
 - **NO plaintext userlist.txt**: Uses `auth_query = SELECT * FROM pgbouncer_lookup($1)`
 - Function: SECURITY DEFINER reads `pg_shadow` (password hashes)
-- Bootstrap: `pgbouncer_auth` user created in stack-specific `03-pgbouncer-auth.sh` via envsubst
-- Dev password: `dev_pgbouncer_auth_test_2025` (safe, only for local testing)
-- Prod: `${PGBOUNCER_AUTH_PASS}` injected via env
+- Bootstrap: `pgbouncer_auth` user created in stack-specific `03-pgbouncer-auth.sh`
+- PgBouncer container renders config via `scripts/pgbouncer-entrypoint.sh` → writes `/tmp/.pgpass` with escaped password instead of inlining it in `pgbouncer.ini`
+- Health check connects through PgBouncer using standard database connection (not the admin console)
 
-**Gotcha:** pgbouncer.ini line 6 hardcodes bootstrap connection password. MUST match postgres user password or auth fails silently. Health check uses regular DB, NOT admin "pgbouncer" database (restricted).
+**Credential flow:** set `${PGBOUNCER_AUTH_PASS}` in `.env`. Entry script escapes special characters for `.pgpass`, so passwords may include `:`, `@`, `&`, etc.
 
 ### Extension Pinning Strategy
 **Pattern:** `@docker/postgres/Dockerfile` uses dual ARGs: `*_VERSION` (semver) + `*_COMMIT_SHA` (immutable). Git clone checks out SHA, not tag.
@@ -71,7 +71,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - Never use `00-` (breaks extension dependency)
 
 ### Compose Override Pattern
-**Pattern:** `compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test memory). Use `!override` tag to replace arrays (ports) vs merge.
+**Pattern:** `compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test memory). Use `!override` tag to replace arrays (ports) vs merge. Base compose now relies on `mem_limit`/`mem_reservation` so Docker applies cgroup limits; keep those values aligned with auto-config expectations.
 
 **Usage:** `docker compose -f compose.yml -f compose.dev.yml up` merges configs (dev wins on conflicts).
 
@@ -93,20 +93,21 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **What stays in stack configs:** Deployment-specific (replication settings, synchronous_commit, max_wal_senders, hot_standby delays, pg_cron).
 
 ### Auto-Config Memory Allocation
-**Detection:** Detects cgroup v2 memory limits. If no limit: defaults to 1GB RAM (conservative baseline).
+**Detection:** Prefers cgroup v2 limits, respects manual overrides (`POSTGRES_MEMORY=<MB>`), otherwise inspects `/proc/meminfo`.
 
 **Overrides:**
 - `POSTGRES_SKIP_AUTOCONFIG=true` — Uses static `postgresql.conf` values
-- `POSTGRES_MEMORY=<MB>` — Manual RAM override when cgroup detection unavailable
+- `POSTGRES_MEMORY=<MB>` — Manual RAM override (works even when cgroup limits exist)
 
-**Baseline ratios:** ~25% of detected RAM allocated to shared_buffers up to 8GB, with effective_cache consuming the remainder (minimum 2× buffers). Caps retain 32MB work_mem and 2GB maintenance_work_mem for large nodes.
+**Baseline ratios:** ~25% of detected RAM allocated to shared_buffers up to 32GB, with effective_cache ≥2× buffers. Work mem capped at 32MB, maintenance_work_mem at 2GB. Connection tiers: 80 (≤512MB), 120 (<4GB), 200 (≥4GB).
 
 **Common cases:**
-- 512MB limit → shared_buffers 128MB, effective_cache 384MB, work_mem 1MB, max_connections 100
-- 1GB limit (or default) → shared_buffers 256MB, effective_cache 768MB, work_mem 2MB, max_connections 100
-- 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 2MB, max_connections 200
-- 4GB limit → shared_buffers 1GB, effective_cache 3GB, work_mem ~5MB, max_connections 200
-- 8GB limit → shared_buffers 2GB, effective_cache 6GB, work_mem ~10MB, max_connections 200
+- 512MB limit → shared_buffers 128MB, effective_cache 384MB, work_mem 1MB, max_connections 80
+- 1GB override (`POSTGRES_MEMORY=1024`) → shared_buffers 256MB, effective_cache 768MB, work_mem 2MB, max_connections 120
+- 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 2MB, max_connections 120
+- 4GB limit → shared_buffers 1024MB, effective_cache 3072MB, work_mem ~5MB, max_connections 200
+- 8GB limit → shared_buffers 2048MB, effective_cache 6144MB, work_mem ~10MB, max_connections 200
+- 64GB override (`POSTGRES_MEMORY=65536`) → shared_buffers ~9830MB, effective_cache ~55706MB, work_mem 32MB, max_connections 200
 
 ### PostgreSQL 18 Optimizations Applied
 - **Async I/O:** `io_method = 'worker'` (2-3x I/O performance on NVMe/cloud storage)
@@ -149,19 +150,19 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 1. Extension loading (CREATE + functional query)
 2. Auto-config detection (grep logs for RAM/CPU/scaled values)
 3. PgBouncer auth (via :6432, verify SHOW POOLS)
-4. Memory limit verification (test 2GB/4GB/8GB → different auto-config outputs)
+4. Memory limit verification (512MB, manual 1GB override, 2GB limit, 64GB override)
 
-**Why Memory Tests Matter:** Auto-config requires cgroup v2 for limit detection. If unavailable, defaults to 1GB (may be too low). Use `POSTGRES_MEMORY` env var to override when needed.
+**Why Memory Tests Matter:** Auto-config prefers cgroup v2. Without limits it consults `/proc/meminfo`, which may reflect the host. Exercising manual overrides (`POSTGRES_MEMORY`) ensures deterministic tuning in CI/local shells.
 
 ## Gotchas & Edge Cases
 
-1. **PgBouncer password sync**: pgbouncer.ini bootstrap password MUST match postgres user or auth fails with zero error logs. Check with: `docker logs pgbouncer-primary | grep -i error`
+1. **PgBouncer password sync**: `.pgpass` must exist inside PgBouncer container. If auth fails, check `docker exec pgbouncer-primary ls -l /tmp/.pgpass` and container logs.
 
 2. **Auto-config override**: If postgresql.conf has conflicting settings, `-c` flags from entrypoint override them. Disable auto-config with `POSTGRES_SKIP_AUTOCONFIG=true` if needed.
 
 3. **Extension SHA mismatch**: If git clone fails during build, SHA may be stale (force-push to tag). Verify at GitHub: `https://github.com/pgvector/pgvector/commit/<SHA>`
 
-4. **Memory limit not detected**: Auto-config runs at container START (not at build). cgroup v2 required for limit detection. If no limit detected → defaults to 1GB RAM (conservative baseline). Override with `POSTGRES_MEMORY=<MB>` env var for manual control.
+4. **Memory limit not detected**: Auto-config reads `/proc/meminfo` when no limit is set, which may reflect the host's full RAM. Specify `mem_limit` in Compose or set `POSTGRES_MEMORY=<MB>` to pin tuning.
 
 5. **Health check failures**: PgBouncer test uses regular database connection, NOT admin "pgbouncer" database. Wrong: `psql pgbouncer://...@localhost:6432/pgbouncer`. Right: `psql postgres://...@localhost:6432/postgres`.
 
@@ -192,19 +193,20 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ## Contributing
 
 1. Test locally: Build image → deploy primary stack → verify extensions
-2. Check auto-config: Test with 2GB/4GB/8GB memory limits
-3. Verify no secrets leaked: `grep -ri "password\|secret" . | grep -v .env.example`
-4. Update CHANGELOG.md
-5. PR with clear description of changes
+2. Check auto-config: Run `./scripts/test/test-auto-config.sh` (covers manual + 512MB + 2GB + 64GB cases)
+3. Regenerate configs if touching generator files: `./scripts/generate-configs.sh` (requires `bun`)
+4. Verify no secrets leaked: `grep -ri "password\|secret" . | grep -v .env.example`
+5. Update CHANGELOG.md
+6. PR with clear description of changes
 
 ## Design Constraints
 
 **Target Range:** 2-16GB RAM optimal, scales 2-128GB. 1-64 CPU cores. Compose-only (no K8s).
 
 **Deliberate Limits:**
-- Max connections: 100-200 (prevents OOM on shared VPS, PgBouncer multiplexes)
+- Max connections: 80/120/200 (tiers by RAM to prevent OOM; PgBouncer multiplexes)
 - PgBouncer transaction mode: NO prepared statements/advisory locks/LISTEN/NOTIFY (use session mode if needed)
-- Auto-config: Defaults to 1GB when no memory limit detected (conservative baseline, override with POSTGRES_MEMORY)
+- Auto-config: Reads cgroup v2, manual `POSTGRES_MEMORY`, or `/proc/meminfo`; set a limit if you need deterministic tuning
 - PostgreSQL 18 only: No multi-version support (simplifies maintenance)
 
 **Why Transaction Mode:** Stateless pooling maximizes connection efficiency. Session-local features (prepared statements) break pooling. Use direct Postgres connection (:5432) if needed, PgBouncer (:6432) for app connections.

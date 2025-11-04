@@ -42,20 +42,18 @@ LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
 LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
 LABEL org.opencontainers.image.version="${PG_VERSION}"
 
-COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
+COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
 # Runtime libraries for compiled extensions
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
+    RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y \
-      ca-certificates \
-      zstd \
-      lz4 \
       postgresql-client-${PG_MAJOR} \
-      $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.build-packages.txt
+      ${RUNTIME_PKGS} && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
 COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/ /usr/lib/postgresql/${PG_MAJOR}/lib/
 COPY --from=builder /usr/share/postgresql/${PG_MAJOR}/extension/ /usr/share/postgresql/${PG_MAJOR}/extension/

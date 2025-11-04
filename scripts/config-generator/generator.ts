@@ -43,6 +43,7 @@ function formatSetting(key: string, value: any): string {
   snakeKey = snakeKey.replace(/^auto_explain_/, 'auto_explain.');
   snakeKey = snakeKey.replace(/^pg_audit_/, 'pgaudit.');
   snakeKey = snakeKey.replace(/^cron_/, 'cron.');
+  snakeKey = snakeKey.replace(/^timescaledb_/, 'timescaledb.');
 
   if (typeof value === 'boolean') {
     return `${snakeKey} = ${value ? 'on' : 'off'}`;
@@ -188,6 +189,7 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
     checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
     wal: ['walLevel', 'walCompression'],
+    timescaledb: ['timescaledbTelemetryLevel'],
   };
 
   for (const [catName, categoryKeys] of Object.entries(categories)) {

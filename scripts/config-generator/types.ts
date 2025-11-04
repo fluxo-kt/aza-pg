@@ -37,6 +37,7 @@ export interface PostgreSQLSettings {
   // pg_stat_statements
   pgStatStatementsMax: number;
   pgStatStatementsTrack: string;
+  timescaledbTelemetryLevel?: string;
 
   // auto_explain
   autoExplainLogMinDuration: string;

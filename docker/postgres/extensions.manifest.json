@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-04T20:28:46.266Z",
+  "generatedAt": "2025-11-04T21:17:46.018Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -41,29 +41,47 @@
       }
     },
     {
-      "name": "citus",
+      "name": "hll",
+      "displayName": "postgresql-hll",
       "kind": "extension",
-      "category": "distributed",
-      "description": "Distributed sharding and parallel execution across worker nodes.",
+      "category": "analytics",
+      "description": "HyperLogLog probabilistic counting data type.",
       "source": {
         "type": "git",
-        "repository": "https://github.com/citusdata/citus.git",
-        "tag": "v13.2.0",
-        "commit": "e8e06d8d0cc103b1150feeac7250efc488a3cd5b"
+        "repository": "https://github.com/citusdata/postgresql-hll.git",
+        "tag": "v2.19",
+        "commit": "be7ef6fbc882afa1f60b1bbe5203209e1f450cd6"
       },
       "build": {
-        "type": "autotools"
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "http",
+      "displayName": "pgsql-http",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pramsey/pgsql-http.git",
+        "tag": "v1.7.0",
+        "commit": "fbea6fe46c9e1db5a18103606ec00a9809e91d11"
+      },
+      "build": {
+        "type": "pgxs"
       },
       "aptPackages": [
-        "python3",
-        "pkg-config"
+        "libcurl4-openssl-dev",
+        "libjson-c-dev"
       ],
       "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": false,
-        "notes": [
-          "Requires coordinator/worker topology before enabling citus."
-        ]
+        "sharedPreload": false,
+        "defaultEnable": false
       }
     },
     {
@@ -154,35 +172,23 @@
       "category": "validation",
       "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
       "source": {
-        "type": "git",
+        "type": "git-ref",
         "repository": "https://github.com/supabase/pg_jsonschema.git",
-        "tag": "v0.3.3",
-        "commit": "dcbe58ebfe6712746162253770167cfa7a73667a"
+        "ref": "e7834142a3cce347b6082c5245de939810d3f9c4",
+        "commit": "e7834142a3cce347b6082c5245de939810d3f9c4"
       },
       "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      }
-    },
-    {
-      "name": "pg_net",
-      "kind": "extension",
-      "category": "integration",
-      "description": "Async HTTP client inside PostgreSQL for webhooks and callbacks.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/supabase/pg_net.git",
-        "tag": "v0.9.3",
-        "commit": "6cfa1c33d0f94896b4d071ce1f1c2a0c1068a614"
-      },
-      "build": {
-        "type": "pgxs"
+        "type": "cargo-pgrx",
+        "features": [
+          "pg18"
+        ],
+        "noDefaultFeatures": true
       },
       "aptPackages": [
-        "libcurl4-openssl-dev"
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
       ],
       "runtime": {
         "sharedPreload": false,
@@ -504,80 +510,6 @@
       }
     },
     {
-      "name": "pgsql-http",
-      "kind": "extension",
-      "category": "integration",
-      "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pramsey/pgsql-http.git",
-        "tag": "v1.7.0",
-        "commit": "fbea6fe46c9e1db5a18103606ec00a9809e91d11"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "aptPackages": [
-        "libcurl4-openssl-dev",
-        "libjson-c-dev"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      }
-    },
-    {
-      "name": "pgvector",
-      "kind": "extension",
-      "category": "ai",
-      "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgvector/pgvector.git",
-        "tag": "v0.8.1",
-        "commit": "778dacf20c07caf904557a88705142631818d8cb"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true
-      }
-    },
-    {
-      "name": "pgvectorscale",
-      "kind": "extension",
-      "category": "ai",
-      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/timescale/pgvectorscale.git",
-        "tag": "0.9.0",
-        "commit": "c66cae4b621664b68546587da9fafd80b791e643"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "pgvectorscale",
-        "features": [
-          "pg18"
-        ]
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "dependencies": [
-        "pgvector"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      }
-    },
-    {
       "name": "plpgsql",
       "kind": "builtin",
       "category": "language",
@@ -644,25 +576,6 @@
       }
     },
     {
-      "name": "postgresql-hll",
-      "kind": "extension",
-      "category": "analytics",
-      "description": "HyperLogLog probabilistic counting data type.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/citusdata/postgresql-hll.git",
-        "tag": "v2.19",
-        "commit": "be7ef6fbc882afa1f60b1bbe5203209e1f450cd6"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      }
-    },
-    {
       "name": "rum",
       "kind": "extension",
       "category": "search",
@@ -680,42 +593,6 @@
         "sharedPreload": false,
         "defaultEnable": false
       }
-    },
-    {
-      "name": "supabase-wrappers",
-      "kind": "extension",
-      "category": "integration",
-      "description": "Rust FDW framework powering Supabase foreign wrappers.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.5.6",
-        "commit": "21709a60dccd2b784e495d209a3b3e1dfda9751b"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "features": [
-          "pg18"
-        ],
-        "noDefaultFeatures": true,
-        "subdir": "supabase-wrappers"
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "dependencies": [
-        "pg_stat_statements"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "notes": [
-        "Requires cargo-pgrx 0.16.1 aligned with PG18."
-      ]
     },
     {
       "name": "supautils",
@@ -825,6 +702,59 @@
       }
     },
     {
+      "name": "vector",
+      "displayName": "pgvector",
+      "kind": "extension",
+      "category": "ai",
+      "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgvector/pgvector.git",
+        "tag": "v0.8.1",
+        "commit": "778dacf20c07caf904557a88705142631818d8cb"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true
+      }
+    },
+    {
+      "name": "vectorscale",
+      "displayName": "pgvectorscale",
+      "kind": "extension",
+      "category": "ai",
+      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/pgvectorscale.git",
+        "tag": "0.9.0",
+        "commit": "c66cae4b621664b68546587da9fafd80b791e643"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "pgvectorscale",
+        "features": [
+          "pg18"
+        ]
+      },
+      "aptPackages": [
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
+      ],
+      "dependencies": [
+        "vector"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
       "name": "wal2json",
       "kind": "extension",
       "category": "cdc",
@@ -842,6 +772,43 @@
         "sharedPreload": false,
         "defaultEnable": false
       }
+    },
+    {
+      "name": "wrappers",
+      "displayName": "supabase-wrappers",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Rust FDW framework powering Supabase foreign wrappers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/wrappers.git",
+        "tag": "v0.5.6",
+        "commit": "21709a60dccd2b784e495d209a3b3e1dfda9751b"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "features": [
+          "pg18"
+        ],
+        "noDefaultFeatures": true,
+        "subdir": "supabase-wrappers"
+      },
+      "aptPackages": [
+        "clang",
+        "llvm",
+        "pkg-config",
+        "make"
+      ],
+      "dependencies": [
+        "pg_stat_statements"
+      ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": [
+        "Requires cargo-pgrx 0.16.1 aligned with PG18."
+      ]
     }
   ]
 }

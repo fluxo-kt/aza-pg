@@ -46,6 +46,7 @@ export interface RuntimeSpec {
 
 export interface ManifestEntry {
   name: string;
+  displayName?: string;
   kind: "extension" | "tool" | "builtin";
   category: string;
   description: string;
@@ -60,7 +61,8 @@ export interface ManifestEntry {
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
-    name: "pgvector",
+    name: "vector",
+    displayName: "pgvector",
     kind: "extension",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
@@ -225,21 +227,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
   },
   {
-    name: "pg_net",
-    kind: "extension",
-    category: "integration",
-    description: "Async HTTP client inside PostgreSQL for webhooks and callbacks.",
-    source: {
-      type: "git",
-      repository: "https://github.com/supabase/pg_net.git",
-      tag: "v0.9.3",
-    },
-    build: { type: "pgxs" },
-    aptPackages: ["libcurl4-openssl-dev"],
-    runtime: { sharedPreload: false, defaultEnable: false },
-  },
-  {
-    name: "pgsql-http",
+    name: "http",
+    displayName: "pgsql-http",
     kind: "extension",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
@@ -253,7 +242,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
-    name: "supabase-wrappers",
+    name: "wrappers",
+    displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",
     description: "Rust FDW framework powering Supabase foreign wrappers.",
@@ -380,11 +370,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "validation",
     description: "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
     source: {
-      type: "git",
+      type: "git-ref",
       repository: "https://github.com/supabase/pg_jsonschema.git",
-      tag: "v0.3.3",
+      ref: "e7834142a3cce347b6082c5245de939810d3f9c4",
     },
-    build: { type: "pgxs" },
+    build: { type: "cargo-pgrx", features: ["pg18"], noDefaultFeatures: true },
+    aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
@@ -518,7 +509,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
   },
   {
-    name: "pgvectorscale",
+    name: "vectorscale",
+    displayName: "pgvectorscale",
     kind: "extension",
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
@@ -529,29 +521,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "cargo-pgrx", subdir: "pgvectorscale", features: ["pg18"] },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
-    dependencies: ["pgvector"],
+    dependencies: ["vector"],
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
-    name: "citus",
-    kind: "extension",
-    category: "distributed",
-    description: "Distributed sharding and parallel execution across worker nodes.",
-    source: {
-      type: "git",
-      repository: "https://github.com/citusdata/citus.git",
-      tag: "v13.2.0",
-    },
-    build: { type: "autotools" },
-    aptPackages: ["python3", "pkg-config"],
-    runtime: {
-      sharedPreload: true,
-      defaultEnable: false,
-      notes: ["Requires coordinator/worker topology before enabling citus."],
-    },
-  },
-  {
-    name: "postgresql-hll",
+    name: "hll",
+    displayName: "postgresql-hll",
     kind: "extension",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",

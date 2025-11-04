@@ -14,6 +14,7 @@ const END_MARK = "<!-- extensions-table:end -->";
 type Manifest = {
   entries: Array<{
     name: string;
+    displayName?: string;
     kind: string;
     category: string;
     description: string;
@@ -49,9 +50,11 @@ for (const category of sortedCategories) {
     const defaultEnable = entry.runtime?.defaultEnable ? "Yes" : "No";
     const sharedPreload = entry.runtime?.sharedPreload ? "Yes" : "No";
     const notes = escape(entry.description);
-    lines.push(
-      `| \`${entry.name}\` | ${version} | ${defaultEnable} | ${sharedPreload} | ${notes} |`,
-    );
+    const label =
+      entry.displayName && entry.displayName !== entry.name
+        ? `\`${entry.name}\` (${escape(entry.displayName)})`
+        : `\`${entry.name}\``;
+    lines.push(`| ${label} | ${version} | ${defaultEnable} | ${sharedPreload} | ${notes} |`);
   }
   lines.push("");
   tableBlocks.push(lines.join("\n"));

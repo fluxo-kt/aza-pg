@@ -12,6 +12,7 @@ libjson-c-dev
 libjson-xs-perl
 liblz4-dev
 libmecab-dev
+libnuma-dev
 libmsgpack-dev
 libproj-dev
 libprotobuf-c-dev
@@ -29,3 +30,4 @@ perl
 pkg-config
 protobuf-c-compiler
 python3
+libreadline-dev

@@ -10,6 +10,57 @@ NPROC=$(nproc)
 export PATH="/root/.cargo/bin:${PATH}"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
 
+declare -A CARGO_PGRX_INIT=()
+
+ensure_cargo_pgrx() {
+  local version=$1
+  local install_root="/root/.cargo-pgrx/${version}"
+  if [[ ! -x "${install_root}/bin/cargo-pgrx" ]]; then
+    log "Installing cargo-pgrx ${version}"
+    cargo install --locked cargo-pgrx --version "${version}" --root "${install_root}"
+  fi
+  echo "$install_root"
+}
+
+ensure_pgrx_init_for_version() {
+  local install_root=$1
+  local version=$2
+  if [[ -n ${CARGO_PGRX_INIT[$version]:-} ]]; then
+    return
+  fi
+  local path_env="${install_root}/bin:${PATH}"
+  if ! PATH="$path_env" cargo pgrx list | grep -q "pg${PG_MAJOR}"; then
+    PATH="$path_env" cargo pgrx init --pg"${PG_MAJOR}" "$PG_CONFIG_BIN"
+  fi
+  CARGO_PGRX_INIT[$version]=1
+}
+
+get_pgrx_version() {
+  local dir=$1
+  local cargo_file="$dir/Cargo.toml"
+  if [[ ! -f "$cargo_file" ]]; then
+    echo ""
+    return
+  fi
+  python3 - "$cargo_file" <<'PY'
+import sys, tomllib
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = tomllib.loads(path.read_text())
+deps = data.get("dependencies", {})
+pgrx = deps.get("pgrx")
+version = ""
+if isinstance(pgrx, dict):
+    version = pgrx.get("version", "")
+elif isinstance(pgrx, str):
+    version = pgrx
+if version.startswith("="):
+    version = version[1:]
+print(version)
+PY
+}
+
 log() {
   printf '[ext-build] %s\n' "$*" >&2
 }
@@ -29,15 +80,6 @@ clone_repo() {
   git -C "$target" checkout --quiet "$commit"
 }
 
-ensure_pgrx_init() {
-  if [[ -z ${PGRX_INITIALIZED:-} ]]; then
-    if ! cargo pgrx list | grep -q "pg${PG_MAJOR}"; then
-      cargo pgrx init --pg"${PG_MAJOR}" "$PG_CONFIG_BIN"
-    fi
-    PGRX_INITIALIZED=1
-  fi
-}
-
 build_pgxs() {
   local dir=$1
   log "Running pgxs build in $dir"
@@ -48,7 +90,17 @@ build_pgxs() {
 build_cargo_pgrx() {
   local dir=$1
   local entry=$2
-  ensure_pgrx_init
+  local version
+  version=$(get_pgrx_version "$dir")
+  if [[ -z "$version" ]]; then
+    version="0.16.1"
+  fi
+  local install_root
+  install_root=$(ensure_cargo_pgrx "$version")
+  ensure_pgrx_init_for_version "$install_root" "$version"
+
+  rm -f "$dir/Cargo.lock"
+
   local features_csv
   features_csv=$(jq -r '.build.features // [] | join(",")' <<<"$entry")
   local no_default
@@ -60,8 +112,8 @@ build_cargo_pgrx() {
   if [[ "$no_default" == "true" ]]; then
     args+=(--no-default-features)
   fi
-  log "cargo pgrx install (${features_csv:-default}) in $dir"
-  (cd "$dir" && "${args[@]}")
+  log "cargo pgrx ${version} install (${features_csv:-default}) in $dir"
+  (cd "$dir" && PATH="${install_root}/bin:${PATH}" "${args[@]}")
 }
 
 build_timescaledb() {
@@ -156,6 +208,11 @@ process_entry() {
       exit 1
       ;;
   esac
+
+  if [[ "$name" == "pg_jsonschema" ]]; then
+    sed -i 's/pgrx = "0\.16\.0"/pgrx = "=0.16.1"/' "$dest/Cargo.toml" || true
+    sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml" || true
+  fi
 
   subdir=$(jq -r '.build.subdir // ""' <<<"$entry")
   if [[ -n "$subdir" ]]; then

@@ -7,9 +7,12 @@ export const BASE_CONFIG: BaseConfig = {
     port: 5432,
     sharedPreloadLibraries: [
       'pg_stat_statements',
+      'pg_stat_monitor',
       'auto_explain',
       'pg_cron',
       'pgaudit',
+      'supautils',
+      'timescaledb',
     ],
     idleSessionTimeout: '0',
 
@@ -38,9 +41,10 @@ export const BASE_CONFIG: BaseConfig = {
     lcTime: 'en_US.utf8',
     defaultTextSearchConfig: 'pg_catalog.english',
 
-    // pg_stat_statements
+    // Extension settings
     pgStatStatementsMax: 10000,
     pgStatStatementsTrack: 'all',
+    timescaledbTelemetryLevel: 'off',
 
     // auto_explain
     autoExplainLogMinDuration: '3s',

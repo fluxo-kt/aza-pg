@@ -22,26 +22,20 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
-| `pgvector` | v0.8.1 | Yes | No | Vector similarity search with IVF/HNSW indexes and distance operators. |
-| `pgvectorscale` | 0.9.0 | No | No | DiskANN-inspired ANN index and quantization for pgvector embeddings. |
+| `vector` (pgvector) | v0.8.1 | Yes | No | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| `vectorscale` (pgvectorscale) | 0.9.0 | No | No | DiskANN-inspired ANN index and quantization for pgvector embeddings. |
 
 ### analytics
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
-| `postgresql-hll` | v2.19 | No | No | HyperLogLog probabilistic counting data type. |
+| `hll` (postgresql-hll) | v2.19 | No | No | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
 | `wal2json` | wal2json_2_6 | No | No | Logical decoding output plugin streaming JSON data for CDC. |
-
-### distributed
-
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `citus` | v13.2.0 | No | Yes | Distributed sharding and parallel execution across worker nodes. |
 
 ### gis
 
@@ -54,9 +48,8 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
-| `pg_net` | v0.9.3 | No | No | Async HTTP client inside PostgreSQL for webhooks and callbacks. |
-| `pgsql-http` | v1.7.0 | No | No | Synchronous HTTP client for PostgreSQL built on libcurl. |
-| `supabase-wrappers` | v0.5.6 | No | No | Rust FDW framework powering Supabase foreign wrappers. |
+| `http` (pgsql-http) | v1.7.0 | No | No | Synchronous HTTP client for PostgreSQL built on libcurl. |
+| `wrappers` (supabase-wrappers) | v0.5.6 | No | No | Rust FDW framework powering Supabase foreign wrappers. |
 
 ### maintenance
 
@@ -139,7 +132,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
-| `pg_jsonschema` | v0.3.3 | No | No | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| `pg_jsonschema` | e7834142 | No | No | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 <!-- extensions-table:end -->
 
@@ -147,18 +140,23 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ## Runtime Defaults
 
-- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, and `pgvector` are created automatically during cluster bootstrap.
-- Default `shared_preload_libraries` is `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb,citus`. Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a slimmer set.
+- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, and `vector` (pgvector) are created automatically during cluster bootstrap.
+- Default `shared_preload_libraries` is `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb`. Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a slimmer set.
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module.
 
 ## Installation Notes by Category
 
-- **AI / Vector** – `pgvector` ships enabled; `pgvectorscale` depends on `pgvector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
+- **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
 - **Time-series** – `timescaledb` is preloaded; use `CREATE EXTENSION timescaledb` to initialize in user databases. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
-- **Distributed** – `citus` is preloaded but left disabled. Configure worker topology (`citus.enable_shared_responsibilities`) before running `CREATE EXTENSION citus`.
+- **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
 - **Security** – `supautils` and `pgaudit` run by default to guard superuser operations. `pgsodium` and `vault` remain optional.
 - **Operations** – `pgbackrest` binary lives in `/usr/local/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available for offline log analysis.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
+
+## Compatibility Exceptions
+
+- **Citus** – The latest upstream release (Citus 13.0 on 2025-02-10) only supports PostgreSQL 17 and earlier, so the extension is intentionally omitted from the PostgreSQL 18 image to avoid shipping an incompatible build. We will add it once an official PG18-compatible release lands.
+- **pg_net** – Supabase’s published metadata lists official support for PostgreSQL 13–17; the code currently fails to compile on PostgreSQL 18, so we exclude it until a PG18-compatible release is available.
 
 ## Upgrade Workflow
 

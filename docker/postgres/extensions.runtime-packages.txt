@@ -8,7 +8,7 @@ libjson-c5
 libjson-xs-perl
 liblz4-1
 libmecab2
-libmsgpack5
+libmsgpackc2
 libproj25
 libprotobuf-c1
 libsodium23

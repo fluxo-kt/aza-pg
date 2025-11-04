@@ -13,7 +13,7 @@ RUN chmod +x /usr/local/bin/build-extensions.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -euo pipefail && \
+    set -eu && \
     apt-get update && \
     apt-get install -y \
       build-essential \
@@ -25,10 +25,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     rm -rf /var/lib/apt/lists/*
 
-RUN set -euo pipefail && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-    . /root/.cargo/env && \
-    cargo install --locked cargo-pgrx --version 0.16.1
+RUN set -eu && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
 RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.sh /tmp/extensions.manifest.json /tmp/extensions-build
@@ -47,7 +45,7 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Runtime libraries for compiled extensions
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -euo pipefail && \
+    set -eu && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y \
@@ -67,12 +65,12 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-COPY docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 RUN chmod +x /docker-entrypoint-initdb.d/*.sh
 
-COPY docker-auto-config-entrypoint.sh /usr/local/bin/
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
-COPY configs/postgresql-base.conf /etc/postgresql/
+COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1

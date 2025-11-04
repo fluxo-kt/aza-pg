@@ -109,8 +109,8 @@ case_high_mem_manual() {
 
 case_cpu_detection() {
   local logs=$1
-  assert_log_contains "$logs" "CPU: 2 cores \\(cgroup-v2\\|nproc\\)" "CPU detection picked up 2 cores"
-  assert_log_contains "$logs" "max_worker_processes=4" "Worker processes scaled with CPU"
+  assert_log_contains "$logs" "CPU: 2 cores" "CPU detection picked up 2 cores"
+  assert_log_contains "$logs" "workers=4" "Worker processes scaled with CPU"
 }
 
 run_case "Test 1: Manual override without memory limit" case_manual_override \

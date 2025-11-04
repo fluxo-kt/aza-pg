@@ -126,7 +126,8 @@ Full production stack with Postgres + PgBouncer + postgres_exporter.
 
 ```bash
 cd stacks/primary
-docker compose -f compose.yml -f compose.dev.yml up
+docker compose up -d
+# For local overrides: docker compose -f compose.yml -f compose.dev.yml up -d
 ```
 
 ### Single

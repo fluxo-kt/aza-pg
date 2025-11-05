@@ -84,3 +84,5 @@ Container publication
 ### Refs
 - https://github.com/percona/postgres-packaging
 - https://github.com/supabase/postgres
+- https://github.com/cloudnative-pg/postgres-containers
+- https://ardentperf.com/2025/04/07/waiting-for-postgres-18-docker-containers-34-smaller/

@@ -227,6 +227,27 @@ process_entry() {
       ;;
   esac
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # TEMPORARY FIXES FOR UPSTREAM PGRX VERSION MISMATCHES
+  # ────────────────────────────────────────────────────────────────────────────
+  # The following sed commands patch hardcoded pgrx version dependencies that
+  # are incompatible with PostgreSQL 18. These are temporary workarounds until
+  # upstream repositories update to pgrx 0.16.1+.
+  #
+  # Known Issues:
+  # - pg_jsonschema: Cargo.toml pins pgrx 0.16.0 (needs 0.16.1 for PG18)
+  # - wrappers: Multiple Cargo.toml files pin pgrx 0.16.0
+  # - supautils: Missing 'static' keyword causes C99 compliance issues
+  #
+  # Future Enhancement:
+  # These fixes should be migrated to manifest.json build.patches field for
+  # cleaner version override management and better visibility.
+  #
+  # TODO: Remove these when upstream fixes are merged:
+  # - https://github.com/supabase/pg_jsonschema (pgrx version)
+  # - https://github.com/supabase/wrappers (pgrx version)
+  # - https://github.com/supabase/supautils (static keyword)
+  # ────────────────────────────────────────────────────────────────────────────
   if [[ "$name" == "pg_jsonschema" ]]; then
     sed -i 's/pgrx = "0\.16\.0"/pgrx = "=0.16.1"/' "$dest/Cargo.toml" || true
     sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml" || true

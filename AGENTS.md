@@ -104,7 +104,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 2. Stack-specific scripts: `stacks/*/configs/initdb/` (mounted per stack)
 
 **Shared Script Order (ALL stacks):**
-1. `01-extensions.sql` — Creates ALL extensions (vector, pg_trgm, pg_cron, pgaudit, pg_stat_statements). MUST run first.
+1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 32 extensions available but disabled by default. MUST run first.
 2. `02-replication.sh` — Creates `replicator` user + replication slot (if replication enabled).
 
 **Stack-Specific Scripts:**

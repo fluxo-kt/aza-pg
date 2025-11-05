@@ -26,6 +26,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Overrides:**
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
+- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb`)
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 

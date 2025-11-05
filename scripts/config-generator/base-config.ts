@@ -5,12 +5,12 @@ export const BASE_CONFIG: BaseConfig = {
     // Connection Settings
     listenAddresses: '*',
     port: 5432,
-    sharedPreloadLibraries: [
-      'pg_stat_statements',
-      'auto_explain',
-      'pg_cron',
-      'pgaudit',
-    ],
+    // NOTE: shared_preload_libraries is intentionally omitted here.
+    // It is set at runtime by docker-auto-config-entrypoint.sh via -c flag,
+    // which allows dynamic configuration based on deployment needs.
+    // Default preload list: pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb
+    // Override via: POSTGRES_SHARED_PRELOAD_LIBRARIES env var
+    sharedPreloadLibraries: [],
     idleSessionTimeout: '0',
 
     // PostgreSQL 18 Async I/O

@@ -155,7 +155,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Common cases:**
 - 512MB limit → shared_buffers 128MB, effective_cache 384MB, work_mem 1MB, max_connections 80
 - 1GB override (`POSTGRES_MEMORY=1024`) → shared_buffers 256MB, effective_cache 768MB, work_mem 2MB, max_connections 120
-- 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 2MB, max_connections 120
+- 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 4MB, max_connections 120
 - 4GB limit → shared_buffers 1024MB, effective_cache 3072MB, work_mem ~5MB, max_connections 200
 - 8GB limit → shared_buffers 2048MB, effective_cache 6144MB, work_mem ~10MB, max_connections 200
 - 64GB override (`POSTGRES_MEMORY=65536`) → shared_buffers ~9830MB, effective_cache ~55706MB, work_mem 32MB, max_connections 200
@@ -166,7 +166,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 |-----|----------------|-----------------|----------------|----------|----------|-------|
 | 512MB | 128MB (25%) | 384MB (75%) | 32MB (6.3%) | 1MB | 80 | Min viable |
 | 1GB | 256MB (25%) | 768MB (75%) | 32MB (3.1%) | 2MB | 120 | Dev/test |
-| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3.1%) | 2MB | 120 | Small prod |
+| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3.1%) | 4MB | 120 | Small prod |
 | 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3.1%) | 5MB | 200 | Med prod |
 | 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3.1%) | 10MB | 200 | Large prod |
 | 16GB | 4096MB (25%) | 12288MB (75%) | 512MB (3.1%) | 20MB | 200 | High-load |

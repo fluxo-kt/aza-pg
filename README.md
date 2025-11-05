@@ -161,7 +161,7 @@ The entrypoint targets ~25% of available RAM for `shared_buffers` (capped at 32G
 Reference points:
 - 512MB limit → `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=1MB`, `max_connections=80`
 - 1GB manual override (`POSTGRES_MEMORY=1024`) → `shared_buffers=256MB`, `effective_cache_size=768MB`, `work_mem=2MB`, `max_connections=120`
-- 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=2MB`, `max_connections=120`
+- 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=4MB`, `max_connections=120`
 - 4GB limit → `shared_buffers=1024MB`, `effective_cache_size=3072MB`, `work_mem≈5MB`, `max_connections=200`
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
 - 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈55706MB`, `work_mem≈32MB`, `max_connections=200`

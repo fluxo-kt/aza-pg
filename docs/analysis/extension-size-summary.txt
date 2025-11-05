@@ -1,0 +1,237 @@
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║                  aza-pg:pgdg-opt Extension Size Impact Summary                     ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+
+IMAGE LAYER BREAKDOWN
+═════════════════════════════════════════════════════════════════════════════════════
+
+Layer                                Size       % of Total    Purpose
+─────────────────────────────────────────────────────────────────────────────────────
+PostgreSQL 18 base image          ~500MB         ~52%        postgres:18-trixie
+Runtime dependencies               368MB         ~38%        GEOS, PROJ, libcurl, etc.
+PGDG extension packages            294MB         ~30%        pgvector, PostGIS, etc.
+Source-compiled extensions         287MB         ~30%        cargo-pgrx + pgxs builds
+Config & entrypoint                  ~1MB        <1%         Auto-config, schemas
+
+
+FINAL IMAGE EXTENSION FOOTPRINT
+═════════════════════════════════════════════════════════════════════════════════════
+
+Component                                Size        Count     Notes
+─────────────────────────────────────────────────────────────────────────────────────
+.so Extension binaries              247MB         119 files
+  ├─ Actual extensions             ~210MB
+  ├─ LLVM bitcode (unused)           36MB        Optional removal
+  ├─ Archive libraries              1.3MB
+  └─ Pgxs headers                  0.5MB
+
+Extension configs & SQL             72MB          920 files   TimescaleDB ~10MB
+  ├─ .control files                <1MB
+  ├─ Migration scripts             ~60MB
+  └─ Data files                    ~10MB
+
+Total extension content            319MB         28+ extensions
+
+
+TOP 10 EXTENSIONS BY SIZE (BINARIES ONLY)
+═════════════════════════════════════════════════════════════════════════════════════
+
+Rank  Extension                  Size      %      Type         Build Source
+────  ──────────────────────────  ────────  ─────  ───────────  ────────────────────
+ 1.   timescaledb_toolkit        186MB     59%    .so          Source (cargo-pgrx)
+ 2.   pg_jsonschema               4.4MB    1.4%   .so          Source (cargo-pgrx)
+ 3.   libpgrouting                3.5MB    1.1%   .so          PGDG package
+ 4.   pgroonga                    2.1MB    0.7%   .so          Source (cargo-pgrx)
+ 5.   vectorscale                 1.6MB    0.5%   .so          Source (cargo-pgrx)
+ 6.   postgis                     1.3MB    0.4%   .so          PGDG package
+ 7.   timescaledb                 719K     0.2%   .so          PGDG package
+ 8.   dict_snowball               787K     0.3%   .so          Builtin (PG core)
+ 9.   wrappers                    595K     0.2%   .so          Source (pgxs)
+10.   postgis_raster              551K     0.2%   .so          PGDG package
+
+
+INSTALLATION METHOD BREAKDOWN
+═════════════════════════════════════════════════════════════════════════════════════
+
+Method                      Count      Size         Examples
+──────────────────────────  ─────      ───────────  ──────────────────────────
+PGDG packages (apt-get)      15        ~150MB       pgvector, PostGIS, pg_cron,
+                                                    pgAudit, TimescaleDB, partman
+
+Source-compiled (git SHA)    13        ~195MB       timescaledb_toolkit, pgroonga,
+                                                    pg_jsonschema, vectorscale,
+                                                    pg_stat_monitor, pgmq
+
+PostgreSQL builtin          130+        ~5MB        auto_explain, pg_trgm,
+                                                    pg_stat_statements, uuid
+
+
+FUNCTIONAL CATEGORY BREAKDOWN
+═════════════════════════════════════════════════════════════════════════════════════
+
+Category              Extensions       Size       % of Total   Key Items
+─────────────────────  ────────────    ───────    ──────────   ────────────────────
+Time-series/Analytics  2               187MB      59%          timescaledb_toolkit
+Geospatial            4               2.6MB      1%           postgis + raster
+Search                2               6.5MB      2%           pgroonga, pg_jsonschema
+Vector/ML             3               1.8MB      0.6%         pgvector, vectorscale
+Observability         3               292KB      0.1%         pg_stat_monitor, pg_cron
+Security              4               754KB      0.2%         pgAudit, pgsodium
+Dev Tools             4               218KB      0.1%         plpgsql_check, hypopg
+Foreign Data          2               595KB      0.2%         wrappers
+Other                 4+              ~180KB     0.1%         rum, set_user, hll
+
+
+BUILD SYSTEM BREAKDOWN
+═════════════════════════════════════════════════════════════════════════════════════
+
+Build Type            Count    Size        Compile Time    Examples
+─────────────────────  ─────    ───────     ─────────────   ────────────────────
+PGXS (C/C++)           8        ~50MB       2-5 min         pg_hashids, pgsodium,
+                                                           wrappers, supabase_vault
+
+cargo-pgrx (Rust)      5        ~195MB      10-20 min       timescaledb_toolkit,
+                                                           pg_jsonschema, pg_stat_monitor,
+                                                           pgmq, vectorscale
+
+CMake (C++)            1        ~2MB        3-5 min         pgroonga
+Meson/Autotools        1        ~400K       2-3 min         pgroonga (FTS)
+
+
+OPTIMIZATION OPPORTUNITIES
+═════════════════════════════════════════════════════════════════════════════════════
+
+Optimization                          Potential Savings    Effort    Impact
+─────────────────────────────────────  ───────────────────  ────────  ──────────
+Remove LLVM bitcode (/bitcode/)        36MB                Easy      Zero runtime
+Strip debug symbols (.so files)        10-20MB              Easy      Minor debug loss
+Remove TimescaleDB Toolkit             186MB                Medium    High (analytics loss)
+Use slim PGDG variant                  50-100MB             Hard      Cert loss
+Compile without debug (CFLAGS)         5-10MB               Medium    Debug loss
+
+
+DOCKERFILE MULTISTAGE FLOW
+═════════════════════════════════════════════════════════════════════════════════════
+
+Stage 1: builder-base
+  • Debian dev tools (gcc, git, jq, Rust)
+  • PostgreSQL server dev headers
+  • Build dependencies (GEOS, PROJ, libcurl, etc.)
+
+      ↓
+
+Stage 2a: builder-pgxs (C-based extensions)
+  • Compiles: pg_hashids, pgsodium, wrappers, supabase_vault, etc.
+  • Output: /opt/ext-out/ (~90MB)
+
+Stage 2b: builder-cargo (Rust extensions)
+  • Compiles: timescaledb_toolkit, pg_jsonschema, pg_stat_monitor, etc.
+  • Output: /opt/ext-out/ (~195MB)
+
+      ↓
+
+Final Stage: postgres:18-trixie
+  • Install PGDG packages (294MB layer)
+  • Install runtime deps (368MB layer)
+  • COPY from builder-pgxs (245MB layer)
+  • COPY from builder-cargo (42.7MB layer)
+  • Result: 247MB extension binaries on disk
+
+
+EXTENSION DISTRIBUTION BY SIZE
+═════════════════════════════════════════════════════════════════════════════════════
+
+  Cumulative %
+  ↑
+  100% │                                        ████████████████████████████████ (ALL)
+   80% │              ███████████████████████████
+   60% │              timescaledb_toolkit alone (59%)
+   40% │
+   20% │  ███ (pg_jsonschema + pgrouting + pgroonga)
+    0% │  └────────────────────────────────────────→
+        │  0     50    100    150    186MB
+
+Note: TimescaleDB Toolkit represents 186MB of 319MB total (58%)
+
+
+RUNTIME vs COMPILE-TIME
+═════════════════════════════════════════════════════════════════════════════════════
+
+Artifact                 Size      Location              Used at Runtime
+─────────────────────────  ───────  ────────────────────  ────────────────────
+.so binaries             247MB      /usr/lib/.../lib/    YES (loaded by postgres)
+.control files            <1MB      /usr/share/.../ext/  YES (metadata)
+Migration scripts         ~60MB      /usr/share/.../ext/  YES (ALTER EXTENSION)
+Bitcode (LLVM IR)         36MB       /usr/lib/.../lib/bitcode/  NO (JIT debug only)
+Archive libraries         1.3MB      /usr/lib/.../lib/    NO (compile-time only)
+Header files              <1MB       /usr/lib/.../include/  NO (compile-time only)
+
+
+KEY FINDINGS
+═════════════════════════════════════════════════════════════════════════════════════
+
+1. OUTLIER EXTENSION: TimescaleDB Toolkit alone = 186MB (58% of extension binaries)
+   └─ Rust-based, unoptimized compilation, includes debug symbols
+   └─ C-based TimescaleDB core = 719K (comparison)
+
+2. PGDG OVERHEAD: 294MB layer pulls certified pre-built packages
+   └─ Trade-off: Easier security updates vs larger image
+
+3. RUNTIME DEPENDENCIES: 368MB of shared libraries (GEOS, PROJ, libcurl, etc.)
+   └─ Required for PostGIS, http, pgroonga, pg_jsonschema, pgsodium
+
+4. BITCODE UNUSED: 36MB LLVM intermediate representation not needed at runtime
+   └─ Only used for JIT debugging; safe to remove
+
+5. EXTENSION COUNT: 28 curated + 130+ PostgreSQL builtins = comprehensive
+   └─ Supports vector, time-series, geospatial, search, security, ops
+
+
+COMPARISON: PGDG vs PURE SOURCE BUILDS
+═════════════════════════════════════════════════════════════════════════════════════
+
+Metric                    PGDG-based        Pure Source-compiled
+────────────────────────  ────────────────  ────────────────────
+Extension binaries        150MB             190MB+
+Runtime dependencies      368MB             300-400MB
+Build time               ~15 min           45+ min (Rust heavy)
+Security updates         Timely (Debian)   Manual process
+Consistency              Tested/certified   Build-variant
+Total image size         ~950MB            ~850-1000MB
+
+
+RECOMMENDATIONS
+═════════════════════════════════════════════════════════════════════════════════════
+
+Priority  Action                           Impact        Effort   Current Status
+────────  ─────────────────────────────    ──────────    ───────  ─────────────
+HIGH      Remove LLVM bitcode               -36MB         Easy    Not applied
+HIGH      Evaluate TimescaleDB Toolkit      -186MB        Hard    Core dependency
+MEDIUM    Strip debug symbols               -10-20MB      Easy    Not applied
+MEDIUM    Create lean image variants        Modular       Hard    Not started
+LOW       Optimize Rust compilation flags   -5-10MB       Medium  Not applied
+
+
+PRODUCTION IMPLICATIONS
+═════════════════════════════════════════════════════════════════════════════════════
+
+Registry Push/Pull:
+  └─ Compressed image: ~400-500MB (docker registry compression ~40-50%)
+  └─ Initial pull: 2-5 min on 100Mbps connection
+  └─ Layer caching: Subsequent pulls ~1-2 min
+
+Deployment:
+  └─ Container startup: <2s extension loading (most already compiled)
+  └─ Memory usage: Extensions loaded on-demand (~5-20MB per CREATE EXTENSION)
+
+Production Trade-offs:
+  ✅ Single image for multiple workloads (no variant management)
+  ✅ Certified PGDG packages (security updates aligned with Debian)
+  ✅ SHA-pinned sources (supply chain security)
+  ❌ Large image footprint (~950MB with deps) for deployment constraints
+  ❌ Toolkit dominates single-extension cost (186MB for analytics feature)
+
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║  Next Step: Evaluate lean variants (aza-pg:core vs aza-pg:analytics) if size      ║
+║  becomes deployment constraint. Current approach optimized for breadth.             ║
+╚════════════════════════════════════════════════════════════════════════════════════╝

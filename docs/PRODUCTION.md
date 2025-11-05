@@ -227,10 +227,10 @@ Update `Dockerfile` ARGs, rebuild image, deploy.
 Default settings target **2GB RAM**. Auto-config scales from there.
 
 **Memory Map:**
-- `shared_buffers`: 12.5% of RAM (capped at 8GB)
-- `effective_cache_size`: 37.5% of RAM
+- `shared_buffers`: 15-25% of RAM (capped at 32GB)
+- `effective_cache_size`: 75-85% of RAM
 - `maintenance_work_mem`: 3.1% of RAM (capped at 2GB)
-- `work_mem`: 0.2% of RAM (capped at 32MB)
+- `work_mem`: RAM/(max_connections*4) (capped at 32MB)
 
 **Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
 

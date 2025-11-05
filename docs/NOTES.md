@@ -70,6 +70,7 @@
 - Configuration
     - limit `maintenance_work_mem` and `work_mem`
         - https://vondra.me/posts/dont-give-postgres-too-much-memory/
+    - https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - Compliance
   - **pg_sbom**  
     Software Bill of Materials generator for PostgreSQL packaging (CycloneDX/SPDX format). Supply chain transparency for regulatory/compliance scanning.  
@@ -80,6 +81,9 @@ Container publication
   - https://www.perplexity.ai/search/lhedbwYNQ96GWFPGZilJXA
   - private repo with public GHCR container
 
+
+### Clusters, Kubernetes
+- https://github.com/cloudnative-pg/cloudnative-pg
 
 ### Refs
 - https://github.com/percona/postgres-packaging

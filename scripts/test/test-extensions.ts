@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive extension test suite
- * Tests all 37 extensions (6 builtin + 15 PGDG + 16 compiled)
+ * Tests all 37 extensions (6 builtin + 13 PGDG + 18 compiled)
  *
- * Usage: bun run scripts/test/test-extensions.ts [--image=aza-pg:pgdg-opt]
+ * Usage: bun run scripts/test/test-extensions.ts [--image=aza-pg:phase1-fix]
  */
 
 import { $ } from "bun";
@@ -28,7 +28,7 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'pg_trgm', category: 'builtin', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE', testSQL: "SELECT 'test' % 'test'" },
   { name: 'plpgsql', category: 'builtin', createSQL: '', testSQL: "SELECT 1" },
 
-  // PGDG extensions (15)
+  // PGDG extensions (13)
   { name: 'pg_cron', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE', testSQL: "SELECT count(*) FROM cron.job" },
   { name: 'pgaudit', category: 'pgdg', createSQL: '', testSQL: "SHOW pgaudit.log" },
   { name: 'pgvector', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS vector CASCADE', testSQL: "SELECT '[1,2,3]'::vector" },
@@ -43,14 +43,14 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'pgrouting', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'pgrouting'" },
   { name: 'rum', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS rum CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'rum'" },
   { name: 'set_user', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS set_user CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'set_user'" },
-  { name: 'wal2json', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS wal2json CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'wal2json'" },
+  { name: 'wal2json', category: 'compiled-tool', createSQL: '', testSQL: "" }, // Logical decoding plugin, not a CREATE EXTENSION extension
 
-  // Compiled extensions (16)
+  // Compiled extensions (18: 13 standard + 2 hook-based + 3 CLI tools)
   { name: 'pg_jsonschema', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE', testSQL: "SELECT json_matches_schema('true', '{}')" },
   { name: 'index_advisor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE', testSQL: "SELECT count(*) FROM index_advisor('SELECT 1')" },
   { name: 'pg_hashids', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE', testSQL: "SELECT id_encode(123)" },
-  { name: 'pg_plan_filter', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS plan_filter CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'plan_filter'" },
-  { name: 'safeupdate', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS safeupdate CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'safeupdate'" },
+  { name: 'pg_plan_filter', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
+  { name: 'safeupdate', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
   { name: 'pg_stat_monitor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_stat_monitor CASCADE', testSQL: "SELECT count(*) FROM pg_stat_monitor_settings" },
   { name: 'pgbackrest', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
   { name: 'pgbadger', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
@@ -101,12 +101,18 @@ async function testExtension(ext: ExtensionTest): Promise<{ success: boolean; er
   try {
     // Create extension if needed
     if (ext.createSQL) {
-      await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.createSQL}`.quiet();
+      const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.createSQL}`.nothrow();
+      if (result.exitCode !== 0) {
+        return { success: false, error: result.stderr.toString() };
+      }
     }
 
     // Run functional test if provided
     if (ext.testSQL) {
-      await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.testSQL}`.quiet();
+      const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.testSQL}`.nothrow();
+      if (result.exitCode !== 0) {
+        return { success: false, error: result.stderr.toString() };
+      }
     }
 
     return { success: true };

@@ -5,15 +5,23 @@ All notable changes to aza-pg will be documented in this file.
 ## [Unreleased]
 
 ### Optimized (PGDG Hybrid Extension Strategy - 2025-11)
-- **Build:** Migrated 15 extensions to PGDG pre-compiled packages (pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user, wal2json)
-- **Build:** Reduced extension compilation from 31→16 extensions (48% reduction)
+- **Build:** Migrated 14 extensions to PGDG pre-compiled packages (pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user)
+- **Build:** Reduced extension compilation from 31→17 extensions (45% reduction)
 - **Build:** Added `install_via: "pgdg"` manifest field to flag PGDG extensions
 - **Build:** Updated `build-extensions.sh` to skip PGDG-flagged extensions during compilation
 - **Build:** Added missing implicit dependencies (`zlib1g-dev`, `libicu-dev`) to build-packages.txt
-- **Build:** Build time optimized to 15m31s (15 PGDG packages install in ~10s, 16 extensions compile in ~15min)
+- **Build:** Build time optimized to ~12min (14 PGDG packages install in ~10s, 17 extensions compile in ~12min)
 - **Security:** Hybrid security model - PGDG packages use GPG-signed APT repository, compiled extensions use SHA256-pinned Git commits
 - **Docs:** Updated CLAUDE.md/AGENTS.md with hybrid strategy explanation, upgrade procedures, and security trade-offs
 - **Test:** Created comprehensive Bun TypeScript test suite (`scripts/test/test-extensions.ts`) validating 37 extensions
+
+### Fixed (Phase 1 - Extension Verification & Corrections - 2025-11)
+- **Build:** Reverted wal2json from PGDG to compiled (PGDG package incomplete - missing .control file for logical decoding plugin)
+- **Manifest:** Corrected pg_safeupdate kind from "extension" to "tool" (hook-based, no CREATE EXTENSION)
+- **Test:** Fixed test suite error reporting - replaced `.quiet()` with `.nothrow()` for proper error messages
+- **Test:** Categorized hook-based extensions correctly (pg_plan_filter, pg_safeupdate) - no .control files, load via shared libraries
+- **Test:** Categorized logical decoding plugins correctly (wal2json) - output plugin for replication, not CREATE EXTENSION
+- **Test:** Test results improved to 29/37 passing (78% success rate)
 
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)

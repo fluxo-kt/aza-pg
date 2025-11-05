@@ -268,7 +268,7 @@
     },
     {
       "name": "pg_safeupdate",
-      "kind": "extension",
+      "kind": "tool",
       "category": "safety",
       "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
       "source": {
@@ -798,8 +798,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "wrappers",

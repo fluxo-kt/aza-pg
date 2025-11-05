@@ -108,8 +108,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-pgrouting=3.8.0-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-wal2json=2.6-3.pgdg13+1 && \
+      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-pgxs /opt/ext-out/ /

@@ -300,6 +300,37 @@ volumes:
 
 4. Restart stack
 
+### Network Security Considerations
+
+**Default Configuration (Permissive for Docker Networks):**
+
+The default `pg_hba.conf` allows connections from all RFC1918 private IP ranges:
+- `10.0.0.0/8` (Class A private)
+- `172.16.0.0/12` (Class B private)
+- `192.168.0.0/16` (Class C private)
+
+**Production Hardening:**
+
+For production deployments, narrow the CIDR ranges to match your actual network topology:
+
+```conf
+# Instead of allowing all of 10.0.0.0/8, use your specific subnet:
+host    all             all             10.10.5.0/24            scram-sha-256
+```
+
+**Why This Matters:**
+
+- PostgreSQL binds to all interfaces (`listen_addresses = '*'` in base config)
+- Docker network isolation provides the primary security boundary
+- pg_hba.conf acts as secondary defense-in-depth
+- Narrower CIDRs reduce attack surface if Docker network is compromised
+
+**Best Practices:**
+1. Review and restrict CIDR ranges in production
+2. Use firewall rules at the host level
+3. Enable TLS for all production connections
+4. Regularly audit `pg_hba.conf` access rules
+
 ## Getting Help
 
 - Check logs: `docker compose logs -f`

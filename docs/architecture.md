@@ -128,7 +128,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 
 **Output:** PostgreSQL process with auto-tuned configuration
 
-**Override:** `POSTGRES_MEMORY=<MB>` or `POSTGRES_SKIP_AUTOCONFIG=true`
+**Override:** `POSTGRES_MEMORY=<MB>` to manually specify available RAM
 
 ### 3. Initialization (First Start Only)
 
@@ -231,7 +231,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 └────────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle:** Runtime flags override everything. Disable with `POSTGRES_SKIP_AUTOCONFIG=true`.
+**Key Principle:** Runtime flags override everything. Auto-config is always enabled and cannot be disabled.
 
 ## Security Model
 

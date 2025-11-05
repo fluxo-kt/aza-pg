@@ -25,7 +25,6 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Caps:** shared_buffers capped at 32GB, maintenance_work_mem max 2GB, work_mem max 32MB, max_connections tiers at 80/120/200
 
 **Overrides:**
-- `POSTGRES_SKIP_AUTOCONFIG=true` — Uses static postgresql.conf values
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
@@ -60,6 +59,37 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Build Optimization:** 14 PGDG packages install in ~10s, 17 extensions compile in ~12min (down from ~20min for 31 extensions). Total build time: ~12min.
 
 **Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update manifest.json → rebuild.
+
+### Hook-Based Extensions & Tools
+**Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
+
+**Hook-Based Extensions (3):**
+- **pg_plan_filter**: Filters query plans based on configurable rules (hook-based, no .control file)
+- **pg_safeupdate**: Prevents UPDATE/DELETE without WHERE clause (hook-based, no .control file)
+- **supautils**: Superuser guards and event trigger hooks for managed Postgres (GUC-based, no CREATE EXTENSION)
+
+**Characteristics:**
+- Load at server start via shared_preload_libraries or session_preload_libraries
+- No CREATE EXTENSION command (no .control/.sql files)
+- Configure via GUC parameters (SHOW/SET commands) or hooks automatically active
+- Cannot be installed per-database (server-wide or session-wide only)
+
+**Logical Decoding Plugins (1):**
+- **wal2json**: Output plugin for logical replication (CDC), not a CREATE EXTENSION extension
+- Used with `pg_recvlogical` or replication slots, not installed via SQL
+
+**Why Separate Classification:** Prevents init script failures (01-extensions.sql attempts CREATE EXTENSION on all "extension" kind entries). Tools/hooks load via configuration, not SQL commands.
+
+**Manifest Fields:**
+```json
+{
+  "kind": "tool",  // Not "extension"
+  "runtime": {
+    "sharedPreload": true,  // Load via shared_preload_libraries
+    "defaultEnable": true/false
+  }
+}
+```
 
 ### Init Script Execution Order
 **CRITICAL:** Init scripts execute alphabetically from two sources:
@@ -111,7 +141,6 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Detection:** Prefers cgroup v2 limits, respects manual overrides (`POSTGRES_MEMORY=<MB>`), otherwise inspects `/proc/meminfo`.
 
 **Overrides:**
-- `POSTGRES_SKIP_AUTOCONFIG=true` — Uses static `postgresql.conf` values
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (works even when cgroup limits exist)
 
 **Baseline ratios:** ~25% of detected RAM allocated to shared_buffers up to 32GB, with effective_cache ≥2× buffers. Work mem capped at 32MB, maintenance_work_mem at 2GB. Connection tiers: 80 (≤512MB), 120 (<4GB), 200 (≥4GB).
@@ -123,6 +152,32 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - 4GB limit → shared_buffers 1024MB, effective_cache 3072MB, work_mem ~5MB, max_connections 200
 - 8GB limit → shared_buffers 2048MB, effective_cache 6144MB, work_mem ~10MB, max_connections 200
 - 64GB override (`POSTGRES_MEMORY=65536`) → shared_buffers ~9830MB, effective_cache ~55706MB, work_mem 32MB, max_connections 200
+
+**Memory Allocation Table:**
+
+| RAM | shared_buffers | effective_cache | maint_work_mem | work_mem | max_conn | Ratio |
+|-----|----------------|-----------------|----------------|----------|----------|-------|
+| 512MB | 128MB (25%) | 384MB (75%) | 32MB (6.3%) | 1MB | 80 | Min viable |
+| 1GB | 256MB (25%) | 768MB (75%) | 32MB (3.1%) | 2MB | 120 | Dev/test |
+| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3.1%) | 2MB | 120 | Small prod |
+| 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3.1%) | 5MB | 200 | Med prod |
+| 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3.1%) | 10MB | 200 | Large prod |
+| 16GB | 4096MB (25%) | 12288MB (75%) | 512MB (3.1%) | 20MB | 200 | High-load |
+| 32GB | 6554MB (20%) | 25640MB (80%) | 1024MB (3.1%) | 27MB | 200 | Enterprise |
+| 64GB | 9830MB (15%) | 54706MB (85%) | 2048MB (3.1% cap) | 32MB (cap) | 200 | Burst node |
+
+**Extension Memory Overhead (Estimated):**
+- **Base overhead**: ~50-100MB (pg_stat_statements, auto_explain, pgaudit shared memory)
+- **pgvector**: ~10-50MB per connection (depends on vector dimensions and HNSW index size)
+- **timescaledb**: ~20-100MB (hypertable metadata, compression buffers)
+- **pg_cron**: ~5-10MB (job scheduler state)
+- **Total extension overhead**: ~100-250MB depending on usage patterns
+
+**Why These Numbers Matter:**
+- 512MB deployments leave ~250-300MB for OS/connections after buffers (tight but functional)
+- 2GB+ deployments have comfortable headroom for connection pooling and temp workloads
+- 16GB+ can handle hundreds of pooled connections via PgBouncer with minimal memory pressure
+- work_mem cap (32MB) prevents OOM from complex queries on low-RAM nodes
 
 ### PostgreSQL 18 Optimizations Applied
 - **Async I/O:** `io_method = 'worker'` (2-3x I/O performance on NVMe/cloud storage)
@@ -173,7 +228,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 1. **PgBouncer password sync**: `.pgpass` must exist inside PgBouncer container. If auth fails, check `docker exec pgbouncer-primary ls -l /tmp/.pgpass` and container logs.
 
-2. **Auto-config override**: If postgresql.conf has conflicting settings, `-c` flags from entrypoint override them. Disable auto-config with `POSTGRES_SKIP_AUTOCONFIG=true` if needed.
+2. **Auto-config runtime flags**: If postgresql.conf has conflicting settings, `-c` flags from entrypoint override them. Auto-config is always enabled and cannot be disabled.
 
 3. **Extension SHA mismatch**: If git clone fails during build, SHA may be stale (force-push to tag). Verify at GitHub: `https://github.com/pgvector/pgvector/commit/<SHA>`
 

@@ -232,7 +232,7 @@ Default settings target **2GB RAM**. Auto-config scales from there.
 - `maintenance_work_mem`: 3.1% of RAM (capped at 2GB)
 - `work_mem`: 0.2% of RAM (capped at 32MB)
 
-**Override:** Set `POSTGRES_SKIP_AUTOCONFIG=true` and use static config.
+**Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
 
 ### Connection Limits
 

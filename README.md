@@ -168,10 +168,6 @@ Reference points:
 
 `shared_preload_libraries` is enforced at runtime (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift.
 
-### Disable Auto-Config
-
-Set `POSTGRES_SKIP_AUTOCONFIG=true` to use static postgresql.conf values.
-
 ### PgBouncer Auth
 
 The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/scripts/pgbouncer-entrypoint.sh`). Provide `PGBOUNCER_AUTH_PASS` in `.env`; passwords may include special characters because they are escaped before being written to `.pgpass`. The rendered config never stores credentials in plaintext.
@@ -265,7 +261,7 @@ A: Not designed for K8s - optimized for Compose/VPS deployments. Use cloud-nativ
 A: Maximizes connection multiplexing. Use direct :5432 if you need prepared statements/advisory locks.
 
 **Q: How do I change PostgreSQL settings?**
-A: Set `POSTGRES_SKIP_AUTOCONFIG=true` and edit stack-specific `postgresql.conf` files.
+A: Auto-config runtime flags (-c) override config files. To set custom values, either use `POSTGRES_MEMORY=<MB>` to control auto-config calculations or modify the entrypoint script directly.
 
 **Q: Does auto-config work in Docker Desktop?**
 A: Yes - detects Docker Desktop memory limits. Use `POSTGRES_MEMORY=<MB>` to override.

@@ -43,6 +43,32 @@ All notable changes to aza-pg will be documented in this file.
 - **Test:** All 37 extensions verified functional after optimization
 - **Perf:** No build time impact (strip operations add ~5 seconds total)
 
+### Fixed (Phase 4 - Manifest Corrections - 2025-11)
+- **Manifest:** Corrected supautils kind from "extension" to "tool" (hook-based library with no CREATE EXTENSION support)
+- **Manifest:** Added clarifying note to supautils: "Hook-based library with no CREATE EXTENSION support. Provides GUC parameters and event trigger hooks only."
+- **Docs:** Verified pg_plan_filter and pg_safeupdate already correctly classified as "tool" in manifest
+
+### Fixed (Phase 5 - Remove Broken Auto-Config Override - 2025-11)
+- **Config:** Removed POSTGRES_SKIP_AUTOCONFIG feature (broken - missing shared_preload_libraries initialization)
+- **Entrypoint:** Removed POSTGRES_SKIP_AUTOCONFIG check from docker-auto-config-entrypoint.sh (lines 30-33)
+- **Docs:** Removed all POSTGRES_SKIP_AUTOCONFIG references from documentation (AGENTS.md, README.md, architecture.md, PRODUCTION.md)
+- **Stack:** Removed POSTGRES_SKIP_AUTOCONFIG env var from all stack configs (.env, .env.example, compose.yml files)
+- **Generator:** Updated scripts/config-generator/generator.ts to reflect auto-config always enabled
+- **Test:** Removed POSTGRES_SKIP_AUTOCONFIG from test-build.sh
+- **Simplification:** Auto-config now always enabled, cannot be disabled (eliminates broken code path)
+
+### Skipped (Phase 6 - wal2json PGDG Migration - 2025-11)
+- **Analysis:** wal2json PGDG migration not viable - package incomplete (missing .control file for logical decoding plugin)
+- **Status:** Already reverted from PGDG to compiled in Phase 1, remains compiled from source
+- **Manifest:** wal2json correctly classified as "tool" with build.type "pgxs" and install_via null
+
+### Added (Phase 7-8 - Documentation Enhancements - 2025-11)
+- **Docs:** Added "Hook-Based Extensions & Tools" section to AGENTS.md explaining pg_plan_filter, pg_safeupdate, supautils, wal2json
+- **Docs:** Added comprehensive memory allocation table to AGENTS.md (8 RAM tiers from 512MB to 64GB)
+- **Docs:** Added extension memory overhead estimates (base: 50-100MB, pgvector: 10-50MB/conn, timescaledb: 20-100MB, pg_cron: 5-10MB)
+- **Docs:** Added "Why These Numbers Matter" section explaining 512MB vs 16GB+ deployment characteristics
+- **Docs:** Clarified manifest field usage for hook-based extensions (kind: "tool", sharedPreload: true)
+
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
 - **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments

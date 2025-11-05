@@ -177,9 +177,21 @@ jobs:
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION pgaudit;"
 
           echo "🔍 Verifying extensions functional..."
-          docker exec pg-test psql -U postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname IN ('vector', 'pg_trgm', 'pg_stat_statements', 'pg_cron', 'pgaudit') ORDER BY extname;"
-          docker exec pg-test psql -U postgres -c "SELECT similarity('test', 'test') as trgm_test;"
-          docker exec pg-test psql -U postgres -c "SELECT '[1,2,3]'::vector;"
+          EXT_LIST=$(docker exec pg-test psql -U postgres -tAc "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'pg_trgm', 'pg_stat_statements', 'pg_cron', 'pgaudit') ORDER BY extname;")
+          echo "$EXT_LIST" | grep -q "pg_cron" || { echo "❌ pg_cron not found"; exit 1; }
+          echo "$EXT_LIST" | grep -q "pg_stat_statements" || { echo "❌ pg_stat_statements not found"; exit 1; }
+          echo "$EXT_LIST" | grep -q "pg_trgm" || { echo "❌ pg_trgm not found"; exit 1; }
+          echo "$EXT_LIST" | grep -q "pgaudit" || { echo "❌ pgaudit not found"; exit 1; }
+          echo "$EXT_LIST" | grep -q "vector" || { echo "❌ vector not found"; exit 1; }
+          echo "✅ All 5 extensions installed"
+
+          TRGM_TEST=$(docker exec pg-test psql -U postgres -tAc "SELECT similarity('test', 'test');")
+          echo "$TRGM_TEST" | grep -q "1" || { echo "❌ pg_trgm test failed (expected 1, got: $TRGM_TEST)"; exit 1; }
+          echo "✅ pg_trgm functional"
+
+          VECTOR_TEST=$(docker exec pg-test psql -U postgres -tAc "SELECT '[1,2,3]'::vector;")
+          echo "$VECTOR_TEST" | grep -q "\[1,2,3\]" || { echo "❌ vector test failed (got: $VECTOR_TEST)"; exit 1; }
+          echo "✅ vector functional"
 
           docker stop pg-test
           docker rm pg-test
@@ -262,10 +274,10 @@ jobs:
 
           echo "🧪 Testing PgBouncer connection..."
           PGPASSWORD=dev_pgbouncer_auth_test_2025 docker compose exec -T pgbouncer \
-            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;" || true
+            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;"
 
           echo "🧪 Testing postgres_exporter metrics..."
-          docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20 || true
+          docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20
 
           echo "📊 Stack logs..."
           docker compose logs --tail=50

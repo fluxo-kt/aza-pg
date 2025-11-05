@@ -432,7 +432,6 @@
       "kind": "extension",
       "category": "search",
       "description": "Full-text search powered by Groonga for multilingual workloads.",
-      "install_via": "pgdg",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
@@ -440,16 +439,20 @@
         "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
       },
       "build": {
-        "type": null
+        "type": "pgxs"
       },
-      "aptPackages": [],
+      "aptPackages": [
+        "cmake",
+        "ninja-build",
+        "pkg-config",
+        "libgroonga-dev",
+        "liblz4-dev",
+        "libmecab-dev",
+        "libmsgpack-dev"
+      ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "Migrated to PGDG package postgresql-18-pgroonga=4.0.4-1.pgdg13+1",
-          "PGDG package provides PG18 performance improvements (ordered index recognition)"
-        ]
+        "defaultEnable": false
       }
     },
     {

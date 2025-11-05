@@ -41,12 +41,12 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ### Extension Hybrid Strategy (PGDG + Source Compilation)
 **Pattern:** Hybrid approach combining PGDG pre-compiled packages with SHA-pinned source compilation.
 
-**PGDG Extensions (15):** pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user, pgroonga
+**PGDG Extensions (14):** pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
 - Installed via APT from apt.postgresql.org
 - GPG-signed packages with pinned versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`)
 - Benefits: Instant install, tested against PG18, multi-arch (amd64/arm64)
 
-**Compiled Extensions (16):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
+**Compiled Extensions (17):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgroonga, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
 - Built from SHA-pinned source (immutable Git commits)
 - Required when: Not in PGDG, need latest features, or specialized (Supabase ecosystem)
 - Manifest field `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh
@@ -56,7 +56,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - Compiled: SHA256-pinned Git commits (immutable, auditable)
 - Both prevent supply chain attacks via different mechanisms
 
-**Build Optimization:** 15 PGDG packages install in ~10s, 16 extensions compile in ~9-10min (down from ~20min for 31 extensions, pgroonga PGDG migration saves 2-3min). Total build time: ~9-10min.
+**Build Optimization:** 14 PGDG packages install in ~10s, 17 extensions compile in ~12min (down from ~20min for 31 extensions). Total build time: ~12min.
 
 **Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update manifest.json → rebuild.
 

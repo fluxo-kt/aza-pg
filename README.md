@@ -166,7 +166,11 @@ Reference points:
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
 - 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈55706MB`, `work_mem≈32MB`, `max_connections=200`
 
-`shared_preload_libraries` is enforced at runtime (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift.
+`shared_preload_libraries` is enforced at runtime with 7 preloaded by default (`pg_stat_statements`, `pg_stat_monitor`, `auto_explain`, `pg_cron`, `pgaudit`, `supautils`, `timescaledb`) to keep required extensions consistent even if static configs drift. Customize via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var.
+
+**Note:** pg_stat_monitor coexists safely with pg_stat_statements in PostgreSQL 18. Both provide complementary query statistics with different strengths.
+
+**Preloaded Extension Memory Overhead:** ~100-250MB depending on usage patterns and enabled extensions.
 
 ### PgBouncer Auth
 
@@ -185,7 +189,7 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 All extensions are SHA-pinned for reproducible builds.
 
-**Note:** This image includes 37 compiled extensions. The 4 listed above with versions (pgvector, pg_cron, pgAudit) plus pg_stat_statements, auto_explain, and pg_trgm are installed by the init scripts. Only pg_stat_statements, auto_explain, pg_cron, and pgaudit are preloaded via `shared_preload_libraries`. Other extensions are available via CREATE EXTENSION.
+**Note:** This image includes 37 compiled extensions. The 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector) are created automatically by init scripts. 7 extensions are preloaded by default via `shared_preload_libraries`: pg_stat_statements, pg_stat_monitor, auto_explain, pg_cron, pgaudit, supautils, timescaledb. The remaining 32 extensions are available on-demand via CREATE EXTENSION.
 
 ## Monitoring
 

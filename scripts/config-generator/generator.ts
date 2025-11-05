@@ -155,7 +155,7 @@ function generatePostgresqlConf(
   lines.push('# The following settings are overridden at container startup:');
   lines.push('# - shared_buffers, effective_cache_size, maintenance_work_mem, work_mem');
   lines.push('# - max_connections, max_worker_processes, max_parallel_workers');
-  lines.push('# Set POSTGRES_SKIP_AUTOCONFIG=true to disable');
+  lines.push('# Auto-config is always enabled and cannot be disabled.');
 
   return lines.join('\n');
 }

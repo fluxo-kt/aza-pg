@@ -80,7 +80,6 @@ CONTAINER_NAME="pg-test-$$"
 if ! docker run -d \
   --name "$CONTAINER_NAME" \
   -e POSTGRES_PASSWORD="$TEST_PASSWORD" \
-  -e POSTGRES_SKIP_AUTOCONFIG=false \
   "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "❌ ERROR: Failed to start test container"
   echo "   Check Docker logs: docker logs $CONTAINER_NAME"

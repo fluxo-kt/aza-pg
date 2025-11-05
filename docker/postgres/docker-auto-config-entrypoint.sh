@@ -27,11 +27,6 @@ if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --no-data-checksums"
 fi
 
-if [ "${POSTGRES_SKIP_AUTOCONFIG:-false}" = "true" ]; then
-    echo "[AUTO-CONFIG] Disabled via POSTGRES_SKIP_AUTOCONFIG=true"
-    exec /usr/local/bin/docker-entrypoint.sh "$@"
-fi
-
 detect_ram() {
     local ram_mb=0
     local source="unknown"

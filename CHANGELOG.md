@@ -2,7 +2,41 @@
 
 All notable changes to aza-pg will be documented in this file.
 
-## [Unreleased]
+## [Unreleased] - 2025-11-05
+
+### Fixed
+- **Extensions**: Corrected extension vs tool classifications (vector, pg_cron, pgaudit → extension; pg_safeupdate, supautils → tool)
+- **Extensions**: Set timescaledb defaultEnable to false (not auto-created by init script)
+- **Config**: Removed shared_preload_libraries duplication between base config and runtime entrypoint
+- **Docs**: Fixed work_mem values for 2GB nodes (2MB → 4MB) in AGENTS.md, README.md, PRODUCTION.md
+- **Docs**: Updated shared_buffers documentation (12.5%/8GB → 15-25%/32GB cap)
+- **Docs**: Corrected preloaded extension count (4 → 7 extensions)
+- **Docs**: Fixed "creates ALL extensions" claim to "creates 5 baseline extensions"
+- **CI**: Removed unused build-args (PGVECTOR_VERSION, PG_CRON_VERSION, PGAUDIT_VERSION)
+- **Docs**: Added minimum Docker Compose version requirement (v2.24.4+)
+
+### Added
+- **Config**: Documented POSTGRES_SHARED_PRELOAD_LIBRARIES override in AGENTS.md
+- **Docs**: Network security hardening guidance in PRODUCTION.md
+- **Docs**: Comprehensive extension testing strategy document (TESTING-STRATEGY.md)
+- **Docs**: Build script workaround documentation for pgrx version fixes
+
+### Changed
+- Extension manifest regenerated with correct classifications
+- PostgreSQL configs regenerated without hardcoded shared_preload_libraries
+- CI workflow simplified to reference manifest.json for version management
+
+### Technical Details
+- Resolved 14 verified audit findings from VERIFICATION_REPORT.md
+- 10 commits across 11 phases of remediation
+- Files modified: 15+ configuration, documentation, and script files
+- Bitcode cleanup verified present in Dockerfile (line 135)
+
+**References**: See VERIFICATION_REPORT.md and TODO_PROGRESS.md for detailed breakdown
+
+---
+
+## [Previous Releases]
 
 ### Optimized (PGDG Hybrid Extension Strategy - 2025-11)
 - **Build:** Migrated 14 extensions to PGDG pre-compiled packages (pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user)

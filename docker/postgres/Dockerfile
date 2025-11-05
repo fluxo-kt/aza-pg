@@ -1,8 +1,9 @@
 # PostgreSQL 18 with comprehensive extension suite
 
 ARG PG_VERSION=18
+ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
 
-FROM postgres:${PG_VERSION}-trixie AS builder-base
+FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -14,8 +15,8 @@ RUN chmod +x /usr/local/bin/build-extensions.sh
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \
-    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false -o Acquire::AllowInsecureRepositories=true && \
-    apt-get install -y --allow-unauthenticated \
+    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
+    apt-get install -y \
       build-essential \
       git \
       jq \
@@ -65,8 +66,9 @@ RUN set -eu && \
     rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
     rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/
 
-
-FROM postgres:${PG_VERSION}-trixie
+ARG PG_VERSION=18
+ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -80,9 +82,9 @@ COPY extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \
-    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false -o Acquire::AllowInsecureRepositories=true && \
+    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
-    apt-get install -y --allow-unauthenticated \
+    apt-get install -y \
       postgresql-client-${PG_MAJOR} \
       ${RUNTIME_PKGS} && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt

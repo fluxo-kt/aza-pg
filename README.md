@@ -189,6 +189,8 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 All extensions are SHA-pinned for reproducible builds.
 
+**Note:** This image includes 37 compiled extensions. The 4 listed above with versions (pgvector, pg_cron, pgAudit) plus pg_stat_statements, auto_explain, and pg_trgm are installed by the init scripts. Only pg_stat_statements, auto_explain, pg_cron, and pgaudit are preloaded via `shared_preload_libraries`. Other extensions are available via CREATE EXTENSION.
+
 ## Monitoring
 
 postgres_exporter included with custom queries:
@@ -214,6 +216,59 @@ gh workflow run build-postgres-image.yml
 ```
 
 Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
+
+## Troubleshooting
+
+### Build Failures
+- **COPY path errors**: Ensure build context is `docker/postgres` directory
+- **Extension compilation timeout**: Increase Docker build timeout or use cached image
+
+### Connection Issues
+- **Can't connect on 5432**: Check `POSTGRES_BIND_IP` in .env (default 127.0.0.1 = localhost only)
+- **PgBouncer auth fails**: Verify `PGBOUNCER_AUTH_PASS` matches in .env and `/tmp/.pgpass` in container
+
+### Extension Errors
+- **CREATE EXTENSION fails**: Check `docker logs` for preload errors - extension may need `shared_preload_libraries`
+- **pg_cron not working**: Verify `cron.database_name` is set (empty on replicas)
+
+### Performance
+- **High memory usage**: Auto-config detects RAM via cgroup limits - set `POSTGRES_MEMORY=<MB>` to override
+- **Slow queries**: Check `pg_stat_statements` output, review `auto_explain` logs for plan issues
+
+## Security
+
+### Hardening Checklist
+- ✅ All extensions SHA-pinned to prevent supply chain attacks
+- ✅ Base image SHA256-pinned (`postgres:18-trixie@sha256:...`)
+- ✅ APT packages authenticated (no `--allow-unauthenticated`)
+- ✅ SCRAM-SHA-256 authentication (no MD5)
+- ✅ PgBouncer uses `.pgpass` auth (no password env vars in healthchecks)
+- ✅ SQL injection protection in replica setup script
+- ⚠️ `.env` files require `chmod 600` (warned in .env.example files)
+- ⚠️ Default bind: localhost only - set `POSTGRES_BIND_IP=0.0.0.0` with firewall/VPN
+
+### Threat Model
+- **Supply chain attacks**: Mitigated via SHA pinning (extensions + base image)
+- **Credential exposure**: Mitigated via SCRAM-SHA-256, .pgpass, no hardcoded passwords
+- **Network exposure**: Default localhost binding, TLS config template available
+- **Audit compliance**: pgAudit tracks DDL/DML/role changes to logs
+
+## FAQ
+
+**Q: Why 4 preloaded extensions vs 37 available?**
+A: Only monitoring/audit extensions need preloading. Others load on-demand via CREATE EXTENSION.
+
+**Q: Can I use this in Kubernetes?**
+A: Not designed for K8s - optimized for Compose/VPS deployments. Use cloud-native operators for K8s.
+
+**Q: Why transaction mode for PgBouncer?**
+A: Maximizes connection multiplexing. Use direct :5432 if you need prepared statements/advisory locks.
+
+**Q: How do I change PostgreSQL settings?**
+A: Set `POSTGRES_SKIP_AUTOCONFIG=true` and edit stack-specific `postgresql.conf` files.
+
+**Q: Does auto-config work in Docker Desktop?**
+A: Yes - detects Docker Desktop memory limits. Use `POSTGRES_MEMORY=<MB>` to override.
 
 ## License
 

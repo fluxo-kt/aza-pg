@@ -59,6 +59,12 @@ RUN set -eu && \
 
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
+
+# Rust optimization flags for smaller binaries
+ENV RUSTFLAGS="-C opt-level=z -C lto=thin -C strip=symbols"
+ENV CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=3
+
 RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select(.build.type == "cargo-pgrx") ]}' /tmp/extensions.manifest.json > /tmp/extensions.cargo.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \
@@ -115,7 +121,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-pgrouting=3.8.0-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 && \
+      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-pgroonga=4.0.4-1.pgdg13+1 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-pgxs /opt/ext-out/ /

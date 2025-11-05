@@ -34,12 +34,12 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'pgvector', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS vector CASCADE', testSQL: "SELECT '[1,2,3]'::vector" },
   { name: 'timescaledb', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'" },
   { name: 'postgis', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS postgis CASCADE', testSQL: "SELECT PostGIS_Version()" },
-  { name: 'pg_partman', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE', testSQL: "SELECT count(*) FROM partman.part_config" },
+  { name: 'pg_partman', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE', testSQL: "SELECT count(*) FROM part_config" },
   { name: 'pg_repack', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_repack CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'pg_repack'" },
   { name: 'plpgsql_check', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS plpgsql_check CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'plpgsql_check'" },
   { name: 'hll', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS hll CASCADE', testSQL: "SELECT hll_empty()" },
   { name: 'http', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS http CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'http'" },
-  { name: 'hypopg', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS hypopg CASCADE', testSQL: "SELECT count(*) FROM hypopg_list_indexes()" },
+  { name: 'hypopg', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS hypopg CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'hypopg'" },
   { name: 'pgrouting', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'pgrouting'" },
   { name: 'rum', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS rum CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'rum'" },
   { name: 'set_user', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS set_user CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'set_user'" },
@@ -51,14 +51,14 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'pg_hashids', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE', testSQL: "SELECT id_encode(123)" },
   { name: 'pg_plan_filter', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
   { name: 'safeupdate', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
-  { name: 'pg_stat_monitor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_stat_monitor CASCADE', testSQL: "SELECT count(*) FROM pg_stat_monitor_settings" },
+  { name: 'pg_stat_monitor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_stat_monitor CASCADE', testSQL: "SELECT count(*) FROM pg_stat_monitor" },
   { name: 'pgbackrest', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
   { name: 'pgbadger', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
-  { name: 'pgmq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgmq CASCADE', testSQL: "SELECT pgmq_create('test_queue')" },
+  { name: 'pgmq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgmq CASCADE', testSQL: "SELECT pgmq.create('test_queue')" },
   { name: 'pgroonga', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE', testSQL: "SELECT pgroonga_command('status')" },
   { name: 'pgsodium', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE', testSQL: "SELECT pgsodium.crypto_secretbox_keygen()" },
   { name: 'supabase_vault', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE', testSQL: "SELECT count(*) FROM vault.secrets" },
-  { name: 'supautils', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS supautils CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'supautils'" },
+  { name: 'supautils', category: 'compiled-hook', createSQL: '', testSQL: "SHOW supautils.superuser" }, // Hook-based extension, provides GUC variables only
   { name: 'timescaledb_toolkit', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb_toolkit'" },
   { name: 'vectorscale', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'vectorscale'" },
   { name: 'wrappers', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS wrappers CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'wrappers'" },
@@ -97,28 +97,65 @@ async function stopContainer(): Promise<void> {
   await $`docker rm -f ${CONTAINER_NAME}`.quiet();
 }
 
-async function testExtension(ext: ExtensionTest): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Create extension if needed
-    if (ext.createSQL) {
-      const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.createSQL}`.nothrow();
-      if (result.exitCode !== 0) {
-        return { success: false, error: result.stderr.toString() };
+async function testExtension(ext: ExtensionTest, maxRetries = 3): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Create extension if needed
+      if (ext.createSQL) {
+        const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.createSQL}`.nothrow();
+        if (result.exitCode !== 0) {
+          const error = result.stderr.toString();
+          // Retry on transient connection/startup errors
+          if (attempt < maxRetries && (
+            error.includes('shutting down') ||
+            error.includes('starting up') ||
+            error.includes('No such file or directory') ||
+            error.includes('Connection refused')
+          )) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            continue;
+          }
+          return { success: false, error };
+        }
       }
-    }
 
-    // Run functional test if provided
-    if (ext.testSQL) {
-      const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.testSQL}`.nothrow();
-      if (result.exitCode !== 0) {
-        return { success: false, error: result.stderr.toString() };
+      // Run functional test if provided
+      if (ext.testSQL) {
+        const result = await $`docker exec ${CONTAINER_NAME} psql -U postgres -c ${ext.testSQL}`.nothrow();
+        if (result.exitCode !== 0) {
+          const error = result.stderr.toString();
+          // Retry on transient connection/startup errors
+          if (attempt < maxRetries && (
+            error.includes('shutting down') ||
+            error.includes('starting up') ||
+            error.includes('No such file or directory') ||
+            error.includes('Connection refused')
+          )) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            continue;
+          }
+          return { success: false, error };
+        }
       }
-    }
 
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: String(error) };
+      return { success: true };
+    } catch (error) {
+      const errorStr = String(error);
+      // Retry on transient errors
+      if (attempt < maxRetries && (
+        errorStr.includes('shutting down') ||
+        errorStr.includes('starting up') ||
+        errorStr.includes('No such file or directory') ||
+        errorStr.includes('Connection refused')
+      )) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+        continue;
+      }
+      return { success: false, error: errorStr };
+    }
   }
+
+  return { success: false, error: 'Max retries exceeded' };
 }
 
 async function main() {

@@ -89,6 +89,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       ${RUNTIME_PKGS} && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
+# Pre-compiled extensions from PGDG repository
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -eu && \
+    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
+    apt-get install -y \
+      postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-timescaledb=2.23.0+dfsg-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-postgis-3=3.6.0+dfsg-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-partman=5.3.1-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 \
+      postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-pgrouting=3.8.0-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 \
+      postgresql-${PG_MAJOR}-wal2json=2.6-3.pgdg13+1 && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 

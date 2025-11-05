@@ -193,6 +193,13 @@ process_entry() {
     return
   fi
 
+  local install_via
+  install_via=$(jq -r '.install_via // ""' <<<"$entry")
+  if [[ "$install_via" == "pgdg" ]]; then
+    log "Skipping $name (installed via PGDG)"
+    return
+  fi
+
   local source_type
   source_type=$(jq -r '.source.type' <<<"$entry")
   local dest="$BUILD_ROOT/$name"

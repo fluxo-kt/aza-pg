@@ -4,6 +4,17 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Unreleased]
 
+### Optimized (PGDG Hybrid Extension Strategy - 2025-11)
+- **Build:** Migrated 15 extensions to PGDG pre-compiled packages (pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user, wal2json)
+- **Build:** Reduced extension compilation from 31→16 extensions (48% reduction)
+- **Build:** Added `install_via: "pgdg"` manifest field to flag PGDG extensions
+- **Build:** Updated `build-extensions.sh` to skip PGDG-flagged extensions during compilation
+- **Build:** Added missing implicit dependencies (`zlib1g-dev`, `libicu-dev`) to build-packages.txt
+- **Build:** Build time optimized to 15m31s (15 PGDG packages install in ~10s, 16 extensions compile in ~15min)
+- **Security:** Hybrid security model - PGDG packages use GPG-signed APT repository, compiled extensions use SHA256-pinned Git commits
+- **Docs:** Updated CLAUDE.md/AGENTS.md with hybrid strategy explanation, upgrade procedures, and security trade-offs
+- **Test:** Created comprehensive Bun TypeScript test suite (`scripts/test/test-extensions.ts`) validating 37 extensions
+
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
 - **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments

@@ -103,9 +103,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             PG_VERSION=${{ steps.build-args.outputs.pg_version }}
-            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}
-            PG_CRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}
-            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
@@ -119,12 +116,10 @@ jobs:
           echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
-          echo "- pgvector ${{ steps.build-args.outputs.pgvector_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_cron ${{ steps.build-args.outputs.pg_cron_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- pgAudit ${{ steps.build-args.outputs.pgaudit_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_stat_statements (contrib)" >> $GITHUB_STEP_SUMMARY
-          echo "- auto_explain (contrib)" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_trgm (contrib)" >> $GITHUB_STEP_SUMMARY
+          echo "- 37 total extensions (5 baseline + 32 available)" >> $GITHUB_STEP_SUMMARY
+          echo "- PGDG packages: pgvector, pg_cron, pgaudit, timescaledb, postgis, etc." >> $GITHUB_STEP_SUMMARY
+          echo "- Compiled extensions: pg_jsonschema, wrappers, pgsodium, etc." >> $GITHUB_STEP_SUMMARY
+          echo "- Versions managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify image
         run: |

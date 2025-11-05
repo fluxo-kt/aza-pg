@@ -40,9 +40,11 @@
         - https://www.perplexity.ai/search/9.KYLcoRQ2.14fkjE3ss4w
     - PostGIS (geospatial)
         - https://github.com/postgis/postgis
-    - PartMan - Partition management
+    - PartMan: Partition management
         - https://github.com/pgpartman/pg_partman
         - https://www.perplexity.ai/search/tA64IBQyRaOHfGmLFm0k8Q
+    - pg_lake: Postgres for Iceberg and Data lakes
+        - https://github.com/snowflake-labs/pg_lake
 - Backup/Monitoring
     - https://github.com/RostislavDugin/postgresus
     - https://github.com/percona/pmm

@@ -60,6 +60,12 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update manifest.json → rebuild.
 
+**Analysis & Impact:** See comprehensive documentation:
+- **Size analysis:** `docs/extensions/SIZE-ANALYSIS.md` (per-extension size breakdown, timescaledb_toolkit 186MB outlier)
+- **Performance impact:** `docs/extensions/PERFORMANCE-IMPACT.md` (memory overhead, query performance, build time)
+- **Pre-built binaries:** `docs/extensions/PREBUILT-BINARIES-ANALYSIS.md` (GitHub release availability, 3 viable candidates)
+- **PGDG availability:** `docs/extensions/PGDG-AVAILABILITY.md` (pgroonga available in PGDG, migration recommended)
+
 ### Hook-Based Extensions & Tools
 **Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
 

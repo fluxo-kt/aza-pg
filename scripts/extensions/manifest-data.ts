@@ -63,7 +63,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "vector",
     displayName: "pgvector",
-    kind: "tool",
+    kind: "extension",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -76,7 +76,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_cron",
-    kind: "tool",
+    kind: "extension",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
     source: {
@@ -93,7 +93,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgaudit",
-    kind: "tool",
+    kind: "extension",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -198,7 +198,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_safeupdate",
-    kind: "extension",
+    kind: "tool",
     category: "safety",
     description: "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
     source: {
@@ -211,7 +211,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supautils",
-    kind: "extension",
+    kind: "tool",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
     source: {
@@ -465,7 +465,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],
     runtime: {
       sharedPreload: true,
-      defaultEnable: true,
+      defaultEnable: false,
       notes: ["timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."],
     },
   },

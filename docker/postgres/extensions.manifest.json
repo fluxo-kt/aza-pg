@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-05T04:29:31.893Z",
+  "generatedAt": "2025-11-05T22:27:05.472Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -58,8 +58,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "http",
@@ -83,8 +82,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "hypopg",
@@ -103,8 +101,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "index_advisor",
@@ -130,7 +127,7 @@
     },
     {
       "name": "pg_cron",
-      "kind": "tool",
+      "kind": "extension",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
       "source": {
@@ -148,8 +145,7 @@
         "notes": [
           "Enable via shared_preload_libraries to activate scheduler workers."
         ]
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "pg_hashids",
@@ -219,8 +215,7 @@
         "notes": [
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "pg_plan_filter",
@@ -263,8 +258,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "pg_safeupdate",
@@ -336,7 +330,7 @@
     },
     {
       "name": "pgaudit",
-      "kind": "tool",
+      "kind": "extension",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
       "source": {
@@ -354,8 +348,7 @@
         "notes": [
           "Tune pgaudit.log to control verbosity."
         ]
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "pgbackrest",
@@ -479,8 +472,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "pgsodium",
@@ -534,8 +526,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "postgis",
@@ -571,8 +562,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "rum",
@@ -591,8 +581,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "set_user",
@@ -612,8 +601,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "supabase_vault",
@@ -656,8 +644,7 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "Creates supabase-managed roles which expect pg_cron and pg_net to be present.",
-          "Hook-based library with no CREATE EXTENSION support. Provides GUC parameters and event trigger hooks only."
+          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       }
     },
@@ -685,12 +672,11 @@
       ],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": true,
+        "defaultEnable": false,
         "notes": [
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "timescaledb_toolkit",
@@ -731,7 +717,7 @@
     {
       "name": "vector",
       "displayName": "pgvector",
-      "kind": "tool",
+      "kind": "extension",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
@@ -746,8 +732,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true
-      },
-      "install_via": "pgdg"
+      }
     },
     {
       "name": "vectorscale",

@@ -10,24 +10,51 @@ cleanup() {
 }
 trap cleanup EXIT
 
-jq_cmd=".entries[] | select(.kind==\"extension\")"
-# Build dependency edges for tsort
-EXT_EDGES=$(jq -r "${jq_cmd} | if (.dependencies // [] | length) == 0 then \"\(.name)\" else ((.dependencies // [])[] | \"\(. ) \(.name)\") end" docker/postgres/extensions.manifest.json | awk 'NF')
-EXT_ALL=$(jq -r "${jq_cmd} | .name" docker/postgres/extensions.manifest.json)
+EXT_ORDER=$(python3 - <<'PY'
+import json
+from collections import deque, defaultdict
 
-tmpfile=$(mktemp)
-{
-  printf '%s\n' "$EXT_EDGES"
-  printf '%s\n' "$EXT_ALL"
-} | awk 'NF' | tsort > "$tmpfile"
+with open("docker/postgres/extensions.manifest.json", "r", encoding="utf-8") as fh:
+    manifest = json.load(fh)
 
-if [[ ! -s "$tmpfile" ]]; then
-  echo "[smoke] Failed to derive extension order" >&2
-  rm -f "$tmpfile"
+extensions = [entry for entry in manifest["entries"] if entry.get("kind") == "extension"]
+ext_names = {entry["name"] for entry in extensions}
+
+deps = {}
+for entry in extensions:
+    filtered = {dep for dep in (entry.get("dependencies", []) or []) if dep in ext_names}
+    deps[entry["name"]] = filtered
+dependents = defaultdict(set)
+for name, dset in deps.items():
+    for dep in dset:
+        dependents[dep].add(name)
+
+indegree = {name: len(dset) for name, dset in deps.items()}
+queue = deque(sorted([name for name, deg in indegree.items() if deg == 0]))
+order = []
+
+while queue:
+    current = queue.popleft()
+    order.append(current)
+    for child in sorted(dependents.get(current, [])):
+        indegree[child] -= 1
+        if indegree[child] == 0:
+            queue.append(child)
+
+if len(order) != len(deps):
+    missing = set(deps) - set(order)
+    print("ERROR", ",".join(sorted(missing)))
+else:
+    print("\n".join(order))
+PY
+)
+
+if [[ $EXT_ORDER == ERROR* ]]; then
+  echo "[smoke] Failed to derive extension order due to dependency cycle: ${EXT_ORDER#ERROR }" >&2
   exit 1
 fi
-mapfile -t EXTENSIONS < "$tmpfile"
-rm -f "$tmpfile"
+
+IFS=$'\n' read -r -d '' -a EXTENSIONS < <(printf '%s\0' "$EXT_ORDER")
 
 # Launch container
 DOCKER_RUN=(
@@ -51,6 +78,10 @@ done
 
 echo "[smoke] Creating extensions (${#EXTENSIONS[@]} total)"
 for ext in "${EXTENSIONS[@]}"; do
+  if ! docker exec "$CONTAINER" psql -U postgres -d postgres -tAc "SELECT 1 FROM pg_available_extensions WHERE name = '${ext}'" | grep -q 1; then
+    echo "  - ${ext} (skipped; control file not present)"
+    continue
+  fi
   docker exec "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
     -c "CREATE EXTENSION IF NOT EXISTS \"${ext}\" CASCADE;" >/dev/null
   echo "  - ${ext} created"

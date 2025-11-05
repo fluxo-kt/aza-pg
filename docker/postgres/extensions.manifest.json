@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-04T21:17:46.018Z",
+  "generatedAt": "2025-11-05T04:29:31.893Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -86,7 +86,7 @@
     },
     {
       "name": "hypopg",
-      "kind": "extension",
+      "kind": "tool",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
       "source": {
@@ -127,7 +127,7 @@
     },
     {
       "name": "pg_cron",
-      "kind": "extension",
+      "kind": "tool",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
       "source": {
@@ -219,7 +219,7 @@
     },
     {
       "name": "pg_plan_filter",
-      "kind": "extension",
+      "kind": "tool",
       "category": "safety",
       "description": "Block high-cost plans or disallowed operations using planner hooks.",
       "source": {
@@ -251,6 +251,8 @@
         "type": "pgxs"
       },
       "aptPackages": [
+        "libreadline-dev",
+        "libnuma-dev",
         "libzstd-dev"
       ],
       "runtime": {
@@ -283,10 +285,10 @@
       "category": "observability",
       "description": "Enhanced query performance telemetry with bucketed metrics.",
       "source": {
-        "type": "git",
+        "type": "git-ref",
         "repository": "https://github.com/percona/pg_stat_monitor.git",
-        "tag": "v0.6.0",
-        "commit": "2d4a92432fa79944354c3ebadf856a16642e6607"
+        "ref": "4ac02b24433894b320b044ed30747d0c38e79fa5",
+        "commit": "4ac02b24433894b320b044ed30747d0c38e79fa5"
       },
       "build": {
         "type": "pgxs"
@@ -296,7 +298,8 @@
         "defaultEnable": false
       },
       "notes": [
-        "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
+        "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
+        "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support."
       ]
     },
     {
@@ -327,7 +330,7 @@
     },
     {
       "name": "pgaudit",
-      "kind": "extension",
+      "kind": "tool",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
       "source": {
@@ -345,25 +348,6 @@
         "notes": [
           "Tune pgaudit.log to control verbosity."
         ]
-      }
-    },
-    {
-      "name": "pgaudit_set_user",
-      "kind": "extension",
-      "category": "security",
-      "description": "Audited SET ROLE helper complementing pgaudit.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgaudit/set_user.git",
-        "tag": "REL4_2_0",
-        "commit": "db4e871528c4b62bba672abaf9044f4cc618ae8c"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": false
       }
     },
     {
@@ -385,7 +369,9 @@
         "ninja-build",
         "libssl-dev",
         "liblz4-dev",
-        "libzstd-dev"
+        "libzstd-dev",
+        "libbz2-dev",
+        "libyaml-dev"
       ],
       "notes": [
         "Installs /usr/bin/pgbackrest."
@@ -426,7 +412,8 @@
         "commit": "e359dc936ec5b5c746de61498b5275bebd483bcd"
       },
       "build": {
-        "type": "pgxs"
+        "type": "pgxs",
+        "subdir": "pgmq-extension"
       },
       "runtime": {
         "sharedPreload": false,
@@ -445,7 +432,7 @@
         "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
       },
       "build": {
-        "type": "cmake"
+        "type": "pgxs"
       },
       "aptPackages": [
         "cmake",
@@ -568,7 +555,9 @@
         "libxml2-dev",
         "libgdal-dev",
         "liblz4-dev",
-        "libzstd-dev"
+        "libzstd-dev",
+        "bison",
+        "flex"
       ],
       "runtime": {
         "sharedPreload": false,
@@ -589,6 +578,49 @@
       "build": {
         "type": "pgxs"
       },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "set_user",
+      "displayName": "pgaudit_set_user",
+      "kind": "extension",
+      "category": "security",
+      "description": "Audited SET ROLE helper complementing pgaudit.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgaudit/set_user.git",
+        "tag": "REL4_2_0",
+        "commit": "db4e871528c4b62bba672abaf9044f4cc618ae8c"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false
+      }
+    },
+    {
+      "name": "supabase_vault",
+      "displayName": "vault",
+      "kind": "extension",
+      "category": "security",
+      "description": "Supabase secret store for encrypted application credentials.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/supabase/vault.git",
+        "tag": "v0.3.1",
+        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "dependencies": [
+        "pgsodium"
+      ],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -654,8 +686,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.21.0",
-        "commit": "0f2f4dc6bded7a4daa11cdfebe7fbe00c066e450"
+        "tag": "1.22.0",
+        "commit": "af5519c282fa2716fd87c4d9b8a15b0d857e9f29"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -677,34 +709,15 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      }
-    },
-    {
-      "name": "vault",
-      "kind": "extension",
-      "category": "security",
-      "description": "Supabase secret store for encrypted application credentials.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/supabase/vault.git",
-        "tag": "v0.3.1",
-        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
       },
-      "build": {
-        "type": "pgxs"
-      },
-      "dependencies": [
-        "pgsodium"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      }
+      "notes": [
+        "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility."
+      ]
     },
     {
       "name": "vector",
       "displayName": "pgvector",
-      "kind": "extension",
+      "kind": "tool",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
@@ -756,7 +769,7 @@
     },
     {
       "name": "wal2json",
-      "kind": "extension",
+      "kind": "tool",
       "category": "cdc",
       "description": "Logical decoding output plugin streaming JSON data for CDC.",
       "source": {
@@ -791,7 +804,7 @@
           "pg18"
         ],
         "noDefaultFeatures": true,
-        "subdir": "supabase-wrappers"
+        "subdir": "wrappers"
       },
       "aptPackages": [
         "clang",

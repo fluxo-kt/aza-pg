@@ -63,7 +63,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "vector",
     displayName: "pgvector",
-    kind: "extension",
+    kind: "tool",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -76,7 +76,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_cron",
-    kind: "extension",
+    kind: "tool",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
     source: {
@@ -93,7 +93,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgaudit",
-    kind: "extension",
+    kind: "tool",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -158,7 +158,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hypopg",
-    kind: "extension",
+    kind: "tool",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
     source: {
@@ -252,7 +252,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/supabase/wrappers.git",
       tag: "v0.5.6",
     },
-    build: { type: "cargo-pgrx", features: ["pg18"], noDefaultFeatures: true, subdir: "supabase-wrappers" },
+    build: { type: "cargo-pgrx", features: ["pg18"], noDefaultFeatures: true, subdir: "wrappers" },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
@@ -268,7 +268,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgroonga/pgroonga.git",
       tag: "4.0.4",
     },
-    build: { type: "cmake" },
+    build: { type: "pgxs" },
     aptPackages: [
       "cmake",
       "ninja-build",
@@ -318,6 +318,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "libgdal-dev",
       "liblz4-dev",
       "libzstd-dev",
+      "bison",
+      "flex",
     ],
     runtime: { sharedPreload: false, defaultEnable: false },
   },
@@ -351,7 +353,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
-    name: "vault",
+    name: "supabase_vault",
+    displayName: "vault",
     kind: "extension",
     category: "security",
     description: "Supabase secret store for encrypted application credentials.",
@@ -401,7 +404,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/tembo-io/pgmq.git",
       tag: "v1.7.0",
     },
-    build: { type: "pgxs" },
+    build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
@@ -415,7 +418,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "ver_1.5.3",
     },
     build: { type: "pgxs" },
-    aptPackages: ["libzstd-dev"],
+    aptPackages: ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
@@ -424,17 +427,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "observability",
     description: "Enhanced query performance telemetry with bucketed metrics.",
     source: {
-      type: "git",
+      type: "git-ref",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      tag: "v0.6.0",
+      ref: "4ac02b24433894b320b044ed30747d0c38e79fa5",
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: true, defaultEnable: false },
-    notes: ["Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."],
+    notes: [
+      "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
+      "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support.",
+    ],
   },
   {
     name: "pg_plan_filter",
-    kind: "extension",
+    kind: "tool",
     category: "safety",
     description: "Block high-cost plans or disallowed operations using planner hooks.",
     source: {
@@ -471,16 +477,19 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.21.0",
+      tag: "1.22.0",
     },
     build: { type: "cargo-pgrx", subdir: "extension", features: ["pg18"], noDefaultFeatures: true },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["timescaledb"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    notes: [
+      "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility.",
+    ],
   },
   {
     name: "wal2json",
-    kind: "extension",
+    kind: "tool",
     category: "cdc",
     description: "Logical decoding output plugin streaming JSON data for CDC.",
     source: {
@@ -549,7 +558,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "release/2.57.0",
     },
     build: { type: "meson" },
-    aptPackages: ["meson", "ninja-build", "libssl-dev", "liblz4-dev", "libzstd-dev"],
+    aptPackages: [
+      "meson",
+      "ninja-build",
+      "libssl-dev",
+      "liblz4-dev",
+      "libzstd-dev",
+      "libbz2-dev",
+      "libyaml-dev",
+    ],
     notes: ["Installs /usr/bin/pgbackrest."],
   },
   {
@@ -567,7 +584,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     notes: ["Binary installed to /usr/local/bin/pgbadger."],
   },
   {
-    name: "pgaudit_set_user",
+    name: "set_user",
+    displayName: "pgaudit_set_user",
     kind: "extension",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",

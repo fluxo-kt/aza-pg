@@ -1,9 +1,12 @@
 autoconf
 automake
+bison
 clang
 cmake
+flex
 g++
 libboost-graph-dev
+libbz2-dev
 libcurl4-openssl-dev
 libgdal-dev
 libgeos-dev
@@ -12,15 +15,17 @@ libjson-c-dev
 libjson-xs-perl
 liblz4-dev
 libmecab-dev
-libnuma-dev
 libmsgpack-dev
+libnuma-dev
 libproj-dev
 libprotobuf-c-dev
+libreadline-dev
 libsodium-dev
 libssl-dev
 libtext-csv-xs-perl
 libtool
 libxml2-dev
+libyaml-dev
 libzstd-dev
 llvm
 make
@@ -30,4 +35,3 @@ perl
 pkg-config
 protobuf-c-compiler
 python3
-libreadline-dev

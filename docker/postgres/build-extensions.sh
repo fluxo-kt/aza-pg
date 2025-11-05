@@ -78,6 +78,9 @@ clone_repo() {
   log "Cloning $repo @ $commit"
   git clone --filter=blob:none "$repo" "$target"
   git -C "$target" checkout --quiet "$commit"
+  if [[ -f "$target/.gitmodules" ]]; then
+    git -C "$target" submodule update --init --recursive
+  fi
 }
 
 build_pgxs() {
@@ -120,7 +123,13 @@ build_timescaledb() {
   local dir=$1
   log "Building TimescaleDB via bootstrap in $dir"
   (cd "$dir" && ./bootstrap -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON)
-  (cd "$dir/build" && ninja -j"${NPROC}" && ninja install)
+  if [[ -f "$dir/build/build.ninja" ]]; then
+    (cd "$dir/build" && ninja -j"${NPROC}" && ninja install)
+  else
+    (cd "$dir/build" && make -j"${NPROC}")
+    (cd "$dir/build" && make install)
+  fi
+  mkdir -p "/usr/share/postgresql/${PG_MAJOR}/timescaledb"
 }
 
 build_autotools() {
@@ -212,6 +221,15 @@ process_entry() {
   if [[ "$name" == "pg_jsonschema" ]]; then
     sed -i 's/pgrx = "0\.16\.0"/pgrx = "=0.16.1"/' "$dest/Cargo.toml" || true
     sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml" || true
+  fi
+  if [[ "$name" == "wrappers" ]]; then
+    sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' "$dest/supabase-wrappers/Cargo.toml" || true
+    sed -i 's/pgrx-tests = "=0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/supabase-wrappers/Cargo.toml" || true
+    sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' "$dest/wrappers/Cargo.toml" || true
+    sed -i 's/pgrx-tests = "=0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/wrappers/Cargo.toml" || true
+  fi
+  if [[ "$name" == "supautils" ]]; then
+    sed -i 's/^bool[[:space:]]\{1,\}log_skipped_evtrigs/static bool log_skipped_evtrigs/' "$dest/src/supautils.c"
   fi
 
   subdir=$(jq -r '.build.subdir // ""' <<<"$entry")

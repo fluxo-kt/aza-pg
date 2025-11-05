@@ -8,4 +8,8 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS vector;
 
-RAISE NOTICE 'Baseline extensions enabled (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional extensions are available but disabled by default.';
+DO $$
+BEGIN
+  RAISE NOTICE 'Baseline extensions enabled (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional extensions are available but disabled by default.';
+END;
+$$;

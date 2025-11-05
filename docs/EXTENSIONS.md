@@ -62,7 +62,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
-| `pg_stat_monitor` | v0.6.0 | No | Yes | Enhanced query performance telemetry with bucketed metrics. |
+| `pg_stat_monitor` | 4ac02b24 | No | Yes | Enhanced query performance telemetry with bucketed metrics. |
 | `pgbadger` | v13.1 | No | No | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
@@ -111,16 +111,16 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
 | `pgaudit` | 18.0 | Yes | Yes | Detailed auditing for DDL/DML activity with class-level granularity. |
-| `pgaudit_set_user` | REL4_2_0 | No | Yes | Audited SET ROLE helper complementing pgaudit. |
 | `pgsodium` | v3.1.9 | No | No | Modern cryptography and envelope encryption with libsodium. |
-| `vault` | v0.3.1 | No | No | Supabase secret store for encrypted application credentials. |
+| `set_user` (pgaudit_set_user) | REL4_2_0 | No | Yes | Audited SET ROLE helper complementing pgaudit. |
+| `supabase_vault` (vault) | v0.3.1 | No | No | Supabase secret store for encrypted application credentials. |
 
 ### timeseries
 
 | Extension | Version | Enabled by Default | Shared Preload | Notes |
 |-----------|---------|--------------------|----------------|-------|
 | `timescaledb` | 2.23.0 | Yes | Yes | Hypertables, compression, and continuous aggregates for time-series workloads. |
-| `timescaledb_toolkit` | 1.21.0 | No | No | Analytical hyperfunctions and sketches extending TimescaleDB. |
+| `timescaledb_toolkit` | 1.22.0 | No | No | Analytical hyperfunctions and sketches extending TimescaleDB. |
 
 ### utilities
 

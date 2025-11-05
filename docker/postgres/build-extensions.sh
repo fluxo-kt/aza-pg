@@ -17,7 +17,9 @@ ensure_cargo_pgrx() {
   local install_root="/root/.cargo-pgrx/${version}"
   if [[ ! -x "${install_root}/bin/cargo-pgrx" ]]; then
     log "Installing cargo-pgrx ${version}"
-    cargo install --locked cargo-pgrx --version "${version}" --root "${install_root}"
+    # Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation (Phase 11.1)
+    # RUSTFLAGS optimization should only apply to extension builds, not build tools
+    (unset RUSTFLAGS && cargo install --locked cargo-pgrx --version "${version}" --root "${install_root}")
   fi
   echo "$install_root"
 }

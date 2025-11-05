@@ -59,6 +59,16 @@ RUN set -eu && \
 
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
+
+# Rust optimization flags for smaller binaries (Phase 11.1)
+# Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
+# opt-level=s: Optimize for size (less aggressive than 'z', more compatible)
+# lto=thin: Enable thin link-time optimization
+# strip=symbols: Strip debug symbols from binaries
+ENV CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=s
+ENV CARGO_PROFILE_RELEASE_STRIP=symbols
+
 RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select(.build.type == "cargo-pgrx") ]}' /tmp/extensions.manifest.json > /tmp/extensions.cargo.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \

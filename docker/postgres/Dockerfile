@@ -121,6 +121,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
+# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
+RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
+
 COPY extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
 RUN mkdir -p /backup && chown postgres:postgres /backup

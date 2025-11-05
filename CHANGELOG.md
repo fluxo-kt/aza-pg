@@ -4,6 +4,30 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
+- **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
+- **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments
+- **Config:** Added WAL checkpoint tuning (max_wal_size='2GB', min_wal_size='1GB')
+- **Config:** Added TLS/SSL configuration template (commented) to `postgresql-base.conf`
+- **Config:** Disabled pg_cron on replica (set `cron.database_name=''` to prevent cron execution on read-only replica)
+- **Security:** Added `sslmode=prefer` to PgBouncer→Postgres connection string for opportunistic SSL
+- **Security:** Added SQL injection validation to replica setup script (replication slot name validation)
+- **Security:** Added `.env` security warnings (chmod 600 instruction) to all .env.example files
+- **Bug:** Fixed Dockerfile COPY paths to be relative to `docker/postgres` build context (was using absolute paths)
+
+### Security (Sprint 2 - 2025-05)
+- **Hardening:** Removed insecure APT flags (`--allow-unauthenticated`, `-o Acquire::AllowInsecureRepositories=true`)
+- **Hardening:** Pinned base image to SHA256 digest (`postgres:18-trixie@sha256:41fc5342...`) prevents tag poisoning
+- **Hardening:** Migrated PgBouncer healthcheck from `PGPASSWORD` env var to `.pgpass` file authentication (no password in process list)
+
+### Changed (Sprint 3-4 - 2025-05)
+- **CI:** Removed `|| true` from PgBouncer and postgres_exporter tests (now fails CI on test failure)
+- **CI:** Added grep assertions to extension functional tests (validates pg_trgm, vector actually work)
+- **Docs:** Clarified extension inventory in README (4 preloaded, 7 installed by default, 37 total available)
+- **Docs:** Added Troubleshooting section to README (build failures, connection issues, performance tuning)
+- **Docs:** Added Security section to README (hardening checklist, threat model)
+- **Docs:** Added FAQ section to README (extension preloading, K8s compatibility, PgBouncer mode, config overrides)
+
 ### Added (Pre-Release Improvements)
 - Single instance stack (`stacks/single/`) with minimal Postgres-only deployment
 - Replica stack (`stacks/replica/`) with streaming replication and auto-setup

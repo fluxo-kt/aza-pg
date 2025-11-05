@@ -69,6 +69,19 @@ All notable changes to aza-pg will be documented in this file.
 - **Docs:** Added "Why These Numbers Matter" section explaining 512MB vs 16GB+ deployment characteristics
 - **Docs:** Clarified manifest field usage for hook-based extensions (kind: "tool", sharedPreload: true)
 
+### Optimized (Phase 9 - Per-Extension Impact Analysis - 2025-11)
+- **Build:** Fixed LLVM bitcode cleanup in final image (34MB savings - was only removed from builder stages)
+- **Build:** Image size: 1.17GB → 1.14GB (-34MB / -3%)
+- **Docs:** Created SIZE-ANALYSIS.md with per-extension size breakdown (timescaledb_toolkit: 186MB outlier identified)
+- **Docs:** Created PREBUILT-BINARIES-ANALYSIS.md with GitHub release research for 17 compiled extensions
+- **Docs:** Identified 3 viable pre-built binary candidates: pgroonga (2-3min build savings), supautils (30sec), pgbadger (refactor needed)
+- **Docs:** Created PERFORMANCE-IMPACT.md with comprehensive analysis of all 37 extensions (size, memory, performance, build time)
+- **Test:** Created test-extension-performance.ts benchmarking suite (pgvector, timescaledb, postgis, pg_jsonschema, pgroonga, pg_cron)
+- **Test:** Performance benchmarks include: execution time, throughput (ops/sec), memory overhead, index performance
+- **Analysis:** Potential build time reduction: 2-4 minutes (17-25%) via pre-built binaries
+- **Analysis:** Potential image size reduction: 40-60MB (Phase 11 RUSTFLAGS for timescaledb_toolkit)
+- **Addressed:** User request for "impact of each extension on container image size and Postgres performance"
+
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
 - **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments

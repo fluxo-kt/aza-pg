@@ -78,9 +78,29 @@ All notable changes to aza-pg will be documented in this file.
 - **Docs:** Created PERFORMANCE-IMPACT.md with comprehensive analysis of all 37 extensions (size, memory, performance, build time)
 - **Test:** Created test-extension-performance.ts benchmarking suite (pgvector, timescaledb, postgis, pg_jsonschema, pgroonga, pg_cron)
 - **Test:** Performance benchmarks include: execution time, throughput (ops/sec), memory overhead, index performance
-- **Analysis:** Potential build time reduction: 2-4 minutes (17-25%) via pre-built binaries
-- **Analysis:** Potential image size reduction: 40-60MB (Phase 11 RUSTFLAGS for timescaledb_toolkit)
-- **Addressed:** User request for "impact of each extension on container image size and Postgres performance"
+
+### Verified (Phase 10 - PGDG Availability Analysis - 2025-11)
+- **Research:** Attempted pgroonga PGDG migration based on initial documentation research
+- **Build:** Build tests revealed pgroonga NOT available in PGDG repository for PostgreSQL 18 / Debian Trixie
+- **Build:** Tested package names: `postgresql-18-pgdg-pgroonga` and `postgresql-18-pgroonga` (both failed with "Unable to locate package")
+- **Root Cause:** PGroonga maintains separate APT repository, not included in PGDG (apt.postgresql.org)
+- **Docs:** Updated PGDG-AVAILABILITY.md with corrected findings: pgroonga must remain source-compiled
+- **Docs:** Documented "Must Remain Compiled" list updated to 17 extensions (added pgroonga)
+- **Lesson:** Always verify package availability via actual build tests, not just documentation
+- **Status:** No additional PGDG migrations possible from current 37-extension set (14 PGDG, 17 compiled)
+
+### Optimized (Phase 11 - Rust Extension Size Optimization - 2025-11)
+- **Build:** Added CARGO_PROFILE_RELEASE_* optimization flags for Rust extensions (opt-level=s, lto=thin, strip=symbols)
+- **Build:** Modified build-extensions.sh to unset RUSTFLAGS during cargo-pgrx installation (prevents tool build conflicts)
+- **Binary Sizes:** Rust extension reductions (4 extensions optimized):
+  - pg_jsonschema: 4.3MB → 2.9MB (-1.4MB, **-32.6%**)
+  - timescaledb_toolkit: 17MB → 13MB (-4MB, **-23.5%**)
+  - vectorscale: 1.5MB → 901KB (-599KB, **-39.9%**)
+  - wrappers: 580KB → 325KB (-255KB, **-44.0%**)
+- **Build:** Total Rust binary savings: 6.25MB (-26.7% across all Rust extensions)
+- **Test:** All 37 extensions verified functional after optimization
+- **Notes:** Used CARGO_PROFILE variables instead of RUSTFLAGS to avoid breaking dependency builds
+- **Performance:** Size optimization only (opt-level=s), no runtime performance degradation expected
 
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)

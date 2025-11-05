@@ -7,12 +7,9 @@ export const BASE_CONFIG: BaseConfig = {
     port: 5432,
     sharedPreloadLibraries: [
       'pg_stat_statements',
-      'pg_stat_monitor',
       'auto_explain',
       'pg_cron',
       'pgaudit',
-      'supautils',
-      'timescaledb',
     ],
     idleSessionTimeout: '0',
 
@@ -64,8 +61,14 @@ export const BASE_CONFIG: BaseConfig = {
     // Checkpoints
     checkpointCompletionTarget: 0.9,
 
+    // Query Planner (SSD optimizations)
+    randomPageCost: 1.1,
+    effectiveIoConcurrency: 200,
+
     // WAL
     walCompression: 'lz4',
+    maxWalSize: '2GB',
+    minWalSize: '1GB',
   },
 
   stacks: {
@@ -115,6 +118,9 @@ export const BASE_CONFIG: BaseConfig = {
 
       // Logging
       logReplicationCommands: 'on',
+
+      // pg_cron (disabled on read-only replica)
+      cronDatabaseName: '',
 
       // pgAudit (disabled on replica)
       pgAuditLog: 'none',

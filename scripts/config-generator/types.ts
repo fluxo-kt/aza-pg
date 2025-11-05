@@ -58,6 +58,10 @@ export interface PostgreSQLSettings {
   // Checkpoints
   checkpointCompletionTarget: number;
 
+  // Query Planner (SSD optimizations)
+  randomPageCost?: number;
+  effectiveIoConcurrency?: number;
+
   // WAL Settings
   walLevel: 'minimal' | 'replica' | 'logical';
   walCompression: 'off' | 'lz4' | 'pglz';

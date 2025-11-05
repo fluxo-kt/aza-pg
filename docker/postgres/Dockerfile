@@ -6,9 +6,9 @@ FROM postgres:${PG_VERSION}-trixie AS builder-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
-COPY docker/postgres/build-extensions.sh /usr/local/bin/build-extensions.sh
+COPY extensions.manifest.json /tmp/extensions.manifest.json
+COPY extensions.build-packages.txt /tmp/extensions.build-packages.txt
+COPY build-extensions.sh /usr/local/bin/build-extensions.sh
 RUN chmod +x /usr/local/bin/build-extensions.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -74,7 +74,7 @@ LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
 LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
 LABEL org.opencontainers.image.version="${PG_VERSION}"
 
-COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
+COPY extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
 # Runtime libraries for compiled extensions
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -90,16 +90,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
-COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+COPY extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+COPY docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 RUN chmod +x /docker-entrypoint-initdb.d/*.sh
 
-COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
+COPY docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
-COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
+COPY configs/postgresql-base.conf /etc/postgresql/
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1

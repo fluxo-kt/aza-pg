@@ -107,7 +107,7 @@ function generatePostgresqlConf(
   const includeCategories: Record<StackType, string[]> = {
     single: ['wal', 'pgaudit'],
     primary: ['replication', 'wal', 'pg_cron', 'pgaudit'],
-    replica: ['replication', 'wal', 'pgaudit'],
+    replica: ['replication', 'wal', 'pg_cron', 'pgaudit'],
   };
 
   for (const cat of includeCategories[stack]) {
@@ -188,7 +188,8 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
     ],
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
     checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
-    wal: ['walLevel', 'walCompression'],
+    query_planner: ['randomPageCost', 'effectiveIoConcurrency'],
+    wal: ['walLevel', 'walCompression', 'maxWalSize', 'minWalSize'],
     timescaledb: ['timescaledbTelemetryLevel'],
   };
 

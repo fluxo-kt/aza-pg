@@ -20,6 +20,12 @@ fi
 REPLICATION_SLOT_NAME="${REPLICATION_SLOT_NAME:-replica_slot_1}"
 PRIMARY_PORT="${PRIMARY_PORT:-5432}"
 
+# Validate replication slot name (prevent SQL injection)
+if [[ ! "$REPLICATION_SLOT_NAME" =~ ^[a-zA-Z0-9_]+$ ]]; then
+  echo "[REPLICA] ERROR: Invalid replication slot name (alphanumeric and underscore only)"
+  exit 1
+fi
+
 echo "[REPLICA] Waiting for primary at $PRIMARY_HOST:$PRIMARY_PORT..."
 for i in $(seq 1 30); do
   if PGPASSWORD="$PG_REPLICATION_PASSWORD" pg_isready -h "$PRIMARY_HOST" -p "$PRIMARY_PORT" -U "$PG_REPLICATION_USER" 2>/dev/null; then

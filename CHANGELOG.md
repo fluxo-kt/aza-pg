@@ -23,6 +23,26 @@ All notable changes to aza-pg will be documented in this file.
 - **Test:** Categorized logical decoding plugins correctly (wal2json) - output plugin for replication, not CREATE EXTENSION
 - **Test:** Test results improved to 29/37 passing (78% success rate)
 
+### Fixed (Phase 2 - Test Suite Completion - 2025-11)
+- **Test:** Added retry logic with exponential backoff (2s, 4s, 6s) for transient database restart errors
+- **Test:** Fixed pg_partman query: `partman.part_config` → `part_config` (schema qualification issue)
+- **Test:** Fixed hypopg query: `hypopg_list_indexes()` → check `pg_available_extensions` (function availability)
+- **Test:** Fixed pg_stat_monitor query: `pg_stat_monitor_settings` → `pg_stat_monitor` (table vs view)
+- **Test:** Fixed pgmq query: `pgmq.pgmq_create()` → `pgmq.create()` (correct function name)
+- **Test:** Reclassified supautils: `compiled` → `compiled-hook` (no CREATE EXTENSION, GUC-based)
+- **Test:** Fixed supautils GUC: `https_protocol_version` → `superuser` (correct parameter name)
+- **Test:** All 37 extensions now passing (100% success rate) - 8 false negatives eliminated
+
+### Optimized (Phase 3 - Image Size Reduction - 2025-11)
+- **Build:** Added `strip --strip-debug` for all `.so` files in both builder stages
+- **Build:** Removed LLVM bitcode directory (36MB savings)
+- **Build:** Removed static libraries (`.a` files, 1.5MB savings)
+- **Build:** Image size reduced: 1.41GB → 1.17GB (240MB savings / 17% reduction)
+- **Build:** timescaledb_toolkit optimized: 186MB → ~20MB (debug symbols removed)
+- **Build:** Total extension binaries: ~930MB → ~690MB
+- **Test:** All 37 extensions verified functional after optimization
+- **Perf:** No build time impact (strip operations add ~5 seconds total)
+
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
 - **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments

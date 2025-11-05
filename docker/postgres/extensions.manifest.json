@@ -640,7 +640,7 @@
     },
     {
       "name": "supautils",
-      "kind": "extension",
+      "kind": "tool",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
       "source": {
@@ -656,7 +656,8 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
+          "Creates supabase-managed roles which expect pg_cron and pg_net to be present.",
+          "Hook-based library with no CREATE EXTENSION support. Provides GUC parameters and event trigger hooks only."
         ]
       }
     },

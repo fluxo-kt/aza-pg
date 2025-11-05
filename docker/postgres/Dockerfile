@@ -51,7 +51,11 @@ RUN set -eu && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/${PG_MAJOR}/timescaledb ]; then \
       rsync -a /usr/share/postgresql/${PG_MAJOR}/timescaledb/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb/; \
-    fi
+    fi && \
+    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    find /opt/ext-out/usr/local/lib -name '*.so' -exec strip --strip-debug {} \; 2>/dev/null || true && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
 
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
@@ -64,7 +68,10 @@ RUN set -eu && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
     rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/
+    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    find /opt/ext-out -name '*.a' -delete
 
 ARG PG_VERSION=18
 ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c

@@ -22,21 +22,31 @@
 
 | Extension | PGDG Available? | Package Name | PG18 Support? | Current Method | Recommendation |
 |-----------|----------------|--------------|---------------|----------------|----------------|
-| **pgroonga** | ✅ YES | `postgresql-18-pgdg-pgroonga` | ✅ Yes (v4.0.4) | Compiled | **SWITCH TO PGDG** |
+| **pgroonga** | ❌ NO | N/A (tested: no package) | Yes (source only) | Compiled | **Keep compiling** |
 | **pg_safeupdate** | ❌ NO | N/A | Yes (source only) | Compiled | Keep compiling |
 
 ---
 
-## pgroonga: SWITCH TO PGDG (HIGH PRIORITY)
+## pgroonga: NOT AVAILABLE IN PGDG (VERIFIED VIA BUILD TEST)
 
-**Status:** READY TO MIGRATE
+**Status:** ❌ PGDG PACKAGE DOES NOT EXIST
 
-**Evidence:**
-- Official package: `postgresql-18-pgdg-pgroonga=4.0.4-1.pgdg13+1`
-- Source: https://pgroonga.github.io/install/debian.html
-- Debian Trixie support: Confirmed
-- PostgreSQL 18 support: Confirmed (with performance improvements)
-- Latest release: PGroonga 4.0.4 (Oct 2, 2025)
+**UPDATE (2025-11-05):** Initial research was INCORRECT. Build tests confirm no PGDG package exists.
+
+**Tested Package Names:**
+- `postgresql-18-pgdg-pgroonga=4.0.4-1.pgdg13+1` ❌ Does not exist
+- `postgresql-18-pgroonga=4.0.4-1.pgdg13+1` ❌ Does not exist
+
+**Build Test Evidence:**
+```
+E: Unable to locate package postgresql-18-pgroonga
+```
+
+**Why Documentation Was Wrong:**
+- PGroonga's official docs mention Debian packages: https://pgroonga.github.io/install/debian.html
+- However, these are NOT in the PGDG repository (apt.postgresql.org)
+- PGroonga maintains its own separate APT repository
+- PGDG does not package PGroonga for PostgreSQL 18 on Debian Trixie
 
 **Current Compilation Details:**
 - Build system: meson + ninja
@@ -44,37 +54,10 @@
 - Dependencies: cmake, ninja-build, pkg-config, libgroonga-dev, liblz4-dev, libmecab-dev, libmsgpack-dev
 - Binary size: 2.1MB
 - Runtime dependencies: 12 packages (~80-100MB)
+- PostgreSQL 18 support: Confirmed (with PG18-specific optimizations)
 
-**PGDG Package Benefits:**
-- Installation time: ~10 seconds (vs 2-3 min compilation)
-- GPG-signed by PostgreSQL community
-- Tested against PostgreSQL 18
-- Simplified dependency management
-- Aligns with existing PGDG strategy (14 extensions already using PGDG)
-
-**PostgreSQL 18 Performance Improvement:**
-PGroonga 4.0.4 includes optimization for PG18: PostgreSQL 18 now recognizes PGroonga's sorted index output and skips extra sorting operations.
-
-**Implementation:**
-```dockerfile
-# Add to Dockerfile PGDG installation block (lines 105-118):
-postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
-```
-
-**Manifest Update:**
-```json
-{
-  "name": "pgroonga",
-  "kind": "extension",
-  "install_via": "pgdg",  // Changed from null
-  "build": {
-    "type": null,  // No longer needed
-    ...
-  }
-}
-```
-
-**Build Time Savings:** 2-3 minutes per image build (~17-25% of current 12min compilation time)
+**Recommendation:**
+**KEEP COMPILING** — No PGDG package available, must use source compilation with SHA-pinning
 
 ---
 
@@ -126,13 +109,7 @@ postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
 | rum | postgresql-18-rum | 1.3.15-1.pgdg13+1 | ✅ |
 | set_user | postgresql-18-set-user | 4.2.0-1.pgdg13+1 | ✅ |
 
-### Should Migrate to PGDG (1 extension)
-
-| Extension | Package Name | Current Status | Priority |
-|-----------|-------------|----------------|----------|
-| **pgroonga** | postgresql-18-pgdg-pgroonga=4.0.4-1.pgdg13+1 | Compiled (2-3 min) | **HIGH** |
-
-### Must Remain Compiled (16 extensions)
+### Must Remain Compiled (17 extensions)
 
 | Extension | Reason | Build Time |
 |-----------|--------|------------|
@@ -140,6 +117,7 @@ postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
 | index_advisor | Not in PGDG (Supabase) | 30 sec |
 | pg_hashids | Not in PGDG | 30 sec |
 | pg_plan_filter | Not in PGDG (hook-based) | 20 sec |
+| pgroonga | Not in PGDG (separate repo) | 2-3 min |
 | pg_safeupdate | Not in PGDG (hook-based) | 20 sec |
 | pg_stat_monitor | Not in PGDG (Percona) | 1 min |
 | pgbackrest | Tool, not extension | 1 min |
@@ -153,29 +131,28 @@ postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
 | wal2json | Not in PGDG (logical decoding) | 30 sec |
 | wrappers | Not in PGDG (Rust FDW) | 1 min |
 
-**Total compiled:** 16 extensions, ~12 minutes build time (down from ~20 min with PGDG optimization)
+**Total compiled:** 17 extensions, ~12 minutes build time (down from ~20 min with PGDG optimization)
 
 ---
 
 ## Impact Analysis
 
-### If pgroonga Migrates to PGDG
+### Current State (Phase 10 Complete)
 
-**Before:**
+**Extension Distribution:**
 - PGDG packages: 14 extensions (~10 sec install)
 - Compiled extensions: 17 extensions (~12 min build)
 - **Total build time:** ~12 minutes
 
-**After:**
-- PGDG packages: 15 extensions (~10 sec install)
-- Compiled extensions: 16 extensions (~9-10 min build)
-- **Total build time:** ~9-10 minutes (**17-25% reduction**)
+**Build Time Breakdown:**
+- PGDG installation: <30 seconds
+- Compilation (PGXS/autotools/cmake/meson): ~8 minutes
+- Compilation (cargo-pgrx Rust extensions): ~4 minutes
 
-**Additional Benefits:**
-- Simplified Dockerfile (remove meson/ninja/groonga build dependencies)
-- Smaller builder image (fewer build tools)
-- More consistent with PGDG strategy
-- Automatic updates via APT package manager
+**Phase 10 Outcome:**
+- pgroonga verification: NOT in PGDG (must remain compiled)
+- No additional PGDG migrations possible from current extension set
+- Further optimization requires Rust build flags or selective extension removal
 
 ---
 
@@ -214,16 +191,14 @@ postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
 
 ## Recommendations
 
-### Immediate Actions
+### Phase 10 Findings
 
-1. **Migrate pgroonga to PGDG** (Phase 10+)
-   - Update Dockerfile to add PGDG package
-   - Update manifest.json (install_via: "pgdg")
-   - Remove pgroonga from build-extensions.sh compilation
-   - Test functionality after migration
-   - Expected: 2-3 min build time savings
+1. **pgroonga: Keep compiling**
+   - No PGDG package exists (verified via build test)
+   - PGroonga maintains separate APT repository (not PGDG)
+   - Current SHA-pinned compilation is appropriate
 
-2. **Keep pg_safeupdate compiled**
+2. **pg_safeupdate: Keep compiling**
    - No PGDG package available
    - Current method is appropriate
 
@@ -236,21 +211,6 @@ postgresql-${PG_MAJOR}-pgdg-pgroonga=4.0.4-1.pgdg13+1 \
 - **wrappers** — Supabase FDW framework
 
 **Check quarterly:** https://apt.postgresql.org/pub/repos/apt/pool/main/p/
-
----
-
-## Migration Checklist (pgroonga)
-
-- [ ] Update `docker/postgres/Dockerfile` PGDG installation block
-- [ ] Update `docker/postgres/extensions.manifest.json` (add `install_via: "pgdg"`)
-- [ ] Remove pgroonga build dependencies from `extensions.build-packages.txt`
-- [ ] Remove pgroonga runtime dependencies from `extensions.runtime-packages.txt` (if not shared)
-- [ ] Update `build-extensions.sh` to skip pgroonga when `install_via: "pgdg"`
-- [ ] Rebuild image and verify pgroonga loads: `CREATE EXTENSION pgroonga`
-- [ ] Test pgroonga functionality (FTS index creation, search queries)
-- [ ] Update CHANGELOG.md with migration
-- [ ] Update docs/extensions/PERFORMANCE-IMPACT.md (build time reduction)
-- [ ] Commit changes
 
 ---
 
@@ -293,14 +253,20 @@ SELECT * FROM docs WHERE content &@~ 'search';
 **Phase 10 Status:** ✅ COMPLETE
 
 **Key Findings:**
-- pgroonga: Available in PGDG, migration recommended (HIGH PRIORITY)
-- pg_safeupdate: Not in PGDG, keep compiling (APPROPRIATE)
+- pgroonga: NOT in PGDG (verified via build test, must remain compiled)
+- pg_safeupdate: Not in PGDG (must remain compiled)
+- Initial research was incorrect - corrected via actual build verification
+
+**Lessons Learned:**
+- Always verify package availability via build tests, not just documentation
+- PGroonga maintains its own APT repository separate from PGDG
+- No additional PGDG migrations possible from current extension set
 
 **Next Steps:**
-- Implement pgroonga PGDG migration (optional but recommended for build time reduction)
-- Proceed to Phase 11 (RUSTFLAGS optimization for timescaledb_toolkit)
+- Proceed to Phase 11 (RUSTFLAGS optimization for Rust extensions)
+- Focus on build-time optimizations rather than PGDG migrations
 
-**Total PGDG Coverage After Migration:**
-- 15/31 extensions (48.4%) using PGDG packages
-- 16/31 extensions (51.6%) compiled from source
-- Build time: ~9-10 minutes (optimized from original ~20 min)
+**Total PGDG Coverage (Final):**
+- 14/31 extensions (45.2%) using PGDG packages
+- 17/31 extensions (54.8%) compiled from source
+- Build time: ~12 minutes (already optimized from original ~20 min)

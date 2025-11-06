@@ -408,6 +408,26 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
   },
   {
+    name: "pgq",
+    displayName: "PgQ",
+    kind: "extension",
+    category: "queueing",
+    description: "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
+    source: {
+      type: "git",
+      repository: "https://github.com/pgq/pgq.git",
+      tag: "v3.5.1",
+    },
+    build: { type: "pgxs" },
+    runtime: { sharedPreload: false, defaultEnable: false },
+    notes: [
+      "Compiled from source (NOT available in PGDG for PostgreSQL 18)",
+      "Pure PLpgSQL extension with no external dependencies",
+      "Installs into pg_catalog schema (non-relocatable)",
+      "Build time: ~2-3 minutes",
+    ],
+  },
+  {
     name: "pg_repack",
     kind: "extension",
     category: "maintenance",

@@ -31,7 +31,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Features
 
 - **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (cgroup v2 preferred, `/proc/meminfo` fallback, or manual `POSTGRES_MEMORY` override)
-- **Production Extensions**: pgvector 0.8.1, pg_cron 1.6.7, pgAudit 18.0, pg_stat_statements, auto_explain, pg_trgm
+- **Production Extensions**: 38 PostgreSQL extensions + pgflow workflow orchestration
 - **Complete Stacks**: Single instance, Primary with PgBouncer + Exporter, Replica
 - **Supply Chain Security**: SHA-pinned extension sources, multi-platform builds (amd64/arm64)
 - **Connection Pooling**: PgBouncer with auth_query (SCRAM-SHA-256)
@@ -189,7 +189,7 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 All extensions are SHA-pinned for reproducible builds.
 
-**Note:** This image includes 37 compiled extensions. The 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector) are created automatically by init scripts. 7 extensions are preloaded by default via `shared_preload_libraries`: pg_stat_statements, pg_stat_monitor, auto_explain, pg_cron, pgaudit, supautils, timescaledb. The remaining 32 extensions are available on-demand via CREATE EXTENSION.
+**Note:** This image includes 38 extensions (6 built-in, 14 PGDG, 18 compiled from source) + pgflow workflow orchestration. The 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector) are created automatically by init scripts. 7 extensions are preloaded by default via `shared_preload_libraries`: pg_stat_statements, pg_stat_monitor, auto_explain, pg_cron, pgaudit, supautils, timescaledb. The remaining 33 extensions are available on-demand via CREATE EXTENSION. pgflow is installed via init script and requires pgmq.
 
 ## Monitoring
 

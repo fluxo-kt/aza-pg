@@ -19,9 +19,9 @@
 
 ## Testing Gap
 
-**Problem:** 32 of 37 extensions are built but never verified:
+**Problem:** 33 of 38 extensions are built but never verified:
 - 17 compiled-from-source extensions (beyond pgvector)
-- 13 PGDG extensions (beyond pg_cron/pgaudit)
+- 14 PGDG extensions (beyond pg_cron/pgaudit)
 - 2 builtin extensions (beyond pg_stat_statements/pg_trgm)
 
 **Risk:**
@@ -38,7 +38,7 @@
 
 ### 1. Matrix Testing Approach
 
-Test all 37 extensions across three dimensions:
+Test all 38 extensions across three dimensions:
 1. **CREATE EXTENSION**: Load extension successfully
 2. **Functional test**: Extension-specific smoke test
 3. **Metadata check**: Verify version matches expected

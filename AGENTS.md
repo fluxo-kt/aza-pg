@@ -8,7 +8,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Stacks:** Compose-based deployments. `primary/` = Postgres + PgBouncer + postgres_exporter (3 services). All values env-driven, no hardcoded IPs/passwords.
 
-**Extensions:** 37 total (6 builtin + 14 PGDG pre-compiled + 17 compiled from source). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18.
+**Extensions:** 38 total (6 builtin + 14 PGDG pre-compiled + 18 compiled from source). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18.
 
 ## Critical Patterns
 
@@ -97,6 +97,21 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
   }
 }
 ```
+
+### Workflow Orchestration (pgflow)
+
+**pgflow v0.7.2** is a workflow orchestration system installed via SQL schema (not a traditional extension):
+
+- **Installation**: SQL init script (`10-pgflow.sql`) creates `pgflow` schema with tables and functions
+- **Dependency**: Requires **pgmq extension** (Postgres Message Queue) - already installed
+- **Features**: DAG workflows, task queues, retry logic, step dependencies, map steps for parallel array processing
+- **Limitations**: Real-time events stubbed (no Supabase Edge Functions), requires custom worker implementation
+- **Documentation**: See `docs/pgflow/INTEGRATION.md` for detailed integration guide
+
+**Key Tables**: flows, steps, deps, runs, step_states, step_tasks, workers
+**Key Functions**: create_flow(), add_step(), start_flow(), complete_task(), fail_task()
+
+Unlike traditional extensions, pgflow is schema-based workflow state management. The execution worker must be implemented separately (see integration docs for 3 implementation patterns).
 
 ### Init Script Execution Order
 **CRITICAL:** Init scripts execute alphabetically from two sources:

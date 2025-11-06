@@ -1,8 +1,8 @@
 # Extension Performance Impact Analysis
 
-**Version:** 2025-11-05
+**Version:** 2025-11-06
 **Image:** aza-pg (PostgreSQL 18.0)
-**Extensions:** 37 total (6 builtin + 14 PGDG + 17 compiled)
+**Extensions:** 38 total (6 builtin + 15 PGDG + 17 compiled)
 
 ---
 
@@ -485,7 +485,7 @@ TOTAL IMAGE SIZE:                  1.14GB (down from 1.41GB original)
 
 ### Full-Featured (Current)
 
-**Keep:** All 37 extensions
+**Keep:** All 38 extensions
 **Size:** ~1.14GB
 **Use case:** Multi-tenant SaaS, varied workloads, unknown future needs
 
@@ -555,9 +555,9 @@ SELECT * FROM pg_statio_user_tables; -- I/O statistics
 **Current Status:** Well-optimized hybrid approach
 
 **Strengths:**
-- ✅ Broad functionality (37 extensions, 6 categories)
-- ✅ PGDG packages for stability (14/37 = 38%)
-- ✅ SHA-pinned source for security (17/37 = 46%)
+- ✅ Broad functionality (38 extensions, 6 categories)
+- ✅ PGDG packages for stability (15/38 = 39%)
+- ✅ SHA-pinned source for security (17/38 = 45%)
 - ✅ Aggressive optimization (bitcode removal, stripping, cleanup)
 - ✅ Single image adapts to 2-128GB deployments
 

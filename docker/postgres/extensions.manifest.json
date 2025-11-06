@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-05T22:27:05.472Z",
+  "generatedAt": "2025-11-06T10:25:57.333Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -419,6 +419,32 @@
         "sharedPreload": false,
         "defaultEnable": false
       }
+    },
+    {
+      "name": "pgq",
+      "displayName": "PgQ",
+      "kind": "extension",
+      "category": "queueing",
+      "description": "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgq/pgq.git",
+        "tag": "v3.5.1",
+        "commit": "d23425f10e39f8e9cca178f1a94d9162e473fd45"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": [
+        "Compiled from source (NOT available in PGDG for PostgreSQL 18)",
+        "Pure PLpgSQL extension with no external dependencies",
+        "Installs into pg_catalog schema (non-relocatable)",
+        "Build time: ~2-3 minutes"
+      ]
     },
     {
       "name": "pgroonga",

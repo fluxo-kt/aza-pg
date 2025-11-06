@@ -2,7 +2,33 @@
 
 All notable changes to aza-pg will be documented in this file.
 
-## [Unreleased] - 2025-11-05
+## [Unreleased] - 2025-11-06
+
+### Added
+- **Extension:** pgq v3.5.1 (Generic high-performance lockless queue for PostgreSQL)
+- **Extension:** pgq compiled from source (NOT available in PGDG for PostgreSQL 18)
+- **Workflow:** pgflow v0.7.2 SQL schema for workflow orchestration
+- **Dependency:** pgflow uses pgmq extension (already installed) for task queuing
+- **Docs:** pgflow integration guide at `docs/pgflow/INTEGRATION.md`
+- **Init Script:** `10-pgflow.sql` creates pgflow schema with 7 core tables and 15+ functions
+
+### Changed
+- **Extension count:** 37 → 38 total extensions
+- **Compiled extensions:** 17 → 18 (added pgq)
+- **Init scripts:** Added pgflow workflow orchestration schema (optional, auto-installed)
+
+### Technical Details
+- pgq: Pure PLpgSQL extension, no external dependencies, PostgreSQL 10-18 compatible
+- pgflow: Workflow DAG engine with task scheduling, retry logic, step dependencies
+- pgflow limitations: Real-time events stubbed (no Supabase integration), requires custom worker
+- Installation: pgflow schema ~44KB SQL, creates pgflow/pgmq/realtime schemas
+- Security: pgflow functions use SECURITY DEFINER where needed, search_path hardened
+
+**References**: See `docs/pgflow/INTEGRATION.md` for pgflow architecture, worker patterns, and migration guide
+
+---
+
+## [Previous Release] - 2025-11-05
 
 ### Fixed
 - **Extensions**: Corrected extension vs tool classifications (vector, pg_cron, pgaudit → extension; pg_safeupdate, supautils → tool)
@@ -107,7 +133,7 @@ All notable changes to aza-pg will be documented in this file.
 - **Build:** Fixed LLVM bitcode cleanup in final image (34MB savings - was only removed from builder stages)
 - **Build:** Image size: 1.17GB → 1.14GB (-34MB / -3%)
 - **Docs:** Created SIZE-ANALYSIS.md with per-extension size breakdown (timescaledb_toolkit: 186MB outlier identified)
-- **Docs:** Created PREBUILT-BINARIES-ANALYSIS.md with GitHub release research for 17 compiled extensions
+- **Docs:** Created PREBUILT-BINARIES-ANALYSIS.md with GitHub release research for 18 compiled extensions
 - **Docs:** Identified 3 viable pre-built binary candidates: pgroonga (2-3min build savings), supautils (30sec), pgbadger (refactor needed)
 - **Docs:** Created PERFORMANCE-IMPACT.md with comprehensive analysis of all 37 extensions (size, memory, performance, build time)
 - **Test:** Created test-extension-performance.ts benchmarking suite (pgvector, timescaledb, postgis, pg_jsonschema, pgroonga, pg_cron)
@@ -121,7 +147,7 @@ All notable changes to aza-pg will be documented in this file.
 - **Docs:** Updated PGDG-AVAILABILITY.md with corrected findings: pgroonga must remain source-compiled
 - **Docs:** Documented "Must Remain Compiled" list updated to 17 extensions (added pgroonga)
 - **Lesson:** Always verify package availability via actual build tests, not just documentation
-- **Status:** No additional PGDG migrations possible from current 37-extension set (14 PGDG, 17 compiled)
+- **Status:** No additional PGDG migrations possible from current 37-extension set (14 PGDG, 18 compiled)
 
 ### Optimized (Phase 11 - Rust Extension Size Optimization - 2025-11)
 - **Build:** Added CARGO_PROFILE_RELEASE_* optimization flags for Rust extensions (opt-level=s, lto=thin, strip=symbols)

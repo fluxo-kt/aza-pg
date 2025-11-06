@@ -1,8 +1,8 @@
 # Extension Size Impact Analysis
 
 **Image:** aza-pg (PostgreSQL 18.0-1.pgdg13+3)
-**Analysis Date:** 2025-11-05
-**Total Extensions:** 37 (6 builtin + 14 PGDG + 17 compiled)
+**Analysis Date:** 2025-11-06
+**Total Extensions:** 38 (6 builtin + 15 PGDG + 17 compiled)
 
 ---
 
@@ -286,7 +286,7 @@ docker run --rm aza-pg:latest sh -c 'find /tmp /var/tmp -type f 2>/dev/null | wc
 
 ## Conclusion
 
-**Current state:** 37 extensions, 319MB footprint, 1.17GB total image
+**Current state:** 38 extensions, 319MB footprint, 1.17GB total image
 
 **Trade-offs:**
 - ✅ Single image supports vector, time-series, geospatial, search, security workloads

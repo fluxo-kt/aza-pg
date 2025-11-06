@@ -95,6 +95,14 @@ Container publication
 ### Clusters, Kubernetes
 - https://github.com/cloudnative-pg/cloudnative-pg
 
+### Base OS Image
+- Alpine is out-of-scope
+  - musl libc handles string sorting differently than glibc
+  - incompatible with many PostgreSQL extensions
+  - maintenance nightmare, not worth the effort
+- **Debian 13 Trixie** vs Ubuntu 24 Noble vs Ubuntu 22 Jammy: https://arc.net/l/quote/ddsmdqvf
+  - **Debian 13 Trixie is the clear winner**
+
 ### Refs
 - Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - https://github.com/percona/postgres-packaging

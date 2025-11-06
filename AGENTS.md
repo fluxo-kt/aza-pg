@@ -236,6 +236,8 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 **CI/CD:** Manual trigger only (extensions change rarely). Multi-platform buildx with SBOM/provenance.
 
+**Optimized Local Builds:** `./scripts/build-with-cache.sh` uses Docker Buildx with remote cache from CI artifacts. First build: ~12min (full compilation). Cached build: ~2min (reuses CI layers). Falls back to local cache if network unavailable. Multi-platform requires `--push` flag.
+
 ## Testing Strategy
 
 **Critical Tests:**

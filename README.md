@@ -208,6 +208,8 @@ scrape_configs:
 
 ## Build from Source
 
+### CI/CD Builds
+
 GitHub Actions workflow builds multi-platform images (linux/amd64, linux/arm64) with SBOM and provenance.
 
 Trigger manually via GitHub Actions UI or:
@@ -216,6 +218,33 @@ gh workflow run build-postgres-image.yml
 ```
 
 Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
+
+### Optimized Local Builds
+
+Use Docker Buildx with remote cache to dramatically speed up local builds by reusing CI-built layers:
+
+```bash
+# Fast single-platform build (current architecture)
+./scripts/build-with-cache.sh
+
+# Multi-platform build (requires push to registry)
+./scripts/build-with-cache.sh --multi-arch --push
+
+# Build and push to registry
+./scripts/build-with-cache.sh --push
+```
+
+**Performance:**
+- First build: ~12 minutes (compiles all extensions)
+- Cached build: ~2 minutes (reuses CI artifacts)
+- No network: ~12 minutes (falls back to local cache)
+
+**Requirements:**
+- Docker Buildx v0.8+ (bundled with Docker 19.03+)
+- Network access to `ghcr.io` for cache pull
+- Registry write access for `--push` (run `docker login ghcr.io`)
+
+The script automatically creates a buildx builder, pulls remote cache from CI artifacts, and falls back to local cache if network is unavailable.
 
 ## Troubleshooting
 

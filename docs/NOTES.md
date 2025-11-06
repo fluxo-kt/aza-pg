@@ -45,6 +45,12 @@
         - https://www.perplexity.ai/search/tA64IBQyRaOHfGmLFm0k8Q
     - pg_lake: Postgres for Iceberg and Data lakes
         - https://github.com/snowflake-labs/pg_lake
+    - DuckDB-powered Postgres for high performance apps & analytics (OLAP)
+        - https://github.com/duckdb/pg_duckdb
+        - https://www.perplexity.ai/search/pg-duckdb-vs-timescaledb-THmyJ2KvQ22vAicYpFxLjQ
+        - Running on production primary instance risks starving OLTP workloads
+        - Best practice: Deploy on dedicated read replicas only
+        - Each PG connection spawns its own DuckDB instance (min 125 MB per-connection)
 - Backup & Disaster Recovery
     - Tier 1: pgBackRest (Compression, encryption, parallel backup/restore; Block-level incremental backups)
     - Tier 2: WAL-G (Cloud-optimized: S3, GCS, Azure; Used by GitLab.com; Go-based successor to WAL-E)
@@ -90,6 +96,7 @@ Container publication
 - https://github.com/cloudnative-pg/cloudnative-pg
 
 ### Refs
+- Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - https://github.com/percona/postgres-packaging
 - https://github.com/supabase/postgres
 - https://github.com/cloudnative-pg/postgres-containers

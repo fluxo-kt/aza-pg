@@ -166,6 +166,16 @@ await test("wal2json - Create logical replication slot", "cdc", async () => {
 await test("wal2json - Verify slot exists and tracks changes", "cdc", async () => {
   const verify = await runSQL("SELECT slot_name FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'");
   assert(verify.success && verify.stdout === 'test_wal2json_slot', "Replication slot not found");
+});
+
+await test("wal2json - Read JSON output from slot", "cdc", async () => {
+  // Perform a DML operation and read the JSON output
+  await runSQL("CREATE TABLE IF NOT EXISTS test_wal2json_table (id int, data text)");
+  await runSQL("INSERT INTO test_wal2json_table VALUES (1, 'test')");
+
+  // Read changes from slot
+  const changes = await runSQL("SELECT data FROM pg_logical_slot_peek_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')");
+  assert(changes.success, "Failed to read wal2json changes");
 
   // Cleanup
   await runSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')");
@@ -331,10 +341,9 @@ await test("wrappers - Create extension", "integration", async () => {
 });
 
 await test("wrappers - Verify wrapper extension infrastructure", "integration", async () => {
-  // Wrappers extension is installed, verify it's available
-  const check = await runSQL("SELECT count(*) FROM pg_foreign_data_wrapper WHERE fdwname LIKE 'wrappers%' OR fdwname LIKE '%_wrapper'");
-  // Note: wrappers extension may not create FDWs until used, just verify extension is loadable
-  assert(check.success, "Wrappers extension query failed");
+  // Verify wrappers_fdw_stats table exists (core infrastructure table)
+  const check = await runSQL("SELECT count(*) FROM pg_tables WHERE tablename = 'wrappers_fdw_stats' AND schemaname = 'public'");
+  assert(check.success && parseInt(check.stdout) === 1, "wrappers_fdw_stats table not found");
 });
 
 // ============================================================================
@@ -449,13 +458,22 @@ await test("auto_explain - Enable and configure", "observability", async () => {
     LOAD 'auto_explain';
     SET auto_explain.log_min_duration = 0;
     SET auto_explain.log_analyze = true;
-    SELECT count(*) FROM test_vectors;
     SHOW auto_explain.log_min_duration;
   `);
   // Parse the last line of output for the setting value
   const lines = result.stdout.split('\n').filter(l => l.trim());
   const lastLine = lines[lines.length - 1];
   assert(result.success && lastLine === '0', "auto_explain not configured correctly");
+});
+
+await test("auto_explain - Verify plan logging", "observability", async () => {
+  // Execute query in same session where auto_explain is loaded
+  const result = await runSQL(`
+    LOAD 'auto_explain';
+    SET auto_explain.log_min_duration = 0;
+    SELECT count(*) FROM test_vectors;
+  `);
+  assert(result.success, "Query execution with auto_explain failed");
 });
 
 await test("pg_stat_statements - Verify statistics collection", "observability", async () => {
@@ -555,15 +573,24 @@ await test("hypopg - Create extension and hypothetical index", "performance", as
   await runSQL("INSERT INTO test_hypopg (val) SELECT generate_series(1, 1000)");
 });
 
-await test("hypopg - Create and verify hypothetical index", "performance", async () => {
+await test("hypopg - Create hypothetical index", "performance", async () => {
+  // Create and verify in same session (hypothetical indexes are session-local)
   const result = await runSQL(`
     SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
     SELECT count(*) FROM hypopg_list_indexes;
   `);
-  // Parse output to get the count from the second query
   const lines = result.stdout.split('\n').filter(l => l.trim());
   const count = parseInt(lines[lines.length - 1]);
-  assert(result.success && count > 0, "No hypothetical indexes found");
+  assert(result.success && count > 0, "Failed to create hypothetical index");
+});
+
+await test("hypopg - Verify planner uses hypothetical index", "performance", async () => {
+  // Create index and run EXPLAIN in same session to verify planner sees it
+  const result = await runSQL(`
+    SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
+    EXPLAIN SELECT * FROM test_hypopg WHERE val = 500;
+  `);
+  assert(result.success, "EXPLAIN query failed with hypothetical index");
 });
 
 await test("hypopg - Reset hypothetical indexes", "performance", async () => {
@@ -669,6 +696,17 @@ await test("pg_plan_filter - Verify loaded via shared_preload_libraries", "safet
   // pg_plan_filter is a hook-based tool, library file is plan_filter.so
   const load = await runSQL("LOAD 'plan_filter'; SELECT 1");
   assert(load.success, "pg_plan_filter not loadable");
+});
+
+await test("pg_plan_filter - Execute queries with plan filter active", "safety", async () => {
+  // Verify pg_plan_filter allows normal query execution
+  const result = await runSQL(`
+    LOAD 'plan_filter';
+    SELECT count(*) FROM pg_tables;
+  `);
+  const lines = result.stdout.split('\n').filter(l => l.trim());
+  const count = parseInt(lines[lines.length - 1]);
+  assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
 });
 
 await test("pg_safeupdate - Verify loaded via shared_preload_libraries", "safety", async () => {

@@ -61,6 +61,7 @@
     - https://github.com/percona/grafana-dashboards PMM dashboards for database monitoring
     - https://github.com/postgres-ai/postgres_ai Postgres monitoring tool designed for humans and AI systems
     - https://github.com/supabase/etl Rust framework to stream your Postgres data anywhere in real-time
+    - https://hub.docker.com/r/fluent/fluent-bit lightweight logs and metrics collector and forwarder
 - Management
     - DbPill: Postgres proxy, automates index optimization
         - https://github.com/mayfer/dbpill

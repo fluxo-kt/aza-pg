@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive extension test suite
- * Tests all 38 extensions (6 builtin + 14 PGDG + 18 compiled)
+ * Tests 38 extensions + 1 schema (39 total: 6 builtin + 14 PGDG + 18 compiled + 1 schema)
  *
  * Usage: bun run scripts/test/test-extensions.ts [--image=aza-pg:phase1-fix]
  */
@@ -63,6 +63,7 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'timescaledb_toolkit', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb_toolkit'" },
   { name: 'vectorscale', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'vectorscale'" },
   { name: 'wrappers', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS wrappers CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'wrappers'" },
+  { name: 'pgflow', category: 'schema', createSQL: '', testSQL: "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'pgflow'" }, // SQL schema installed via init script
 ];
 
 async function startContainer(): Promise<void> {

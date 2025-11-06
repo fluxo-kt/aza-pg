@@ -24,7 +24,7 @@ services:
       - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432'
 
     volumes:
-      - postgres-replica-data:/var/lib/postgresql/data
+      - postgres-replica-data:/var/lib/postgresql
       - ./configs/postgresql-replica.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - ./scripts/00-setup-replica.sh:/docker-entrypoint-initdb.d/00-setup-replica.sh:ro

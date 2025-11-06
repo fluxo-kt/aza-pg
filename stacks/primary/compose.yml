@@ -15,7 +15,7 @@ services:
       REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-replica_slot_1}
 
     volumes:
-      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
       - ${POSTGRES_BACKUP_VOLUME:-postgres_backup}:/backup
       - ./configs/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro

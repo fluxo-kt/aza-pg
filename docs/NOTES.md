@@ -45,12 +45,16 @@
         - https://www.perplexity.ai/search/tA64IBQyRaOHfGmLFm0k8Q
     - pg_lake: Postgres for Iceberg and Data lakes
         - https://github.com/snowflake-labs/pg_lake
-- Backup/Monitoring
-    - https://github.com/RostislavDugin/postgresus
-    - https://github.com/percona/pmm
-    - https://github.com/percona/grafana-dashboards
-    - https://github.com/postgres-ai/postgres_ai
-    - https://github.com/supabase/etl
+- Backup & Disaster Recovery
+    - Tier 1: pgBackRest (Compression, encryption, parallel backup/restore; Block-level incremental backups)
+    - Tier 2: WAL-G (Cloud-optimized: S3, GCS, Azure; Used by GitLab.com; Go-based successor to WAL-E)
+    - Tier 3: pg_dump + cron (Simple, works everywhere; No PITR without WAL archiving)
+- Monitoring
+    - https://github.com/RostislavDugin/postgresus monitoring and backups (with UI and self hosted)
+    - https://github.com/percona/pmm Percona Monitoring and Management: an open source database monitoring, observability and management tool
+    - https://github.com/percona/grafana-dashboards PMM dashboards for database monitoring
+    - https://github.com/postgres-ai/postgres_ai Postgres monitoring tool designed for humans and AI systems
+    - https://github.com/supabase/etl Rust framework to stream your Postgres data anywhere in real-time
 - Management
     - DbPill: Postgres proxy, automates index optimization
         - https://github.com/mayfer/dbpill

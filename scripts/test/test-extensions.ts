@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive extension test suite
- * Tests all 37 extensions (6 builtin + 13 PGDG + 18 compiled)
+ * Tests all 38 extensions (6 builtin + 14 PGDG + 18 compiled)
  *
  * Usage: bun run scripts/test/test-extensions.ts [--image=aza-pg:phase1-fix]
  */
@@ -45,7 +45,7 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'set_user', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS set_user CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'set_user'" },
   { name: 'wal2json', category: 'compiled-tool', createSQL: '', testSQL: "" }, // Logical decoding plugin, not a CREATE EXTENSION extension
 
-  // Compiled extensions (18: 13 standard + 2 hook-based + 3 CLI tools)
+  // Compiled extensions (19: 14 standard + 2 hook-based + 3 CLI tools)
   { name: 'pg_jsonschema', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE', testSQL: "SELECT json_matches_schema('true', '{}')" },
   { name: 'index_advisor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE', testSQL: "SELECT count(*) FROM index_advisor('SELECT 1')" },
   { name: 'pg_hashids', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE', testSQL: "SELECT id_encode(123)" },
@@ -55,6 +55,7 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'pgbackrest', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
   { name: 'pgbadger', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
   { name: 'pgmq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgmq CASCADE', testSQL: "SELECT pgmq.create('test_queue')" },
+  { name: 'pgq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgq CASCADE', testSQL: "SELECT pgq.create_queue('test_pgq_queue')" },
   { name: 'pgroonga', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE', testSQL: "SELECT pgroonga_command('status')" },
   { name: 'pgsodium', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE', testSQL: "SELECT pgsodium.crypto_secretbox_keygen()" },
   { name: 'supabase_vault', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE', testSQL: "SELECT count(*) FROM vault.secrets" },

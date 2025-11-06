@@ -413,17 +413,15 @@ await test("pg_partman - Create extension and partitioned table", "maintenance",
 });
 
 await test("pg_partman - Configure partition management", "maintenance", async () => {
-  // Set pgsodium event trigger to false to avoid pg_partman conflicts
-  await runSQL("SET pgsodium.enable_event_trigger = 'off'");
-
   // Clean up existing partition config if exists
   await runSQL("DELETE FROM part_config WHERE parent_table = 'public.test_partman'");
 
+  // Test pg_partman WITH pgsodium TCE enabled (proper fix via shared_preload_libraries)
   const config = await runSQL(`
     SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range',
                           p_start_partition := '2025-01-01')
   `);
-  assert(config.success, "Failed to configure pg_partman");
+  assert(config.success, "Failed to configure pg_partman with pgsodium TCE enabled");
 });
 
 await test("pg_partman - Verify partitions created", "maintenance", async () => {

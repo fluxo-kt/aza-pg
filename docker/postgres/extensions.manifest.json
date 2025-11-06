@@ -518,7 +518,7 @@
         "libsodium-dev"
       ],
       "runtime": {
-        "sharedPreload": false,
+        "sharedPreload": true,
         "defaultEnable": false
       }
     },

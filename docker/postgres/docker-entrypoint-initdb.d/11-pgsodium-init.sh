@@ -22,9 +22,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         -- Create pgsodium extension if it doesn't exist
         CREATE EXTENSION IF NOT EXISTS pgsodium;
 
-        -- Disable pgsodium event triggers to avoid conflicts with other extensions
-        -- (pgsodium tries to check non-existent pgsodium.enable_event_trigger GUC)
-        ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE;
+        -- pgsodium event trigger is now enabled via shared_preload_libraries
+        -- GUC parameter pgsodium.enable_event_trigger is available when preloaded
+        -- Event trigger remains ENABLED for Transparent Column Encryption (TCE) support
 
         -- Create server secret key if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pgsodium.key WHERE name = 'pgsodium_root') THEN

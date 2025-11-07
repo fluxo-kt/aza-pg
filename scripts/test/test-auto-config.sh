@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# Source common library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+
 if ! command -v docker &>/dev/null; then
   echo "❌ ERROR: Required command 'docker' not found"
   echo "   Install Docker: https://docs.docker.com/get-docker/"
@@ -34,11 +39,6 @@ echo "Auto-Config Detection & Scaling Test"
 echo "========================================"
 echo "Image tag: $IMAGE_TAG"
 echo
-
-cleanup() {
-  local name=$1
-  docker rm -f "$name" >/dev/null 2>&1 || true
-}
 
 assert_log_contains() {
   local logs=$1
@@ -87,7 +87,7 @@ run_case() {
   local container="pg-autoconfig-$RANDOM-$$"
   if ! docker run -d --name "$container" "$@" "$IMAGE_TAG" >/dev/null 2>&1; then
     echo "❌ ERROR: Failed to start container for '$name'"
-    cleanup "$container"
+    docker_cleanup "$container"
     exit 1
   fi
 
@@ -99,7 +99,7 @@ run_case() {
   echo
 
   "$callback" "$logs" "$container"
-  cleanup "$container"
+  docker_cleanup "$container"
   echo
 }
 

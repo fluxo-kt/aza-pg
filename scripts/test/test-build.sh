@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# Source common library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+
 # Guard: Check required commands
 if ! command -v docker &>/dev/null; then
   echo "❌ ERROR: Required command 'docker' not found"
@@ -91,7 +96,7 @@ cleanup() {
   echo
   echo "🧹 Cleaning up..."
   docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-  docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  docker_cleanup "$CONTAINER_NAME"
 }
 trap cleanup EXIT
 

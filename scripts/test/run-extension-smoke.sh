@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Source common library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+
 IMAGE=${1:-aza-pg:test}
 CONTAINER="aza-pg-ext-smoke-$$"
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
 
 cleanup() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker_cleanup "$CONTAINER"
 }
 trap cleanup EXIT
 

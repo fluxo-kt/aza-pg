@@ -13,6 +13,12 @@ echo "[02-replication] Configuring replication user..."
 
 REPLICATION_SLOT_NAME="${REPLICATION_SLOT_NAME:-replica_slot_1}"
 
+# Validate replication slot name (prevent SQL injection)
+if [[ ! "$REPLICATION_SLOT_NAME" =~ ^[a-zA-Z0-9_]+$ ]]; then
+  echo "[02-replication] ERROR: REPLICATION_SLOT_NAME must contain only alphanumeric and underscore" >&2
+  exit 1
+fi
+
 psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name="$REPLICATION_SLOT_NAME" \
   --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE OR REPLACE FUNCTION pg_temp.setup_replication(p_password TEXT, p_slot_name TEXT)

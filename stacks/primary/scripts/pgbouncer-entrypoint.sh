@@ -20,12 +20,17 @@ escape_password() {
 escaped_pass="$(escape_password "$PGBOUNCER_AUTH_PASS")"
 
 umask 077
+# Write .pgpass entries for both PostgreSQL and PgBouncer connections
+# Format: hostname:port:database:username:password
 printf 'postgres:5432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" > "$PGPASSFILE_PATH"
+printf 'localhost:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
+printf 'pgbouncer:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
 export PGPASSFILE="$PGPASSFILE_PATH"
 
 # Substitute listen_addr with environment variable (default: 127.0.0.1 for security)
+# Use pipe delimiter to avoid sed injection with special characters (/, &, [], etc.)
 PGBOUNCER_LISTEN_ADDR="${PGBOUNCER_LISTEN_ADDR:-127.0.0.1}"
-sed "s/PGBOUNCER_LISTEN_ADDR_PLACEHOLDER/${PGBOUNCER_LISTEN_ADDR}/g" "$TEMPLATE" > "$OUTPUT"
+sed "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" "$TEMPLATE" > "$OUTPUT"
 chmod 600 "$OUTPUT"
 
 echo "[PGBOUNCER] Configuration rendered to $OUTPUT"

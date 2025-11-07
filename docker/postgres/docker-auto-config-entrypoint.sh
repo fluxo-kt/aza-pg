@@ -47,6 +47,10 @@ detect_ram() {
             echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
             exit 1
         fi
+        if [ "${POSTGRES_MEMORY}" -gt 1048576 ]; then
+            echo "[POSTGRES] ERROR: POSTGRES_MEMORY exceeds maximum (1TB = 1048576 MB)" >&2
+            exit 1
+        fi
         ram_mb=${POSTGRES_MEMORY}
         source="manual"
         echo "$ram_mb:$source"
@@ -155,6 +159,9 @@ calculate_effective_cache() {
     [ "$value" -lt "$min_value" ] && value=$min_value
     [ "$value" -lt 0 ] && value=0
 
+    local max_value=$((TOTAL_RAM_MB * 3 / 4))
+    [ "$value" -gt "$max_value" ] && value=$max_value
+
     echo "$value"
 }
 
@@ -191,7 +198,7 @@ MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
-echo "[POSTGRES] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
+echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \

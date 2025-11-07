@@ -83,8 +83,8 @@ RUN set -eu && \
     rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
-ARG PG_VERSION=18
-ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+ARG PG_VERSION
+ARG PG_BASE_IMAGE_SHA
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
 
 ENV DEBIAN_FRONTEND=noninteractive

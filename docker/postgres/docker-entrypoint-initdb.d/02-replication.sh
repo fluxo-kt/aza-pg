@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-if [ -z "$PG_REPLICATION_PASSWORD" ]; then
+if [ -z "${PG_REPLICATION_PASSWORD:-}" ]; then
   echo "[02-replication] INFO: PG_REPLICATION_PASSWORD not set - skipping replication setup (single-stack mode)"
   exit 0
 fi

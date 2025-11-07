@@ -5,7 +5,14 @@
 set -euo pipefail
 
 readonly DEFAULT_RAM_MB=1024
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,pgsodium,supautils,timescaledb"
+
+# Minimal default preload set for safety and performance.
+# Optional libraries requiring preload (enable via POSTGRES_SHARED_PRELOAD_LIBRARIES):
+#   - pgsodium: Requires pgsodium_getkey script for TCE (Transparent Column Encryption)
+#   - timescaledb: Heavy extension for time-series data
+#   - supautils: Superuser guards for managed Postgres
+#   - pg_stat_monitor: Alternative to pg_stat_statements (may conflict)
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
@@ -21,8 +28,8 @@ if [ "$1" != "postgres" ]; then
     exec /usr/local/bin/docker-entrypoint.sh "$@"
 fi
 
-# PostgreSQL 18 enables data checksums by default
-# Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended)
+# Data checksums are enabled by default via official Debian PostgreSQL package initdb wrapper.
+# Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended - reduces corruption detection).
 if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --no-data-checksums"
 fi

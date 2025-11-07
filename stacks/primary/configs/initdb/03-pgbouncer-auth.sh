@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-if [ -z "$PGBOUNCER_AUTH_PASS" ]; then
+if [ -z "${PGBOUNCER_AUTH_PASS:-}" ]; then
   echo "ERROR: PGBOUNCER_AUTH_PASS environment variable is not set"
   echo "Set it in .env file or via: -e PGBOUNCER_AUTH_PASS=yourpass"
   exit 1

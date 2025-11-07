@@ -16,6 +16,7 @@
 - PG extensions
     - [EXTENSIONS.md](EXTENSIONS.md)
     - **https://www.perplexity.ai/search/1Hg1uD3dQM6R0evCT1nIUw**
+    - **extension sources: https://arc.net/l/quote/ldpklvaq**
     - Supabase PG extensions used:
         - **https://github.com/supabase/postgres#postgresql-17-extensions**
         - https://arc.net/l/quote/dzmqgqng

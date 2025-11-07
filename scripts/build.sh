@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Build PostgreSQL image with Docker Buildx and remote cache
-# Speeds up local builds by reusing CI-built layers
+# Build PostgreSQL image (canonical build script)
+# Uses Docker Buildx with intelligent caching for fast builds
 #
 # Usage:
-#   ./scripts/build-with-cache.sh                 # Single-platform (current arch)
-#   ./scripts/build-with-cache.sh --multi-arch    # Multi-platform (amd64 + arm64)
-#   ./scripts/build-with-cache.sh --push          # Build and push to registry
+#   ./scripts/build.sh                 # Single-platform (current arch)
+#   ./scripts/build.sh --multi-arch    # Multi-platform (amd64 + arm64)
+#   ./scripts/build.sh --push          # Build and push to registry
 #
 # Requirements:
 #   - Docker Buildx installed (bundled with Docker Desktop / Docker 19.03+)

@@ -234,9 +234,9 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 **Extension Testing:** CREATE EXTENSION + functional query → grep logs for RAM/CPU detection → test PgBouncer via :6432 → verify SHOW POOLS.
 
-**CI/CD:** Manual trigger only (extensions change rarely). Multi-platform buildx with SBOM/provenance.
+**Local Builds (Default):** `./scripts/build.sh` uses Docker Buildx with remote cache from CI artifacts. This is the canonical build method. First build: ~12min (full compilation). Cached build: ~2min (reuses CI layers). Falls back to local cache if network unavailable. Multi-platform requires `--push` flag.
 
-**Optimized Local Builds:** `./scripts/build-with-cache.sh` uses Docker Buildx with remote cache from CI artifacts. First build: ~12min (full compilation). Cached build: ~2min (reuses CI layers). Falls back to local cache if network unavailable. Multi-platform requires `--push` flag.
+**CI/CD:** Manual trigger only (extensions change rarely). Multi-platform buildx with SBOM/provenance.
 
 ## Testing Strategy
 
@@ -286,7 +286,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 ## Contributing
 
-1. Test locally: Build image → deploy primary stack → verify extensions
+1. Test locally: `./scripts/build.sh` → deploy primary stack → verify extensions
 2. Check auto-config: Run `./scripts/test/test-auto-config.sh` (covers manual + 512MB + 2GB + 64GB cases)
 3. Regenerate configs if touching generator files: `./scripts/generate-configs.sh` (requires `bun`)
 4. Verify no secrets leaked: `grep -ri "password\|secret" . | grep -v .env.example`

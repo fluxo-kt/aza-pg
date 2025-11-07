@@ -67,13 +67,15 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 **IMPORTANT:** Build the image locally before deploying any stack:
 
 ```bash
-cd docker/postgres
-docker build -t aza-pg:pg18 .
+# Recommended: Use build script with intelligent caching
+./scripts/build.sh
 
 # Verify build
 docker run --rm aza-pg:pg18 psql --version
 docker run --rm aza-pg:pg18 postgres --version
 ```
+
+The build script uses Docker Buildx with remote cache from CI artifacts, dramatically speeding up builds (~2min cached vs ~12min from scratch).
 
 ### Deploy Primary Stack
 
@@ -208,6 +210,37 @@ scrape_configs:
 
 ## Build from Source
 
+### Local Builds (Recommended)
+
+Use the build script with Docker Buildx for fast, optimized builds:
+
+```bash
+# Default: Single-platform with intelligent caching
+./scripts/build.sh
+
+# Multi-platform build (amd64 + arm64, requires push)
+./scripts/build.sh --multi-arch --push
+
+# Build and push to registry
+./scripts/build.sh --push
+```
+
+**Performance:**
+- First build: ~12 minutes (compiles all extensions)
+- Cached build: ~2 minutes (reuses CI artifacts)
+- No network: ~12 minutes (falls back to local cache)
+
+**How it works:**
+- Uses Docker Buildx with BuildKit for parallel builds
+- Pulls remote cache from GitHub Container Registry
+- Falls back to local cache if network unavailable
+- Automatically creates buildx builder if needed
+
+**Requirements:**
+- Docker Buildx v0.8+ (bundled with Docker 19.03+)
+- Network access to `ghcr.io` for cache pull (optional but recommended)
+- Registry write access for `--push` (run `docker login ghcr.io`)
+
 ### CI/CD Builds
 
 GitHub Actions workflow builds multi-platform images (linux/amd64, linux/arm64) with SBOM and provenance.
@@ -218,33 +251,6 @@ gh workflow run build-postgres-image.yml
 ```
 
 Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
-
-### Optimized Local Builds
-
-Use Docker Buildx with remote cache to dramatically speed up local builds by reusing CI-built layers:
-
-```bash
-# Fast single-platform build (current architecture)
-./scripts/build-with-cache.sh
-
-# Multi-platform build (requires push to registry)
-./scripts/build-with-cache.sh --multi-arch --push
-
-# Build and push to registry
-./scripts/build-with-cache.sh --push
-```
-
-**Performance:**
-- First build: ~12 minutes (compiles all extensions)
-- Cached build: ~2 minutes (reuses CI artifacts)
-- No network: ~12 minutes (falls back to local cache)
-
-**Requirements:**
-- Docker Buildx v0.8+ (bundled with Docker 19.03+)
-- Network access to `ghcr.io` for cache pull
-- Registry write access for `--push` (run `docker login ghcr.io`)
-
-The script automatically creates a buildx builder, pulls remote cache from CI artifacts, and falls back to local cache if network is unavailable.
 
 ## Troubleshooting
 

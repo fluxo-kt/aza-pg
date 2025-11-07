@@ -166,6 +166,6 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
    bun scripts/extensions/generate-manifest.ts
    bun scripts/extensions/render-markdown.ts
    ```
-3. Build the Docker image locally to verify (`docker build -f docker/postgres/Dockerfile .`).
+3. Build the Docker image locally to verify (`./scripts/build.sh`).
 4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
 5. Commit both the manifest/data changes and the regenerated docs.

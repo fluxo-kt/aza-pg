@@ -39,12 +39,14 @@ Update extension versions and SHAs if needed.
 #### Step 3: Build New Image
 
 ```bash
-cd docker/postgres
-docker build -t aza-pg:pg19 --build-arg PG_VERSION=19 .
+# Build with buildx (uses intelligent caching)
+./scripts/build.sh
 
 # Verify build
-docker run --rm aza-pg:pg19 postgres --version
+docker run --rm aza-pg:pg18 postgres --version
 ```
+
+**Note**: PG_VERSION is defined in `docker/postgres/Dockerfile`. After updating it, the build script automatically uses the new version.
 
 #### Step 4: Test Locally
 
@@ -153,11 +155,11 @@ ARG PGVECTOR_COMMIT_SHA=<new-commit-sha>
 #### Step 3: Rebuild and Test
 
 ```bash
-cd docker/postgres
-docker build -t aza-pg:pg18 .
+# Build with buildx (uses intelligent caching)
+./scripts/build.sh
 
 # Test in development
-cd ../../stacks/single
+cd stacks/single
 docker compose down
 docker compose up -d
 

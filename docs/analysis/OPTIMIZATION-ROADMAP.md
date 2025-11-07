@@ -134,14 +134,16 @@ Image Variants:
 
 ```dockerfile
 # Scenario A: Standard build (skip toolkit)
-docker build -f Dockerfile \
+docker buildx build -f Dockerfile \
   --build-arg SKIP_TIMESCALEDB_TOOLKIT=true \
+  --load \
   -t aza-pg:18-pgdg-opt-slim .
 # Result: ~130MB extension content
 
 # Scenario B: Analytics build (include toolkit)
-docker build -f Dockerfile \
+docker buildx build -f Dockerfile \
   --build-arg SKIP_TIMESCALEDB_TOOLKIT=false \
+  --load \
   -t aza-pg:18-pgdg-opt-analytics .
 # Result: 319MB extension content
 ```

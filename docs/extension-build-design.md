@@ -64,10 +64,10 @@ wait "${PIDS[@]}"  # Parallel compilation
 **Override at Build Time:**
 ```bash
 # Minimal build (no pgaudit)
-docker build --build-arg EXTENSIONS="pgvector:0.8.1:778dacf:https://..." -t aza-pg:minimal .
+docker buildx build --load --build-arg EXTENSIONS="pgvector:0.8.1:778dacf:https://..." -t aza-pg:minimal .
 
 # Add custom extension
-docker build --build-arg EXTENSIONS="pgvector:...|my_ext:1.0:abc123:https://..." -t aza-pg:custom .
+docker buildx build --load --build-arg EXTENSIONS="pgvector:...|my_ext:1.0:abc123:https://..." -t aza-pg:custom .
 ```
 
 **Benefits:**

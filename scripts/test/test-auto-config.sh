@@ -24,7 +24,7 @@ IMAGE_TAG="${1:-aza-pg:pg18}"
 
 if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "❌ ERROR: Docker image not found: $IMAGE_TAG"
-  echo "   Build image first: cd docker/postgres && docker build -t $IMAGE_TAG ."
+  echo "   Build image first: ./scripts/build.sh"
   echo "   Or run: ./scripts/test/test-build.sh $IMAGE_TAG"
   exit 1
 fi

@@ -43,13 +43,13 @@ echo "Project root: $PROJECT_ROOT"
 echo
 
 # Build image
-echo "📦 Building Docker image..."
+echo "📦 Building Docker image with buildx..."
 cd "$PROJECT_ROOT/docker/postgres"
-if ! docker build -t "$IMAGE_TAG" . 2>&1; then
+if ! docker buildx build --load -t "$IMAGE_TAG" . 2>&1; then
   echo
-  echo "❌ ERROR: Docker build failed"
+  echo "❌ ERROR: Docker buildx build failed"
   echo "   Check Dockerfile syntax and build context"
-  echo "   Retry with verbose output: docker build --progress=plain -t $IMAGE_TAG ."
+  echo "   Retry with verbose output: docker buildx build --load --progress=plain -t $IMAGE_TAG ."
   exit 1
 fi
 echo "✅ Build successful"

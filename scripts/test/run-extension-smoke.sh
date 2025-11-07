@@ -70,16 +70,20 @@ DOCKER_RUN=(
 "${DOCKER_RUN[@]}" >/dev/null
 
 echo "[smoke] Waiting for PostgreSQL to accept connections..."
-for attempt in {1..60}; do
+attempt=0
+max_attempts=60
+while [[ $attempt -lt $max_attempts ]]; do
   if docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then
     break
   fi
   sleep 2
-  if [[ $attempt -eq 60 ]]; then
-    echo "[smoke] postgres did not become ready in time" >&2
-    exit 1
-  fi
+  attempt=$((attempt + 1))
 done
+
+if [[ $attempt -eq $max_attempts ]]; then
+  echo "[smoke] postgres did not become ready in time (${max_attempts} attempts)" >&2
+  exit 1
+fi
 
 echo "[smoke] Creating extensions (${#EXTENSIONS[@]} total)"
 for ext in "${EXTENSIONS[@]}"; do

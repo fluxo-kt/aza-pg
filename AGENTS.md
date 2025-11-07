@@ -274,7 +274,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 ## Monitoring
 
-**postgres_exporter** (`:9187/metrics`): Exposes `pg_stat_database_*`, custom queries from `@stacks/primary/configs/postgres_exporter_queries.yaml` (replication lag, memory settings, postmaster uptime).
+**postgres_exporter** (`:9187/metrics`): Exposes `pg_stat_database_*`, custom queries from `docker/postgres/configs/postgres_exporter_queries.yaml` (replication lag, memory settings, postmaster uptime).
 
 **Integration:** Prometheus scrapes `:9187`, Grafana dashboards query Prometheus. No special auth (metrics are public on monitoring network).
 

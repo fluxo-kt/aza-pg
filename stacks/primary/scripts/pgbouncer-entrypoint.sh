@@ -14,10 +14,17 @@ fi
 # Escape characters that need quoting inside .pgpass (colon and backslash)
 escape_password() {
   # shellcheck disable=SC2016
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g'
+  local result
+  result=$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
+  local exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+    echo "[PGBOUNCER] ERROR: Password escaping failed (sed exit code: $exit_code)" >&2
+    return 1
+  fi
+  printf '%s' "$result"
 }
 
-escaped_pass="$(escape_password "$PGBOUNCER_AUTH_PASS")"
+escaped_pass="$(escape_password "$PGBOUNCER_AUTH_PASS")" || exit 1
 
 umask 077
 # Write .pgpass entries for both PostgreSQL and PgBouncer connections

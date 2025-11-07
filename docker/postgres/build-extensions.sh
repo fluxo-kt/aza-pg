@@ -73,10 +73,49 @@ ensure_clean_dir() {
   mkdir -p "$dir"
 }
 
+validate_git_url() {
+  local url=$1
+  # Allowlist of trusted git repository domains
+  local -a allowed_domains=(
+    "github.com"
+    "gitlab.com"
+  )
+
+  # Extract domain from git URL (supports https:// and git@)
+  local domain=""
+  if [[ "$url" =~ ^https?://([^/]+) ]]; then
+    domain="${BASH_REMATCH[1]}"
+  elif [[ "$url" =~ ^git@([^:]+): ]]; then
+    domain="${BASH_REMATCH[1]}"
+  else
+    log "ERROR: Invalid git URL format: $url"
+    exit 1
+  fi
+
+  # Check if domain is in allowlist
+  local allowed=false
+  for allowed_domain in "${allowed_domains[@]}"; do
+    if [[ "$domain" == "$allowed_domain" ]]; then
+      allowed=true
+      break
+    fi
+  done
+
+  if [[ "$allowed" != "true" ]]; then
+    log "ERROR: Git repository domain '$domain' not in allowlist"
+    log "Allowed domains: ${allowed_domains[*]}"
+    exit 1
+  fi
+}
+
 clone_repo() {
   local repo=$1
   local commit=$2
   local target=$3
+
+  # Validate URL before cloning (security: prevent arbitrary git clones)
+  validate_git_url "$repo"
+
   log "Cloning $repo @ $commit"
   git clone --filter=blob:none "$repo" "$target"
   git -C "$target" checkout --quiet "$commit"

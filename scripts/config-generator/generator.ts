@@ -342,44 +342,71 @@ function generatePgHba(stack: StackType): string {
 function generateConfigs() {
   console.log('🔧 Generating PostgreSQL configurations...\n');
 
-  // Generate base config
-  console.log('📝 Generating base configuration...');
-  const baseConf = generateBaseConf(BASE_CONFIG.common);
-  const baseConfPath = join(REPO_ROOT, 'docker/postgres/configs/postgresql-base.conf');
-  writeFileSync(baseConfPath, baseConf);
-  console.log(`   ✓ ${baseConfPath}`);
+  try {
+    // Generate base config
+    console.log('📝 Generating base configuration...');
+    const baseConf = generateBaseConf(BASE_CONFIG.common);
+    const baseConfPath = join(REPO_ROOT, 'docker/postgres/configs/postgresql-base.conf');
 
-  // Generate stack-specific configs
-  const stacks: StackType[] = ['primary', 'replica', 'single'];
-
-  for (const stack of stacks) {
-    console.log(`\n📝 Generating ${stack} stack configurations...`);
-
-    const stackOverrides = BASE_CONFIG.stacks[stack];
-    const settings = mergeSettings(BASE_CONFIG.common, stackOverrides);
-    const postgresqlConf = generatePostgresqlConf(stack, settings, stackOverrides);
-
-    let confDir: string;
-    let confName: string;
-
-    if (stack === 'single') {
-      confDir = join(REPO_ROOT, 'stacks/single/configs');
-      confName = 'postgresql.conf';
-    } else {
-      confDir = join(REPO_ROOT, `stacks/${stack}/configs`);
-      confName = `postgresql-${stack}.conf`;
+    try {
+      writeFileSync(baseConfPath, baseConf);
+      console.log(`   ✓ ${baseConfPath}`);
+    } catch (err) {
+      const error = err as Error;
+      throw new Error(`Failed to write base config to ${baseConfPath}: ${error.message}`);
     }
 
-    mkdirSync(confDir, { recursive: true });
+    // Generate stack-specific configs
+    const stacks: StackType[] = ['primary', 'replica', 'single'];
 
-    const postgresqlConfPath = join(confDir, confName);
-    writeFileSync(postgresqlConfPath, postgresqlConf);
-    console.log(`   ✓ ${postgresqlConfPath}`);
+    for (const stack of stacks) {
+      console.log(`\n📝 Generating ${stack} stack configurations...`);
 
-    const pgHbaConf = generatePgHba(stack);
-    const pgHbaPath = join(confDir, 'pg_hba.conf');
-    writeFileSync(pgHbaPath, pgHbaConf);
-    console.log(`   ✓ ${pgHbaPath}`);
+      const stackOverrides = BASE_CONFIG.stacks[stack];
+      const settings = mergeSettings(BASE_CONFIG.common, stackOverrides);
+      const postgresqlConf = generatePostgresqlConf(stack, settings, stackOverrides);
+
+      let confDir: string;
+      let confName: string;
+
+      if (stack === 'single') {
+        confDir = join(REPO_ROOT, 'stacks/single/configs');
+        confName = 'postgresql.conf';
+      } else {
+        confDir = join(REPO_ROOT, `stacks/${stack}/configs`);
+        confName = `postgresql-${stack}.conf`;
+      }
+
+      try {
+        mkdirSync(confDir, { recursive: true });
+      } catch (err) {
+        const error = err as Error;
+        throw new Error(`Failed to create directory ${confDir}: ${error.message}`);
+      }
+
+      const postgresqlConfPath = join(confDir, confName);
+      try {
+        writeFileSync(postgresqlConfPath, postgresqlConf);
+        console.log(`   ✓ ${postgresqlConfPath}`);
+      } catch (err) {
+        const error = err as Error;
+        throw new Error(`Failed to write ${stack} postgresql config to ${postgresqlConfPath}: ${error.message}`);
+      }
+
+      const pgHbaConf = generatePgHba(stack);
+      const pgHbaPath = join(confDir, 'pg_hba.conf');
+      try {
+        writeFileSync(pgHbaPath, pgHbaConf);
+        console.log(`   ✓ ${pgHbaPath}`);
+      } catch (err) {
+        const error = err as Error;
+        throw new Error(`Failed to write pg_hba.conf to ${pgHbaPath}: ${error.message}`);
+      }
+    }
+  } catch (err) {
+    const error = err as Error;
+    console.error(`\n❌ Configuration generation failed: ${error.message}`);
+    process.exit(1);
   }
 
   console.log('\n✅ Configuration generation complete!\n');

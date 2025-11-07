@@ -8,7 +8,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Stacks:** Compose-based deployments. `primary/` = Postgres + PgBouncer + postgres_exporter (3 services). All values env-driven, no hardcoded IPs/passwords.
 
-**Extensions:** 38 total (6 builtin + 14 PGDG pre-compiled + 18 compiled from source). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18.
+**Extensions:** 38 total (6 builtin + 14 PGDG pre-compiled + 18 custom-compiled). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18. Note: "18 custom-compiled" includes extensions built from source (git), not all git entries.
 
 ## Critical Patterns
 
@@ -26,7 +26,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Overrides:**
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
-- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb`)
+- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,pgsodium,supautils,timescaledb`)
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 
@@ -70,10 +70,16 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ### Hook-Based Extensions & Tools
 **Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
 
-**Hook-Based Extensions (3):**
+**Hook-Based Extensions (3 + 4 tools):**
 - **pg_plan_filter**: Filters query plans based on configurable rules (hook-based, no .control file)
 - **pg_safeupdate**: Prevents UPDATE/DELETE without WHERE clause (hook-based, no .control file)
 - **supautils**: Superuser guards and event trigger hooks for managed Postgres (GUC-based, no CREATE EXTENSION)
+
+**Additional Tools Classified as 'tool' Kind:**
+- **hypopg**: Hypothetical indexes for query planning (tool)
+- **pgbackrest**: Backup and restore tool (tool)
+- **pgbadger**: Log analyzer (tool)
+- **wal2json**: Logical decoding plugin (see below)
 
 **Characteristics:**
 - Load at server start via shared_preload_libraries or session_preload_libraries
@@ -146,10 +152,10 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 **Pattern:** Extract common PostgreSQL settings to `docker/postgres/configs/postgresql-base.conf`, use `include` directive in stack-specific configs.
 
 **Files:**
-- Base: `docker/postgres/configs/postgresql-base.conf` (61 lines)
+- Base: `docker/postgres/configs/postgresql-base.conf` (75 lines)
 - Primary: Stack-specific overrides only (44 lines total)
-- Replica: Stack-specific overrides only (32 lines total)
-- Single: Stack-specific overrides only (26 lines total)
+- Replica: Stack-specific overrides only (35 lines total)
+- Single: Stack-specific overrides only (24 lines total)
 
 **Usage:** `include = '/etc/postgresql/postgresql-base.conf'` at top of each config
 
@@ -184,8 +190,8 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 | 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3.1%) | 4MB | 120 | Small prod |
 | 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3.1%) | 5MB | 200 | Med prod |
 | 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3.1%) | 10MB | 200 | Large prod |
-| 16GB | 4096MB (25%) | 12288MB (75%) | 512MB (3.1%) | 20MB | 200 | High-load |
-| 32GB | 6554MB (20%) | 25640MB (80%) | 1024MB (3.1%) | 27MB | 200 | Enterprise |
+| 16GB | 3276MB (20%) | 12288MB (75%) | 512MB (3.1%) | 20MB | 200 | High-load |
+| 32GB | 6554MB (20%) | 25640MB (80%) | 1024MB (3.1%) | 32MB (cap) | 200 | Enterprise |
 | 64GB | 9830MB (15%) | 54706MB (85%) | 2048MB (3.1% cap) | 32MB (cap) | 200 | Burst node |
 
 **Extension Memory Overhead (Estimated):**

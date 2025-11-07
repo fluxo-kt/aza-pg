@@ -3,7 +3,8 @@ import type { BaseConfig, PgHbaRule } from './types.js';
 export const BASE_CONFIG: BaseConfig = {
   common: {
     // Connection Settings
-    listenAddresses: '*',
+    // Default to localhost for security - override in stack configs if network access needed
+    listenAddresses: '127.0.0.1',
     port: 5432,
     // NOTE: shared_preload_libraries is intentionally omitted here.
     // It is set at runtime by docker-auto-config-entrypoint.sh via -c flag,

@@ -16,7 +16,17 @@
 - PG extensions
     - [EXTENSIONS.md](EXTENSIONS.md)
     - **https://www.perplexity.ai/search/1Hg1uD3dQM6R0evCT1nIUw**
+    - `SELECT * FROM pg_available_extensions ORDER BY name;` - All available + installed
     - **extension sources: https://arc.net/l/quote/ldpklvaq**
+        - Layer 1: Built-in (70 extensions)
+          - https://www.postgresql.org/docs/18/contrib.html
+        - Layer 2: PGDG Repository (104+ DEB)
+          - https://wiki.postgresql.org/wiki/Apt
+          - https://apt.postgresql.org/pub/repos/apt/
+        - Layer 3: PIGSTY Repository (420+ total)
+          - https://pigsty.io/ext
+          - https://repo.pigsty.io
+        - Layer 4: Compile from source
     - Supabase PG extensions used:
         - **https://github.com/supabase/postgres#postgresql-17-extensions**
         - https://arc.net/l/quote/dzmqgqng

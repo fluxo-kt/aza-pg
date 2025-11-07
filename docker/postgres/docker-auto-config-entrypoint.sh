@@ -33,11 +33,11 @@ detect_ram() {
 
     if [ -n "${POSTGRES_MEMORY:-}" ]; then
         if ! [[ "${POSTGRES_MEMORY}" =~ ^[0-9]+$ ]]; then
-            echo "[AUTO-CONFIG] ERROR: POSTGRES_MEMORY must be an integer value in MB" >&2
+            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB" >&2
             exit 1
         fi
         if [ "${POSTGRES_MEMORY}" -lt 1 ]; then
-            echo "[AUTO-CONFIG] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
+            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
             exit 1
         fi
         ram_mb=${POSTGRES_MEMORY}
@@ -107,8 +107,8 @@ CPU_CORES=$(echo "$CPU_INFO" | cut -d: -f1)
 CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
 
 if [ "$TOTAL_RAM_MB" -lt 512 ]; then
-    echo "[AUTO-CONFIG] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 512MB REQUIRED"
-    echo "[AUTO-CONFIG] Set memory limit: docker run -m 512m OR compose mem_limit: 512m"
+    echo "[POSTGRES] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 512MB REQUIRED"
+    echo "[POSTGRES] Set memory limit: docker run -m 512m OR compose mem_limit: 512m"
     exit 1
 fi
 
@@ -184,7 +184,7 @@ MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
-echo "[AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
+echo "[POSTGRES] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \

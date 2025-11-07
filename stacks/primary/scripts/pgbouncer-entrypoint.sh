@@ -7,7 +7,7 @@ OUTPUT="/tmp/pgbouncer.ini"
 PGPASSFILE_PATH="/tmp/.pgpass"
 
 if [ -z "${PGBOUNCER_AUTH_PASS:-}" ]; then
-  echo "[pgbouncer-entrypoint] ERROR: PGBOUNCER_AUTH_PASS not set" >&2
+  echo "[PGBOUNCER] ERROR: PGBOUNCER_AUTH_PASS not set" >&2
   exit 1
 fi
 
@@ -28,5 +28,5 @@ PGBOUNCER_LISTEN_ADDR="${PGBOUNCER_LISTEN_ADDR:-127.0.0.1}"
 sed "s/PGBOUNCER_LISTEN_ADDR_PLACEHOLDER/${PGBOUNCER_LISTEN_ADDR}/g" "$TEMPLATE" > "$OUTPUT"
 chmod 600 "$OUTPUT"
 
-echo "[pgbouncer-entrypoint] Configuration rendered to $OUTPUT"
+echo "[PGBOUNCER] Configuration rendered to $OUTPUT"
 exec pgbouncer "$OUTPUT"

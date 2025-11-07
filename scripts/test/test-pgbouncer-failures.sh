@@ -162,7 +162,8 @@ if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
   # Start PgBouncer with wrong password
   COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-wrong-pass up -d pgbouncer >/dev/null 2>&1
 
-  sleep 5
+  # Wait for PgBouncer to attempt start (may fail auth but container should be running)
+  wait_for_container_status "$PROJECT_NAME" "pgbouncer" "running" 15 || true
 
   # Try to connect through PgBouncer
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
@@ -219,7 +220,8 @@ log_info "Starting services..."
 COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-no-pgpass up -d postgres pgbouncer >/dev/null 2>&1
 
 if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
-  sleep 10  # Wait for PgBouncer to fully start
+  # Wait for PgBouncer to start (may fail without .pgpass but container should be running)
+  wait_for_container_status "$PROJECT_NAME" "pgbouncer" "running" 15 || true
 
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
 
@@ -276,7 +278,8 @@ if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
   log_info "Starting PgBouncer with invalid listen address..."
   COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-invalid-addr up -d pgbouncer >/dev/null 2>&1
 
-  sleep 5
+  # Wait for PgBouncer to start and potentially fail (may exit or stay running)
+  wait_for_container_status "$PROJECT_NAME" "pgbouncer" "exited" 10 || true
 
   # PgBouncer should fail to start or exit
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
@@ -334,7 +337,8 @@ log_info "Starting PgBouncer WITHOUT PostgreSQL..."
 # Try to start only PgBouncer (should wait due to depends_on)
 COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-no-postgres up -d pgbouncer >/dev/null 2>&1 || true
 
-sleep 5
+# Wait for compose to potentially auto-start postgres or for pgbouncer to fail
+wait_for_container_status "$PROJECT_NAME" "postgres" "running" 10 || true
 
 # Check if postgres was auto-started due to depends_on
 POSTGRES_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps postgres -q 2>/dev/null || echo "")
@@ -380,7 +384,8 @@ log_info "Starting services..."
 COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-max-conn up -d postgres pgbouncer >/dev/null 2>&1
 
 if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
-  sleep 10
+  # Wait for PgBouncer to be healthy
+  wait_for_container_status "$PROJECT_NAME" "pgbouncer" "healthy" 30 || true
 
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
 
@@ -446,7 +451,8 @@ log_info "Starting services..."
 COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose --env-file .env.test-pgpass-perms up -d postgres pgbouncer >/dev/null 2>&1
 
 if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
-  sleep 10
+  # Wait for PgBouncer to be healthy
+  wait_for_container_status "$PROJECT_NAME" "pgbouncer" "healthy" 30 || true
 
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
 

@@ -2,7 +2,7 @@
 # Generate self-signed SSL certificates for PostgreSQL
 # For production, replace with real certificates from a CA
 
-set -e
+set -euo pipefail
 
 CERT_DIR="${1:-./certs}"
 DAYS_VALID="${2:-3650}"

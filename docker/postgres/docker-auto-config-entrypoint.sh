@@ -2,7 +2,7 @@
 # PostgreSQL Auto-Configuration Entrypoint
 # Auto-detects RAM, CPU cores, and scales Postgres settings proportionally
 
-set -e
+set -euo pipefail
 
 readonly DEFAULT_RAM_MB=1024
 readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,pgsodium,supautils,timescaledb"

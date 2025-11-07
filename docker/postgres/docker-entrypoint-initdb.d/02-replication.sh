@@ -2,7 +2,7 @@
 # PostgreSQL replication setup
 # Creates replication user for standby servers
 
-set -e
+set -euo pipefail
 
 if [ -z "$PG_REPLICATION_PASSWORD" ]; then
   echo "[02-replication] INFO: PG_REPLICATION_PASSWORD not set - skipping replication setup (single-stack mode)"
@@ -27,8 +27,12 @@ psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name
             RAISE NOTICE 'Replication user password updated';
         END IF;
 
-        PERFORM pg_create_physical_replication_slot(p_slot_name)
-        WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = p_slot_name);
+        IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = p_slot_name) THEN
+            PERFORM pg_create_physical_replication_slot(p_slot_name);
+            RAISE NOTICE 'Replication slot created: %', p_slot_name;
+        ELSE
+            RAISE NOTICE 'Replication slot already exists: %', p_slot_name;
+        END IF;
     END
     \$func\$ LANGUAGE plpgsql;
 

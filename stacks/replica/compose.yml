@@ -51,6 +51,8 @@ services:
 
     environment:
       DATA_SOURCE_NAME: 'postgresql://postgres@postgres-replica:5432/postgres?sslmode=disable'
+      # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
+      # monitoring on private Docker networks. For production, consider Docker secrets.
       PGPASSWORD: "${POSTGRES_PASSWORD}"
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
       PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'

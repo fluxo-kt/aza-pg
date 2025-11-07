@@ -2,7 +2,7 @@
 # PgBouncer authentication setup
 # Creates pgbouncer_auth user and lookup function for SCRAM-SHA-256
 
-set -e
+set -euo pipefail
 
 if [ -z "$PGBOUNCER_AUTH_PASS" ]; then
   echo "ERROR: PGBOUNCER_AUTH_PASS environment variable is not set"

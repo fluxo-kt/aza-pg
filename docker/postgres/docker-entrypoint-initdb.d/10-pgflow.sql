@@ -1321,18 +1321,32 @@ WITH tasks AS (
 $$;
 
 -- ============================================================================
--- PHASE 4-11 migrations are being truncated for length.
--- The file continues with more migrations...
--- See /tmp/pgflow-schema-v0.7.2.sql for full content
+-- KNOWN LIMITATION: PHASE 4-11 migrations are truncated
 -- ============================================================================
-
--- Note: This file has been truncated to stay within reasonable size limits.
--- Additional migrations include:
--- - set_vt_batch optimization
--- - Realtime event broadcasting (stubbed for standalone PostgreSQL)
--- - Function search path fixes
--- - opt_start_delay support
--- - Worker deprecation (stopped_at -> deprecated_at)
--- - Map step type support (advanced feature)
 --
--- For production use, ensure you test thoroughly and adapt to your needs.
+-- This file contains only Phases 1-3 of the pgflow v0.7.2 schema.
+-- The following enhancements from Phases 4-11 are NOT included:
+--
+--   - set_vt_batch optimization (Phase 4)
+--   - Realtime event broadcasting (Phase 5, stubbed for standalone PostgreSQL)
+--   - Function search_path fixes (Phase 6)
+--   - opt_start_delay support (Phase 7)
+--   - Worker deprecation (stopped_at -> deprecated_at) (Phase 8)
+--   - Map step type support for parallel array processing (Phases 9-11)
+--
+-- IMPACT:
+--   - Core workflow functionality works (DAG execution, retries, task queuing)
+--   - Advanced features (map steps, opt_start_delay) are unavailable
+--   - Production use requires testing specific to your workflows
+--
+-- TO GET COMPLETE SCHEMA:
+--   1. Visit: https://github.com/pgflow-dev/pgflow
+--   2. Navigate to pkgs/core/ directory
+--   3. Review migrations or install via npm: @pgflow/core@0.7.2
+--   4. Run additional migrations manually if needed
+--
+-- ALTERNATIVE:
+--   If you need the complete schema, replace this file with the full
+--   pgflow-schema-v0.7.2.sql from the upstream repository.
+--
+-- ============================================================================

@@ -2,7 +2,7 @@
 # Setup streaming replication from primary server
 # Runs in docker-entrypoint-initdb.d - must clean PGDATA first since initdb already created it
 
-set -e
+set -euo pipefail
 
 echo "[REPLICA] Starting replication setup..."
 
@@ -40,10 +40,10 @@ for i in $(seq 1 30); do
 done
 
 echo "[REPLICA] Verifying replication slot '$REPLICATION_SLOT_NAME' exists on primary..."
-SLOT_EXISTS=$(PGPASSWORD="$PG_REPLICATION_PASSWORD" psql -h "$PRIMARY_HOST" -p "$PRIMARY_PORT" -U "$PG_REPLICATION_USER" -d postgres -tAc "SELECT COUNT(*) FROM pg_replication_slots WHERE slot_name = '$REPLICATION_SLOT_NAME'" 2>/dev/null || echo "0")
+SLOT_EXISTS=$(PGPASSWORD="$PG_REPLICATION_PASSWORD" psql -h "$PRIMARY_HOST" -p "$PRIMARY_PORT" -U "$PG_REPLICATION_USER" -d postgres -tAc -v slot_name="$REPLICATION_SLOT_NAME" "SELECT COUNT(*) FROM pg_replication_slots WHERE slot_name = :'slot_name'" 2>/dev/null || echo "0")
 if [ "$SLOT_EXISTS" -eq 0 ]; then
   echo "[REPLICA] ERROR: Replication slot '$REPLICATION_SLOT_NAME' does not exist on primary"
-  echo "[REPLICA] Create it on primary with: SELECT pg_create_physical_replication_slot('$REPLICATION_SLOT_NAME');"
+  echo "[REPLICA] Create it on primary with: SELECT pg_create_physical_replication_slot(:'slot_name');"
   exit 1
 fi
 echo "[REPLICA] Replication slot verified"

@@ -14,7 +14,7 @@
 # - Required for supabase_vault secret encryption/decryption
 # - Without this, supabase_vault operations will fail with "no server secret key defined"
 
-set -e
+set -euo pipefail
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     DO \$\$

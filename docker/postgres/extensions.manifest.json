@@ -42,6 +42,7 @@
     },
     {
       "name": "hll",
+      "install_via": "pgdg",
       "displayName": "postgresql-hll",
       "kind": "extension",
       "category": "analytics",
@@ -62,6 +63,7 @@
     },
     {
       "name": "http",
+      "install_via": "pgdg",
       "displayName": "pgsql-http",
       "kind": "extension",
       "category": "integration",
@@ -86,6 +88,7 @@
     },
     {
       "name": "hypopg",
+      "install_via": "pgdg",
       "kind": "tool",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
@@ -127,6 +130,7 @@
     },
     {
       "name": "pg_cron",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
@@ -197,6 +201,7 @@
     },
     {
       "name": "pg_partman",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
@@ -238,6 +243,7 @@
     },
     {
       "name": "pg_repack",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "maintenance",
       "description": "Online table/index reorganization without long locks.",
@@ -330,6 +336,7 @@
     },
     {
       "name": "pgaudit",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
@@ -373,6 +380,10 @@
         "libbz2-dev",
         "libyaml-dev"
       ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
       "notes": [
         "Installs /usr/bin/pgbackrest."
       ]
@@ -396,6 +407,10 @@
         "libtext-csv-xs-perl",
         "libjson-xs-perl"
       ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
       "notes": [
         "Binary installed to /usr/local/bin/pgbadger."
       ]
@@ -476,6 +491,7 @@
     },
     {
       "name": "pgrouting",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
@@ -537,6 +553,7 @@
     },
     {
       "name": "plpgsql_check",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
@@ -556,6 +573,7 @@
     },
     {
       "name": "postgis",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
@@ -592,6 +610,7 @@
     },
     {
       "name": "rum",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "search",
       "description": "RUM GiST access method for ranked full-text search.",
@@ -611,6 +630,7 @@
     },
     {
       "name": "set_user",
+      "install_via": "pgdg",
       "displayName": "pgaudit_set_user",
       "kind": "extension",
       "category": "security",
@@ -676,6 +696,7 @@
     },
     {
       "name": "timescaledb",
+      "install_via": "pgdg",
       "kind": "extension",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads.",
@@ -742,6 +763,7 @@
     },
     {
       "name": "vector",
+      "install_via": "pgdg",
       "displayName": "pgvector",
       "kind": "extension",
       "category": "ai",

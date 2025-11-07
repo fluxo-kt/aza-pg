@@ -26,7 +26,9 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Overrides:**
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
-- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,pgsodium,supautils,timescaledb`)
+- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,auto_explain,pg_cron,pgaudit`)
+
+**Optional Preload Extensions:** Additional extensions can be preloaded by setting POSTGRES_SHARED_PRELOAD_LIBRARIES. Candidates include `pgsodium` (requires pgsodium_getkey script for TCE), `timescaledb` (time-series), `supautils` (superuser guards), `pg_stat_monitor` (may conflict with pg_stat_statements).
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 

@@ -95,7 +95,7 @@ run_case() {
   local logs
   logs=$(docker logs "$container" 2>&1 || true)
   echo "Auto-config logs:"
-  echo "$logs" | grep "\[AUTO-CONFIG\]" || echo "(no auto-config logs found)"
+  echo "$logs" | grep "\[POSTGRES\]" || echo "(no auto-config logs found)"
   echo
 
   "$callback" "$logs" "$container"

@@ -179,7 +179,7 @@ Reference points:
 
 `shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, supautils, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var.
 
-**Note:** pg_stat_monitor coexists safely with pg_stat_statements in PostgreSQL 18. Both provide complementary query statistics with different strengths.
+**Note:** pg_stat_monitor may conflict with pg_stat_statements; test before enabling both in the same session.
 
 **Preloaded Extension Memory Overhead:** ~100-250MB depending on usage patterns and enabled extensions.
 

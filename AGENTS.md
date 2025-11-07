@@ -28,7 +28,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
 - `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,auto_explain,pg_cron,pgaudit`)
 
-**Optional Preload Extensions:** Additional extensions can be preloaded by setting POSTGRES_SHARED_PRELOAD_LIBRARIES. Candidates include `pgsodium` (requires pgsodium_getkey script for TCE), `timescaledb` (time-series), `supautils` (superuser guards), `pg_stat_monitor` (may conflict with pg_stat_statements).
+**Optional Preload Extensions:** Additional extensions can be preloaded by setting POSTGRES_SHARED_PRELOAD_LIBRARIES. Candidates include `pgsodium` (requires pgsodium_getkey script for TCE), `timescaledb` (time-series), `supautils` (superuser guards), `pg_stat_monitor` (may conflict with pg_stat_statements; test before enabling both).
 
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 
@@ -52,7 +52,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Compiled Extensions (18):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgq, pgroonga, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
 - Built from SHA-pinned source (immutable Git commits)
 - Required when: Not in PGDG, need latest features, or specialized (Supabase ecosystem)
-- Manifest field `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh
+- Manifest field in docker/postgres/extensions.manifest.json: `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh
 
 **Security Model:**
 - PGDG: GPG-signed APT repository (PostgreSQL community trust)
@@ -61,13 +61,13 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Build Optimization:** 14 PGDG packages install in ~10s, 17 extensions compile in ~12min (down from ~20min for 31 extensions). Total build time: ~12min.
 
-**Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update manifest.json → rebuild.
+**Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update docker/postgres/extensions.manifest.json → rebuild.
 
 **Analysis & Impact:** See comprehensive documentation:
 - **Size analysis:** `docs/analysis/extension-size-analysis.md` (per-extension size breakdown, timescaledb_toolkit 186MB outlier)
 - **Performance impact:** `docs/extensions/PERFORMANCE-IMPACT.md` (memory overhead, query performance, build time)
 - **Pre-built binaries:** `docs/extensions/PREBUILT-BINARIES-ANALYSIS.md` (GitHub release availability, 3 viable candidates)
-- **PGDG availability:** `docs/extensions/PGDG-AVAILABILITY.md` (pgroonga available in PGDG, migration recommended)
+- **PGDG availability:** `docs/extensions/PGDG-AVAILABILITY.md` (pgroonga NOT available in PGDG for PostgreSQL 18)
 
 ### Hook-Based Extensions & Tools
 **Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
@@ -78,7 +78,6 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - **supautils**: Superuser guards and event trigger hooks for managed Postgres (GUC-based, no CREATE EXTENSION)
 
 **Additional Tools Classified as 'tool' Kind:**
-- **hypopg**: Hypothetical indexes for query planning (tool)
 - **pgbackrest**: Backup and restore tool (tool)
 - **pgbadger**: Log analyzer (tool)
 - **wal2json**: Logical decoding plugin (see below)
@@ -127,7 +126,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 2. Stack-specific scripts: `stacks/*/configs/initdb/` (mounted per stack)
 
 **Shared Script Order (ALL stacks):**
-1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 32 extensions available but disabled by default. MUST run first.
+1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 33 extensions available but disabled by default. MUST run first.
 2. `02-replication.sh` — Creates `replicator` user + replication slot (if replication enabled).
 
 **Stack-Specific Scripts:**

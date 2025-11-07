@@ -33,6 +33,7 @@ services:
 
     mem_limit: ${POSTGRES_MEMORY_LIMIT:-2048m}
     mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-1024m}
+    cpus: ${POSTGRES_CPU_LIMIT:-2}
 
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']

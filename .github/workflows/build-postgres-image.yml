@@ -103,6 +103,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             PG_VERSION=${{ steps.build-args.outputs.pg_version }}
+            PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
+            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}-2.pgdg13+1
+            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true

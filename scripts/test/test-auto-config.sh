@@ -86,7 +86,7 @@ run_case() {
   local container="pg-autoconfig-$RANDOM-$$"
   if ! docker run -d --name "$container" "$@" "$IMAGE_TAG" >/dev/null 2>&1; then
     echo "❌ ERROR: Failed to start container for '$name'"
-    docker_cleanup "$container"
+    cleanup_test_container "$container"
     exit 1
   fi
 
@@ -101,13 +101,13 @@ run_case() {
   if ! echo "$logs" | grep -q "\[AUTO-CONFIG\]"; then
     echo "❌ FAILED: [AUTO-CONFIG] token not found in logs"
     echo "   Expected auto-config logs with [AUTO-CONFIG] prefix"
-    docker_cleanup "$container"
+    cleanup_test_container "$container"
     exit 1
   fi
   echo "✅ [AUTO-CONFIG] token found in logs"
 
   "$callback" "$logs" "$container"
-  docker_cleanup "$container"
+  cleanup_test_container "$container"
   echo
 }
 
@@ -215,11 +215,11 @@ if docker run -d --name "$container" --memory="256m" -e POSTGRES_PASSWORD=test "
   logs=$(docker logs "$container" 2>&1 || true)
   if echo "$logs" | grep -qE "FATAL.*512MB|minimum 512MB"; then
     echo "✅ Container rejected 256MB deployment (below 512MB minimum)"
-    docker rm -f "$container" >/dev/null 2>&1 || true
+    cleanup_test_container "$container"
   else
     echo "❌ FAILED: Container should reject < 512MB but didn't"
     echo "$logs"
-    docker rm -f "$container" >/dev/null 2>&1 || true
+    cleanup_test_container "$container"
     exit 1
   fi
 else

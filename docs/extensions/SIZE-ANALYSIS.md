@@ -2,7 +2,7 @@
 
 **Image:** aza-pg (PostgreSQL 18.0-1.pgdg13+3)
 **Analysis Date:** 2025-11-06
-**Total Extensions:** 38 (6 builtin + 15 PGDG + 17 compiled)
+**Total Extensions:** 38 (6 builtin + 14 PGDG + 18 compiled)
 
 ---
 

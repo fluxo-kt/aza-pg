@@ -3,7 +3,8 @@
 ## Prerequisites
 
 1. **Docker & Docker Compose** installed on target system
-2. **Monitoring network** created: `docker network create monitoring`
+2. **Monitoring network** created manually: `docker network create monitoring`
+   - postgres_net is created automatically by compose
 3. **Environment variables** configured (copy from `.env.example`)
 
 ## Security Checklist
@@ -21,8 +22,9 @@
 ### Password Requirements
 
 - **Minimum 16 characters** recommended
-- **Avoid special chars**: `@`, `:`, `/`, `#`, `'` (can break connection strings)
+- **Special characters** like `@`, `:`, `/`, `#`, `'`, `&` are supported (automatically escaped in .pgpass) but may complicate manual connection strings
 - Use strong passwords from password manager
+- Test connection after setting passwords to ensure proper escaping
 
 ## Stack Deployment
 

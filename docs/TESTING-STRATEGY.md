@@ -10,7 +10,7 @@
   - `pgaudit` (PGDG)
   - `pg_trgm` (builtin)
 
-**Test Script:** `scripts/test/test-extensions.sh`
+**Test Script:** `scripts/test/test-extensions.ts`
 
 **What's Tested:**
 1. `CREATE EXTENSION` succeeds
@@ -88,13 +88,11 @@ Test all 38 extensions across three dimensions:
 **File Structure:**
 ```
 scripts/test/
-├── test-extensions.sh (orchestrator)
-├── smoke-tests/
-│   ├── compiled.sh (17 tests)
-│   ├── pgdg.sh (13 tests)
-│   └── builtin.sh (4 tests)
-└── helpers/
-    └── extension-test-helpers.sh (shared utilities)
+├── test-extensions.ts (orchestrator)
+├── test-all-extensions-functional.ts (comprehensive smoke tests)
+├── test-extension-performance.ts (performance benchmarks)
+├── test-integration-extension-combinations.ts (integration tests)
+└── run-extension-smoke.sh (helper script)
 ```
 
 **Test Format:**
@@ -117,7 +115,7 @@ test_extension() {
 ```yaml
 - name: Test all extensions
   run: |
-    ./scripts/test/test-extensions.sh --all
+    bun run scripts/test/test-extensions.ts --all
 ```
 
 **Matrix dimensions:**
@@ -183,8 +181,8 @@ test_extension() {
 
 ## References
 
-- **Current test script:** `scripts/test/test-extensions.sh`
-- **Extension manifest:** `docker/postgres/extensions/manifest.json`
+- **Current test script:** `scripts/test/test-extensions.ts`
+- **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Audit finding:** `VERIFICATION_REPORT.md` finding #23
 
 ---

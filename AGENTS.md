@@ -49,7 +49,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - GPG-signed packages with pinned versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`)
 - Benefits: Instant install, tested against PG18, multi-arch (amd64/arm64)
 
-**Compiled Extensions (17):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgroonga, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
+**Compiled Extensions (18):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgq, pgroonga, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
 - Built from SHA-pinned source (immutable Git commits)
 - Required when: Not in PGDG, need latest features, or specialized (Supabase ecosystem)
 - Manifest field `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh

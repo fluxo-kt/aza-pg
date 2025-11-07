@@ -134,7 +134,7 @@ jobs:
     name: Test PostgreSQL Stack
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -243,6 +243,42 @@ jobs:
           docker stop pg-test-4gb
           docker rm pg-test-4gb
           echo "✅ Auto-config test passed!"
+
+      - name: Install Bun for extension tests
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Test all extensions (comprehensive)
+        run: |
+          echo "🧪 Testing all 38 extensions comprehensively..."
+          docker run -d --name pg-ext-test \
+            -e POSTGRES_PASSWORD=test \
+            --memory=4g \
+            aza-pg:test
+
+          echo "⏳ Waiting for PostgreSQL to start..."
+          for i in {1..30}; do
+            if docker exec pg-ext-test pg_isready -U postgres > /dev/null 2>&1; then
+              echo "✅ PostgreSQL ready"
+              break
+            fi
+            sleep 2
+          done
+
+          echo "🧪 Running comprehensive extension tests..."
+          cd scripts/test
+          if ! bun run test-all-extensions-functional.ts --container=pg-ext-test; then
+            echo "❌ Extension tests failed"
+            docker logs pg-ext-test --tail=100
+            docker stop pg-ext-test
+            docker rm pg-ext-test
+            exit 1
+          fi
+
+          docker stop pg-ext-test
+          docker rm pg-ext-test
+          echo "✅ All extension tests passed!"
 
       - name: Deploy and test primary stack
         run: |

@@ -13,14 +13,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
-if ! command -v docker &>/dev/null; then
-  echo "❌ ERROR: Required command 'docker' not found"
+# Check prerequisites
+if ! check_command docker; then
   echo "   Install Docker: https://docs.docker.com/get-docker/"
   exit 1
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  echo "❌ ERROR: Docker daemon is not running"
+if ! check_docker_daemon; then
   echo "   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)"
   exit 1
 fi
@@ -97,6 +96,15 @@ run_case() {
   echo "Auto-config logs:"
   echo "$logs" | grep "\[POSTGRES\]" || echo "(no auto-config logs found)"
   echo
+
+  # Assert [AUTO-CONFIG] token exists in logs
+  if ! echo "$logs" | grep -q "\[AUTO-CONFIG\]"; then
+    echo "❌ FAILED: [AUTO-CONFIG] token not found in logs"
+    echo "   Expected auto-config logs with [AUTO-CONFIG] prefix"
+    docker_cleanup "$container"
+    exit 1
+  fi
+  echo "✅ [AUTO-CONFIG] token found in logs"
 
   "$callback" "$logs" "$container"
   docker_cleanup "$container"

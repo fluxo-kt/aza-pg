@@ -11,10 +11,14 @@
 
 set -euo pipefail
 
+# Source common library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+
 # Guard: Check required commands
 for cmd in pg_dump pg_isready gzip du; do
-  if ! command -v "$cmd" &>/dev/null; then
-    echo "❌ ERROR: Required command '$cmd' not found"
+  if ! check_command "$cmd"; then
     echo "   Install PostgreSQL client tools: https://www.postgresql.org/download/"
     exit 1
   fi
@@ -66,9 +70,7 @@ echo "Output: $OUTPUT_FILE"
 echo
 
 # Check PostgreSQL is accessible
-echo "🔍 Checking PostgreSQL connection..."
-if ! pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
-  echo "❌ ERROR: PostgreSQL not accessible at $PGHOST:$PGPORT"
+if ! wait_for_postgres "$PGHOST" "$PGPORT" "$PGUSER" 10; then
   echo "   Troubleshooting:"
   echo "   - Verify host/port: pg_isready -h $PGHOST -p $PGPORT"
   echo "   - Check PostgreSQL is running: docker ps | grep postgres"
@@ -76,7 +78,6 @@ if ! pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
   echo "   - Verify credentials (PGUSER, PGPASSWORD)"
   exit 1
 fi
-echo "✅ Connected"
 echo
 
 # Perform backup

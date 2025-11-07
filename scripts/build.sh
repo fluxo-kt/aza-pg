@@ -54,6 +54,14 @@ for arg in "$@"; do
   esac
 done
 
+# Preflight: Validate manifest
+echo "Validating extensions manifest..."
+if ! bun run "$(dirname "$0")/extensions/validate-manifest.ts"; then
+  echo "ERROR: Manifest validation failed"
+  exit 1
+fi
+echo ""
+
 # Validate push requirements
 if [[ "$PUSH" == "true" || "$MULTI_ARCH" == "true" ]]; then
   if ! docker info | grep -q "Username:"; then

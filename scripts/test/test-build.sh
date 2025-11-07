@@ -13,16 +13,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
-# Guard: Check required commands
-if ! command -v docker &>/dev/null; then
-  echo "❌ ERROR: Required command 'docker' not found"
+# Check prerequisites
+if ! check_command docker; then
   echo "   Install Docker: https://docs.docker.com/get-docker/"
   exit 1
 fi
 
-# Guard: Check Docker daemon is running
-if ! docker info >/dev/null 2>&1; then
-  echo "❌ ERROR: Docker daemon is not running"
+if ! check_docker_daemon; then
   echo "   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)"
   exit 1
 fi
@@ -101,21 +98,12 @@ cleanup() {
 trap cleanup EXIT
 
 # Wait for PostgreSQL to be ready
-echo "⏳ Waiting for PostgreSQL to start..."
-for i in {1..30}; do
-  if docker exec "$CONTAINER_NAME" pg_isready -U postgres >/dev/null 2>&1; then
-    echo "✅ PostgreSQL is ready"
-    break
-  fi
-  if [[ "$i" -eq 30 ]]; then
-    echo "❌ ERROR: PostgreSQL did not start within 60 seconds"
-    echo
-    echo "Container logs:"
-    docker logs "$CONTAINER_NAME"
-    exit 1
-  fi
-  sleep 2
-done
+if ! wait_for_postgres localhost 5432 postgres 60 "$CONTAINER_NAME"; then
+  echo
+  echo "Container logs:"
+  docker logs "$CONTAINER_NAME"
+  exit 1
+fi
 echo
 
 # Check auto-config logs

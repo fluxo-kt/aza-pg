@@ -70,16 +70,11 @@ services:
     mem_reservation: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
 
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          "HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1' ||
-          exit 1",
-        ]
-      interval: 10s
+      test: ['CMD-SHELL', 'pgbouncer -V || exit 1']
+      interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 3
+      start_period: 10s
 
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}

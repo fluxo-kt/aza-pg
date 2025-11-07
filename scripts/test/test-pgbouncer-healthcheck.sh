@@ -31,6 +31,13 @@ if ! command -v docker compose &>/dev/null && ! command -v docker-compose &>/dev
   exit 1
 fi
 
+# Check for jq command
+if ! command -v jq &>/dev/null; then
+  log_error "Required command 'jq' not found"
+  echo "   Install jq: apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)"
+  exit 1
+fi
+
 STACK_DIR="${1:-stacks/primary}"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 STACK_PATH="$PROJECT_ROOT/$STACK_DIR"

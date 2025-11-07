@@ -111,7 +111,10 @@ Container publication
 - Alpine is out-of-scope
   - musl libc handles string sorting differently than glibc
   - incompatible with many PostgreSQL extensions
-  - maintenance nightmare, not worth the effort
+  - ❌ maintenance nightmare, not worth the effort
+- PostgreSQL on Distroless Debian: Feasibility Analysis
+  - ❌ absolutely NOT recommended, https://arc.net/l/quote/secujiwd
+  - https://github.com/GoogleContainerTools/distroless
 - **Debian 13 Trixie** vs Ubuntu 24 Noble vs Ubuntu 22 Jammy: https://arc.net/l/quote/ddsmdqvf
   - **Debian 13 Trixie is the clear winner**
 

@@ -92,7 +92,6 @@ fi
 cleanup() {
   echo
   echo "🧹 Cleaning up..."
-  docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
   cleanup_test_container "$CONTAINER_NAME"
 }
 trap cleanup EXIT

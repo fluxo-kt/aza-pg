@@ -190,8 +190,64 @@ case_below_minimum() {
 case_custom_shared_preload() {
   local logs=$1
   local container=$2
-  # Verify custom shared_preload_libraries override
-  assert_pg_config "$container" "shared_preload_libraries" "pg_stat_statements,custom_ext" "Custom shared_preload_libraries honored"
+  # Verify custom shared_preload_libraries override (default is pg_stat_statements,auto_explain,pg_cron,pgaudit)
+  # Override to minimal set to prove it works
+  local actual
+  actual=$(docker exec "$container" psql -U postgres -t -c "SHOW shared_preload_libraries;" 2>/dev/null | xargs || echo "ERROR")
+
+  if [ "$actual" = "ERROR" ]; then
+    echo "❌ FAILED: Could not query shared_preload_libraries"
+    exit 1
+  fi
+
+  # Verify override worked: should have pg_stat_statements but NOT auto_explain/pg_cron/pgaudit
+  if echo "$actual" | grep -q "pg_stat_statements" && ! echo "$actual" | grep -qE "auto_explain|pg_cron|pgaudit"; then
+    echo "✅ Custom shared_preload_libraries honored (actual: $actual)"
+  else
+    echo "❌ FAILED: Override not respected"
+    echo "   Expected: pg_stat_statements (without auto_explain,pg_cron,pgaudit)"
+    echo "   Actual: $actual"
+    exit 1
+  fi
+}
+
+case_4gb_tier() {
+  local logs=$1
+  local container=$2
+  assert_log_contains "$logs" "RAM: 409[0-9]MB \\(cgroup-v2\\)" "Detected 4GB via cgroup"
+  assert_log_contains "$logs" "shared_buffers=1024MB" "shared_buffers tuned to 25% for 4GB"
+  assert_log_contains "$logs" "max_connections=200" "Connection cap 200 for 4GB nodes"
+
+  # Verify actual config
+  assert_pg_config "$container" "shared_buffers" "1024MB|1GB" "Config injection: shared_buffers"
+  assert_pg_config "$container" "max_connections" "200" "Config injection: max_connections"
+  assert_pg_config "$container" "work_mem" "[4-6]MB" "Config injection: work_mem ~5MB"
+}
+
+case_8gb_tier() {
+  local logs=$1
+  local container=$2
+  assert_log_contains "$logs" "RAM: 819[0-9]MB \\(cgroup-v2\\)" "Detected 8GB via cgroup"
+  assert_log_contains "$logs" "shared_buffers=2048MB" "shared_buffers tuned to 25% for 8GB"
+  assert_log_contains "$logs" "max_connections=200" "Connection cap 200 for 8GB nodes"
+
+  # Verify actual config
+  assert_pg_config "$container" "shared_buffers" "2048MB|2GB" "Config injection: shared_buffers"
+  assert_pg_config "$container" "max_connections" "200" "Config injection: max_connections"
+  assert_pg_config "$container" "work_mem" "[8-12]MB" "Config injection: work_mem ~10MB"
+}
+
+case_16gb_tier() {
+  local logs=$1
+  local container=$2
+  assert_log_contains "$logs" "RAM: 1638[0-9]MB \\(cgroup-v2\\)" "Detected 16GB via cgroup"
+  assert_log_contains "$logs" "shared_buffers=3276MB" "shared_buffers tuned to 20% for 16GB"
+  assert_log_contains "$logs" "max_connections=200" "Connection cap 200 for 16GB nodes"
+
+  # Verify actual config
+  assert_pg_config "$container" "shared_buffers" "327[0-9]MB|3.*GB" "Config injection: shared_buffers"
+  assert_pg_config "$container" "max_connections" "200" "Config injection: max_connections"
+  assert_pg_config "$container" "work_mem" "1[6-9]MB|2[0-4]MB" "Config injection: work_mem ~20MB"
 }
 
 run_case "Test 1: Manual override without memory limit" case_manual_override \
@@ -248,9 +304,21 @@ echo
 run_case "Test 7: Custom shared_preload_libraries override" case_custom_shared_preload \
   --memory="1g" \
   -e POSTGRES_PASSWORD=test \
-  -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,custom_ext"
+  -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements"
+
+run_case "Test 8: 4GB memory tier (medium production)" case_4gb_tier \
+  --memory=4g \
+  -e POSTGRES_PASSWORD=test
+
+run_case "Test 9: 8GB memory tier (large production)" case_8gb_tier \
+  --memory=8g \
+  -e POSTGRES_PASSWORD=test
+
+run_case "Test 10: 16GB memory tier (high-load)" case_16gb_tier \
+  --memory=16g \
+  -e POSTGRES_PASSWORD=test
 
 echo "========================================"
 echo "✅ All auto-config tests passed!"
-echo "✅ Total: 7 tests (6 success cases + 1 failure case)"
+echo "✅ Total: 10 tests (9 success cases + 1 failure case)"
 echo "========================================"

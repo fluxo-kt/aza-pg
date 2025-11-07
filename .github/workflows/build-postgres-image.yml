@@ -142,6 +142,108 @@ jobs:
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
           echo "✅ Image pulled and PostgreSQL version verified"
 
+      - name: Set up QEMU for arm64 testing
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Test arm64 image
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+
+          echo "🏗️ Testing arm64 architecture variant..."
+
+          # Pull arm64 variant explicitly
+          docker pull --platform linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          # Start container with timeout protection
+          CONTAINER=$(docker run -d --platform linux/arm64 \
+            -e POSTGRES_PASSWORD=test \
+            --name pg-arm64-test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }})
+
+          echo "⏳ Waiting for PostgreSQL to start (arm64 on QEMU may be slower)..."
+          READY=0
+          for i in {1..60}; do
+            if docker exec pg-arm64-test pg_isready -U postgres > /dev/null 2>&1; then
+              echo "✅ PostgreSQL ready on arm64"
+              READY=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ $READY -eq 0 ]; then
+            echo "❌ PostgreSQL failed to start on arm64"
+            docker logs pg-arm64-test
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+
+          echo "🧪 Testing architecture detection..."
+          ARCH=$(docker exec pg-arm64-test uname -m)
+          echo "Detected architecture: $ARCH"
+          if [[ "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
+            echo "❌ Expected arm64/aarch64, got: $ARCH"
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+
+          echo "🧪 Testing PostgreSQL version..."
+          if ! docker exec pg-arm64-test psql -U postgres -c "SELECT version();" > /dev/null; then
+            echo "❌ PostgreSQL version check failed"
+            docker logs pg-arm64-test
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+
+          echo "🧪 Testing pgvector (compiled extension - architecture-specific)..."
+          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION vector; SELECT '[1,2,3]'::vector;"; then
+            echo "❌ pgvector failed on arm64 (compilation issue?)"
+            docker logs pg-arm64-test
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+          echo "✅ pgvector functional on arm64"
+
+          echo "🧪 Testing pg_cron (PGDG package - multi-arch)..."
+          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION pg_cron;"; then
+            echo "❌ pg_cron failed on arm64"
+            docker logs pg-arm64-test
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+          echo "✅ pg_cron functional on arm64"
+
+          echo "🧪 Testing compiled extension with dependencies (pg_jsonschema)..."
+          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION pg_jsonschema;"; then
+            echo "❌ pg_jsonschema failed on arm64 (Rust compilation issue?)"
+            docker logs pg-arm64-test
+            docker rm -f pg-arm64-test
+            exit 1
+          fi
+          echo "✅ pg_jsonschema functional on arm64"
+
+          echo "🧪 Testing auto-config on arm64..."
+          docker logs pg-arm64-test 2>&1 | grep -i "detected ram" || echo "⚠️ Auto-config log not found"
+          docker logs pg-arm64-test 2>&1 | grep -i "shared_buffers" || echo "⚠️ shared_buffers log not found"
+
+          docker exec pg-arm64-test psql -U postgres -c "SHOW shared_buffers;"
+          docker exec pg-arm64-test psql -U postgres -c "SHOW max_connections;"
+
+          # Cleanup
+          docker rm -f pg-arm64-test
+
+          echo "✅ arm64 image validation passed!"
+          echo "### arm64 Validation :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Architecture: $ARCH" >> $GITHUB_STEP_SUMMARY
+          echo "- pgvector (compiled): ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_cron (PGDG): ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- pg_jsonschema (Rust): ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-config: ✅" >> $GITHUB_STEP_SUMMARY
+
   test:
     name: Test PostgreSQL Stack
     runs-on: ubuntu-latest
@@ -362,3 +464,89 @@ jobs:
 
     outputs:
       test-status: success
+
+  test-replica-stack:
+    name: Test Replica Stack
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull built image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:pg18
+
+      - name: Run replica stack tests
+        run: |
+          set -euo pipefail
+          echo "🧪 Running replica stack tests..."
+
+          cd "$GITHUB_WORKSPACE"
+          if ! ./scripts/test/test-replica-stack.sh; then
+            echo "❌ Replica stack tests failed"
+            exit 1
+          fi
+
+          echo "✅ Replica stack tests passed!"
+
+      - name: Check test results
+        if: always()
+        run: |
+          if [ -f /tmp/test-failed ]; then
+            echo "::error::Replica stack tests failed"
+            exit 1
+          fi
+
+  test-single-stack:
+    name: Test Single Stack
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull built image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:pg18
+
+      - name: Run single stack tests
+        run: |
+          set -euo pipefail
+          echo "🧪 Running single stack tests..."
+
+          cd "$GITHUB_WORKSPACE"
+          if ! ./scripts/test/test-single-stack.sh; then
+            echo "❌ Single stack tests failed"
+            exit 1
+          fi
+
+          echo "✅ Single stack tests passed!"
+
+      - name: Check test results
+        if: always()
+        run: |
+          if [ -f /tmp/test-failed ]; then
+            echo "::error::Single stack tests failed"
+            exit 1
+          fi

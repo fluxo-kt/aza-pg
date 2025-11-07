@@ -243,7 +243,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 **Local Builds (Default):** `./scripts/build.sh` uses Docker Buildx with remote cache from CI artifacts. This is the canonical build method. First build: ~12min (full compilation). Cached build: ~2min (reuses CI layers). Falls back to local cache if network unavailable. Multi-platform requires `--push` flag.
 
-**CI/CD:** Manual trigger only (extensions change rarely). Multi-platform buildx with SBOM/provenance.
+**CI/CD:** Manual trigger only (extensions change rarely). Multi-platform buildx with SBOM/provenance. arm64 validation via QEMU emulation (tests pgvector, pg_cron, pg_jsonschema on emulated arm64 before release).
 
 ## Testing Strategy
 
@@ -252,6 +252,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 2. Auto-config detection (grep logs for RAM/CPU/scaled values)
 3. PgBouncer auth (via :6432, verify SHOW POOLS)
 4. Memory limit verification (512MB, manual 1GB override, 2GB limit, 64GB override)
+5. arm64 validation (QEMU emulation: pgvector, pg_cron, pg_jsonschema + auto-config)
 
 **Why Memory Tests Matter:** Auto-config prefers cgroup v2. Without limits it consults `/proc/meminfo`, which may reflect the host. Exercising manual overrides (`POSTGRES_MEMORY`) ensures deterministic tuning in CI/local shells.
 
@@ -268,6 +269,8 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 5. **Health check failures**: PgBouncer test uses regular database connection, NOT admin "pgbouncer" database. Wrong: `psql pgbouncer://...@localhost:6432/pgbouncer`. Right: `psql postgres://...@localhost:6432/postgres`.
 
 6. **Build vs Runtime confusion**: Extension versions (PG_VERSION, PGVECTOR_VERSION) = build-time ARGs (baked into image). RAM/CPU detection = runtime (adapts to VPS where deployed). One image works everywhere.
+
+7. **arm64 QEMU slowness**: CI arm64 tests run via QEMU emulation (2-3x slower startup). Local arm64 testing requires Docker Desktop with QEMU or native arm64 hardware. Production arm64 deployments run natively (no emulation overhead). See `docs/ci/ARM64-TESTING.md` for troubleshooting.
 
 ## Monitoring
 

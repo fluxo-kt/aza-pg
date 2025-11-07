@@ -3,8 +3,7 @@
 ## Prerequisites
 
 1. **Docker & Docker Compose** installed on target system
-2. **Monitoring network** created manually: `docker network create monitoring`
-   - postgres_net is created automatically by compose
+2. **Monitoring network** created manually (see [Monitoring Network Setup](#monitoring-network-setup) below)
 3. **Environment variables** configured (copy from `.env.example`)
 
 ## Security Checklist
@@ -91,6 +90,99 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Monitoring Network Setup
+
+### Why a Separate Monitoring Network?
+
+The aza-pg stacks use **two Docker networks**:
+
+1. **`postgres_net`** (stack-specific): Created automatically by Docker Compose
+   - Isolates database traffic (PostgreSQL, PgBouncer, exporters)
+   - Each stack creates its own: `postgres-primary-net`, `postgres-replica-net`, `postgres-single-net`
+   - Internal communication only
+
+2. **`monitoring`** (external, shared): Must be created manually before deployment
+   - Allows multiple stacks to expose metrics to a single Prometheus instance
+   - Shared across all aza-pg stacks (primary, replica, single)
+   - Prevents port conflicts when running multiple stacks on the same host
+
+### Creating the Monitoring Network
+
+**Before first deployment**, create the external monitoring network:
+
+```bash
+docker network create monitoring
+```
+
+**Verify creation:**
+```bash
+docker network ls | grep monitoring
+# Should show: NETWORK ID     NAME         DRIVER    SCOPE
+#              <id>           monitoring   bridge    local
+```
+
+### What Happens If You Don't Create It?
+
+**Symptom:** Stack deployment fails with error:
+
+```
+Error response from daemon: network monitoring declared as external, but could not be found
+```
+
+**Services affected:**
+- `postgres_exporter` (all stacks)
+- `pgbouncer_exporter` (primary stack only)
+
+**Fix:** Create the network and redeploy:
+```bash
+docker network create monitoring
+docker compose up -d
+```
+
+### Network Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Host System                                                 │
+│                                                             │
+│  ┌─────────────────────┐      ┌─────────────────────┐     │
+│  │ Primary Stack       │      │ Replica Stack        │     │
+│  │                     │      │                      │     │
+│  │ ┌─────────────────┐ │      │ ┌──────────────────┐ │     │
+│  │ │ postgres_net    │ │      │ │ postgres_net     │ │     │
+│  │ │ (internal)      │ │      │ │ (internal)       │ │     │
+│  │ │                 │ │      │ │                  │ │     │
+│  │ │ - PostgreSQL    │ │      │ │ - PostgreSQL     │ │     │
+│  │ │ - PgBouncer     │ │      │ │                  │ │     │
+│  │ └────┬────────────┘ │      │ └──────┬───────────┘ │     │
+│  │      │              │      │        │             │     │
+│  │ ┌────▼────────────┐ │      │ ┌──────▼───────────┐ │     │
+│  │ │ Exporters       │ │      │ │ Exporters        │ │     │
+│  │ │ (both networks) │ │      │ │ (both networks)  │ │     │
+│  │ └────┬────────────┘ │      │ └──────┬───────────┘ │     │
+│  └──────┼──────────────┘      └────────┼─────────────┘     │
+│         │                               │                   │
+│         └───────────┬───────────────────┘                   │
+│                     │                                       │
+│            ┌────────▼────────┐                              │
+│            │ monitoring      │                              │
+│            │ (external)      │                              │
+│            │                 │                              │
+│            │ - Prometheus    │                              │
+│            │   (scrapes all) │                              │
+│            └─────────────────┘                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Monitoring Network Benefits
+
+1. **Single Prometheus instance** scrapes all stacks
+2. **No port conflicts** - exporters bind to stack-specific ports (9187, 9127, etc.)
+3. **Network isolation** - Database traffic stays on private networks
+4. **Scalability** - Add more stacks without reconfiguring Prometheus
+5. **Unified dashboards** - Grafana can visualize all databases together
+
 ## Monitoring Setup
 
 ### Prometheus
@@ -100,11 +192,13 @@ Add to your `prometheus.yml`:
 scrape_configs:
   - job_name: 'postgres'
     static_configs:
-      - targets: ['<host>:9187']
+      - targets: ['<host>:9187']  # Primary postgres_exporter
+      - targets: ['<host>:9188']  # Replica postgres_exporter (if deployed)
+      - targets: ['<host>:9189']  # Single postgres_exporter (if deployed)
 
   - job_name: 'pgbouncer'
     static_configs:
-      - targets: ['<host>:9127']
+      - targets: ['<host>:9127']  # Primary pgbouncer_exporter
 ```
 
 ### Available Metrics

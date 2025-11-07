@@ -68,8 +68,10 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 Before deploying any stack:
 
 1. **Create monitoring network**: `docker network create monitoring`
-   - This network is used for Prometheus/Grafana scraping and monitoring integration
-   - The `postgres_net` network is created automatically by each stack's compose file
+   - Required for Prometheus/Grafana integration (exporters connect to this network)
+   - Shared across all stacks (primary, replica, single)
+   - The `postgres_net` network is created automatically by each stack
+   - See [docs/PRODUCTION.md#monitoring-network-setup](docs/PRODUCTION.md#monitoring-network-setup) for detailed explanation
 
 ### Build Image First
 

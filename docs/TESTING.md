@@ -275,6 +275,27 @@ await runSQL(`
 `);
 ```
 
+### 7. Hook Extensions Not Working
+
+**Symptom**: pg_safeupdate doesn't block UPDATE without WHERE, or supautils GUC parameters not found.
+
+**Cause**: Extension not preloaded via `shared_preload_libraries` or `session_preload_libraries`.
+
+**Fix**: Load hook extensions at appropriate scope:
+
+```bash
+# pg_plan_filter requires shared_preload_libraries
+POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter"
+
+# pg_safeupdate uses session_preload_libraries
+psql -c "SET session_preload_libraries = 'pg_safeupdate'; UPDATE table SET col = 1;"
+
+# supautils requires shared_preload_libraries for GUC parameters
+POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils"
+```
+
+**Note**: Hook-based extensions don't use CREATE EXTENSION - they load via preload libraries.
+
 ## Test Categories
 
 ### Core Extensions (6)
@@ -383,7 +404,7 @@ All 38 extensions have functional tests with 100% coverage across three dimensio
 
 ### Auto-Config Test Coverage
 
-Comprehensive auto-config validation covers 4 memory scenarios:
+Comprehensive auto-config validation covers 10 memory scenarios from 256MB to 64GB:
 
 | Scenario | RAM | CPU | Detection | Config Injection | Status |
 |----------|-----|-----|-----------|------------------|--------|
@@ -394,12 +415,18 @@ Comprehensive auto-config validation covers 4 memory scenarios:
 | CPU detection | 2GB | 2 cores | ✅ nproc | worker processes | Passing |
 | Below minimum | 256MB | - | ✅ Detection | FATAL error | Passing |
 | Custom preload | 1GB | - | ✅ Override | shared_preload_libraries | Passing |
+| Medium production | 4GB | - | ✅ cgroup v2 | shared_buffers 1024MB, max_conn 200 | Passing |
+| Large production | 8GB | - | ✅ cgroup v2 | shared_buffers 2048MB, max_conn 200 | Passing |
+| High-load | 16GB | - | ✅ cgroup v2 | shared_buffers 3276MB, max_conn 200 | Passing |
 
 Details:
 1. **Manual override (1536MB)** - Respects POSTGRES_MEMORY env var, shared_buffers 25%, connection tier 120
 2. **2GB cgroup limit** - Detects via cgroup v2, shared_buffers 512MB, connection tier 120
 3. **512MB minimum** - Minimum supported deployment, shared_buffers 128MB, connection tier 80
 4. **64GB manual override** - Large-node tuning, shared_buffers ~9830MB, connection tier 200
+5. **4GB tier** - Medium production, shared_buffers 1024MB (25%), connection tier 200
+6. **8GB tier** - Large production, shared_buffers 2048MB (25%), connection tier 200
+7. **16GB tier** - High-load deployment, shared_buffers 3276MB (20%), connection tier 200
 
 ### PgBouncer Test Coverage
 
@@ -422,17 +449,25 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 - 100% extension coverage (no deferred testing)
 
 **Auto-Config Test Coverage:**
-- 7 test scenarios covering RAM/CPU detection
-- 4 memory tiers (512MB, 1GB, 2GB, 64GB)
-- Manual override, cgroup detection, CPU scaling
-- Edge cases (below-minimum rejection)
+- 10 test scenarios covering RAM/CPU detection (256MB to 64GB)
+- 7 memory tiers (512MB, 1GB, 2GB, 4GB, 8GB, 16GB, 64GB)
+- Manual override, cgroup v2 detection, CPU scaling
+- Edge cases (below-minimum rejection, custom shared_preload_libraries)
 
 **PgBouncer Test Coverage:**
-- .pgpass file management
-- Authentication via localhost and hostname
-- Pool status verification (SHOW POOLS)
-- Healthcheck command validation
-- Connection pooling functional test
+- Happy path (8 tests): .pgpass file management, authentication via localhost/hostname, SHOW POOLS, healthcheck
+- Failure scenarios (6 tests): wrong password, missing .pgpass, invalid listen address, PostgreSQL down, max connections, wrong permissions
+
+**Stack Deployment Test Coverage:**
+- **Primary stack**: Auto-config, PgBouncer auth, postgres_exporter, pgbouncer_exporter
+- **Replica stack** (7 steps): Replication slot creation, standby mode verification, hot standby queries, WAL sync, postgres_exporter
+- **Single stack** (7 steps): Standalone mode, extension availability, connection limits, auto-config, no pooler verification
+
+**Hook Extension Test Coverage:**
+- pg_plan_filter: Without/with preload, functional validation
+- pg_safeupdate: Session preload, functional query blocking
+- supautils: Without/with preload, GUC-based configuration
+- Multi-hook stability testing
 
 ### Maintenance
 
@@ -499,6 +534,26 @@ bun run scripts/test/test-all-extensions-functional.ts --category security
 # - Connection pooling functional test
 ```
 
+### Hook Extension Testing
+
+```bash
+# Validate hook-based extensions that load via shared_preload_libraries
+./scripts/test/test-hook-extensions.sh [image-tag]
+
+# Extensions tested:
+# - pg_plan_filter (hook-based, requires shared_preload_libraries)
+# - pg_safeupdate (hook-based, uses session_preload_libraries)
+# - supautils (GUC-based, optional shared_preload_libraries)
+
+# Test cases:
+# 1. pg_plan_filter without preload (should have no effect)
+# 2. pg_plan_filter with preload (verify hook active)
+# 3. pg_safeupdate session preload (blocks UPDATE/DELETE without WHERE)
+# 4. supautils without preload (GUC params unavailable)
+# 5. supautils with preload (GUC params available)
+# 6. Combined preload (multiple hooks active simultaneously)
+```
+
 ### Integration Testing
 
 ```bash
@@ -514,9 +569,11 @@ bun run scripts/test/test-integration.ts
 ### CI Integration
 
 GitHub Actions workflow runs all tests on:
-- Platform: `linux/amd64`, `linux/arm64`
+- Platform: `linux/amd64`, `linux/arm64` (QEMU emulation for arm64 validation)
 - Extension kinds: `compiled`, `pgdg`, `builtin`
-- Auto-config scenarios: `manual`, `cgroup`, `minimum`, `high-memory`
+- Auto-config scenarios: `manual`, `cgroup`, `minimum`, `high-memory`, `4GB`, `8GB`, `16GB`, `64GB`
+- Stack deployments: `primary`, `replica`, `single`
+- Failure scenarios: PgBouncer auth failures, connection limits, invalid configurations
 
 ## Test Organization
 
@@ -524,8 +581,12 @@ GitHub Actions workflow runs all tests on:
 ```
 scripts/test/
 ├── test-all-extensions-functional.ts  (38 extensions, 117+ smoke tests)
-├── test-auto-config.sh                (7 auto-config scenarios)
-├── test-pgbouncer-healthcheck.sh      (8 PgBouncer flow tests)
+├── test-auto-config.sh                (10 auto-config scenarios: 512MB-64GB)
+├── test-pgbouncer-healthcheck.sh      (8 PgBouncer auth flow tests)
+├── test-pgbouncer-failures.sh         (6 failure scenario tests)
+├── test-hook-extensions.sh            (6 hook-based extension tests)
+├── test-replica-stack.sh              (7-step replication validation)
+├── test-single-stack.sh               (7-step standalone validation)
 ├── test-extensions.ts                 (legacy baseline tests)
 ├── test-extension-performance.ts      (performance benchmarks)
 ├── test-integration-extension-combinations.ts
@@ -535,14 +596,19 @@ scripts/test/
 ## References
 
 - **Extension tests:** `scripts/test/test-all-extensions-functional.ts`
-- **Auto-config tests:** `scripts/test/test-auto-config.sh`
-- **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.sh`
+- **Auto-config tests:** `scripts/test/test-auto-config.sh` (10 memory tier scenarios)
+- **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.sh` (happy path)
+- **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.sh` (6 failure scenarios)
+- **Hook extension tests:** `scripts/test/test-hook-extensions.sh`
+- **Replica stack tests:** `scripts/test/test-replica-stack.sh` (replication validation)
+- **Single stack tests:** `scripts/test/test-single-stack.sh` (standalone validation)
 - **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Auto-config entrypoint:** `docker/postgres/docker-auto-config-entrypoint.sh`
 - **Commit 89de009**: Test restoration with session isolation fixes (4 tests restored, 1 added)
 - **Commit 11c4d56**: pgsodium TCE security fix (enabled shared_preload_libraries)
 - **Session Isolation**: See `scripts/test/test-all-extensions-functional.ts` lines 450-520 for examples
 - **Init Order**: `docker/postgres/docker-entrypoint-initdb.d/` for extension creation sequence
+- **Hook Extensions**: See `AGENTS.md` "Hook-Based Extensions & Tools" section for manifest patterns
 
 ---
 

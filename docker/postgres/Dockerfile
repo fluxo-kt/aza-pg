@@ -7,9 +7,9 @@ FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY extensions.manifest.json /tmp/extensions.manifest.json
-COPY extensions.build-packages.txt /tmp/extensions.build-packages.txt
-COPY build-extensions.sh /usr/local/bin/build-extensions.sh
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
+COPY docker/postgres/build-extensions.sh /usr/local/bin/build-extensions.sh
 RUN chmod +x /usr/local/bin/build-extensions.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -93,7 +93,7 @@ LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
 LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
 LABEL org.opencontainers.image.version="${PG_VERSION}"
 
-COPY extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
+COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
 # Runtime libraries for compiled extensions
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -116,7 +116,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 \
       postgresql-${PG_MAJOR}-timescaledb=2.23.0+dfsg-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-postgis-3=3.6.0+dfsg-2.pgdg13+1 \
+      postgresql-${PG_MAJOR}-postgis-3=3.6.0+dfsg-3.pgdg13+1 \
       postgresql-${PG_MAJOR}-partman=5.3.1-1.pgdg13+1 \
       postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 \
       postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 \
@@ -134,16 +134,16 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
 
-COPY extensions.manifest.json /etc/postgresql/extensions.manifest.json
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-COPY docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 RUN chmod +x /docker-entrypoint-initdb.d/*.sh
 
-COPY docker-auto-config-entrypoint.sh /usr/local/bin/
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
-COPY configs/postgresql-base.conf /etc/postgresql/
+COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1

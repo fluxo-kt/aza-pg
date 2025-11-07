@@ -62,6 +62,15 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 2. **Local Binding Default**: Services bind to `127.0.0.1` by default (localhost only). To allow network access, change `POSTGRES_BIND_IP=0.0.0.0` in `.env` AND ensure firewall/network security is configured.
 3. **Image Placeholder**: Replace `ghcr.io/fluxo-kt` in compose files with your actual registry or use a local image tag.
 
+
+### Prerequisites
+
+Before deploying any stack:
+
+1. **Create monitoring network**: `docker network create monitoring`
+   - This network is used for Prometheus/Grafana scraping and monitoring integration
+   - The `postgres_net` network is created automatically by each stack's compose file
+
 ### Build Image First
 
 **IMPORTANT:** Build the image locally before deploying any stack:
@@ -295,7 +304,7 @@ Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 ## Troubleshooting
 
 ### Build Failures
-- **COPY path errors**: Ensure build context is `docker/postgres` directory
+- **COPY path errors**: Use repo root as build context: `docker build -f docker/postgres/Dockerfile .`
 - **Extension compilation timeout**: Increase Docker build timeout or use cached image
 
 ### Connection Issues

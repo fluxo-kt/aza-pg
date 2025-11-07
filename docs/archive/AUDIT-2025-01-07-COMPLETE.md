@@ -186,7 +186,7 @@ Conducted thorough security, correctness, and quality audit of aza-pg PostgreSQL
 ### Init Scripts (4)
 - docker/postgres/docker-entrypoint-initdb.d/02-replication.sh
 - docker/postgres/docker-entrypoint-initdb.d/10-pgflow.sql
-- docker/postgres/docker-entrypoint-initdb.d/11-pgsodium-init.sh
+- docker/postgres/docker-entrypoint-initdb.d/03-pgsodium-init.sh
 - stacks/primary/configs/initdb/03-pgbouncer-auth.sh
 
 ### Shell Scripts (9)

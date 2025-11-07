@@ -288,7 +288,7 @@ Combined SQL statements to maintain session state:
 
 #### Phase 4: Extension Initialization (7 tests fixed)
 Created pgsodium initialization script and fixed extension conflicts:
-- **supabase_vault** (3 tests): Created `11-pgsodium-init.sh` to initialize server secret key
+- **supabase_vault** (3 tests): Created `03-pgsodium-init.sh` to initialize server secret key
 - **pg_partman** (2 tests): Disabled pgsodium event trigger to prevent GUC parameter conflicts
 - **wrappers** (2 tests): Modified tests to check extension structure instead of non-existent FDW
 
@@ -639,7 +639,7 @@ SELECT queue_name, ev_new FROM pgq.get_queue_info() WHERE ev_new > 10000;
 **Issue:** pgsodium's event trigger `pgsodium_trg_mask_update` tries to check GUC parameter `pgsodium.enable_event_trigger`, which is not registered when pgsodium is loaded via CREATE EXTENSION only. This causes errors during DDL operations (pg_partman, pgflow).
 
 **Current Workaround:**
-- Event trigger disabled in `11-pgsodium-init.sh`: `ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE;`
+- Event trigger disabled in `03-pgsodium-init.sh`: `ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE;`
 - Tests passing (100/100) with workaround in place
 - Impact: Transparent Column Encryption (TCE) feature not available
 

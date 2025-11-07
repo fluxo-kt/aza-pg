@@ -114,7 +114,7 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:9187/metrics || exit 1']
+      test: ['CMD-SHELL', 'curl -f http://localhost:9187/metrics || exit 1']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -145,7 +145,7 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:9127/metrics || exit 1']
+      test: ['CMD-SHELL', 'curl -f http://localhost:9127/metrics || exit 1']
       interval: 30s
       timeout: 5s
       retries: 3

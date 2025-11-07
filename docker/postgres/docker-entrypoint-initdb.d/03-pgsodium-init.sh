@@ -22,11 +22,11 @@ set -euo pipefail
 
 # Gate execution: only run if explicitly enabled
 if [[ "${ENABLE_PGSODIUM_INIT:-false}" != "true" ]]; then
-    echo "[11-pgsodium] Skipping pgsodium initialization (ENABLE_PGSODIUM_INIT not set to 'true')"
+    echo "[03-pgsodium] Skipping pgsodium initialization (ENABLE_PGSODIUM_INIT not set to 'true')"
     exit 0
 fi
 
-echo "[11-pgsodium] Initializing pgsodium (ENABLE_PGSODIUM_INIT=true)"
+echo "[03-pgsodium] Initializing pgsodium (ENABLE_PGSODIUM_INIT=true)"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     DO \$\$

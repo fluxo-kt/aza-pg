@@ -106,20 +106,20 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 }
 ```
 
-### Workflow Orchestration (pgflow)
+### Workflow Orchestration (pgflow) - Optional
 
-**pgflow v0.7.2** is a workflow orchestration system installed via SQL schema (not a traditional extension):
+**pgflow v0.7.2** is an **optional** workflow orchestration system available as an add-on (not installed by default):
 
-- **Installation**: SQL init script (`10-pgflow.sql`) creates `pgflow` schema with tables and functions
+- **Installation**: Manual - copy `examples/pgflow/10-pgflow.sql` to stack-specific `initdb/` directory or custom image
 - **Dependency**: Requires **pgmq extension** (Postgres Message Queue) - already installed
 - **Features**: DAG workflows, task queues, retry logic, step dependencies, map steps for parallel array processing
 - **Limitations**: Real-time events stubbed (no Supabase Edge Functions), requires custom worker implementation
-- **Documentation**: See `docs/pgflow/INTEGRATION.md` for detailed integration guide
+- **Documentation**: See `examples/pgflow/README.md` for installation and `docs/pgflow/INTEGRATION.md` for integration guide
 
 **Key Tables**: flows, steps, deps, runs, step_states, step_tasks, workers
 **Key Functions**: create_flow(), add_step(), start_flow(), complete_task(), fail_task()
 
-Unlike traditional extensions, pgflow is schema-based workflow state management. The execution worker must be implemented separately (see integration docs for 3 implementation patterns).
+Unlike traditional extensions, pgflow is schema-based workflow state management. The execution worker must be implemented separately (see integration docs for 3 implementation patterns). Only install if you need PostgreSQL-native DAG workflows.
 
 ### Init Script Execution Order
 **CRITICAL:** Init scripts execute alphabetically from two sources:

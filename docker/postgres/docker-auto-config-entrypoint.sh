@@ -198,6 +198,16 @@ MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
+# Override listen_addresses based on POSTGRES_BIND_IP
+# Default: 127.0.0.1 (localhost only, secure)
+# Network replication: Set POSTGRES_BIND_IP=0.0.0.0 to allow remote connections
+LISTEN_ADDR="${POSTGRES_BIND_IP:-127.0.0.1}"
+LISTEN_ADDRESSES_OVERRIDE=""
+if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
+    LISTEN_ADDRESSES_OVERRIDE="0.0.0.0"
+    echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled (POSTGRES_BIND_IP=${LISTEN_ADDR}) → listen_addresses=0.0.0.0"
+fi
+
 echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
 
 set -- "$@" \
@@ -210,5 +220,10 @@ set -- "$@" \
     -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
     -c "max_connections=${MAX_CONNECTIONS}" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
+
+# Apply listen_addresses override if network mode enabled
+if [ -n "$LISTEN_ADDRESSES_OVERRIDE" ]; then
+    set -- "$@" -c "listen_addresses=${LISTEN_ADDRESSES_OVERRIDE}"
+fi
 
 exec /usr/local/bin/docker-entrypoint.sh "$@"

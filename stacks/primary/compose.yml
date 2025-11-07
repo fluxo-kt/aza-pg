@@ -153,6 +153,7 @@ networks:
   postgres_net:
     name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
     driver: bridge
+    attachable: true
   monitoring:
     external: true
 

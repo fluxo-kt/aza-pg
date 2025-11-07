@@ -51,6 +51,13 @@ echo "[REPLICA] Replication slot verified"
 # Clean PGDATA directory since initdb has already created it
 # pg_basebackup requires an empty or non-existent target directory
 echo "[REPLICA] Cleaning PGDATA to prepare for base backup..."
+
+# Validate PGDATA path before rm -rf
+if [[ ! "$PGDATA" =~ ^/var/lib/postgresql ]]; then
+    echo "[REPLICA] ERROR: Invalid PGDATA path: $PGDATA" >&2
+    exit 1
+fi
+
 rm -rf "${PGDATA:?}"/*
 
 # Run pg_basebackup to clone primary

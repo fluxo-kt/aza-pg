@@ -20,3 +20,4 @@ networks:
   postgres_net:
     name: postgres-replication
     driver: bridge
+    attachable: true

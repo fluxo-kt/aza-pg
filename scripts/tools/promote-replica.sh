@@ -205,7 +205,7 @@ promote_replica() {
     sleep 2
 
     # Run pg_ctl promote
-    if docker exec "$CONTAINER_NAME" su - postgres -c "pg_ctl promote -D ${DATA_DIR}"; then
+    if docker exec "$CONTAINER_NAME" su - postgres -c "pg_ctl promote -D \"${DATA_DIR}\""; then
         log_success "Replica promoted successfully"
     else
         error_exit "Failed to promote replica"

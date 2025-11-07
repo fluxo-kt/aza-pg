@@ -30,6 +30,13 @@ export PGPASSFILE="$PGPASSFILE_PATH"
 # Substitute listen_addr with environment variable (default: 127.0.0.1 for security)
 # Use pipe delimiter to avoid sed injection with special characters (/, &, [], etc.)
 PGBOUNCER_LISTEN_ADDR="${PGBOUNCER_LISTEN_ADDR:-127.0.0.1}"
+
+# Validate listen address format (IP address or wildcard)
+if ! [[ "$PGBOUNCER_LISTEN_ADDR" =~ ^[0-9.*]+$ ]]; then
+    echo "[PGBOUNCER] ERROR: Invalid PGBOUNCER_LISTEN_ADDR format" >&2
+    exit 1
+fi
+
 sed "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" "$TEMPLATE" > "$OUTPUT"
 chmod 600 "$OUTPUT"
 

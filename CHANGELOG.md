@@ -30,6 +30,15 @@ All notable changes to aza-pg will be documented in this file.
 - **Archived stale reports:** Moved 4 audit reports to docs/archive/
 
 ### ✨ Features & Improvements
+- **Build System:** Implemented build.patches support in manifest (mentioned in 3 audit reports)
+  * Added patches?: string[] field to BuildSpec interface
+  * Moved 3 hardcoded sed patches to manifest (pg_jsonschema, wrappers, supautils)
+  * Updated build-extensions.sh for manifest-driven patch application
+  * Intelligently finds target files (Cargo.toml, .c files) based on patch content
+- **Testing:** Made test-extensions.ts fully manifest-driven (removed 46 lines of hardcoded arrays)
+  * Now dynamically imports from manifest-data.ts
+  * Single source of truth, auto-syncs with manifest changes
+  * Reduced code by 36 lines (-76%)
 - **Testing:** Created comprehensive manifest validator (290 lines, validates 38 extensions across 5 dimensions)
 - **Testing:** Integrated manifest validator into build.sh (preflight check, fails fast)
 - **Testing:** Created PgBouncer healthcheck test suite (254 lines, 8 test cases)
@@ -41,8 +50,11 @@ All notable changes to aza-pg will be documented in this file.
 - **Code Quality:** Added shellcheck directives to all scripts
 - **Docs:** Created comprehensive scripts/README.md (554 lines, all scripts documented)
 - **Docs:** Created scripts/extensions/README.md (manifest validator documentation)
+- **Docs:** Documented pgroonga compile-from-source rationale (NOT available in PGDG for PG18)
 
 ### 🔧 Configuration
+- **Compose:** Fixed healthcheck retry inconsistency (primary 3→5 retries to match replica/single)
+- **Compose:** Standardized postgres healthcheck to use ${POSTGRES_USER:-postgres} across all stacks
 - **Compose:** Removed duplicate postgres_exporter_queries.yaml (single source of truth)
 - **Compose:** Added env_file to single stack compose.yml
 - **Compose:** Added POSTGRES_USER to primary/.env

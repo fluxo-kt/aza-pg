@@ -57,6 +57,7 @@ export interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
+  install_via?: "pgdg";
 }
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
@@ -64,6 +65,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "vector",
     displayName: "pgvector",
     kind: "extension",
+    install_via: "pgdg",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -77,6 +79,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_cron",
     kind: "extension",
+    install_via: "pgdg",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
     source: {
@@ -94,6 +97,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgaudit",
     kind: "extension",
+    install_via: "pgdg",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -158,7 +162,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hypopg",
-    kind: "tool",
+    kind: "extension",
+    install_via: "pgdg",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
     source: {
@@ -186,6 +191,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "plpgsql_check",
     kind: "extension",
+    install_via: "pgdg",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
@@ -230,6 +236,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "http",
     displayName: "pgsql-http",
     kind: "extension",
+    install_via: "pgdg",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
     source: {
@@ -283,6 +290,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "rum",
     kind: "extension",
+    install_via: "pgdg",
     category: "search",
     description: "RUM GiST access method for ranked full-text search.",
     source: {
@@ -296,6 +304,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "postgis",
     kind: "extension",
+    install_via: "pgdg",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     source: {
@@ -326,6 +335,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgrouting",
     kind: "extension",
+    install_via: "pgdg",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     source: {
@@ -430,6 +440,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_repack",
     kind: "extension",
+    install_via: "pgdg",
     category: "maintenance",
     description: "Online table/index reorganization without long locks.",
     source: {
@@ -474,6 +485,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "timescaledb",
     kind: "extension",
+    install_via: "pgdg",
     category: "timeseries",
     description: "Hypertables, compression, and continuous aggregates for time-series workloads.",
     source: {
@@ -523,6 +535,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
+    install_via: "pgdg",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -557,6 +570,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "hll",
     displayName: "postgresql-hll",
     kind: "extension",
+    install_via: "pgdg",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {
@@ -607,6 +621,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "set_user",
     displayName: "pgaudit_set_user",
     kind: "extension",
+    install_via: "pgdg",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",
     source: {

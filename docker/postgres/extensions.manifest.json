@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-06T10:25:57.333Z",
+  "generatedAt": "2025-11-07T09:12:06.401Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -42,9 +42,9 @@
     },
     {
       "name": "hll",
-      "install_via": "pgdg",
       "displayName": "postgresql-hll",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "analytics",
       "description": "HyperLogLog probabilistic counting data type.",
       "source": {
@@ -63,9 +63,9 @@
     },
     {
       "name": "http",
-      "install_via": "pgdg",
       "displayName": "pgsql-http",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "integration",
       "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
       "source": {
@@ -88,8 +88,8 @@
     },
     {
       "name": "hypopg",
+      "kind": "extension",
       "install_via": "pgdg",
-      "kind": "tool",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
       "source": {
@@ -130,8 +130,8 @@
     },
     {
       "name": "pg_cron",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
       "source": {
@@ -201,8 +201,8 @@
     },
     {
       "name": "pg_partman",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
       "source": {
@@ -243,8 +243,8 @@
     },
     {
       "name": "pg_repack",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "maintenance",
       "description": "Online table/index reorganization without long locks.",
       "source": {
@@ -336,8 +336,8 @@
     },
     {
       "name": "pgaudit",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
       "source": {
@@ -380,10 +380,6 @@
         "libbz2-dev",
         "libyaml-dev"
       ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
       "notes": [
         "Installs /usr/bin/pgbackrest."
       ]
@@ -407,10 +403,6 @@
         "libtext-csv-xs-perl",
         "libjson-xs-perl"
       ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
       "notes": [
         "Binary installed to /usr/local/bin/pgbadger."
       ]
@@ -491,8 +483,8 @@
     },
     {
       "name": "pgrouting",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "source": {
@@ -534,7 +526,7 @@
         "libsodium-dev"
       ],
       "runtime": {
-        "sharedPreload": true,
+        "sharedPreload": false,
         "defaultEnable": false
       }
     },
@@ -553,8 +545,8 @@
     },
     {
       "name": "plpgsql_check",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
@@ -573,8 +565,8 @@
     },
     {
       "name": "postgis",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "source": {
@@ -610,8 +602,8 @@
     },
     {
       "name": "rum",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "search",
       "description": "RUM GiST access method for ranked full-text search.",
       "source": {
@@ -630,9 +622,9 @@
     },
     {
       "name": "set_user",
-      "install_via": "pgdg",
       "displayName": "pgaudit_set_user",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "security",
       "description": "Audited SET ROLE helper complementing pgaudit.",
       "source": {
@@ -696,8 +688,8 @@
     },
     {
       "name": "timescaledb",
-      "install_via": "pgdg",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads.",
       "source": {
@@ -763,9 +755,9 @@
     },
     {
       "name": "vector",
-      "install_via": "pgdg",
       "displayName": "pgvector",
       "kind": "extension",
+      "install_via": "pgdg",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {

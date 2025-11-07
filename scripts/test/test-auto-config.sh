@@ -219,7 +219,12 @@ else
 fi
 echo
 
+run_case "Test 7: Custom shared_preload_libraries override" case_custom_shared_preload \
+  --memory="1g" \
+  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,custom_ext"
+
 echo "========================================"
 echo "✅ All auto-config tests passed!"
-echo "✅ Total: 6 tests (5 success cases + 1 failure case)"
+echo "✅ Total: 7 tests (6 success cases + 1 failure case)"
 echo "========================================"

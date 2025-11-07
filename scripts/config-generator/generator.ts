@@ -29,31 +29,101 @@ function mergeSettings(
   return { ...common, ...stackOverrides };
 }
 
-function formatSetting(key: string, value: any): string {
-  if (value === undefined) return '';
+/**
+ * Convert camelCase to snake_case using proper regex patterns
+ * Handles consecutive capitals and acronyms correctly
+ */
+function camelToSnakeCase(str: string): string {
+  return str
+    // Insert underscore between lowercase and uppercase: camelCase -> camel_Case
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    // Insert underscore between consecutive capitals and lowercase: XMLParser -> XML_Parser
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+    // Convert to lowercase
+    .toLowerCase();
+}
 
-  if (key === 'sharedPreloadLibraries') {
-    return `shared_preload_libraries = '${(value as string[]).join(',')}'`;
+/**
+ * Map of PostgreSQL-specific naming patterns that require dot notation
+ * Key: snake_case prefix (e.g., "pg_stat_statements")
+ * Value: PostgreSQL namespace (e.g., "pg_stat_statements")
+ */
+const PG_EXTENSION_NAMESPACES: Record<string, string> = {
+  'pg_stat_statements': 'pg_stat_statements',
+  'auto_explain': 'auto_explain',
+  'pg_audit': 'pgaudit',  // Note: pgaudit uses lowercase namespace
+  'cron': 'cron',
+  'timescaledb': 'timescaledb',
+};
+
+/**
+ * Convert a configuration key to proper PostgreSQL GUC (Grand Unified Configuration) format
+ * Handles extension namespaces with dot notation (e.g., pg_stat_statements.max)
+ */
+function toPostgresGUCName(camelCaseKey: string): string {
+  const snakeKey = camelToSnakeCase(camelCaseKey);
+
+  // Check if this key belongs to an extension namespace
+  for (const [prefix, namespace] of Object.entries(PG_EXTENSION_NAMESPACES)) {
+    if (snakeKey.startsWith(`${prefix}_`)) {
+      // Extract the setting name after the prefix
+      const settingName = snakeKey.slice(prefix.length + 1);
+      return `${namespace}.${settingName}`;
+    }
   }
 
-  let snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+  // Validate PostgreSQL GUC naming rules
+  // Must start with letter or underscore, contain only lowercase letters, digits, underscores, and dots
+  if (!snakeKey.match(/^[a-z_][a-z0-9_.]*$/)) {
+    throw new Error(
+      `Invalid PostgreSQL GUC name generated: "${snakeKey}" (from camelCase: "${camelCaseKey}"). ` +
+      `GUC names must start with a letter or underscore and contain only lowercase letters, digits, underscores, and dots.`
+    );
+  }
 
-  // Convert extension settings to proper format (dot notation)
-  snakeKey = snakeKey.replace(/^pg_stat_statements_/, 'pg_stat_statements.');
-  snakeKey = snakeKey.replace(/^auto_explain_/, 'auto_explain.');
-  snakeKey = snakeKey.replace(/^pg_audit_/, 'pgaudit.');
-  snakeKey = snakeKey.replace(/^cron_/, 'cron.');
-  snakeKey = snakeKey.replace(/^timescaledb_/, 'timescaledb.');
+  return snakeKey;
+}
 
+/**
+ * Format a configuration value for PostgreSQL
+ * Handles booleans (on/off), numbers, strings, and arrays
+ */
+function formatValue(value: any): string {
   if (typeof value === 'boolean') {
-    return `${snakeKey} = ${value ? 'on' : 'off'}`;
+    return value ? 'on' : 'off';
   }
 
   if (typeof value === 'number') {
-    return `${snakeKey} = ${value}`;
+    return String(value);
   }
 
-  return `${snakeKey} = '${value}'`;
+  if (Array.isArray(value)) {
+    return `'${value.join(',')}'`;
+  }
+
+  // String values get quoted
+  return `'${value}'`;
+}
+
+/**
+ * Format a single configuration setting as a PostgreSQL GUC line
+ * Returns empty string for undefined values
+ */
+function formatSetting(key: string, value: any): string {
+  if (value === undefined) return '';
+
+  // Special case: sharedPreloadLibraries has a custom comment in configs
+  // Handle it specially to maintain existing behavior
+  if (key === 'sharedPreloadLibraries') {
+    if (Array.isArray(value) && value.length === 0) {
+      // Empty array means runtime-controlled, don't emit
+      return '';
+    }
+    return `shared_preload_libraries = ${formatValue(value)}`;
+  }
+
+  const pgKey = toPostgresGUCName(key);
+  return `${pgKey} = ${formatValue(value)}`;
 }
 
 function generatePostgresqlConf(
@@ -98,7 +168,7 @@ function generatePostgresqlConf(
       'synchronousCommit', 'synchronousStandbyNames', 'maxReplicationSlots',
       'idleReplicationSlotTimeout', 'walSenderTimeout', 'hotStandby',
       'maxStandbyArchiveDelay', 'maxStandbyStreamingDelay', 'hotStandbyFeedback',
-      'walReceiverStatusInterval'
+      'walReceiverStatusInterval', 'logReplicationCommands'
     ],
     pg_cron: ['cronDatabaseName', 'cronLogRun', 'cronLogStatement'],
     pgaudit: ['pgAuditLog', 'pgAuditLogStatementOnce', 'pgAuditLogLevel', 'pgAuditLogRelation'],
@@ -206,7 +276,24 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
       }
     }
 
-    if (categoryLines.length > 0) {
+    // Always emit the CONNECTION section, even if empty, to add the shared_preload_libraries comment
+    if (catName === 'connection') {
+      lines.push('# CONNECTION');
+      if (categoryLines.length > 0) {
+        lines.push(...categoryLines);
+      } else {
+        // No settings to emit, but still add listen_addresses if present
+        const listenValue = settings.listenAddresses;
+        if (listenValue !== undefined) {
+          lines.push(formatSetting('listenAddresses', listenValue));
+        }
+      }
+      // Add comment about sharedPreloadLibraries being runtime-controlled
+      lines.push('# NOTE: shared_preload_libraries is intentionally OMITTED.');
+      lines.push("# It's controlled at runtime by docker-auto-config-entrypoint.sh via -c flag.");
+      lines.push('# Command-line -c flags override config file settings, so we must not set it here.');
+      lines.push('');
+    } else if (categoryLines.length > 0) {
       lines.push(`# ${catName.replace(/_/g, ' ').toUpperCase()}`);
       lines.push(...categoryLines);
       lines.push('');

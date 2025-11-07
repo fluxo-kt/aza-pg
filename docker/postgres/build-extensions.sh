@@ -228,38 +228,56 @@ process_entry() {
   esac
 
   # ────────────────────────────────────────────────────────────────────────────
-  # TEMPORARY FIXES FOR UPSTREAM PGRX VERSION MISMATCHES
+  # MANIFEST-DRIVEN PATCH APPLICATION (IMPLEMENTED)
   # ────────────────────────────────────────────────────────────────────────────
-  # The following sed commands patch hardcoded pgrx version dependencies that
-  # are incompatible with PostgreSQL 18. These are temporary workarounds until
-  # upstream repositories update to pgrx 0.16.1+.
+  # Apply sed patches from manifest.json build.patches field.
+  # This replaces hardcoded patching logic with data-driven approach.
   #
-  # Known Issues:
+  # The patches field contains an array of sed expressions that fix upstream
+  # issues until they are resolved:
   # - pg_jsonschema: Cargo.toml pins pgrx 0.16.0 (needs 0.16.1 for PG18)
   # - wrappers: Multiple Cargo.toml files pin pgrx 0.16.0
   # - supautils: Missing 'static' keyword causes C99 compliance issues
   #
-  # Future Enhancement:
-  # These fixes should be migrated to manifest.json build.patches field for
-  # cleaner version override management and better visibility.
-  #
-  # TODO: Remove these when upstream fixes are merged:
+  # TODO: Remove patches when upstream fixes are merged:
   # - https://github.com/supabase/pg_jsonschema (pgrx version)
   # - https://github.com/supabase/wrappers (pgrx version)
   # - https://github.com/supabase/supautils (static keyword)
   # ────────────────────────────────────────────────────────────────────────────
-  if [[ "$name" == "pg_jsonschema" ]]; then
-    sed -i 's/pgrx = "0\.16\.0"/pgrx = "=0.16.1"/' "$dest/Cargo.toml" || true
-    sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml" || true
-  fi
-  if [[ "$name" == "wrappers" ]]; then
-    sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' "$dest/supabase-wrappers/Cargo.toml" || true
-    sed -i 's/pgrx-tests = "=0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/supabase-wrappers/Cargo.toml" || true
-    sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' "$dest/wrappers/Cargo.toml" || true
-    sed -i 's/pgrx-tests = "=0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/wrappers/Cargo.toml" || true
-  fi
-  if [[ "$name" == "supautils" ]]; then
-    sed -i 's/^bool[[:space:]]\{1,\}log_skipped_evtrigs/static bool log_skipped_evtrigs/' "$dest/src/supautils.c"
+  local patches_count
+  patches_count=$(jq -r '.build.patches // [] | length' <<<"$entry")
+  if [[ "$patches_count" -gt 0 ]]; then
+    log "Applying $patches_count patch(es) for $name"
+    local i=0
+    while [[ $i -lt $patches_count ]]; do
+      local patch
+      patch=$(jq -r ".build.patches[$i]" <<<"$entry")
+      log "  Patch $((i+1)): $patch"
+      # Find all files to patch based on extension type
+      local target_files=()
+      if [[ "$patch" == *"Cargo.toml"* ]] || jq -r '.build.type' <<<"$entry" | grep -q "cargo-pgrx"; then
+        # For Cargo projects, find all Cargo.toml files
+        mapfile -t target_files < <(find "$dest" -name "Cargo.toml" -type f)
+      elif [[ "$patch" == *".c"* ]]; then
+        # For C projects, find specific C files mentioned in patch or all .c files
+        if [[ "$patch" =~ log_skipped_evtrigs ]]; then
+          mapfile -t target_files < <(find "$dest" -name "supautils.c" -type f)
+        else
+          mapfile -t target_files < <(find "$dest" -name "*.c" -type f)
+        fi
+      else
+        # Default: apply to all files in dest
+        target_files=("$dest")
+      fi
+
+      # Apply patch to each target file
+      for target_file in "${target_files[@]}"; do
+        if [[ -f "$target_file" ]] || [[ -d "$target_file" ]]; then
+          sed -i "$patch" "$target_file" 2>/dev/null || log "    Warning: patch may not have matched in $target_file"
+        fi
+      done
+      i=$((i+1))
+    done
   fi
 
   subdir=$(jq -r '.build.subdir // ""' <<<"$entry")

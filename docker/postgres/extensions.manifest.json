@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-07T12:30:47.317Z",
+  "generatedAt": "2025-11-07T15:52:21.344Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -186,7 +186,10 @@
         "features": [
           "pg18"
         ],
-        "noDefaultFeatures": true
+        "noDefaultFeatures": true,
+        "patches": [
+          "s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"
+        ]
       },
       "aptPackages": [
         "clang",
@@ -487,7 +490,11 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      }
+      },
+      "notes": [
+        "NOT available in PGDG for PostgreSQL 18 (available only for PG 13-17 in third-party repos like Pigsty)",
+        "Compiled from source due to lack of official PGDG package support for PG18"
+      ]
     },
     {
       "name": "pgrouting",
@@ -684,7 +691,10 @@
         "commit": "1b071b72cc50ecee36ac9e4b782cb84212ae6d20"
       },
       "build": {
-        "type": "pgxs"
+        "type": "pgxs",
+        "patches": [
+          "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+        ]
       },
       "runtime": {
         "sharedPreload": true,
@@ -852,7 +862,10 @@
           "pg18"
         ],
         "noDefaultFeatures": true,
-        "subdir": "wrappers"
+        "subdir": "wrappers",
+        "patches": [
+          "s/pgrx = { version = \"=0\\.16\\.0\"/pgrx = { version = \"=0.16.1\"/"
+        ]
       },
       "aptPackages": [
         "clang",

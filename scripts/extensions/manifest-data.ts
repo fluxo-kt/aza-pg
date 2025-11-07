@@ -36,6 +36,11 @@ export interface BuildSpec {
    * Optional script identifier for bespoke installers.
    */
   script?: string;
+  /**
+   * Optional sed command patterns to apply before building.
+   * Each string is a sed expression (e.g., 's/old/new/').
+   */
+  patches?: string[];
 }
 
 export interface RuntimeSpec {
@@ -225,7 +230,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/supabase/supautils.git",
       tag: "v3.0.2",
     },
-    build: { type: "pgxs" },
+    build: {
+      type: "pgxs",
+      patches: ['s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/'],
+    },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
@@ -259,7 +267,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/supabase/wrappers.git",
       tag: "v0.5.6",
     },
-    build: { type: "cargo-pgrx", features: ["pg18"], noDefaultFeatures: true, subdir: "wrappers" },
+    build: {
+      type: "cargo-pgrx",
+      features: ["pg18"],
+      noDefaultFeatures: true,
+      subdir: "wrappers",
+      patches: ['s/pgrx = { version = "=0\\.16\\.0"/pgrx = { version = "=0.16.1"/'],
+    },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
@@ -286,6 +300,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "libmsgpack-dev",
     ],
     runtime: { sharedPreload: false, defaultEnable: false },
+    notes: [
+      "NOT available in PGDG for PostgreSQL 18 (available only for PG 13-17 in third-party repos like Pigsty)",
+      "Compiled from source due to lack of official PGDG package support for PG18",
+    ],
   },
   {
     name: "rum",
@@ -387,7 +405,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/supabase/pg_jsonschema.git",
       ref: "e7834142a3cce347b6082c5245de939810d3f9c4",
     },
-    build: { type: "cargo-pgrx", features: ["pg18"], noDefaultFeatures: true },
+    build: {
+      type: "cargo-pgrx",
+      features: ["pg18"],
+      noDefaultFeatures: true,
+      patches: ['s/pgrx = "0\\.16\\.0"/pgrx = "=0.16.1"/'],
+    },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: { sharedPreload: false, defaultEnable: false },
   },

@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive extension test suite
- * Tests 38 extensions + 1 schema (39 total: 6 builtin + 14 PGDG + 18 compiled + 1 schema)
+ * Tests extensions dynamically from manifest-data.ts
  *
  * Usage: bun run scripts/test/test-extensions.ts [--image=aza-pg:phase1-fix]
  */
 
 import { $ } from "bun";
+import manifest from "../extensions/manifest-data";
 
 const IMAGE = Bun.argv.find(arg => arg.startsWith('--image='))?.split('=')[1] || 'aza-pg:pgdg-opt';
 const CONTAINER_NAME = `pg-test-${Date.now()}`;
@@ -19,52 +20,17 @@ interface ExtensionTest {
   expectError?: boolean; // Some extensions may not be creatable directly
 }
 
-const EXTENSIONS: ExtensionTest[] = [
-  // Builtin extensions (6)
-  { name: 'auto_explain', category: 'builtin', createSQL: '', testSQL: "SHOW auto_explain.log_min_duration" },
-  { name: 'btree_gin', category: 'builtin', createSQL: 'CREATE EXTENSION IF NOT EXISTS btree_gin CASCADE', testSQL: "SELECT 1" },
-  { name: 'btree_gist', category: 'builtin', createSQL: 'CREATE EXTENSION IF NOT EXISTS btree_gist CASCADE', testSQL: "SELECT 1" },
-  { name: 'pg_stat_statements', category: 'builtin', createSQL: '', testSQL: "SELECT count(*) FROM pg_stat_statements" },
-  { name: 'pg_trgm', category: 'builtin', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE', testSQL: "SELECT 'test' % 'test'" },
-  { name: 'plpgsql', category: 'builtin', createSQL: '', testSQL: "SELECT 1" },
-
-  // PGDG extensions (13)
-  { name: 'pg_cron', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE', testSQL: "SELECT count(*) FROM cron.job" },
-  { name: 'pgaudit', category: 'pgdg', createSQL: '', testSQL: "SHOW pgaudit.log" },
-  { name: 'pgvector', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS vector CASCADE', testSQL: "SELECT '[1,2,3]'::vector" },
-  { name: 'timescaledb', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'" },
-  { name: 'postgis', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS postgis CASCADE', testSQL: "SELECT PostGIS_Version()" },
-  { name: 'pg_partman', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE', testSQL: "SELECT count(*) FROM part_config" },
-  { name: 'pg_repack', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_repack CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'pg_repack'" },
-  { name: 'plpgsql_check', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS plpgsql_check CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'plpgsql_check'" },
-  { name: 'hll', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS hll CASCADE', testSQL: "SELECT hll_empty()" },
-  { name: 'http', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS http CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'http'" },
-  { name: 'hypopg', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS hypopg CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'hypopg'" },
-  { name: 'pgrouting', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'pgrouting'" },
-  { name: 'rum', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS rum CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'rum'" },
-  { name: 'set_user', category: 'pgdg', createSQL: 'CREATE EXTENSION IF NOT EXISTS set_user CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'set_user'" },
-  { name: 'wal2json', category: 'compiled-tool', createSQL: '', testSQL: "" }, // Logical decoding plugin, not a CREATE EXTENSION extension
-
-  // Compiled extensions (19: 14 standard + 2 hook-based + 3 CLI tools)
-  { name: 'pg_jsonschema', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE', testSQL: "SELECT json_matches_schema('true', '{}')" },
-  { name: 'index_advisor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE', testSQL: "SELECT count(*) FROM index_advisor('SELECT 1')" },
-  { name: 'pg_hashids', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE', testSQL: "SELECT id_encode(123)" },
-  { name: 'pg_plan_filter', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
-  { name: 'pg_safeupdate', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
-  { name: 'pg_stat_monitor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_stat_monitor CASCADE', testSQL: "SELECT count(*) FROM pg_stat_monitor" },
-  { name: 'pgbackrest', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
-  { name: 'pgbadger', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
-  { name: 'pgmq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgmq CASCADE', testSQL: "SELECT pgmq.create('test_queue')" },
-  { name: 'pgq', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgq CASCADE', testSQL: "SELECT pgq.create_queue('test_pgq_queue')" },
-  { name: 'pgroonga', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE', testSQL: "SELECT pgroonga_command('status')" },
-  { name: 'pgsodium', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE', testSQL: "SELECT pgsodium.crypto_secretbox_keygen()" },
-  { name: 'supabase_vault', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE', testSQL: "SELECT count(*) FROM vault.secrets" },
-  { name: 'supautils', category: 'compiled-hook', createSQL: '', testSQL: "SHOW supautils.superuser" }, // Hook-based extension, provides GUC variables only
-  { name: 'timescaledb_toolkit', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb_toolkit'" },
-  { name: 'vectorscale', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'vectorscale'" },
-  { name: 'wrappers', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS wrappers CASCADE', testSQL: "SELECT default_version FROM pg_available_extensions WHERE name = 'wrappers'" },
-  { name: 'pgflow', category: 'schema', createSQL: '', testSQL: "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'pgflow'" }, // SQL schema installed via init script
-];
+// Generate test cases from manifest
+const EXTENSIONS: ExtensionTest[] = manifest
+  .filter(ext => ext.kind === 'extension' || ext.kind === 'builtin')
+  .map(ext => ({
+    name: ext.name,
+    category: ext.category,
+    createSQL: ext.kind === 'builtin' && !['btree_gin', 'btree_gist', 'pg_trgm'].includes(ext.name)
+      ? '' // Builtin extensions that don't need CREATE EXTENSION
+      : `CREATE EXTENSION IF NOT EXISTS ${ext.name} CASCADE`,
+    testSQL: `SELECT * FROM pg_extension WHERE extname = '${ext.name}'`
+  }));
 
 async function startContainer(): Promise<void> {
   console.log(`Starting container ${CONTAINER_NAME}...`);

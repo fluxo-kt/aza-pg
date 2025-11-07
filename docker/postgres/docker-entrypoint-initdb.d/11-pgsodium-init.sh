@@ -1,13 +1,17 @@
 #!/bin/bash
 #
-# pgsodium Server Secret Initialization
-# ==========================================
+# pgsodium Server Secret Initialization (Optional)
+# ================================================
 # Initializes pgsodium server secret key required for supabase_vault encryption.
 # This script creates the master encryption key used by pgsodium for envelope encryption.
 #
-# Prerequisites:
-# - pgsodium extension must be created (done in 01-extensions.sql)
-# - Runs after extension creation, before application-specific schemas
+# Gating:
+# - Only runs if ENABLE_PGSODIUM_INIT=true (default: disabled)
+# - pgsodium is marked as optional in manifest (defaultEnable: false)
+#
+# Prerequisites (if enabled):
+# - pgsodium extension will be created by this script
+# - Runs after baseline extension creation
 #
 # Security Note:
 # - Server secret is stored in pgsodium.key table
@@ -15,6 +19,14 @@
 # - Without this, supabase_vault operations will fail with "no server secret key defined"
 
 set -euo pipefail
+
+# Gate execution: only run if explicitly enabled
+if [[ "${ENABLE_PGSODIUM_INIT:-false}" != "true" ]]; then
+    echo "[11-pgsodium] Skipping pgsodium initialization (ENABLE_PGSODIUM_INIT not set to 'true')"
+    exit 0
+fi
+
+echo "[11-pgsodium] Initializing pgsodium (ENABLE_PGSODIUM_INIT=true)"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     DO \$\$

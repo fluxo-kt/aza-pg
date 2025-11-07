@@ -9,7 +9,7 @@
 import { $ } from "bun";
 import manifest from "../extensions/manifest-data";
 
-const IMAGE = Bun.argv.find(arg => arg.startsWith('--image='))?.split('=')[1] || 'aza-pg:pgdg-opt';
+const IMAGE = Bun.argv.find(arg => arg.startsWith('--image='))?.split('=')[1] || 'aza-pg:pg18';
 const CONTAINER_NAME = `pg-test-${Date.now()}`;
 
 interface ExtensionTest {

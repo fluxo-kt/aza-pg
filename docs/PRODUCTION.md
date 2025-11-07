@@ -57,11 +57,28 @@ cp .env.example .env
 docker compose up -d
 ```
 
+**Replication Mode:**
+
+The primary stack uses **asynchronous replication** by default (`synchronous_standby_names = ''` in `postgresql-primary.conf`). This provides maximum flexibility and performance:
+
+- **Asynchronous (default):** Primary commits transactions without waiting for replica confirmation. Better performance, slight risk of data loss if primary fails before replica catches up.
+- **Synchronous (optional):** Set `synchronous_standby_names = 'replica_name'` to require replica confirmation before commit. Guarantees zero data loss but reduces throughput and increases latency.
+
+To enable synchronous replication:
+1. Edit `stacks/primary/configs/postgresql-primary.conf`
+2. Set `synchronous_standby_names = 'replica1'` (or your replica's `application_name`)
+3. Restart primary: `docker compose restart postgres`
+4. Verify: `SELECT sync_state FROM pg_stat_replication;` should show `sync` instead of `async`
+
 **Verify Replication:**
 ```bash
 # On replica:
 docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
 # Should show status='streaming'
+
+# On primary:
+docker exec postgres-primary psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
+# Should show sync_state='async' (or 'sync' if synchronous replication enabled)
 ```
 
 ### Single Stack
@@ -118,18 +135,23 @@ docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
 
 ### Automated Backups
 
-Use the pgBackRest helper stack under `examples/backup/`:
+pgBackRest is installed in the PostgreSQL image and available at `/usr/local/bin/pgbackrest`.
 
+For production backup configuration, see `examples/backup/` directory which contains:
+- Sample compose configuration for running pgBackRest as a separate service
+- Documentation on stanza creation, backup schedules, and retention policies
+- Point-in-Time Recovery (PITR) restore procedures
+
+Example backup commands:
 ```bash
-# Run alongside the primary stack
-docker compose -f compose.yml -f ../examples/backup/compose.yml up -d pgbackrest
+# Manual backup via installed pgbackrest
+docker exec postgres-primary pgbackrest backup --stanza=main --type=full
 
-# Initialize and schedule backups
-docker compose exec pgbackrest pgbackrest stanza-create --stanza=main
-docker compose exec pgbackrest pgbackrest backup --stanza=main --type=full
+# Or use the provided script
+./scripts/tools/backup-postgres.sh postgres-primary backup.sql.gz
 ```
 
-See `examples/backup/README.md` for retention policies, cron snippets, and PITR restores.
+See `examples/backup/README.md` for comprehensive backup strategy and automation examples.
 
 ## Troubleshooting
 
@@ -164,10 +186,15 @@ docker exec pgbouncer-primary ls -l /tmp/.pgpass
 
 **Check logs:**
 ```bash
-docker logs postgres-primary | grep AUTO-CONFIG
+docker logs postgres-primary | grep "\[POSTGRES\] \[AUTO-CONFIG\]"
 ```
 
-Look for source markers: `manual`, `cgroup-v2`, or `meminfo`. If you see `meminfo` with unexpectedly large RAM, Docker is not applying limits.
+Look for source markers in the log output: `manual`, `cgroup-v2`, or `meminfo`. If you see `meminfo` with unexpectedly large RAM, Docker is not applying limits.
+
+Example log output:
+```
+[POSTGRES] [AUTO-CONFIG] RAM: 2048MB (cgroup-v2), CPU: 4 cores (nproc) → shared_buffers=512MB, effective_cache_size=1536MB, ...
+```
 
 **Fix:** Either set `mem_limit` / `mem_reservation` in compose (already provided in the sample files) or export `POSTGRES_MEMORY=<MB>` to pin the value.
 
@@ -304,16 +331,22 @@ volumes:
 
 ### Network Security Considerations
 
-**Default Configuration (Permissive for Docker Networks):**
+**Default Configuration:**
 
-The default `pg_hba.conf` allows connections from all RFC1918 private IP ranges:
-- `10.0.0.0/8` (Class A private)
-- `172.16.0.0/12` (Class B private)
-- `192.168.0.0/16` (Class C private)
+The default configuration binds to localhost only:
+- `listen_addresses = '127.0.0.1'` in base config (localhost only, secure by default)
+- The default `pg_hba.conf` allows connections from all RFC1918 private IP ranges when network access is enabled:
+  - `10.0.0.0/8` (Class A private)
+  - `172.16.0.0/12` (Class B private)
+  - `192.168.0.0/16` (Class C private)
+
+**Enabling Network Access:**
+
+To allow network connections, set `POSTGRES_BIND_IP=0.0.0.0` in `.env` and ensure firewall rules are configured.
 
 **Production Hardening:**
 
-For production deployments, narrow the CIDR ranges to match your actual network topology:
+For production deployments with network access, narrow the CIDR ranges in `pg_hba.conf` to match your actual network topology:
 
 ```conf
 # Instead of allowing all of 10.0.0.0/8, use your specific subnet:
@@ -322,8 +355,8 @@ host    all             all             10.10.5.0/24            scram-sha-256
 
 **Why This Matters:**
 
-- PostgreSQL binds to all interfaces (`listen_addresses = '*'` in base config)
-- Docker network isolation provides the primary security boundary
+- Default localhost binding (`127.0.0.1`) prevents network exposure
+- When network access is enabled (`0.0.0.0`), Docker network isolation provides the primary security boundary
 - pg_hba.conf acts as secondary defense-in-depth
 - Narrower CIDRs reduce attack surface if Docker network is compromised
 

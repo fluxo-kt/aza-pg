@@ -8,6 +8,9 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-single
     restart: unless-stopped
 
+    env_file:
+      - .env
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -21,8 +24,8 @@ services:
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 
-    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512M}
-    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256M}
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256m}
 
     command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
 

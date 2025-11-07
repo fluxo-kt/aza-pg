@@ -8,24 +8,15 @@ services:
     ports: !override
       - '5433:5432'
 
-    networks:
-      - postgres-replication
-
   pgbouncer:
     ports: !override
       - '6433:6432'
-
-    networks:
-      - postgres-replication
 
   postgres_exporter:
     ports: !override
       - '9188:9187'
 
-    networks:
-      - postgres-replication
-
 networks:
-  postgres-replication:
+  postgres_net:
     name: postgres-replication
     driver: bridge

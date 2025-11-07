@@ -90,7 +90,8 @@ docker compose up -d
 Access:
 - **Postgres**: `127.0.0.1:5432`
 - **PgBouncer**: `127.0.0.1:6432`
-- **Metrics**: `127.0.0.1:9187/metrics`
+- **Postgres Exporter**: `127.0.0.1:9187/metrics`
+- **PgBouncer Exporter**: `127.0.0.1:9127/metrics`
 
 > The compose files set `mem_limit`/`mem_reservation` so Docker applies cgroup v2 limits. If you modify memory values or use a different orchestrator, make sure a limit (or `POSTGRES_MEMORY`) is present so auto-config can size itself correctly.
 
@@ -140,6 +141,10 @@ cd stacks/single
 docker compose up
 ```
 
+Access:
+- **Postgres**: `127.0.0.1:5432`
+- **Postgres Exporter**: `127.0.0.1:9189/metrics` (note: different port than primary to avoid conflicts)
+
 ### Replica
 Streaming replication setup (connects to primary).
 
@@ -147,6 +152,10 @@ Streaming replication setup (connects to primary).
 cd stacks/replica
 docker compose up
 ```
+
+Access:
+- **Postgres**: `127.0.0.1:5433` (note: different port than primary to avoid conflicts)
+- **Postgres Exporter**: `127.0.0.1:9188/metrics` (note: different port than primary to avoid conflicts)
 
 ## Configuration
 
@@ -200,12 +209,43 @@ postgres_exporter included with custom queries:
 - Memory settings
 - Postmaster uptime
 
+### Exporter Ports by Stack
+
+Default exporter ports (configurable via `.env`):
+
+| Stack | Postgres Port | Postgres Exporter | PgBouncer Exporter | Notes |
+|-------|--------------|-------------------|--------------------| ------|
+| Primary | 5432 | 9187 | 9127 | Full production stack |
+| Replica | 5433 | 9188 | N/A | Different ports to avoid conflicts |
+| Single | 5432 | 9189 | N/A | Minimal stack |
+
+Configure in `.env`:
+```env
+# Primary stack
+POSTGRES_EXPORTER_PORT=9187
+PGBOUNCER_EXPORTER_PORT=9127
+
+# Replica stack
+POSTGRES_EXPORTER_PORT=9188
+
+# Single stack
+POSTGRES_EXPORTER_PORT=9189
+```
+
 Integrate with Prometheus:
 ```yaml
 scrape_configs:
-  - job_name: 'postgres'
+  - job_name: 'postgres-primary'
     static_configs:
       - targets: ['localhost:9187']
+
+  - job_name: 'postgres-replica'
+    static_configs:
+      - targets: ['localhost:9188']
+
+  - job_name: 'pgbouncer'
+    static_configs:
+      - targets: ['localhost:9127']
 ```
 
 ## Build from Source

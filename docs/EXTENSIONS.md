@@ -141,15 +141,16 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 ## Runtime Defaults
 
 - `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, and `vector` (pgvector) are created automatically during cluster bootstrap.
-- Default `shared_preload_libraries` is `pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,supautils,timescaledb`. Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a slimmer set.
-- Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module.
+- Default `shared_preload_libraries` is `pg_stat_statements,auto_explain,pg_cron,pgaudit` (4 extensions preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+- Optional extensions can be preloaded: `pg_stat_monitor`, `supautils`, `timescaledb`, `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
+- Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category
 
 - **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
-- **Time-series** – `timescaledb` is preloaded; use `CREATE EXTENSION timescaledb` to initialize in user databases. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
+- **Time-series** – `timescaledb` is installed but not preloaded by default (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES` if needed); use `CREATE EXTENSION timescaledb` to initialize in user databases. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
-- **Security** – `supautils` and `pgaudit` run by default to guard superuser operations. `pgsodium` and `vault` remain optional.
+- **Security** – `pgaudit` runs by default (preloaded) to guard operations. `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `pgsodium` and `vault` remain optional.
 - **Operations** – `pgbackrest` binary lives in `/usr/local/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available for offline log analysis.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
 

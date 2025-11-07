@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-07T09:12:06.401Z",
+  "generatedAt": "2025-11-07T12:30:47.317Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -380,6 +380,10 @@
         "libbz2-dev",
         "libyaml-dev"
       ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
       "notes": [
         "Installs /usr/bin/pgbackrest."
       ]
@@ -403,6 +407,10 @@
         "libtext-csv-xs-perl",
         "libjson-xs-perl"
       ],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
       "notes": [
         "Binary installed to /usr/local/bin/pgbadger."
       ]
@@ -680,7 +688,7 @@
       },
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": true,
+        "defaultEnable": false,
         "notes": [
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]

@@ -2,7 +2,7 @@
 
 **Version:** 2025-11-06
 **Image:** aza-pg (PostgreSQL 18.0)
-**Extensions:** 38 total (6 builtin + 15 PGDG + 17 compiled)
+**Extensions:** 38 total (6 builtin + 14 PGDG + 18 compiled)
 
 ---
 
@@ -556,8 +556,8 @@ SELECT * FROM pg_statio_user_tables; -- I/O statistics
 
 **Strengths:**
 - ✅ Broad functionality (38 extensions, 6 categories)
-- ✅ PGDG packages for stability (15/38 = 39%)
-- ✅ SHA-pinned source for security (17/38 = 45%)
+- ✅ PGDG packages for stability (14/38 = 37%)
+- ✅ SHA-pinned source for security (18/38 = 47%)
 - ✅ Aggressive optimization (bitcode removal, stripping, cleanup)
 - ✅ Single image adapts to 2-128GB deployments
 

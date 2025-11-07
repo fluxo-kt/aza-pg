@@ -29,8 +29,8 @@ services:
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - ./scripts/00-setup-replica.sh:/docker-entrypoint-initdb.d/00-setup-replica.sh:ro
 
-    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512M}
-    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256M}
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
+    mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256m}
 
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 

@@ -116,9 +116,12 @@ jobs:
           echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 37 total extensions (5 baseline + 32 available)" >> $GITHUB_STEP_SUMMARY
+          echo "- 38 total extensions (6 builtin + 14 PGDG + 18 compiled)" >> $GITHUB_STEP_SUMMARY
+          echo "- 5 baseline extensions auto-created: pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector" >> $GITHUB_STEP_SUMMARY
+          echo "- 4 extensions preloaded by default: pg_stat_statements, auto_explain, pg_cron, pgaudit" >> $GITHUB_STEP_SUMMARY
+          echo "- 33 additional extensions available on-demand via CREATE EXTENSION" >> $GITHUB_STEP_SUMMARY
           echo "- PGDG packages: pgvector, pg_cron, pgaudit, timescaledb, postgis, etc." >> $GITHUB_STEP_SUMMARY
-          echo "- Compiled extensions: pg_jsonschema, wrappers, pgsodium, etc." >> $GITHUB_STEP_SUMMARY
+          echo "- Compiled extensions: pg_jsonschema, wrappers, pgsodium, vectorscale, etc." >> $GITHUB_STEP_SUMMARY
           echo "- Versions managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify image

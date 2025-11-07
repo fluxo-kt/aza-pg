@@ -50,7 +50,7 @@ const EXTENSIONS: ExtensionTest[] = [
   { name: 'index_advisor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE', testSQL: "SELECT count(*) FROM index_advisor('SELECT 1')" },
   { name: 'pg_hashids', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE', testSQL: "SELECT id_encode(123)" },
   { name: 'pg_plan_filter', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
-  { name: 'safeupdate', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
+  { name: 'pg_safeupdate', category: 'compiled-hook', createSQL: '', testSQL: "" }, // Hook-based extension, no .control file
   { name: 'pg_stat_monitor', category: 'compiled', createSQL: 'CREATE EXTENSION IF NOT EXISTS pg_stat_monitor CASCADE', testSQL: "SELECT count(*) FROM pg_stat_monitor" },
   { name: 'pgbackrest', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension
   { name: 'pgbadger', category: 'compiled-tool', createSQL: '', testSQL: "" }, // CLI tool, not extension

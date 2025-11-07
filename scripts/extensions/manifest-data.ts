@@ -228,7 +228,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
-      defaultEnable: true,
+      defaultEnable: false,
       notes: ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."],
     },
   },
@@ -601,6 +601,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "libbz2-dev",
       "libyaml-dev",
     ],
+    runtime: { sharedPreload: false, defaultEnable: false },
     notes: ["Installs /usr/bin/pgbackrest."],
   },
   {
@@ -615,6 +616,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "make" },
     aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
+    runtime: { sharedPreload: false, defaultEnable: false },
     notes: ["Binary installed to /usr/local/bin/pgbadger."],
   },
   {

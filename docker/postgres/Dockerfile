@@ -3,6 +3,22 @@
 ARG PG_VERSION=18
 ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
 
+# PGDG extension versions (14 pre-compiled extensions)
+ARG PGCRON_VERSION=1.6.7-2.pgdg13+1
+ARG PGAUDIT_VERSION=18.0-2.pgdg13+1
+ARG PGVECTOR_VERSION=0.8.1-2.pgdg13+1
+ARG TIMESCALEDB_VERSION=2.23.0+dfsg-1.pgdg13+1
+ARG POSTGIS_VERSION=3.6.0+dfsg-3.pgdg13+1
+ARG PARTMAN_VERSION=5.3.1-1.pgdg13+1
+ARG REPACK_VERSION=1.5.3-1.pgdg13+1
+ARG PLPGSQL_CHECK_VERSION=2.8.3-1.pgdg13+1
+ARG HLL_VERSION=2.19-1.pgdg13+1
+ARG HTTP_VERSION=1.7.0-3.pgdg13+1
+ARG HYPOPG_VERSION=1.4.2-2.pgdg13+1
+ARG PGROUTING_VERSION=3.8.0-2.pgdg13+1
+ARG RUM_VERSION=1.3.15-1.pgdg13+1
+ARG SET_USER_VERSION=4.2.0-1.pgdg13+1
+
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -107,25 +123,40 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
 # Pre-compiled extensions from PGDG repository
+ARG PGCRON_VERSION
+ARG PGAUDIT_VERSION
+ARG PGVECTOR_VERSION
+ARG TIMESCALEDB_VERSION
+ARG POSTGIS_VERSION
+ARG PARTMAN_VERSION
+ARG REPACK_VERSION
+ARG PLPGSQL_CHECK_VERSION
+ARG HLL_VERSION
+ARG HTTP_VERSION
+ARG HYPOPG_VERSION
+ARG PGROUTING_VERSION
+ARG RUM_VERSION
+ARG SET_USER_VERSION
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \
     apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
     apt-get install -y \
-      postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 \
-      postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 \
-      postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 \
-      postgresql-${PG_MAJOR}-timescaledb=2.23.0+dfsg-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-postgis-3=3.6.0+dfsg-3.pgdg13+1 \
-      postgresql-${PG_MAJOR}-partman=5.3.1-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 \
-      postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 \
-      postgresql-${PG_MAJOR}-pgrouting=3.8.0-2.pgdg13+1 \
-      postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 \
-      postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 && \
+      postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} \
+      postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} \
+      postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} \
+      postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} \
+      postgresql-${PG_MAJOR}-postgis-3=${POSTGIS_VERSION} \
+      postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} \
+      postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} \
+      postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} \
+      postgresql-${PG_MAJOR}-hll=${HLL_VERSION} \
+      postgresql-${PG_MAJOR}-http=${HTTP_VERSION} \
+      postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} \
+      postgresql-${PG_MAJOR}-pgrouting=${PGROUTING_VERSION} \
+      postgresql-${PG_MAJOR}-rum=${RUM_VERSION} \
+      postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-pgxs /opt/ext-out/ /

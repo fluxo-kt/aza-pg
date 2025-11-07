@@ -46,6 +46,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Validate Dockerfile paths
+        run: |
+          echo "Validating Dockerfile COPY paths exist in build context..."
+          # Check that files referenced in Dockerfile exist
+          test -f docker/postgres/extensions.manifest.json || exit 1
+          test -f docker/postgres/build-extensions.sh || exit 1
+          test -f docker/postgres/docker-auto-config-entrypoint.sh || exit 1
+          echo "✅ All Dockerfile COPY paths validated"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -285,8 +294,18 @@ jobs:
 
       - name: Deploy and test primary stack
         run: |
+          set -euo pipefail  # Exit on any error
+
           echo "🚀 Deploying primary stack..."
           cd stacks/primary
+
+          # Function for cleanup
+          cleanup() {
+            echo "Cleaning up..."
+            docker compose -f compose.yml -f compose.dev.yml logs --tail=100 || true
+            docker compose -f compose.yml -f compose.dev.yml down -v || true
+          }
+          trap cleanup EXIT ERR  # Cleanup on exit or error
 
           # Create .env file
           cat > .env << EOF
@@ -307,21 +326,39 @@ jobs:
           docker compose ps
 
           echo "🧪 Testing direct PostgreSQL connection..."
-          docker compose exec -T postgres psql -U postgres -c "SELECT version();"
+          if ! docker compose exec -T postgres psql -U postgres -c "SELECT version();"; then
+            echo "❌ Direct PostgreSQL connection failed"
+            touch /tmp/test-failed
+            exit 1
+          fi
 
           echo "🧪 Testing PgBouncer connection..."
-          PGPASSWORD=dev_pgbouncer_auth_test_2025 docker compose exec -T pgbouncer \
-            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;"
+          if ! PGPASSWORD=dev_pgbouncer_auth_test_2025 docker compose exec -T pgbouncer \
+            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;"; then
+            echo "❌ PgBouncer connection failed"
+            touch /tmp/test-failed
+            exit 1
+          fi
 
           echo "🧪 Testing postgres_exporter metrics..."
-          docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20
+          if ! docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20; then
+            echo "❌ postgres_exporter metrics failed"
+            touch /tmp/test-failed
+            exit 1
+          fi
 
           echo "📊 Stack logs..."
           docker compose logs --tail=50
 
-          # Cleanup
-          docker compose down -v
           echo "✅ Primary stack test passed!"
+
+      - name: Check test results
+        if: always()
+        run: |
+          if [ -f /tmp/test-failed ]; then
+            echo "::error::Primary stack tests failed"
+            exit 1
+          fi
 
     outputs:
       test-status: success

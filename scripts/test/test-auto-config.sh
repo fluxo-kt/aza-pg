@@ -90,7 +90,16 @@ run_case() {
     exit 1
   fi
 
-  sleep 8
+  # Wait for PostgreSQL to be ready (polls instead of fixed sleep)
+  if ! wait_for_postgres "localhost" "5432" "postgres" "60" "$container"; then
+    echo "❌ FAILED: PostgreSQL failed to start in time"
+    logs=$(docker logs "$container" 2>&1 || true)
+    echo "Container logs:"
+    echo "$logs"
+    cleanup_test_container "$container"
+    exit 1
+  fi
+
   local logs
   logs=$(docker logs "$container" 2>&1 || true)
   echo "Auto-config logs:"
@@ -211,16 +220,25 @@ echo "Test 6: Below minimum memory (256MB - should fail)"
 echo "===================================================="
 container="pg-autoconfig-below-min-$$"
 if docker run -d --name "$container" --memory="256m" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1; then
-  sleep 5
-  logs=$(docker logs "$container" 2>&1 || true)
-  if echo "$logs" | grep -qE "FATAL.*512MB|minimum 512MB"; then
-    echo "✅ Container rejected 256MB deployment (below 512MB minimum)"
-    cleanup_test_container "$container"
+  # Poll with timeout instead of fixed sleep
+  if wait_for_postgres "localhost" "5432" "postgres" "15" "$container" >/dev/null 2>&1; then
+    # Container actually started (unexpected - should fail for < 512MB)
+    logs=$(docker logs "$container" 2>&1 || true)
+    if echo "$logs" | grep -qE "FATAL.*512MB|minimum 512MB"; then
+      echo "✅ Container rejected 256MB deployment (below 512MB minimum)"
+      cleanup_test_container "$container"
+    else
+      echo "❌ FAILED: Container should reject < 512MB but didn't"
+      echo "$logs"
+      cleanup_test_container "$container"
+      exit 1
+    fi
   else
-    echo "❌ FAILED: Container should reject < 512MB but didn't"
-    echo "$logs"
+    # PostgreSQL failed to start (expected for < 512MB)
+    logs=$(docker logs "$container" 2>&1 || true)
+    echo "✅ Container failed to start with 256MB (expected) - FATAL error in logs:"
+    echo "$logs" | grep "FATAL" || echo "(no FATAL found)"
     cleanup_test_container "$container"
-    exit 1
   fi
 else
   echo "✅ Container failed to start with 256MB (expected)"

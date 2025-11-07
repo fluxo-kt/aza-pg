@@ -80,7 +80,7 @@ This report documents the complete implementation of findings from **5 independe
 
 #### PHASE 4 - Documentation Corrections (13 items)
 1. ✅ **EXTENSIONS.md:** Fixed default preload (7→4 extensions)
-2. ✅ **architecture.md:** Fixed "creates all" → "creates 5 baseline"
+2. ✅ **ARCHITECTURE.md:** Fixed "creates all" → "creates 5 baseline"
 3. ✅ **PERFORMANCE-IMPACT.md:** Fixed counts (15+17→14+18)
 4. ✅ **CI workflow:** Fixed extension count (37→38)
 5. ✅ **AGENTS.md:** Fixed file paths to match structure

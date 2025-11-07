@@ -21,7 +21,7 @@ All notable changes to aza-pg will be documented in this file.
 
 ### 📚 Documentation Corrections
 - **EXTENSIONS.md:** Fixed default shared_preload_libraries (7→4 extensions: pg_stat_statements, auto_explain, pg_cron, pgaudit)
-- **architecture.md:** Fixed "creates all extensions" claim (→"creates 5 baseline extensions")
+- **ARCHITECTURE.md:** Fixed "creates all extensions" claim (→"creates 5 baseline extensions")
 - **PERFORMANCE-IMPACT.md:** Fixed extension counts (15+17→14+18, total 38)
 - **CI workflow:** Fixed extension count summary (37→38)
 - **AGENTS.md:** Fixed file path references to match actual structure
@@ -189,7 +189,7 @@ This release incorporates findings from 5 comprehensive audit reports analyzing 
 ### Fixed (Phase 5 - Remove Broken Auto-Config Override - 2025-11)
 - **Config:** Removed POSTGRES_SKIP_AUTOCONFIG feature (broken - missing shared_preload_libraries initialization)
 - **Entrypoint:** Removed POSTGRES_SKIP_AUTOCONFIG check from docker-auto-config-entrypoint.sh (lines 30-33)
-- **Docs:** Removed all POSTGRES_SKIP_AUTOCONFIG references from documentation (AGENTS.md, README.md, architecture.md, PRODUCTION.md)
+- **Docs:** Removed all POSTGRES_SKIP_AUTOCONFIG references from documentation (AGENTS.md, README.md, ARCHITECTURE.md, PRODUCTION.md)
 - **Stack:** Removed POSTGRES_SKIP_AUTOCONFIG env var from all stack configs (.env, .env.example, compose.yml files)
 - **Generator:** Updated scripts/config-generator/generator.ts to reflect auto-config always enabled
 - **Test:** Removed POSTGRES_SKIP_AUTOCONFIG from test-build.sh
@@ -273,7 +273,7 @@ This release incorporates findings from 5 comprehensive audit reports analyzing 
 - Grafana dashboard guide (`examples/grafana/README.md`)
 - .dockerignore to optimize Docker build context
 - Init script execution order documentation in CLAUDE.md/AGENTS.md
-- Architecture diagram in `docs/architecture.md`
+- Architecture diagram in `docs/ARCHITECTURE.md`
 - PgBouncer bootstrap script that renders `.pgpass` safely (`stacks/primary/scripts/pgbouncer-entrypoint.sh`)
 
 ### Fixed (Pre-Release)

@@ -12,8 +12,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'PostgreSQL instance {{ $labels.instance }} is down'
-          description: 'PostgreSQL has been unavailable for more than 1 minute'
+          summary: "PostgreSQL instance {{ $labels.instance }} is down"
+          description: "PostgreSQL has been unavailable for more than 1 minute"
 
       # Too many connections
       - alert: PostgreSQLTooManyConnections
@@ -22,9 +22,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'PostgreSQL instance {{ $labels.instance }} has too many connections'
-          description:
-            '{{ $labels.instance }} is using {{ $value | humanizePercentage }} of max_connections'
+          summary: "PostgreSQL instance {{ $labels.instance }} has too many connections"
+          description: "{{ $labels.instance }} is using {{ $value | humanizePercentage }} of max_connections"
 
       # Replication lag (if using replicas)
       - alert: PostgreSQLReplicationLag
@@ -33,20 +32,19 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'PostgreSQL replication lag on {{ $labels.instance }}'
-          description: 'Replication is lagging by {{ $value }} seconds'
+          summary: "PostgreSQL replication lag on {{ $labels.instance }}"
+          description: "Replication is lagging by {{ $value }} seconds"
 
       # Dead tuple accumulation
       - alert: PostgreSQLDeadTuples
-        expr:
-          ((pg_stat_user_tables_n_dead_tup > 1000) / (pg_stat_user_tables_n_live_tup +
+        expr: ((pg_stat_user_tables_n_dead_tup > 1000) / (pg_stat_user_tables_n_live_tup +
           pg_stat_user_tables_n_dead_tup)) > 0.1
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: 'PostgreSQL table {{ $labels.table }} has high dead tuple ratio'
-          description: 'Table has {{ $value | humanizePercentage }} dead tuples'
+          summary: "PostgreSQL table {{ $labels.table }} has high dead tuple ratio"
+          description: "Table has {{ $value | humanizePercentage }} dead tuples"
 
       # Slow queries
       - alert: PostgreSQLSlowQueries
@@ -55,5 +53,5 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'PostgreSQL has slow queries on {{ $labels.instance }}'
-          description: 'Long-running queries detected (>5 minutes)'
+          summary: "PostgreSQL has slow queries on {{ $labels.instance }}"
+          description: "Long-running queries detected (>5 minutes)"

@@ -7,6 +7,7 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ## Architecture
 
 **Build Flow:**
+
 1. Multi-platform build (amd64 + arm64) via Docker Buildx
 2. Image pushed to GHCR with manifest list
 3. QEMU emulation setup for arm64 testing
@@ -20,10 +21,12 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ### Core Validation (5 minutes timeout)
 
 **Architecture Detection:**
+
 - Verify `uname -m` reports `aarch64` or `arm64`
 - Confirms QEMU emulation active and correct platform
 
 **PostgreSQL Startup:**
+
 - 60-second startup window (QEMU is slower than native)
 - `pg_isready` health check validation
 - Auto-config memory detection on emulated platform
@@ -53,11 +56,13 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ## Performance Characteristics
 
 **QEMU Overhead:**
+
 - Startup: 2-3x slower than native (20-30s typical)
 - SQL queries: ~50% slower (acceptable for smoke tests)
 - Container pull: Same speed (no emulation)
 
 **Timeout Strategy:**
+
 - Test timeout: 5 minutes (protects CI from QEMU hangs)
 - Startup timeout: 60 seconds (2x native startup time)
 - Total validation: ~2-3 minutes typical
@@ -67,16 +72,19 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ### Compilation Failures
 
 **Symptoms:**
+
 ```
 ❌ pgvector failed on arm64 (compilation issue?)
 ```
 
 **Causes:**
+
 - Missing arm64 build dependencies in Dockerfile
 - Architecture-specific compiler flags missing
 - Cross-compilation toolchain misconfigured
 
 **Resolution:**
+
 1. Check Dockerfile `RUN` commands for architecture detection
 2. Verify `--host` and `--target` flags in configure scripts
 3. Examine build logs for arm64-specific errors
@@ -84,16 +92,19 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ### PGDG Package Issues
 
 **Symptoms:**
+
 ```
 ❌ pg_cron failed on arm64
 ```
 
 **Causes:**
+
 - PGDG package not available for arm64
 - Version mismatch in APT repository
 - GPG key verification failure
 
 **Resolution:**
+
 1. Check `apt.postgresql.org` for arm64 availability
 2. Verify package version pins in Dockerfile
 3. Test APT install manually in arm64 shell
@@ -101,16 +112,19 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ### QEMU Timeouts
 
 **Symptoms:**
+
 ```
 ❌ PostgreSQL failed to start on arm64
 ```
 
 **Causes:**
+
 - QEMU emulation overhead too high
 - Memory limits too restrictive for emulated workload
 - Infinite loop in initialization scripts
 
 **Resolution:**
+
 1. Increase startup timeout (currently 60s)
 2. Review container logs for blocking operations
 3. Test locally with `docker run --platform linux/arm64`
@@ -118,6 +132,7 @@ The CI workflow validates arm64 images using QEMU emulation after multi-platform
 ## Local Testing
 
 **Manual arm64 Validation:**
+
 ```bash
 # Requires Docker Desktop with QEMU support
 docker pull --platform linux/arm64 ghcr.io/username/aza-pg:latest
@@ -147,15 +162,18 @@ docker rm -f pg-arm64
 **Workflow File:** `.github/workflows/build-postgres-image.yml`
 
 **Steps:**
+
 1. `Set up QEMU for arm64 testing` - Enables arm64 emulation
 2. `Test arm64 image` - Runs comprehensive validation
 
 **Job Dependencies:**
+
 - Runs in `build` job (after image push, before `test` job)
 - Blocks `test` job if arm64 validation fails
 - No dependency on native arm64 runners
 
 **GitHub Summary Output:**
+
 ```
 ### arm64 Validation ✅
 
@@ -186,6 +204,7 @@ docker rm -f pg-arm64
    - Most likely to fail on arm64 (Rust toolchain)
 
 **What We Don't Test:**
+
 - All 38 extensions (too slow on QEMU)
 - Performance benchmarks (QEMU overhead invalidates results)
 - Multi-container stacks (PgBouncer tested separately)
@@ -211,16 +230,19 @@ docker rm -f pg-arm64
 ## Future Enhancements
 
 **Native arm64 Runners:**
+
 - GitHub Actions adding arm64 runners (beta 2024)
 - Replace QEMU with native execution when available
 - Keep QEMU tests as fallback for cost optimization
 
 **Expanded Coverage:**
+
 - Test all compiled extensions if QEMU performance improves
 - Add integration tests (PgBouncer + Postgres on arm64)
 - Benchmark comparison (amd64 vs arm64 performance)
 
 **Automated Triage:**
+
 - Parse failure logs to detect common issues
 - Suggest fixes in PR comments (architecture flags, PGDG availability)
 - Link to relevant documentation sections

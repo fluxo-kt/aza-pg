@@ -12,6 +12,7 @@
 **Current Impact:** Bitcode directory used only for JIT debugging, not needed in production.
 
 **Implementation:**
+
 ```dockerfile
 # Add after final stage extension copies
 RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
@@ -30,6 +31,7 @@ RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
 **Current Impact:** Extensions compiled with `-g` flag retain debug symbols.
 
 **Implementation:**
+
 ```dockerfile
 # Add after final stage extension copies
 RUN find /usr/lib/postgresql/18/lib -name '*.so' -type f -exec strip {} \;
@@ -42,6 +44,7 @@ RUN find /usr/lib/postgresql/18/lib -name '*.so' -type f -exec strip {} \;
 **Trade-off:** Loses detailed stack traces in production
 
 **Before/After:**
+
 ```
 Before (pre-Phase 11): timescaledb_toolkit-1.22.0.so  186MB
 After (Phase 11):      timescaledb_toolkit-1.22.0.so  13MB (93% reduction achieved)
@@ -54,6 +57,7 @@ After (Phase 11):      timescaledb_toolkit-1.22.0.so  13MB (93% reduction achiev
 **Current Impact:** Static libraries (.a files) and build headers not needed at runtime.
 
 **Implementation:**
+
 ```dockerfile
 # Add after final stage
 RUN rm -f /usr/lib/postgresql/18/lib/*.a && \
@@ -94,6 +98,7 @@ Tag: aza-pg:18-search
 ```
 
 **User documentation:**
+
 ```yaml
 Image Variants:
   aza-pg:18-core
@@ -149,6 +154,7 @@ docker buildx build -f Dockerfile \
 ```
 
 **Implementation:**
+
 ```dockerfile
 ARG SKIP_TIMESCALEDB_TOOLKIT=false
 
@@ -170,6 +176,7 @@ RUN jq 'if $ENV.SKIP_TIMESCALEDB_TOOLKIT == "true" then
 **Current:** cargo-pgrx extensions compiled in debug mode with debug symbols.
 
 **Implementation:**
+
 ```dockerfile
 # For Rust extensions (builder-cargo stage)
 ENV RUSTFLAGS="-C opt-level=3 -C lto=thin"
@@ -183,6 +190,7 @@ cargo pgrx package \
 ```
 
 **Expected Savings:**
+
 ```
 timescaledb_toolkit:  186MB → 13MB (Phase 11 achieved 93% reduction, exceeding original estimate)
 pg_jsonschema:        4.4MB → 3.5MB
@@ -200,6 +208,7 @@ vectorscale:          1.6MB → 1.2MB
 **Current:** postgres:18-trixie (300-400MB uncompressed)
 
 **Alternative:** Alpine-based postgres (smaller, but fewer binaries)
+
 ```dockerfile
 FROM postgres:18-alpine AS final
 # Result: Base image ~150MB, total ~500MB image
@@ -253,6 +262,7 @@ FROM postgres:18-alpine AS final
 ## Metrics to Track
 
 **Current baselines:**
+
 ```
 Image size (uncompressed):  950MB total
 Extension binaries:         247MB
@@ -263,12 +273,12 @@ Pull time (100Mbps):        ~2-3 min
 
 **Post-optimization targets:**
 
-| Scenario | Uncompressed | Compressed | Pull Time | Action |
-|----------|-------------|-----------|-----------|--------|
-| Current  | 950MB       | 400-500MB | 2-3 min   | Baseline |
-| +Quick wins | 900MB     | 380-480MB | ~2 min    | Phase 1 |
-| +Core variant | 600MB   | 250-350MB | ~1 min    | Phase 2 |
-| +Analytics split | 650MB | 280-380MB | ~1 min  | Phase 3 |
+| Scenario         | Uncompressed | Compressed | Pull Time | Action   |
+| ---------------- | ------------ | ---------- | --------- | -------- |
+| Current          | 950MB        | 400-500MB  | 2-3 min   | Baseline |
+| +Quick wins      | 900MB        | 380-480MB  | ~2 min    | Phase 1  |
+| +Core variant    | 600MB        | 250-350MB  | ~1 min    | Phase 2  |
+| +Analytics split | 650MB        | 280-380MB  | ~1 min    | Phase 3  |
 
 ---
 
@@ -298,6 +308,7 @@ Option 3: Use variant per service
 ## Build Infrastructure Changes
 
 **Current build job:**
+
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t ghcr.io/artginzburg/aza-pg:18-pgdg-opt \
@@ -305,6 +316,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ```
 
 **Post-optimization (Phase 2+):**
+
 ```bash
 # Quick wins applied to main build
 docker buildx build --platform linux/amd64,linux/arm64 \
@@ -325,6 +337,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ```
 
 **CI/CD Update:**
+
 - Matrix build: 3-5 variants
 - Estimate: +5 min per variant, total ~40 min build time
 - Caching: Independent layer caches per variant
@@ -334,6 +347,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ## Expected Outcomes
 
 ### Size Reduction
+
 ```
 Baseline:          950MB → 900MB (quick wins, 5%)
 With variants:     600-650MB available (35% smaller)
@@ -341,12 +355,14 @@ With optimization: 140-160MB timescaledb_toolkit (40% reduction)
 ```
 
 ### User Experience
+
 - **aza-pg:18-core**: 35% faster pulls, essential workloads only
 - **aza-pg:18-pgdg-opt**: Unchanged, stays as universal option
 - **aza-pg:18-analytics**: 30% smaller than pgdg-opt, toolkit included
 - **aza-pg:18-search**: 40% smaller, search-optimized
 
 ### Deployment Benefits
+
 - Faster initial pulls in CI/CD pipelines
 - Less storage in registries/air-gapped environments
 - Clearer intention: "core", "analytics", "search"
@@ -356,15 +372,15 @@ With optimization: 140-160MB timescaledb_toolkit (40% reduction)
 
 ## Decision Matrix
 
-| Optimization | Effort | Savings | Risk | Recommend? |
-|---|---|---|---|---|
-| Remove bitcode | Easy | 36MB | None | ✅ YES (do first) |
-| Strip symbols | Easy | 15MB | Minor | ✅ YES |
-| Cleanup libs | Easy | 2MB | None | ✅ YES |
-| Core variant | Medium | 30% size | Low | ✅ YES (Phase 2) |
-| Analytics split | Medium | Per-variant | Low | ✅ YES (Phase 3) |
-| Rust optim | Medium | 50MB | Medium | ✅ EVALUATE |
-| Alpine base | High | 40% size | High | ⚠️ NOT YET |
+| Optimization    | Effort | Savings     | Risk   | Recommend?        |
+| --------------- | ------ | ----------- | ------ | ----------------- |
+| Remove bitcode  | Easy   | 36MB        | None   | ✅ YES (do first) |
+| Strip symbols   | Easy   | 15MB        | Minor  | ✅ YES            |
+| Cleanup libs    | Easy   | 2MB         | None   | ✅ YES            |
+| Core variant    | Medium | 30% size    | Low    | ✅ YES (Phase 2)  |
+| Analytics split | Medium | Per-variant | Low    | ✅ YES (Phase 3)  |
+| Rust optim      | Medium | 50MB        | Medium | ✅ EVALUATE       |
+| Alpine base     | High   | 40% size    | High   | ⚠️ NOT YET        |
 
 ---
 
@@ -374,4 +390,3 @@ With optimization: 140-160MB timescaledb_toolkit (40% reduction)
 2. **Short-term (2 weeks):** Create core variant, measure adoption
 3. **Medium-term (4 weeks):** Add specialized variants based on usage data
 4. **Long-term (2+ months):** Evaluate Rust optimization, Alpine base trade-offs
-

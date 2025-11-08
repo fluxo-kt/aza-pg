@@ -1,129 +1,33 @@
 #!/usr/bin/env bun
 
-import { writeFileSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
-import type { StackType, PostgreSQLSettings } from './types.js';
-import { BASE_CONFIG } from './base-config.js';
+import { writeFileSync, mkdirSync, readFileSync } from "fs";
+import { join } from "path";
+import type { StackType, PostgreSQLSettings } from "./types.js";
+import { BASE_CONFIG } from "./base-config.js";
+import { formatSetting } from "../utils/guc-formatter.js";
 
 const SHARED_CATEGORY_FIELDS = {
-  io: ['ioMethod', 'ioCombineLimit'] as const,
-  pg_stat_statements: ['pgStatStatementsMax', 'pgStatStatementsTrack'] as const,
+  io: ["ioMethod", "ioCombineLimit"] as const,
+  pg_stat_statements: ["pgStatStatementsMax", "pgStatStatementsTrack"] as const,
   autovacuum: [
-    'autovacuum',
-    'autovacuumNaptime',
-    'autovacuumVacuumCostDelay',
-    'autovacuumVacuumCostLimit',
-    'autovacuumVacuumScaleFactor',
-    'autovacuumAnalyzeScaleFactor',
-    'autovacuumFreezeMaxAge',
+    "autovacuum",
+    "autovacuumNaptime",
+    "autovacuumVacuumCostDelay",
+    "autovacuumVacuumCostLimit",
+    "autovacuumVacuumScaleFactor",
+    "autovacuumAnalyzeScaleFactor",
+    "autovacuumFreezeMaxAge",
   ] as const,
-  checkpoints: ['checkpointCompletionTarget'] as const,
+  checkpoints: ["checkpointCompletionTarget"] as const,
 };
 
-const REPO_ROOT = join(import.meta.dir, '../..');
+const REPO_ROOT = join(import.meta.dir, "../..");
 
 function mergeSettings(
   common: PostgreSQLSettings,
   stackOverrides: Partial<PostgreSQLSettings>
 ): PostgreSQLSettings {
   return { ...common, ...stackOverrides };
-}
-
-/**
- * Convert camelCase to snake_case using proper regex patterns
- * Handles consecutive capitals and acronyms correctly
- */
-function camelToSnakeCase(str: string): string {
-  return str
-    // Insert underscore between lowercase and uppercase: camelCase -> camel_Case
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    // Insert underscore between consecutive capitals and lowercase: XMLParser -> XML_Parser
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
-    // Convert to lowercase
-    .toLowerCase();
-}
-
-/**
- * Map of PostgreSQL-specific naming patterns that require dot notation
- * Key: snake_case prefix (e.g., "pg_stat_statements")
- * Value: PostgreSQL namespace (e.g., "pg_stat_statements")
- */
-const PG_EXTENSION_NAMESPACES: Record<string, string> = {
-  'pg_stat_statements': 'pg_stat_statements',
-  'auto_explain': 'auto_explain',
-  'pg_audit': 'pgaudit',  // Note: pgaudit uses lowercase namespace
-  'cron': 'cron',
-  'timescaledb': 'timescaledb',
-};
-
-/**
- * Convert a configuration key to proper PostgreSQL GUC (Grand Unified Configuration) format
- * Handles extension namespaces with dot notation (e.g., pg_stat_statements.max)
- */
-function toPostgresGUCName(camelCaseKey: string): string {
-  const snakeKey = camelToSnakeCase(camelCaseKey);
-
-  // Check if this key belongs to an extension namespace
-  for (const [prefix, namespace] of Object.entries(PG_EXTENSION_NAMESPACES)) {
-    if (snakeKey.startsWith(`${prefix}_`)) {
-      // Extract the setting name after the prefix
-      const settingName = snakeKey.slice(prefix.length + 1);
-      return `${namespace}.${settingName}`;
-    }
-  }
-
-  // Validate PostgreSQL GUC naming rules
-  // Must start with letter or underscore, contain only lowercase letters, digits, underscores, and dots
-  if (!snakeKey.match(/^[a-z_][a-z0-9_.]*$/)) {
-    throw new Error(
-      `Invalid PostgreSQL GUC name generated: "${snakeKey}" (from camelCase: "${camelCaseKey}"). ` +
-      `GUC names must start with a letter or underscore and contain only lowercase letters, digits, underscores, and dots.`
-    );
-  }
-
-  return snakeKey;
-}
-
-/**
- * Format a configuration value for PostgreSQL
- * Handles booleans (on/off), numbers, strings, and arrays
- */
-function formatValue(value: any): string {
-  if (typeof value === 'boolean') {
-    return value ? 'on' : 'off';
-  }
-
-  if (typeof value === 'number') {
-    return String(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `'${value.join(',')}'`;
-  }
-
-  // String values get quoted
-  return `'${value}'`;
-}
-
-/**
- * Format a single configuration setting as a PostgreSQL GUC line
- * Returns empty string for undefined values
- */
-function formatSetting(key: string, value: any): string {
-  if (value === undefined) return '';
-
-  // Special case: sharedPreloadLibraries has a custom comment in configs
-  // Handle it specially to maintain existing behavior
-  if (key === 'sharedPreloadLibraries') {
-    if (Array.isArray(value) && value.length === 0) {
-      // Empty array means runtime-controlled, don't emit
-      return '';
-    }
-    return `shared_preload_libraries = ${formatValue(value)}`;
-  }
-
-  const pgKey = toPostgresGUCName(key);
-  return `${pgKey} = ${formatValue(value)}`;
 }
 
 function generatePostgresqlConf(
@@ -133,51 +37,83 @@ function generatePostgresqlConf(
 ): string {
   const lines: string[] = [];
 
-  lines.push('# PostgreSQL Configuration');
+  lines.push("# PostgreSQL Configuration");
   lines.push(`# Stack: ${stack}`);
-  lines.push('# Generated by scripts/config-generator/generator.ts');
-  lines.push('#');
-  lines.push('# DO NOT EDIT MANUALLY - Changes will be overwritten');
-  lines.push('# Edit scripts/config-generator/base-config.ts and regenerate');
-  lines.push('');
-  lines.push('# Base Configuration');
+  lines.push("# Generated by scripts/config-generator/generator.ts");
+  lines.push("#");
+  lines.push("# DO NOT EDIT MANUALLY - Changes will be overwritten");
+  lines.push("# Edit scripts/config-generator/base-config.ts and regenerate");
+  lines.push("");
+  lines.push("# Base Configuration");
   lines.push("include = '/etc/postgresql/postgresql-base.conf'");
-  lines.push('');
+  lines.push("");
 
   const categories = {
-    connection: ['listenAddresses', 'port', 'sharedPreloadLibraries', 'idleSessionTimeout'],
+    connection: ["listenAddresses", "port", "sharedPreloadLibraries", "idleSessionTimeout"],
     io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
-      'logDestination', 'loggingCollector', 'logMinDurationStatement', 'logLinePrefix',
-      'logLockWaits', 'logTempFiles', 'logTimezone', 'logCheckpoints', 'logConnections',
-      'logDisconnections', 'logAutovacuumMinDuration', 'logReplicationCommands'
+      "logDestination",
+      "loggingCollector",
+      "logMinDurationStatement",
+      "logLinePrefix",
+      "logLockWaits",
+      "logTempFiles",
+      "logTimezone",
+      "logCheckpoints",
+      "logConnections",
+      "logDisconnections",
+      "logAutovacuumMinDuration",
+      "logReplicationCommands",
     ],
-    locale: ['timezone', 'lcMessages', 'lcMonetary', 'lcNumeric', 'lcTime', 'defaultTextSearchConfig'],
+    locale: [
+      "timezone",
+      "lcMessages",
+      "lcMonetary",
+      "lcNumeric",
+      "lcTime",
+      "defaultTextSearchConfig",
+    ],
     pg_stat_statements: [...SHARED_CATEGORY_FIELDS.pg_stat_statements],
     auto_explain: [
-      'autoExplainLogMinDuration', 'autoExplainLogAnalyze', 'autoExplainLogBuffers',
-      'autoExplainLogNestedStatements', 'autoExplainLogTiming'
+      "autoExplainLogMinDuration",
+      "autoExplainLogAnalyze",
+      "autoExplainLogBuffers",
+      "autoExplainLogNestedStatements",
+      "autoExplainLogTiming",
     ],
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
     checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
     wal: [
-      'walLevel', 'walCompression', 'maxWalSize', 'minWalSize',
-      'maxWalSenders', 'walKeepSize', 'archiveMode', 'archiveCommand'
+      "walLevel",
+      "walCompression",
+      "maxWalSize",
+      "minWalSize",
+      "maxWalSenders",
+      "walKeepSize",
+      "archiveMode",
+      "archiveCommand",
     ],
     replication: [
-      'synchronousCommit', 'synchronousStandbyNames', 'maxReplicationSlots',
-      'idleReplicationSlotTimeout', 'walSenderTimeout', 'hotStandby',
-      'maxStandbyArchiveDelay', 'maxStandbyStreamingDelay', 'hotStandbyFeedback',
-      'walReceiverStatusInterval', 'logReplicationCommands'
+      "synchronousCommit",
+      "synchronousStandbyNames",
+      "maxReplicationSlots",
+      "idleReplicationSlotTimeout",
+      "walSenderTimeout",
+      "hotStandby",
+      "maxStandbyArchiveDelay",
+      "maxStandbyStreamingDelay",
+      "hotStandbyFeedback",
+      "walReceiverStatusInterval",
+      "logReplicationCommands",
     ],
-    pg_cron: ['cronDatabaseName', 'cronLogRun', 'cronLogStatement'],
-    pgaudit: ['pgAuditLog', 'pgAuditLogStatementOnce', 'pgAuditLogLevel', 'pgAuditLogRelation'],
+    pg_cron: ["cronDatabaseName", "cronLogRun", "cronLogStatement"],
+    pgaudit: ["pgAuditLog", "pgAuditLogStatementOnce", "pgAuditLogLevel", "pgAuditLogRelation"],
   };
 
   const includeCategories: Record<StackType, string[]> = {
-    single: ['wal', 'pgaudit'],
-    primary: ['replication', 'wal', 'pg_cron', 'pgaudit'],
-    replica: ['replication', 'wal', 'pg_cron', 'pgaudit'],
+    single: ["wal", "pgaudit"],
+    primary: ["replication", "wal", "pg_cron", "pgaudit"],
+    replica: ["replication", "wal", "pg_cron", "pgaudit"],
   };
 
   for (const cat of includeCategories[stack]) {
@@ -199,69 +135,92 @@ function generatePostgresqlConf(
     }
 
     if (categoryLines.length > 0) {
-      lines.push(`# ${cat.replace(/_/g, ' ').toUpperCase()}`);
+      lines.push(`# ${cat.replace(/_/g, " ").toUpperCase()}`);
       lines.push(...categoryLines);
-      lines.push('');
+      lines.push("");
     }
   }
 
-  if (stack === 'replica' || stack === 'single') {
+  if (stack === "replica" || stack === "single") {
     if (overrides.autoExplainLogTiming !== undefined) {
-      lines.push('# AUTO EXPLAIN');
-      lines.push(formatSetting('autoExplainLogTiming', settings.autoExplainLogTiming));
-      lines.push('');
+      lines.push("# AUTO EXPLAIN");
+      lines.push(formatSetting("autoExplainLogTiming", settings.autoExplainLogTiming));
+      lines.push("");
     }
   }
 
-  if (stack === 'primary' && overrides.archiveMode !== undefined && settings.archiveMode === 'off') {
-    lines.push('# WAL Archiving (disabled by default)');
-    lines.push('# Uncomment and configure for Point-in-Time Recovery (PITR):');
+  if (
+    stack === "primary" &&
+    overrides.archiveMode !== undefined &&
+    settings.archiveMode === "off"
+  ) {
+    lines.push("# WAL Archiving (disabled by default)");
+    lines.push("# Uncomment and configure for Point-in-Time Recovery (PITR):");
     lines.push("# archive_mode = 'on'");
     lines.push("# archive_command = 'cp %p /backup/wal/%f'");
-    lines.push('');
+    lines.push("");
   }
 
-  lines.push('# Runtime auto-configuration');
-  lines.push('# The following settings are overridden at container startup:');
-  lines.push('# - Memory: shared_buffers, effective_cache_size, maintenance_work_mem, work_mem');
-  lines.push('# - Connections: max_connections, max_worker_processes, max_parallel_workers');
-  lines.push('# - Extensions: shared_preload_libraries (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)');
-  lines.push('# Auto-config is always enabled and cannot be disabled.');
+  lines.push("# Runtime auto-configuration");
+  lines.push("# The following settings are overridden at container startup:");
+  lines.push("# - Memory: shared_buffers, effective_cache_size, maintenance_work_mem, work_mem");
+  lines.push("# - Connections: max_connections, max_worker_processes, max_parallel_workers");
+  lines.push(
+    "# - Extensions: shared_preload_libraries (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)"
+  );
+  lines.push("# Auto-config is always enabled and cannot be disabled.");
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function generateBaseConf(settings: PostgreSQLSettings): string {
   const lines: string[] = [];
 
-  lines.push('# PostgreSQL 18 Base Configuration');
-  lines.push('# ============================================');
-  lines.push('# Shared settings across all aza-pg deployments (primary, replica, single).');
-  lines.push('# Generated by scripts/config-generator/generator.ts');
-  lines.push('#');
-  lines.push('# DO NOT EDIT MANUALLY - Changes will be overwritten');
-  lines.push('# Edit scripts/config-generator/base-config.ts and regenerate');
-  lines.push('');
+  lines.push("# PostgreSQL 18 Base Configuration");
+  lines.push("# ============================================");
+  lines.push("# Shared settings across all aza-pg deployments (primary, replica, single).");
+  lines.push("# Generated by scripts/config-generator/generator.ts");
+  lines.push("#");
+  lines.push("# DO NOT EDIT MANUALLY - Changes will be overwritten");
+  lines.push("# Edit scripts/config-generator/base-config.ts and regenerate");
+  lines.push("");
 
   const categories = {
-    connection: ['listenAddresses', 'sharedPreloadLibraries'],
+    connection: ["listenAddresses", "sharedPreloadLibraries"],
     io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
-      'logDestination', 'loggingCollector', 'logMinDurationStatement', 'logLinePrefix',
-      'logLockWaits', 'logTempFiles', 'logCheckpoints', 'logConnections',
-      'logDisconnections', 'logAutovacuumMinDuration'
+      "logDestination",
+      "loggingCollector",
+      "logMinDurationStatement",
+      "logLinePrefix",
+      "logLockWaits",
+      "logTempFiles",
+      "logCheckpoints",
+      "logConnections",
+      "logDisconnections",
+      "logAutovacuumMinDuration",
     ],
-    locale: ['timezone', 'logTimezone', 'lcMessages', 'lcMonetary', 'lcNumeric', 'lcTime', 'defaultTextSearchConfig'],
+    locale: [
+      "timezone",
+      "logTimezone",
+      "lcMessages",
+      "lcMonetary",
+      "lcNumeric",
+      "lcTime",
+      "defaultTextSearchConfig",
+    ],
     pg_stat_statements: [...SHARED_CATEGORY_FIELDS.pg_stat_statements],
     auto_explain: [
-      'autoExplainLogMinDuration', 'autoExplainLogAnalyze', 'autoExplainLogBuffers',
-      'autoExplainLogNestedStatements'
+      "autoExplainLogMinDuration",
+      "autoExplainLogAnalyze",
+      "autoExplainLogBuffers",
+      "autoExplainLogNestedStatements",
     ],
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
     checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
-    query_planner: ['randomPageCost', 'effectiveIoConcurrency'],
-    wal: ['walLevel', 'walCompression', 'maxWalSize', 'minWalSize'],
-    timescaledb: ['timescaledbTelemetryLevel'],
+    query_planner: ["randomPageCost", "effectiveIoConcurrency"],
+    wal: ["walLevel", "walCompression", "maxWalSize", "minWalSize"],
+    timescaledb: ["timescaledbTelemetryLevel"],
   };
 
   for (const [catName, categoryKeys] of Object.entries(categories)) {
@@ -278,44 +237,46 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
     }
 
     // Always emit the CONNECTION section, even if empty, to add the shared_preload_libraries comment
-    if (catName === 'connection') {
-      lines.push('# CONNECTION');
+    if (catName === "connection") {
+      lines.push("# CONNECTION");
       if (categoryLines.length > 0) {
         lines.push(...categoryLines);
       } else {
         // No settings to emit, but still add listen_addresses if present
         const listenValue = settings.listenAddresses;
         if (listenValue !== undefined) {
-          lines.push(formatSetting('listenAddresses', listenValue));
+          lines.push(formatSetting("listenAddresses", listenValue));
         }
       }
       // Add comment about sharedPreloadLibraries being runtime-controlled
-      lines.push('# NOTE: shared_preload_libraries is intentionally OMITTED.');
+      lines.push("# NOTE: shared_preload_libraries is intentionally OMITTED.");
       lines.push("# It's controlled at runtime by docker-auto-config-entrypoint.sh via -c flag.");
-      lines.push('# Command-line -c flags override config file settings, so we must not set it here.');
-      lines.push('');
+      lines.push(
+        "# Command-line -c flags override config file settings, so we must not set it here."
+      );
+      lines.push("");
     } else if (categoryLines.length > 0) {
-      lines.push(`# ${catName.replace(/_/g, ' ').toUpperCase()}`);
+      lines.push(`# ${catName.replace(/_/g, " ").toUpperCase()}`);
       lines.push(...categoryLines);
-      lines.push('');
+      lines.push("");
     }
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function generatePgHba(stack: StackType): string {
   const lines: string[] = [];
 
-  lines.push('# PostgreSQL Client Authentication Configuration');
+  lines.push("# PostgreSQL Client Authentication Configuration");
   lines.push(`# Stack: ${stack}`);
-  lines.push('# Generated by scripts/config-generator/generator.ts');
-  lines.push('#');
-  lines.push('# DO NOT EDIT MANUALLY - Changes will be overwritten');
-  lines.push('# Edit scripts/config-generator/base-config.ts and regenerate');
-  lines.push('');
-  lines.push('# TYPE  DATABASE        USER            ADDRESS                 METHOD');
-  lines.push('');
+  lines.push("# Generated by scripts/config-generator/generator.ts");
+  lines.push("#");
+  lines.push("# DO NOT EDIT MANUALLY - Changes will be overwritten");
+  lines.push("# Edit scripts/config-generator/base-config.ts and regenerate");
+  lines.push("");
+  lines.push("# TYPE  DATABASE        USER            ADDRESS                 METHOD");
+  lines.push("");
 
   for (const rule of BASE_CONFIG.pgHbaRules) {
     if (rule.stackSpecific && !rule.stackSpecific.includes(stack)) {
@@ -334,10 +295,10 @@ function generatePgHba(stack: StackType): string {
 
     parts.push(rule.method);
 
-    lines.push(parts.join('\t'));
+    lines.push(parts.join("\t"));
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
@@ -345,8 +306,8 @@ function generatePgHba(stack: StackType): string {
  * Only includes extensions with enabled=true AND runtime.defaultEnable=true
  */
 function generateExtensionsInitScript(): string {
-  const manifestPath = join(REPO_ROOT, 'docker/postgres/extensions.manifest.json');
-  const manifestJson = readFileSync(manifestPath, 'utf-8');
+  const manifestPath = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+  const manifestJson = readFileSync(manifestPath, "utf-8");
   const manifest = JSON.parse(manifestJson);
 
   // Filter for extensions to enable by default
@@ -359,56 +320,62 @@ function generateExtensionsInitScript(): string {
     // 1. Extension is enabled in manifest (not disabled)
     // 2. Extension has runtime.defaultEnable = true
     // 3. Extension is not a "tool" (tools don't support CREATE EXTENSION)
-    return enabled && defaultEnable && kind !== 'tool';
+    return enabled && defaultEnable && kind !== "tool";
   });
 
   const lines: string[] = [];
-  lines.push('-- PostgreSQL initialization: enable baseline extensions');
-  lines.push('-- Runs automatically on first cluster start.');
-  lines.push('-- Generated by scripts/config-generator/generator.ts from extensions.manifest.json');
-  lines.push('--');
-  lines.push('-- DO NOT EDIT MANUALLY - Changes will be overwritten');
-  lines.push('-- Edit docker/postgres/extensions.manifest.json and regenerate');
-  lines.push('');
+  lines.push("-- PostgreSQL initialization: enable baseline extensions");
+  lines.push("-- Runs automatically on first cluster start.");
+  lines.push("-- Generated by scripts/config-generator/generator.ts from extensions.manifest.json");
+  lines.push("--");
+  lines.push("-- DO NOT EDIT MANUALLY - Changes will be overwritten");
+  lines.push("-- Edit docker/postgres/extensions.manifest.json and regenerate");
+  lines.push("");
 
   if (extensionsToEnable.length > 0) {
-    lines.push('-- Core extensions pre-enabled by default.');
+    lines.push("-- Core extensions pre-enabled by default.");
     for (const entry of extensionsToEnable) {
       const displayName = entry.displayName || entry.name;
-      const category = entry.category || 'misc';
+      const category = entry.category || "misc";
       lines.push(`CREATE EXTENSION IF NOT EXISTS ${entry.name}; -- ${displayName} (${category})`);
     }
   } else {
-    lines.push('-- No extensions enabled by default.');
-    lines.push('-- All extensions are available but must be created manually via CREATE EXTENSION.');
+    lines.push("-- No extensions enabled by default.");
+    lines.push(
+      "-- All extensions are available but must be created manually via CREATE EXTENSION."
+    );
   }
 
-  lines.push('');
-  lines.push('DO $$');
-  lines.push('BEGIN');
+  lines.push("");
+  lines.push("DO $$");
+  lines.push("BEGIN");
 
-  const extensionNames = extensionsToEnable.map((e: any) => e.name).join(', ');
+  const extensionNames = extensionsToEnable.map((e: any) => e.name).join(", ");
   if (extensionNames) {
-    lines.push(`  RAISE NOTICE 'Baseline extensions enabled (${extensionNames}). Additional extensions are available but disabled by default.';`);
+    lines.push(
+      `  RAISE NOTICE 'Baseline extensions enabled (${extensionNames}). Additional extensions are available but disabled by default.';`
+    );
   } else {
-    lines.push(`  RAISE NOTICE 'No baseline extensions enabled. All extensions available but must be created manually.';`);
+    lines.push(
+      `  RAISE NOTICE 'No baseline extensions enabled. All extensions available but must be created manually.';`
+    );
   }
 
-  lines.push('END;');
-  lines.push('$$;');
-  lines.push('');
+  lines.push("END;");
+  lines.push("$$;");
+  lines.push("");
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function generateConfigs() {
-  console.log('🔧 Generating PostgreSQL configurations...\n');
+  console.log("🔧 Generating PostgreSQL configurations...\n");
 
   try {
     // Generate base config
-    console.log('📝 Generating base configuration...');
+    console.log("📝 Generating base configuration...");
     const baseConf = generateBaseConf(BASE_CONFIG.common);
-    const baseConfPath = join(REPO_ROOT, 'docker/postgres/configs/postgresql-base.conf');
+    const baseConfPath = join(REPO_ROOT, "docker/postgres/configs/postgresql-base.conf");
 
     try {
       writeFileSync(baseConfPath, baseConf);
@@ -419,7 +386,7 @@ function generateConfigs() {
     }
 
     // Generate stack-specific configs
-    const stacks: StackType[] = ['primary', 'replica', 'single'];
+    const stacks: StackType[] = ["primary", "replica", "single"];
 
     for (const stack of stacks) {
       console.log(`\n📝 Generating ${stack} stack configurations...`);
@@ -431,9 +398,9 @@ function generateConfigs() {
       let confDir: string;
       let confName: string;
 
-      if (stack === 'single') {
-        confDir = join(REPO_ROOT, 'stacks/single/configs');
-        confName = 'postgresql.conf';
+      if (stack === "single") {
+        confDir = join(REPO_ROOT, "stacks/single/configs");
+        confName = "postgresql.conf";
       } else {
         confDir = join(REPO_ROOT, `stacks/${stack}/configs`);
         confName = `postgresql-${stack}.conf`;
@@ -452,11 +419,13 @@ function generateConfigs() {
         console.log(`   ✓ ${postgresqlConfPath}`);
       } catch (err) {
         const error = err as Error;
-        throw new Error(`Failed to write ${stack} postgresql config to ${postgresqlConfPath}: ${error.message}`);
+        throw new Error(
+          `Failed to write ${stack} postgresql config to ${postgresqlConfPath}: ${error.message}`
+        );
       }
 
       const pgHbaConf = generatePgHba(stack);
-      const pgHbaPath = join(confDir, 'pg_hba.conf');
+      const pgHbaPath = join(confDir, "pg_hba.conf");
       try {
         writeFileSync(pgHbaPath, pgHbaConf);
         console.log(`   ✓ ${pgHbaPath}`);
@@ -467,15 +436,20 @@ function generateConfigs() {
     }
 
     // Generate 01-extensions.sql init script
-    console.log('\n📝 Generating extension init script...');
+    console.log("\n📝 Generating extension init script...");
     const extensionsInitScript = generateExtensionsInitScript();
-    const extensionsInitPath = join(REPO_ROOT, 'docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql');
+    const extensionsInitPath = join(
+      REPO_ROOT,
+      "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
+    );
     try {
       writeFileSync(extensionsInitPath, extensionsInitScript);
       console.log(`   ✓ ${extensionsInitPath}`);
     } catch (err) {
       const error = err as Error;
-      throw new Error(`Failed to write extensions init script to ${extensionsInitPath}: ${error.message}`);
+      throw new Error(
+        `Failed to write extensions init script to ${extensionsInitPath}: ${error.message}`
+      );
     }
   } catch (err) {
     const error = err as Error;
@@ -483,17 +457,17 @@ function generateConfigs() {
     process.exit(1);
   }
 
-  console.log('\n✅ Configuration generation complete!\n');
-  console.log('📋 Generated files:');
-  console.log('   - docker/postgres/configs/postgresql-base.conf');
-  console.log('   - stacks/primary/configs/postgresql-primary.conf');
-  console.log('   - stacks/primary/configs/pg_hba.conf');
-  console.log('   - stacks/replica/configs/postgresql-replica.conf');
-  console.log('   - stacks/replica/configs/pg_hba.conf');
-  console.log('   - stacks/single/configs/postgresql.conf');
-  console.log('   - stacks/single/configs/pg_hba.conf');
-  console.log('   - docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql');
-  console.log('');
+  console.log("\n✅ Configuration generation complete!\n");
+  console.log("📋 Generated files:");
+  console.log("   - docker/postgres/configs/postgresql-base.conf");
+  console.log("   - stacks/primary/configs/postgresql-primary.conf");
+  console.log("   - stacks/primary/configs/pg_hba.conf");
+  console.log("   - stacks/replica/configs/postgresql-replica.conf");
+  console.log("   - stacks/replica/configs/pg_hba.conf");
+  console.log("   - stacks/single/configs/postgresql.conf");
+  console.log("   - stacks/single/configs/pg_hba.conf");
+  console.log("   - docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql");
+  console.log("");
 }
 
 generateConfigs();

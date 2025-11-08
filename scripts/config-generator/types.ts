@@ -1,4 +1,4 @@
-export type StackType = 'primary' | 'replica' | 'single';
+export type StackType = "primary" | "replica" | "single";
 
 export interface PostgreSQLSettings {
   // Connection Settings
@@ -14,17 +14,17 @@ export interface PostgreSQLSettings {
 
   // Logging
   logDestination: string;
-  loggingCollector: 'on' | 'off';
+  loggingCollector: "on" | "off";
   logMinDurationStatement: number;
   logLinePrefix: string;
-  logLockWaits: 'on' | 'off';
+  logLockWaits: "on" | "off";
   logTempFiles: number;
   logTimezone: string;
-  logCheckpoints?: 'on' | 'off';
-  logConnections?: 'on' | 'off';
-  logDisconnections?: 'on' | 'off';
+  logCheckpoints?: "on" | "off";
+  logConnections?: "on" | "off";
+  logDisconnections?: "on" | "off";
   logAutovacuumMinDuration?: number;
-  logReplicationCommands?: 'on' | 'off';
+  logReplicationCommands?: "on" | "off";
 
   // Locale and Timezone
   timezone: string;
@@ -41,13 +41,13 @@ export interface PostgreSQLSettings {
 
   // auto_explain
   autoExplainLogMinDuration: string;
-  autoExplainLogAnalyze: 'on' | 'off';
-  autoExplainLogBuffers: 'on' | 'off';
-  autoExplainLogNestedStatements: 'on' | 'off';
-  autoExplainLogTiming?: 'on' | 'off';
+  autoExplainLogAnalyze: "on" | "off";
+  autoExplainLogBuffers: "on" | "off";
+  autoExplainLogNestedStatements: "on" | "off";
+  autoExplainLogTiming?: "on" | "off";
 
   // Autovacuum
-  autovacuum: 'on' | 'off';
+  autovacuum: "on" | "off";
   autovacuumNaptime: string;
   autovacuumVacuumCostDelay: string;
   autovacuumVacuumCostLimit: number;
@@ -63,45 +63,45 @@ export interface PostgreSQLSettings {
   effectiveIoConcurrency?: number;
 
   // WAL Settings
-  walLevel: 'minimal' | 'replica' | 'logical';
-  walCompression: 'off' | 'lz4' | 'pglz';
+  walLevel: "minimal" | "replica" | "logical";
+  walCompression: "off" | "lz4" | "pglz";
   maxWalSize?: string;
   minWalSize?: string;
   maxWalSenders?: number;
   walKeepSize?: string;
-  archiveMode?: 'on' | 'off';
+  archiveMode?: "on" | "off";
   archiveCommand?: string;
 
   // Replication
-  synchronousCommit?: 'on' | 'off' | 'remote_apply' | 'remote_write' | 'local';
+  synchronousCommit?: "on" | "off" | "remote_apply" | "remote_write" | "local";
   synchronousStandbyNames?: string;
   maxReplicationSlots?: number;
   idleReplicationSlotTimeout?: string;
   walSenderTimeout?: string;
-  hotStandby?: 'on' | 'off';
+  hotStandby?: "on" | "off";
   maxStandbyArchiveDelay?: string;
   maxStandbyStreamingDelay?: string;
-  hotStandbyFeedback?: 'on' | 'off';
+  hotStandbyFeedback?: "on" | "off";
   walReceiverStatusInterval?: string;
 
   // pg_cron
   cronDatabaseName?: string;
-  cronLogRun?: 'on' | 'off';
-  cronLogStatement?: 'on' | 'off';
+  cronLogRun?: "on" | "off";
+  cronLogStatement?: "on" | "off";
 
   // pgAudit
   pgAuditLog?: string;
-  pgAuditLogStatementOnce?: 'on' | 'off';
+  pgAuditLogStatementOnce?: "on" | "off";
   pgAuditLogLevel?: string;
-  pgAuditLogRelation?: 'on' | 'off';
+  pgAuditLogRelation?: "on" | "off";
 }
 
 export interface PgHbaRule {
-  type: 'local' | 'host' | 'hostssl' | 'hostnossl';
+  type: "local" | "host" | "hostssl" | "hostnossl";
   database: string;
   user: string;
   address?: string;
-  method: 'trust' | 'reject' | 'scram-sha-256' | 'md5' | 'peer';
+  method: "trust" | "reject" | "scram-sha-256" | "md5" | "peer";
   comment?: string;
   stackSpecific?: StackType[];
 }

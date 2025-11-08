@@ -231,16 +231,19 @@ docker compose exec pgbackrest pgbackrest stanza-create --stanza=main
 ## Storage Requirements
 
 **WAL Generation Rate:**
+
 - Light load: ~100MB/hour = 2.4GB/day
 - Medium load: ~1GB/hour = 24GB/day
 - Heavy load: ~10GB/hour = 240GB/day
 
 **Backup Sizes (with compression):**
+
 - Full: 40-60% of data directory size
 - Differential: 10-30% of full backup size
 - Incremental: 5-15% of full backup size
 
 **Retention Example (7 full + 4 diff):**
+
 - 100GB database
 - 7 full backups × 50GB = 350GB
 - 28 diff backups × 15GB = 420GB
@@ -259,16 +262,19 @@ docker compose exec pgbackrest pgbackrest stanza-create --stanza=main
 ## Performance Impact
 
 **archive_command:**
+
 - CPU: Negligible (async operation)
 - I/O: ~1-2% increase (WAL already written to disk)
 - Network: Depends on destination (local = none, S3 = bandwidth cost)
 
 **Backups:**
+
 - Full: High I/O during backup (use off-peak hours)
 - Incremental: Low I/O (only changed blocks)
 - Differential: Medium I/O (changes since last full)
 
 **Recommended Schedule:**
+
 - Full: Weekly (Sunday 2 AM)
 - Differential: Daily (2 AM)
 - Incremental: Every 6 hours

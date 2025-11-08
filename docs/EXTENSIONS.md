@@ -20,119 +20,119 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### ai
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `vector` (pgvector) | v0.8.1 | Yes | No | Vector similarity search with IVF/HNSW indexes and distance operators. |
-| `vectorscale` (pgvectorscale) | 0.9.0 | No | No | DiskANN-inspired ANN index and quantization for pgvector embeddings. |
+| Extension                     | Version | Enabled by Default | Shared Preload | Notes                                                                  |
+| ----------------------------- | ------- | ------------------ | -------------- | ---------------------------------------------------------------------- |
+| `vector` (pgvector)           | v0.8.1  | Yes                | No             | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| `vectorscale` (pgvectorscale) | 0.9.0   | No                 | No             | DiskANN-inspired ANN index and quantization for pgvector embeddings.   |
 
 ### analytics
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `hll` (postgresql-hll) | v2.19 | No | No | HyperLogLog probabilistic counting data type. |
+| Extension              | Version | Enabled by Default | Shared Preload | Notes                                         |
+| ---------------------- | ------- | ------------------ | -------------- | --------------------------------------------- |
+| `hll` (postgresql-hll) | v2.19   | No                 | No             | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `wal2json` | wal2json_2_6 | No | No | Logical decoding output plugin streaming JSON data for CDC. |
+| Extension  | Version      | Enabled by Default | Shared Preload | Notes                                                       |
+| ---------- | ------------ | ------------------ | -------------- | ----------------------------------------------------------- |
+| `wal2json` | wal2json_2_6 | No                 | No             | Logical decoding output plugin streaming JSON data for CDC. |
 
 ### gis
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pgrouting` | v3.8.0 | No | No | Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs. |
-| `postgis` | 3.6.0 | No | No | Spatial types, functions, raster, and topology for PostgreSQL. |
+| Extension   | Version | Enabled by Default | Shared Preload | Notes                                                             |
+| ----------- | ------- | ------------------ | -------------- | ----------------------------------------------------------------- |
+| `pgrouting` | v3.8.0  | No                 | No             | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
+| `postgis`   | 3.6.0   | No                 | No             | Spatial types, functions, raster, and topology for PostgreSQL.    |
 
 ### integration
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `http` (pgsql-http) | v1.7.0 | No | No | Synchronous HTTP client for PostgreSQL built on libcurl. |
-| `wrappers` (supabase-wrappers) | v0.5.6 | No | No | Rust FDW framework powering Supabase foreign wrappers. |
+| Extension                      | Version | Enabled by Default | Shared Preload | Notes                                                    |
+| ------------------------------ | ------- | ------------------ | -------------- | -------------------------------------------------------- |
+| `http` (pgsql-http)            | v1.7.0  | No                 | No             | Synchronous HTTP client for PostgreSQL built on libcurl. |
+| `wrappers` (supabase-wrappers) | v0.5.6  | No                 | No             | Rust FDW framework powering Supabase foreign wrappers.   |
 
 ### maintenance
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_partman` | v5.3.1 | No | Yes | Declarative partition maintenance with optional background worker. |
-| `pg_repack` | ver_1.5.3 | No | No | Online table/index reorganization without long locks. |
+| Extension    | Version   | Enabled by Default | Shared Preload | Notes                                                              |
+| ------------ | --------- | ------------------ | -------------- | ------------------------------------------------------------------ |
+| `pg_partman` | v5.3.1    | No                 | Yes            | Declarative partition maintenance with optional background worker. |
+| `pg_repack`  | ver_1.5.3 | No                 | No             | Online table/index reorganization without long locks.              |
 
 ### observability
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_stat_monitor` | 4ac02b24 | No | Yes | Enhanced query performance telemetry with bucketed metrics. |
-| `pgbadger` | v13.1 | No | No | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
+| Extension         | Version  | Enabled by Default | Shared Preload | Notes                                                           |
+| ----------------- | -------- | ------------------ | -------------- | --------------------------------------------------------------- |
+| `pg_stat_monitor` | 4ac02b24 | No                 | Yes            | Enhanced query performance telemetry with bucketed metrics.     |
+| `pgbadger`        | v13.1    | No                 | No             | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_cron` | v1.6.7 | Yes | Yes | Lightweight cron-based job runner inside PostgreSQL. |
-| `pgbackrest` | release/2.57.0 | No | No | Parallel, incremental backup and restore CLI. |
+| Extension    | Version        | Enabled by Default | Shared Preload | Notes                                                |
+| ------------ | -------------- | ------------------ | -------------- | ---------------------------------------------------- |
+| `pg_cron`    | v1.6.7         | Yes                | Yes            | Lightweight cron-based job runner inside PostgreSQL. |
+| `pgbackrest` | release/2.57.0 | No                 | No             | Parallel, incremental backup and restore CLI.        |
 
 ### performance
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `hypopg` | 1.4.2 | No | No | Simulate hypothetical indexes for planner what-if analysis. |
-| `index_advisor` | v0.2.0 | No | No | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
+| Extension       | Version | Enabled by Default | Shared Preload | Notes                                                               |
+| --------------- | ------- | ------------------ | -------------- | ------------------------------------------------------------------- |
+| `hypopg`        | 1.4.2   | No                 | No             | Simulate hypothetical indexes for planner what-if analysis.         |
+| `index_advisor` | v0.2.0  | No                 | No             | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
 
 ### quality
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `plpgsql_check` | v2.8.3 | No | No | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension       | Version | Enabled by Default | Shared Preload | Notes                                                |
+| --------------- | ------- | ------------------ | -------------- | ---------------------------------------------------- |
+| `plpgsql_check` | v2.8.3  | No                 | No             | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pgmq` | v1.7.0 | No | No | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY. |
+| Extension | Version | Enabled by Default | Shared Preload | Notes                                                            |
+| --------- | ------- | ------------------ | -------------- | ---------------------------------------------------------------- |
+| `pgmq`    | v1.7.0  | No                 | No             | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY. |
 
 ### safety
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_plan_filter` | 5081a7b5 | No | Yes | Block high-cost plans or disallowed operations using planner hooks. |
-| `pg_safeupdate` | 1.5 | No | No | Guards UPDATE/DELETE without WHERE clause or LIMIT. |
-| `supautils` | v3.0.2 | Yes | Yes | Shared superuser guards and hooks for managed Postgres environments. |
+| Extension        | Version  | Enabled by Default | Shared Preload | Notes                                                                |
+| ---------------- | -------- | ------------------ | -------------- | -------------------------------------------------------------------- |
+| `pg_plan_filter` | 5081a7b5 | No                 | Yes            | Block high-cost plans or disallowed operations using planner hooks.  |
+| `pg_safeupdate`  | 1.5      | No                 | No             | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
+| `supautils`      | v3.0.2   | Yes                | Yes            | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pgroonga` | 4.0.4 | No | No | Full-text search powered by Groonga for multilingual workloads. |
-| `rum` | 1.3.15 | No | No | RUM GiST access method for ranked full-text search. |
+| Extension  | Version | Enabled by Default | Shared Preload | Notes                                                           |
+| ---------- | ------- | ------------------ | -------------- | --------------------------------------------------------------- |
+| `pgroonga` | 4.0.4   | No                 | No             | Full-text search powered by Groonga for multilingual workloads. |
+| `rum`      | 1.3.15  | No                 | No             | RUM GiST access method for ranked full-text search.             |
 
 ### security
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pgaudit` | 18.0 | Yes | Yes | Detailed auditing for DDL/DML activity with class-level granularity. |
-| `pgsodium` | v3.1.9 | No | No | Modern cryptography and envelope encryption with libsodium. |
-| `set_user` (pgaudit_set_user) | REL4_2_0 | No | Yes | Audited SET ROLE helper complementing pgaudit. |
-| `supabase_vault` (vault) | v0.3.1 | No | No | Supabase secret store for encrypted application credentials. |
+| Extension                     | Version  | Enabled by Default | Shared Preload | Notes                                                                |
+| ----------------------------- | -------- | ------------------ | -------------- | -------------------------------------------------------------------- |
+| `pgaudit`                     | 18.0     | Yes                | Yes            | Detailed auditing for DDL/DML activity with class-level granularity. |
+| `pgsodium`                    | v3.1.9   | No                 | No             | Modern cryptography and envelope encryption with libsodium.          |
+| `set_user` (pgaudit_set_user) | REL4_2_0 | No                 | Yes            | Audited SET ROLE helper complementing pgaudit.                       |
+| `supabase_vault` (vault)      | v0.3.1   | No                 | No             | Supabase secret store for encrypted application credentials.         |
 
 ### timeseries
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `timescaledb` | 2.23.0 | Yes | Yes | Hypertables, compression, and continuous aggregates for time-series workloads. |
-| `timescaledb_toolkit` | 1.22.0 | No | No | Analytical hyperfunctions and sketches extending TimescaleDB. |
+| Extension             | Version | Enabled by Default | Shared Preload | Notes                                                                          |
+| --------------------- | ------- | ------------------ | -------------- | ------------------------------------------------------------------------------ |
+| `timescaledb`         | 2.23.0  | Yes                | Yes            | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| `timescaledb_toolkit` | 1.22.0  | No                 | No             | Analytical hyperfunctions and sketches extending TimescaleDB.                  |
 
 ### utilities
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_hashids` | v1.2.1 | No | No | Encode integers into short hashids for obfuscated identifiers. |
+| Extension    | Version | Enabled by Default | Shared Preload | Notes                                                          |
+| ------------ | ------- | ------------------ | -------------- | -------------------------------------------------------------- |
+| `pg_hashids` | v1.2.1  | No                 | No             | Encode integers into short hashids for obfuscated identifiers. |
 
 ### validation
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes |
-|-----------|---------|--------------------|----------------|-------|
-| `pg_jsonschema` | e7834142 | No | No | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| Extension       | Version  | Enabled by Default | Shared Preload | Notes                                                        |
+| --------------- | -------- | ------------------ | -------------- | ------------------------------------------------------------ |
+| `pg_jsonschema` | e7834142 | No                 | No             | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 <!-- extensions-table:end -->
 
@@ -168,6 +168,7 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
 1. **Edit the manifest:** Open `scripts/extensions/manifest-data.ts` and locate the extension entry.
 
 2. **Set enabled to false:** Add `enabled: false` and optionally provide a reason:
+
    ```typescript
    {
      name: "pgq",
@@ -180,6 +181,7 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
    ```
 
 3. **Regenerate artifacts:** Run the manifest generator to update derived files:
+
    ```bash
    bun scripts/extensions/generate-manifest.ts
    ```
@@ -239,6 +241,7 @@ Fix: Either enable "hypopg" or disable "index_advisor"
 ```
 
 Common dependency chains:
+
 - `index_advisor` → `hypopg`
 - `vectorscale` → `vector`
 - `supabase_vault` → `pgsodium`

@@ -31,11 +31,11 @@ The `aza-pg` image currently bundles **38 extensions** (6 builtin + 14 PGDG + 18
 
 ### Extension Inventory (38 Total)
 
-| Category | Count | Examples | Build Method |
-|----------|-------|----------|--------------|
-| **Builtin** | 6 | auto_explain, pg_stat_statements, pg_trgm, btree_gin, btree_gist, plpgsql | N/A (PostgreSQL core) |
-| **PGDG Pre-built** | 14 | pgvector, pg_cron, pgaudit, timescaledb, postgis, pg_partman, pg_repack, hll, http, hypopg, pgrouting, rum, set_user, plpgsql_check | APT package install (~10 sec) |
-| **Source-compiled** | 18 | timescaledb_toolkit, pg_jsonschema, pgroonga, vectorscale, wrappers, pgsodium, pgmq, pgq, index_advisor, pg_hashids, pg_stat_monitor, supautils, supabase_vault, pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, wal2json | Git clone + build (~12 min) |
+| Category            | Count | Examples                                                                                                                                                                                                                       | Build Method                  |
+| ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| **Builtin**         | 6     | auto_explain, pg_stat_statements, pg_trgm, btree_gin, btree_gist, plpgsql                                                                                                                                                      | N/A (PostgreSQL core)         |
+| **PGDG Pre-built**  | 14    | pgvector, pg_cron, pgaudit, timescaledb, postgis, pg_partman, pg_repack, hll, http, hypopg, pgrouting, rum, set_user, plpgsql_check                                                                                            | APT package install (~10 sec) |
+| **Source-compiled** | 18    | timescaledb_toolkit, pg_jsonschema, pgroonga, vectorscale, wrappers, pgsodium, pgmq, pgq, index_advisor, pg_hashids, pg_stat_monitor, supautils, supabase_vault, pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, wal2json | Git clone + build (~12 min)   |
 
 ### Default Runtime Enablement (7 Extensions)
 
@@ -56,8 +56,8 @@ CREATE EXTENSION IF NOT EXISTS supautils;            -- source-compiled
 ```typescript
 // scripts/extensions/manifest-data.ts
 export interface RuntimeSpec {
-  sharedPreload?: boolean;      // Requires shared_preload_libraries
-  defaultEnable?: boolean;      // Creates extension in 01-extensions.sql
+  sharedPreload?: boolean; // Requires shared_preload_libraries
+  defaultEnable?: boolean; // Creates extension in 01-extensions.sql
   notes?: string[];
 }
 
@@ -69,7 +69,7 @@ export interface ManifestEntry {
   description: string;
   source: SourceSpec;
   build?: BuildSpec;
-  runtime?: RuntimeSpec;        // Controls SQL enablement only
+  runtime?: RuntimeSpec; // Controls SQL enablement only
   dependencies?: string[];
   install_via?: "pgdg";
 }
@@ -89,6 +89,7 @@ done < <(jq -c '.entries[]' "$MANIFEST_PATH")
 ```
 
 **Gate 1: Builtin Check (line 232-235)**
+
 ```bash
 if [[ "$kind" == "builtin" ]]; then
   log "Skipping builtin extension $name"
@@ -97,6 +98,7 @@ fi
 ```
 
 **Gate 2: PGDG Check (line 237-242)**
+
 ```bash
 if [[ "$install_via" == "pgdg" ]]; then
   log "Skipping $name (installed via PGDG)"
@@ -137,12 +139,12 @@ export interface ManifestEntry {
   description: string;
 
   // NEW: Build-time control
-  enabled?: boolean;              // Default: true (build + bundle extension)
-  disabledReason?: string;        // Optional: Why disabled (for docs/logs)
+  enabled?: boolean; // Default: true (build + bundle extension)
+  disabledReason?: string; // Optional: Why disabled (for docs/logs)
 
   source: SourceSpec;
   build?: BuildSpec;
-  runtime?: RuntimeSpec;          // Separate: Controls SQL CREATE EXTENSION
+  runtime?: RuntimeSpec; // Separate: Controls SQL CREATE EXTENSION
   dependencies?: string[];
   install_via?: "pgdg";
 }
@@ -150,10 +152,10 @@ export interface ManifestEntry {
 
 **Semantic Difference:**
 
-| Field | Scope | Default | Effect |
-|-------|-------|---------|--------|
-| `enabled` | **Build-time** | `true` | Controls whether extension is compiled/bundled into image |
-| `runtime.defaultEnable` | **Runtime** | `false` | Controls whether `CREATE EXTENSION` runs in `01-extensions.sql` |
+| Field                   | Scope          | Default | Effect                                                          |
+| ----------------------- | -------------- | ------- | --------------------------------------------------------------- |
+| `enabled`               | **Build-time** | `true`  | Controls whether extension is compiled/bundled into image       |
+| `runtime.defaultEnable` | **Runtime**    | `false` | Controls whether `CREATE EXTENSION` runs in `01-extensions.sql` |
 
 **Example: Disabled Extension**
 
@@ -239,9 +241,7 @@ process_entry() {
 // scripts/extensions/validate-manifest.ts (add new function)
 function validateDependencies(entries: ManifestEntry[]): void {
   const enabledExtensions = new Set(
-    entries
-      .filter(e => e.enabled !== false)
-      .map(e => e.name)
+    entries.filter((e) => e.enabled !== false).map((e) => e.name)
   );
 
   const errors: string[] = [];
@@ -262,7 +262,7 @@ function validateDependencies(entries: ManifestEntry[]): void {
 
   if (errors.length > 0) {
     console.error("❌ Dependency validation failed:\n");
-    errors.forEach(err => console.error(`  - ${err}`));
+    errors.forEach((err) => console.error(`  - ${err}`));
     process.exit(1);
   }
 }
@@ -310,18 +310,18 @@ CREATE EXTENSION IF NOT EXISTS supautils;
 
 ```typescript
 // scripts/extensions/generate-init-sql.ts (NEW FILE)
-import { MANIFEST_ENTRIES } from './manifest-data.ts';
+import { MANIFEST_ENTRIES } from "./manifest-data.ts";
 
 const enabledExtensions = MANIFEST_ENTRIES.filter(
-  e => e.enabled !== false && e.runtime?.defaultEnable === true
+  (e) => e.enabled !== false && e.runtime?.defaultEnable === true
 );
 
 const sql = enabledExtensions
-  .map(e => `CREATE EXTENSION IF NOT EXISTS ${e.name};`)
-  .join('\n');
+  .map((e) => `CREATE EXTENSION IF NOT EXISTS ${e.name};`)
+  .join("\n");
 
 await Bun.write(
-  'docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql',
+  "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
   `-- Auto-generated from extensions.manifest.json\n-- DO NOT EDIT MANUALLY\n\n${sql}\n`
 );
 ```
@@ -342,6 +342,7 @@ bun scripts/extensions/generate-init-sql.ts  # Updates 01-extensions.sql
 **Risk:** Disabling `hypopg` breaks `index_advisor` at runtime (SQL `CREATE EXTENSION` fails).
 
 **Mitigation:**
+
 - Pre-build validation in `generate-manifest.ts`
 - Fail fast with clear error: `"index_advisor depends on hypopg, but hypopg is disabled"`
 - Document dependencies in `docs/EXTENSIONS.md`
@@ -351,6 +352,7 @@ bun scripts/extensions/generate-init-sql.ts  # Updates 01-extensions.sql
 **Risk:** `enabled: false` has NO EFFECT on PGDG extensions (Gate 2 skips before Gate 0).
 
 **Mitigation:**
+
 - Move Gate 0 (enabled check) **BEFORE** Gate 2 (PGDG check)
 - Also filter PGDG packages in Dockerfile APT install layer
 - Add Dockerfile logic: `jq -r '.entries[] | select(.enabled != false and .install_via == "pgdg") | .name'`
@@ -374,6 +376,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 **Risk:** Setting `enabled: false` on builtin extensions (pg_stat_statements, pg_trgm) has NO EFFECT (part of PostgreSQL core).
 
 **Mitigation:**
+
 - Validate in `validate-manifest.ts`: Error if builtin extension has `enabled: false`
 - Document: "Builtin extensions cannot be disabled (part of PostgreSQL binary)"
 
@@ -382,6 +385,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 **Risk:** Users set `runtime.sharedPreload: true` but `enabled: false`, expecting it to work.
 
 **Mitigation:**
+
 - Validate: If `runtime.sharedPreload: true`, then `enabled` MUST NOT be `false`
 - Error message: `"pg_cron requires sharedPreload but is disabled. Enable it or remove from shared_preload_libraries"`
 
@@ -390,6 +394,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 **Risk:** Developers update manifest but forget to regenerate `01-extensions.sql`, causing runtime failures.
 
 **Mitigation:**
+
 - CI check: Verify `01-extensions.sql` matches manifest (hash comparison)
 - Pre-commit hook: Auto-run `generate-init-sql.ts`
 - Documentation: Add step to `docs/development/EXTENSION-ENABLE-DISABLE.md`
@@ -400,11 +405,11 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 
 **Reality Check:**
 
-| Extension Type | Count | Image Size | Savings if Disabled |
-|----------------|-------|------------|---------------------|
-| Builtin | 6 | ~5MB (in PG core) | **0 MB** (cannot disable) |
-| PGDG | 14 | ~294MB layer | **~10-50MB** (shared lib overhead, minimal) |
-| Source-compiled | 18 | ~247MB binaries | **~10-200MB** (varies by extension) |
+| Extension Type  | Count | Image Size        | Savings if Disabled                         |
+| --------------- | ----- | ----------------- | ------------------------------------------- |
+| Builtin         | 6     | ~5MB (in PG core) | **0 MB** (cannot disable)                   |
+| PGDG            | 14    | ~294MB layer      | **~10-50MB** (shared lib overhead, minimal) |
+| Source-compiled | 18    | ~247MB binaries   | **~10-200MB** (varies by extension)         |
 
 **Example:** Disabling `timescaledb_toolkit` saves 13MB. Disabling `pg_cron` (PGDG) saves ~2MB.
 
@@ -413,6 +418,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 **Risk:** User sets `POSTGRES_SHARED_PRELOAD_LIBRARIES=pg_cron,pgaudit` but `pg_cron` disabled at build-time → PostgreSQL fails to start.
 
 **Mitigation:**
+
 - Entrypoint validation: Check if preloaded extension exists
 - Dockerfile: Generate list of available preload extensions
 - Startup script: Filter `POSTGRES_SHARED_PRELOAD_LIBRARIES` to only include available extensions
@@ -450,6 +456,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
    ```
 
 **Deliverables:**
+
 - Schema updated
 - Validation catches common errors
 - Backward compatible (all extensions enabled by default)
@@ -471,6 +478,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 
 2. **Update `docker/postgres/Dockerfile`:**
    - Replace hardcoded PGDG package list with jq filter
+
    ```dockerfile
    RUN export ENABLED_PGDG=$(jq -r '.entries[] | select(.enabled != false and .install_via == "pgdg") | "postgresql-${PG_MAJOR}-" + .name' /tmp/extensions.manifest.json | tr '\n' ' ') && \
        apt-get install -y --no-install-recommends $ENABLED_PGDG
@@ -488,6 +496,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
    ```
 
 **Deliverables:**
+
 - Build script respects `enabled` field
 - PGDG filtering works
 - Measurable size/time savings
@@ -503,11 +512,13 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 **Tasks:**
 
 1. **Create `scripts/extensions/generate-init-sql.ts`:**
+
    ```typescript
-   const sql = MANIFEST_ENTRIES
-     .filter(e => e.enabled !== false && e.runtime?.defaultEnable === true)
-     .map(e => `CREATE EXTENSION IF NOT EXISTS ${e.name};`)
-     .join('\n');
+   const sql = MANIFEST_ENTRIES.filter(
+     (e) => e.enabled !== false && e.runtime?.defaultEnable === true
+   )
+     .map((e) => `CREATE EXTENSION IF NOT EXISTS ${e.name};`)
+     .join("\n");
    ```
 
 2. **Update entrypoint script:**
@@ -530,6 +541,7 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
    - Verify `CREATE EXTENSION` for disabled extension fails with clear error
 
 **Deliverables:**
+
 - Automated SQL generation
 - Runtime safety checks
 - Complete documentation
@@ -546,23 +558,23 @@ RUN export PGDG_EXTENSIONS=$(jq -r '.entries[] | select(.enabled != false and .i
 
 ```typescript
 import { test, expect } from "bun:test";
-import { validateDependencies } from './validate-manifest.ts';
+import { validateDependencies } from "./validate-manifest.ts";
 
 test("should fail when dependency is disabled", () => {
   const entries = [
     { name: "hypopg", enabled: false, dependencies: [] },
-    { name: "index_advisor", enabled: true, dependencies: ["hypopg"] }
+    { name: "index_advisor", enabled: true, dependencies: ["hypopg"] },
   ];
 
   expect(() => validateDependencies(entries)).toThrow(
-    'index_advisor depends on hypopg, but hypopg is disabled'
+    "index_advisor depends on hypopg, but hypopg is disabled"
   );
 });
 
 test("should pass when all dependencies enabled", () => {
   const entries = [
     { name: "hypopg", enabled: true, dependencies: [] },
-    { name: "index_advisor", enabled: true, dependencies: ["hypopg"] }
+    { name: "index_advisor", enabled: true, dependencies: ["hypopg"] },
   ];
 
   expect(() => validateDependencies(entries)).not.toThrow();
@@ -570,11 +582,11 @@ test("should pass when all dependencies enabled", () => {
 
 test("should fail when builtin extension disabled", () => {
   const entries = [
-    { name: "pg_stat_statements", kind: "builtin", enabled: false }
+    { name: "pg_stat_statements", kind: "builtin", enabled: false },
   ];
 
   expect(() => validateBuiltinConstraints(entries)).toThrow(
-    'Builtin extension pg_stat_statements cannot be disabled'
+    "Builtin extension pg_stat_statements cannot be disabled"
   );
 });
 ```
@@ -675,11 +687,13 @@ time ./scripts/build.sh --load
 ### For Current Users (No Action Required)
 
 **Default Behavior (Backward Compatible):**
+
 - All 38 extensions remain `enabled: true` by default
 - Same 7 extensions enabled at runtime
 - No image size or behavior changes
 
 **Opt-In Customization:**
+
 1. Fork/clone `aza-pg` repository
 2. Edit `scripts/extensions/manifest-data.ts`
 3. Set `enabled: false` for unwanted extensions
@@ -718,6 +732,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
 ```
 
 **Expected Savings:**
+
 - Build time: 12 min → 7 min (-42%)
 - Image size: 1.14GB → 900MB (-21%)
 - Extensions: 38 → 28 (-10)
@@ -752,6 +767,7 @@ bun scripts/extensions/generate-manifest.ts
 ```
 
 **Expected Savings:**
+
 - Build time: 12 min → 10 min (-17%)
 - Image size: 1.14GB → 1.00GB (-12%)
 - Extensions: 38 → 32 (-6)
@@ -781,6 +797,7 @@ bun scripts/extensions/generate-manifest.ts
 ```
 
 **Expected Savings:**
+
 - Build time: 12 min → 2 min (-83%)
 - Image size: 1.14GB → 700MB (-39%)
 - Extensions: 38 → 7 (-31)

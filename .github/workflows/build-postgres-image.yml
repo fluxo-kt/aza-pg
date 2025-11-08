@@ -4,21 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       pg_version:
-        description: 'PostgreSQL version'
+        description: "PostgreSQL version"
         required: false
-        default: '18'
+        default: "18"
       pgvector_version:
-        description: 'pgvector version'
+        description: "pgvector version"
         required: false
-        default: '0.8.1'
+        default: "0.8.1"
       pg_cron_version:
-        description: 'pg_cron version'
+        description: "pg_cron version"
         required: false
-        default: '1.6.7'
+        default: "1.6.7"
       pgaudit_version:
-        description: 'pgAudit version'
+        description: "pgAudit version"
         required: false
-        default: '18.0'
+        default: "18.0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

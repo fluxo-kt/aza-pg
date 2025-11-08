@@ -10,15 +10,16 @@ The original `formatSetting()` function used sequential `.replace()` calls to co
 
 ```typescript
 // OLD: Brittle approach
-let snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-snakeKey = snakeKey.replace(/^pg_stat_statements_/, 'pg_stat_statements.');
-snakeKey = snakeKey.replace(/^auto_explain_/, 'auto_explain.');
-snakeKey = snakeKey.replace(/^pg_audit_/, 'pgaudit.');
-snakeKey = snakeKey.replace(/^cron_/, 'cron.');
-snakeKey = snakeKey.replace(/^timescaledb_/, 'timescaledb.');
+let snakeKey = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+snakeKey = snakeKey.replace(/^pg_stat_statements_/, "pg_stat_statements.");
+snakeKey = snakeKey.replace(/^auto_explain_/, "auto_explain.");
+snakeKey = snakeKey.replace(/^pg_audit_/, "pgaudit.");
+snakeKey = snakeKey.replace(/^cron_/, "cron.");
+snakeKey = snakeKey.replace(/^timescaledb_/, "timescaledb.");
 ```
 
 ### Issues:
+
 1. **Fragile**: Multiple chained replacements could interact unpredictably
 2. **No validation**: No guarantee output matches PostgreSQL GUC format
 3. **Hard to test**: Logic mixed with formatting
@@ -29,32 +30,35 @@ snakeKey = snakeKey.replace(/^timescaledb_/, 'timescaledb.');
 Refactored into four specialized, testable functions following Single Responsibility Principle:
 
 ### 1. `camelToSnakeCase(str: string): string`
+
 **Responsibility**: Convert camelCase to snake_case using proper regex patterns
 
 ```typescript
 function camelToSnakeCase(str: string): string {
   return str
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')  // camelCase -> camel_Case
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')  // XMLParser -> XML_Parser
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // camelCase -> camel_Case
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1_$2") // XMLParser -> XML_Parser
     .toLowerCase();
 }
 ```
 
 **Handles edge cases**:
+
 - Consecutive capitals: `XMLParser` → `xml_parser`
 - Acronyms: `IOMethod` → `io_method`
 - Numbers: `pgStatStatementsMax` → `pg_stat_statements_max`
 
 ### 2. `toPostgresGUCName(camelCaseKey: string): string`
+
 **Responsibility**: Convert to PostgreSQL GUC format with extension namespaces
 
 ```typescript
 const PG_EXTENSION_NAMESPACES: Record<string, string> = {
-  'pg_stat_statements': 'pg_stat_statements',
-  'auto_explain': 'auto_explain',
-  'pg_audit': 'pgaudit',  // Special case: lowercase namespace
-  'cron': 'cron',
-  'timescaledb': 'timescaledb',
+  pg_stat_statements: "pg_stat_statements",
+  auto_explain: "auto_explain",
+  pg_audit: "pgaudit", // Special case: lowercase namespace
+  cron: "cron",
+  timescaledb: "timescaledb",
 };
 
 function toPostgresGUCName(camelCaseKey: string): string {
@@ -78,32 +82,35 @@ function toPostgresGUCName(camelCaseKey: string): string {
 ```
 
 **Features**:
+
 - Mapping table for special cases (extensible)
 - Validation against PostgreSQL GUC naming rules
 - Clear error messages for invalid names
 
 ### 3. `formatValue(value: any): string`
+
 **Responsibility**: Format values according to PostgreSQL syntax
 
 ```typescript
 function formatValue(value: any): string {
-  if (typeof value === 'boolean') return value ? 'on' : 'off';
-  if (typeof value === 'number') return String(value);
-  if (Array.isArray(value)) return `'${value.join(',')}'`;
-  return `'${value}'`;  // String values get quoted
+  if (typeof value === "boolean") return value ? "on" : "off";
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return `'${value.join(",")}'`;
+  return `'${value}'`; // String values get quoted
 }
 ```
 
 ### 4. `formatSetting(key: string, value: any): string`
+
 **Responsibility**: Orchestrate formatting of complete setting line
 
 ```typescript
 function formatSetting(key: string, value: any): string {
-  if (value === undefined) return '';
+  if (value === undefined) return "";
 
   // Special case: runtime-controlled settings
-  if (key === 'sharedPreloadLibraries') {
-    if (Array.isArray(value) && value.length === 0) return '';
+  if (key === "sharedPreloadLibraries") {
+    if (Array.isArray(value) && value.length === 0) return "";
     return `shared_preload_libraries = ${formatValue(value)}`;
   }
 
@@ -115,21 +122,25 @@ function formatSetting(key: string, value: any): string {
 ## Benefits
 
 ### 1. Maintainability
+
 - Clear separation of concerns
 - Each function has single responsibility
 - Easy to understand and modify
 
 ### 2. Testability
+
 - Functions are pure (no side effects)
 - Easy to unit test in isolation
 - 24 test cases covering all scenarios
 
 ### 3. Robustness
+
 - Validation ensures correct GUC format
 - Throws errors for invalid names
 - Mapping table for special cases
 
 ### 4. Extensibility
+
 - Adding new extension namespace: Just add to `PG_EXTENSION_NAMESPACES`
 - Adding new value type: Just add case to `formatValue()`
 - Clear error messages guide debugging
@@ -137,7 +148,9 @@ function formatSetting(key: string, value: any): string {
 ## Testing
 
 ### Unit Tests (`test-formatter.ts`)
+
 24 test cases covering:
+
 - Basic camelCase conversions
 - Boolean/number/string/array formatting
 - Extension namespace handling (5 namespaces)
@@ -147,7 +160,9 @@ function formatSetting(key: string, value: any): string {
 All tests pass ✅
 
 ### Config Validation (`validate-configs.ts`)
+
 Validates generated configs:
+
 - GUC name format compliance
 - Extension namespace correctness
 - Required settings presence
@@ -156,7 +171,9 @@ Validates generated configs:
 All configs valid ✅
 
 ### Integration Test
+
 Generated configs are **identical** to previous output:
+
 - `docker/postgres/configs/postgresql-base.conf` - ✅ Identical
 - `stacks/primary/configs/postgresql-primary.conf` - ✅ Identical
 - `stacks/replica/configs/postgresql-replica.conf` - ✅ Identical
@@ -165,10 +182,13 @@ Generated configs are **identical** to previous output:
 ## Additional Improvements
 
 ### 1. Fixed Configuration Category
+
 Moved `logReplicationCommands` from `logging` to `replication` category so it appears in replica stack configs.
 
 ### 2. Enhanced pg_hba.conf Comments
+
 Generated pg_hba.conf now has more explicit comments:
+
 ```diff
 -# Private networks (restrict by user/database)
 +# Private network (Class A)
@@ -178,19 +198,23 @@ Generated pg_hba.conf now has more explicit comments:
 ```
 
 ### 3. Preserved Documentation
+
 Maintained `sharedPreloadLibraries` comment in base config explaining runtime control.
 
 ## Files Changed
 
 ### Modified
+
 - `scripts/config-generator/generator.ts` - Complete refactor of formatting functions
 
 ### Added
+
 - `scripts/config-generator/test-formatter.ts` - 24 unit tests
 - `scripts/config-generator/validate-configs.ts` - Config validation script
 - `docs/refactoring/config-generator-refactor-2025-11-07.md` - This document
 
 ### Generated (Validated Identical)
+
 - `docker/postgres/configs/postgresql-base.conf`
 - `stacks/primary/configs/postgresql-primary.conf`
 - `stacks/primary/configs/pg_hba.conf` (minor comment improvements)
@@ -208,25 +232,28 @@ Maintained `sharedPreloadLibraries` comment in base config explaining runtime co
 ## Usage
 
 ### Generate configs
+
 ```bash
 bun run scripts/config-generator/generator.ts
 ```
 
 ### Run tests
+
 ```bash
 bun run scripts/config-generator/test-formatter.ts
 bun run scripts/config-generator/validate-configs.ts
 ```
 
 ### Add new extension namespace
+
 ```typescript
 const PG_EXTENSION_NAMESPACES: Record<string, string> = {
-  'pg_stat_statements': 'pg_stat_statements',
-  'auto_explain': 'auto_explain',
-  'pg_audit': 'pgaudit',
-  'cron': 'cron',
-  'timescaledb': 'timescaledb',
-  'new_extension': 'new_extension',  // ← Add here
+  pg_stat_statements: "pg_stat_statements",
+  auto_explain: "auto_explain",
+  pg_audit: "pgaudit",
+  cron: "cron",
+  timescaledb: "timescaledb",
+  new_extension: "new_extension", // ← Add here
 };
 ```
 

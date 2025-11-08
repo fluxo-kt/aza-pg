@@ -3,7 +3,6 @@
   "$schema": "https://json.schemastore.org/tsconfig",
 
   "compilerOptions": {
-
     "target": "ES2024",
     "module": "Preserve",
     "moduleDetection": "force",

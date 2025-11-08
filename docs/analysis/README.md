@@ -5,7 +5,9 @@ Complete analysis of PostgreSQL extension footprint in the aza-pg Docker image.
 ## Documents in This Directory
 
 ### 1. **extension-size-analysis.md** (Main Report)
+
 Comprehensive breakdown of:
+
 - Image layer sizes from `docker history`
 - Extension storage breakdown by location
 - Top 20 extensions by size with installation method
@@ -20,7 +22,9 @@ Comprehensive breakdown of:
 ---
 
 ### 2. **extension-size-summary.txt** (Visual Summary)
+
 ASCII formatted reference guide with:
+
 - Image layer breakdown table
 - Final image extension footprint
 - Top 10 extensions ranked by size
@@ -37,7 +41,9 @@ ASCII formatted reference guide with:
 ---
 
 ### 3. **extension-inventory.csv** (Data)
+
 Raw data table of all extensions with columns:
+
 - Extension name
 - Binary size (.so)
 - Category
@@ -50,7 +56,9 @@ Raw data table of all extensions with columns:
 ---
 
 ### 4. **OPTIMIZATION-ROADMAP.md** (Action Plan)
+
 Phased implementation guide with:
+
 - Quick wins (bitcode removal, symbol stripping) — 1-2 hours
 - Medium-term options (image variants) — 8-12 hours
 - Long-term optimizations (Rust compilation, Alpine base) — 20+ hours
@@ -65,7 +73,9 @@ Phased implementation guide with:
 ---
 
 ### 5. **PIGSTY-EVALUATION.md** (Alternative Extension Repository)
+
 Comprehensive evaluation of PIGSTY as alternative extension source:
+
 - PostgreSQL 18 support status (beta in v3.5.0, GA planned for v4.0)
 - Security assessment (GPG signing, trust model, supply chain)
 - Compatibility matrix (38 aza-pg extensions vs PIGSTY availability)
@@ -102,13 +112,13 @@ Removable (no runtime impact):  37MB
 
 ### Largest Extensions
 
-| # | Name | Size | % | Type |
-|---|------|------|---|------|
-| 1 | timescaledb_toolkit | 13MB (from 186MB) | ~5% (from 58%) | Rust (optimized in Phase 11) |
-| 2 | pg_jsonschema | 4.4MB | 1.4% | Rust |
-| 3 | libpgrouting | 3.5MB | 1.1% | C |
-| 4 | pgroonga | 2.1MB | 0.7% | Rust/C |
-| 5 | vectorscale | 1.6MB | 0.5% | Rust |
+| #   | Name                | Size              | %              | Type                         |
+| --- | ------------------- | ----------------- | -------------- | ---------------------------- |
+| 1   | timescaledb_toolkit | 13MB (from 186MB) | ~5% (from 58%) | Rust (optimized in Phase 11) |
+| 2   | pg_jsonschema       | 4.4MB             | 1.4%           | Rust                         |
+| 3   | libpgrouting        | 3.5MB             | 1.1%           | C                            |
+| 4   | pgroonga            | 2.1MB             | 0.7%           | Rust/C                       |
+| 5   | vectorscale         | 1.6MB             | 0.5%           | Rust                         |
 
 **Key Insight:** One extension (timescaledb_toolkit) was 58% of size pre-optimization, now optimized to 13MB from 186MB in Phase 11
 
@@ -175,16 +185,19 @@ Total savings: 47-56MB (5-6% image reduction)
 **Problem:** Rust extension compiled with debug symbols, includes LLVM bitcode.
 
 **Comparison:**
+
 - TimescaleDB core (C): 719K
 - TimescaleDB Toolkit (Rust): 13MB (optimized from 186MB in Phase 11)
 - Ratio: **260x larger despite similar functionality**
 
 **Causes:**
+
 1. Rust binaries larger than C (language overhead)
 2. Debug symbols not stripped (`-g` flag retained)
 3. LLVM IR embedded in binary for JIT (36MB total across all extensions)
 
 **Solutions:**
+
 1. Strip symbols: ~50% reduction possible
 2. Remove bitcode: ~20% reduction
 3. Optimize Rust flags: ~10% reduction
@@ -197,6 +210,7 @@ Total savings: 47-56MB (5-6% image reduction)
 **Problem:** PGDG packages pull full system dependencies.
 
 **What's installed:**
+
 - GEOS + PROJ (PostGIS geometry: ~50MB)
 - libcurl + libjson-c (http, pg_jsonschema, pgroonga: ~20MB)
 - libfuzzy (pgroonga FTS)
@@ -206,6 +220,7 @@ Total savings: 47-56MB (5-6% image reduction)
 **Trade-off:** Versioning certainty (Debian-managed) vs image size
 
 **Solutions:**
+
 1. Slim PGDG base image (breaking change)
 2. Alpine instead of Debian (glibc vs musl issues)
 3. Accept as reasonable cost (current approach)
@@ -217,12 +232,14 @@ Total savings: 47-56MB (5-6% image reduction)
 **Problem:** PGDG repositories provide pre-built binaries.
 
 **Benefits:**
+
 - ✅ Certified, security-updated regularly
 - ✅ Tested with Debian ecosystem
 - ✅ Faster builds (no compilation)
 - ✅ Versioning clarity
 
 **Cost:**
+
 - ❌ Can't control build flags
 - ❌ Large binaries with debug symbols
 - ❌ Full package dependencies included
@@ -255,24 +272,25 @@ Total savings: 47-56MB (5-6% image reduction)
 
 ## Key Metrics
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Extensions (curated)** | 28 | PGDG + source-compiled |
-| **Extensions (total)** | 130+ | Includes PostgreSQL builtins |
-| **Extension binaries** | 247MB | 119 .so files |
-| **Extension configs** | 72MB | SQL/control files |
-| **Total extension content** | 319MB | 28 curated + builtins |
-| **Full image size** | 950MB | With base + dependencies |
-| **Compressed size** | 400-500MB | Registry compression (40-50%) |
-| **Largest extension (pre-Phase 11)** | 186MB → 13MB (Phase 11 optimized) | timescaledb_toolkit |
-| **Top 5 extensions** | 197MB | 62% of all binaries |
-| **Removable (safe)** | 37MB | Bitcode + archives |
+| Metric                               | Value                             | Notes                         |
+| ------------------------------------ | --------------------------------- | ----------------------------- |
+| **Extensions (curated)**             | 28                                | PGDG + source-compiled        |
+| **Extensions (total)**               | 130+                              | Includes PostgreSQL builtins  |
+| **Extension binaries**               | 247MB                             | 119 .so files                 |
+| **Extension configs**                | 72MB                              | SQL/control files             |
+| **Total extension content**          | 319MB                             | 28 curated + builtins         |
+| **Full image size**                  | 950MB                             | With base + dependencies      |
+| **Compressed size**                  | 400-500MB                         | Registry compression (40-50%) |
+| **Largest extension (pre-Phase 11)** | 186MB → 13MB (Phase 11 optimized) | timescaledb_toolkit           |
+| **Top 5 extensions**                 | 197MB                             | 62% of all binaries           |
+| **Removable (safe)**                 | 37MB                              | Bitcode + archives            |
 
 ---
 
 ## Upcoming Work
 
 ### Phase 1: Quick Wins
+
 - [ ] Remove bitcode: `RUN rm -rf /usr/lib/postgresql/18/lib/bitcode`
 - [ ] Strip symbols: `RUN find /usr/lib/postgresql/18/lib -name '*.so' -exec strip {} \;`
 - [ ] Cleanup libs: `RUN rm -f /usr/lib/postgresql/18/lib/*.a`
@@ -281,6 +299,7 @@ Total savings: 47-56MB (5-6% image reduction)
 - [ ] Merge to main
 
 ### Phase 2: Core Variant
+
 - [ ] Create `Dockerfile.core` (skip toolkit, pgroonga, pg_jsonschema)
 - [ ] Add CI/CD build job for `aza-pg:18-core`
 - [ ] Document variant selection guide
@@ -288,6 +307,7 @@ Total savings: 47-56MB (5-6% image reduction)
 - [ ] Publish variant to registry
 
 ### Phase 3: Specialized Variants
+
 - [ ] Create `Dockerfile.analytics` (toolkit included)
 - [ ] Create `Dockerfile.search` (pgroonga, vectorscale focused)
 - [ ] Create `Dockerfile.geospatial` (PostGIS focused)
@@ -308,6 +328,7 @@ Total savings: 47-56MB (5-6% image reduction)
 ## Contact & Questions
 
 For questions about extension sizes or optimization:
+
 1. Check analysis documents first
 2. Review OPTIMIZATION-ROADMAP.md for implementation details
 3. Examine extension-inventory.csv for specific extension data
@@ -317,4 +338,3 @@ For questions about extension sizes or optimization:
 **Last Updated:** 2025-11-05  
 **Image Analyzed:** aza-pg:pgdg-opt (PostgreSQL 18.0-1.pgdg13+3)  
 **Platform:** linux/amd64
-

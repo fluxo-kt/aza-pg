@@ -11,19 +11,23 @@ Comprehensive remediation of 14 verified findings from multiple AI agent audits 
 ## Findings Addressed
 
 ### Critical Fixes (Phases 1-2)
+
 1. **Extension Classifications** - Fixed 6 misclassified extensions in manifest
 2. **Configuration Conflicts** - Resolved shared_preload_libraries duplication
 
 ### Documentation Accuracy (Phases 3-5)
+
 3. **Memory Calculations** - Corrected work_mem and shared_buffers documentation
 4. **Preloaded Extensions** - Updated count from 4 to actual 7 extensions
 5. **Init Script Claims** - Fixed misleading "ALL extensions" statement
 
 ### Build & CI Improvements (Phases 6-7)
+
 6. **CI Cleanup** - Removed 3 unused build arguments
 7. **Bitcode Removal** - Verified cleanup present in Dockerfile
 
 ### Documentation Enhancements (Phases 8-11)
+
 8. **Build Script Context** - Documented hardcoded version fixes
 9. **Testing Strategy** - Created comprehensive testing roadmap
 10. **Requirements** - Added minimum Docker Compose version
@@ -32,44 +36,49 @@ Comprehensive remediation of 14 verified findings from multiple AI agent audits 
 ## Impact
 
 **Technical Correctness:**
+
 - Extension manifest now accurately reflects PostgreSQL behavior
 - Configuration files simplified with single source of truth
 - Documentation matches actual implementation
 
 **Operational Clarity:**
+
 - Clear guidance on customization (POSTGRES_SHARED_PRELOAD_LIBRARIES)
 - Security best practices documented
 - Testing roadmap established
 
 **Maintenance:**
+
 - Reduced confusion with accurate classifications
 - Documented workarounds for future developers
 - Cleaner CI configuration
 
 ## Commits
 
-| Phase | Commit | Description |
-|-------|--------|-------------|
-| 1 | 80026dd | Extension classification fixes |
-| 2 | 1e86d2e | Configuration conflict resolution |
-| 3 | 94aa612 | Memory documentation fixes |
-| 4 | 346268d | Preloaded extensions documentation |
-| 5 | 2d80733 | AGENTS.md accuracy updates |
-| 6 | b374ccf | CI cleanup |
-| 8 | 41346dc | Build script documentation |
-| 9 | db04297 | Testing strategy |
-| 10 | 0119868 | Docker Compose version requirement |
-| 11 | 7c3bcc6 | Network security guidance |
+| Phase | Commit  | Description                        |
+| ----- | ------- | ---------------------------------- |
+| 1     | 80026dd | Extension classification fixes     |
+| 2     | 1e86d2e | Configuration conflict resolution  |
+| 3     | 94aa612 | Memory documentation fixes         |
+| 4     | 346268d | Preloaded extensions documentation |
+| 5     | 2d80733 | AGENTS.md accuracy updates         |
+| 6     | b374ccf | CI cleanup                         |
+| 8     | 41346dc | Build script documentation         |
+| 9     | db04297 | Testing strategy                   |
+| 10    | 0119868 | Docker Compose version requirement |
+| 11    | 7c3bcc6 | Network security guidance          |
 
 ## Files Modified
 
 **Configuration:**
+
 - `scripts/config-generator/base-config.ts`
 - `docker/postgres/configs/postgresql-base.conf`
 - `scripts/extensions/manifest-data.ts`
 - `docker/postgres/extensions.manifest.json`
 
 **Documentation:**
+
 - `AGENTS.md`
 - `README.md`
 - `docs/PRODUCTION.md`
@@ -77,10 +86,12 @@ Comprehensive remediation of 14 verified findings from multiple AI agent audits 
 - `REMEDIATION_SUMMARY.md` (this file)
 
 **CI/Build:**
+
 - `.github/workflows/build-postgres-image.yml`
 - `docker/postgres/build-extensions.sh`
 
 **Tracking:**
+
 - `TODO_PROGRESS.md`
 - `CHANGELOG.md`
 - `VERIFICATION_REPORT.md`
@@ -88,6 +99,7 @@ Comprehensive remediation of 14 verified findings from multiple AI agent audits 
 ## Verification
 
 All changes verified through:
+
 - Code inspection against actual implementation
 - Formula verification against entrypoint script
 - Extension behavior testing via manifest

@@ -17,7 +17,8 @@
 
 import { $ } from "bun";
 
-const CONTAINER = Bun.argv.find(arg => arg.startsWith('--container='))?.split('=')[1] || 'pgq-research';
+const CONTAINER =
+  Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
 
 interface TestResult {
   name: string;
@@ -35,13 +36,13 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
-      success: result.exitCode === 0
+      success: result.exitCode === 0,
     };
   } catch (error) {
     return {
-      stdout: '',
+      stdout: "",
       stderr: String(error),
-      success: false
+      success: false,
     };
   }
 }
@@ -70,16 +71,28 @@ function assert(condition: boolean, message: string): void {
 // Test 1: Schema Verification
 await test("Schema verification", async () => {
   // Verify schema exists
-  const schema = await runSQL("SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'");
-  assert(schema.success && schema.stdout === '1', "pgflow schema not found");
+  const schema = await runSQL(
+    "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'"
+  );
+  assert(schema.success && schema.stdout === "1", "pgflow schema not found");
 
   // Verify core tables exist
-  const tables = await runSQL("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow' AND table_name IN ('flows', 'runs', 'steps', 'deps', 'step_states', 'step_tasks', 'workers')");
-  assert(tables.success && parseInt(tables.stdout) === 7, `Expected 7 tables, found ${tables.stdout}`);
+  const tables = await runSQL(
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow' AND table_name IN ('flows', 'runs', 'steps', 'deps', 'step_states', 'step_tasks', 'workers')"
+  );
+  assert(
+    tables.success && parseInt(tables.stdout) === 7,
+    `Expected 7 tables, found ${tables.stdout}`
+  );
 
   // Verify functions exist
-  const functions = await runSQL("SELECT count(*) FROM information_schema.routines WHERE routine_schema = 'pgflow'");
-  assert(functions.success && parseInt(functions.stdout) >= 13, `Expected at least 13 functions, found ${functions.stdout}`);
+  const functions = await runSQL(
+    "SELECT count(*) FROM information_schema.routines WHERE routine_schema = 'pgflow'"
+  );
+  assert(
+    functions.success && parseInt(functions.stdout) >= 13,
+    `Expected at least 13 functions, found ${functions.stdout}`
+  );
 });
 
 // Test 2: Flow Creation
@@ -97,14 +110,14 @@ await test("Flow creation", async () => {
 
   // Verify flow exists in flows table
   const flowCheck = await runSQL("SELECT count(*) FROM pgflow.flows WHERE name = 'test_workflow'");
-  assert(flowCheck.success && flowCheck.stdout === '1', "Flow not found in flows table");
+  assert(flowCheck.success && flowCheck.stdout === "1", "Flow not found in flows table");
 });
 
 // Test 3: Step Definition with Dependencies
 await test("Step definition with dependencies", async () => {
   // Get flow_id
   const flowId = await runSQL("SELECT id FROM pgflow.flows WHERE name = 'test_workflow'");
-  assert(flowId.success && flowId.stdout, "Failed to get flow_id");
+  assert(flowId.success && Boolean(flowId.stdout), "Failed to get flow_id");
 
   const fid = parseInt(flowId.stdout);
 
@@ -166,10 +179,16 @@ await test("Step definition with dependencies", async () => {
 
   // Verify steps and dependencies
   const stepCount = await runSQL(`SELECT count(*) FROM pgflow.steps WHERE flow_id = ${fid}`);
-  assert(stepCount.success && stepCount.stdout === '4', `Expected 4 steps, found ${stepCount.stdout}`);
+  assert(
+    stepCount.success && stepCount.stdout === "4",
+    `Expected 4 steps, found ${stepCount.stdout}`
+  );
 
   const depCount = await runSQL(`SELECT count(*) FROM pgflow.deps WHERE flow_id = ${fid}`);
-  assert(depCount.success && depCount.stdout === '3', `Expected 3 dependencies, found ${depCount.stdout}`);
+  assert(
+    depCount.success && depCount.stdout === "3",
+    `Expected 3 dependencies, found ${depCount.stdout}`
+  );
 });
 
 // Test 4: Flow Execution - Start Flow
@@ -189,24 +208,34 @@ await test("Flow execution - start flow", async () => {
 
   // Verify run exists
   const runCheck = await runSQL(`SELECT count(*) FROM pgflow.runs WHERE id = ${run.stdout}`);
-  assert(runCheck.success && runCheck.stdout === '1', "Run not found in runs table");
+  assert(runCheck.success && runCheck.stdout === "1", "Run not found in runs table");
 
   // Verify initial step_states created
-  const statesCount = await runSQL(`SELECT count(*) FROM pgflow.step_states WHERE run_id = ${run.stdout}`);
-  assert(statesCount.success && parseInt(statesCount.stdout) === 4, `Expected 4 step_states, found ${statesCount.stdout}`);
+  const statesCount = await runSQL(
+    `SELECT count(*) FROM pgflow.step_states WHERE run_id = ${run.stdout}`
+  );
+  assert(
+    statesCount.success && parseInt(statesCount.stdout) === 4,
+    `Expected 4 step_states, found ${statesCount.stdout}`
+  );
 
   // Verify first step is ready (no dependencies)
   const readySteps = await runSQL(`
     SELECT count(*) FROM pgflow.step_states
     WHERE run_id = ${run.stdout} AND state = 'ready'
   `);
-  assert(readySteps.success && readySteps.stdout === '1', `Expected 1 ready step, found ${readySteps.stdout}`);
+  assert(
+    readySteps.success && readySteps.stdout === "1",
+    `Expected 1 ready step, found ${readySteps.stdout}`
+  );
 });
 
 // Test 5: Task Polling and Execution
 await test("Task polling and execution", async () => {
   // Get run_id
-  const runId = await runSQL("SELECT id FROM pgflow.runs WHERE flow_id = (SELECT id FROM pgflow.flows WHERE name = 'test_workflow') ORDER BY id DESC LIMIT 1");
+  const runId = await runSQL(
+    "SELECT id FROM pgflow.runs WHERE flow_id = (SELECT id FROM pgflow.flows WHERE name = 'test_workflow') ORDER BY id DESC LIMIT 1"
+  );
   const rid = parseInt(runId.stdout);
 
   // Start ready steps (moves ready -> running, creates tasks)
@@ -223,14 +252,14 @@ await test("Task polling and execution", async () => {
   assert(task.success, "Task polling failed");
 
   // Parse task result (format: task_id|step_name|config|...)
-  const taskData = task.stdout.split('|');
+  const taskData = task.stdout.split("|");
   assert(taskData.length >= 3, `Invalid task data format: ${task.stdout}`);
 
   const taskId = parseInt(taskData[0]);
   const stepName = taskData[1];
 
   assert(taskId > 0, "Invalid task_id");
-  assert(stepName === 'extract_data', `Expected 'extract_data', got '${stepName}'`);
+  assert(stepName === "extract_data", `Expected 'extract_data', got '${stepName}'`);
 
   // Complete task with output data
   const complete = await runSQL(`
@@ -246,13 +275,18 @@ await test("Task polling and execution", async () => {
     SELECT state FROM pgflow.step_states
     WHERE run_id = ${rid} AND step_name = 'extract_data'
   `);
-  assert(stepState.success && stepState.stdout === 'completed', `Expected 'completed', got '${stepState.stdout}'`);
+  assert(
+    stepState.success && stepState.stdout === "completed",
+    `Expected 'completed', got '${stepState.stdout}'`
+  );
 });
 
 // Test 6: Dependency Chain Execution
 await test("Dependency chain execution", async () => {
   // Get run_id
-  const runId = await runSQL("SELECT id FROM pgflow.runs WHERE flow_id = (SELECT id FROM pgflow.flows WHERE name = 'test_workflow') ORDER BY id DESC LIMIT 1");
+  const runId = await runSQL(
+    "SELECT id FROM pgflow.runs WHERE flow_id = (SELECT id FROM pgflow.flows WHERE name = 'test_workflow') ORDER BY id DESC LIMIT 1"
+  );
   const rid = parseInt(runId.stdout);
 
   // Start next ready steps (transform_data should be ready now)
@@ -261,23 +295,27 @@ await test("Dependency chain execution", async () => {
   // Poll and complete transform_data
   let task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['transform_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split('|')[0]);
-    await runSQL(`SELECT pgflow.complete_task(${taskId}, '{"output": {"records_transformed": 100}}')`);
+    const taskId = parseInt(task.stdout.split("|")[0]);
+    await runSQL(
+      `SELECT pgflow.complete_task(${taskId}, '{"output": {"records_transformed": 100}}')`
+    );
   }
 
   // Start and complete validate_data
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
   task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['validate_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split('|')[0]);
-    await runSQL(`SELECT pgflow.complete_task(${taskId}, '{"output": {"validation_passed": true}}')`);
+    const taskId = parseInt(task.stdout.split("|")[0]);
+    await runSQL(
+      `SELECT pgflow.complete_task(${taskId}, '{"output": {"validation_passed": true}}')`
+    );
   }
 
   // Start and complete load_data
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
   task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['load_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split('|')[0]);
+    const taskId = parseInt(task.stdout.split("|")[0]);
     await runSQL(`SELECT pgflow.complete_task(${taskId}, '{"output": {"records_loaded": 100}}')`);
   }
 
@@ -286,21 +324,31 @@ await test("Dependency chain execution", async () => {
     SELECT count(*) FROM pgflow.step_states
     WHERE run_id = ${rid} AND state = 'completed'
   `);
-  assert(completedSteps.success && completedSteps.stdout === '4', `Expected 4 completed steps, found ${completedSteps.stdout}`);
+  assert(
+    completedSteps.success && completedSteps.stdout === "4",
+    `Expected 4 completed steps, found ${completedSteps.stdout}`
+  );
 
   // Verify run completed
   const runState = await runSQL(`SELECT state FROM pgflow.runs WHERE id = ${rid}`);
-  assert(runState.success && runState.stdout === 'completed', `Expected run state 'completed', got '${runState.stdout}'`);
+  assert(
+    runState.success && runState.stdout === "completed",
+    `Expected run state 'completed', got '${runState.stdout}'`
+  );
 });
 
 // Test 7: Error Handling and Task Failure
 await test("Error handling and task failure", async () => {
   // Create new flow for failure testing
-  const flowId = await runSQL(`SELECT pgflow.create_flow('test_failure', '{}', 1, '5 seconds'::interval)`);
+  const flowId = await runSQL(
+    `SELECT pgflow.create_flow('test_failure', '{}', 1, '5 seconds'::interval)`
+  );
   const fid = parseInt(flowId.stdout);
 
   // Add single step
-  const stepId = await runSQL(`SELECT pgflow.add_step(${fid}, 'failing_step', '{"will_fail": true}', NULL, 1, '5 seconds'::interval)`);
+  const stepId = await runSQL(
+    `SELECT pgflow.add_step(${fid}, 'failing_step', '{"will_fail": true}', NULL, 1, '5 seconds'::interval)`
+  );
   assert(stepId.success, "Step creation for failure test failed");
 
   // Start flow
@@ -311,10 +359,12 @@ await test("Error handling and task failure", async () => {
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
 
   // Poll for task
-  const task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_failure', ARRAY['failing_step'])`);
-  assert(task.stdout, "No task available for failure test");
+  const task = await runSQL(
+    `SELECT pgflow.poll_for_tasks('test_worker_failure', ARRAY['failing_step'])`
+  );
+  assert(Boolean(task.stdout), "No task available for failure test");
 
-  const taskId = parseInt(task.stdout.split('|')[0]);
+  const taskId = parseInt(task.stdout.split("|")[0]);
 
   // Fail task
   const fail = await runSQL(`
@@ -327,23 +377,37 @@ await test("Error handling and task failure", async () => {
 
   // Verify step state is failed
   const stepState = await runSQL(`SELECT state FROM pgflow.step_states WHERE run_id = ${rid}`);
-  assert(stepState.success && stepState.stdout === 'failed', `Expected 'failed', got '${stepState.stdout}'`);
+  assert(
+    stepState.success && stepState.stdout === "failed",
+    `Expected 'failed', got '${stepState.stdout}'`
+  );
 
   // Verify run state is failed
   const runState = await runSQL(`SELECT state FROM pgflow.runs WHERE id = ${rid}`);
-  assert(runState.success && runState.stdout === 'failed', `Expected run state 'failed', got '${runState.stdout}'`);
+  assert(
+    runState.success && runState.stdout === "failed",
+    `Expected run state 'failed', got '${runState.stdout}'`
+  );
 });
 
 // Test 8: Concurrent Workflow Execution
 await test("Concurrent workflow execution", async () => {
   // Create flow for concurrency test
-  const flowId = await runSQL(`SELECT pgflow.create_flow('test_concurrent', '{}', 3, '5 seconds'::interval)`);
+  const flowId = await runSQL(
+    `SELECT pgflow.create_flow('test_concurrent', '{}', 3, '5 seconds'::interval)`
+  );
   const fid = parseInt(flowId.stdout);
 
   // Add parallel steps (no dependencies - can run concurrently)
-  const step1 = await runSQL(`SELECT pgflow.add_step(${fid}, 'parallel_1', '{}', NULL, 3, '5 seconds'::interval)`);
-  const step2 = await runSQL(`SELECT pgflow.add_step(${fid}, 'parallel_2', '{}', NULL, 3, '5 seconds'::interval)`);
-  const step3 = await runSQL(`SELECT pgflow.add_step(${fid}, 'parallel_3', '{}', NULL, 3, '5 seconds'::interval)`);
+  const step1 = await runSQL(
+    `SELECT pgflow.add_step(${fid}, 'parallel_1', '{}', NULL, 3, '5 seconds'::interval)`
+  );
+  const step2 = await runSQL(
+    `SELECT pgflow.add_step(${fid}, 'parallel_2', '{}', NULL, 3, '5 seconds'::interval)`
+  );
+  const step3 = await runSQL(
+    `SELECT pgflow.add_step(${fid}, 'parallel_3', '{}', NULL, 3, '5 seconds'::interval)`
+  );
 
   assert(step1.success && step2.success && step3.success, "Parallel steps creation failed");
 
@@ -355,26 +419,43 @@ await test("Concurrent workflow execution", async () => {
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
 
   // Verify 3 steps are running
-  const runningSteps = await runSQL(`SELECT count(*) FROM pgflow.step_states WHERE run_id = ${rid} AND state = 'running'`);
-  assert(runningSteps.success && runningSteps.stdout === '3', `Expected 3 running steps, found ${runningSteps.stdout}`);
+  const runningSteps = await runSQL(
+    `SELECT count(*) FROM pgflow.step_states WHERE run_id = ${rid} AND state = 'running'`
+  );
+  assert(
+    runningSteps.success && runningSteps.stdout === "3",
+    `Expected 3 running steps, found ${runningSteps.stdout}`
+  );
 
   // Verify 3 tasks available
-  const taskCount = await runSQL(`SELECT count(*) FROM pgflow.step_tasks WHERE run_id = ${rid} AND state = 'assigned'`);
-  assert(taskCount.success && taskCount.stdout === '3', `Expected 3 tasks, found ${taskCount.stdout}`);
+  const taskCount = await runSQL(
+    `SELECT count(*) FROM pgflow.step_tasks WHERE run_id = ${rid} AND state = 'assigned'`
+  );
+  assert(
+    taskCount.success && taskCount.stdout === "3",
+    `Expected 3 tasks, found ${taskCount.stdout}`
+  );
 
   // Simulate 3 workers processing tasks concurrently
-  const workers = ['worker_1', 'worker_2', 'worker_3'];
+  const workers = ["worker_1", "worker_2", "worker_3"];
   for (const worker of workers) {
-    const task = await runSQL(`SELECT pgflow.poll_for_tasks('${worker}', ARRAY['parallel_1', 'parallel_2', 'parallel_3'])`);
+    const task = await runSQL(
+      `SELECT pgflow.poll_for_tasks('${worker}', ARRAY['parallel_1', 'parallel_2', 'parallel_3'])`
+    );
     if (task.stdout) {
-      const taskId = parseInt(task.stdout.split('|')[0]);
+      const taskId = parseInt(task.stdout.split("|")[0]);
       await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
     }
   }
 
   // Verify all steps completed
-  const completedSteps = await runSQL(`SELECT count(*) FROM pgflow.step_states WHERE run_id = ${rid} AND state = 'completed'`);
-  assert(completedSteps.success && completedSteps.stdout === '3', `Expected 3 completed steps, found ${completedSteps.stdout}`);
+  const completedSteps = await runSQL(
+    `SELECT count(*) FROM pgflow.step_states WHERE run_id = ${rid} AND state = 'completed'`
+  );
+  assert(
+    completedSteps.success && completedSteps.stdout === "3",
+    `Expected 3 completed steps, found ${completedSteps.stdout}`
+  );
 });
 
 // Test 9: Performance Benchmark
@@ -384,11 +465,15 @@ await test("Performance benchmark - workflow execution", async () => {
 
   for (let i = 0; i < workflowCount; i++) {
     // Create flow
-    const flowId = await runSQL(`SELECT pgflow.create_flow('perf_test_${i}', '{}', 1, '5 seconds'::interval)`);
+    const flowId = await runSQL(
+      `SELECT pgflow.create_flow('perf_test_${i}', '{}', 1, '5 seconds'::interval)`
+    );
     const fid = parseInt(flowId.stdout);
 
     // Add single step
-    await runSQL(`SELECT pgflow.add_step(${fid}, 'perf_step', '{}', NULL, 1, '5 seconds'::interval)`);
+    await runSQL(
+      `SELECT pgflow.add_step(${fid}, 'perf_step', '{}', NULL, 1, '5 seconds'::interval)`
+    );
 
     // Start flow
     const runId = await runSQL(`SELECT pgflow.start_flow(${fid}, '{}')`);
@@ -400,7 +485,7 @@ await test("Performance benchmark - workflow execution", async () => {
     // Poll and complete
     const task = await runSQL(`SELECT pgflow.poll_for_tasks('perf_worker', ARRAY['perf_step'])`);
     if (task.stdout) {
-      const taskId = parseInt(task.stdout.split('|')[0]);
+      const taskId = parseInt(task.stdout.split("|")[0]);
       await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
     }
   }
@@ -408,13 +493,15 @@ await test("Performance benchmark - workflow execution", async () => {
   const duration = Date.now() - start;
   const throughput = (workflowCount / duration) * 1000; // workflows per second
 
-  console.log(`   📊 Workflow Throughput: ${throughput.toFixed(2)} workflows/sec (${workflowCount} workflows in ${duration}ms)`);
+  console.log(
+    `   📊 Workflow Throughput: ${throughput.toFixed(2)} workflows/sec (${workflowCount} workflows in ${duration}ms)`
+  );
 
   results[results.length - 1].metrics = {
     workflowCount,
     duration,
     throughput: throughput.toFixed(2),
-    avgPerWorkflow: (duration / workflowCount).toFixed(2)
+    avgPerWorkflow: (duration / workflowCount).toFixed(2),
   };
 
   assert(throughput > 1, `Throughput too low: ${throughput.toFixed(2)} workflows/sec`);
@@ -430,17 +517,22 @@ await test("Cleanup test data", async () => {
   assert(cleanup.success, "Cleanup failed");
 
   // Verify cleanup
-  const remainingFlows = await runSQL("SELECT count(*) FROM pgflow.flows WHERE name LIKE 'test_%' OR name LIKE 'perf_test_%'");
-  assert(remainingFlows.success && remainingFlows.stdout === '0', `Cleanup incomplete: ${remainingFlows.stdout} flows remain`);
+  const remainingFlows = await runSQL(
+    "SELECT count(*) FROM pgflow.flows WHERE name LIKE 'test_%' OR name LIKE 'perf_test_%'"
+  );
+  assert(
+    remainingFlows.success && remainingFlows.stdout === "0",
+    `Cleanup incomplete: ${remainingFlows.stdout} flows remain`
+  );
 });
 
 // Print Summary
-console.log('\n' + '='.repeat(80));
-console.log('PGFLOW FUNCTIONAL TEST SUMMARY');
-console.log('='.repeat(80));
+console.log("\n" + "=".repeat(80));
+console.log("PGFLOW FUNCTIONAL TEST SUMMARY");
+console.log("=".repeat(80));
 
-const passed = results.filter(r => r.passed).length;
-const failed = results.filter(r => !r.passed).length;
+const passed = results.filter((r) => r.passed).length;
+const failed = results.filter((r) => !r.passed).length;
 const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
 console.log(`Total: ${results.length} tests`);
@@ -449,19 +541,21 @@ console.log(`Failed: ${failed}`);
 console.log(`Total Duration: ${totalDuration}ms`);
 
 if (failed > 0) {
-  console.log('\nFailed Tests:');
-  results.filter(r => !r.passed).forEach(r => {
-    console.log(`  - ${r.name}: ${r.error}`);
-  });
+  console.log("\nFailed Tests:");
+  results
+    .filter((r) => !r.passed)
+    .forEach((r) => {
+      console.log(`  - ${r.name}: ${r.error}`);
+    });
 }
 
 // Print performance metrics
-const perfResults = results.filter(r => r.metrics);
+const perfResults = results.filter((r) => r.metrics);
 if (perfResults.length > 0) {
-  console.log('\n' + '='.repeat(80));
-  console.log('PERFORMANCE METRICS');
-  console.log('='.repeat(80));
-  perfResults.forEach(r => {
+  console.log("\n" + "=".repeat(80));
+  console.log("PERFORMANCE METRICS");
+  console.log("=".repeat(80));
+  perfResults.forEach((r) => {
     console.log(`\n${r.name}:`);
     Object.entries(r.metrics!).forEach(([key, value]) => {
       console.log(`  ${key}: ${value}`);
@@ -469,6 +563,6 @@ if (perfResults.length > 0) {
   });
 }
 
-console.log('\n' + '='.repeat(80));
+console.log("\n" + "=".repeat(80));
 
 process.exit(failed > 0 ? 1 : 0);

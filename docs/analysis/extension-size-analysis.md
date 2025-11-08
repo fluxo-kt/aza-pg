@@ -9,12 +9,14 @@
 ## Executive Summary
 
 The `aza-pg:pgdg-opt` image contains **28 curated PostgreSQL extensions** totaling **319MB**:
+
 - **247MB** in compiled `.so` libraries (`/usr/lib/postgresql/18/lib`)
 - **72MB** in extension SQL/control files (`/usr/share/postgresql/18/extension`)
 
 **Single largest item:** `timescaledb_toolkit-1.22.0.so` = **13MB** (optimized from 186MB pre-Phase 11, was 58% of all extension binaries)
 
 **Build approach:** Hybrid strategy using both:
+
 - **15 PGDG-packaged** extensions (from Debian apt repos)
 - **13 source-compiled** extensions (custom builds via pgxs/cargo-pgrx)
 
@@ -24,13 +26,13 @@ The `aza-pg:pgdg-opt` image contains **28 curated PostgreSQL extensions** totali
 
 ### Docker Layer Sizes (from `docker history`)
 
-| Layer | Size | Purpose |
-|-------|------|---------|
-| PGDG extension packages install | 294MB | Pre-compiled binaries: pgvector, pgAudit, PostGIS, TimescaleDB, cron, partman, repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user, wal2json |
-| Runtime dependency packages | 368MB | Shared libraries required by compiled extensions (GEOS, PROJ, libcurl, libjson, etc.) |
-| Compiled extensions layer 1 | 245MB | First batch of source-compiled extensions |
-| Compiled extensions layer 2 | 42.7MB | Second batch of source-compiled extensions |
-| Base configs + entrypoint | ~30KB | Auto-config scripts, postgresql-base.conf |
+| Layer                           | Size   | Purpose                                                                                                                                                     |
+| ------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PGDG extension packages install | 294MB  | Pre-compiled binaries: pgvector, pgAudit, PostGIS, TimescaleDB, cron, partman, repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user, wal2json |
+| Runtime dependency packages     | 368MB  | Shared libraries required by compiled extensions (GEOS, PROJ, libcurl, libjson, etc.)                                                                       |
+| Compiled extensions layer 1     | 245MB  | First batch of source-compiled extensions                                                                                                                   |
+| Compiled extensions layer 2     | 42.7MB | Second batch of source-compiled extensions                                                                                                                  |
+| Base configs + entrypoint       | ~30KB  | Auto-config scripts, postgresql-base.conf                                                                                                                   |
 
 **Total extension footprint:** ~950MB across all layers (raw layer sizes, before deduplication)  
 **Actual extension content on disk:** 319MB
@@ -55,24 +57,24 @@ The `aza-pg:pgdg-opt` image contains **28 curated PostgreSQL extensions** totali
 
 ### Top 20 Extension Binaries by Size
 
-| Rank | Extension | Size | Type | Installation |
-|------|-----------|------|------|---------------|
-| 1 | timescaledb_toolkit | 13M (optimized from 186M) | .so | Source-compiled (cargo-pgrx) |
-| 2 | pg_jsonschema | 4.4M | .so | Source-compiled |
-| 3 | libpgrouting | 3.5M | .so | PGDG package |
-| 4 | pgroonga | 2.1M | .so | Source-compiled |
-| 5 | vectorscale | 1.6M | .so | Source-compiled |
-| 6 | postgis | 1.3M | .so | PGDG package |
-| 7 | dict_snowball | 787K | .so | Builtin (PostgreSQL core) |
-| 8 | timescaledb | 719K | .so | PGDG package |
-| 9 | wrappers | 595K | .so | Source-compiled |
-| 10 | postgis_raster | 551K | .so | PGDG package |
-| 11 | address_standardizer | 429K | .so | PGDG package |
-| 12 | pgsodium | 380K | .so | Source-compiled |
-| 13 | postgis_topology | 323K | .so | PGDG package |
-| 14 | supautils | 290K | .so | Source-compiled |
-| 15 | pg_stat_monitor | 245K | .so | Source-compiled |
-| 16–20 | Various encoding modules | 200–266K each | .so | Builtin (PostgreSQL core) |
+| Rank  | Extension                | Size                      | Type | Installation                 |
+| ----- | ------------------------ | ------------------------- | ---- | ---------------------------- |
+| 1     | timescaledb_toolkit      | 13M (optimized from 186M) | .so  | Source-compiled (cargo-pgrx) |
+| 2     | pg_jsonschema            | 4.4M                      | .so  | Source-compiled              |
+| 3     | libpgrouting             | 3.5M                      | .so  | PGDG package                 |
+| 4     | pgroonga                 | 2.1M                      | .so  | Source-compiled              |
+| 5     | vectorscale              | 1.6M                      | .so  | Source-compiled              |
+| 6     | postgis                  | 1.3M                      | .so  | PGDG package                 |
+| 7     | dict_snowball            | 787K                      | .so  | Builtin (PostgreSQL core)    |
+| 8     | timescaledb              | 719K                      | .so  | PGDG package                 |
+| 9     | wrappers                 | 595K                      | .so  | Source-compiled              |
+| 10    | postgis_raster           | 551K                      | .so  | PGDG package                 |
+| 11    | address_standardizer     | 429K                      | .so  | PGDG package                 |
+| 12    | pgsodium                 | 380K                      | .so  | Source-compiled              |
+| 13    | postgis_topology         | 323K                      | .so  | PGDG package                 |
+| 14    | supautils                | 290K                      | .so  | Source-compiled              |
+| 15    | pg_stat_monitor          | 245K                      | .so  | Source-compiled              |
+| 16–20 | Various encoding modules | 200–266K each             | .so  | Builtin (PostgreSQL core)    |
 
 ---
 
@@ -145,16 +147,16 @@ Size: ~5MB (included in PostgreSQL base image)
 
 ### By Functionality
 
-| Category | Extensions | Size | Key Items |
-|----------|-----------|------|-----------|
-| **Time-series** | timescaledb, timescaledb_toolkit | 13.7MB (optimized from 186.7MB) | Toolkit is 13M (optimized from 186M in Phase 11); primarily analytics |
-| **Geospatial** | postgis, postgis_raster, postgis_topology, address_standardizer | 2.6MB | Complex geometry types |
-| **Search** | pgroonga, pg_jsonschema | 6.5MB | Full-text & JSON schema validation |
-| **Vector/ML** | pgvector, vectorscale, pg_hashids | 1.8MB | Embedding search, hashing |
-| **Observability** | pg_stat_monitor, pg_stat_statements, pg_cron | 292KB | Query monitoring, task scheduling |
-| **Security** | pgAudit, pgsodium, pg_safeupdate, supabase_vault | 754KB | Audit logs, encryption, constraint checking |
-| **Development Tools** | plpgsql_check, hypopg, pg_repack, wal2json | 218KB | Debugging, index simulation, replication |
-| **Foreign Data** | wrappers, postgres_fdw, mysql_fdw | 595KB+ | External data access |
+| Category              | Extensions                                                      | Size                            | Key Items                                                             |
+| --------------------- | --------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------- |
+| **Time-series**       | timescaledb, timescaledb_toolkit                                | 13.7MB (optimized from 186.7MB) | Toolkit is 13M (optimized from 186M in Phase 11); primarily analytics |
+| **Geospatial**        | postgis, postgis_raster, postgis_topology, address_standardizer | 2.6MB                           | Complex geometry types                                                |
+| **Search**            | pgroonga, pg_jsonschema                                         | 6.5MB                           | Full-text & JSON schema validation                                    |
+| **Vector/ML**         | pgvector, vectorscale, pg_hashids                               | 1.8MB                           | Embedding search, hashing                                             |
+| **Observability**     | pg_stat_monitor, pg_stat_statements, pg_cron                    | 292KB                           | Query monitoring, task scheduling                                     |
+| **Security**          | pgAudit, pgsodium, pg_safeupdate, supabase_vault                | 754KB                           | Audit logs, encryption, constraint checking                           |
+| **Development Tools** | plpgsql_check, hypopg, pg_repack, wal2json                      | 218KB                           | Debugging, index simulation, replication                              |
+| **Foreign Data**      | wrappers, postgres_fdw, mysql_fdw                               | 595KB+                          | External data access                                                  |
 
 ### Compression Characteristics
 
@@ -171,15 +173,18 @@ Size: ~5MB (included in PostgreSQL base image)
 **Original root cause (pre-Phase 11):** This was a **Rust extension** compiled with debug symbols and LLVM bitcode embedded.
 
 **Original breakdown (pre-Phase 11):**
+
 - **Unoptimized Rust binary:** Rust code compiles larger than C by default
 - **Debug symbols:** Not stripped (`-g` flag retained)
 - **LLVM IR embedded:** PostgreSQL 18's LLVM IR saves intermediate representation in `bitcode/` (36MB total across all extensions)
 
 **Applied optimization (Phase 11):**
+
 - **Rust optimization flags:** CARGO_PROFILE_RELEASE_OPT_LEVEL=s, LTO=thin, strip=symbols
 - **Result:** 186MB → 13MB (-93.0% reduction)
 
 **Comparison:**
+
 ```
 timescaledb-2.23.0.so       719K   (C-based, optimized)
 timescaledb_toolkit-1.22.0.so 186M  (Rust, unoptimized in pre-Phase 11 version)
@@ -251,11 +256,13 @@ This is PGDG-specific overhead. A pure source-compiled image (without PGDG packa
    - Creates separate lightweight variant
 
 2. **Remove Bitcode directory** (36MB, 0% impact)
+
    ```dockerfile
    RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
    ```
 
 3. **Strip extension binaries** (5–10% reduction)
+
    ```dockerfile
    RUN find /usr/lib/postgresql/18/lib -name '*.so' -exec strip {} \;
    ```
@@ -336,6 +343,7 @@ docker history --no-trunc <image> | grep -E "RUN|COPY"
 The `aza-pg:pgdg-opt` image aggressively bundles extensions for broad use cases. The **formerly largest item** was `timescaledb_toolkit` (186MB pre-Phase 11), now optimized to 13MB after applying Rust compilation flags.
 
 **Current trade-offs:**
+
 - ✅ Single image adapts to many workloads (vector, time-series, geospatial, search, security)
 - ✅ Certified PGDG packages with security updates
 - ✅ SHA-pinned source builds prevent supply chain attacks
@@ -343,4 +351,3 @@ The `aza-pg:pgdg-opt` image aggressively bundles extensions for broad use cases.
 - ❌ TimescaleDB Toolkit dominates footprint
 
 **Recommended next steps:** Evaluate creating lean variants or stripping debug artifacts if image size becomes a deployment constraint.
-

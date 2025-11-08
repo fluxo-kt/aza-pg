@@ -93,7 +93,7 @@ type ResultRow = {
 function parseVersionParts(tag: string): (number | string)[] {
   const normalized = tag.replace(/^v/, "");
   return normalized
-    .split(/[\.-_]/)
+    .split(/[._-]/)
     .map((part) => (Number.isFinite(Number(part)) ? Number(part) : part));
 }
 
@@ -128,7 +128,7 @@ async function lsRemote(spec: RepoSpec): Promise<Omit<ResultRow, "name" | "versi
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    throw new Error(`git ls-remote failed for ${repo}: ${stderr}`);
+    throw new Error(`git ls-remote failed for ${spec.repo}: ${stderr}`);
   }
   const rows: Omit<ResultRow, "name" | "version">[] = [];
   for (const line of stdout.trim().split("\n")) {

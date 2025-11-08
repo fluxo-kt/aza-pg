@@ -10,16 +10,16 @@ Logical replication in PostgreSQL 18 - selective, flexible, multi-directional da
 
 ### Key Differences
 
-| Feature | Logical | Physical |
-|---------|---------|----------|
-| **Granularity** | Table/schema level | Cluster-wide |
-| **Direction** | Multi-directional | One-way (primary → replica) |
-| **PostgreSQL versions** | Can differ | Must match major version |
-| **DDL replication** | No (manual sync needed) | Yes |
-| **Partial replication** | Yes (specific tables/columns) | No |
-| **Write to replica** | Yes | No (read-only) |
-| **Use cases** | Multi-region, migrations, partial sync | HA, disaster recovery, read scaling |
-| **Performance overhead** | Higher CPU (logical decoding) | Lower (binary WAL) |
+| Feature                  | Logical                                | Physical                            |
+| ------------------------ | -------------------------------------- | ----------------------------------- |
+| **Granularity**          | Table/schema level                     | Cluster-wide                        |
+| **Direction**            | Multi-directional                      | One-way (primary → replica)         |
+| **PostgreSQL versions**  | Can differ                             | Must match major version            |
+| **DDL replication**      | No (manual sync needed)                | Yes                                 |
+| **Partial replication**  | Yes (specific tables/columns)          | No                                  |
+| **Write to replica**     | Yes                                    | No (read-only)                      |
+| **Use cases**            | Multi-region, migrations, partial sync | HA, disaster recovery, read scaling |
+| **Performance overhead** | Higher CPU (logical decoding)          | Lower (binary WAL)                  |
 
 ## Use Cases
 

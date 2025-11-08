@@ -18,6 +18,7 @@ Comprehensive guide to arm64 image validation using QEMU emulation in CI. Covers
 - Maintenance guidelines
 
 **When to Read:**
+
 - Investigating arm64 test failures in CI
 - Adding new architecture-specific extensions
 - Optimizing QEMU test performance
@@ -32,6 +33,7 @@ Multi-platform Docker image build and validation workflow.
 **Triggers:** Manual (workflow_dispatch)
 
 **Key Steps:**
+
 1. Validate Dockerfile paths
 2. Multi-platform build (amd64 + arm64)
 3. Push to GHCR with SBOM/provenance
@@ -40,6 +42,7 @@ Multi-platform Docker image build and validation workflow.
 6. Stack integration tests
 
 **Outputs:**
+
 - Image digest
 - Extension manifest summary
 - arm64 validation status
@@ -85,6 +88,7 @@ PGAUDIT_VERSION=18.0
 ### Understanding Test Results
 
 **Green arm64 validation:**
+
 ```
 ✅ arm64 image validation passed!
 
@@ -98,16 +102,20 @@ PGAUDIT_VERSION=18.0
 ```
 
 **Failed extension test:**
+
 ```
 ❌ pgvector failed on arm64 (compilation issue?)
 ```
+
 → Check Dockerfile for architecture-specific build flags
 → See ARM64-TESTING.md → "Compilation Failures"
 
 **QEMU timeout:**
+
 ```
 ❌ PostgreSQL failed to start on arm64
 ```
+
 → QEMU emulation too slow or initialization hang
 → Review container logs: `docker logs pg-arm64-test`
 → Consider increasing timeout in workflow
@@ -117,11 +125,13 @@ PGAUDIT_VERSION=18.0
 ### Issue: arm64 test fails but amd64 passes
 
 **Diagnosis:**
+
 1. Check if extension is architecture-specific (compiled, not PGDG)
 2. Review Dockerfile for `uname -m` detection in build scripts
 3. Verify cross-compilation toolchain setup
 
 **Resolution:**
+
 - See ARM64-TESTING.md → "Compilation Failures"
 - Test locally with `--platform linux/arm64`
 - Check extension manifest for `install_via: "compiled"`
@@ -129,11 +139,13 @@ PGAUDIT_VERSION=18.0
 ### Issue: QEMU tests timing out
 
 **Diagnosis:**
+
 1. Check if timeout is QEMU overhead (normal) or actual failure
 2. Review workflow logs for hang location
 3. Verify memory limits not too restrictive
 
 **Resolution:**
+
 - Increase timeout from 5 minutes if needed
 - Reduce test coverage (remove one extension test)
 - Check for infinite loops in entrypoint scripts
@@ -141,11 +153,13 @@ PGAUDIT_VERSION=18.0
 ### Issue: Multi-platform build fails
 
 **Diagnosis:**
+
 1. Check Buildx setup and QEMU availability
 2. Verify platform syntax (`linux/amd64,linux/arm64`)
 3. Review Dockerfile for architecture-specific commands
 
 **Resolution:**
+
 - Ensure `docker/setup-buildx-action@v3` up to date
 - Check `platforms:` parameter in workflow
 - Test locally with `docker buildx build --platform linux/amd64,linux/arm64`
@@ -155,11 +169,13 @@ PGAUDIT_VERSION=18.0
 ### Extension Testing Strategy
 
 **Always test on arm64:**
+
 - Compiled extensions (Rust, C++ with complex dependencies)
 - Architecture-specific code (SIMD, vector operations)
 - Extensions with custom build flags
 
 **Skip on arm64:**
+
 - Pure SQL extensions (no binaries)
 - Well-tested PGDG packages (already validated upstream)
 - Extensions with slow compilation (add to CI only if critical)
@@ -167,16 +183,19 @@ PGAUDIT_VERSION=18.0
 ### Timeout Configuration
 
 **Current timeouts:**
+
 - Total workflow: 30 minutes
 - arm64 test step: 5 minutes
 - PostgreSQL startup: 60 seconds (QEMU overhead)
 
 **When to increase:**
+
 - Adding more extensions to arm64 tests
 - QEMU version upgrade causes slowdown
 - GitHub Actions runner performance regression
 
 **When to decrease:**
+
 - Removing extension tests
 - Native arm64 runners available (no QEMU)
 - Optimizing Dockerfile reduces startup time
@@ -184,11 +203,13 @@ PGAUDIT_VERSION=18.0
 ### Cache Strategy
 
 **Build cache:**
+
 - `cache-from: type=gha` (GitHub Actions cache)
 - `cache-to: type=gha,mode=max` (save all layers)
 - Shared across branches (reduces rebuild time)
 
 **Image pull cache:**
+
 - Multi-platform manifest cached by digest
 - arm64 variant cached after first pull
 - Reduces test time on subsequent runs
@@ -197,21 +218,21 @@ PGAUDIT_VERSION=18.0
 
 ### Build Performance
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Build time | ~12min | Full compilation (cold cache) |
-| Cached build | ~2min | Layer cache hit |
-| arm64 test | ~2-3min | QEMU emulation overhead |
+| Metric        | Value     | Notes                           |
+| ------------- | --------- | ------------------------------- |
+| Build time    | ~12min    | Full compilation (cold cache)   |
+| Cached build  | ~2min     | Layer cache hit                 |
+| arm64 test    | ~2-3min   | QEMU emulation overhead         |
 | Total CI time | ~18-20min | Build + test + arm64 validation |
 
 ### Extension Coverage
 
-| Category | Count | arm64 Tested |
-|----------|-------|--------------|
-| Builtin | 6 | N/A (core) |
-| PGDG | 14 | 2 (pgvector, pg_cron) |
-| Compiled | 18 | 1 (pg_jsonschema) |
-| **Total** | **38** | **3** |
+| Category  | Count  | arm64 Tested          |
+| --------- | ------ | --------------------- |
+| Builtin   | 6      | N/A (core)            |
+| PGDG      | 14     | 2 (pgvector, pg_cron) |
+| Compiled  | 18     | 1 (pg_jsonschema)     |
+| **Total** | **38** | **3**                 |
 
 **Rationale:** 3 extensions cover all failure modes (PGDG packaging, C compilation, Rust toolchain). Testing all 38 would add ~10 minutes to QEMU tests with minimal value.
 

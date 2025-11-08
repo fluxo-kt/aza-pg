@@ -30,6 +30,7 @@ ARG PG_VERSION=19  # Change from 18 to 19
 #### Step 2: Verify Extension Compatibility
 
 Check each extension supports PostgreSQL 19:
+
 - pgvector: https://github.com/pgvector/pgvector/releases
 - pg_cron: https://github.com/citusdata/pg_cron/releases
 - pgAudit: https://github.com/pgaudit/pgaudit/releases

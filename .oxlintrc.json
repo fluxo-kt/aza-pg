@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/oxlintrc",
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    "correctness/no-unused-vars": "error",
+    "correctness/no-useless-escape": "error",
+    "correctness/no-empty": "error",
+    "correctness/no-unreachable": "error",
+    "correctness/use-isnan": "error",
+    "suspicious/no-self-compare": "error",
+    "suspicious/no-console": "warn",
+    "pedantic/prefer-const": "warn",
+    "pedantic/eqeqeq": "warn",
+    "restriction/no-eval": "warn",
+    "restriction/no-with": "warn"
+  }
+}

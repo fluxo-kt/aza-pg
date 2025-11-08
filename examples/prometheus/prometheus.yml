@@ -3,13 +3,13 @@
 
 scrape_configs:
   # PostgreSQL metrics via postgres_exporter
-  - job_name: 'postgres'
+  - job_name: "postgres"
     static_configs:
       - targets:
-          - 'localhost:9187' # postgres_exporter from primary stack
+          - "localhost:9187" # postgres_exporter from primary stack
         labels:
-          instance: 'postgres-primary'
-          environment: 'production'
+          instance: "postgres-primary"
+          environment: "production"
 
   # If you have a replica with exporter
   # - job_name: 'postgres-replica'
@@ -22,13 +22,13 @@ scrape_configs:
   #         role: 'replica'
 
   # PgBouncer metrics via pgbouncer_exporter
-  - job_name: 'pgbouncer'
+  - job_name: "pgbouncer"
     static_configs:
       - targets:
-          - 'localhost:9127'
+          - "localhost:9127"
         labels:
-          instance: 'pgbouncer-primary'
-          environment: 'production'
+          instance: "pgbouncer-primary"
+          environment: "production"
 # Alert rules for PostgreSQL
 # Create alerts.yml with the following content and reference it in prometheus.yml:
 # rule_files:

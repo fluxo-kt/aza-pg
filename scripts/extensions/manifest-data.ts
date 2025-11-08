@@ -232,7 +232,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "pgxs",
-      patches: ['s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/'],
+      patches: ["s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"],
     },
     runtime: {
       sharedPreload: true,
@@ -445,7 +445,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "PgQ",
     kind: "extension",
     category: "queueing",
-    description: "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
+    description:
+      "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
     source: {
       type: "git",
       repository: "https://github.com/pgq/pgq.git",

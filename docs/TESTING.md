@@ -23,7 +23,7 @@ PostgreSQL session-local state (LOAD, SET, hypothetical indexes) does **not pers
 // ❌ WRONG - Session state lost between calls
 await runSQL("LOAD 'auto_explain'");
 await runSQL("SET auto_explain.log_min_duration = 0");
-await runSQL("SELECT count(*) FROM test_table");  // auto_explain NOT active
+await runSQL("SELECT count(*) FROM test_table"); // auto_explain NOT active
 ```
 
 Each `runSQL()` creates a new session. The `LOAD` and `SET` commands execute in one session, then that session closes. The final SELECT runs in a completely different session where auto_explain was never loaded.
@@ -62,15 +62,22 @@ await test("auto_explain - Verify plan logging", "observability", async () => {
 #### Example 2: pg_plan_filter Query Execution
 
 ```typescript
-await test("pg_plan_filter - Execute queries with plan filter active", "safety", async () => {
-  const result = await runSQL(`
+await test(
+  "pg_plan_filter - Execute queries with plan filter active",
+  "safety",
+  async () => {
+    const result = await runSQL(`
     LOAD 'plan_filter';
     SELECT count(*) FROM pg_tables;
   `);
-  const lines = result.stdout.split('\n').filter(l => l.trim());
-  const count = parseInt(lines[lines.length - 1]);
-  assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
-});
+    const lines = result.stdout.split("\n").filter((l) => l.trim());
+    const count = parseInt(lines[lines.length - 1]);
+    assert(
+      result.success && count > 0,
+      "Query execution with pg_plan_filter failed"
+    );
+  }
+);
 ```
 
 **Why**: pg_plan_filter hook must be loaded in the same session where queries execute.
@@ -78,24 +85,32 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
 #### Example 3: HypoPG Hypothetical Indexes
 
 ```typescript
-await test("hypopg - Create and verify hypothetical index", "performance", async () => {
-  // Create and verify in same session (hypothetical indexes are session-local)
-  const result = await runSQL(`
+await test(
+  "hypopg - Create and verify hypothetical index",
+  "performance",
+  async () => {
+    // Create and verify in same session (hypothetical indexes are session-local)
+    const result = await runSQL(`
     SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
     SELECT count(*) FROM hypopg_list_indexes;
   `);
-  const lines = result.stdout.split('\n').filter(l => l.trim());
-  const count = parseInt(lines[lines.length - 1]);
-  assert(result.success && count > 0, "Failed to create hypothetical index");
-});
+    const lines = result.stdout.split("\n").filter((l) => l.trim());
+    const count = parseInt(lines[lines.length - 1]);
+    assert(result.success && count > 0, "Failed to create hypothetical index");
+  }
+);
 
-await test("hypopg - Verify planner uses hypothetical index", "performance", async () => {
-  const result = await runSQL(`
+await test(
+  "hypopg - Verify planner uses hypothetical index",
+  "performance",
+  async () => {
+    const result = await runSQL(`
     SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
     EXPLAIN SELECT * FROM test_hypopg WHERE val = 500;
   `);
-  assert(result.success, "EXPLAIN query failed with hypothetical index");
-});
+    assert(result.success, "EXPLAIN query failed with hypothetical index");
+  }
+);
 ```
 
 **Why**: HypoPG indexes exist **only in the current session**. Creating an index in one `runSQL()` call means it's gone by the next call.
@@ -108,7 +123,7 @@ await test("hypopg - Verify planner uses hypothetical index", "performance", asy
 // ✅ Persistent state - can split across calls
 await runSQL("CREATE TABLE test_table (id int)");
 await runSQL("INSERT INTO test_table VALUES (1)");
-await runSQL("SELECT * FROM test_table");  // Table persists
+await runSQL("SELECT * FROM test_table"); // Table persists
 
 // ❌ Session-local state - MUST be in one call
 await runSQL(`
@@ -200,7 +215,7 @@ Check `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` for the can
 ```typescript
 // ❌ WRONG
 await runSQL("SELECT * FROM hypopg_create_index('...')");
-const list = await runSQL("SELECT * FROM hypopg_list_indexes");  // Empty!
+const list = await runSQL("SELECT * FROM hypopg_list_indexes"); // Empty!
 
 // ✅ CORRECT
 const result = await runSQL(`
@@ -218,7 +233,7 @@ const result = await runSQL(`
 **Fix**: Filter empty lines, handle headers, parse last line:
 
 ```typescript
-const lines = result.stdout.split('\n').filter(l => l.trim());
+const lines = result.stdout.split("\n").filter((l) => l.trim());
 const count = parseInt(lines[lines.length - 1]);
 assert(!isNaN(count), "Failed to parse count");
 ```
@@ -299,25 +314,32 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaud
 ## Test Categories
 
 ### Core Extensions (6)
+
 PostgreSQL builtins that should always work:
+
 - btree_gist, btree_gin, pg_trgm, fuzzystrmatch, unaccent, uuid-ossp
 
 ### Vector Search (2)
+
 - pgvector: Vector similarity search, distance functions
 - vectorscale: DiskANN indexing for large-scale vector search
 
 ### Full-Text Search (1)
+
 - pgroonga: Multi-language full-text search with indexing
 
 ### Spatial (2)
+
 - postgis: Geographic objects, spatial queries
 - pgrouting: Network routing algorithms
 
 ### Time-Series (2)
+
 - timescaledb: Hypertables, continuous aggregates
 - timescaledb_toolkit: Time-series analytics functions
 
 ### Observability (8)
+
 - pg_stat_statements: Query performance tracking
 - pg_stat_monitor: Enhanced query monitoring (1000-query buffer)
 - auto_explain: Automatic query plan logging
@@ -328,12 +350,14 @@ PostgreSQL builtins that should always work:
 - pg_plan_filter: Query plan filtering
 
 ### Security (4)
+
 - pgsodium: Libsodium encryption
 - supabase_vault: Encrypted secrets storage
 - pgaudit: Audit logging
 - set_user: Superuser privilege control
 
 ### Performance (6)
+
 - index_advisor: Index recommendation
 - hypopg: Hypothetical indexes (session-local)
 - pg_qualstats: Predicate statistics
@@ -342,16 +366,20 @@ PostgreSQL builtins that should always work:
 - rum: Full-text search indexes
 
 ### CDC (1)
+
 - wal2json: JSON output plugin for logical replication
 
 ### Integration (1)
+
 - wrappers: Foreign data wrappers (Supabase)
 
 ### Safety (2)
+
 - pg_safeupdate: Prevent UPDATE/DELETE without WHERE
 - pg_plan_filter: Block queries by plan characteristics
 
 ### Utilities (11)
+
 - pg_cron: Job scheduler
 - pg_partman: Partition management
 - pg_repack: Online table repacking
@@ -373,53 +401,55 @@ PostgreSQL builtins that should always work:
 All 38 extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check), totaling 117+ smoke tests.
 
 **Test Suite:**
+
 - `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all 38 extensions
 - `scripts/test/test-auto-config.sh` - Auto-config detection across 4 memory scenarios
 - `scripts/test/test-pgbouncer-healthcheck.sh` - PgBouncer auth flow validation
 
 ### Test Coverage Matrix
 
-| Category | Extensions | Tests | Coverage |
-|----------|-----------|-------|----------|
-| AI/Vector | 2 | 6 | 100% |
-| Analytics | 1 | 2 | 100% |
-| CDC | 1 | 3 | 100% |
-| GIS | 2 | 6 | 100% |
-| Indexing | 2 | 4 | 100% |
-| Integration | 2 | 6 | 100% |
-| Language | 1 | 4 | 100% |
-| Maintenance | 2 | 5 | 100% |
-| Observability | 4 | 8 | 100% |
-| Operations | 2 | 4 | 100% |
-| Performance | 2 | 5 | 100% |
-| Quality | 1 | 3 | 100% |
-| Queueing | 1 | 4 | 100% |
-| Safety | 3 | 6 | 100% |
-| Search | 3 | 6 | 100% |
-| Security | 4 | 10 | 100% |
-| Timeseries | 2 | 5 | 100% |
-| Utilities | 1 | 4 | 100% |
-| Validation | 1 | 4 | 100% |
-| **TOTAL** | **38** | **117+** | **100%** |
+| Category      | Extensions | Tests    | Coverage |
+| ------------- | ---------- | -------- | -------- |
+| AI/Vector     | 2          | 6        | 100%     |
+| Analytics     | 1          | 2        | 100%     |
+| CDC           | 1          | 3        | 100%     |
+| GIS           | 2          | 6        | 100%     |
+| Indexing      | 2          | 4        | 100%     |
+| Integration   | 2          | 6        | 100%     |
+| Language      | 1          | 4        | 100%     |
+| Maintenance   | 2          | 5        | 100%     |
+| Observability | 4          | 8        | 100%     |
+| Operations    | 2          | 4        | 100%     |
+| Performance   | 2          | 5        | 100%     |
+| Quality       | 1          | 3        | 100%     |
+| Queueing      | 1          | 4        | 100%     |
+| Safety        | 3          | 6        | 100%     |
+| Search        | 3          | 6        | 100%     |
+| Security      | 4          | 10       | 100%     |
+| Timeseries    | 2          | 5        | 100%     |
+| Utilities     | 1          | 4        | 100%     |
+| Validation    | 1          | 4        | 100%     |
+| **TOTAL**     | **38**     | **117+** | **100%** |
 
 ### Auto-Config Test Coverage
 
 Comprehensive auto-config validation covers 10 memory scenarios from 256MB to 64GB:
 
-| Scenario | RAM | CPU | Detection | Config Injection | Status |
-|----------|-----|-----|-----------|------------------|--------|
-| Manual override | 1536MB | - | ✅ POSTGRES_MEMORY | shared_buffers, max_connections | Passing |
-| Cgroup v2 limit | 2GB | - | ✅ cgroup v2 | shared_buffers, max_connections | Passing |
-| Minimum supported | 512MB | - | ✅ cgroup v2 | shared_buffers, max_connections | Passing |
-| Large node | 64GB | - | ✅ POSTGRES_MEMORY | shared_buffers, max_connections | Passing |
-| CPU detection | 2GB | 2 cores | ✅ nproc | worker processes | Passing |
-| Below minimum | 256MB | - | ✅ Detection | FATAL error | Passing |
-| Custom preload | 1GB | - | ✅ Override | shared_preload_libraries | Passing |
-| Medium production | 4GB | - | ✅ cgroup v2 | shared_buffers 1024MB, max_conn 200 | Passing |
-| Large production | 8GB | - | ✅ cgroup v2 | shared_buffers 2048MB, max_conn 200 | Passing |
-| High-load | 16GB | - | ✅ cgroup v2 | shared_buffers 3276MB, max_conn 200 | Passing |
+| Scenario          | RAM    | CPU     | Detection          | Config Injection                    | Status  |
+| ----------------- | ------ | ------- | ------------------ | ----------------------------------- | ------- |
+| Manual override   | 1536MB | -       | ✅ POSTGRES_MEMORY | shared_buffers, max_connections     | Passing |
+| Cgroup v2 limit   | 2GB    | -       | ✅ cgroup v2       | shared_buffers, max_connections     | Passing |
+| Minimum supported | 512MB  | -       | ✅ cgroup v2       | shared_buffers, max_connections     | Passing |
+| Large node        | 64GB   | -       | ✅ POSTGRES_MEMORY | shared_buffers, max_connections     | Passing |
+| CPU detection     | 2GB    | 2 cores | ✅ nproc           | worker processes                    | Passing |
+| Below minimum     | 256MB  | -       | ✅ Detection       | FATAL error                         | Passing |
+| Custom preload    | 1GB    | -       | ✅ Override        | shared_preload_libraries            | Passing |
+| Medium production | 4GB    | -       | ✅ cgroup v2       | shared_buffers 1024MB, max_conn 200 | Passing |
+| Large production  | 8GB    | -       | ✅ cgroup v2       | shared_buffers 2048MB, max_conn 200 | Passing |
+| High-load         | 16GB   | -       | ✅ cgroup v2       | shared_buffers 3276MB, max_conn 200 | Passing |
 
 Details:
+
 1. **Manual override (1536MB)** - Respects POSTGRES_MEMORY env var, shared_buffers 25%, connection tier 120
 2. **2GB cgroup limit** - Detects via cgroup v2, shared_buffers 512MB, connection tier 120
 3. **512MB minimum** - Minimum supported deployment, shared_buffers 128MB, connection tier 80
@@ -444,26 +474,31 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 ### Test Quality Metrics
 
 **Functional Test Coverage:**
+
 - 38 extensions × 3 dimensions = CREATE EXTENSION, functional test, metadata check
 - 117+ smoke tests with assertions
 - 100% extension coverage (no deferred testing)
 
 **Auto-Config Test Coverage:**
+
 - 10 test scenarios covering RAM/CPU detection (256MB to 64GB)
 - 7 memory tiers (512MB, 1GB, 2GB, 4GB, 8GB, 16GB, 64GB)
 - Manual override, cgroup v2 detection, CPU scaling
 - Edge cases (below-minimum rejection, custom shared_preload_libraries)
 
 **PgBouncer Test Coverage:**
+
 - Happy path (8 tests): .pgpass file management, authentication via localhost/hostname, SHOW POOLS, healthcheck
 - Failure scenarios (6 tests): wrong password, missing .pgpass, invalid listen address, PostgreSQL down, max connections, wrong permissions
 
 **Stack Deployment Test Coverage:**
+
 - **Primary stack**: Auto-config, PgBouncer auth, postgres_exporter, pgbouncer_exporter
 - **Replica stack** (7 steps): Replication slot creation, standby mode verification, hot standby queries, WAL sync, postgres_exporter
 - **Single stack** (7 steps): Standalone mode, extension availability, connection limits, auto-config, no pooler verification
 
 **Hook Extension Test Coverage:**
+
 - pg_plan_filter: Without/with preload, functional validation
 - pg_safeupdate: Session preload, functional query blocking
 - supautils: Without/with preload, GUC-based configuration
@@ -472,12 +507,14 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 ### Maintenance
 
 **When to update tests:**
+
 - New extension added to manifest.json → add smoke test to test-all-extensions-functional.ts
 - Extension version upgraded → verify test still valid
 - Upstream API changes → update functional test
 - Auto-config logic changes → update test-auto-config.sh
 
 **Who maintains:**
+
 - Developer adding extension writes smoke test
 - CI enforces all tests pass before merge
 
@@ -569,6 +606,7 @@ bun run scripts/test/test-integration.ts
 ### CI Integration
 
 GitHub Actions workflow runs all tests on:
+
 - Platform: `linux/amd64`, `linux/arm64` (QEMU emulation for arm64 validation)
 - Extension kinds: `compiled`, `pgdg`, `builtin`
 - Auto-config scenarios: `manual`, `cgroup`, `minimum`, `high-memory`, `4GB`, `8GB`, `16GB`, `64GB`
@@ -578,6 +616,7 @@ GitHub Actions workflow runs all tests on:
 ## Test Organization
 
 **Test Files:**
+
 ```
 scripts/test/
 ├── test-all-extensions-functional.ts  (38 extensions, 117+ smoke tests)

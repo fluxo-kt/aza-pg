@@ -29,13 +29,13 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
-      success: result.exitCode === 0
+      success: result.exitCode === 0,
     };
   } catch (error) {
     return {
-      stdout: '',
+      stdout: "",
       stderr: String(error),
-      success: false
+      success: false,
     };
   }
 }
@@ -116,7 +116,7 @@ await test("timescaledb+pgvector: Query vectors with time window", async () => {
     LIMIT 3
   `);
   assert(query.success, "Failed to query vectors with time filter");
-  const lines = query.stdout.split('\n').filter(l => l.trim());
+  const lines = query.stdout.split("\n").filter((l) => l.trim());
   assert(lines.length > 0, "No results returned from vector similarity search");
 });
 
@@ -191,7 +191,10 @@ await test("postgis+pgroonga: Spatial + full-text query", async () => {
     ORDER BY distance_km
   `);
   assert(query.success, "Failed spatial query with full-text filter");
-  assert(query.stdout.includes('San Francisco') || query.stdout.includes('Tokyo'), "Expected results not found");
+  assert(
+    query.stdout.includes("San Francisco") || query.stdout.includes("Tokyo"),
+    "Expected results not found"
+  );
 });
 
 // ============================================================================
@@ -204,7 +207,7 @@ console.log("-".repeat(80));
 
 await test("pgsodium+vault: Verify pgsodium server secret exists", async () => {
   const secret = await runSQL("SELECT count(*) FROM pgsodium.key WHERE name = 'pgsodium_root'");
-  assert(secret.success && secret.stdout === '1', "pgsodium server secret not found");
+  assert(secret.success && secret.stdout === "1", "pgsodium server secret not found");
 });
 
 await test("pgsodium+vault: Store encrypted secret in vault", async () => {
@@ -224,14 +227,14 @@ await test("pgsodium+vault: Retrieve and decrypt secret", async () => {
     WHERE name = 'test_api_key'
   `);
   assert(decrypt.success, "Failed to decrypt secret from vault");
-  assert(decrypt.stdout.includes('sk_test_'), "Decrypted secret does not match expected format");
+  assert(decrypt.stdout.includes("sk_test_"), "Decrypted secret does not match expected format");
 });
 
 await test("pgsodium+vault: Verify secret is encrypted at rest", async () => {
   // Raw secret column should be encrypted (not plaintext)
   const raw = await runSQL("SELECT secret FROM vault.secrets WHERE name = 'test_api_key'");
   assert(raw.success, "Failed to query raw encrypted secret");
-  assert(!raw.stdout.includes('sk_test_'), "Secret is stored in plaintext (encryption failed!)");
+  assert(!raw.stdout.includes("sk_test_"), "Secret is stored in plaintext (encryption failed!)");
 });
 
 // ============================================================================
@@ -301,8 +304,8 @@ console.log("\n" + "=".repeat(80));
 console.log("INTEGRATION TEST SUMMARY");
 console.log("=".repeat(80));
 
-const passed = results.filter(r => r.passed).length;
-const failed = results.filter(r => !r.passed).length;
+const passed = results.filter((r) => r.passed).length;
+const failed = results.filter((r) => !r.passed).length;
 const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
 console.log(`Total: ${results.length} tests`);
@@ -311,10 +314,12 @@ console.log(`Failed: ${failed}`);
 console.log(`Total Duration: ${totalDuration}ms`);
 
 if (failed > 0) {
-  console.log('\nFailed Tests:');
-  results.filter(r => !r.passed).forEach(r => {
-    console.log(`  - ${r.name}: ${r.error}`);
-  });
+  console.log("\nFailed Tests:");
+  results
+    .filter((r) => !r.passed)
+    .forEach((r) => {
+      console.log(`  - ${r.name}: ${r.error}`);
+    });
 }
 
 console.log("\nExtension Combinations Tested:");

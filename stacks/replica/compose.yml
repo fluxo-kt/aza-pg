@@ -21,7 +21,7 @@ services:
       PRIMARY_PORT: ${PRIMARY_PORT:-5432}
 
     ports:
-      - '${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432'
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432"
 
     volumes:
       - postgres-replica-data:/var/lib/postgresql
@@ -38,7 +38,7 @@ services:
       - postgres_net
 
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,14 +50,14 @@ services:
     restart: unless-stopped
 
     environment:
-      DATA_SOURCE_NAME: 'postgresql://postgres@postgres-replica:5432/postgres?sslmode=disable'
+      DATA_SOURCE_NAME: "postgresql://postgres@postgres-replica:5432/postgres?sslmode=disable"
       # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
       # monitoring on private Docker networks. For production, consider Docker secrets.
       PGPASSWORD: "${POSTGRES_PASSWORD}"
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
-      PG_EXPORTER_DISABLE_DEFAULT_METRICS: 'false'
-      PG_EXPORTER_DISABLE_SETTINGS_METRICS: 'false'
-      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: 'false'
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
+      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
+      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: "false"
 
     volumes:
       - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
@@ -67,7 +67,7 @@ services:
       - ${MONITORING_NETWORK:-monitoring}
 
     ports:
-      - '${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9188}:9187'
+      - "${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9188}:9187"
 
     mem_limit: ${POSTGRES_EXPORTER_MEMORY_LIMIT:-64m}
     mem_reservation: ${POSTGRES_EXPORTER_MEMORY_RESERVATION:-32m}
@@ -77,7 +77,7 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:9187/metrics || exit 1']
+      test: ["CMD-SHELL", "curl -f http://localhost:9187/metrics || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

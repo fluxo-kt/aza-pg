@@ -103,6 +103,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 **Input:** Dockerfile + SHA-pinned extension sources
 
 **Process:**
+
 - Multi-stage build compiles extensions from source
 - Stage 1 (builder): Clones repos at specific commit SHAs, compiles C extensions
 - Stage 2 (final): Copies only `.so` files and control files to slim image
@@ -117,6 +118,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 **Input:** Image + deployment environment (RAM/CPU)
 
 **Process:**
+
 - Entrypoint script runs BEFORE postgres starts
 - Detects actual hardware of deployment environment:
   - cgroup v2 memory limit (if set)
@@ -135,6 +137,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 **Input:** Init scripts from two sources
 
 **Process:**
+
 1. Shared scripts (all stacks): `docker/postgres/docker-entrypoint-initdb.d/`
    - `01-extensions.sql` → Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector)
    - `02-replication.sh` → Creates replicator user (if enabled)
@@ -148,11 +151,13 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 ### 4. Stack Deployment
 
 **Single Stack:**
+
 - Minimal setup: Just PostgreSQL
 - Use case: Development, small apps
 - Services: 1 (postgres)
 
 **Primary Stack:**
+
 - Full production setup
 - Services: 3
   - PostgreSQL (data storage)
@@ -161,6 +166,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 - Use case: Production with connection pooling and monitoring
 
 **Replica Stack:**
+
 - Streaming replication follower
 - Connects to primary via replication slot
 - Use case: Read replicas, HA setup
@@ -312,12 +318,14 @@ Deployment Environment
 ```
 
 **Baseline Ratio (2GB):**
+
 - shared_buffers: 25% (512MB)
 - effective_cache: ~75% (1536MB)
 - maintenance_work_mem: ~3% (64MB, capped at 2GB)
 - work_mem: total RAM / (connections×4) → 2MB with 120 connections
 
 **Caps:**
+
 - shared_buffers: max 32GB
 - max_connections: 80 (≤512MB), 120 (<4GB), 200 (≥4GB)
 - maintenance_work_mem: max 2GB
@@ -350,6 +358,7 @@ Grafana Dashboards
 ```
 
 **Custom Queries:**
+
 - Replication lag (for primary)
 - Memory settings (auto-config verification)
 - Postmaster uptime
@@ -380,23 +389,27 @@ Primary PostgreSQL
 ## Design Philosophy
 
 **One Image, Many Environments:**
+
 - Build once at compile time (extensions baked in)
 - Auto-configure at runtime (adapt to deployment environment)
 - No rebuild needed for different RAM/CPU allocations
 
 **Minimal Config Surface:**
+
 - Auto-config handles memory/CPU tuning
 - Shared base config for common settings
 - Stack-specific configs only for deployment differences
 - Env vars for secrets and deployment-specific values
 
 **Supply Chain Security:**
+
 - SHA pinning prevents tag mutation
 - SBOM tracks all dependencies
 - Provenance proves build authenticity
 - Multi-platform builds (amd64/arm64)
 
 **Operational Simplicity:**
+
 - Single docker compose command deploys stack
 - No init scripts to run manually
 - No manual memory tuning required

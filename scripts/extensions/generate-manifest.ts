@@ -17,10 +17,10 @@ type ResolvedSource =
 type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSource };
 
 async function resolveGitCommit(repo: string, tag: string): Promise<string> {
-  const proc = spawn(
-    ["git", "ls-remote", repo, `refs/tags/${tag}^{}`, `refs/tags/${tag}`],
-    { stdout: "pipe", stderr: "pipe" },
-  );
+  const proc = spawn(["git", "ls-remote", repo, `refs/tags/${tag}^{}`, `refs/tags/${tag}`], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
@@ -78,14 +78,14 @@ async function main() {
     new Set(
       resolved
         .flatMap((entry) => entry.aptPackages ?? [])
-        .filter((pkg): pkg is string => typeof pkg === "string" && pkg.length > 0),
-    ),
+        .filter((pkg): pkg is string => typeof pkg === "string" && pkg.length > 0)
+    )
   ).sort((a, b) => a.localeCompare(b));
   const packagesPath = join("docker", "postgres", "extensions.build-packages.txt");
   await Bun.write(packagesPath, packages.join("\n") + "\n");
 
   console.log(
-    `Wrote ${outputPath} with ${resolved.length} entries and ${packages.length} build packages.`,
+    `Wrote ${outputPath} with ${resolved.length} entries and ${packages.length} build packages.`
   );
 }
 

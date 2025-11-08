@@ -32,17 +32,18 @@ Hook-based extensions integrate directly into PostgreSQL's execution flow throug
 
 ### Test Coverage Matrix
 
-| Extension | Without Preload | With Preload | Functional Test | Combined Load |
-|-----------|----------------|--------------|-----------------|---------------|
-| pg_plan_filter | ✅ No effect | ✅ Hook active | ✅ Query execution | ✅ Multi-hook |
-| pg_safeupdate | ✅ Unrestricted | ✅ Blocks unsafe | ✅ WHERE validation | ✅ Session load |
-| supautils | ✅ No GUC params | ✅ GUC available | ✅ Basic operation | ✅ Multi-hook |
+| Extension      | Without Preload  | With Preload     | Functional Test     | Combined Load   |
+| -------------- | ---------------- | ---------------- | ------------------- | --------------- |
+| pg_plan_filter | ✅ No effect     | ✅ Hook active   | ✅ Query execution  | ✅ Multi-hook   |
+| pg_safeupdate  | ✅ Unrestricted  | ✅ Blocks unsafe | ✅ WHERE validation | ✅ Session load |
+| supautils      | ✅ No GUC params | ✅ GUC available | ✅ Basic operation  | ✅ Multi-hook   |
 
 ### Test Script
 
 **Location:** `/opt/apps/art/infra/aza-pg/scripts/test/test-hook-extensions.sh`
 
 **Usage:**
+
 ```bash
 # Use default image tag (aza-pg:pg18)
 ./scripts/test/test-hook-extensions.sh
@@ -132,6 +133,7 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaud
 ### Pitfall 1: Expecting CREATE EXTENSION to Work
 
 **Problem:**
+
 ```bash
 # ❌ WRONG - Hook extensions don't have .control files
 CREATE EXTENSION pg_plan_filter;
@@ -139,6 +141,7 @@ CREATE EXTENSION pg_plan_filter;
 ```
 
 **Solution:**
+
 ```bash
 # ✅ CORRECT - Load via shared_preload_libraries
 POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pg_plan_filter"
@@ -147,12 +150,14 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pg_plan_filter"
 ### Pitfall 2: Wrong Preload Scope
 
 **Problem:**
+
 ```bash
 # ❌ WRONG - pg_safeupdate requires session_preload_libraries
 POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pg_safeupdate"
 ```
 
 **Solution:**
+
 ```bash
 # ✅ CORRECT - Use session_preload_libraries
 SET session_preload_libraries = 'pg_safeupdate';
@@ -161,6 +166,7 @@ SET session_preload_libraries = 'pg_safeupdate';
 ### Pitfall 3: Not Testing Hook Behavior
 
 **Problem:**
+
 ```bash
 # ❌ WRONG - Only checks loading, not functionality
 docker exec $container psql -U postgres -c "SHOW shared_preload_libraries;"
@@ -168,6 +174,7 @@ docker exec $container psql -U postgres -c "SHOW shared_preload_libraries;"
 ```
 
 **Solution:**
+
 ```bash
 # ✅ CORRECT - Test actual hook behavior
 docker exec $container psql -U postgres -c \
@@ -178,6 +185,7 @@ docker exec $container psql -U postgres -c \
 ### Pitfall 4: Session State Not Preserved
 
 **Problem:**
+
 ```bash
 # ❌ WRONG - session_preload_libraries lost between commands
 docker exec $container psql -c "SET session_preload_libraries = 'pg_safeupdate';"
@@ -185,6 +193,7 @@ docker exec $container psql -c "UPDATE test SET id = 1;"  # Hook not active
 ```
 
 **Solution:**
+
 ```bash
 # ✅ CORRECT - Single SQL block preserves session
 docker exec $container psql -c "SET session_preload_libraries = 'pg_safeupdate'; UPDATE test SET id = 1;"
@@ -218,11 +227,13 @@ test_extension_name() {
 ### Assertion Functions
 
 **assert_sql_success** - Command should succeed:
+
 ```bash
 assert_sql_success "$container" "SELECT 1;" "Basic query works"
 ```
 
 **assert_sql_fails** - Command should fail with expected error:
+
 ```bash
 assert_sql_fails "$container" \
   "UPDATE test SET id = 1;" \
@@ -231,6 +242,7 @@ assert_sql_fails "$container" \
 ```
 
 **assert_sql_contains** - Output matches pattern:
+
 ```bash
 assert_sql_contains "$container" \
   "SHOW shared_preload_libraries;" \
@@ -239,6 +251,7 @@ assert_sql_contains "$container" \
 ```
 
 **assert_log_contains** - Container logs match pattern:
+
 ```bash
 assert_log_contains "$logs" \
   "pg_plan_filter.*initialized" \
@@ -334,6 +347,7 @@ Summary:
 ### Adding New Hook Extensions
 
 1. Update manifest: `docker/postgres/extensions.manifest.json`
+
    ```json
    {
      "name": "new_hook_ext",

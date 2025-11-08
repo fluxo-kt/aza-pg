@@ -13,9 +13,11 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ## Critical Patterns
 
 ### Auto-Config Logic (`docker-auto-config-entrypoint.sh`)
+
 **When:** RUNTIME (container start on VPS), NOT build-time. Same image adapts to any deployment environment.
 
 **How:**
+
 - Detects RAM: cgroup v2 limit of the running container → manual override via `POSTGRES_MEMORY=<MB>` takes precedence → falls back to `/proc/meminfo` if no limit.
 - Detects CPU: `nproc` fallback when no quota is set → sizes worker counts
 - Injects runtime flags for buffers, cache, maintenance/work memory, connection caps, worker counts, **and** `shared_preload_libraries` so pg_cron/pgAudit stay loaded even if static configs drift
@@ -25,6 +27,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Caps:** shared_buffers capped at 32GB, maintenance_work_mem max 2GB, work_mem max 32MB, max_connections tiers at 80/120/200
 
 **Overrides:**
+
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (useful in dev shells/CI)
 - `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override default preloaded extensions (default: `pg_stat_statements,auto_explain,pg_cron,pgaudit`)
 
@@ -33,6 +36,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Why:** One image works on 2GB VPS or 128GB server. Detection at runtime (not build) ensures adaptation to actual deployment environment.
 
 ### PgBouncer Auth Pattern
+
 - **NO plaintext userlist.txt**: Uses `auth_query = SELECT * FROM pgbouncer_lookup($1)`
 - Function: SECURITY DEFINER reads `pg_shadow` (password hashes)
 - Bootstrap: `pgbouncer_auth` user created in stack-specific `03-pgbouncer-auth.sh`
@@ -42,9 +46,11 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Credential flow:** set `${PGBOUNCER_AUTH_PASS}` in `.env`. Entry script escapes special characters for `.pgpass`, so passwords may include `:`, `@`, `&`, etc.
 
 ### Extension Hybrid Strategy (PGDG + Source Compilation)
+
 **Pattern:** Hybrid approach combining PGDG pre-compiled packages with SHA-pinned source compilation.
 
 **PGDG Extensions (14):** pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
+
 - Installed via APT from apt.postgresql.org
 - GPG-signed packages with pinned versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`)
 - Benefits: Instant install, tested against PG18, multi-arch (amd64/arm64)
@@ -52,11 +58,13 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Compiled Extensions (12):** index_advisor, pg_hashids, pg_jsonschema, pg_stat_monitor, pgmq, pgq, pgroonga, pgsodium, supabase_vault, timescaledb_toolkit, vectorscale, wrappers
 
 **Tools (6):** pgbackrest (backup), pgbadger (log analyzer), pg_plan_filter (hook), pg_safeupdate (hook), supautils (hooks), wal2json (logical decoding)
+
 - Built from SHA-pinned source (immutable Git commits)
 - Required when: Not in PGDG, need latest features, or specialized (Supabase ecosystem)
 - Manifest field in docker/postgres/extensions.manifest.json: `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh
 
 **Security Model:**
+
 - PGDG: GPG-signed APT repository (PostgreSQL community trust)
 - Compiled: SHA256-pinned Git commits (immutable, auditable)
 - Both prevent supply chain attacks via different mechanisms
@@ -66,15 +74,18 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update docker/postgres/extensions.manifest.json → rebuild.
 
 **Analysis & Impact:** See comprehensive documentation:
+
 - **Size analysis:** `docs/analysis/extension-size-analysis.md` (per-extension size breakdown, timescaledb_toolkit optimized from 186MB to 13MB in Phase 11)
 - **Performance impact:** `docs/extensions/PERFORMANCE-IMPACT.md` (memory overhead, query performance, build time)
 - **Pre-built binaries:** `docs/extensions/PREBUILT-BINARIES-ANALYSIS.md` (GitHub release availability, 3 viable candidates)
 - **PGDG availability:** `docs/extensions/PGDG-AVAILABILITY.md` (pgroonga NOT available in PGDG for PostgreSQL 18)
 
 ### Hook-Based Extensions & Tools
+
 **Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
 
 **Hook-Based Extensions & Tools (6 total):**
+
 - **pg_plan_filter**: Filters query plans based on configurable rules (hook-based, no .control file)
 - **pg_safeupdate**: Prevents UPDATE/DELETE without WHERE clause (hook-based, no .control file)
 - **supautils**: Superuser guards and event trigger hooks for managed Postgres (GUC-based, no CREATE EXTENSION)
@@ -83,18 +94,21 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - **wal2json**: Logical decoding plugin (output plugin for logical replication)
 
 **Characteristics:**
+
 - Load at server start via shared_preload_libraries or session_preload_libraries
 - No CREATE EXTENSION command (no .control/.sql files)
 - Configure via GUC parameters (SHOW/SET commands) or hooks automatically active
 - Cannot be installed per-database (server-wide or session-wide only)
 
 **Logical Decoding Plugins (1):**
+
 - **wal2json**: Output plugin for logical replication (CDC), not a CREATE EXTENSION extension
 - Used with `pg_recvlogical` or replication slots, not installed via SQL
 
 **Why Separate Classification:** Prevents init script failures (01-extensions.sql attempts CREATE EXTENSION on all "extension" kind entries). Tools/hooks load via configuration, not SQL commands.
 
 **Manifest Fields:**
+
 ```json
 {
   "kind": "tool",  // Not "extension"
@@ -106,21 +120,24 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ```
 
 ### Extension Enable/Disable Pattern
+
 **Pattern:** Extensions can be selectively enabled/disabled via manifest without breaking dependencies or losing test coverage. Build system enforces dependency validation and cleanup.
 
 **Manifest Fields:**
+
 ```json
 {
   "name": "pgq",
-  "enabled": false,  // NEW: Controls build/install (defaults to true)
-  "disabledReason": "Not needed for AI workloads",  // OPTIONAL: Documentation
+  "enabled": false, // NEW: Controls build/install (defaults to true)
+  "disabledReason": "Not needed for AI workloads", // OPTIONAL: Documentation
   "runtime": {
-    "defaultEnable": true  // EXISTING: Controls CREATE EXTENSION in init script
+    "defaultEnable": true // EXISTING: Controls CREATE EXTENSION in init script
   }
 }
 ```
 
 **Field Semantics:**
+
 - `enabled` (top-level): Controls whether extension is **built and installed** in Docker image
   - `true` (default): Extension compiled/installed, available for use
   - `false`: Skipped during build, not in final image
@@ -129,6 +146,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
   - `false`: Available but requires manual `CREATE EXTENSION`
 
 **Workflow:**
+
 1. `enabled: false` → Skip build/install entirely (not in image, dependency errors fail fast)
 2. `enabled: true, defaultEnable: false` → Built/installed but not created (manual activation)
 3. `enabled: true, defaultEnable: true` → Built, installed, and auto-created (baseline extensions)
@@ -136,17 +154,20 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **4-Gate Build Logic:**
 
 **Gate 0 (Enabled Check):**
+
 - Reads `enabled` field from manifest (defaults to `true` for backward compatibility)
 - Tracks disabled extensions in array for post-build cleanup
 - Continues building disabled extensions (verify they still work)
 - Logs disabled reason for documentation
 
 **Gate 1 (Dependency Validation):**
+
 - Validates all dependencies are enabled before building
 - Fails fast with clear error if dependency disabled or missing
 - Example error: `Extension index_advisor requires dependency 'hypopg' which is disabled`
 
 **Gate 2 (Binary Cleanup):**
+
 - Runs AFTER all extensions built and tested
 - Removes `.so` files and SQL/control files for disabled extensions only
 - Verifies extension was built (basic smoke test, warns if missing)
@@ -154,11 +175,13 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - Cleans: `/usr/lib/postgresql/18/lib/*.so`, `/usr/share/postgresql/18/extension/*`, bitcode
 
 **Gate 3 (Init Script Generation):**
+
 - `01-extensions.sql` generated from manifest via `./scripts/generate-configs.sh`
 - Only includes extensions with `enabled: true AND runtime.defaultEnable: true`
 - Automatically excludes disabled extensions and tools (no CREATE EXTENSION support)
 
 **Usage Example:**
+
 ```bash
 # Disable pgq in manifest
 jq '.entries |= map(if .name == "pgq" then . + {"enabled": false, "disabledReason": "Not needed"} else . end)' \
@@ -174,23 +197,27 @@ jq '.entries |= map(if .name == "pgq" then . + {"enabled": false, "disabledReaso
 
 **Dependency Cascade Protection:**
 If extension A depends on extension B:
+
 - Disabling B → Build fails when processing A (clear error message)
 - Either enable B or disable A to resolve
 
 **Core Preloaded Extension Protection:**
 
 **Cannot Disable These 4 Extensions:**
+
 - `auto_explain` - Query plan logging (observability)
 - `pg_cron` - Cron-based job scheduler (operations)
 - `pg_stat_statements` - Query statistics (observability)
 - `pgaudit` - Audit logging (security)
 
 **Why:** Auto-config hardcodes these in `shared_preload_libraries`. Disabling causes runtime crash:
+
 ```
 FATAL: could not load library "pg_cron.so": No such file or directory
 ```
 
 **Behavior:** Build fails immediately with actionable error:
+
 ```
 [ext-build] ERROR: Cannot disable extension 'pg_cron'
 [ext-build]        This extension is required in shared_preload_libraries
@@ -202,6 +229,7 @@ FATAL: could not load library "pg_cron.so": No such file or directory
 ```
 
 **Workaround:** Set `POSTGRES_SHARED_PRELOAD_LIBRARIES` environment variable:
+
 ```bash
 # Disable pg_cron AND override preload list
 POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
@@ -216,12 +244,14 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
 **Absolute Requirement:** ALL extensions and tools, even disabled ones, MUST be built and tested.
 
 **Why This Matters:**
+
 - Disabled extensions use SHA-pinned commits (immutable Git references)
 - Without build+test, upstream changes or SHA staleness go undetected
 - Re-enabling later = surprise build failures in production
 - Testing disabled extensions = continuous verification they still work
 
 **Build System Behavior:**
+
 1. **Build Phase:** ALL extensions compiled (enabled + disabled)
    - Disabled extensions marked with: "building for testing only"
    - Compilation verifies SHA-pinned commits still work
@@ -242,12 +272,14 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
    - No manual intervention needed
 
 **Current Status:** ✅ IMPLEMENTED
+
 - Gate 0: Tracks disabled extensions, continues building
 - Gate 1: Validates dependencies (fails if disabled dep required)
 - Gate 2: Removes disabled extensions AFTER successful build
 - Gate 3: Generates init script excluding disabled extensions
 
 **Verification:**
+
 ```bash
 # During build, you should see:
 [ext-build] Extension pgq disabled (reason: Not needed for AI workloads) - building for testing only
@@ -261,11 +293,13 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
 ```
 
 Per design doc `docs/development/EXTENSION-ENABLE-DISABLE.md`, future enhancements:
+
 - Functional tests for disabled extensions (verify basic queries work)
 - Load tests without CREATE EXTENSION (binary compatibility)
 - Regression detection for upstream changes
 
 **Related Documentation:**
+
 - Implementation guide: `docs/development/EXTENSION-ENABLE-DISABLE.md` (974 lines, comprehensive)
 - 7 critical risks identified via inversion reasoning (dependency validation, binary cleanup, etc.)
 
@@ -285,41 +319,50 @@ Per design doc `docs/development/EXTENSION-ENABLE-DISABLE.md`, future enhancemen
 Unlike traditional extensions, pgflow is schema-based workflow state management. The execution worker must be implemented separately (see integration docs for 3 implementation patterns). Only install if you need PostgreSQL-native DAG workflows.
 
 ### Init Script Execution Order
+
 **CRITICAL:** Init scripts execute alphabetically from two sources:
+
 1. Shared scripts: `docker/postgres/docker-entrypoint-initdb.d/` (mounted to ALL stacks)
 2. Stack-specific scripts: `stacks/*/configs/initdb/` (mounted per stack)
 
 **Shared Script Order (ALL stacks):**
+
 1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 33 extensions available but disabled by default. MUST run first.
 2. `02-replication.sh` — Creates `replicator` user + replication slot (if replication enabled).
 3. `03-pgsodium-init.sh` — Initializes pgsodium extension and generates root key (if ENABLE_PGSODIUM_INIT=true, optional).
 
 **Stack-Specific Scripts:**
-Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared scripts (both sources merged, sorted 01→99). Stack-specific 03-* scripts (e.g., `03-pgbouncer-auth.sh`) run after shared 03-* but before 04-*:
+Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared scripts (both sources merged, sorted 01→99). Stack-specific 03-_ scripts (e.g., `03-pgbouncer-auth.sh`) run after shared 03-_ but before 04-\*:
+
 - Primary: `03-pgbouncer-auth.sh` — Creates `pgbouncer_auth` user + `pgbouncer_lookup()` function
 - Replica: (empty, uses shared scripts only)
 - Single: (empty, uses shared scripts only)
 
 **Why Order Matters:**
+
 - Extensions MUST load before user creation (SECURITY DEFINER functions require extensions)
 - Replication user creation before stack-specific auth infrastructure
 - pgsodium initialization before any other extensions that depend on encryption
 - Wrong order → cryptic "function does not exist" or "role does not exist" errors
 
 **Adding New Scripts:**
+
 - Shared scripts: Use `03-`, `04-`, etc. (after replication)
 - Stack-specific: Can reuse prefixes (only visible to that stack), but maintain logical order
 - Never use `00-` (breaks extension dependency)
 
 ### Compose Override Pattern
+
 **Pattern:** `compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test memory). Compose merges configurations using standard YAML merge semantics (later files override earlier values). Base compose now relies on `mem_limit`/`mem_reservation` so Docker applies cgroup limits; keep those values aligned with auto-config expectations.
 
 **Usage:** `docker compose -f compose.yml -f compose.dev.yml up` merges configs (dev wins on conflicts).
 
 ### Shared Base Configuration Pattern
+
 **Pattern:** Extract common PostgreSQL settings to `docker/postgres/configs/postgresql-base.conf`, use `include` directive in stack-specific configs.
 
 **Files:**
+
 - Base: `docker/postgres/configs/postgresql-base.conf` (75 lines)
 - Primary: Stack-specific overrides only (44 lines total)
 - Replica: Stack-specific overrides only (35 lines total)
@@ -334,14 +377,17 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 **What stays in stack configs:** Deployment-specific (replication settings, synchronous_commit, max_wal_senders, hot_standby delays, pg_cron).
 
 ### Auto-Config Memory Allocation
+
 **Detection:** Prefers cgroup v2 limits, respects manual overrides (`POSTGRES_MEMORY=<MB>`), otherwise inspects `/proc/meminfo`.
 
 **Overrides:**
+
 - `POSTGRES_MEMORY=<MB>` — Manual RAM override (works even when cgroup limits exist)
 
 **Baseline ratios:** ~25% of detected RAM allocated to shared_buffers up to 32GB, with effective_cache ≥2× buffers. Work mem capped at 32MB, maintenance_work_mem at 2GB. Connection tiers: 80 (≤512MB), 120 (<4GB), 200 (≥4GB).
 
 **Common cases:**
+
 - 512MB limit → shared_buffers 128MB, effective_cache 384MB, work_mem 1MB, max_connections 80
 - 1GB override (`POSTGRES_MEMORY=1024`) → shared_buffers 256MB, effective_cache 768MB, work_mem 2MB, max_connections 120
 - 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 4MB, max_connections 120
@@ -351,18 +397,19 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 
 **Memory Allocation Table:**
 
-| RAM | shared_buffers | effective_cache | maint_work_mem | work_mem | max_conn | Ratio |
-|-----|----------------|-----------------|----------------|----------|----------|-------|
-| 512MB | 128MB (25%) | 384MB (75%) | 32MB (6%) | 1MB | 80 | Min viable |
-| 1GB | 256MB (25%) | 768MB (75%) | 32MB (3%) | 2MB | 120 | Dev/test |
-| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3%) | 4MB | 120 | Small prod |
-| 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3%) | 5MB | 200 | Med prod |
-| 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3%) | 10MB | 200 | Large prod |
-| 16GB | 3276MB (20%) | 12288MB (75%) | 512MB (3%) | 20MB | 200 | High-load |
-| 32GB | 6553MB (20%) | 24576MB (75%) | 1024MB (3%) | 32MB (cap) | 200 | Enterprise |
-| 64GB | 9830MB (15%) | 49152MB (75% cap) | 2048MB (3% cap) | 32MB (cap) | 200 | Burst node |
+| RAM   | shared_buffers | effective_cache   | maint_work_mem  | work_mem   | max_conn | Ratio      |
+| ----- | -------------- | ----------------- | --------------- | ---------- | -------- | ---------- |
+| 512MB | 128MB (25%)    | 384MB (75%)       | 32MB (6%)       | 1MB        | 80       | Min viable |
+| 1GB   | 256MB (25%)    | 768MB (75%)       | 32MB (3%)       | 2MB        | 120      | Dev/test   |
+| 2GB   | 512MB (25%)    | 1536MB (75%)      | 64MB (3%)       | 4MB        | 120      | Small prod |
+| 4GB   | 1024MB (25%)   | 3072MB (75%)      | 128MB (3%)      | 5MB        | 200      | Med prod   |
+| 8GB   | 2048MB (25%)   | 6144MB (75%)      | 256MB (3%)      | 10MB       | 200      | Large prod |
+| 16GB  | 3276MB (20%)   | 12288MB (75%)     | 512MB (3%)      | 20MB       | 200      | High-load  |
+| 32GB  | 6553MB (20%)   | 24576MB (75%)     | 1024MB (3%)     | 32MB (cap) | 200      | Enterprise |
+| 64GB  | 9830MB (15%)   | 49152MB (75% cap) | 2048MB (3% cap) | 32MB (cap) | 200      | Burst node |
 
 **Extension Memory Overhead (Estimated):**
+
 - **Base overhead**: ~50-100MB (pg_stat_statements, auto_explain, pgaudit shared memory)
 - **pgvector**: ~10-50MB per connection (depends on vector dimensions and HNSW index size)
 - **timescaledb**: ~20-100MB (hypertable metadata, compression buffers)
@@ -370,12 +417,14 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 - **Total extension overhead**: ~100-250MB depending on usage patterns
 
 **Why These Numbers Matter:**
+
 - 512MB deployments leave ~250-300MB for OS/connections after buffers (tight but functional)
 - 2GB+ deployments have comfortable headroom for connection pooling and temp workloads
 - 16GB+ can handle hundreds of pooled connections via PgBouncer with minimal memory pressure
 - work_mem cap (32MB) prevents OOM from complex queries on low-RAM nodes
 
 ### PostgreSQL 18 Optimizations Applied
+
 - **Async I/O:** `io_method = 'worker'` (2-3x I/O performance on NVMe/cloud storage)
 - **LZ4 WAL compression:** Faster than legacy `pglz`, reduces WAL volume 30-60%
 - **Data checksums:** Enabled by default (opt-out via `DISABLE_DATA_CHECKSUMS=true`)
@@ -385,21 +434,26 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 - **pgAudit log_statement_once:** Reduces duplicate audit log entries (PG18 feature)
 
 ### Security Hardening Pattern
+
 **User isolation:**
+
 - `NOINHERIT` on replicator and pgbouncer_auth users (prevents privilege escalation)
 - Per-user connection limits (postgres: 50, replicator: 5, pgbouncer_auth: 10)
 
 **Audit logging:**
+
 - pgAudit tracks DDL, write operations, and role changes
 - `pgaudit.log_statement_once = on` reduces log duplication (PostgreSQL 18 feature)
 - Output to stderr (captured by Docker logs)
 
 **Network isolation:**
+
 - Default: localhost (127.0.0.1) binding via `POSTGRES_BIND_IP` env var
 - Production: Change to 0.0.0.0 for network access (requires firewall/network security)
 - Development: localhost override via `compose.dev.yml`
 
 **Secrets management:**
+
 - All passwords via env vars (never committed)
 - Dev test password (`dev_pgbouncer_auth_test_2025`) safe for local testing only
 - Production: `${PGBOUNCER_AUTH_PASS}`, `${POSTGRES_PASSWORD}` injected at runtime
@@ -415,6 +469,7 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 ## Testing Strategy
 
 **Critical Tests:**
+
 1. Extension loading (CREATE + functional query)
 2. Auto-config detection (grep logs for RAM/CPU/scaled values)
 3. PgBouncer auth (via :6432, verify SHOW POOLS)
@@ -475,6 +530,7 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 **Target Range:** 2-16GB RAM optimal, scales 2-128GB. 1-64 CPU cores. Compose-only (no K8s).
 
 **Deliberate Limits:**
+
 - Max connections: 80/120/200 (tiers by RAM to prevent OOM; PgBouncer multiplexes)
 - PgBouncer transaction mode: NO prepared statements/advisory locks/LISTEN/NOTIFY (use session mode if needed)
 - Auto-config: Reads cgroup v2, manual `POSTGRES_MEMORY`, or `/proc/meminfo`; set a limit if you need deterministic tuning

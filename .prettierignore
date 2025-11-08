@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+bun.lock
+bun.lockb
+package-lock.json
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Generated files
+docker/postgres/extensions.manifest.json
+docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
+
+# Archives
+.archived/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.Dockerfile
+Dockerfile
+
+# Logs
+*.log
+test-results*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

@@ -16,10 +16,11 @@ The documentation in this archive may contain **outdated information** that does
 ## For Current Information
 
 Refer to the main project documentation:
+
 - `/AGENTS.md` (or `/CLAUDE.md` symlink) - Current architecture guide
 - `/docs/extensions/` - Up-to-date extension documentation
 - `/CHANGELOG.md` - Recent changes and current state
 
 ---
 
-*Last Updated: 2025-11-07*
+_Last Updated: 2025-11-07_

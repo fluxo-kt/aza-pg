@@ -7,39 +7,50 @@ The `validate-manifest.ts` script performs comprehensive validation of `docker/p
 ## Validations
 
 ### 1. Count Validation
+
 Ensures the manifest contains exactly:
+
 - **Total**: 38 extensions
 - **Builtin**: 6 (PostgreSQL core extensions)
 - **PGDG**: 14 (pre-compiled from apt.postgresql.org)
 - **Compiled**: 18 (built from source)
 
 ### 2. defaultEnable Consistency
+
 For extensions with `runtime.defaultEnable=true`, verifies they are either:
+
 - Listed in `01-extensions.sql` baseline (CREATE EXTENSION statements), OR
 - Included in `DEFAULT_SHARED_PRELOAD_LIBRARIES` in `docker-auto-config-entrypoint.sh`
 
 **Special case**: `plpgsql` is always available and doesn't require explicit creation.
 
 ### 3. PGDG Consistency
+
 For all extensions with `install_via: "pgdg"`, verifies:
+
 - Corresponding `postgresql-${PG_MAJOR}-<name>=<version>` entry exists in Dockerfile
 - Package name mappings are handled (e.g., `vector` → `pgvector`)
 
 ### 4. Runtime Spec Completeness
+
 Warns if `kind: "tool"` entries are missing `runtime` object.
 
 ### 5. Dependency Validation
+
 Ensures all `dependencies` reference valid extension names in the manifest.
 
 ## Usage
 
 ### Standalone
+
 ```bash
 bun run scripts/extensions/validate-manifest.ts
 ```
 
 ### Integrated in Build
+
 The script automatically runs as a preflight check in `scripts/build.sh`:
+
 ```bash
 ./scripts/build.sh  # Validation runs before Docker build
 ```
@@ -79,23 +90,27 @@ The script automatically runs as a preflight check in `scripts/build.sh`:
 ## Error Examples
 
 ### Count Mismatch
+
 ```
 ERROR: Total extension count mismatch: got 37, expected 38
 ```
 
 ### defaultEnable Inconsistency
+
 ```
 ERROR: Extension 'foo' has defaultEnable=true but is NOT in 01-extensions.sql baseline
        OR DEFAULT_SHARED_PRELOAD_LIBRARIES
 ```
 
 ### PGDG Missing
+
 ```
 ERROR: Extension 'bar' has install_via="pgdg" but is NOT installed in Dockerfile
        (expected package: postgresql-${PG_MAJOR}-bar)
 ```
 
 ### Invalid Dependency
+
 ```
 ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in manifest
 ```
@@ -103,18 +118,22 @@ ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in m
 ## Maintenance
 
 ### Updating Expected Counts
+
 If you add/remove extensions, update `EXPECTED_COUNTS` in `validate-manifest.ts`:
+
 ```typescript
 const EXPECTED_COUNTS = {
-  total: 38,    // Total extensions
-  builtin: 6,   // kind: "builtin"
-  pgdg: 14,     // install_via: "pgdg"
+  total: 38, // Total extensions
+  builtin: 6, // kind: "builtin"
+  pgdg: 14, // install_via: "pgdg"
   compiled: 18, // Source-built (neither builtin nor PGDG)
 };
 ```
 
 ### Adding New Validations
+
 Add new validation functions following the pattern:
+
 ```typescript
 function validateNewCheck(manifest: Manifest): void {
   console.log(`\n${colors.blue}[NEW CHECK VALIDATION]${colors.reset}`);
@@ -133,29 +152,30 @@ validateDefaultEnable(manifest);
 validatePgdgConsistency(manifest);
 validateRuntimeSpec(manifest);
 validateDependencies(manifest);
-validateNewCheck(manifest);  // Add here
+validateNewCheck(manifest); // Add here
 ```
 
 ## Package Name Mappings
 
 Some extensions have different Dockerfile package names:
 
-| Manifest Name | Dockerfile Package |
-|---------------|-------------------|
-| `vector` | `postgresql-${PG_MAJOR}-pgvector` |
-| `postgis` | `postgresql-${PG_MAJOR}-postgis-3` |
-| `pg_partman` | `postgresql-${PG_MAJOR}-partman` |
+| Manifest Name   | Dockerfile Package                     |
+| --------------- | -------------------------------------- |
+| `vector`        | `postgresql-${PG_MAJOR}-pgvector`      |
+| `postgis`       | `postgresql-${PG_MAJOR}-postgis-3`     |
+| `pg_partman`    | `postgresql-${PG_MAJOR}-partman`       |
 | `plpgsql_check` | `postgresql-${PG_MAJOR}-plpgsql-check` |
-| `pg_repack` | `postgresql-${PG_MAJOR}-repack` |
-| `pgrouting` | `postgresql-${PG_MAJOR}-pgrouting` |
-| `set_user` | `postgresql-${PG_MAJOR}-set-user` |
-| `pg_cron` | `postgresql-${PG_MAJOR}-cron` |
+| `pg_repack`     | `postgresql-${PG_MAJOR}-repack`        |
+| `pgrouting`     | `postgresql-${PG_MAJOR}-pgrouting`     |
+| `set_user`      | `postgresql-${PG_MAJOR}-set-user`      |
+| `pg_cron`       | `postgresql-${PG_MAJOR}-cron`          |
 
 These mappings are defined in `getDockerfilePackageName()` function.
 
 ## Integration Points
 
 The validator cross-references:
+
 1. **Manifest**: `docker/postgres/extensions.manifest.json`
 2. **Dockerfile**: `docker/postgres/Dockerfile` (PGDG packages)
 3. **Init SQL**: `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (baseline extensions)
@@ -164,6 +184,7 @@ The validator cross-references:
 ## Troubleshooting
 
 ### Validation Fails During Build
+
 ```bash
 # Run standalone to see detailed error messages
 bun run scripts/extensions/validate-manifest.ts
@@ -173,6 +194,7 @@ echo $?  # 0 = success, 1 = failure
 ```
 
 ### Bun Not Installed
+
 ```bash
 # Install Bun (https://bun.sh)
 curl -fsSL https://bun.sh/install | bash
@@ -182,7 +204,9 @@ npx tsx scripts/extensions/validate-manifest.ts
 ```
 
 ### False Positives
+
 If validation fails incorrectly:
+
 1. Check package name mappings in `getDockerfilePackageName()`
 2. Verify baseline extension list parsing regex
 3. Check for case sensitivity issues (manifest uses lowercase, SQL might differ)
@@ -190,16 +214,19 @@ If validation fails incorrectly:
 ## Design Decisions
 
 ### Why TypeScript/Bun?
+
 - Type safety for manifest structure
 - Fast execution (Bun native JSON parsing)
 - Consistent with config-generator tooling
 
 ### Why Preflight vs Post-Build?
+
 - Catch errors BEFORE 12-minute Docker build
 - Immediate feedback loop
 - Prevents CI/CD failures late in pipeline
 
 ### Why Not JSON Schema?
+
 - Need cross-file validation (Dockerfile, SQL, entrypoint)
 - Custom logic for package name mappings
 - Detailed error messages with context
@@ -207,6 +234,7 @@ If validation fails incorrectly:
 ## Future Enhancements
 
 Potential improvements:
+
 - [ ] Validate extension version consistency (ARG vs manifest)
 - [ ] Check for SHA256 commit hash format
 - [ ] Verify build type compatibility (cargo-pgrx vs pgxs)

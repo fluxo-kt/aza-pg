@@ -3,27 +3,31 @@
 Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extensions, and complete deployment stacks.
 
 ## Design Goals
- 
+
 **Purpose:** Universal Postgres stack minimizing manual tuning across 2GB VPS → 128GB burst nodes.
 
 **Targets:** Solo devs, small teams, multi-project fleets. Optimized for Docker Compose (not K8s). RAM: 2-16GB sweet spot, scales to 128GB. CPUs: 1-64 cores.
 
 **Criteria:**
+
 - Minimal config drift: One image + env vars adapts to any hardware
 - Supply chain hardened: SHA-pinned extensions (immutable), SBOM/provenance
 - Production-grade: PgBouncer pooling, replication, monitoring, SCRAM-SHA-256
 
 ## Requirements
+
 - Docker Engine 24+ with Docker Compose v2
 - GNU/Linux or macOS host (Windows via WSL2)
 - `bun` for regenerating configs (`curl -fsSL https://bun.sh/install | bash`)
 
 **Non-Goals:**
+
 - Kubernetes manifests (use Compose stacks)
 - Multi-version support (PostgreSQL 18 only)
 - Custom extension compilation at runtime (pre-compiled in image)
 
 **Limitations:**
+
 - Auto-config reads cgroup v2 limits or `/proc/meminfo`; set `POSTGRES_MEMORY` when neither is available.
 - Connection limit tiers at 80/120/200 to protect low-memory nodes (PgBouncer recommended for concurrency).
 - PgBouncer runs in transaction mode (no prepared statements, advisory locks, LISTEN/NOTIFY).
@@ -40,16 +44,19 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Image Specifications
 
 ### Size
+
 - Base `postgres:18-trixie`: ~93-154MB
 - With compiled extensions (pgvector, pg_cron, pgaudit): ~450MB
 - Multi-platform manifest (amd64 + arm64): ~900MB total
 
 ### Optimizations
+
 - Multi-stage build (builder artifacts not included in final image)
 - Minimal runtime dependencies (ca-certificates, zstd, lz4 only)
 - Parallel extension compilation (~40% faster builds)
 
 ### Extensions Included
+
 - **pgvector 0.8.1**: Vector similarity search
 - **pg_cron 1.6.7**: Job scheduling
 - **pgAudit 18.0**: Audit logging
@@ -58,10 +65,10 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Quick Start
 
 **⚠️ SECURITY WARNINGS:**
+
 1. **TLS Not Enabled by Default**: Connections use plaintext. For production with network exposure, enable TLS (see `docker/postgres/configs/postgresql-*.conf` for TLS settings). Requires valid certificates.
 2. **Local Binding Default**: Services bind to `127.0.0.1` by default (localhost only). To allow network access, change `POSTGRES_BIND_IP=0.0.0.0` in `.env` AND ensure firewall/network security is configured.
 3. **Image Placeholder**: Replace `ghcr.io/fluxo-kt` in compose files with your actual registry or use a local image tag.
-
 
 ### Prerequisites
 
@@ -99,6 +106,7 @@ docker compose up -d
 ```
 
 Access:
+
 - **Postgres**: `127.0.0.1:5432`
 - **PgBouncer**: `127.0.0.1:6432`
 - **Postgres Exporter**: `127.0.0.1:9187/metrics`
@@ -136,6 +144,7 @@ psql postgresql://postgres:password@localhost:5432/postgres -c "SELECT '[1,2,3]'
 ## Stacks
 
 ### Primary
+
 Full production stack with Postgres + PgBouncer + postgres_exporter.
 
 ```bash
@@ -145,6 +154,7 @@ docker compose up -d
 ```
 
 ### Single
+
 Minimal setup for development or small deployments (just Postgres).
 
 ```bash
@@ -153,10 +163,12 @@ docker compose up
 ```
 
 Access:
+
 - **Postgres**: `127.0.0.1:5432`
 - **Postgres Exporter**: `127.0.0.1:9189/metrics` (note: different port than primary to avoid conflicts)
 
 ### Replica
+
 Streaming replication setup (connects to primary).
 
 ```bash
@@ -165,6 +177,7 @@ docker compose up
 ```
 
 Access:
+
 - **Postgres**: `127.0.0.1:5433` (note: different port than primary to avoid conflicts)
 - **Postgres Exporter**: `127.0.0.1:9188/metrics` (note: different port than primary to avoid conflicts)
 
@@ -175,12 +188,14 @@ Access:
 **Adapts at runtime** (container start on VPS, not build time). Same image auto-tunes to deployment environment.
 
 Detects at container start:
+
 - **RAM**: cgroup v2 memory limit (preferred). Set `POSTGRES_MEMORY=<MB>` to override, or fall back to `/proc/meminfo` when running without limits.
 - **CPU**: Core count → scales `max_worker_processes`, `max_parallel_workers`, `max_connections`
 
 The entrypoint targets ~25% of available RAM for `shared_buffers` (capped at 32GB) and derives other settings from that baseline (maintenance_work_mem capped at 2GB, work_mem at 32MB). Connection ceilings tier with memory: 80 (≤512MB), 120 (<4GB), 200 (≥4GB).
 
 Reference points:
+
 - 512MB limit → `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=1MB`, `max_connections=80`
 - 1GB manual override (`POSTGRES_MEMORY=1024`) → `shared_buffers=256MB`, `effective_cache_size=768MB`, `work_mem=2MB`, `max_connections=120`
 - 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=4MB`, `max_connections=120`
@@ -200,14 +215,14 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 ## Extensions
 
-| Extension | Version | Purpose |
-|-----------|---------|---------|
-| pgvector | 0.8.1 | Vector similarity search for AI/RAG |
-| pg_cron | 1.6.7 | Database job scheduler |
-| pgAudit | 18.0 | Audit logging for compliance |
-| pg_trgm | Built-in | Trigram fuzzy text search |
-| pg_stat_statements | Built-in | Query performance monitoring |
-| auto_explain | Built-in | Auto-log slow query plans |
+| Extension          | Version  | Purpose                             |
+| ------------------ | -------- | ----------------------------------- |
+| pgvector           | 0.8.1    | Vector similarity search for AI/RAG |
+| pg_cron            | 1.6.7    | Database job scheduler              |
+| pgAudit            | 18.0     | Audit logging for compliance        |
+| pg_trgm            | Built-in | Trigram fuzzy text search           |
+| pg_stat_statements | Built-in | Query performance monitoring        |
+| auto_explain       | Built-in | Auto-log slow query plans           |
 
 All extensions are SHA-pinned for reproducible builds.
 
@@ -218,6 +233,7 @@ All extensions are SHA-pinned for reproducible builds.
 You can build custom images with only the extensions you need. The manifest-driven system lets you disable unused extensions to reduce image size and build time.
 
 **Example:** To disable an extension (e.g., `pgq`):
+
 1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
 2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
 3. Build: `./scripts/build.sh`
@@ -229,6 +245,7 @@ See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for step-by-step instructions and [
 ## Monitoring
 
 postgres_exporter included with custom queries:
+
 - Replication lag
 - Memory settings
 - Postmaster uptime
@@ -237,13 +254,14 @@ postgres_exporter included with custom queries:
 
 Default exporter ports (configurable via `.env`):
 
-| Stack | Postgres Port | Postgres Exporter | PgBouncer Exporter | Notes |
-|-------|--------------|-------------------|--------------------| ------|
-| Primary | 5432 | 9187 | 9127 | Full production stack |
-| Replica | 5433 | 9188 | N/A | Different ports to avoid conflicts |
-| Single | 5432 | 9189 | N/A | Minimal stack |
+| Stack   | Postgres Port | Postgres Exporter | PgBouncer Exporter | Notes                              |
+| ------- | ------------- | ----------------- | ------------------ | ---------------------------------- |
+| Primary | 5432          | 9187              | 9127               | Full production stack              |
+| Replica | 5433          | 9188              | N/A                | Different ports to avoid conflicts |
+| Single  | 5432          | 9189              | N/A                | Minimal stack                      |
 
 Configure in `.env`:
+
 ```env
 # Primary stack
 POSTGRES_EXPORTER_PORT=9187
@@ -257,19 +275,20 @@ POSTGRES_EXPORTER_PORT=9189
 ```
 
 Integrate with Prometheus:
+
 ```yaml
 scrape_configs:
-  - job_name: 'postgres-primary'
+  - job_name: "postgres-primary"
     static_configs:
-      - targets: ['localhost:9187']
+      - targets: ["localhost:9187"]
 
-  - job_name: 'postgres-replica'
+  - job_name: "postgres-replica"
     static_configs:
-      - targets: ['localhost:9188']
+      - targets: ["localhost:9188"]
 
-  - job_name: 'pgbouncer'
+  - job_name: "pgbouncer"
     static_configs:
-      - targets: ['localhost:9127']
+      - targets: ["localhost:9127"]
 ```
 
 ## Build from Source
@@ -290,17 +309,20 @@ Use the build script with Docker Buildx for fast, optimized builds:
 ```
 
 **Performance:**
+
 - First build: ~12 minutes (compiles all extensions)
 - Cached build: ~2 minutes (reuses CI artifacts)
 - No network: ~12 minutes (falls back to local cache)
 
 **How it works:**
+
 - Uses Docker Buildx with BuildKit for parallel builds
 - Pulls remote cache from GitHub Container Registry
 - Falls back to local cache if network unavailable
 - Automatically creates buildx builder if needed
 
 **Requirements:**
+
 - Docker Buildx v0.8+ (bundled with Docker 19.03+)
 - Network access to `ghcr.io` for cache pull (optional but recommended)
 - Registry write access for `--push` (run `docker login ghcr.io`)
@@ -310,6 +332,7 @@ Use the build script with Docker Buildx for fast, optimized builds:
 GitHub Actions workflow builds multi-platform images (linux/amd64, linux/arm64) with SBOM and provenance.
 
 Trigger manually via GitHub Actions UI or:
+
 ```bash
 gh workflow run build-postgres-image.yml
 ```
@@ -319,24 +342,29 @@ Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 ## Troubleshooting
 
 ### Build Failures
+
 - **COPY path errors**: Use repo root as build context: `docker build -f docker/postgres/Dockerfile .`
 - **Extension compilation timeout**: Increase Docker build timeout or use cached image
 
 ### Connection Issues
+
 - **Can't connect on 5432**: Check `POSTGRES_BIND_IP` in .env (default 127.0.0.1 = localhost only)
 - **PgBouncer auth fails**: Verify `PGBOUNCER_AUTH_PASS` matches in .env and `/tmp/.pgpass` in container
 
 ### Extension Errors
+
 - **CREATE EXTENSION fails**: Check `docker logs` for preload errors - extension may need `shared_preload_libraries`
 - **pg_cron not working**: Verify `cron.database_name` is set (empty on replicas)
 
 ### Performance
+
 - **High memory usage**: Auto-config detects RAM via cgroup limits - set `POSTGRES_MEMORY=<MB>` to override
 - **Slow queries**: Check `pg_stat_statements` output, review `auto_explain` logs for plan issues
 
 ## Security
 
 ### Hardening Checklist
+
 - ✅ All extensions SHA-pinned to prevent supply chain attacks
 - ✅ Base image SHA256-pinned (`postgres:18-trixie@sha256:...`)
 - ✅ APT packages authenticated (no `--allow-unauthenticated`)
@@ -345,7 +373,6 @@ Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 - ✅ SQL injection protection in replica setup script
 - ⚠️ `.env` files require `chmod 600` (warned in .env.example files)
 - ⚠️ Default bind: localhost only - set `POSTGRES_BIND_IP=0.0.0.0` with firewall/VPN
-
 
 ### Enabling TLS/SSL
 
@@ -367,6 +394,7 @@ By default, TLS is **not configured** (connections unencrypted). To enable:
 See `docs/PRODUCTION.md` for complete TLS setup guide.
 
 ### Threat Model
+
 - **Supply chain attacks**: Mitigated via SHA pinning (extensions + base image)
 - **Credential exposure**: Mitigated via SCRAM-SHA-256, .pgpass, no hardcoded passwords
 - **Network exposure**: Default localhost binding, TLS config template available

@@ -5,6 +5,7 @@ This document outlines PostgreSQL 18-specific features leveraged by aza-pg.
 ## Async I/O (Major Performance Feature)
 
 **Configuration:**
+
 ```conf
 io_method = 'worker'
 io_combine_limit = 128
@@ -16,6 +17,7 @@ io_max_combine_limit = 128
 **How it works:** Worker processes handle async I/O operations, reducing context switches and improving parallelism. Combines multiple small I/O operations into larger sequential operations.
 
 **Monitoring:** New `pg_stat_io` view provides per-backend I/O statistics:
+
 ```sql
 SELECT backend_type, io_context, reads, writes, extends
 FROM pg_stat_io
@@ -33,11 +35,13 @@ ORDER BY reads + writes DESC;
 **Benefit:** Detects storage corruption before it spreads. Critical for long-running production databases.
 
 **Disable (not recommended):**
+
 ```bash
 docker run -e DISABLE_DATA_CHECKSUMS=true ...
 ```
 
 **Verify checksum status:**
+
 ```sql
 SELECT datname, dathaslogicrep, pg_catalog.pg_get_pg_checksums_status()
 FROM pg_database;
@@ -46,6 +50,7 @@ FROM pg_database;
 ## Enhanced Replication
 
 **New setting:**
+
 ```conf
 idle_replication_slot_timeout = '48h'
 ```
@@ -55,24 +60,28 @@ Automatically invalidates abandoned replication slots after 48 hours of inactivi
 **Impact:** Prevents disk exhaustion from forgotten replication slots (common issue in pre-18 versions).
 
 **Monitoring:**
+
 ```sql
 SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_retained
 FROM pg_replication_slots;
 ```
 
 **Stack Configuration:**
+
 - Primary: `idle_replication_slot_timeout = '48h'` (in postgresql-primary.conf)
 - Replica: Not applicable (replicas don't create slots)
 
 ## TLS 1.3 Support
 
 **Configuration:**
+
 ```conf
 ssl_min_protocol_version = 'TLSv1.3'
 ssl_tls13_ciphers = 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256'
 ```
 
 **Benefits:**
+
 - Faster handshake (fewer round trips)
 - Forward secrecy by default
 - Removes weak ciphers
@@ -80,12 +89,14 @@ ssl_tls13_ciphers = 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256'
 **Current Status:** Commented out in `postgresql-base.conf` (requires SSL cert setup).
 
 **Enable:**
+
 1. Generate certs: `scripts/tools/generate-ssl-certs.sh stacks/primary/certs`
 2. Mount in compose.yml: `- ./certs:/etc/postgresql/certs:ro`
 3. Uncomment SSL lines in postgresql-base.conf
 4. Restart Postgres
 
 **Verify:**
+
 ```sql
 SELECT ssl_version, ssl_cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid();
 ```
@@ -95,6 +106,7 @@ SELECT ssl_version, ssl_cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid();
 **New views:**
 
 ### pg_stat_io
+
 Per-backend I/O statistics. Tracks reads/writes/extends/fsyncs by backend type and I/O context.
 
 ```sql
@@ -106,6 +118,7 @@ WHERE backend_type = 'client backend';
 **Use case:** Identify I/O bottlenecks per query type (sequential scan vs index scan).
 
 ### pg_stat_wal
+
 WAL activity and performance metrics. Tracks WAL generation, writes, syncs, and compression stats.
 
 ```sql
@@ -120,6 +133,7 @@ FROM pg_stat_wal;
 ## WAL Compression
 
 **Upgraded to LZ4:**
+
 ```conf
 wal_compression = lz4
 ```
@@ -131,11 +145,13 @@ wal_compression = lz4
 **Performance impact:** Reduces WAL write volume by 30-60% (depends on data compressibility). Minimal CPU overhead on modern hardware.
 
 **Disable:**
+
 ```conf
 wal_compression = off  # Not recommended for network-replicated setups
 ```
 
 **Verify effectiveness:**
+
 ```sql
 SELECT wal_compression, pg_size_pretty(wal_bytes) AS uncompressed,
        pg_size_pretty(wal_fpi_bytes) AS compressed
@@ -145,6 +161,7 @@ FROM pg_stat_wal;
 ## pgAudit Enhancements
 
 **New PostgreSQL 18 feature:**
+
 ```conf
 pgaudit.log_statement_once = on
 ```
@@ -152,17 +169,20 @@ pgaudit.log_statement_once = on
 **Impact:** Reduces duplicate audit log entries when a single statement triggers multiple audit events (e.g., `UPDATE` on table with triggers).
 
 **Before (PG17):**
+
 ```
 AUDIT: SESSION,1,1,WRITE,UPDATE,TABLE,public.users,"UPDATE users SET ..."
 AUDIT: SESSION,1,1,FUNCTION,EXECUTE,FUNCTION,public.audit_trigger,"UPDATE users SET ..."
 ```
 
 **After (PG18 with log_statement_once):**
+
 ```
 AUDIT: SESSION,1,1,WRITE,UPDATE,TABLE,public.users,"UPDATE users SET ..."
 ```
 
 **Configuration in aza-pg:**
+
 - Enabled by default in `postgresql-primary.conf`
 - Tracks: DDL, write operations, role changes
 - Output: stderr (captured by Docker logs)
@@ -172,6 +192,7 @@ AUDIT: SESSION,1,1,WRITE,UPDATE,TABLE,public.users,"UPDATE users SET ..."
 **PostgreSQL 18 improvement:** auto_explain works seamlessly with async I/O for accurate query performance analysis.
 
 **Configuration:**
+
 ```conf
 auto_explain.log_min_duration = '3s'
 auto_explain.log_analyze = on
@@ -180,6 +201,7 @@ auto_explain.log_nested_statements = on
 ```
 
 **Output example:**
+
 ```
 LOG:  duration: 3542.891 ms  plan:
 Query Text: SELECT * FROM large_table WHERE value > 1000000;
@@ -196,6 +218,7 @@ Execution Time: 3542.891 ms
 ## Idle Session Timeout
 
 **New setting (PostgreSQL 18):**
+
 ```conf
 idle_session_timeout = 0  # Disabled by default
 ```
@@ -210,13 +233,13 @@ idle_session_timeout = 0  # Disabled by default
 
 **Key PostgreSQL 18 improvements applied in aza-pg:**
 
-| Feature | Performance Gain | Workload |
-|---------|------------------|----------|
-| Async I/O | 2-3x | I/O-bound (large scans, writes) |
-| LZ4 WAL compression | 30-60% less WAL | Write-heavy, replication |
-| Data checksums | -1 to -5% | All (integrity cost) |
-| TLS 1.3 | 15-30% faster handshake | SSL-enabled connections |
-| pgAudit log_statement_once | 40-60% fewer audit logs | Audit-enabled databases |
+| Feature                    | Performance Gain        | Workload                        |
+| -------------------------- | ----------------------- | ------------------------------- |
+| Async I/O                  | 2-3x                    | I/O-bound (large scans, writes) |
+| LZ4 WAL compression        | 30-60% less WAL         | Write-heavy, replication        |
+| Data checksums             | -1 to -5%               | All (integrity cost)            |
+| TLS 1.3                    | 15-30% faster handshake | SSL-enabled connections         |
+| pgAudit log_statement_once | 40-60% fewer audit logs | Audit-enabled databases         |
 
 **Net impact:** 2-3x performance improvement on modern cloud infrastructure (NVMe + fast networks) for typical OLTP workloads.
 

@@ -52,6 +52,7 @@ ORDER BY proname;
 ## Usage
 
 See `docs/pgflow/INTEGRATION.md` for comprehensive integration guide covering:
+
 - Creating flows and steps
 - Starting workflows
 - Handling task completion
@@ -67,6 +68,7 @@ See `docs/pgflow/INTEGRATION.md` for comprehensive integration guide covering:
 ## Why Optional?
 
 pgflow adds complexity and workflow-specific database load. Most deployments don't need DAG orchestration and can use simpler approaches:
+
 - `pg_cron` for scheduled jobs
 - Application-level workflow engines (Temporal, Airflow)
 - Event-driven architectures (message queues)

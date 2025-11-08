@@ -18,8 +18,14 @@ const EXPECTED_COUNTS = {
 // File paths
 const MANIFEST_PATH = resolve(__dirname, "../../docker/postgres/extensions.manifest.json");
 const DOCKERFILE_PATH = resolve(__dirname, "../../docker/postgres/Dockerfile");
-const INIT_SQL_PATH = resolve(__dirname, "../../docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql");
-const ENTRYPOINT_PATH = resolve(__dirname, "../../docker/postgres/docker-auto-config-entrypoint.sh");
+const INIT_SQL_PATH = resolve(
+  __dirname,
+  "../../docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
+);
+const ENTRYPOINT_PATH = resolve(
+  __dirname,
+  "../../docker/postgres/docker-auto-config-entrypoint.sh"
+);
 
 interface RuntimeSpec {
   sharedPreload: boolean;
@@ -104,7 +110,9 @@ function validateCounts(manifest: Manifest): void {
     error(`PGDG extension count mismatch: got ${pgdg}, expected ${EXPECTED_COUNTS.pgdg}`);
   }
   if (compiled !== EXPECTED_COUNTS.compiled) {
-    error(`Compiled extension count mismatch: got ${compiled}, expected ${EXPECTED_COUNTS.compiled}`);
+    error(
+      `Compiled extension count mismatch: got ${compiled}, expected ${EXPECTED_COUNTS.compiled}`
+    );
   }
 }
 
@@ -123,7 +131,9 @@ function validateDefaultEnable(manifest: Manifest): void {
     baselineExtensions.add(match[1].toLowerCase());
   }
 
-  console.log(`  Baseline extensions in 01-extensions.sql: ${Array.from(baselineExtensions).join(", ")}`);
+  console.log(
+    `  Baseline extensions in 01-extensions.sql: ${Array.from(baselineExtensions).join(", ")}`
+  );
 
   // Parse docker-auto-config-entrypoint.sh for DEFAULT_SHARED_PRELOAD_LIBRARIES
   const entrypoint = readFile(ENTRYPOINT_PATH);
@@ -144,14 +154,13 @@ function validateDefaultEnable(manifest: Manifest): void {
 
       // Builtin extensions that don't require CREATE EXTENSION (like plpgsql)
       // are always available, so we don't require them to be in baseline or preload
-      const isAlwaysAvailableBuiltin = entry.kind === "builtin" &&
-        entry.name === "plpgsql"; // plpgsql is always available in PostgreSQL
+      const isAlwaysAvailableBuiltin = entry.kind === "builtin" && entry.name === "plpgsql"; // plpgsql is always available in PostgreSQL
 
       if (!inBaseline && !inPreload && !isAlwaysAvailableBuiltin) {
         error(
           `Extension '${entry.name}' has defaultEnable=true but is NOT in 01-extensions.sql baseline ` +
-          `(${Array.from(baselineExtensions).join(", ")}) ` +
-          `OR DEFAULT_SHARED_PRELOAD_LIBRARIES (${Array.from(preloadLibraries).join(", ")})`
+            `(${Array.from(baselineExtensions).join(", ")}) ` +
+            `OR DEFAULT_SHARED_PRELOAD_LIBRARIES (${Array.from(preloadLibraries).join(", ")})`
         );
       }
     }
@@ -185,7 +194,7 @@ function validatePgdgConsistency(manifest: Manifest): void {
     if (!dockerfilePgdgPackages.has(packageName.toLowerCase())) {
       error(
         `Extension '${entry.name}' has install_via="pgdg" but is NOT installed in Dockerfile ` +
-        `(expected package: postgresql-\${PG_MAJOR}-${packageName})`
+          `(expected package: postgresql-\${PG_MAJOR}-${packageName})`
       );
     }
   }
@@ -269,7 +278,7 @@ async function main(): Promise<void> {
     if (errors.length === 0 && warnings.length === 0) {
       console.log(
         `\n${colors.green}✅ Manifest validation passed (${EXPECTED_COUNTS.total} extensions: ` +
-        `${EXPECTED_COUNTS.builtin} builtin + ${EXPECTED_COUNTS.pgdg} PGDG + ${EXPECTED_COUNTS.compiled} compiled)${colors.reset}`
+          `${EXPECTED_COUNTS.builtin} builtin + ${EXPECTED_COUNTS.pgdg} PGDG + ${EXPECTED_COUNTS.compiled} compiled)${colors.reset}`
       );
       process.exit(0);
     } else if (errors.length === 0) {
@@ -278,7 +287,9 @@ async function main(): Promise<void> {
       );
       process.exit(0);
     } else {
-      console.log(`\n${colors.red}❌ Manifest validation failed with ${errors.length} error(s)${colors.reset}`);
+      console.log(
+        `\n${colors.red}❌ Manifest validation failed with ${errors.length} error(s)${colors.reset}`
+      );
       process.exit(1);
     }
   } catch (err) {

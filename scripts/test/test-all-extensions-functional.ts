@@ -29,7 +29,8 @@
 
 import { $ } from "bun";
 
-const CONTAINER = Bun.argv.find(arg => arg.startsWith('--container='))?.split('=')[1] || 'pgq-research';
+const CONTAINER =
+  Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
 
 interface TestResult {
   name: string;
@@ -48,13 +49,13 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
-      success: result.exitCode === 0
+      success: result.exitCode === 0,
     };
   } catch (error) {
     return {
-      stdout: '',
+      stdout: "",
       stderr: String(error),
-      success: false
+      success: false,
     };
   }
 }
@@ -80,26 +81,30 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
-console.log('='.repeat(80));
-console.log('COMPREHENSIVE EXTENSION FUNCTIONAL TEST SUITE');
-console.log('='.repeat(80));
+console.log("=".repeat(80));
+console.log("COMPREHENSIVE EXTENSION FUNCTIONAL TEST SUITE");
+console.log("=".repeat(80));
 console.log(`Container: ${CONTAINER}`);
-console.log('');
+console.log("");
 
 // ============================================================================
 // AI/VECTOR EXTENSIONS
 // ============================================================================
-console.log('📊 AI/Vector Extensions');
-console.log('-'.repeat(80));
+console.log("📊 AI/Vector Extensions");
+console.log("-".repeat(80));
 
 await test("vector (pgvector) - Create extension and vector column", "ai", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS vector CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))"
+  );
   assert(create.success, "Failed to create vector table");
 });
 
 await test("vector (pgvector) - Insert embeddings", "ai", async () => {
-  const insert = await runSQL("INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')");
+  const insert = await runSQL(
+    "INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')"
+  );
   assert(insert.success, "Failed to insert vectors");
 });
 
@@ -109,13 +114,17 @@ await test("vector (pgvector) - Build HNSW index", "ai", async () => {
 });
 
 await test("vector (pgvector) - Similarity search with <-> operator", "ai", async () => {
-  const search = await runSQL("SELECT id, embedding <-> '[3,1,2]' AS distance FROM test_vectors ORDER BY distance LIMIT 2");
+  const search = await runSQL(
+    "SELECT id, embedding <-> '[3,1,2]' AS distance FROM test_vectors ORDER BY distance LIMIT 2"
+  );
   assert(search.success && search.stdout.length > 0, "Similarity search failed");
 });
 
 await test("vectorscale - Create extension and diskann index", "ai", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))"
+  );
   assert(create.success, "Failed to create vectorscale table");
 
   await runSQL("INSERT INTO test_vectorscale (vec) VALUES ('[1,0,0]'), ('[0,1,0]'), ('[0,0,1]')");
@@ -131,18 +140,22 @@ await test("vectorscale - ANN search with diskann", "ai", async () => {
 // ============================================================================
 // ANALYTICS EXTENSIONS
 // ============================================================================
-console.log('\n📈 Analytics Extensions');
-console.log('-'.repeat(80));
+console.log("\n📈 Analytics Extensions");
+console.log("-".repeat(80));
 
 await test("hll - Create extension and HLL data type", "analytics", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS hll CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)"
+  );
   assert(create.success, "Failed to create HLL table");
 });
 
 await test("hll - Aggregate distinct counts", "analytics", async () => {
   await runSQL("INSERT INTO test_hll (users) VALUES (hll_empty())");
-  const update = await runSQL("UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1");
+  const update = await runSQL(
+    "UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1"
+  );
   assert(update.success, "Failed to add to HLL");
 
   const count = await runSQL("SELECT hll_cardinality(users)::int FROM test_hll WHERE id = 1");
@@ -152,20 +165,26 @@ await test("hll - Aggregate distinct counts", "analytics", async () => {
 // ============================================================================
 // CDC EXTENSIONS
 // ============================================================================
-console.log('\n🔄 Change Data Capture Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔄 Change Data Capture Extensions");
+console.log("-".repeat(80));
 
 await test("wal2json - Create logical replication slot", "cdc", async () => {
   // Drop slot if exists
-  await runSQL("SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'");
+  await runSQL(
+    "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'"
+  );
 
-  const slot = await runSQL("SELECT pg_create_logical_replication_slot('test_wal2json_slot', 'wal2json')");
+  const slot = await runSQL(
+    "SELECT pg_create_logical_replication_slot('test_wal2json_slot', 'wal2json')"
+  );
   assert(slot.success, "Failed to create wal2json replication slot");
 });
 
 await test("wal2json - Verify slot exists and tracks changes", "cdc", async () => {
-  const verify = await runSQL("SELECT slot_name FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'");
-  assert(verify.success && verify.stdout === 'test_wal2json_slot', "Replication slot not found");
+  const verify = await runSQL(
+    "SELECT slot_name FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'"
+  );
+  assert(verify.success && verify.stdout === "test_wal2json_slot", "Replication slot not found");
 });
 
 await test("wal2json - Read JSON output from slot", "cdc", async () => {
@@ -174,7 +193,9 @@ await test("wal2json - Read JSON output from slot", "cdc", async () => {
   await runSQL("INSERT INTO test_wal2json_table VALUES (1, 'test')");
 
   // Read changes from slot
-  const changes = await runSQL("SELECT data FROM pg_logical_slot_peek_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')");
+  const changes = await runSQL(
+    "SELECT data FROM pg_logical_slot_peek_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')"
+  );
   assert(changes.success, "Failed to read wal2json changes");
 
   // Cleanup
@@ -184,28 +205,36 @@ await test("wal2json - Read JSON output from slot", "cdc", async () => {
 // ============================================================================
 // GIS EXTENSIONS
 // ============================================================================
-console.log('\n🗺️  GIS Extensions');
-console.log('-'.repeat(80));
+console.log("\n🗺️  GIS Extensions");
+console.log("-".repeat(80));
 
 await test("postgis - Create extension and geometry column", "gis", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS postgis CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))"
+  );
   assert(create.success, "Failed to create PostGIS table");
 });
 
 await test("postgis - Insert spatial data", "gis", async () => {
-  const insert = await runSQL("INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))");
+  const insert = await runSQL(
+    "INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))"
+  );
   assert(insert.success, "Failed to insert spatial data");
 });
 
 await test("postgis - Spatial query (ST_DWithin)", "gis", async () => {
   // Increased distance threshold to 100km to ensure test data is within range
-  const query = await runSQL("SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)");
+  const query = await runSQL(
+    "SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)"
+  );
   assert(query.success && parseInt(query.stdout) > 0, "Spatial query failed");
 });
 
 await test("postgis - Build spatial index", "gis", async () => {
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_postgis_geom_idx ON test_postgis USING GIST (geom)");
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_postgis_geom_idx ON test_postgis USING GIST (geom)"
+  );
   assert(index.success, "Failed to create spatial index");
 });
 
@@ -221,27 +250,35 @@ await test("pgrouting - Create extension and network graph", "gis", async () => 
   `);
   assert(create.success, "Failed to create routing table");
 
-  await runSQL("INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)");
+  await runSQL(
+    "INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)"
+  );
 });
 
 await test("pgrouting - Calculate shortest path (Dijkstra)", "gis", async () => {
-  const path = await runSQL("SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)");
+  const path = await runSQL(
+    "SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)"
+  );
   assert(path.success && path.stdout.length > 0, "Dijkstra shortest path failed");
 });
 
 // ============================================================================
 // INDEXING EXTENSIONS
 // ============================================================================
-console.log('\n🔍 Indexing Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔍 Indexing Extensions");
+console.log("-".repeat(80));
 
 await test("btree_gin - Create extension and GIN index", "indexing", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS btree_gin CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_btree_gin (id serial PRIMARY KEY, val int)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_btree_gin (id serial PRIMARY KEY, val int)"
+  );
   assert(create.success, "Failed to create btree_gin table");
 
   await runSQL("INSERT INTO test_btree_gin (val) SELECT generate_series(1, 100)");
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_btree_gin_idx ON test_btree_gin USING GIN (val)");
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_btree_gin_idx ON test_btree_gin USING GIN (val)"
+  );
   assert(index.success, "Failed to create GIN index with btree_gin");
 });
 
@@ -253,11 +290,15 @@ await test("btree_gin - Verify index supports range queries", "indexing", async 
 
 await test("btree_gist - Create extension and GiST index", "indexing", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS btree_gist CASCADE");
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_btree_gist (id serial PRIMARY KEY, val int)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_btree_gist (id serial PRIMARY KEY, val int)"
+  );
   assert(create.success, "Failed to create btree_gist table");
 
   await runSQL("INSERT INTO test_btree_gist (val) SELECT generate_series(1, 100)");
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_btree_gist_idx ON test_btree_gist USING GIST (val)");
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_btree_gist_idx ON test_btree_gist USING GIST (val)"
+  );
   assert(index.success, "Failed to create GiST index with btree_gist");
 });
 
@@ -279,32 +320,34 @@ await test("btree_gist - Verify exclusion constraint", "indexing", async () => {
 // ============================================================================
 // INTEGRATION EXTENSIONS
 // ============================================================================
-console.log('\n🔌 Integration Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔌 Integration Extensions");
+console.log("-".repeat(80));
 
 await test("http - Create extension and make GET request", "integration", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS http CASCADE");
   const request = await runSQL("SELECT status FROM http_get('https://httpbin.org/status/200')");
 
   // Handle external service issues gracefully
-  if (request.success && (request.stdout === '503' || request.stdout === '429')) {
+  if (request.success && (request.stdout === "503" || request.stdout === "429")) {
     console.log("   ⚠️  External service rate-limiting/unavailable, skipping");
     return;
   }
 
-  assert(request.success && request.stdout === '200', "HTTP GET request failed");
+  assert(request.success && request.stdout === "200", "HTTP GET request failed");
 });
 
 await test("http - Parse JSON response", "integration", async () => {
-  const request = await runSQL("SELECT (content::jsonb->>'url')::text FROM http_get('https://httpbin.org/get')");
+  const request = await runSQL(
+    "SELECT (content::jsonb->>'url')::text FROM http_get('https://httpbin.org/get')"
+  );
 
   // Handle external service issues gracefully
-  if (!request.success || !request.stdout || request.stdout === '') {
+  if (!request.success || !request.stdout || request.stdout === "") {
     console.log("   ⚠️  External service unavailable, skipping");
     return;
   }
 
-  assert(request.success && request.stdout.includes('httpbin.org'), "JSON parsing failed");
+  assert(request.success && request.stdout.includes("httpbin.org"), "JSON parsing failed");
 });
 
 await test("http - POST request with custom headers", "integration", async () => {
@@ -320,37 +363,39 @@ await test("http - POST request with custom headers", "integration", async () =>
   `);
 
   // Handle timeout/external service issues gracefully
-  if (!request.success && request.stderr?.includes('timed out')) {
+  if (!request.success && request.stderr?.includes("timed out")) {
     console.log("   ⚠️  HTTP POST timed out (external service issue)");
     return;
   }
 
-  if (request.success && (request.stdout === '503' || request.stdout === '429')) {
+  if (request.success && (request.stdout === "503" || request.stdout === "429")) {
     console.log("   ⚠️  External service rate-limiting/unavailable, skipping");
     return;
   }
 
   assert(request.success, "HTTP POST request failed");
-  assert(request.stdout === '200', `Expected status 200, got ${request.stdout}`);
+  assert(request.stdout === "200", `Expected status 200, got ${request.stdout}`);
 });
 
 await test("wrappers - Create extension", "integration", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS wrappers CASCADE");
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'wrappers'");
-  assert(verify.success && verify.stdout === 'wrappers', "Wrappers extension not found");
+  assert(verify.success && verify.stdout === "wrappers", "Wrappers extension not found");
 });
 
 await test("wrappers - Verify wrapper extension infrastructure", "integration", async () => {
   // Verify wrappers_fdw_stats table exists (core infrastructure table)
-  const check = await runSQL("SELECT count(*) FROM pg_tables WHERE tablename = 'wrappers_fdw_stats' AND schemaname = 'public'");
+  const check = await runSQL(
+    "SELECT count(*) FROM pg_tables WHERE tablename = 'wrappers_fdw_stats' AND schemaname = 'public'"
+  );
   assert(check.success && parseInt(check.stdout) === 1, "wrappers_fdw_stats table not found");
 });
 
 // ============================================================================
 // LANGUAGE EXTENSIONS
 // ============================================================================
-console.log('\n📝 Language Extensions');
-console.log('-'.repeat(80));
+console.log("\n📝 Language Extensions");
+console.log("-".repeat(80));
 
 await test("plpgsql - Create function with parameters", "language", async () => {
   const func = await runSQL(`
@@ -365,7 +410,7 @@ await test("plpgsql - Create function with parameters", "language", async () => 
 
 await test("plpgsql - Execute function", "language", async () => {
   const result = await runSQL("SELECT test_plpgsql_func(5, 7)");
-  assert(result.success && result.stdout === '12', "Function execution failed");
+  assert(result.success && result.stdout === "12", "Function execution failed");
 });
 
 await test("plpgsql - Create trigger", "language", async () => {
@@ -383,21 +428,23 @@ await test("plpgsql - Create trigger", "language", async () => {
 
   // Drop trigger if exists to ensure idempotency
   await runSQL("DROP TRIGGER IF EXISTS test_trigger ON test_trigger_table");
-  const trigger = await runSQL("CREATE TRIGGER test_trigger BEFORE INSERT ON test_trigger_table FOR EACH ROW EXECUTE FUNCTION test_trigger_func()");
+  const trigger = await runSQL(
+    "CREATE TRIGGER test_trigger BEFORE INSERT ON test_trigger_table FOR EACH ROW EXECUTE FUNCTION test_trigger_func()"
+  );
   assert(trigger.success, "Failed to create trigger");
 });
 
 await test("plpgsql - Verify trigger execution", "language", async () => {
   await runSQL("INSERT INTO test_trigger_table (val) VALUES (5)");
   const result = await runSQL("SELECT val FROM test_trigger_table ORDER BY id DESC LIMIT 1");
-  assert(result.success && result.stdout === '10', "Trigger did not execute correctly");
+  assert(result.success && result.stdout === "10", "Trigger did not execute correctly");
 });
 
 // ============================================================================
 // MAINTENANCE EXTENSIONS
 // ============================================================================
-console.log('\n🔧 Maintenance Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔧 Maintenance Extensions");
+console.log("-".repeat(80));
 
 await test("pg_partman - Create extension and partitioned table", "maintenance", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE");
@@ -436,7 +483,7 @@ await test("pg_partman - Verify partitions created", "maintenance", async () => 
 await test("pg_repack - Create extension", "maintenance", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_repack CASCADE");
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'pg_repack'");
-  assert(verify.success && verify.stdout === 'pg_repack', "pg_repack extension not found");
+  assert(verify.success && verify.stdout === "pg_repack", "pg_repack extension not found");
 });
 
 await test("pg_repack - Verify repack infrastructure", "maintenance", async () => {
@@ -448,8 +495,8 @@ await test("pg_repack - Verify repack infrastructure", "maintenance", async () =
 // ============================================================================
 // OBSERVABILITY EXTENSIONS
 // ============================================================================
-console.log('\n👁️  Observability Extensions');
-console.log('-'.repeat(80));
+console.log("\n👁️  Observability Extensions");
+console.log("-".repeat(80));
 
 await test("auto_explain - Enable and configure", "observability", async () => {
   const result = await runSQL(`
@@ -459,9 +506,9 @@ await test("auto_explain - Enable and configure", "observability", async () => {
     SHOW auto_explain.log_min_duration;
   `);
   // Parse the last line of output for the setting value
-  const lines = result.stdout.split('\n').filter(l => l.trim());
+  const lines = result.stdout.split("\n").filter((l) => l.trim());
   const lastLine = lines[lines.length - 1];
-  assert(result.success && lastLine === '0', "auto_explain not configured correctly");
+  assert(result.success && lastLine === "0", "auto_explain not configured correctly");
 });
 
 await test("auto_explain - Verify plan logging", "observability", async () => {
@@ -476,7 +523,9 @@ await test("auto_explain - Verify plan logging", "observability", async () => {
 
 await test("pg_stat_statements - Verify statistics collection", "observability", async () => {
   // Extension should already be loaded via shared_preload_libraries
-  const check = await runSQL("SELECT count(*) FROM pg_stat_statements WHERE query LIKE '%test_vectors%'");
+  const check = await runSQL(
+    "SELECT count(*) FROM pg_stat_statements WHERE query LIKE '%test_vectors%'"
+  );
   assert(check.success, "pg_stat_statements not collecting data");
 });
 
@@ -511,14 +560,17 @@ await test("pgbadger - Verify binary installed", "observability", async () => {
 
 await test("pgbadger - Check version", "observability", async () => {
   const version = await $`docker exec ${CONTAINER} pgbadger --version`.nothrow();
-  assert(version.exitCode === 0 && version.stdout.toString().includes('pgBadger'), "pgbadger version check failed");
+  assert(
+    version.exitCode === 0 && version.stdout.toString().includes("pgBadger"),
+    "pgbadger version check failed"
+  );
 });
 
 // ============================================================================
 // OPERATIONS EXTENSIONS
 // ============================================================================
-console.log('\n⚙️  Operations Extensions');
-console.log('-'.repeat(80));
+console.log("\n⚙️  Operations Extensions");
+console.log("-".repeat(80));
 
 await test("pg_cron - Create extension and schedule job", "operations", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE");
@@ -553,19 +605,24 @@ await test("pgbackrest - Verify binary installed", "operations", async () => {
 
 await test("pgbackrest - Check version", "operations", async () => {
   const version = await $`docker exec ${CONTAINER} pgbackrest version`.nothrow();
-  assert(version.exitCode === 0 && version.stdout.toString().includes('pgBackRest'), "pgbackrest version check failed");
+  assert(
+    version.exitCode === 0 && version.stdout.toString().includes("pgBackRest"),
+    "pgbackrest version check failed"
+  );
 });
 
 // ============================================================================
 // PERFORMANCE EXTENSIONS
 // ============================================================================
-console.log('\n⚡ Performance Extensions');
-console.log('-'.repeat(80));
+console.log("\n⚡ Performance Extensions");
+console.log("-".repeat(80));
 
 await test("hypopg - Create extension and hypothetical index", "performance", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS hypopg CASCADE");
 
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_hypopg (id serial PRIMARY KEY, val int)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_hypopg (id serial PRIMARY KEY, val int)"
+  );
   assert(create.success, "Failed to create test table");
 
   await runSQL("INSERT INTO test_hypopg (val) SELECT generate_series(1, 1000)");
@@ -577,7 +634,7 @@ await test("hypopg - Create hypothetical index", "performance", async () => {
     SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
     SELECT count(*) FROM hypopg_list_indexes;
   `);
-  const lines = result.stdout.split('\n').filter(l => l.trim());
+  const lines = result.stdout.split("\n").filter((l) => l.trim());
   const count = parseInt(lines[lines.length - 1]);
   assert(result.success && count > 0, "Failed to create hypothetical index");
 });
@@ -599,7 +656,7 @@ await test("hypopg - Reset hypothetical indexes", "performance", async () => {
 await test("index_advisor - Create extension", "performance", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE");
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'index_advisor'");
-  assert(verify.success && verify.stdout === 'index_advisor', "index_advisor extension not found");
+  assert(verify.success && verify.stdout === "index_advisor", "index_advisor extension not found");
 });
 
 await test("index_advisor - Analyze query and recommend indexes", "performance", async () => {
@@ -612,13 +669,13 @@ await test("index_advisor - Analyze query and recommend indexes", "performance",
 // ============================================================================
 // QUALITY EXTENSIONS
 // ============================================================================
-console.log('\n✅ Quality Extensions');
-console.log('-'.repeat(80));
+console.log("\n✅ Quality Extensions");
+console.log("-".repeat(80));
 
 await test("plpgsql_check - Create extension", "quality", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS plpgsql_check CASCADE");
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'plpgsql_check'");
-  assert(verify.success && verify.stdout === 'plpgsql_check', "plpgsql_check extension not found");
+  assert(verify.success && verify.stdout === "plpgsql_check", "plpgsql_check extension not found");
 });
 
 await test("plpgsql_check - Check function with type error", "quality", async () => {
@@ -655,8 +712,8 @@ await test("plpgsql_check - Verify error detection", "quality", async () => {
 // ============================================================================
 // QUEUEING EXTENSIONS
 // ============================================================================
-console.log('\n📬 Queueing Extensions');
-console.log('-'.repeat(80));
+console.log("\n📬 Queueing Extensions");
+console.log("-".repeat(80));
 
 await test("pgmq - Create extension and queue", "queueing", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE");
@@ -666,7 +723,9 @@ await test("pgmq - Create extension and queue", "queueing", async () => {
 });
 
 await test("pgmq - Send message", "queueing", async () => {
-  const send = await runSQL("SELECT pgmq.send('test_queue', '{\"task\": \"process_order\", \"order_id\": 123}'::jsonb)");
+  const send = await runSQL(
+    'SELECT pgmq.send(\'test_queue\', \'{"task": "process_order", "order_id": 123}\'::jsonb)'
+  );
   assert(send.success, "Failed to send message to queue");
 });
 
@@ -687,8 +746,8 @@ await test("pgmq - Archive message", "queueing", async () => {
 // ============================================================================
 // SAFETY EXTENSIONS
 // ============================================================================
-console.log('\n🛡️  Safety Extensions');
-console.log('-'.repeat(80));
+console.log("\n🛡️  Safety Extensions");
+console.log("-".repeat(80));
 
 await test("pg_plan_filter - Verify loaded via shared_preload_libraries", "safety", async () => {
   // pg_plan_filter is a hook-based tool, library file is plan_filter.so
@@ -702,7 +761,7 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
     LOAD 'plan_filter';
     SELECT count(*) FROM pg_tables;
   `);
-  const lines = result.stdout.split('\n').filter(l => l.trim());
+  const lines = result.stdout.split("\n").filter((l) => l.trim());
   const count = parseInt(lines[lines.length - 1]);
   assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
 });
@@ -718,7 +777,7 @@ await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
   await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
 
   // Attempt UPDATE without WHERE (should be blocked if pg_safeupdate is active)
-  const update = await runSQL("UPDATE test_safeupdate SET val = 99");
+  const _update = await runSQL("UPDATE test_safeupdate SET val = 99");
   // If pg_safeupdate is loaded and configured, this should fail
   // If not, it will succeed (we just verify the query executes)
   assert(true, "pg_safeupdate test completed");
@@ -733,22 +792,30 @@ await test("supautils - Verify extension structure", "safety", async () => {
 // ============================================================================
 // SEARCH EXTENSIONS
 // ============================================================================
-console.log('\n🔎 Search Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔎 Search Extensions");
+console.log("-".repeat(80));
 
 await test("pg_trgm - Create GIN trigram index", "search", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE");
 
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_trgm (id serial PRIMARY KEY, text_col text)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_trgm (id serial PRIMARY KEY, text_col text)"
+  );
   assert(create.success, "Failed to create pg_trgm table");
 
-  await runSQL("INSERT INTO test_trgm (text_col) VALUES ('hello world'), ('hello universe'), ('goodbye world')");
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)");
+  await runSQL(
+    "INSERT INTO test_trgm (text_col) VALUES ('hello world'), ('hello universe'), ('goodbye world')"
+  );
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)"
+  );
   assert(index.success, "Failed to create trigram index");
 });
 
 await test("pg_trgm - Similarity search", "search", async () => {
-  const search = await runSQL("SELECT text_col, similarity(text_col, 'helo wrld') AS sim FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY sim DESC");
+  const search = await runSQL(
+    "SELECT text_col, similarity(text_col, 'helo wrld') AS sim FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY sim DESC"
+  );
   assert(search.success && search.stdout.length > 0, "Similarity search failed");
 });
 
@@ -761,11 +828,17 @@ await test("pg_trgm - LIKE query with trigram index", "search", async () => {
 await test("pgroonga - Create extension and Groonga index", "search", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE");
 
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)"
+  );
   assert(create.success, "Failed to create pgroonga table");
 
-  await runSQL("INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')");
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_pgroonga_idx ON test_pgroonga USING pgroonga (content)");
+  await runSQL(
+    "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')"
+  );
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_pgroonga_idx ON test_pgroonga USING pgroonga (content)"
+  );
   assert(index.success, "Failed to create pgroonga index");
 });
 
@@ -777,31 +850,44 @@ await test("pgroonga - Full-text search with @@ operator", "search", async () =>
 await test("rum - Create extension and RUM index", "search", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS rum CASCADE");
 
-  const create = await runSQL("CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)");
+  const create = await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)"
+  );
   assert(create.success, "Failed to create rum table");
 
-  await runSQL("INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))");
-  await runSQL("INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'A fast brown fox leaps over a sleepy dog'))");
+  await runSQL(
+    "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))"
+  );
+  await runSQL(
+    "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'A fast brown fox leaps over a sleepy dog'))"
+  );
 
-  const index = await runSQL("CREATE INDEX IF NOT EXISTS test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)");
+  const index = await runSQL(
+    "CREATE INDEX IF NOT EXISTS test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)"
+  );
   assert(index.success, "Failed to create RUM index");
 });
 
 await test("rum - Ranked full-text search", "search", async () => {
-  const search = await runSQL("SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')");
+  const search = await runSQL(
+    "SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')"
+  );
   assert(search.success && search.stdout.length > 0, "RUM ranked search failed");
 });
 
 // ============================================================================
 // SECURITY EXTENSIONS
 // ============================================================================
-console.log('\n🔐 Security Extensions');
-console.log('-'.repeat(80));
+console.log("\n🔐 Security Extensions");
+console.log("-".repeat(80));
 
 await test("pgaudit - Verify extension loaded", "security", async () => {
   // pgaudit should be loaded via shared_preload_libraries
   const check = await runSQL("SHOW shared_preload_libraries");
-  assert(check.success && check.stdout.includes('pgaudit'), "pgaudit not in shared_preload_libraries");
+  assert(
+    check.success && check.stdout.includes("pgaudit"),
+    "pgaudit not in shared_preload_libraries"
+  );
 });
 
 await test("pgaudit - Enable logging and verify configuration", "security", async () => {
@@ -810,9 +896,9 @@ await test("pgaudit - Enable logging and verify configuration", "security", asyn
     SHOW pgaudit.log;
   `);
   // Parse the SHOW output (last line)
-  const lines = result.stdout.split('\n').filter(l => l.trim());
+  const lines = result.stdout.split("\n").filter((l) => l.trim());
   const setting = lines[lines.length - 1];
-  assert(result.success && setting.includes('write'), "pgaudit not configured correctly");
+  assert(result.success && setting.includes("write"), "pgaudit not configured correctly");
 });
 
 await test("pgaudit - Execute DDL and verify logging", "security", async () => {
@@ -846,7 +932,7 @@ await test("pgsodium - Encrypt and decrypt", "security", async () => {
   assert(nonce.success, "Nonce generation failed");
 
   // Encrypt data
-  const plaintext = 'secret data';
+  const plaintext = "secret data";
   const encrypt = await runSQL(`
     SELECT encode(
       pgsodium.crypto_secretbox(
@@ -874,14 +960,16 @@ await test("pgsodium - Encrypt and decrypt", "security", async () => {
 });
 
 await test("pgsodium - Hashing with crypto_generichash", "security", async () => {
-  const hash = await runSQL("SELECT encode(pgsodium.crypto_generichash('test data'::bytea), 'hex')");
+  const hash = await runSQL(
+    "SELECT encode(pgsodium.crypto_generichash('test data'::bytea), 'hex')"
+  );
   assert(hash.success && hash.stdout.length === 64, "Hashing failed (expected 32-byte hash)");
 });
 
 await test("set_user - Create extension", "security", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS set_user CASCADE");
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'set_user'");
-  assert(verify.success && verify.stdout === 'set_user', "set_user extension not found");
+  assert(verify.success && verify.stdout === "set_user", "set_user extension not found");
 });
 
 await test("set_user - Verify set_user function exists", "security", async () => {
@@ -896,24 +984,31 @@ await test("supabase_vault - Create extension and secret", "security", async () 
   // This is a complex setup requiring external key management
   // For now, verify extension loads successfully
   const verify = await runSQL("SELECT extname FROM pg_extension WHERE extname = 'supabase_vault'");
-  assert(verify.success && verify.stdout === 'supabase_vault', "supabase_vault extension not found");
+  assert(
+    verify.success && verify.stdout === "supabase_vault",
+    "supabase_vault extension not found"
+  );
 });
 
 await test("supabase_vault - Verify vault schema", "security", async () => {
-  const check = await runSQL("SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'vault'");
+  const check = await runSQL(
+    "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'vault'"
+  );
   assert(check.success && parseInt(check.stdout) === 1, "vault schema not found");
 });
 
 await test("supabase_vault - Verify vault functions", "security", async () => {
-  const check = await runSQL("SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'vault')");
+  const check = await runSQL(
+    "SELECT count(*) FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'vault')"
+  );
   assert(check.success && parseInt(check.stdout) > 0, "vault functions not found");
 });
 
 // ============================================================================
 // TIMESERIES EXTENSIONS
 // ============================================================================
-console.log('\n📊 Timeseries Extensions');
-console.log('-'.repeat(80));
+console.log("\n📊 Timeseries Extensions");
+console.log("-".repeat(80));
 
 await test("timescaledb - Create extension and hypertable", "timeseries", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE");
@@ -928,7 +1023,9 @@ await test("timescaledb - Create extension and hypertable", "timeseries", async 
   assert(create.success, "Failed to create timescale table");
 
   // Add migrate_data => true to handle non-empty table from previous runs
-  const hypertable = await runSQL("SELECT create_hypertable('test_timescale', 'time', if_not_exists => TRUE, migrate_data => TRUE)");
+  const hypertable = await runSQL(
+    "SELECT create_hypertable('test_timescale', 'time', if_not_exists => TRUE, migrate_data => TRUE)"
+  );
   assert(hypertable.success, "Failed to create hypertable");
 });
 
@@ -943,7 +1040,9 @@ await test("timescaledb - Insert time-series data", "timeseries", async () => {
 });
 
 await test("timescaledb - Enable compression", "timeseries", async () => {
-  const compress = await runSQL("ALTER TABLE test_timescale SET (timescaledb.compress, timescaledb.compress_segmentby = 'device_id')");
+  const compress = await runSQL(
+    "ALTER TABLE test_timescale SET (timescaledb.compress, timescaledb.compress_segmentby = 'device_id')"
+  );
   assert(compress.success, "Failed to enable compression");
 });
 
@@ -960,16 +1059,20 @@ await test("timescaledb - Create continuous aggregate", "timeseries", async () =
   assert(cagg.success, "Failed to create continuous aggregate");
 });
 
-await test("timescaledb_toolkit - Create extension and use hyperfunctions", "timeseries", async () => {
-  await runSQL("CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE");
+await test(
+  "timescaledb_toolkit - Create extension and use hyperfunctions",
+  "timeseries",
+  async () => {
+    await runSQL("CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE");
 
-  // Test approximate percentile
-  const percentile = await runSQL(`
+    // Test approximate percentile
+    const percentile = await runSQL(`
     SELECT approx_percentile(0.95, percentile_agg(temperature))
     FROM test_timescale
   `);
-  assert(percentile.success, "Failed to calculate approximate percentile");
-});
+    assert(percentile.success, "Failed to calculate approximate percentile");
+  }
+);
 
 await test("timescaledb_toolkit - Time-weighted average", "timeseries", async () => {
   const twa = await runSQL(`
@@ -985,8 +1088,8 @@ await test("timescaledb_toolkit - Time-weighted average", "timeseries", async ()
 // ============================================================================
 // UTILITIES EXTENSIONS
 // ============================================================================
-console.log('\n🛠️  Utilities Extensions');
-console.log('-'.repeat(80));
+console.log("\n🛠️  Utilities Extensions");
+console.log("-".repeat(80));
 
 await test("pg_hashids - Create extension and encode integer", "utilities", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE");
@@ -1002,7 +1105,7 @@ await test("pg_hashids - Decode hashid", "utilities", async () => {
 
   // id_decode returns bigint[] array, extract first element with parentheses
   const decode = await runSQL(`SELECT (id_decode('${encodedValue}'))[1]::text`);
-  assert(decode.success && decode.stdout.trim() === '12345', "Failed to decode hashid");
+  assert(decode.success && decode.stdout.trim() === "12345", "Failed to decode hashid");
 });
 
 await test("pg_hashids - Custom alphabet and min length", "utilities", async () => {
@@ -1013,14 +1116,17 @@ await test("pg_hashids - Custom alphabet and min length", "utilities", async () 
 await test("pg_hashids - Consistency test", "utilities", async () => {
   const encode1 = await runSQL("SELECT id_encode(999)");
   const encode2 = await runSQL("SELECT id_encode(999)");
-  assert(encode1.success && encode2.success && encode1.stdout === encode2.stdout, "Hashid encoding not consistent");
+  assert(
+    encode1.success && encode2.success && encode1.stdout === encode2.stdout,
+    "Hashid encoding not consistent"
+  );
 });
 
 // ============================================================================
 // VALIDATION EXTENSIONS
 // ============================================================================
-console.log('\n✔️  Validation Extensions');
-console.log('-'.repeat(80));
+console.log("\n✔️  Validation Extensions");
+console.log("-".repeat(80));
 
 await test("pg_jsonschema - Create extension and validate schema", "validation", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE");
@@ -1035,8 +1141,13 @@ await test("pg_jsonschema - Create extension and validate schema", "validation",
   }`;
 
   const validDoc = `{"name": "John", "age": 30}`;
-  const validate = await runSQL(`SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`);
-  assert(validate.success && validate.stdout === 't', "Valid document should pass schema validation");
+  const validate = await runSQL(
+    `SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`
+  );
+  assert(
+    validate.success && validate.stdout === "t",
+    "Valid document should pass schema validation"
+  );
 });
 
 await test("pg_jsonschema - Reject invalid document", "validation", async () => {
@@ -1049,9 +1160,14 @@ await test("pg_jsonschema - Reject invalid document", "validation", async () => 
     "required": ["name"]
   }`;
 
-  const invalidDoc = `{"age": 30}`;  // Missing required 'name' field
-  const validate = await runSQL(`SELECT json_matches_schema('${schema}'::json, '${invalidDoc}'::json)`);
-  assert(validate.success && validate.stdout === 'f', "Invalid document should fail schema validation");
+  const invalidDoc = `{"age": 30}`; // Missing required 'name' field
+  const validate = await runSQL(
+    `SELECT json_matches_schema('${schema}'::json, '${invalidDoc}'::json)`
+  );
+  assert(
+    validate.success && validate.stdout === "f",
+    "Invalid document should fail schema validation"
+  );
 });
 
 await test("pg_jsonschema - Nested schema validation", "validation", async () => {
@@ -1069,8 +1185,10 @@ await test("pg_jsonschema - Nested schema validation", "validation", async () =>
   }`;
 
   const validDoc = `{"user": {"email": "test@example.com"}}`;
-  const validate = await runSQL(`SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`);
-  assert(validate.success && validate.stdout === 't', "Nested schema validation failed");
+  const validate = await runSQL(
+    `SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`
+  );
+  assert(validate.success && validate.stdout === "t", "Nested schema validation failed");
 });
 
 await test("pg_jsonschema - Schema with constraints", "validation", async () => {
@@ -1082,19 +1200,21 @@ await test("pg_jsonschema - Schema with constraints", "validation", async () => 
   }`;
 
   const validDoc = `{"count": 50}`;
-  const validate = await runSQL(`SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`);
-  assert(validate.success && validate.stdout === 't', "Constrained schema validation failed");
+  const validate = await runSQL(
+    `SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`
+  );
+  assert(validate.success && validate.stdout === "t", "Constrained schema validation failed");
 });
 
 // ============================================================================
 // PRINT SUMMARY
 // ============================================================================
-console.log('\n' + '='.repeat(80));
-console.log('COMPREHENSIVE EXTENSION TEST SUMMARY');
-console.log('='.repeat(80));
+console.log("\n" + "=".repeat(80));
+console.log("COMPREHENSIVE EXTENSION TEST SUMMARY");
+console.log("=".repeat(80));
 
-const passed = results.filter(r => r.passed).length;
-const failed = results.filter(r => !r.passed).length;
+const passed = results.filter((r) => r.passed).length;
+const failed = results.filter((r) => !r.passed).length;
 const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
 console.log(`Total: ${results.length} tests`);
@@ -1103,58 +1223,96 @@ console.log(`Failed: ${failed}`);
 console.log(`Total Duration: ${totalDuration}ms`);
 
 // Group by category
-const categories = [...new Set(results.map(r => r.category))].sort();
-console.log('\n' + '='.repeat(80));
-console.log('RESULTS BY CATEGORY');
-console.log('='.repeat(80));
+const categories = [...new Set(results.map((r) => r.category))].sort();
+console.log("\n" + "=".repeat(80));
+console.log("RESULTS BY CATEGORY");
+console.log("=".repeat(80));
 
 for (const category of categories) {
-  const categoryResults = results.filter(r => r.category === category);
-  const categoryPassed = categoryResults.filter(r => r.passed).length;
-  const categoryFailed = categoryResults.filter(r => !r.passed).length;
+  const categoryResults = results.filter((r) => r.category === category);
+  const categoryPassed = categoryResults.filter((r) => r.passed).length;
+  const categoryFailed = categoryResults.filter((r) => !r.passed).length;
 
   console.log(`\n${category.toUpperCase()}: ${categoryPassed}/${categoryResults.length} passed`);
 
   if (categoryFailed > 0) {
-    categoryResults.filter(r => !r.passed).forEach(r => {
-      console.log(`  ❌ ${r.name}`);
-    });
+    categoryResults
+      .filter((r) => !r.passed)
+      .forEach((r) => {
+        console.log(`  ❌ ${r.name}`);
+      });
   }
 }
 
 if (failed > 0) {
-  console.log('\n' + '='.repeat(80));
-  console.log('FAILED TESTS DETAILS');
-  console.log('='.repeat(80));
-  results.filter(r => !r.passed).forEach(r => {
-    console.log(`\n❌ ${r.name} (${r.category})`);
-    console.log(`   Error: ${r.error}`);
-  });
+  console.log("\n" + "=".repeat(80));
+  console.log("FAILED TESTS DETAILS");
+  console.log("=".repeat(80));
+  results
+    .filter((r) => !r.passed)
+    .forEach((r) => {
+      console.log(`\n❌ ${r.name} (${r.category})`);
+      console.log(`   Error: ${r.error}`);
+    });
 }
 
 // Extension coverage summary
-console.log('\n' + '='.repeat(80));
-console.log('EXTENSION COVERAGE');
-console.log('='.repeat(80));
+console.log("\n" + "=".repeat(80));
+console.log("EXTENSION COVERAGE");
+console.log("=".repeat(80));
 
 const extensions = [
-  'auto_explain', 'btree_gin', 'btree_gist', 'hll', 'http', 'hypopg',
-  'index_advisor', 'pg_cron', 'pg_hashids', 'pg_jsonschema', 'pg_partman',
-  'pg_plan_filter', 'pg_repack', 'pg_safeupdate', 'pg_stat_monitor',
-  'pg_stat_statements', 'pg_trgm', 'pgaudit', 'pgbackrest', 'pgbadger',
-  'pgmq', 'pgroonga', 'pgrouting', 'pgsodium', 'plpgsql', 'plpgsql_check',
-  'postgis', 'rum', 'set_user', 'supabase_vault', 'supautils',
-  'timescaledb', 'timescaledb_toolkit', 'vector', 'vectorscale',
-  'wal2json', 'wrappers'
+  "auto_explain",
+  "btree_gin",
+  "btree_gist",
+  "hll",
+  "http",
+  "hypopg",
+  "index_advisor",
+  "pg_cron",
+  "pg_hashids",
+  "pg_jsonschema",
+  "pg_partman",
+  "pg_plan_filter",
+  "pg_repack",
+  "pg_safeupdate",
+  "pg_stat_monitor",
+  "pg_stat_statements",
+  "pg_trgm",
+  "pgaudit",
+  "pgbackrest",
+  "pgbadger",
+  "pgmq",
+  "pgroonga",
+  "pgrouting",
+  "pgsodium",
+  "plpgsql",
+  "plpgsql_check",
+  "postgis",
+  "rum",
+  "set_user",
+  "supabase_vault",
+  "supautils",
+  "timescaledb",
+  "timescaledb_toolkit",
+  "vector",
+  "vectorscale",
+  "wal2json",
+  "wrappers",
 ];
 
 const testedExtensions = new Set(
-  results.map(r => r.name.split(' - ')[0].toLowerCase().replace(/\s*\(.*?\)\s*/g, ''))
+  results.map((r) =>
+    r.name
+      .split(" - ")[0]
+      .toLowerCase()
+      .replace(/\s*\(.*?\)\s*/g, "")
+  )
 );
 
 console.log(`Total extensions: ${extensions.length}`);
 console.log(`Extensions with tests: ${testedExtensions.size}`);
 
-console.log('\n' + '='.repeat(80));
+console.log("\n" + "=".repeat(80));
 
 process.exit(failed > 0 ? 1 : 0);

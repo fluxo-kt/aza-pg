@@ -11,6 +11,7 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 **Schema**: `pgflow` (workflow orchestration) + `pgmq` (message queue)
 
 **Tables**:
+
 - `pgflow.flows` - Workflow definitions with retry/timeout configuration
 - `pgflow.steps` - Individual workflow steps with dependencies
 - `pgflow.deps` - Dependency relationships between steps
@@ -20,6 +21,7 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 - `pgflow.workers` - Worker process registration (optional)
 
 **Key Functions**:
+
 - `pgflow.create_flow(slug, max_attempts, base_delay, timeout)` - Define a workflow
 - `pgflow.add_step(flow_slug, step_slug, deps_slugs[], ...)` - Add step to workflow
 - `pgflow.start_flow(flow_slug, input_jsonb)` - Execute a workflow
@@ -30,6 +32,7 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 ### Workflow Features
 
 **Capabilities**:
+
 - ✅ DAG-based workflow orchestration (directed acyclic graphs)
 - ✅ Automatic dependency resolution
 - ✅ Retry with exponential backoff
@@ -40,6 +43,7 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 - ✅ Map step type (v0.7.2) - process arrays in parallel
 
 **Execution Flow**:
+
 1. Define flow and steps with dependencies
 2. Start flow with input JSON
 3. pgflow creates step_states and queues initial tasks
@@ -64,6 +68,7 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 - **Tested**: PostgreSQL 18 (as per aza-pg)
 
 **Required Features**:
+
 - `gen_random_uuid()` (built-in since PG 13)
 - JSONB support (built-in since PG 9.4)
 - `make_interval()` (built-in since PG 9.4)
@@ -73,10 +78,12 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 ### Real-time Events (Stubbed)
 
 **What Supabase Provides**:
+
 - `realtime.send()` broadcasts workflow events to connected clients
 - Events: `run:started`, `run:completed`, `run:failed`, `step:started`, `step:completed`, `step:failed`
 
 **Standalone Workaround**:
+
 - A no-op stub function is provided in the schema
 - **Option 1**: Use PostgreSQL LISTEN/NOTIFY
   ```sql
@@ -90,12 +97,14 @@ This document describes how to integrate pgflow v0.7.2 (workflow orchestration s
 ### Authentication & Authorization
 
 **What Supabase Provides**:
+
 - Row Level Security (RLS) policies
 - `auth.users` table integration
 - JWT-based authentication
 - Role-based access control
 
 **Standalone Workaround**:
+
 - **No built-in authentication** - you must implement your own
 - Remove or adapt RLS policies based on your auth system
 - Consider:
@@ -124,6 +133,7 @@ CREATE EXTENSION IF NOT EXISTS pgmq WITH SCHEMA pgmq;
 ```
 
 **Note**: If pgmq is not available via `CREATE EXTENSION`, you must install it first:
+
 - Follow instructions at: https://github.com/tembo-io/pgmq
 - Or use Docker image: `tembo-io/pgmq` (includes PostgreSQL + pgmq)
 
@@ -135,6 +145,7 @@ CREATE EXTENSION IF NOT EXISTS pgmq WITH SCHEMA pgmq;
 ```
 
 **What This Creates**:
+
 - `pgflow` schema with all tables and functions
 - `realtime` schema with stub function
 - Indexes and constraints
@@ -219,10 +230,12 @@ while True:
 Use PL/Python, PL/Perl, or background workers to execute tasks directly in PostgreSQL.
 
 **Advantages**:
+
 - Lower latency
 - No external process management
 
 **Disadvantages**:
+
 - Limited to PostgreSQL-supported languages
 - Resource contention with database
 - Harder to scale horizontally
@@ -344,6 +357,7 @@ FROM pgmq.list_queues();
 **Cause**: Worker crashed before completing/failing task
 
 **Solution**:
+
 1. pgmq will automatically re-deliver after visibility timeout
 2. Implement worker health checks and graceful shutdown
 
@@ -358,6 +372,7 @@ FROM pgmq.list_queues();
 **Cause**: Circular dependencies or orphaned steps
 
 **Solution**:
+
 ```sql
 -- Check for circular dependencies
 WITH RECURSIVE dep_chain AS (
@@ -381,6 +396,7 @@ SELECT * FROM dep_chain WHERE depth > 10;  -- Likely circular if depth > 10
 **Cause**: Large JSONB payloads or too many concurrent runs
 
 **Solution**:
+
 1. Limit JSONB payload size (use external storage for large data)
 2. Archive completed runs periodically
 3. Tune PostgreSQL `work_mem` and `shared_buffers`
@@ -388,6 +404,7 @@ SELECT * FROM dep_chain WHERE depth > 10;  -- Likely circular if depth > 10
 ## Security Best Practices
 
 1. **Least Privilege**: Grant only necessary permissions
+
    ```sql
    -- Example: App user can execute flows but not modify definitions
    GRANT USAGE ON SCHEMA pgflow TO app_user;
@@ -401,6 +418,7 @@ SELECT * FROM dep_chain WHERE depth > 10;  -- Likely circular if depth > 10
 3. **Rate Limiting**: Limit flow creation/start calls per user
 
 4. **Audit Logging**: Track who starts flows and when
+
    ```sql
    -- Add audit columns to pgflow.runs
    ALTER TABLE pgflow.runs ADD COLUMN created_by text;
@@ -416,6 +434,7 @@ SELECT * FROM dep_chain WHERE depth > 10;  -- Likely circular if depth > 10
 If migrating from Supabase to standalone PostgreSQL:
 
 1. **Export Data**: Use `pg_dump` to export pgflow tables
+
    ```bash
    pg_dump -h supabase-host -U user -t 'pgflow.*' -t 'pgmq.*' > pgflow_data.sql
    ```
@@ -423,6 +442,7 @@ If migrating from Supabase to standalone PostgreSQL:
 2. **Install Clean Schema**: Run consolidated schema on new PostgreSQL
 
 3. **Import Data**:
+
    ```bash
    psql -h new-host -U user -d database < pgflow_data.sql
    ```
@@ -505,6 +525,7 @@ This schema is based on **pgflow v0.7.2** (`@pgflow/core@0.7.2`).
 ### Upgrade Path
 
 Future pgflow versions may require schema migrations. Monitor:
+
 - pgflow releases on GitHub
 - CHANGELOG for breaking changes
 - Run migration scripts in order

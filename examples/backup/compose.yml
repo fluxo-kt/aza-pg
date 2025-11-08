@@ -19,8 +19,8 @@ services:
 
     environment:
       PGBACKREST_REPO1_PATH: /backup/repo
-      PGBACKREST_REPO1_RETENTION_FULL: '7'  # Keep 7 full backups
-      PGBACKREST_REPO1_RETENTION_DIFF: '4'  # Keep 4 differential backups
+      PGBACKREST_REPO1_RETENTION_FULL: "7" # Keep 7 full backups
+      PGBACKREST_REPO1_RETENTION_DIFF: "4" # Keep 4 differential backups
       PGBACKREST_LOG_LEVEL_CONSOLE: info
       PGBACKREST_LOG_LEVEL_FILE: debug
 

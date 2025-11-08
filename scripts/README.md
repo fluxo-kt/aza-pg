@@ -16,6 +16,7 @@ scripts/
 ## Quick Reference
 
 ### Build & Development
+
 ```bash
 # Build PostgreSQL image (canonical method)
 ./scripts/build.sh                    # Single-platform build
@@ -27,6 +28,7 @@ scripts/
 ```
 
 ### Testing
+
 ```bash
 # Comprehensive test suite
 ./scripts/test/test-build.sh                    # Build image + verify extensions
@@ -37,6 +39,7 @@ scripts/
 ```
 
 ### Operations
+
 ```bash
 # Backup and restore
 ./scripts/tools/backup-postgres.sh mydb         # Backup database to .sql.gz
@@ -56,6 +59,7 @@ scripts/
 **`common.sh`** - Core utilities for all scripts
 
 **Functions:**
+
 - `log_info()`, `log_success()`, `log_warning()`, `log_error()` - Colored logging
 - `docker_cleanup(container)` - Safe container removal
 - `check_command(cmd)` - Verify command availability
@@ -63,6 +67,7 @@ scripts/
 - `wait_for_postgres(host, port, user, timeout, [container])` - Wait for PostgreSQL readiness
 
 **Usage:**
+
 ```bash
 # shellcheck source=scripts/lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -81,6 +86,7 @@ wait_for_postgres localhost 5432 postgres 60
 Builds Docker image and verifies extensions are functional.
 
 **What it tests:**
+
 - Image build process (via buildx)
 - PostgreSQL version
 - Auto-config entrypoint presence
@@ -88,6 +94,7 @@ Builds Docker image and verifies extensions are functional.
 - Extension functionality (vector types, similarity, cron jobs)
 
 **Usage:**
+
 ```bash
 ./scripts/test/test-build.sh                # Default tag: aza-pg:pg18
 ./scripts/test/test-build.sh my-custom:tag  # Custom tag
@@ -104,6 +111,7 @@ Builds Docker image and verifies extensions are functional.
 Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 
 **What it tests:**
+
 1. Manual memory override (`POSTGRES_MEMORY`)
 2. 2GB cgroup v2 detection
 3. 512MB minimum memory limit
@@ -113,6 +121,7 @@ Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 7. Custom `shared_preload_libraries` override
 
 **Usage:**
+
 ```bash
 ./scripts/test/test-auto-config.sh                # Default tag: aza-pg:pg18
 ./scripts/test/test-auto-config.sh my-custom:tag  # Custom tag
@@ -129,11 +138,13 @@ Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 Tests extension loading in dependency order using manifest.
 
 **What it tests:**
+
 - Topological sort of extension dependencies
 - CREATE EXTENSION for all extensions (excluding tools)
 - Dependency resolution accuracy
 
 **Usage:**
+
 ```bash
 ./scripts/test/run-extension-smoke.sh                # Default tag: aza-pg:test
 ./scripts/test/run-extension-smoke.sh my-custom:tag  # Custom tag
@@ -150,6 +161,7 @@ Tests extension loading in dependency order using manifest.
 Validates PgBouncer healthcheck and authentication.
 
 **What it tests:**
+
 - Stack deployment (compose up)
 - PostgreSQL readiness
 - PgBouncer auth via `pgbouncer_lookup()` function
@@ -157,6 +169,7 @@ Validates PgBouncer healthcheck and authentication.
 - Query execution through PgBouncer
 
 **Usage:**
+
 ```bash
 ./scripts/test/test-pgbouncer-healthcheck.sh                  # Default: stacks/primary
 ./scripts/test/test-pgbouncer-healthcheck.sh stacks/primary   # Explicit path
@@ -173,6 +186,7 @@ Validates PgBouncer healthcheck and authentication.
 Waits for PostgreSQL to accept connections.
 
 **Usage:**
+
 ```bash
 ./scripts/test/wait-for-postgres.sh                             # localhost:5432, 60s
 ./scripts/test/wait-for-postgres.sh db.example.com 5432 admin   # Remote host
@@ -193,6 +207,7 @@ PGHOST=localhost PGPORT=6432 ./scripts/test/wait-for-postgres.sh  # Via PgBounce
 Creates compressed PostgreSQL backup using `pg_dump`.
 
 **Features:**
+
 - Auto-named backup files with timestamp
 - Gzip compression
 - Backup validation (file size, gzip integrity)
@@ -200,6 +215,7 @@ Creates compressed PostgreSQL backup using `pg_dump`.
 - Safe: prevents overwriting existing backups
 
 **Usage:**
+
 ```bash
 ./scripts/tools/backup-postgres.sh                      # Backup 'postgres' db
 ./scripts/tools/backup-postgres.sh mydb                 # Backup 'mydb'
@@ -208,6 +224,7 @@ PGHOST=db.example.com PGUSER=admin ./scripts/tools/backup-postgres.sh mydb
 ```
 
 **Environment variables:**
+
 - `PGHOST` - PostgreSQL host (default: localhost)
 - `PGPORT` - PostgreSQL port (default: 5432)
 - `PGUSER` - PostgreSQL user (default: postgres)
@@ -224,12 +241,14 @@ PGHOST=db.example.com PGUSER=admin ./scripts/tools/backup-postgres.sh mydb
 Restores PostgreSQL database from backup.
 
 **Features:**
+
 - Compressed (.gz) and plain SQL file support
 - Backup file validation (existence, readability, gzip integrity)
 - Interactive confirmation (destructive operation)
 - Database statistics after restore
 
 **Usage:**
+
 ```bash
 ./scripts/tools/restore-postgres.sh backup.sql.gz           # Restore to 'postgres'
 ./scripts/tools/restore-postgres.sh backup.sql.gz mydb      # Restore to 'mydb'
@@ -249,6 +268,7 @@ PGHOST=db.example.com ./scripts/tools/restore-postgres.sh backup.sql.gz
 Promotes PostgreSQL replica to primary role.
 
 **Features:**
+
 - Verifies replica is in recovery mode
 - Optional pre-promotion backup
 - Safe promotion using `pg_ctl promote`
@@ -256,6 +276,7 @@ Promotes PostgreSQL replica to primary role.
 - Post-promotion verification
 
 **Options:**
+
 - `-c, --container NAME` - Container name (default: postgres-replica)
 - `-d, --data-dir PATH` - Data directory (default: /var/lib/postgresql/data)
 - `-n, --no-backup` - Skip backup before promotion
@@ -263,6 +284,7 @@ Promotes PostgreSQL replica to primary role.
 - `-h, --help` - Show help message
 
 **Usage:**
+
 ```bash
 ./scripts/tools/promote-replica.sh                     # Interactive promotion
 ./scripts/tools/promote-replica.sh -c my-replica -y    # Skip confirmation
@@ -274,6 +296,7 @@ Promotes PostgreSQL replica to primary role.
 **Output:** Promoted primary with verification steps
 
 **Warnings:**
+
 - One-way operation (cannot revert)
 - Ensure old primary is stopped (avoid split-brain)
 - Update client connection strings after promotion
@@ -285,10 +308,12 @@ Promotes PostgreSQL replica to primary role.
 Generates self-signed SSL certificates for PostgreSQL TLS.
 
 **Output:**
+
 - `server.key` - Private key
 - `server.crt` - Self-signed certificate
 
 **Usage:**
+
 ```bash
 ./scripts/tools/generate-ssl-certs.sh
 ```
@@ -304,12 +329,14 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 **Canonical build script** for PostgreSQL image using Docker Buildx.
 
 **Features:**
+
 - Intelligent caching (pulls from ghcr.io registry)
 - Fast cached builds (~2min vs ~12min cold build)
 - Multi-platform support (amd64 + arm64)
 - Automatic fallback to local cache without network
 
 **Usage:**
+
 ```bash
 ./scripts/build.sh                 # Single-platform (current arch)
 ./scripts/build.sh --multi-arch    # Multi-platform (amd64 + arm64)
@@ -317,16 +344,19 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 ```
 
 **Requirements:**
+
 - Docker Buildx (bundled with Docker Desktop / Docker 19.03+)
 - Network access to ghcr.io for cache pull
 - ghcr.io write access for `--push` (requires `docker login ghcr.io`)
 
 **Performance:**
+
 - First build: ~12min (compiles all extensions)
 - Cached build: ~2min (reuses CI artifacts)
 - No network: ~12min (falls back to local cache)
 
 **Configuration:**
+
 - `POSTGRES_IMAGE` - Image name (default: ghcr.io/fluxo-kt/aza-pg)
 - `POSTGRES_TAG` - Image tag (default: pg18)
 
@@ -337,12 +367,14 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 Generates PostgreSQL and PgBouncer configurations from TypeScript generator.
 
 **Features:**
+
 - DRY configuration management
 - Shared base config extraction
 - Stack-specific overrides
 - Consistent formatting
 
 **Usage:**
+
 ```bash
 ./scripts/generate-configs.sh
 ```
@@ -350,6 +382,7 @@ Generates PostgreSQL and PgBouncer configurations from TypeScript generator.
 **Requirements:** `bun` (JavaScript runtime)
 
 **Output:** Regenerated configs in:
+
 - `docker/postgres/configs/postgresql-base.conf`
 - `stacks/*/configs/postgresql.conf`
 - `stacks/*/configs/pgbouncer.ini`
@@ -386,6 +419,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 ```
 
 Run shellcheck validation:
+
 ```bash
 shellcheck scripts/**/*.sh
 ```
@@ -406,16 +440,19 @@ log_error "Critical failure"
 **Recommended test sequence:**
 
 1. **Build verification:**
+
    ```bash
    ./scripts/test/test-build.sh
    ```
 
 2. **Auto-config validation:**
+
    ```bash
    ./scripts/test/test-auto-config.sh
    ```
 
 3. **Extension smoke test:**
+
    ```bash
    ./scripts/test/run-extension-smoke.sh
    ```
@@ -455,25 +492,30 @@ docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  
 ## Dependencies
 
 **Required for all scripts:**
+
 - `bash` 4.0+ (macOS: install via Homebrew)
 - `docker` (Docker Engine or Docker Desktop)
 
 **Test scripts:**
+
 - `docker buildx` (bundled with Docker Desktop)
 - `python3` (for extension smoke test)
 - `psql` / `pg_isready` (for PgBouncer test)
 
 **Tool scripts:**
+
 - `pg_dump`, `pg_isready`, `psql` (PostgreSQL client tools)
 - `gzip`, `gunzip`, `du` (standard Unix utilities)
 - `openssl` (for SSL cert generation)
 
 **Build/config:**
+
 - `bun` (for config generator)
 
 ## Troubleshooting
 
 ### "Docker daemon is not running"
+
 ```bash
 # macOS
 open -a Docker
@@ -483,6 +525,7 @@ sudo systemctl start docker
 ```
 
 ### "Required command not found"
+
 ```bash
 # Install PostgreSQL client tools
 # macOS
@@ -496,6 +539,7 @@ sudo dnf install postgresql
 ```
 
 ### "PostgreSQL not ready after timeout"
+
 ```bash
 # Check container logs
 docker logs <postgres-container>
@@ -508,6 +552,7 @@ nc -zv localhost 5432
 ```
 
 ### "Backup file is corrupted"
+
 ```bash
 # Test gzip integrity
 gzip -t backup_file.sql.gz

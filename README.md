@@ -213,6 +213,19 @@ All extensions are SHA-pinned for reproducible builds.
 
 **Note:** This image includes 38 extensions (6 built-in, 14 PGDG, 18 compiled from source). The 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector) are created automatically by init scripts. 4 extensions are preloaded by default via `shared_preload_libraries`: pg_stat_statements, auto_explain, pg_cron, pgaudit. The remaining 33 extensions are available on-demand via CREATE EXTENSION. pgflow workflow orchestration is available as an optional add-on (see `examples/pgflow/`).
 
+### Customizing Extensions
+
+You can build custom images with only the extensions you need. The manifest-driven system lets you disable unused extensions to reduce image size and build time.
+
+**Example:** To disable an extension (e.g., `pgq`):
+1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
+2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
+3. Build: `./scripts/build.sh`
+
+**Restrictions:** Core preloaded extensions (auto_explain, pg_cron, pg_stat_statements, pgaudit) cannot be disabled.
+
+See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for step-by-step instructions and [docs/development/EXTENSION-ENABLE-DISABLE.md](docs/development/EXTENSION-ENABLE-DISABLE.md) for complete design details.
+
 ## Monitoring
 
 postgres_exporter included with custom queries:

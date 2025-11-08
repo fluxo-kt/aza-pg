@@ -159,6 +159,94 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - **Citus** – The latest upstream release (Citus 13.0 on 2025-02-10) only supports PostgreSQL 17 and earlier, so the extension is intentionally omitted from the PostgreSQL 18 image to avoid shipping an incompatible build. We will add it once an official PG18-compatible release lands.
 - **pg_net** – Supabase’s published metadata lists official support for PostgreSQL 13–17; the code currently fails to compile on PostgreSQL 18, so we exclude it until a PG18-compatible release is available.
 
+## Enabling and Disabling Extensions
+
+The aza-pg image uses a manifest-driven system that allows you to build custom images with only the extensions you need. This reduces build time and image size.
+
+### How to Disable an Extension
+
+1. **Edit the manifest:** Open `scripts/extensions/manifest-data.ts` and locate the extension entry.
+
+2. **Set enabled to false:** Add `enabled: false` and optionally provide a reason:
+   ```typescript
+   {
+     name: "pgq",
+     kind: "extension",
+     category: "queueing",
+     enabled: false,  // Disable at build-time
+     disabledReason: "Using pgmq instead - more features, same performance",
+     // ... rest of entry
+   }
+   ```
+
+3. **Regenerate artifacts:** Run the manifest generator to update derived files:
+   ```bash
+   bun scripts/extensions/generate-manifest.ts
+   ```
+
+4. **Build the image:** Build your custom image:
+   ```bash
+   ./scripts/build.sh
+   ```
+
+### Manifest Fields
+
+- **`enabled`** (build-time): Controls whether extension is compiled and bundled into the image. Default: `true`.
+- **`disabledReason`** (optional): Explanation for why extension is disabled. Shown in build logs.
+- **`runtime.defaultEnable`** (runtime): Separate field controlling whether `CREATE EXTENSION` runs automatically in `01-extensions.sql`. Default: `false`.
+
+### Core Extension Protection
+
+The following extensions **cannot be disabled** because they are required by the system or are preloaded by default:
+
+- `auto_explain` (preloaded for query diagnostics)
+- `pg_cron` (preloaded for job scheduling)
+- `pg_stat_statements` (preloaded for query monitoring)
+- `pgaudit` (preloaded for audit logging)
+
+The manifest validation will fail if you attempt to disable these extensions.
+
+### Example: Creating a Minimal AI Image
+
+```typescript
+// scripts/extensions/manifest-data.ts
+
+// Keep: Vector extensions
+{ name: "vector", enabled: true, ... },
+{ name: "vectorscale", enabled: true, ... },
+
+// Disable: Time-series (not needed for AI workloads)
+{ name: "timescaledb", enabled: false, disabledReason: "AI workload - no time-series data" },
+{ name: "timescaledb_toolkit", enabled: false, disabledReason: "AI workload - no time-series data" },
+
+// Disable: GIS (not needed for AI workloads)
+{ name: "postgis", enabled: false, disabledReason: "AI workload - no geospatial data" },
+{ name: "pgrouting", enabled: false, disabledReason: "AI workload - no geospatial data" },
+```
+
+**Result:** Smaller image (~900MB vs ~1.14GB), faster build (~7 min vs ~12 min).
+
+### Dependency Validation
+
+The system automatically validates dependencies. If you disable an extension that another enabled extension depends on, the build will fail with a clear error:
+
+```
+❌ Dependency validation failed:
+
+  - Extension "index_advisor" depends on "hypopg", but "hypopg" is disabled
+
+Fix: Either enable "hypopg" or disable "index_advisor"
+```
+
+Common dependency chains:
+- `index_advisor` → `hypopg`
+- `vectorscale` → `vector`
+- `supabase_vault` → `pgsodium`
+- `timescaledb_toolkit` → `timescaledb`
+- `pgrouting` → `postgis`
+
+See [docs/development/EXTENSION-ENABLE-DISABLE.md](development/EXTENSION-ENABLE-DISABLE.md) for complete implementation details, testing strategy, and advanced customization scenarios.
+
 ## Upgrade Workflow
 
 1. Update the desired entry in `scripts/extensions/manifest-data.ts` (new tag or metadata).

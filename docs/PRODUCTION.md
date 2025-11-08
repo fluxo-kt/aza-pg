@@ -357,6 +357,10 @@ Default settings target **2GB RAM**. Auto-config scales from there.
 
 **Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
 
+### Extension Optimization
+
+The aza-pg image includes 38 extensions by default. You can reduce image size and build time by disabling unused extensions via the manifest-driven system. See [docs/EXTENSIONS.md](EXTENSIONS.md#enabling-and-disabling-extensions) for step-by-step instructions.
+
 ### Connection Limits
 
 **PgBouncer:** Max 200 client connections (configurable in `pgbouncer.ini`)

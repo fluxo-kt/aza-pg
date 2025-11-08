@@ -457,7 +457,9 @@ if wait_for_container_status "$PROJECT_NAME" "postgres" "healthy" 60; then
   PGBOUNCER_CONTAINER=$(COMPOSE_PROJECT_NAME="$PROJECT_NAME" docker compose ps pgbouncer -q 2>/dev/null || echo "")
 
   if [[ -n "$PGBOUNCER_CONTAINER" ]]; then
-    log_info "Changing .pgpass permissions to 777 (insecure)..."
+    # SECURITY TEST: Intentionally set insecure permissions to verify PostgreSQL client warning behavior
+    # This is NOT a security vulnerability - it's testing that psql properly rejects insecure .pgpass files
+    log_info "Changing .pgpass permissions to 777 (insecure - this is a deliberate security test)..."
     docker exec "$PGBOUNCER_CONTAINER" chmod 777 /tmp/.pgpass 2>/dev/null || true
 
     # PostgreSQL client should reject .pgpass with wrong permissions

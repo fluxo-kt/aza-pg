@@ -32,6 +32,18 @@ umask 077
 printf 'postgres:5432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" > "$PGPASSFILE_PATH"
 printf 'localhost:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
 printf 'pgbouncer:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
+
+# Verify .pgpass has secure permissions (must be 600 or PostgreSQL will reject it)
+if ! chmod 600 "$PGPASSFILE_PATH" 2>/dev/null; then
+    echo "[PGBOUNCER] ERROR: Failed to set .pgpass permissions" >&2
+    exit 1
+fi
+# Double-check permissions are actually 600
+actual_perms=$(stat -c "%a" "$PGPASSFILE_PATH" 2>/dev/null || stat -f "%OLp" "$PGPASSFILE_PATH" 2>/dev/null || echo "unknown")
+if [[ "$actual_perms" != "600" ]]; then
+    echo "[PGBOUNCER] ERROR: .pgpass permissions are $actual_perms (expected 600)" >&2
+    exit 1
+fi
 export PGPASSFILE="$PGPASSFILE_PATH"
 
 # Set environment variables with secure defaults

@@ -1,22 +1,50 @@
+# Environment files
 .env
 .env.*
 !.env.example
+.env.local
+.env.production
+
+# Logs
 *.log
+build.log
+test-results-*.log
+
+# Dumps and backups
 *.dump
+*.sql.gz
+*.backup
+
+# Certificates and keys (defensive)
+*.key
+*.crt
+*.pem
+*.csr
+*.p12
+*.pfx
+certs/
+
+# Archives
 *.tar.gz
+*.zip
+
+# IDE files
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
 node_modules/
 __pycache__/
 *.pyc
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-build.log

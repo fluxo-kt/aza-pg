@@ -113,9 +113,20 @@ RAM_INFO=$(detect_ram)
 TOTAL_RAM_MB=$(echo "$RAM_INFO" | cut -d: -f1)
 RAM_SOURCE=$(echo "$RAM_INFO" | cut -d: -f2)
 
+# Warn if using fallback RAM detection (may reflect host instead of container)
+if [ "$RAM_SOURCE" = "meminfo" ]; then
+    echo "[POSTGRES] WARNING: Using /proc/meminfo fallback for RAM detection (no cgroup limit or POSTGRES_MEMORY set)" >&2
+    echo "[POSTGRES] WARNING: This may reflect host RAM instead of container allocation - set POSTGRES_MEMORY to override" >&2
+fi
+
 CPU_INFO=$(detect_cpu)
 CPU_CORES=$(echo "$CPU_INFO" | cut -d: -f1)
 CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
+
+# Warn if using fallback CPU detection
+if [ "$CPU_SOURCE" = "nproc" ]; then
+    echo "[POSTGRES] WARNING: Using nproc fallback for CPU detection (no cgroup quota set)" >&2
+fi
 
 # Sanity check: Clamp CPU cores between 1-128 to prevent misconfiguration
 if [ "$CPU_CORES" -lt 1 ]; then

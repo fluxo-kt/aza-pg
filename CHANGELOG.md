@@ -4,7 +4,34 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Unreleased] - 2025-11-07
 
-### 🔒 Security Fixes
+### 🔒 Security Fixes (Audit Phase 1 & 2)
+- **Critical:** Fixed PgBouncer healthcheck (tests actual connectivity via psql SELECT 1, not version output)
+- **Critical:** Added git URL domain allowlist validation (github.com, gitlab.com only) in build-extensions.sh
+- **Critical:** Fixed password validation in primary compose.yml (added :? operators for POSTGRES_PASSWORD, PG_REPLICATION_PASSWORD, PGBOUNCER_AUTH_PASS)
+- **High:** Improved IP validation regex in pgbouncer-entrypoint.sh (proper 0-255 octet range validation, rejects 999.999.999)
+- **Medium:** Added password escape error checking in pgbouncer-entrypoint.sh (validates sed success before continuing)
+
+### 🐛 Bug Fixes (Audit Phase 1 & 2)
+- **Critical:** Fixed wait loop in run-extension-smoke.sh (replaced broken for loop with proper while loop + timeout)
+- **Critical:** Fixed dev memory override in compose.dev.yml (hardcoded 512m → ${POSTGRES_DEV_MEMORY_RESERVATION:-512m})
+- **Critical:** Added comprehensive error handling to config generator (wraps all writeFileSync in try-catch, exits on failure)
+- **Medium:** Removed orphaned cleanup_test_container() function from common.sh (consolidated to docker_cleanup)
+
+### 📚 Documentation Fixes (Audit Phase 1 & 2)
+- **Critical:** Fixed postgres_exporter_queries.yaml path reference in AGENTS.md (line 277: @stacks/... → docker/postgres/...)
+- **High:** Clarified extension count documentation (38 total: 6 builtin + 14 PGDG + 18 source-compiled where 18 = 12 extensions + 6 tools)
+- **High:** Enhanced runtime config comments to mention shared_preload_libraries injection (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)
+- **Medium:** Created docs/archive/README.md explaining historical documents contain outdated information
+- **Medium:** Updated hook-based extensions section to clearly enumerate all 6 tools (pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, supautils, wal2json)
+
+### ✨ Code Quality Improvements (Audit Phase 1 & 2)
+- **Refactoring:** Consolidated test cleanup (3 test files now use docker_cleanup instead of cleanup_test_container)
+- **Maintainability:** Improved config generator error messages (specific file paths, actionable errors)
+- **Documentation:** Regenerated all stack configs with improved runtime auto-config comment clarity
+
+---
+
+### 🔒 Security Fixes (Previous)
 - **Critical:** Fixed PgBouncer sed injection vulnerability (changed to pipe delimiter)
 - **Critical:** Fixed effective_cache_size calculation to cap at 75% RAM (prevents over-allocation)
 - **Critical:** Added POSTGRES_MEMORY upper bound validation (rejects > 1TB)

@@ -67,9 +67,9 @@ All tooling choices follow these principles:
 
 ### ArkType (NOT Zod)
 
-**Version**: TBD (to be installed)
+**Version**: 2.1.25+
 **Why**: Significantly faster than Zod, more efficient runtime validation, better performance
-**Status**: ⚠️ PENDING INSTALLATION - **CRITICAL: Use ArkType, NOT Zod**
+**Status**: ✅ INSTALLED - **CRITICAL: Use ArkType, NOT Zod**
 **Use Cases**:
 
 - Manifest validation (`extensions.manifest.json`)

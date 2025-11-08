@@ -264,8 +264,15 @@ await test("Queue monitoring", async () => {
   // Parse metrics
   const queueData = queueInfo.stdout.split("|");
   const queueName = queueData[0];
-  const ntables = parseInt(queueData[1]);
-  const curTable = parseInt(queueData[2]);
+  const ntablesStr = queueData[1];
+  const curTableStr = queueData[2];
+
+  if (!queueName || !ntablesStr || !curTableStr) {
+    throw new Error(`Invalid queue info format: ${queueInfo.stdout}`);
+  }
+
+  const ntables = parseInt(ntablesStr);
+  const curTable = parseInt(curTableStr);
 
   assert(queueName === "test_queue_functional", "Queue name mismatch");
   assert(ntables >= 1, "Queue should have at least 1 table");
@@ -327,11 +334,14 @@ await test("Performance benchmark - event throughput", async () => {
   // Cleanup
   await runSQL("SELECT pgq.drop_queue('benchmark_queue')");
 
-  results[results.length - 1].metrics = {
-    eventCount,
-    insertDuration,
-    throughput: throughput.toFixed(2),
-  };
+  const lastResult = results[results.length - 1];
+  if (lastResult) {
+    lastResult.metrics = {
+      eventCount,
+      insertDuration,
+      throughput: throughput.toFixed(2),
+    };
+  }
 
   assert(throughput > 10, `Throughput too low: ${throughput.toFixed(2)} events/sec`);
 });

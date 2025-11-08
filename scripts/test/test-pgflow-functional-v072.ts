@@ -258,7 +258,11 @@ await test("Poll for tasks (v0.7.2 two-phase API)", async () => {
   const lines = poll.stdout.split("\n").filter((l) => l.trim());
   assert(lines.length > 0, "No messages available from read_with_poll");
 
-  TASK_MSG_ID = lines[0];
+  const firstLine = lines[0];
+  if (!firstLine) {
+    throw new Error("No messages available from read_with_poll");
+  }
+  TASK_MSG_ID = firstLine;
 
   // Phase 2: start_tasks with worker_id to claim the task
   const startTask = await runSQL(`

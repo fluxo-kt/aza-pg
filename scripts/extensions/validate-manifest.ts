@@ -6,6 +6,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
+import { validateManifest } from "./manifest-schema.js";
 
 // Expected counts (from CLAUDE.md)
 const EXPECTED_COUNTS = {
@@ -72,7 +73,18 @@ function readManifest(): Manifest {
     throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
   }
   const content = readFileSync(MANIFEST_PATH, "utf-8");
-  return JSON.parse(content);
+  const rawData = JSON.parse(content);
+
+  // Runtime validation with ArkType
+  try {
+    validateManifest(rawData.entries);
+  } catch (validationError) {
+    const message =
+      validationError instanceof Error ? validationError.message : String(validationError);
+    throw new Error(`Manifest schema validation failed: ${message}`);
+  }
+
+  return rawData;
 }
 
 function readFile(path: string): string {
@@ -128,7 +140,10 @@ function validateDefaultEnable(manifest: Manifest): void {
   const createExtensionRegex = /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+(\w+)/gi;
   let match;
   while ((match = createExtensionRegex.exec(initSql)) !== null) {
-    baselineExtensions.add(match[1].toLowerCase());
+    const extName = match[1];
+    if (extName) {
+      baselineExtensions.add(extName.toLowerCase());
+    }
   }
 
   console.log(
@@ -140,7 +155,7 @@ function validateDefaultEnable(manifest: Manifest): void {
   const preloadMatch = entrypoint.match(/DEFAULT_SHARED_PRELOAD_LIBRARIES="([^"]+)"/);
   const preloadLibraries = new Set<string>();
 
-  if (preloadMatch) {
+  if (preloadMatch?.[1]) {
     preloadMatch[1].split(",").forEach((lib) => preloadLibraries.add(lib.trim()));
   }
 
@@ -181,7 +196,10 @@ function validatePgdgConsistency(manifest: Manifest): void {
 
   let match;
   while ((match = pgdgPackageRegex.exec(dockerfile)) !== null) {
-    dockerfilePgdgPackages.add(match[1].toLowerCase());
+    const pkgName = match[1];
+    if (pkgName) {
+      dockerfilePgdgPackages.add(pkgName.toLowerCase());
+    }
   }
 
   console.log(`  PGDG packages in Dockerfile: ${Array.from(dockerfilePgdgPackages).join(", ")}`);

@@ -134,6 +134,7 @@ async function lsRemote(spec: RepoSpec): Promise<Omit<ResultRow, "name" | "versi
   for (const line of stdout.trim().split("\n")) {
     if (!line) continue;
     const [commit, ref] = line.split("\t");
+    if (!ref || !commit) continue;
     const cleanedRef = ref.replace(/\^\{\}$/, "");
     const tagName = cleanedRef.replace("refs/tags/", "");
     if (tagName.includes("/")) {
@@ -163,6 +164,7 @@ async function main() {
       continue;
     }
     let latest = rows[0];
+    if (!latest) continue; // Type guard for array access
     for (const candidate of rows) {
       if (isGreaterTag(candidate.tag, latest.tag)) {
         latest = candidate;

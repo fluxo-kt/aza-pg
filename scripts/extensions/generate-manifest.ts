@@ -37,6 +37,9 @@ async function resolveGitCommit(repo: string, tag: string): Promise<string> {
   // Prefer peeled commit if available (^{}), otherwise first entry.
   const peeled = lines.find((line) => line.endsWith(`refs/tags/${tag}^{}`));
   const selected = peeled ?? lines[0];
+  if (!selected) {
+    throw new Error(`No lines available from ls-remote output for ${repo} tag ${tag}`);
+  }
   const [commit] = selected.split(/\s+/);
   if (!commit) {
     throw new Error(`Unable to parse commit from ls-remote output for ${repo} tag ${tag}`);

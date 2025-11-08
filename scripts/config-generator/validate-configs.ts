@@ -40,7 +40,9 @@ function parseConfig(filePath: string): ValidationResult {
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const rawLine = lines[i];
+    if (!rawLine) continue;
+    const line = rawLine.trim();
     const lineNum = i + 1;
 
     // Skip comments and empty lines
@@ -62,6 +64,13 @@ function parseConfig(filePath: string): ValidationResult {
     }
 
     const [, key, value] = match;
+
+    // Check for undefined key/value from regex match
+    if (!key || !value) {
+      result.errors.push(`Line ${lineNum}: Invalid setting format: "${line}"`);
+      result.valid = false;
+      continue;
+    }
 
     // Validate GUC name
     if (!GUC_NAME_REGEX.test(key)) {

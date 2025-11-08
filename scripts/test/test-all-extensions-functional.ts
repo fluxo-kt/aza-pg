@@ -508,6 +508,9 @@ await test("auto_explain - Enable and configure", "observability", async () => {
   // Parse the last line of output for the setting value
   const lines = result.stdout.split("\n").filter((l) => l.trim());
   const lastLine = lines[lines.length - 1];
+  if (!lastLine) {
+    throw new Error("No output from SHOW auto_explain.log_min_duration");
+  }
   assert(result.success && lastLine === "0", "auto_explain not configured correctly");
 });
 
@@ -635,7 +638,11 @@ await test("hypopg - Create hypothetical index", "performance", async () => {
     SELECT count(*) FROM hypopg_list_indexes;
   `);
   const lines = result.stdout.split("\n").filter((l) => l.trim());
-  const count = parseInt(lines[lines.length - 1]);
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine) {
+    throw new Error("No output from hypopg_list_indexes");
+  }
+  const count = parseInt(lastLine);
   assert(result.success && count > 0, "Failed to create hypothetical index");
 });
 
@@ -762,7 +769,11 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
     SELECT count(*) FROM pg_tables;
   `);
   const lines = result.stdout.split("\n").filter((l) => l.trim());
-  const count = parseInt(lines[lines.length - 1]);
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine) {
+    throw new Error("No output from pg_plan_filter query");
+  }
+  const count = parseInt(lastLine);
   assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
 });
 
@@ -777,7 +788,7 @@ await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
   await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
 
   // Attempt UPDATE without WHERE (should be blocked if pg_safeupdate is active)
-  const _update = await runSQL("UPDATE test_safeupdate SET val = 99");
+  await runSQL("UPDATE test_safeupdate SET val = 99");
   // If pg_safeupdate is loaded and configured, this should fail
   // If not, it will succeed (we just verify the query executes)
   assert(true, "pg_safeupdate test completed");
@@ -898,6 +909,9 @@ await test("pgaudit - Enable logging and verify configuration", "security", asyn
   // Parse the SHOW output (last line)
   const lines = result.stdout.split("\n").filter((l) => l.trim());
   const setting = lines[lines.length - 1];
+  if (!setting) {
+    throw new Error("No output from SHOW pgaudit.log");
+  }
   assert(result.success && setting.includes("write"), "pgaudit not configured correctly");
 });
 
@@ -1302,12 +1316,13 @@ const extensions = [
 ];
 
 const testedExtensions = new Set(
-  results.map((r) =>
-    r.name
-      .split(" - ")[0]
-      .toLowerCase()
-      .replace(/\s*\(.*?\)\s*/g, "")
-  )
+  results
+    .map((r) => {
+      const namePart = r.name.split(" - ")[0];
+      if (!namePart) return "";
+      return namePart.toLowerCase().replace(/\s*\(.*?\)\s*/g, "");
+    })
+    .filter((name) => name.length > 0)
 );
 
 console.log(`Total extensions: ${extensions.length}`);

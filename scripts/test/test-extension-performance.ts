@@ -86,7 +86,10 @@ async function execSQLTimed(sql: string, description: string): Promise<number> {
 async function getMemoryUsage(): Promise<number> {
   const result = await execSQL("SELECT pg_size_pretty(pg_database_size(current_database()))", true);
   const match = result.match(/(\d+)\s*MB/);
-  return match ? parseInt(match[1]) : 0;
+  if (match?.[1]) {
+    return parseInt(match[1]);
+  }
+  return 0;
 }
 
 // ==========================
@@ -574,8 +577,12 @@ async function main(): Promise<void> {
 
     const groupedResults = results.reduce(
       (acc, r) => {
-        if (!acc[r.extension]) acc[r.extension] = [];
-        acc[r.extension].push(r);
+        const ext = r.extension;
+        if (!acc[ext]) acc[ext] = [];
+        const extResults = acc[ext];
+        if (extResults) {
+          extResults.push(r);
+        }
         return acc;
       },
       {} as Record<string, BenchmarkResult[]>

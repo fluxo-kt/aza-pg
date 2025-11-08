@@ -3,6 +3,7 @@
 import { writeFileSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
 import type { StackType, PostgreSQLSettings } from "./types.js";
+import type { ManifestEntry } from "../extensions/manifest-data.js";
 import { BASE_CONFIG } from "./base-config.js";
 import { formatSetting } from "../utils/guc-formatter.js";
 
@@ -22,6 +23,11 @@ const SHARED_CATEGORY_FIELDS = {
 };
 
 const REPO_ROOT = join(import.meta.dir, "../..");
+
+interface Manifest {
+  generatedAt: string;
+  entries: ManifestEntry[];
+}
 
 function mergeSettings(
   common: PostgreSQLSettings,
@@ -308,10 +314,10 @@ function generatePgHba(stack: StackType): string {
 function generateExtensionsInitScript(): string {
   const manifestPath = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
   const manifestJson = readFileSync(manifestPath, "utf-8");
-  const manifest = JSON.parse(manifestJson);
+  const manifest = JSON.parse(manifestJson) as Manifest;
 
   // Filter for extensions to enable by default
-  const extensionsToEnable = manifest.entries.filter((entry: any) => {
+  const extensionsToEnable = manifest.entries.filter((entry) => {
     const enabled = entry.enabled ?? true; // Default to true for backward compatibility
     const defaultEnable = entry.runtime?.defaultEnable ?? false;
     const kind = entry.kind;
@@ -350,7 +356,7 @@ function generateExtensionsInitScript(): string {
   lines.push("DO $$");
   lines.push("BEGIN");
 
-  const extensionNames = extensionsToEnable.map((e: any) => e.name).join(", ");
+  const extensionNames = extensionsToEnable.map((e) => e.name).join(", ");
   if (extensionNames) {
     lines.push(
       `  RAISE NOTICE 'Baseline extensions enabled (${extensionNames}). Additional extensions are available but disabled by default.';`

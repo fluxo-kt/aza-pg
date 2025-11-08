@@ -255,7 +255,11 @@ await test("Task polling and execution", async () => {
   const taskData = task.stdout.split("|");
   assert(taskData.length >= 3, `Invalid task data format: ${task.stdout}`);
 
-  const taskId = parseInt(taskData[0]);
+  const taskIdStr = taskData[0];
+  if (!taskIdStr) {
+    throw new Error("No task_id in task data");
+  }
+  const taskId = parseInt(taskIdStr);
   const stepName = taskData[1];
 
   assert(taskId > 0, "Invalid task_id");
@@ -295,28 +299,37 @@ await test("Dependency chain execution", async () => {
   // Poll and complete transform_data
   let task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['transform_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split("|")[0]);
-    await runSQL(
-      `SELECT pgflow.complete_task(${taskId}, '{"output": {"records_transformed": 100}}')`
-    );
+    const taskIdStr = task.stdout.split("|")[0];
+    if (taskIdStr) {
+      const taskId = parseInt(taskIdStr);
+      await runSQL(
+        `SELECT pgflow.complete_task(${taskId}, '{"output": {"records_transformed": 100}}')`
+      );
+    }
   }
 
   // Start and complete validate_data
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
   task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['validate_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split("|")[0]);
-    await runSQL(
-      `SELECT pgflow.complete_task(${taskId}, '{"output": {"validation_passed": true}}')`
-    );
+    const taskIdStr = task.stdout.split("|")[0];
+    if (taskIdStr) {
+      const taskId = parseInt(taskIdStr);
+      await runSQL(
+        `SELECT pgflow.complete_task(${taskId}, '{"output": {"validation_passed": true}}')`
+      );
+    }
   }
 
   // Start and complete load_data
   await runSQL(`SELECT pgflow.start_ready_steps(${rid})`);
   task = await runSQL(`SELECT pgflow.poll_for_tasks('test_worker_1', ARRAY['load_data'])`);
   if (task.stdout) {
-    const taskId = parseInt(task.stdout.split("|")[0]);
-    await runSQL(`SELECT pgflow.complete_task(${taskId}, '{"output": {"records_loaded": 100}}')`);
+    const taskIdStr = task.stdout.split("|")[0];
+    if (taskIdStr) {
+      const taskId = parseInt(taskIdStr);
+      await runSQL(`SELECT pgflow.complete_task(${taskId}, '{"output": {"records_loaded": 100}}')`);
+    }
   }
 
   // Verify all steps completed
@@ -364,7 +377,11 @@ await test("Error handling and task failure", async () => {
   );
   assert(Boolean(task.stdout), "No task available for failure test");
 
-  const taskId = parseInt(task.stdout.split("|")[0]);
+  const taskIdStr = task.stdout.split("|")[0];
+  if (!taskIdStr) {
+    throw new Error("No task_id in failure test");
+  }
+  const taskId = parseInt(taskIdStr);
 
   // Fail task
   const fail = await runSQL(`
@@ -443,8 +460,11 @@ await test("Concurrent workflow execution", async () => {
       `SELECT pgflow.poll_for_tasks('${worker}', ARRAY['parallel_1', 'parallel_2', 'parallel_3'])`
     );
     if (task.stdout) {
-      const taskId = parseInt(task.stdout.split("|")[0]);
-      await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
+      const taskIdStr = task.stdout.split("|")[0];
+      if (taskIdStr) {
+        const taskId = parseInt(taskIdStr);
+        await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
+      }
     }
   }
 
@@ -485,8 +505,11 @@ await test("Performance benchmark - workflow execution", async () => {
     // Poll and complete
     const task = await runSQL(`SELECT pgflow.poll_for_tasks('perf_worker', ARRAY['perf_step'])`);
     if (task.stdout) {
-      const taskId = parseInt(task.stdout.split("|")[0]);
-      await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
+      const taskIdStr = task.stdout.split("|")[0];
+      if (taskIdStr) {
+        const taskId = parseInt(taskIdStr);
+        await runSQL(`SELECT pgflow.complete_task(${taskId}, '{}')`);
+      }
     }
   }
 
@@ -497,12 +520,15 @@ await test("Performance benchmark - workflow execution", async () => {
     `   📊 Workflow Throughput: ${throughput.toFixed(2)} workflows/sec (${workflowCount} workflows in ${duration}ms)`
   );
 
-  results[results.length - 1].metrics = {
-    workflowCount,
-    duration,
-    throughput: throughput.toFixed(2),
-    avgPerWorkflow: (duration / workflowCount).toFixed(2),
-  };
+  const lastResult = results[results.length - 1];
+  if (lastResult) {
+    lastResult.metrics = {
+      workflowCount,
+      duration,
+      throughput: throughput.toFixed(2),
+      avgPerWorkflow: (duration / workflowCount).toFixed(2),
+    };
+  }
 
   assert(throughput > 1, `Throughput too low: ${throughput.toFixed(2)} workflows/sec`);
 });

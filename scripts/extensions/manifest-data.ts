@@ -63,6 +63,7 @@ export interface ManifestEntry {
   aptPackages?: string[];
   notes?: string[];
   install_via?: "pgdg";
+  enabled?: boolean;
 }
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [

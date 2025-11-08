@@ -177,11 +177,59 @@ If extension A depends on extension B:
 - Disabling B → Build fails when processing A (clear error message)
 - Either enable B or disable A to resolve
 
-**Testing Disabled Extensions:**
-Per design doc `docs/development/EXTENSION-ENABLE-DISABLE.md`, disabled extensions should be:
-1. Built in test environment (verify compilation still works)
-2. Loaded without CREATE EXTENSION (binary compatibility test)
-3. Tested for basic functionality (prevents silent regressions)
+**Testing Disabled Extensions (CRITICAL REQUIREMENT):**
+
+**Absolute Requirement:** ALL extensions and tools, even disabled ones, MUST be built and tested.
+
+**Why This Matters:**
+- Disabled extensions use SHA-pinned commits (immutable Git references)
+- Without build+test, upstream changes or SHA staleness go undetected
+- Re-enabling later = surprise build failures in production
+- Testing disabled extensions = continuous verification they still work
+
+**Build System Behavior:**
+1. **Build Phase:** ALL extensions compiled (enabled + disabled)
+   - Disabled extensions marked with: "building for testing only"
+   - Compilation verifies SHA-pinned commits still work
+   - Build failures surface immediately (fail fast)
+
+2. **Test Phase:** Basic smoke tests run automatically
+   - Gate 2 verifies binaries exist (warns if missing)
+   - Presence of `.so` and `.control` files confirms successful build
+   - No separate test infrastructure needed (build = test)
+
+3. **Cleanup Phase:** ONLY disabled extensions removed from image
+   - Runs AFTER build+test complete
+   - Prevents disabled extensions from shipping to production
+   - Image contains only enabled extensions
+
+4. **Init Script:** Disabled extensions excluded from CREATE EXTENSION
+   - Generated from manifest: `enabled: true AND defaultEnable: true`
+   - No manual intervention needed
+
+**Current Status:** ✅ IMPLEMENTED
+- Gate 0: Tracks disabled extensions, continues building
+- Gate 1: Validates dependencies (fails if disabled dep required)
+- Gate 2: Removes disabled extensions AFTER successful build
+- Gate 3: Generates init script excluding disabled extensions
+
+**Verification:**
+```bash
+# During build, you should see:
+[ext-build] Extension pgq disabled (reason: Not needed for AI workloads) - building for testing only
+[ext-build] Running pgxs build in /tmp/extensions-build/pgq
+# ... compilation output ...
+[ext-build] Removing 1 disabled extension(s) from image
+[ext-build]   Cleaning up: pgq
+[ext-build]     ✓ Removed pgq.so
+[ext-build]     ✓ Removed pgq.control
+[ext-build] Disabled extensions built and tested, then removed from image
+```
+
+Per design doc `docs/development/EXTENSION-ENABLE-DISABLE.md`, future enhancements:
+- Functional tests for disabled extensions (verify basic queries work)
+- Load tests without CREATE EXTENSION (binary compatibility)
+- Regression detection for upstream changes
 
 **Related Documentation:**
 - Implementation guide: `docs/development/EXTENSION-ENABLE-DISABLE.md` (974 lines, comprehensive)

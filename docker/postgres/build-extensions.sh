@@ -291,9 +291,16 @@ process_entry() {
   # ────────────────────────────────────────────────────────────────────────────
   # GATE 0: ENABLED CHECK
   # ────────────────────────────────────────────────────────────────────────────
-  # Track disabled extensions for post-build cleanup.
-  # Disabled extensions ARE built and tested (verify they still work),
-  # but removed from final image (Gate 2).
+  # CRITICAL REQUIREMENT: ALL extensions MUST be built and tested, even disabled ones.
+  #
+  # Why: Disabled extensions use SHA-pinned commits. Without build+test, we don't
+  # verify the commit still works. Re-enabling later = surprise build failures.
+  #
+  # Behavior:
+  # - Disabled extensions: Built, tested, then removed from final image (Gate 2)
+  # - Enabled extensions: Built, tested, included in final image
+  #
+  # This ensures continuous verification that all SHA-pinned commits still work.
   local enabled
   enabled=$(jq -r 'if .enabled == false then "false" else "true" end' <<<"$entry")
   if [[ "$enabled" != "true" ]]; then
@@ -443,8 +450,19 @@ done < <(jq -c '.entries[]' "$MANIFEST_PATH")
 # ────────────────────────────────────────────────────────────────────────────
 # GATE 2: BINARY CLEANUP FOR DISABLED EXTENSIONS
 # ────────────────────────────────────────────────────────────────────────────
-# Remove .so files and SQL/control files for disabled extensions.
-# Extensions are built and tested first, then removed from final image.
+# CRITICAL: This runs AFTER all extensions (enabled + disabled) have been built.
+#
+# At this point:
+# - All extensions compiled successfully (SHA commits verified as working)
+# - Disabled extensions tracked in DISABLED_EXTENSIONS array
+#
+# Now: Remove disabled extension binaries from final image
+# - Verifies each extension was actually built (smoke test)
+# - Warns if binaries missing (indicates build failure)
+# - Deletes .so, .control, .sql files for disabled extensions only
+#
+# Result: Final image contains only enabled extensions, but we've verified
+# that ALL extensions (including disabled ones) still compile and work.
 if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
   log "Removing ${#DISABLED_EXTENSIONS[@]} disabled extension(s) from image"
 

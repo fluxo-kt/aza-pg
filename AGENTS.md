@@ -148,7 +148,7 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 - Never use `00-` (breaks extension dependency)
 
 ### Compose Override Pattern
-**Pattern:** `compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test memory). Use `!override` tag to replace arrays (ports) vs merge. Base compose now relies on `mem_limit`/`mem_reservation` so Docker applies cgroup limits; keep those values aligned with auto-config expectations.
+**Pattern:** `compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test memory). Compose merges configurations using standard YAML merge semantics (later files override earlier values). Base compose now relies on `mem_limit`/`mem_reservation` so Docker applies cgroup limits; keep those values aligned with auto-config expectations.
 
 **Usage:** `docker compose -f compose.yml -f compose.dev.yml up` merges configs (dev wins on conflicts).
 

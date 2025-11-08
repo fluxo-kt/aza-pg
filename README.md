@@ -14,7 +14,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - Production-grade: PgBouncer pooling, replication, monitoring, SCRAM-SHA-256
 
 ## Requirements
-- Docker Engine 24+ with Docker Compose v2.24.4+ (required for `!override` tag support)
+- Docker Engine 24+ with Docker Compose v2
 - GNU/Linux or macOS host (Windows via WSL2)
 - `bun` for regenerating configs (`curl -fsSL https://bun.sh/install | bash`)
 

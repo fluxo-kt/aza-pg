@@ -40,7 +40,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
   pgbouncer:
     image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1}

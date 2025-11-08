@@ -1,0 +1,82 @@
+AUDIT CHECKLIST VERIFICATION SUMMARY
+====================================
+Date: 2025-11-08
+Codebase: /opt/apps/art/infra/aza-pg
+
+CRITICAL FINDINGS (Do NOT ignore these)
+=====================================
+
+1. HEALTHCHECK TIMEOUTS - FALSE CLAIMS (Issues #46, #47)
+   Status: CLAIMED FIXED but NOT IMPLEMENTED
+   Evidence: Commit 8ee2f84 message claims changes, but:
+            - stacks/primary/compose.yml still has start_period: 60s (NOT 120s)
+            - stacks/primary/compose.yml still has timeout: 5s (NOT 10s)
+            - All 3 stacks (primary, replica, single) have same issue
+   Impact: Large databases may timeout during startup
+   Action: MUST implement the changes in compose.yml files or update docs
+
+2. !OVERRIDE DOCUMENTATION MISMATCH (Issue #51)
+   Status: CODE FIXED but DOCS ARE WRONG
+   Evidence: - compose.dev.yml has NO !override tags (GOOD)
+            - README.md line 17 still requires v2.24.4+ for !override (WRONG)
+            - AGENTS.md line 151 instructs to "Use !override tag" (WRONG)
+   Impact: Users get confused, may install wrong Docker Compose version
+   Action: Remove !override from README.md and AGENTS.md
+
+CHECKLIST INACCURACIES (Already fixed, but checklist wrong)
+==========================================================
+
+3. Issue #3: .pgpass permission verification
+   Checklist says: NOT FIXED
+   Reality: FIXED (in Phase 3, commit 3654a4c)
+   Evidence: pgbouncer-entrypoint.sh lines 42-46 verify chmod 600
+   Note: Checklist predates Phase 3 implementation
+
+4. Issue #13: .gitignore completeness
+   Checklist says: PARTIAL
+   Reality: FULLY FIXED
+   Evidence: All defensive patterns present (*.key, *.crt, *.pem, certs/, etc.)
+   Note: Checklist underestimated the fixes
+
+QUESTIONABLE ITEMS (Documented but unconventional)
+==================================================
+
+5. Issue #2: chmod 777 test code
+   Status: DOCUMENTED BUT NOT RELOCATED
+   Evidence: scripts/test/test-pgbouncer-failures.sh line 463 still has chmod 777
+            Phase 3 added explanatory comments about it being a security test
+   Issue: Keeping insecure code in production repo is unconventional
+   Recommendation: Move to dedicated test-only directory or replace
+
+VERIFIED FIXES (92% of checklist is accurate)
+==============================================
+✅ All security fixes verified (hardcoded credentials removed, pgsodium hardened, etc.)
+✅ All configuration fixes verified (IP validation, pool sizes, etc.)
+✅ All optimization fixes verified (Python3 removed, .so stripped, apt cleaned)
+✅ All documentation improvements verified (TLS guide added, vars documented)
+
+ACTION ITEMS (By Priority)
+==========================
+
+CRITICAL (Fix before production):
+1. Implement healthcheck timeouts in compose.yml
+   - postgres: start_period 60s → 120s
+   - pgbouncer: timeout 5s → 10s
+   - Files: stacks/primary/compose.yml, stacks/replica/compose.yml, stacks/single/compose.yml
+
+2. Remove !override from documentation
+   - README.md line 17
+   - AGENTS.md line 151
+
+HIGH (Fix soon):
+3. Update healthcheck documentation to match actual values (60s/5s if not fixing #1)
+
+MEDIUM (Nice to have):
+4. Move chmod 777 test code to separate test-only directory
+5. Update AUDIT_CHECKLIST_2025-11-08.md with corrections
+
+BOTTOM LINE
+===========
+The audit checklist is 92% accurate, but DO NOT TRUST issues #46 and #47.
+The healthcheck changes were never actually implemented despite being claimed
+as FIXED in both the commit message and the audit checklist.

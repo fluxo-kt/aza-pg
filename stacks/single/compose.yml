@@ -37,7 +37,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 

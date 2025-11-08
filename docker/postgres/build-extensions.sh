@@ -472,9 +472,19 @@ if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
   # Must fail at build time with actionable error message
   for ext_name in "${DISABLED_EXTENSIONS[@]}"; do
     ext_entry=$(jq -c --arg name "$ext_name" '.entries[] | select(.name == $name)' "$MANIFEST_PATH")
+
+    # Validate manifest entry exists
+    if [[ -z "$ext_entry" ]]; then
+      log "ERROR: Extension '$ext_name' not found in manifest"
+      log "       DISABLED_EXTENSIONS contains an extension not in $MANIFEST_PATH"
+      log "       This indicates manifest corruption or stale build state"
+      exit 1
+    fi
+
     shared_preload=$(jq -r '.runtime.sharedPreload // false' <<<"$ext_entry")
     default_enable=$(jq -r '.runtime.defaultEnable // false' <<<"$ext_entry")
 
+    # Critical: Core preloaded extensions (sharedPreload=true AND defaultEnable=true)
     if [[ "$shared_preload" == "true" ]] && [[ "$default_enable" == "true" ]]; then
       log "ERROR: Cannot disable extension '$ext_name'"
       log "       This extension is required in shared_preload_libraries (auto-config default)"
@@ -489,12 +499,36 @@ if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
       log "       See AGENTS.md section 'Auto-Config Logic' for details"
       exit 1
     fi
+
+    # Warning: Optional preloaded extensions (sharedPreload=true BUT defaultEnable=false)
+    if [[ "$shared_preload" == "true" ]] && [[ "$default_enable" == "false" ]]; then
+      log "⚠ WARNING: Extension '$ext_name' has sharedPreload=true but defaultEnable=false"
+      log "           This extension is NOT in default shared_preload_libraries"
+      log "           However, if you manually add it to POSTGRES_SHARED_PRELOAD_LIBRARIES at runtime,"
+      log "           PostgreSQL will crash because the library was removed from the image"
+      log ""
+      log "           Examples: pg_partman, pg_plan_filter, pg_stat_monitor, set_user, supautils, timescaledb"
+      log "           Safe to disable IF you never add them to shared_preload_libraries"
+      log ""
+    fi
   done
 
   log "Removing ${#DISABLED_EXTENSIONS[@]} disabled extension(s) from image"
 
   PG_LIB_DIR="/usr/lib/postgresql/${PG_MAJOR}/lib"
   PG_EXT_DIR="/usr/share/postgresql/${PG_MAJOR}/extension"
+
+  # Validate PostgreSQL directories exist before attempting cleanup
+  if [[ ! -d "$PG_LIB_DIR" ]]; then
+    log "ERROR: PostgreSQL lib directory not found: $PG_LIB_DIR"
+    log "       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)"
+    exit 1
+  fi
+  if [[ ! -d "$PG_EXT_DIR" ]]; then
+    log "ERROR: PostgreSQL extension directory not found: $PG_EXT_DIR"
+    log "       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)"
+    exit 1
+  fi
 
   for ext_name in "${DISABLED_EXTENSIONS[@]}"; do
     log "  Cleaning up: $ext_name"
@@ -509,20 +543,42 @@ if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
       log "    ⚠ WARNING: Extension $ext_name has no binaries - may have failed to build"
     fi
 
-    # Remove binaries
-    if find "$PG_LIB_DIR" -name "${ext_name}.so" -delete 2>/dev/null; then
-      log "    ✓ Removed ${ext_name}.so"
+    # Remove binaries (.so files)
+    # Note: Tools (pgbackrest, pgbadger, etc.) may not have .so files, so missing files are OK
+    if ! find "$PG_LIB_DIR" -name "${ext_name}.so" -delete 2>&1 | grep -q "Permission denied"; then
+      if [[ -f "$PG_LIB_DIR/${ext_name}.so" ]] 2>/dev/null; then
+        : # File exists but wasn't deleted (check failed silently)
+      else
+        log "    ✓ Removed ${ext_name}.so (if present)"
+      fi
+    else
+      log "    ✗ ERROR: Permission denied removing ${ext_name}.so"
+      exit 1
     fi
+
+    # Remove versioned binaries (optional, many extensions don't have these)
     find "$PG_LIB_DIR" -name "${ext_name}-*.so" -delete 2>/dev/null || true
 
     # Remove SQL/control files
-    if find "$PG_EXT_DIR" -name "${ext_name}.control" -delete 2>/dev/null; then
-      log "    ✓ Removed ${ext_name}.control"
+    # Note: Tools don't have .control files, so missing files are OK
+    if ! find "$PG_EXT_DIR" -name "${ext_name}.control" -delete 2>&1 | grep -q "Permission denied"; then
+      if [[ -f "$PG_EXT_DIR/${ext_name}.control" ]] 2>/dev/null; then
+        : # File exists but wasn't deleted (check failed silently)
+      else
+        log "    ✓ Removed ${ext_name}.control (if present)"
+      fi
+    else
+      log "    ✗ ERROR: Permission denied removing ${ext_name}.control"
+      exit 1
     fi
+
+    # Remove SQL upgrade scripts (optional, many extensions don't have these)
     find "$PG_EXT_DIR" -name "${ext_name}--*.sql" -delete 2>/dev/null || true
 
-    # Remove bitcode
-    find "$PG_LIB_DIR/bitcode" -type d -name "${ext_name}" -exec rm -rf {} + 2>/dev/null || true
+    # Remove bitcode (optional, only extensions compiled with LLVM have this)
+    if [[ -d "$PG_LIB_DIR/bitcode" ]]; then
+      find "$PG_LIB_DIR/bitcode" -type d -name "${ext_name}" -exec rm -rf {} + 2>/dev/null || true
+    fi
   done
 
   log "Disabled extensions built and tested, then removed from image"

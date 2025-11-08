@@ -13,5 +13,4 @@ libyaml-0-2
 libzstd1
 lz4
 perl
-python3
 zstd

@@ -29,6 +29,11 @@ fi
 echo "[03-pgsodium] Initializing pgsodium (ENABLE_PGSODIUM_INIT=true)"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    -- Security: Use pg_catalog search_path to prevent malicious schema injection attacks
+    -- This ensures that unqualified identifiers (functions, operators, types) resolve to
+    -- system catalog objects only, preventing privilege escalation via user-created schemas.
+    SET LOCAL search_path = pg_catalog;
+
     DO \$\$
     BEGIN
         -- Create pgsodium extension if it doesn't exist

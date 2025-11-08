@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# Test-only credentials (NOT for production use)
+TEST_PGBOUNCER_PASSWORD="${TEST_PGBOUNCER_PASSWORD:-test_pgbouncer_$(date +%s)_$$}"
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+TEST_REPLICATION_PASSWORD="${TEST_REPLICATION_PASSWORD:-test_replication_$(date +%s)_$$}"
+
 # Source common library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
@@ -77,10 +82,10 @@ cd "$STACK_PATH"
 
 # Create test .env file
 log_info "Creating test environment configuration..."
-cat > .env.test << 'EOF'
-POSTGRES_PASSWORD=test_password_healthcheck_123
-PGBOUNCER_AUTH_PASS=dev_pgbouncer_auth_test_2025
-PG_REPLICATION_PASSWORD=replication_test_healthcheck_123
+cat > .env.test << EOF
+POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD}
+PGBOUNCER_AUTH_PASS=${TEST_PGBOUNCER_PASSWORD}
+PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASSWORD}
 POSTGRES_IMAGE=aza-pg:pg18
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-healthcheck-test
@@ -195,7 +200,7 @@ log_success "Authentication successful via localhost:6432"
 log_info "Test 5: Testing authentication via pgbouncer:6432..."
 POSTGRES_CONTAINER=$(docker compose --env-file .env.test ps postgres -q)
 
-if ! docker exec "$POSTGRES_CONTAINER" sh -c 'PGPASSWORD=dev_pgbouncer_auth_test_2025 psql -h pgbouncer -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" >/dev/null 2>&1'; then
+if ! docker exec "$POSTGRES_CONTAINER" sh -c "PGPASSWORD=${TEST_PGBOUNCER_PASSWORD} psql -h pgbouncer -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1' >/dev/null 2>&1"; then
   log_error "Authentication failed via pgbouncer:6432 from postgres container"
   docker compose --env-file .env.test logs pgbouncer | tail -20
   exit 1
@@ -236,7 +241,7 @@ log_success "Healthcheck command works correctly"
 # Test 8: Verify connection through host network (from host machine)
 log_info "Test 8: Testing connection from host machine..."
 if command -v psql &>/dev/null; then
-  if PGPASSWORD=dev_pgbouncer_auth_test_2025 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" >/dev/null 2>&1; then
+  if PGPASSWORD=${TEST_PGBOUNCER_PASSWORD} psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" >/dev/null 2>&1; then
     log_success "Connection from host machine successful"
   else
     log_warning "Connection from host machine failed (may be expected if port not exposed)"

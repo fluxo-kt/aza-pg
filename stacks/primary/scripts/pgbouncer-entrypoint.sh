@@ -34,9 +34,11 @@ printf 'localhost:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASS
 printf 'pgbouncer:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
 export PGPASSFILE="$PGPASSFILE_PATH"
 
-# Substitute listen_addr with environment variable (default: 127.0.0.1 for security)
-# Use pipe delimiter to avoid sed injection with special characters (/, &, [], etc.)
+# Set environment variables with secure defaults
 PGBOUNCER_LISTEN_ADDR="${PGBOUNCER_LISTEN_ADDR:-127.0.0.1}"
+PGBOUNCER_SERVER_SSLMODE="${PGBOUNCER_SERVER_SSLMODE:-prefer}"
+PGBOUNCER_MAX_CLIENT_CONN="${PGBOUNCER_MAX_CLIENT_CONN:-200}"
+PGBOUNCER_DEFAULT_POOL_SIZE="${PGBOUNCER_DEFAULT_POOL_SIZE:-25}"
 
 # Validate listen address format (IP address or wildcard patterns)
 # Accepts: IPv4 (e.g., 192.168.1.1), 0.0.0.0, *, *.*.*.*
@@ -57,7 +59,19 @@ if [[ "$PGBOUNCER_LISTEN_ADDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     done
 fi
 
-sed "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" "$TEMPLATE" > "$OUTPUT"
+# Validate sslmode value
+if ! [[ "$PGBOUNCER_SERVER_SSLMODE" =~ ^(disable|allow|prefer|require|verify-ca|verify-full)$ ]]; then
+    echo "[PGBOUNCER] ERROR: Invalid PGBOUNCER_SERVER_SSLMODE: '$PGBOUNCER_SERVER_SSLMODE'" >&2
+    echo "[PGBOUNCER] Expected: disable, allow, prefer, require, verify-ca, or verify-full" >&2
+    exit 1
+fi
+
+# Render configuration with all placeholders replaced
+sed -e "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" \
+    -e "s|PGBOUNCER_SERVER_SSLMODE_PLACEHOLDER|${PGBOUNCER_SERVER_SSLMODE}|g" \
+    -e "s|PGBOUNCER_MAX_CLIENT_CONN_PLACEHOLDER|${PGBOUNCER_MAX_CLIENT_CONN}|g" \
+    -e "s|PGBOUNCER_DEFAULT_POOL_SIZE_PLACEHOLDER|${PGBOUNCER_DEFAULT_POOL_SIZE}|g" \
+    "$TEMPLATE" > "$OUTPUT"
 chmod 600 "$OUTPUT"
 
 echo "[PGBOUNCER] Configuration rendered to $OUTPUT"

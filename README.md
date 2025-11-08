@@ -341,8 +341,8 @@ Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 
 ## FAQ
 
-**Q: Why 4 preloaded extensions vs 37 available?**
-A: Only monitoring/audit extensions need preloading. Others load on-demand via CREATE EXTENSION.
+**Q: Why 4 preloaded extensions vs 38 total?**
+A: Only monitoring/audit extensions need preloading. Others (34 extensions) load on-demand via CREATE EXTENSION.
 
 **Q: Can I use this in Kubernetes?**
 A: Not designed for K8s - optimized for Compose/VPS deployments. Use cloud-native operators for K8s.

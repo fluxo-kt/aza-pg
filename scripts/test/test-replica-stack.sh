@@ -13,6 +13,11 @@
 
 set -euo pipefail
 
+# Test-only credentials (NOT for production use)
+TEST_PGBOUNCER_PASSWORD="${TEST_PGBOUNCER_PASSWORD:-test_pgbouncer_$(date +%s)_$$}"
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+TEST_REPLICATION_PASSWORD="${TEST_REPLICATION_PASSWORD:-test_replication_$(date +%s)_$$}"
+
 # Source common library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
@@ -102,10 +107,10 @@ log_success "Network created: postgres-replica-test-net"
 log_info "Step 1: Deploying primary stack..."
 cd "$PRIMARY_STACK_PATH"
 
-cat > .env.test << 'EOF'
-POSTGRES_PASSWORD=test_password_replica_123
-PGBOUNCER_AUTH_PASS=dev_pgbouncer_auth_test_2025
-PG_REPLICATION_PASSWORD=replication_test_replica_123
+cat > .env.test << EOF
+POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD}
+PGBOUNCER_AUTH_PASS=${TEST_PGBOUNCER_PASSWORD}
+PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASSWORD}
 POSTGRES_IMAGE=aza-pg:pg18
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-replica-test-primary

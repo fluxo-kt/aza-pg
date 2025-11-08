@@ -41,6 +41,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       rsync \
       postgresql-server-dev-${PG_MAJOR} \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eu && \
@@ -120,6 +121,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get install -y \
       postgresql-client-${PG_MAJOR} \
       ${RUNTIME_PKGS} && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
 # Pre-compiled extensions from PGDG repository
@@ -157,7 +159,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       postgresql-${PG_MAJOR}-pgrouting=${PGROUTING_VERSION} \
       postgresql-${PG_MAJOR}-rum=${RUM_VERSION} \
       postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    find /usr/lib/postgresql/${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
@@ -176,7 +180,7 @@ COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
     CMD pg_isready -U postgres -d postgres || exit 1
 
 EXPOSE 5432

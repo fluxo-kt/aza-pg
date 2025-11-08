@@ -117,6 +117,15 @@ CPU_INFO=$(detect_cpu)
 CPU_CORES=$(echo "$CPU_INFO" | cut -d: -f1)
 CPU_SOURCE=$(echo "$CPU_INFO" | cut -d: -f2)
 
+# Sanity check: Clamp CPU cores between 1-128 to prevent misconfiguration
+if [ "$CPU_CORES" -lt 1 ]; then
+    echo "[POSTGRES] WARNING: Detected CPU cores ($CPU_CORES) below minimum - clamping to 1" >&2
+    CPU_CORES=1
+elif [ "$CPU_CORES" -gt 128 ]; then
+    echo "[POSTGRES] WARNING: Detected CPU cores ($CPU_CORES) exceeds maximum (128) - clamping to 128" >&2
+    CPU_CORES=128
+fi
+
 if [ "$TOTAL_RAM_MB" -lt 512 ]; then
     echo "[POSTGRES] FATAL: Detected ${TOTAL_RAM_MB}MB RAM - minimum 512MB REQUIRED"
     echo "[POSTGRES] Set memory limit: docker run -m 512m OR compose mem_limit: 512m"
@@ -191,7 +200,10 @@ EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
 MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
 WORK_MEM_MB=$(calculate_work_mem)
 
+# Cap max_worker_processes at 64 to prevent exceeding PostgreSQL limits on high-core machines
 MAX_WORKER_PROCESSES=$((CPU_CORES * 2))
+[ "$MAX_WORKER_PROCESSES" -gt 64 ] && MAX_WORKER_PROCESSES=64
+
 MAX_PARALLEL_WORKERS=$CPU_CORES
 MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
@@ -200,15 +212,16 @@ SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PR
 
 # Override listen_addresses based on POSTGRES_BIND_IP
 # Default: 127.0.0.1 (localhost only, secure)
-# Network replication: Set POSTGRES_BIND_IP=0.0.0.0 to allow remote connections
+# Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
 LISTEN_ADDR="${POSTGRES_BIND_IP:-127.0.0.1}"
 LISTEN_ADDRESSES_OVERRIDE=""
 if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
-    LISTEN_ADDRESSES_OVERRIDE="0.0.0.0"
-    echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled (POSTGRES_BIND_IP=${LISTEN_ADDR}) → listen_addresses=0.0.0.0"
+    # Honor the specific IP address provided instead of forcing 0.0.0.0
+    LISTEN_ADDRESSES_OVERRIDE="$LISTEN_ADDR"
+    echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDRESSES_OVERRIDE}"
 fi
 
-echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, workers=${MAX_WORKER_PROCESSES}"
+echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, max_worker_processes=${MAX_WORKER_PROCESSES}, max_parallel_workers=${MAX_PARALLEL_WORKERS}, max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \

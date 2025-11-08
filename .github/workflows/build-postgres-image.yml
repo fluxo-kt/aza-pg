@@ -409,11 +409,16 @@ jobs:
           }
           trap cleanup EXIT ERR  # Cleanup on exit or error
 
+          # Generate test-only credentials (NOT for production)
+          TEST_POSTGRES_PASS="test_pg_${GITHUB_RUN_ID}_$(date +%s)"
+          TEST_PGBOUNCER_PASS="test_pgb_${GITHUB_RUN_ID}_$(date +%s)"
+          TEST_REPLICATION_PASS="test_repl_${GITHUB_RUN_ID}_$(date +%s)"
+
           # Create .env file
           cat > .env << EOF
-          POSTGRES_PASSWORD=test_password_123
-          PGBOUNCER_AUTH_PASS=dev_pgbouncer_auth_test_2025
-          PG_REPLICATION_PASSWORD=replication_test_123
+          POSTGRES_PASSWORD=${TEST_POSTGRES_PASS}
+          PGBOUNCER_AUTH_PASS=${TEST_PGBOUNCER_PASS}
+          PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASS}
           POSTGRES_IMAGE=aza-pg:test
           POSTGRES_MEMORY_LIMIT=2g
           EOF
@@ -435,7 +440,7 @@ jobs:
           fi
 
           echo "🧪 Testing PgBouncer connection..."
-          if ! PGPASSWORD=dev_pgbouncer_auth_test_2025 docker compose exec -T pgbouncer \
+          if ! PGPASSWORD=${TEST_PGBOUNCER_PASS} docker compose exec -T pgbouncer \
             psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;"; then
             echo "❌ PgBouncer connection failed"
             touch /tmp/test-failed

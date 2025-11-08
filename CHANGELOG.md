@@ -163,7 +163,7 @@ This release incorporates findings from 5 comprehensive audit reports analyzing 
 - Files modified: 15+ configuration, documentation, and script files
 - Bitcode cleanup verified present in Dockerfile (line 135)
 
-**References**: See VERIFICATION_REPORT.md and TODO_PROGRESS.md for detailed breakdown
+**References**: See docs/archive/VERIFICATION_REPORT.md and docs/archive/TODO_PROGRESS.md for detailed breakdown
 
 ---
 

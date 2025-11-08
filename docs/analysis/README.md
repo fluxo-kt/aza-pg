@@ -64,6 +64,22 @@ Phased implementation guide with:
 
 ---
 
+### 5. **PIGSTY-EVALUATION.md** (Alternative Extension Repository)
+Comprehensive evaluation of PIGSTY as alternative extension source:
+- PostgreSQL 18 support status (beta in v3.5.0, GA planned for v4.0)
+- Security assessment (GPG signing, trust model, supply chain)
+- Compatibility matrix (38 aza-pg extensions vs PIGSTY availability)
+- Operational assessment (update frequency, platform support, maintenance burden)
+- Decision matrix (short/medium/long-term recommendations)
+- Hybrid strategy proposal (PGDG + PIGSTY + selective source compilation)
+
+**Decision:** ❌ DO NOT USE for PG18 now (blocked on v4.0 GA release)
+**Future:** ✅ Consider for PG19+ after v4.0 matures (Q1-Q2 2026+)
+
+**Read this for:** Understanding PIGSTY trade-offs, planning future migration path
+
+---
+
 ## Key Findings at a Glance
 
 ### Size Breakdown

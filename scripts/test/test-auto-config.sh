@@ -174,7 +174,7 @@ case_cpu_detection() {
   local logs=$1
   local container=$2
   assert_log_contains "$logs" "CPU: 2 cores" "CPU detection picked up 2 cores"
-  assert_log_contains "$logs" "workers=4" "Worker processes scaled with CPU"
+  assert_log_contains "$logs" "max_worker_processes=4" "Worker processes scaled with CPU"
 
   # Verify actual config
   assert_pg_config "$container" "max_worker_processes" "4" "Config injection: max_worker_processes"

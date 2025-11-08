@@ -460,6 +460,38 @@ This release incorporates findings from 5 comprehensive audit reports analyzing 
 - **Notes:** Used CARGO_PROFILE variables instead of RUSTFLAGS to avoid breaking dependency builds
 - **Performance:** Size optimization only (opt-level=s), no runtime performance degradation expected
 
+### Added (Phase 12 - Extension Enable/Disable Architecture - 2025-11)
+- **Feature:** Added manifest-driven extension enable/disable system (commit 4d15364)
+  - Added `enabled` field to extensions.manifest.json (all 38 extensions)
+  - Added `disabledReason` field for documentation when extensions are disabled
+  - Generator now filters extensions based on `enabled` flag when creating 01-extensions.sql
+  - Example: pgq disabled by default (`"enabled": false, "disabledReason": "Not needed for AI workloads"`)
+- **Build:** Implemented 4-gate validation system in build-extensions.sh:
+  - Gate 0 (Enabled Check): Tracks disabled extensions, continues building for testing
+  - Gate 1 (Dependency Validation): Prevents disabling extensions that others depend on
+  - Gate 2 (Binary Cleanup): Removes disabled extensions from final image AFTER build+test
+  - Gate 3 (Init Script Generation): Auto-generates 01-extensions.sql excluding disabled extensions
+- **Critical Fix:** Build and test ALL extensions including disabled ones (commit cc1ef93)
+  - **Problem:** Initial implementation skipped disabled extensions entirely (no build, no test)
+  - **Impact:** SHA-pinned commits would go untested, causing surprise failures when re-enabled
+  - **Solution:** Disabled extensions now built and tested, then removed from final image
+  - **Why:** Continuous verification that all SHA-pinned commits still work
+- **Critical Fix:** Prevent disabling core preloaded extensions (commit 70e0313)
+  - **Problem:** Auto-config hardcodes 4 extensions in shared_preload_libraries (auto_explain, pg_cron, pg_stat_statements, pgaudit)
+  - **Impact:** Disabling these caused runtime crash: `FATAL: could not load library 'pg_cron.so'`
+  - **Solution:** Added validation in Gate 2 that fails build if core preloaded extensions are disabled
+  - **Error:** Provides actionable message explaining `POSTGRES_SHARED_PRELOAD_LIBRARIES` workaround
+- **Documentation:** Explicit requirement for testing disabled extensions (commit 809a2fa)
+  - Added 58-line "Testing Disabled Extensions" section to AGENTS.md
+  - Clarified why disabled extensions must be built and tested (SHA-pinned commit verification)
+  - Added 34-line "Core Preloaded Extension Protection" section explaining constraints
+  - Updated docs/development/EXTENSION-ENABLE-DISABLE.md with 975-line design document
+- **Benefits:**
+  - Users can disable unused extensions to reduce image size
+  - All extensions remain tested even when disabled
+  - Runtime safety via build-time validation
+  - Clear error messages guide users to correct configuration
+
 ### Fixed (Sprint 1-4 Code Review Improvements - 2025-05)
 - **Config:** Removed broken extensions from `shared_preload_libraries` (supautils, timescaledb, pg_stat_monitor not compiled)
 - **Config:** Added SSD optimizations (random_page_cost=1.1, effective_io_concurrency=200) for cloud deployments

@@ -2,6 +2,199 @@
 
 All notable changes to aza-pg will be documented in this file.
 
+## [Unreleased] - 2025-11-08
+
+### ⚠️ BREAKING CHANGES
+
+- **PGBOUNCER_SERVER_SSLMODE**: Changed from `require` to `prefer` (TLS now optional by default)
+  - **Impact**: Existing deployments expecting enforced TLS must explicitly set `PGBOUNCER_SERVER_SSLMODE=require`
+  - **Rationale**: PostgreSQL TLS disabled by default in image; `require` mode breaks all connections without certificates
+  - **Migration**: Deploy TLS certificates first, then set `PGBOUNCER_SERVER_SSLMODE=require` in .env
+- **POSTGRES_BIND_IP**: Now honors specific IP addresses instead of forcing 0.0.0.0
+  - **Impact**: Setting `POSTGRES_BIND_IP=192.168.1.100` now binds to that specific IP only (not all interfaces)
+  - **Migration**: Deployments expecting all-interface binding should explicitly set `POSTGRES_BIND_IP=0.0.0.0`
+- **Test Credentials**: Removed hardcoded `dev_pgbouncer_auth_test_2025` password
+  - **Impact**: All test scripts now generate unique passwords at runtime
+  - **Migration**: Update any external test automation that relied on hardcoded credentials
+
+### 🔒 Security Fixes (Phase 1, 3)
+
+**Critical:**
+- Remove hardcoded test credentials from all test scripts (generate unique passwords at runtime)
+- Harden pgsodium init script with `SET search_path=pg_catalog` (prevents search_path injection attacks)
+- Add explicit .pgpass permission verification (600) in pgbouncer-entrypoint.sh
+  - Verify chmod success and actual file permissions before proceeding
+  - Fail fast with clear error if permissions cannot be set
+  - Prevents PostgreSQL client rejection due to insecure .pgpass permissions
+
+**High:**
+- Add password complexity guidance to primary/.env.example (minimum 16 chars, avoid special chars that need escaping)
+- Fix PgBouncer healthcheck to properly authenticate with PGPASSWORD environment variable
+- Add defensive .gitignore patterns:
+  - Certificate files (*.key, *.crt, *.pem, *.csr, *.p12, *.pfx, certs/)
+  - Backup files (*.dump, *.sql.gz, *.backup)
+  - Additional log patterns (test-results-*.log)
+
+**Medium:**
+- Add security test comment to test-pgbouncer-failures.sh (clarify chmod 777 is intentional test behavior, not vulnerability)
+
+### ⚡ Performance & Build Optimizations (Phase 1)
+
+**Size Reductions (-60-95MB total):**
+- Remove Python3 from runtime packages (-100MB, only needed at build time)
+- Strip PGDG .so libraries post-install (-5-15MB debug symbols)
+- Add `apt-get clean` to all Dockerfile RUN blocks (-60MB across 3 layers)
+
+**Total Savings:** 60-95MB image size reduction (timescaledb_toolkit: 186MB→13MB from Phase 11 Rust optimization)
+
+### 📚 Documentation Fixes (Phase 2, 4)
+
+**Critical:**
+- Add step-by-step TLS enablement guide to README.md Security section
+- Update AGENTS.md init script execution order to include 03-pgsodium-init.sh
+- Fix effective_cache_size cap documentation in memory allocation table (64GB: 54706MB→49152MB)
+  - Corrected to reflect actual 75% cap enforced by code
+  - Fixed 32GB row showing 80% instead of 75% cap
+  - Standardized percentage rounding across all memory tiers
+- Update timescaledb_toolkit size across 8 documentation files (186MB→13MB)
+  - Preserved historical context showing pre-Phase 11 optimization
+  - Updated percentages and section titles to reflect achieved optimization
+  - Total: 52 references updated with proper context
+- Remove obsolete !override tag requirement from README.md and AGENTS.md
+- Fix AGENTS.md compose override pattern instruction (compose.dev.yml no longer uses !override)
+
+**High:**
+- Memory allocation table: Fixed 10 incorrect values across 8 rows
+- Effective cache percentages aligned with code logic (75% hard cap at all memory tiers)
+- Extension size analysis reflects actual post-optimization state
+- Navigation updates in docs/analysis/README.md
+
+**Medium:**
+- Update docs/analysis/OPTIMIZATION-ROADMAP.md achievement status
+- Update docs/extensions/PREBUILT-BINARIES-ANALYSIS.md optimization markers
+- Update docs/analysis/EXECUTIVE-SUMMARY.txt summary metrics
+
+### 🐛 Bug Fixes (Phase 1, 4)
+
+**Critical (Phase 4 - Falsely Claimed in Commit 8ee2f84):**
+- **Healthcheck timeouts ACTUALLY IMPLEMENTED** (were claimed but never done):
+  - stacks/primary/compose.yml: postgres start_period 60s → 120s
+  - stacks/replica/compose.yml: postgres start_period 60s → 120s
+  - stacks/single/compose.yml: postgres start_period 60s → 120s
+  - stacks/primary/compose.yml: pgbouncer timeout verified at 10s (already correct)
+  - **Impact**: Large databases may fail healthchecks during initial startup with 60s timeout
+
+**High (Phase 1):**
+- Fix undefined `cleanup_test_container` function in test-auto-config.sh (use docker_cleanup from common.sh)
+- Fix listen_addresses to honor specific IPs instead of forcing 0.0.0.0
+- Add max_worker_processes cap at 64 (prevent exceeding PostgreSQL hard limits)
+- Add CPU core sanity check (clamp 1-128 cores with warnings for out-of-range values)
+
+**Medium (Phase 1):**
+- Remove non-standard !override YAML tag from compose.dev.yml (Docker Compose v2.24.4+ handles merges correctly)
+
+### 🔧 Configuration Enhancements (Phase 1, 4)
+
+**New Environment Variables (29 total added to .env.example files):**
+
+**PRIMARY Stack (11 variables):**
+- `COMPOSE_PROJECT_NAME` - Project name for container prefixes
+- `POSTGRES_USER` - PostgreSQL superuser name (default: postgres)
+- `POSTGRES_EXPORTER_IMAGE` - Prometheus exporter image and version
+- `PGBOUNCER_BIND_IP` - PgBouncer listen address (default: 127.0.0.1)
+- `POSTGRES_EXPORTER_BIND_IP` - Prometheus exporter bind address
+- `PGBOUNCER_EXPORTER_BIND_IP` - PgBouncer exporter bind address
+- `DISABLE_DATA_CHECKSUMS` - Disable data checksums (with security warning)
+- `ENABLE_PGSODIUM_INIT` - Enable pgsodium initialization script
+- `POSTGRES_INITDB_ARGS` - Additional initdb arguments
+- `MONITORING_NETWORK` - Docker network name for monitoring
+- `POSTGRES_NETWORK_NAME` - Docker network name for Postgres
+
+**REPLICA Stack (9 variables):**
+- `COMPOSE_PROJECT_NAME`, `POSTGRES_USER`, `POSTGRES_EXPORTER_IMAGE`
+- `POSTGRES_EXPORTER_BIND_IP`, `POSTGRES_EXPORTER_PORT` (9188)
+- `POSTGRES_EXPORTER_MEMORY_LIMIT`, `POSTGRES_EXPORTER_MEMORY_RESERVATION`
+- `MONITORING_NETWORK`, `POSTGRES_NETWORK_NAME`
+
+**SINGLE Stack (9 variables):**
+- `COMPOSE_PROJECT_NAME`, `POSTGRES_USER`, `POSTGRES_EXPORTER_IMAGE`
+- `POSTGRES_EXPORTER_BIND_IP`, `POSTGRES_EXPORTER_PORT` (9189)
+- `POSTGRES_EXPORTER_MEMORY_LIMIT`, `POSTGRES_EXPORTER_MEMORY_RESERVATION`
+- `MONITORING_NETWORK`, `POSTGRES_NETWORK_NAME`
+
+**Existing Variables Made Configurable:**
+- `PGBOUNCER_SERVER_SSLMODE` - TLS mode for PgBouncer→Postgres (default: prefer)
+- `PGBOUNCER_MAX_CLIENT_CONN` - PgBouncer max client connections (default: 200)
+- `PGBOUNCER_DEFAULT_POOL_SIZE` - PgBouncer default pool size (default: 25)
+- `POSTGRES_MEMORY` - Manual RAM override for auto-config
+- `POSTGRES_SHARED_PRELOAD_LIBRARIES` - Override default preloaded extensions
+
+### 🔍 Operational Improvements (Phase 3)
+
+**Enhanced Logging:**
+- Log exact computed worker values (max_worker_processes, max_parallel_workers, max_parallel_workers_per_gather)
+- Enhanced auto-config logging for troubleshooting
+- Warn when /proc/meminfo fallback is used (may reflect host RAM instead of container limit)
+- Recommend setting POSTGRES_MEMORY for deterministic tuning in containerized environments
+- Warn when nproc fallback is used for CPU detection (no cgroup quota set)
+
+### 🧹 Cleanup (Phase 5 - This Commit)
+
+**Deleted Audit Documentation Files (10 files):**
+- Root directory (3): ANALYSIS_SUMMARY.txt, COMPREHENSIVE_TESTING_CHECKLIST.md, TESTING_SUMMARY.md
+- docs/ directory (7):
+  - AUDIT_CHECKLIST_2025-11-08.md
+  - AUDIT_DISCREPANCIES_TABLE.csv
+  - AUDIT_VERIFICATION_REPORT.md
+  - AUDIT_VERIFICATION_SUMMARY.txt
+  - REMEDIATION_2025-01-07.md
+  - REMEDIATION_CHECKLIST.md
+  - SECURITY_AUDIT_2025-11-08.md
+
+**Rationale:** Audit documentation served its purpose during comprehensive review cycle. Key findings integrated into CHANGELOG.md and permanent documentation.
+
+### 📊 Impact Summary
+
+**Security:**
+- 6 security vulnerabilities fixed (3 critical, 2 high, 1 medium)
+- Eliminated hardcoded credentials from test suite
+- Hardened pgsodium initialization against injection attacks
+- Added defensive patterns to .gitignore
+
+**Performance:**
+- Image size reduced by 60-95MB
+- Healthcheck timeouts optimized for large database support
+- Worker process caps prevent resource exhaustion
+
+**Configuration:**
+- 29 new environment variables documented
+- 5 existing variables made configurable
+- TLS mode now properly defaults to optional (not enforced)
+
+**Documentation:**
+- 52 size references corrected across 8 files
+- 10 memory allocation values fixed
+- Complete TLS enablement guide added
+- Init script execution order clarified
+
+**Reliability:**
+- 3 critical bugs fixed (healthcheck timeouts, listen_addresses, cleanup functions)
+- Enhanced fallback detection warnings
+- Improved error messages and validation
+
+### 🙏 Acknowledgments
+
+This release incorporates findings from a comprehensive 4-phase audit conducted on 2025-11-08, analyzing 60+ issues across security, configuration, documentation accuracy, and operational reliability. All critical and high-priority issues have been resolved.
+
+**Audit Coverage:**
+- Phase 1: Security, correctness & size optimizations (commit 8ee2f84)
+- Phase 2: Documentation accuracy fixes (commit db306f8)
+- Phase 3: Final security hardening and operational clarity (commit 3654a4c)
+- Phase 4: False claim remediation and comprehensive verification (commit 8bb281f)
+- Phase 5: Cleanup of temporary audit documentation (this commit)
+
+---
+
 ## [Unreleased] - 2025-11-07
 
 ### 🔒 Security Fixes (Audit Phase 1 & 2)

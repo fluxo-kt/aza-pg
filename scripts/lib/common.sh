@@ -128,13 +128,3 @@ wait_for_postgres() {
     return 1
 }
 
-# Container cleanup function for tests
-# Usage: cleanup_test_container "container_name"
-# Alias for docker_cleanup with explicit test-oriented naming
-cleanup_test_container() {
-    local container_name="$1"
-    if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}\$"; then
-        echo "Cleaning up container: $container_name"
-        docker rm -f "$container_name" >/dev/null 2>&1 || true
-    fi
-}

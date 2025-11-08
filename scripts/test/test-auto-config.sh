@@ -116,7 +116,7 @@ run_case() {
   echo "✅ [AUTO-CONFIG] token found in logs"
 
   "$callback" "$logs" "$container"
-  cleanup_test_container "$container"
+  docker_cleanup "$container"
   echo
 }
 

@@ -92,7 +92,7 @@ fi
 cleanup() {
   echo
   echo "🧹 Cleaning up..."
-  cleanup_test_container "$CONTAINER_NAME"
+  docker_cleanup "$CONTAINER_NAME"
 }
 trap cleanup EXIT
 

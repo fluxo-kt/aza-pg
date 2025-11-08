@@ -8,7 +8,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Stacks:** Compose-based deployments. `primary/` = Postgres + PgBouncer + postgres_exporter (3 services). All values env-driven, no hardcoded IPs/passwords.
 
-**Extensions:** 38 total (6 builtin + 14 PGDG pre-compiled + 18 custom-compiled). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18. Note: "18 custom-compiled" includes extensions built from source (git), not all git entries.
+**Extensions:** 38 total (6 builtin + 14 PGDG pre-compiled + 18 source-compiled: 12 extensions + 6 tools). Hybrid approach: PGDG packages for stability/speed, SHA-pinned compilation for specialized extensions. All production-ready for PG18. Note: "Tools" are hook-based or command-line utilities without CREATE EXTENSION support (pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, supautils, wal2json).
 
 ## Critical Patterns
 
@@ -49,7 +49,9 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - GPG-signed packages with pinned versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`)
 - Benefits: Instant install, tested against PG18, multi-arch (amd64/arm64)
 
-**Compiled Extensions (18):** pg_jsonschema, index_advisor, pg_hashids, pg_plan_filter, pg_safeupdate, pg_stat_monitor, pgbackrest, pgbadger, pgmq, pgq, pgroonga, pgsodium, supabase_vault, supautils, timescaledb_toolkit, vectorscale, wal2json, wrappers
+**Compiled Extensions (12):** index_advisor, pg_hashids, pg_jsonschema, pg_stat_monitor, pgmq, pgq, pgroonga, pgsodium, supabase_vault, timescaledb_toolkit, vectorscale, wrappers
+
+**Tools (6):** pgbackrest (backup), pgbadger (log analyzer), pg_plan_filter (hook), pg_safeupdate (hook), supautils (hooks), wal2json (logical decoding)
 - Built from SHA-pinned source (immutable Git commits)
 - Required when: Not in PGDG, need latest features, or specialized (Supabase ecosystem)
 - Manifest field in docker/postgres/extensions.manifest.json: `install_via: "pgdg"` flags PGDG extensions → skipped by build-extensions.sh
@@ -72,15 +74,13 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 ### Hook-Based Extensions & Tools
 **Pattern:** Some extensions load via `shared_preload_libraries` without `CREATE EXTENSION` support. Classified as `"kind": "tool"` in manifest.
 
-**Hook-Based Extensions (3 + 4 tools):**
+**Hook-Based Extensions & Tools (6 total):**
 - **pg_plan_filter**: Filters query plans based on configurable rules (hook-based, no .control file)
 - **pg_safeupdate**: Prevents UPDATE/DELETE without WHERE clause (hook-based, no .control file)
 - **supautils**: Superuser guards and event trigger hooks for managed Postgres (GUC-based, no CREATE EXTENSION)
-
-**Additional Tools Classified as 'tool' Kind:**
-- **pgbackrest**: Backup and restore tool (tool)
-- **pgbadger**: Log analyzer (tool)
-- **wal2json**: Logical decoding plugin (see below)
+- **pgbackrest**: Backup and restore tool (command-line utility)
+- **pgbadger**: Log analyzer (Perl tool)
+- **wal2json**: Logical decoding plugin (output plugin for logical replication)
 
 **Characteristics:**
 - Load at server start via shared_preload_libraries or session_preload_libraries

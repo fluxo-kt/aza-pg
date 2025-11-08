@@ -130,7 +130,7 @@ run_case() {
   local container="pg-hook-ext-$RANDOM-$$"
   if ! docker run -d --name "$container" "$@" "$IMAGE_TAG" >/dev/null 2>&1; then
     echo "❌ ERROR: Failed to start container for '$name'"
-    cleanup_test_container "$container"
+    docker_cleanup "$container"
     exit 1
   fi
 
@@ -140,12 +140,12 @@ run_case() {
     logs=$(docker logs "$container" 2>&1 || true)
     echo "Container logs:"
     echo "$logs"
-    cleanup_test_container "$container"
+    docker_cleanup "$container"
     exit 1
   fi
 
   "$callback" "$container"
-  cleanup_test_container "$container"
+  docker_cleanup "$container"
   echo
 }
 

@@ -223,8 +223,9 @@ function generatePostgresqlConf(
 
   lines.push('# Runtime auto-configuration');
   lines.push('# The following settings are overridden at container startup:');
-  lines.push('# - shared_buffers, effective_cache_size, maintenance_work_mem, work_mem');
-  lines.push('# - max_connections, max_worker_processes, max_parallel_workers');
+  lines.push('# - Memory: shared_buffers, effective_cache_size, maintenance_work_mem, work_mem');
+  lines.push('# - Connections: max_connections, max_worker_processes, max_parallel_workers');
+  lines.push('# - Extensions: shared_preload_libraries (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)');
   lines.push('# Auto-config is always enabled and cannot be disabled.');
 
   return lines.join('\n');

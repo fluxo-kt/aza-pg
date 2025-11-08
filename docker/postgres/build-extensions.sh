@@ -464,6 +464,33 @@ done < <(jq -c '.entries[]' "$MANIFEST_PATH")
 # Result: Final image contains only enabled extensions, but we've verified
 # that ALL extensions (including disabled ones) still compile and work.
 if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
+  log "Validating ${#DISABLED_EXTENSIONS[@]} disabled extension(s)"
+
+  # CRITICAL: Validate no core preloaded extensions are disabled
+  # Auto-config hardcodes: pg_stat_statements,auto_explain,pg_cron,pgaudit
+  # If user disables these, Postgres crashes at runtime with "library not found"
+  # Must fail at build time with actionable error message
+  for ext_name in "${DISABLED_EXTENSIONS[@]}"; do
+    ext_entry=$(jq -c --arg name "$ext_name" '.entries[] | select(.name == $name)' "$MANIFEST_PATH")
+    shared_preload=$(jq -r '.runtime.sharedPreload // false' <<<"$ext_entry")
+    default_enable=$(jq -r '.runtime.defaultEnable // false' <<<"$ext_entry")
+
+    if [[ "$shared_preload" == "true" ]] && [[ "$default_enable" == "true" ]]; then
+      log "ERROR: Cannot disable extension '$ext_name'"
+      log "       This extension is required in shared_preload_libraries (auto-config default)"
+      log "       Core preloaded extensions: auto_explain, pg_cron, pg_stat_statements, pgaudit"
+      log ""
+      log "       Disabling would cause runtime crash: \"could not load library '$ext_name.so'\""
+      log ""
+      log "       To disable this extension, you must ALSO set environment variable:"
+      log "       POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain'"
+      log "       (exclude '$ext_name' from the list)"
+      log ""
+      log "       See AGENTS.md section 'Auto-Config Logic' for details"
+      exit 1
+    fi
+  done
+
   log "Removing ${#DISABLED_EXTENSIONS[@]} disabled extension(s) from image"
 
   PG_LIB_DIR="/usr/lib/postgresql/${PG_MAJOR}/lib"

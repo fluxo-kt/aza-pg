@@ -177,6 +177,40 @@ If extension A depends on extension B:
 - Disabling B → Build fails when processing A (clear error message)
 - Either enable B or disable A to resolve
 
+**Core Preloaded Extension Protection:**
+
+**Cannot Disable These 4 Extensions:**
+- `auto_explain` - Query plan logging (observability)
+- `pg_cron` - Cron-based job scheduler (operations)
+- `pg_stat_statements` - Query statistics (observability)
+- `pgaudit` - Audit logging (security)
+
+**Why:** Auto-config hardcodes these in `shared_preload_libraries`. Disabling causes runtime crash:
+```
+FATAL: could not load library "pg_cron.so": No such file or directory
+```
+
+**Behavior:** Build fails immediately with actionable error:
+```
+[ext-build] ERROR: Cannot disable extension 'pg_cron'
+[ext-build]        This extension is required in shared_preload_libraries
+[ext-build]        Disabling would cause runtime crash
+[ext-build]
+[ext-build]        To disable this extension, you must ALSO set:
+[ext-build]        POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
+[ext-build]        (exclude 'pg_cron' from the list)
+```
+
+**Workaround:** Set `POSTGRES_SHARED_PRELOAD_LIBRARIES` environment variable:
+```bash
+# Disable pg_cron AND override preload list
+POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain,pgaudit'
+
+# Must exclude pg_cron from BOTH manifest AND preload list
+```
+
+**Validation:** Build-time check converts runtime crash → build-time error (fail fast)
+
 **Testing Disabled Extensions (CRITICAL REQUIREMENT):**
 
 **Absolute Requirement:** ALL extensions and tools, even disabled ones, MUST be built and tested.

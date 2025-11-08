@@ -1,4 +1,6 @@
 # Notes & Ideas
+# THIS DOC IS FOR MANUAL CHANGE ONLY
+# DO NOT EVEN TOUCH IT AS AN AI AGENT!
 
 - Queues/Workflows
     - https://www.perplexity.ai/search/S7BepfFYQPCa5Kj2C4qzNg
@@ -122,6 +124,7 @@ Container publication
 - Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - https://github.com/percona/postgres-packaging
 - https://github.com/supabase/postgres
+- https://ext.pgsty.com/list/
 - https://github.com/cloudnative-pg/postgres-containers
   - https://github.com/cloudnative-pg/postgres-containers/issues/115#issuecomment-2563173289 (how to extend/change/add extensions)
 - https://ardentperf.com/2025/04/07/waiting-for-postgres-18-docker-containers-34-smaller/

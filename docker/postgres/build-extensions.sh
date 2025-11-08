@@ -223,6 +223,52 @@ build_pgbadger() {
   (cd "$dir" && make install)
 }
 
+# ────────────────────────────────────────────────────────────────────────────
+# GATE 1: DEPENDENCY VALIDATION
+# ────────────────────────────────────────────────────────────────────────────
+# Validates that all dependencies for an extension are enabled.
+# Fails fast with clear error message if any dependency is missing or disabled.
+validate_dependencies() {
+  local entry=$1
+  local name=$2
+
+  local deps_count
+  deps_count=$(jq -r '.dependencies // [] | length' <<<"$entry")
+  if [[ "$deps_count" -eq 0 ]]; then
+    return 0
+  fi
+
+  log "Validating $deps_count dependencies for $name"
+  local i=0
+  while [[ $i -lt $deps_count ]]; do
+    local dep_name
+    dep_name=$(jq -r ".dependencies[$i]" <<<"$entry")
+
+    # Check if dependency exists and is enabled in manifest
+    local dep_entry
+    dep_entry=$(jq -c --arg dep "$dep_name" '.entries[] | select(.name == $dep)' "$MANIFEST_PATH")
+
+    if [[ -z "$dep_entry" ]]; then
+      log "ERROR: Extension $name requires dependency '$dep_name' which is not in manifest"
+      exit 1
+    fi
+
+    local dep_enabled
+    dep_enabled=$(jq -r '.enabled // true' <<<"$dep_entry")
+    if [[ "$dep_enabled" != "true" ]]; then
+      local dep_reason
+      dep_reason=$(jq -r '.disabledReason // "No reason specified"' <<<"$dep_entry")
+      log "ERROR: Extension $name requires dependency '$dep_name' which is disabled"
+      log "       Dependency disabled reason: $dep_reason"
+      log "       Either enable '$dep_name' or disable '$name'"
+      exit 1
+    fi
+
+    log "  ✓ Dependency '$dep_name' is enabled"
+    i=$((i+1))
+  done
+}
+
 process_entry() {
   local entry=$1
   local name kind repo commit subdir workdir
@@ -238,6 +284,20 @@ process_entry() {
   install_via=$(jq -r '.install_via // ""' <<<"$entry")
   if [[ "$install_via" == "pgdg" ]]; then
     log "Skipping $name (installed via PGDG)"
+    return
+  fi
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # GATE 0: ENABLED CHECK
+  # ────────────────────────────────────────────────────────────────────────────
+  # Skip extensions with enabled=false in manifest.
+  # Disabled extensions are not built or installed in the Docker image.
+  local enabled
+  enabled=$(jq -r '.enabled // true' <<<"$entry")
+  if [[ "$enabled" != "true" ]]; then
+    local disabled_reason
+    disabled_reason=$(jq -r '.disabledReason // "No reason specified"' <<<"$entry")
+    log "Skipping disabled extension $name (reason: $disabled_reason)"
     return
   fi
 
@@ -326,6 +386,9 @@ process_entry() {
     workdir="$dest"
   fi
 
+  # Validate dependencies before building
+  validate_dependencies "$entry" "$name"
+
   build_type=$(jq -r '.build.type' <<<"$entry")
   case "$build_type" in
     pgxs)
@@ -373,3 +436,37 @@ mkdir -p "$BUILD_ROOT"
 while IFS= read -r entry; do
   process_entry "$entry"
 done < <(jq -c '.entries[]' "$MANIFEST_PATH")
+
+# ────────────────────────────────────────────────────────────────────────────
+# GATE 2: BINARY CLEANUP FOR DISABLED EXTENSIONS
+# ────────────────────────────────────────────────────────────────────────────
+# Remove .so files and SQL/control files for disabled extensions.
+# Prevents orphaned binaries from causing confusion or loading errors.
+log "Running binary cleanup for disabled extensions"
+
+PG_LIB_DIR="/usr/lib/postgresql/${PG_MAJOR}/lib"
+PG_EXT_DIR="/usr/share/postgresql/${PG_MAJOR}/extension"
+
+# Get list of disabled extension names
+disabled_extensions=$(jq -r '.entries[] | select(.enabled == false) | .name' "$MANIFEST_PATH")
+
+if [[ -n "$disabled_extensions" ]]; then
+  while IFS= read -r ext_name; do
+    log "Cleaning up disabled extension: $ext_name"
+
+    # Remove .so files (handle both name.so and name-X.Y.so patterns)
+    find "$PG_LIB_DIR" -name "${ext_name}.so" -delete 2>/dev/null && log "  Removed ${ext_name}.so" || true
+    find "$PG_LIB_DIR" -name "${ext_name}-*.so" -delete 2>/dev/null && log "  Removed ${ext_name}-*.so" || true
+
+    # Remove extension SQL/control files
+    find "$PG_EXT_DIR" -name "${ext_name}.control" -delete 2>/dev/null && log "  Removed ${ext_name}.control" || true
+    find "$PG_EXT_DIR" -name "${ext_name}--*.sql" -delete 2>/dev/null && log "  Removed ${ext_name}--*.sql" || true
+
+    # Remove bitcode directories for disabled extensions
+    find "$PG_LIB_DIR/bitcode" -type d -name "${ext_name}" -exec rm -rf {} + 2>/dev/null && log "  Removed ${ext_name} bitcode" || true
+  done <<< "$disabled_extensions"
+else
+  log "No disabled extensions to clean up"
+fi
+
+log "Extension build complete"

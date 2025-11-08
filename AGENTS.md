@@ -105,6 +105,85 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 }
 ```
 
+### Extension Enable/Disable Pattern
+**Pattern:** Extensions can be selectively enabled/disabled via manifest without breaking dependencies or losing test coverage. Build system enforces dependency validation and cleanup.
+
+**Manifest Fields:**
+```json
+{
+  "name": "pgq",
+  "enabled": false,  // NEW: Controls build/install (defaults to true)
+  "disabledReason": "Not needed for AI workloads",  // OPTIONAL: Documentation
+  "runtime": {
+    "defaultEnable": true  // EXISTING: Controls CREATE EXTENSION in init script
+  }
+}
+```
+
+**Field Semantics:**
+- `enabled` (top-level): Controls whether extension is **built and installed** in Docker image
+  - `true` (default): Extension compiled/installed, available for use
+  - `false`: Skipped during build, not in final image
+- `runtime.defaultEnable`: Controls whether extension is **created automatically** via `01-extensions.sql`
+  - `true`: Created via `CREATE EXTENSION` on first cluster start
+  - `false`: Available but requires manual `CREATE EXTENSION`
+
+**Workflow:**
+1. `enabled: false` → Skip build/install entirely (not in image, dependency errors fail fast)
+2. `enabled: true, defaultEnable: false` → Built/installed but not created (manual activation)
+3. `enabled: true, defaultEnable: true` → Built, installed, and auto-created (baseline extensions)
+
+**4-Gate Build Logic:**
+
+**Gate 0 (Enabled Check):**
+- Reads `enabled` field from manifest (defaults to `true` for backward compatibility)
+- Skips disabled extensions early in build process
+- Logs disabled reason for documentation
+
+**Gate 1 (Dependency Validation):**
+- Validates all dependencies are enabled before building
+- Fails fast with clear error if dependency disabled or missing
+- Example error: `Extension index_advisor requires dependency 'hypopg' which is disabled`
+
+**Gate 2 (Binary Cleanup):**
+- Removes `.so` files and SQL/control files for disabled extensions
+- Prevents orphaned binaries from causing confusion
+- Cleans: `/usr/lib/postgresql/18/lib/*.so`, `/usr/share/postgresql/18/extension/*`
+
+**Gate 3 (Init Script Generation):**
+- `01-extensions.sql` generated from manifest via `./scripts/generate-configs.sh`
+- Only includes extensions with `enabled: true AND runtime.defaultEnable: true`
+- Automatically excludes disabled extensions and tools (no CREATE EXTENSION support)
+
+**Usage Example:**
+```bash
+# Disable pgq in manifest
+jq '.entries |= map(if .name == "pgq" then . + {"enabled": false, "disabledReason": "Not needed"} else . end)' \
+  docker/postgres/extensions.manifest.json > /tmp/manifest.json && \
+  mv /tmp/manifest.json docker/postgres/extensions.manifest.json
+
+# Regenerate init script
+./scripts/generate-configs.sh
+
+# Rebuild image (pgq will be skipped)
+./scripts/build.sh
+```
+
+**Dependency Cascade Protection:**
+If extension A depends on extension B:
+- Disabling B → Build fails when processing A (clear error message)
+- Either enable B or disable A to resolve
+
+**Testing Disabled Extensions:**
+Per design doc `docs/development/EXTENSION-ENABLE-DISABLE.md`, disabled extensions should be:
+1. Built in test environment (verify compilation still works)
+2. Loaded without CREATE EXTENSION (binary compatibility test)
+3. Tested for basic functionality (prevents silent regressions)
+
+**Related Documentation:**
+- Implementation guide: `docs/development/EXTENSION-ENABLE-DISABLE.md` (974 lines, comprehensive)
+- 7 critical risks identified via inversion reasoning (dependency validation, binary cleanup, etc.)
+
 ### Workflow Orchestration (pgflow) - Optional
 
 **pgflow v0.7.2** is an **optional** workflow orchestration system available as an add-on (not installed by default):

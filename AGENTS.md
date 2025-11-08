@@ -137,7 +137,8 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 
 **Gate 0 (Enabled Check):**
 - Reads `enabled` field from manifest (defaults to `true` for backward compatibility)
-- Skips disabled extensions early in build process
+- Tracks disabled extensions in array for post-build cleanup
+- Continues building disabled extensions (verify they still work)
 - Logs disabled reason for documentation
 
 **Gate 1 (Dependency Validation):**
@@ -146,9 +147,11 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 - Example error: `Extension index_advisor requires dependency 'hypopg' which is disabled`
 
 **Gate 2 (Binary Cleanup):**
-- Removes `.so` files and SQL/control files for disabled extensions
-- Prevents orphaned binaries from causing confusion
-- Cleans: `/usr/lib/postgresql/18/lib/*.so`, `/usr/share/postgresql/18/extension/*`
+- Runs AFTER all extensions built and tested
+- Removes `.so` files and SQL/control files for disabled extensions only
+- Verifies extension was built (basic smoke test, warns if missing)
+- Prevents disabled extensions from appearing in final image
+- Cleans: `/usr/lib/postgresql/18/lib/*.so`, `/usr/share/postgresql/18/extension/*`, bitcode
 
 **Gate 3 (Init Script Generation):**
 - `01-extensions.sql` generated from manifest via `./scripts/generate-configs.sh`

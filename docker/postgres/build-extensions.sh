@@ -11,6 +11,7 @@ export PATH="/root/.cargo/bin:${PATH}"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 declare -A CARGO_PGRX_INIT=()
+declare -a DISABLED_EXTENSIONS=()
 
 ensure_cargo_pgrx() {
   local version=$1
@@ -254,7 +255,7 @@ validate_dependencies() {
     fi
 
     local dep_enabled
-    dep_enabled=$(jq -r '.enabled // true' <<<"$dep_entry")
+    dep_enabled=$(jq -r 'if .enabled == false then "false" else "true" end' <<<"$dep_entry")
     if [[ "$dep_enabled" != "true" ]]; then
       local dep_reason
       dep_reason=$(jq -r '.disabledReason // "No reason specified"' <<<"$dep_entry")
@@ -290,15 +291,17 @@ process_entry() {
   # ────────────────────────────────────────────────────────────────────────────
   # GATE 0: ENABLED CHECK
   # ────────────────────────────────────────────────────────────────────────────
-  # Skip extensions with enabled=false in manifest.
-  # Disabled extensions are not built or installed in the Docker image.
+  # Track disabled extensions for post-build cleanup.
+  # Disabled extensions ARE built and tested (verify they still work),
+  # but removed from final image (Gate 2).
   local enabled
-  enabled=$(jq -r '.enabled // true' <<<"$entry")
+  enabled=$(jq -r 'if .enabled == false then "false" else "true" end' <<<"$entry")
   if [[ "$enabled" != "true" ]]; then
     local disabled_reason
     disabled_reason=$(jq -r '.disabledReason // "No reason specified"' <<<"$entry")
-    log "Skipping disabled extension $name (reason: $disabled_reason)"
-    return
+    log "Extension $name disabled (reason: $disabled_reason) - building for testing only"
+    DISABLED_EXTENSIONS+=("$name")
+    # Continue to build and test
   fi
 
   local source_type
@@ -441,30 +444,43 @@ done < <(jq -c '.entries[]' "$MANIFEST_PATH")
 # GATE 2: BINARY CLEANUP FOR DISABLED EXTENSIONS
 # ────────────────────────────────────────────────────────────────────────────
 # Remove .so files and SQL/control files for disabled extensions.
-# Prevents orphaned binaries from causing confusion or loading errors.
-log "Running binary cleanup for disabled extensions"
+# Extensions are built and tested first, then removed from final image.
+if [[ ${#DISABLED_EXTENSIONS[@]} -gt 0 ]]; then
+  log "Removing ${#DISABLED_EXTENSIONS[@]} disabled extension(s) from image"
 
-PG_LIB_DIR="/usr/lib/postgresql/${PG_MAJOR}/lib"
-PG_EXT_DIR="/usr/share/postgresql/${PG_MAJOR}/extension"
+  PG_LIB_DIR="/usr/lib/postgresql/${PG_MAJOR}/lib"
+  PG_EXT_DIR="/usr/share/postgresql/${PG_MAJOR}/extension"
 
-# Get list of disabled extension names
-disabled_extensions=$(jq -r '.entries[] | select(.enabled == false) | .name' "$MANIFEST_PATH")
+  for ext_name in "${DISABLED_EXTENSIONS[@]}"; do
+    log "  Cleaning up: $ext_name"
 
-if [[ -n "$disabled_extensions" ]]; then
-  while IFS= read -r ext_name; do
-    log "Cleaning up disabled extension: $ext_name"
+    # Verify extension was built (basic smoke test)
+    found_binary=false
+    if [[ -f "$PG_LIB_DIR/${ext_name}.so" ]] || [[ -f "$PG_EXT_DIR/${ext_name}.control" ]]; then
+      found_binary=true
+    fi
 
-    # Remove .so files (handle both name.so and name-X.Y.so patterns)
-    find "$PG_LIB_DIR" -name "${ext_name}.so" -delete 2>/dev/null && log "  Removed ${ext_name}.so" || true
-    find "$PG_LIB_DIR" -name "${ext_name}-*.so" -delete 2>/dev/null && log "  Removed ${ext_name}-*.so" || true
+    if [[ "$found_binary" != "true" ]]; then
+      log "    ⚠ WARNING: Extension $ext_name has no binaries - may have failed to build"
+    fi
 
-    # Remove extension SQL/control files
-    find "$PG_EXT_DIR" -name "${ext_name}.control" -delete 2>/dev/null && log "  Removed ${ext_name}.control" || true
-    find "$PG_EXT_DIR" -name "${ext_name}--*.sql" -delete 2>/dev/null && log "  Removed ${ext_name}--*.sql" || true
+    # Remove binaries
+    if find "$PG_LIB_DIR" -name "${ext_name}.so" -delete 2>/dev/null; then
+      log "    ✓ Removed ${ext_name}.so"
+    fi
+    find "$PG_LIB_DIR" -name "${ext_name}-*.so" -delete 2>/dev/null || true
 
-    # Remove bitcode directories for disabled extensions
-    find "$PG_LIB_DIR/bitcode" -type d -name "${ext_name}" -exec rm -rf {} + 2>/dev/null && log "  Removed ${ext_name} bitcode" || true
-  done <<< "$disabled_extensions"
+    # Remove SQL/control files
+    if find "$PG_EXT_DIR" -name "${ext_name}.control" -delete 2>/dev/null; then
+      log "    ✓ Removed ${ext_name}.control"
+    fi
+    find "$PG_EXT_DIR" -name "${ext_name}--*.sql" -delete 2>/dev/null || true
+
+    # Remove bitcode
+    find "$PG_LIB_DIR/bitcode" -type d -name "${ext_name}" -exec rm -rf {} + 2>/dev/null || true
+  done
+
+  log "Disabled extensions built and tested, then removed from image"
 else
   log "No disabled extensions to clean up"
 fi

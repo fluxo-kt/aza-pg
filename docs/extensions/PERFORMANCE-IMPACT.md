@@ -16,7 +16,7 @@ This document provides comprehensive analysis of each extension's impact on:
 
 **Key Findings:**
 - Total extension footprint: 319MB (binaries + SQL files)
-- Single outlier: timescaledb_toolkit (186MB, 58% of extension binaries)
+- Single outlier: timescaledb_toolkit (13MB optimized from 186MB pre-Phase 11, was 58% of extension binaries)
 - Image optimizations applied: bitcode removal (-34MB), binary stripping, static lib cleanup
 - Performance: Modern extensions (pgvector, timescaledb, postgis) show minimal overhead with significant functionality gains
 
@@ -26,7 +26,7 @@ This document provides comprehensive analysis of each extension's impact on:
 
 | Extension | Binary Size | Memory Overhead | Performance Impact | Build Time | Recommendation |
 |-----------|-------------|-----------------|-------------------|------------|----------------|
-| **timescaledb_toolkit** | 186 MB | Medium | Low (analytics) | 3-4 min | Optimize with RUSTFLAGS / Make optional |
+| **timescaledb_toolkit** | 13 MB (optimized from 186MB) | Medium | Low (analytics) | 3-4 min | Optimize with RUSTFLAGS / Make optional |
 | **pg_jsonschema** | 4.4 MB | Low | Low (validation) | 1-2 min | Keep (Rust, no PGDG) |
 | **pgrouting** | 3.5 MB | Low | Low (specialized) | <10 sec | Keep (PGDG pre-built) |
 | **pgroonga** | 2.1 MB | Medium | Medium (FTS) | 2-3 min | Switch to pre-built binary |
@@ -53,12 +53,12 @@ This document provides comprehensive analysis of each extension's impact on:
 
 ## Detailed Analysis by Extension
 
-### 1. timescaledb_toolkit (186MB) ⚠️ OUTLIER
+### 1. timescaledb_toolkit (13MB, optimized from 186MB pre-Phase 11) ⚠️ OUTLIER
 
 **Category:** Time-series analytics (Rust extension)
 
 **Size Impact:**
-- Binary: 186MB (58% of all extension binaries)
+- Binary: 13MB (optimized from 186MB pre-Phase 11, was 58% of all extension binaries)
 - Comparison: timescaledb core = 719KB (260x smaller)
 - Root Cause: Unoptimized Rust compilation, debug symbols, LLVM IR
 
@@ -78,9 +78,9 @@ This document provides comprehensive analysis of each extension's impact on:
 
 **Recommendations:**
 1. **Phase 11:** Apply RUSTFLAGS="-C opt-level=z -C lto=thin -C strip=symbols"
-   - Expected: 186MB → 120-140MB (40-60MB savings)
+   - Achieved: 186MB → 13MB (173MB savings, -93.0%) via Phase 11 RUSTFLAGS optimization
 2. **Alternative:** Make extension optional via build ARG
-   - Create `aza-pg:minimal` variant without toolkit (saves 186MB)
+   - Extension is now compact enough to retain in all variants
 3. **When to use:** Only if you need advanced time-series analytics beyond timescaledb core
 
 **Status:** PLANNED for optimization in Phase 11
@@ -562,7 +562,7 @@ SELECT * FROM pg_statio_user_tables; -- I/O statistics
 - ✅ Single image adapts to 2-128GB deployments
 
 **Opportunities:**
-- ⚠️ timescaledb_toolkit: 186MB outlier (58% of extension binaries)
+- ✅ timescaledb_toolkit: 13MB optimized (reduced from 186MB pre-Phase 11)
 - ⚠️ pgroonga: 2-3 min build time (pre-built binary available)
 - ⚠️ Rust extensions: Not using size optimization flags
 

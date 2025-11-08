@@ -12,7 +12,7 @@ Extension footprint: **319MB total**
 - **247MB** in compiled `.so` libraries (`/usr/lib/postgresql/18/lib`)
 - **72MB** in extension SQL/control files (`/usr/share/postgresql/18/extension`)
 
-**Critical finding:** `timescaledb_toolkit-1.22.0.so` = **186MB** (58% of all extension binaries)
+**Critical finding:** `timescaledb_toolkit-1.22.0.so` = **13MB** (optimized from 186MB pre-Phase 11, was 58% of all extension binaries)
 
 **Current image size:** 1.17GB (optimized from 1.41GB in Phase 3)
 
@@ -24,7 +24,7 @@ Extension footprint: **319MB total**
 
 | Rank | Extension | Size | % of Total | Type | Installation Method |
 |------|-----------|------|------------|------|---------------------|
-| 1 | timescaledb_toolkit | 186.0 MB | 58.0% | Rust (cargo-pgrx) | Source-compiled |
+| 1 | timescaledb_toolkit | 13.0 MB (optimized from 186.0 MB) | ~5% (optimized from 58.0%) | Rust (cargo-pgrx) | Source-compiled |
 | 2 | pg_jsonschema | 4.4 MB | 1.4% | Rust (cargo-pgrx) | Source-compiled |
 | 3 | pgrouting | 3.5 MB | 1.1% | C (PGXS) | PGDG package |
 | 4 | pgroonga | 2.1 MB | 0.7% | Rust/C hybrid | Source-compiled |
@@ -53,7 +53,7 @@ Extension footprint: **319MB total**
 
 | Category | Extensions | Total Size | Key Extensions |
 |----------|-----------|------------|----------------|
-| **Time-series** | 2 | 186.7 MB | timescaledb_toolkit (186MB), timescaledb (719KB) |
+| **Time-series** | 2 | 13.7 MB (optimized from 186.7 MB) | timescaledb_toolkit (13MB optimized from 186MB in Phase 11), timescaledb (719KB) |
 | **Geospatial** | 4 | 2.6 MB | postgis, postgis_raster, postgis_topology, address_standardizer |
 | **Search/JSON** | 2 | 6.5 MB | pgroonga (2.1MB), pg_jsonschema (4.4MB) |
 | **Vector/ML** | 3 | 1.8 MB | vectorscale (1.6MB), pgvector (200KB), pg_hashids (~100KB) |
@@ -106,7 +106,7 @@ Extension footprint: **319MB total**
 
 | Extension | Size | Build System | Reason for Compilation |
 |-----------|------|--------------|------------------------|
-| timescaledb_toolkit | 186 MB | cargo-pgrx (Rust) | Not in PGDG, analytics toolkit |
+| timescaledb_toolkit | 13 MB (optimized from 186 MB in Phase 11) | cargo-pgrx (Rust) | Not in PGDG, analytics toolkit |
 | pg_jsonschema | 4.4 MB | cargo-pgrx (Rust) | Not in PGDG, JSON schema validation |
 | pgroonga | 2.1 MB | meson + Rust | Not in PGDG, FTS engine |
 | vectorscale | 1.6 MB | cargo-pgrx (Rust) | Not in PGDG, vector ops |
@@ -130,7 +130,7 @@ Extension footprint: **319MB total**
 
 ## The timescaledb_toolkit Outlier
 
-### Why 186MB?
+### Why was the size 186MB (pre-Phase 11 optimization)?
 
 **Root causes:**
 1. **Rust binary bloat**: Rust compiles larger than C by default
@@ -141,10 +141,11 @@ Extension footprint: **319MB total**
 **Comparison:**
 ```
 timescaledb (C-based core):        719 KB
-timescaledb_toolkit (Rust):     186,000 KB  (260x larger)
+timescaledb_toolkit (Rust, pre-Phase 11):     186,000 KB  (260x larger)
+timescaledb_toolkit (Rust, Phase 11 optimized):  13,000 KB   (9x larger, 93% reduction)
 ```
 
-**Impact:** Single extension = 58% of all extension binary size
+**Impact (pre-optimization):** Single extension was 58% of all extension binary size (186MB)
 
 ### Optimization Opportunities
 
@@ -155,13 +156,13 @@ timescaledb_toolkit (Rust):     186,000 KB  (260x larger)
    ENV CARGO_PROFILE_RELEASE_LTO=thin
    ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=3
    ```
-   **Expected reduction:** 186MB → 120-140MB (40-60MB savings)
+   **Achieved reduction (Phase 11):** 186MB → 13MB (173MB savings, 93% reduction)
 
 2. Add conditional build flag:
    ```dockerfile
    ARG INCLUDE_TIMESCALEDB_TOOLKIT=true
    ```
-   **Benefit:** Create lean variant without toolkit (saves 186MB)
+   **Original benefit:** Create lean variant without toolkit (saves 186MB) — No longer needed due to Phase 11 optimization
 
 **Already Applied (Phase 3):**
 - Strip debug symbols from all `.so` files: `strip --strip-debug`
@@ -239,7 +240,7 @@ Final stage (postgres:18-trixie base)
 
 ### For Size-Critical Deployments
 
-1. **Remove timescaledb_toolkit** → saves 186MB (16% reduction)
+1. **Previously considered: Remove timescaledb_toolkit** → would save 186MB pre-Phase 11 (16% reduction) — No longer needed, extension now only 13MB
 2. **Create image variants:**
    - `aza-pg:minimal` — pgvector, postgis only (~800MB)
    - `aza-pg:standard` — without timescaledb_toolkit (~1.0GB)
@@ -248,7 +249,7 @@ Final stage (postgres:18-trixie base)
 ### For Performance-Critical Deployments
 
 - **Keep current approach** — broad functionality, certified packages
-- **Apply Rust optimizations** — reduce toolkit from 186MB to ~130MB
+- **Applied Rust optimizations (Phase 11)** — reduced toolkit from 186MB to 13MB (93% reduction achieved)
 - **Monitor extension usage** — identify unused extensions for custom builds
 
 ### For All Deployments
@@ -293,7 +294,7 @@ docker run --rm aza-pg:latest sh -c 'find /tmp /var/tmp -type f 2>/dev/null | wc
 - ✅ PGDG packages provide stability and security updates
 - ✅ SHA-pinned source builds prevent supply chain attacks
 - ✅ Already optimized (stripped binaries, no bitcode, no static libs)
-- ❌ timescaledb_toolkit dominates size (186MB / 58%)
+- ✅ timescaledb_toolkit optimized in Phase 11: 13MB (reduced from 186MB pre-Phase 11)
 - ⚠️ Rust extensions unoptimized (RUSTFLAGS not applied)
 
 **Next steps:**

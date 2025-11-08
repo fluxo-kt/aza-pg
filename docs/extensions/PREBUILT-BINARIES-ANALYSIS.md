@@ -36,7 +36,7 @@
 | pgsodium | Yes | No | Source only | Yes | Keep compiling |
 | supabase_vault | Yes | No | Source only | Yes | Keep compiling |
 | supautils | Yes | **Yes** | .so files | Yes (3.0.2) | **Consider binary** |
-| timescaledb_toolkit | Yes | No | Source artifacts via CI | Yes (1.22.0) | Keep compiling |
+| timescaledb_toolkit | Yes | No | Source artifacts via CI | Yes (1.22.0) | Keep compiling (optimized to 13MB in Phase 11) |
 | vectorscale | Yes | No | Binary artifacts via CI | Yes (0.9.0) | Keep compiling |
 | wal2json | Yes | No | Source only | Yes | Keep compiling |
 | wrappers | Yes | No | Source artifacts via CI | Yes (0.5.6) | Keep compiling |
@@ -208,7 +208,7 @@ These extensions build binaries in CI but don't publish them to GitHub Releases:
 
 ### 2. timescaledb_toolkit (Rust/cargo-pgrx)
 - **CI Artifacts:** Available but not released
-- **Size:** 186MB (MAJOR OUTLIER)
+- **Size (pre-Phase 11):** 186MB (MAJOR OUTLIER), now 13MB (Phase 11 optimized)
 - **Build Time:** ~3-4 minutes
 - **Recommendation:** High value if binaries become available. Current focus: RUSTFLAGS optimization (Phase 11).
 
@@ -287,7 +287,7 @@ These extensions build binaries in CI but don't publish them to GitHub Releases:
 ### Future Monitoring
 
 **Watch these projects for binary releases:**
-- **timescaledb_toolkit** — If released, saves 4 min + 186MB (with RUSTFLAGS optimization)
+- **timescaledb_toolkit** — Already optimized in Phase 11 via CARGO_PROFILE flags, achieving 186MB → 13MB reduction (93% smaller)
 - **pg_jsonschema** — If released, saves 1-2 min
 - **vectorscale, wrappers, pgmq** — Low priority (small time savings)
 

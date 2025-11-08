@@ -1,7 +1,7 @@
 # aza-pg Image Size Optimization Roadmap
 
-**Current Status:** 319MB extension content, 950MB total image with dependencies  
-**Largest Single Item:** timescaledb_toolkit (186MB)
+**Current Status:** ~247MB extension content (optimized), ~950MB total image with dependencies
+**Formerly Largest Single Item:** timescaledb_toolkit (13MB, optimized from 186MB in Phase 11)
 
 ---
 
@@ -43,8 +43,8 @@ RUN find /usr/lib/postgresql/18/lib -name '*.so' -type f -exec strip {} \;
 
 **Before/After:**
 ```
-Before: timescaledb_toolkit-1.22.0.so  186MB
-After:  timescaledb_toolkit-1.22.0.so  ~110-140MB (40-50% reduction possible)
+Before (pre-Phase 11): timescaledb_toolkit-1.22.0.so  186MB
+After (Phase 11):      timescaledb_toolkit-1.22.0.so  13MB (93% reduction achieved)
 ```
 
 ---
@@ -129,7 +129,7 @@ Image Variants:
 
 ### 5. Conditional TimescaleDB Toolkit Build
 
-**Current:** Always compiled (186MB)  
+**Phase 11 Status:** Optimized via CARGO_PROFILE flags (13MB from 186MB)  
 **Option:** Separate build job triggered only when needed
 
 ```dockerfile
@@ -184,7 +184,7 @@ cargo pgrx package \
 
 **Expected Savings:**
 ```
-timescaledb_toolkit:  186MB → 140-160MB (25-30% reduction)
+timescaledb_toolkit:  186MB → 13MB (Phase 11 achieved 93% reduction, exceeding original estimate)
 pg_jsonschema:        4.4MB → 3.5MB
 pg_stat_monitor:      245KB → 180KB
 vectorscale:          1.6MB → 1.2MB
@@ -256,7 +256,7 @@ FROM postgres:18-alpine AS final
 ```
 Image size (uncompressed):  950MB total
 Extension binaries:         247MB
-Largest extension:          timescaledb_toolkit (186MB)
+Formerly Largest extension: timescaledb_toolkit (186MB pre-Phase 11, now 13MB)
 Build time:                 ~15 min
 Pull time (100Mbps):        ~2-3 min
 ```

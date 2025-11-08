@@ -333,6 +333,26 @@ Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
 - ⚠️ `.env` files require `chmod 600` (warned in .env.example files)
 - ⚠️ Default bind: localhost only - set `POSTGRES_BIND_IP=0.0.0.0` with firewall/VPN
 
+
+### Enabling TLS/SSL
+
+By default, TLS is **not configured** (connections unencrypted). To enable:
+
+1. Generate certificates (see `scripts/tools/generate-ssl-certs.sh` for self-signed certs)
+2. Mount certificates in compose.yml:
+   ```yaml
+   volumes:
+     - ./certs/server.crt:/etc/ssl/certs/ssl-cert-snakeoil.pem:ro
+     - ./certs/server.key:/etc/ssl/private/ssl-cert-snakeoil.key:ro
+   ```
+3. Enable TLS in PostgreSQL config (uncomment TLS section in `postgresql-base.conf`)
+4. Set `PGBOUNCER_SERVER_SSLMODE=require` to enforce TLS between PgBouncer and PostgreSQL
+
+**Default:** `sslmode=prefer` (allows both encrypted and unencrypted connections)
+**Production:** Set `sslmode=require` after configuring certificates
+
+See `docs/PRODUCTION.md` for complete TLS setup guide.
+
 ### Threat Model
 - **Supply chain attacks**: Mitigated via SHA pinning (extensions + base image)
 - **Credential exposure**: Mitigated via SCRAM-SHA-256, .pgpass, no hardcoded passwords

@@ -66,7 +66,7 @@ Production PostgreSQL 18 stack with auto-adaptive config, compiled extensions (p
 **Upgrade:** PGDG extensions → update version pin in Dockerfile RUN block. Compiled extensions → find commit SHA → update docker/postgres/extensions.manifest.json → rebuild.
 
 **Analysis & Impact:** See comprehensive documentation:
-- **Size analysis:** `docs/analysis/extension-size-analysis.md` (per-extension size breakdown, timescaledb_toolkit 186MB outlier)
+- **Size analysis:** `docs/analysis/extension-size-analysis.md` (per-extension size breakdown, timescaledb_toolkit optimized from 186MB to 13MB in Phase 11)
 - **Performance impact:** `docs/extensions/PERFORMANCE-IMPACT.md` (memory overhead, query performance, build time)
 - **Pre-built binaries:** `docs/extensions/PREBUILT-BINARIES-ANALYSIS.md` (GitHub release availability, 3 viable candidates)
 - **PGDG availability:** `docs/extensions/PGDG-AVAILABILITY.md` (pgroonga NOT available in PGDG for PostgreSQL 18)
@@ -128,8 +128,10 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 **Shared Script Order (ALL stacks):**
 1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 33 extensions available but disabled by default. MUST run first.
 2. `02-replication.sh` — Creates `replicator` user + replication slot (if replication enabled).
+3. `03-pgsodium-init.sh` — Initializes pgsodium extension and generates root key (if ENABLE_PGSODIUM_INIT=true, optional).
 
 **Stack-Specific Scripts:**
+Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared scripts (both sources merged, sorted 01→99). Stack-specific 03-* scripts (e.g., `03-pgbouncer-auth.sh`) run after shared 03-* but before 04-*:
 - Primary: `03-pgbouncer-auth.sh` — Creates `pgbouncer_auth` user + `pgbouncer_lookup()` function
 - Replica: (empty, uses shared scripts only)
 - Single: (empty, uses shared scripts only)
@@ -137,6 +139,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 **Why Order Matters:**
 - Extensions MUST load before user creation (SECURITY DEFINER functions require extensions)
 - Replication user creation before stack-specific auth infrastructure
+- pgsodium initialization before any other extensions that depend on encryption
 - Wrong order → cryptic "function does not exist" or "role does not exist" errors
 
 **Adding New Scripts:**
@@ -180,20 +183,20 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 - 2GB limit → shared_buffers 512MB, effective_cache 1536MB, work_mem 4MB, max_connections 120
 - 4GB limit → shared_buffers 1024MB, effective_cache 3072MB, work_mem ~5MB, max_connections 200
 - 8GB limit → shared_buffers 2048MB, effective_cache 6144MB, work_mem ~10MB, max_connections 200
-- 64GB override (`POSTGRES_MEMORY=65536`) → shared_buffers ~9830MB, effective_cache ~55706MB, work_mem 32MB, max_connections 200
+- 64GB override (`POSTGRES_MEMORY=65536`) → shared_buffers ~9830MB, effective_cache ~49152MB, work_mem 32MB, max_connections 200
 
 **Memory Allocation Table:**
 
 | RAM | shared_buffers | effective_cache | maint_work_mem | work_mem | max_conn | Ratio |
 |-----|----------------|-----------------|----------------|----------|----------|-------|
-| 512MB | 128MB (25%) | 384MB (75%) | 32MB (6.3%) | 1MB | 80 | Min viable |
-| 1GB | 256MB (25%) | 768MB (75%) | 32MB (3.1%) | 2MB | 120 | Dev/test |
-| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3.1%) | 4MB | 120 | Small prod |
-| 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3.1%) | 5MB | 200 | Med prod |
-| 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3.1%) | 10MB | 200 | Large prod |
-| 16GB | 3276MB (20%) | 12288MB (75%) | 512MB (3.1%) | 20MB | 200 | High-load |
-| 32GB | 6554MB (20%) | 25640MB (80%) | 1024MB (3.1%) | 32MB (cap) | 200 | Enterprise |
-| 64GB | 9830MB (15%) | 54706MB (85%) | 2048MB (3.1% cap) | 32MB (cap) | 200 | Burst node |
+| 512MB | 128MB (25%) | 384MB (75%) | 32MB (6%) | 1MB | 80 | Min viable |
+| 1GB | 256MB (25%) | 768MB (75%) | 32MB (3%) | 2MB | 120 | Dev/test |
+| 2GB | 512MB (25%) | 1536MB (75%) | 64MB (3%) | 4MB | 120 | Small prod |
+| 4GB | 1024MB (25%) | 3072MB (75%) | 128MB (3%) | 5MB | 200 | Med prod |
+| 8GB | 2048MB (25%) | 6144MB (75%) | 256MB (3%) | 10MB | 200 | Large prod |
+| 16GB | 3276MB (20%) | 12288MB (75%) | 512MB (3%) | 20MB | 200 | High-load |
+| 32GB | 6553MB (20%) | 24576MB (75%) | 1024MB (3%) | 32MB (cap) | 200 | Enterprise |
+| 64GB | 9830MB (15%) | 49152MB (75% cap) | 2048MB (3% cap) | 32MB (cap) | 200 | Burst node |
 
 **Extension Memory Overhead (Estimated):**
 - **Base overhead**: ~50-100MB (pg_stat_statements, auto_explain, pgaudit shared memory)

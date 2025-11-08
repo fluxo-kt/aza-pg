@@ -11,7 +11,7 @@ Comprehensive breakdown of:
 - Top 20 extensions by size with installation method
 - Installation strategy (PGDG vs source-compiled vs builtin)
 - Size impact by functional category
-- Detailed explanation of TimescaleDB Toolkit outlier (186MB)
+- Detailed explanation of TimescaleDB Toolkit optimization (13MB, optimized from 186MB pre-Phase 11)
 - Multi-stage build flow explanation
 - Runtime vs compile-time artifacts
 
@@ -88,13 +88,13 @@ Removable (no runtime impact):  37MB
 
 | # | Name | Size | % | Type |
 |---|------|------|---|------|
-| 1 | timescaledb_toolkit | 186MB | 58% | Rust (unoptimized) |
+| 1 | timescaledb_toolkit | 13MB (from 186MB) | ~5% (from 58%) | Rust (optimized in Phase 11) |
 | 2 | pg_jsonschema | 4.4MB | 1.4% | Rust |
 | 3 | libpgrouting | 3.5MB | 1.1% | C |
 | 4 | pgroonga | 2.1MB | 0.7% | Rust/C |
 | 5 | vectorscale | 1.6MB | 0.5% | Rust |
 
-**Key Insight:** One extension (timescaledb_toolkit) = 58% of all extension binary size
+**Key Insight:** One extension (timescaledb_toolkit) was 58% of size pre-optimization, now optimized to 13MB from 186MB in Phase 11
 
 ### Installation Strategy
 
@@ -154,13 +154,13 @@ Total savings: 47-56MB (5-6% image reduction)
 
 ## Quick Reference: What's Large and Why?
 
-### timescaledb_toolkit (186MB) — Why?
+### timescaledb_toolkit (13MB optimized from 186MB pre-Phase 11) — How was it optimized?
 
 **Problem:** Rust extension compiled with debug symbols, includes LLVM bitcode.
 
 **Comparison:**
 - TimescaleDB core (C): 719K
-- TimescaleDB Toolkit (Rust): 186MB
+- TimescaleDB Toolkit (Rust): 13MB (optimized from 186MB in Phase 11)
 - Ratio: **260x larger despite similar functionality**
 
 **Causes:**
@@ -248,7 +248,7 @@ Total savings: 47-56MB (5-6% image reduction)
 | **Total extension content** | 319MB | 28 curated + builtins |
 | **Full image size** | 950MB | With base + dependencies |
 | **Compressed size** | 400-500MB | Registry compression (40-50%) |
-| **Largest extension** | 186MB | timescaledb_toolkit |
+| **Largest extension (pre-Phase 11)** | 186MB → 13MB (Phase 11 optimized) | timescaledb_toolkit |
 | **Top 5 extensions** | 197MB | 62% of all binaries |
 | **Removable (safe)** | 37MB | Bitcode + archives |
 

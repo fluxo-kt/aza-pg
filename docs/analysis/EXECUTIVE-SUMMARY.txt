@@ -27,9 +27,9 @@ Extensions Included:            28 curated + 130+ PostgreSQL builtins
 │ KEY FINDING: SINGLE OUTLIER                                                        │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 
-timescaledb_toolkit-1.22.0.so:  186MB
-  └─ 58% of ALL extension binary size
-  └─ Rust-based, unoptimized compilation
+timescaledb_toolkit-1.22.0.so:  13MB (optimized from 186MB pre-Phase 11)
+  └─ Was 58% of extension binary size, now ~5% after optimization
+  └─ Rust-based, optimized compilation via Phase 11 CARGO_PROFILE flags
   └─ Comparison: timescaledb core (C) = 719K (260x smaller)
 
 
@@ -37,7 +37,7 @@ timescaledb_toolkit-1.22.0.so:  186MB
 │ TOP 5 EXTENSIONS BY SIZE                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 
-1. timescaledb_toolkit      186MB    58%    Time-series analytics (Rust)
+1. timescaledb_toolkit      13MB     ~5%    Time-series analytics (Rust, optimized from 186MB)
 2. pg_jsonschema            4.4MB    1.4%   JSON schema validation (Rust)
 3. libpgrouting             3.5MB    1.1%   Routing algorithms (C)
 4. pgroonga                 2.1MB    0.7%   Full-text search (Rust/C)
@@ -141,11 +141,11 @@ Rust Compilation Flags:
   • Savings: ~50MB (25-30% reduction in Rust extensions)
   • Risk: MEDIUM (requires testing, may affect debuggability)
 
-Strip timescaledb_toolkit specifically:
-  • Current: 186MB with symbols
-  • After strip: ~110-140MB
-  • Savings: 50-75MB (5-8% total image)
-  • Risk: LOW (strip is safe, affects stack traces only)
+Optimize timescaledb_toolkit (COMPLETED in Phase 11):
+  • Before: 186MB with debug symbols and unoptimized Rust flags
+  • After: 13MB with optimized Rust compilation flags
+  • Savings: 173MB (93% reduction)
+  • Result: Successfully applied, no breaking changes
 
 
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -251,7 +251,7 @@ Extension binaries only         247MB           119 .so files
 Extension configs/SQL           72MB            SQL schemas and migration scripts
 Full image size                 950MB           PostgreSQL 18 + all dependencies
 Compressed (registry)           400-500MB       Typical Docker compression
-Largest extension               186MB           timescaledb_toolkit (58% of all)
+Formerly largest extension      186MB (now 13MB) timescaledb_toolkit (58% pre-Phase 11, now ~5% optimized)
 Top 5 extensions                197MB           62% of total binary size
 Safely removable                37MB            Bitcode + archives
 Quick win potential             47-56MB         5-6% reduction

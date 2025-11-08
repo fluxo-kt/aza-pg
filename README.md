@@ -186,7 +186,7 @@ Reference points:
 - 2GB limit → `shared_buffers=512MB`, `effective_cache_size=1536MB`, `work_mem=4MB`, `max_connections=120`
 - 4GB limit → `shared_buffers=1024MB`, `effective_cache_size=3072MB`, `work_mem≈5MB`, `max_connections=200`
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
-- 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈55706MB`, `work_mem≈32MB`, `max_connections=200`
+- 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈49152MB`, `work_mem≈32MB`, `max_connections=200`
 
 `shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, supautils, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var.
 

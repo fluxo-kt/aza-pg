@@ -71,7 +71,7 @@ async function stopContainer() {
 
 beforeAll(async () => {
   await startContainer();
-}, 60000);
+});
 
 afterAll(async () => {
   await stopContainer();

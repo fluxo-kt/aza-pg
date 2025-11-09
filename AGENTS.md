@@ -1,25 +1,22 @@
 # aza-pg Operations Guide
 
-Production PG18 stack: auto-adaptive config, 38 extensions (SHA-pinned), PgBouncer pooling, multi-platform (amd64/arm64). Targets 2-128GB RAM, 1-64 cores, Compose-only.
+PG18 stack: auto-adaptive config, 38 exts (SHA-pinned), PgBouncer pooling, amd64/arm64. 2-128GB RAM, 1-64 cores, Compose-only.
 
 ## Core Architecture
 
-**Image:** Multi-stage build → extensions compile from pinned SHAs → `.so` files copied to slim final (~450MB). ENTRYPOINT detects RAM/CPU at runtime → injects `-c` flags. One image adapts everywhere.
+**Image:** Multi-stage → exts compile from SHAs → `.so` (~450MB). ENTRYPOINT detects RAM/CPU → `-c` flags.
 
-**Stacks:** `primary/` = PG + PgBouncer + exporter. `replica/` = streaming replication. `single/` = standalone. All env-driven.
+**Stacks:** primary (PG + PgBouncer + exporter), replica (replication), single (standalone). Env-driven.
 
-**Extensions:** 38 total: 6 builtin + 14 PGDG (apt) + 18 compiled (source). Hybrid = PGDG speed + source flexibility. 6 baseline auto-created: `auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector`. plpgsql builtin. 4 preloaded: `auto_explain, pg_cron, pg_stat_statements, pgaudit`.
+**Extensions:** 38 total: 6 builtin + 14 PGDG (apt) + 18 compiled. 6 baseline: auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector. 4 preloaded: auto_explain, pg_cron, pg_stat_statements, pgaudit.
 
 ## Auto-Config (Runtime)
 
-**Trigger:** Container start (NOT build). Detects cgroup v2 → `POSTGRES_MEMORY` override → `/proc/meminfo` fallback.
+**Trigger:** Container start. cgroup v2 → `POSTGRES_MEMORY` → `/proc/meminfo`.
 
-**Overrides:**
+**Overrides:** `POSTGRES_MEMORY=<MB>`, `POSTGRES_SHARED_PRELOAD_LIBRARIES`.
 
-- `POSTGRES_MEMORY=<MB>` — Manual RAM
-- `POSTGRES_SHARED_PRELOAD_LIBRARIES` — Override preload list (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)
-
-**Caps:** shared_buffers 32GB, maint_work_mem 2GB, work_mem 32MB, max_conn 80/120/200 (by RAM tier).
+**Caps:** shared_buffers 32GB, maint_work_mem 2GB, work_mem 32MB, max_conn 80/120/200.
 
 **Memory Allocation:**
 
@@ -32,158 +29,127 @@ Production PG18 stack: auto-adaptive config, 38 extensions (SHA-pinned), PgBounc
 | 32GB  | 6553MB     | 24576MB   | 1024MB     | 32MB     | 200      |
 | 64GB  | 9830MB     | 49152MB   | 2048MB     | 32MB     | 200      |
 
-Extension overhead ~100-250MB (pg_stat_statements, pgvector, timescaledb).
+Ext overhead ~100-250MB (pg_stat_statements, pgvector, timescaledb).
 
 ## PgBouncer Auth
 
-- NO plaintext userlist: uses `auth_query = SELECT * FROM pgbouncer_lookup($1)`
-- Function: SECURITY DEFINER reads `pg_shadow` (hashes)
-- Bootstrap: `03-pgbouncer-auth.sh` creates `pgbouncer_auth` user
-- Entry script: escapes password → writes `/tmp/.pgpass`, NOT inline `pgbouncer.ini`
-- Health: connects via DB (`:6432/postgres`), NOT admin console
-
-**Credential flow:** `PGBOUNCER_AUTH_PASS` → escape special chars (`:@&`) → `.pgpass`
+- `auth_query = SELECT * FROM pgbouncer_lookup($1)` (SECURITY DEFINER, reads pg_shadow)
+- Bootstrap: `03-pgbouncer-auth.sh` creates user
+- Escapes password → `/tmp/.pgpass`, NOT inline
+- Health: DB `:6432/postgres`, NOT admin
+- Flow: `PGBOUNCER_AUTH_PASS` → escape `:@&` → `.pgpass`
 
 ## Extension Patterns
 
-**Hybrid Strategy:** 14 PGDG (fast APT install) + 18 compiled (SHA-pinned). PGDG = stability, compiled = latest/specialized.
+**14 PGDG (apt):** pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
 
-**PGDG:** pg_cron, pgaudit, pgvector, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
+**18 Compiled (SHA-pinned):** index_advisor, pg_hashids, pg_jsonschema, pg_stat_monitor, pgmq, pgq, pgroonga, pgsodium, supabase_vault, timescaledb_toolkit, vectorscale, wrappers
 
-**Compiled:** index_advisor, pg_hashids, pg_jsonschema, pg_stat_monitor, pgmq, pgq, pgroonga, pgsodium, supabase_vault, timescaledb_toolkit, vectorscale, wrappers
+**6 Tools (no CREATE EXTENSION):** pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, supautils, wal2json
 
-**Tools (6, no CREATE EXTENSION):** pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, supautils, wal2json
-
-**Enable/Disable:** Manifest `enabled: false` → build+test → cleanup `.so` files → exclude from init SQL. Dependency validation at build (fail fast). 4 non-disableable (preloaded): auto_explain, pg_cron, pg_stat_statements, pgaudit.
+**Enable/Disable:** Manifest `enabled: false` → build+cleanup `.so` → exclude init. 4 non-disableable: auto_explain, pg_cron, pg_stat_statements, pgaudit.
 
 ## Init Script Order
 
-**Critical:** Alphabetical from 2 sources: `docker/postgres/docker-entrypoint-initdb.d/` (shared) + `stacks/*/configs/initdb/` (stack-specific).
+**Shared:** `01-extensions.sql` (6 baseline) → `02-replication.sh` (replicator user+slot) → `03-pgsodium-init.sh` (if enabled)
 
-**Shared (all stacks):**
-
-1. `01-extensions.sql` — Creates 6 baseline (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). plpgsql builtin.
-2. `02-replication.sh` — `replicator` user + slot
-3. `03-pgsodium-init.sh` — Encryption key (if `ENABLE_PGSODIUM_INIT=true`)
-
-**Stack-specific:** Primary adds `03-pgbouncer-auth.sh`. Order matters: extensions before users, replication before auth.
+**Stack-specific:** Primary adds `03-pgbouncer-auth.sh`. Order: exts before users, replication before auth.
 
 ## Compose Overrides
 
-`compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost, test mem). Merge: `docker compose -f compose.yml -f compose.dev.yml up`. Base config: `postgresql-base.conf` via `include` directive (DRY).
+`compose.yml` (prod: private IPs, limits) + `compose.dev.yml` (dev: localhost). Base: `postgresql-base.conf` via include.
 
 ## PG18 Optimizations
 
-- `io_method = 'worker'` (async I/O, 2-3x faster NVMe)
-- LZ4 WAL compression (30-60% reduction vs pglz)
-- Data checksums (default, opt-out via `DISABLE_DATA_CHECKSUMS=true`)
-- `pgaudit.log_statement_once = on` (PG18 feature, reduces duplication)
-- Idle replication slot timeout: 48h (prevents WAL bloat)
+- `io_method = 'worker'` (async I/O, 2-3x NVMe)
+- LZ4 WAL compression (30-60% vs pglz)
+- Data checksums (default, opt-out: `DISABLE_DATA_CHECKSUMS`)
+- `pgaudit.log_statement_once = on` (PG18)
+- Idle slot timeout: 48h
 
-## Key Workflows
+## Workflows
 
-**Build:** `./scripts/build.sh` → Buildx + remote cache → ~12min first, ~2min cached. Multi-platform: `--push` flag.
+**Build:** `./scripts/build.sh` → ~12min first, ~2min cached. `--push` for multi-platform.
 
-**Test:** CREATE EXTENSION + functional query → grep logs (RAM/CPU) → PgBouncer :6432 → `SHOW POOLS`. Memory tests: 512MB, manual 1GB, 2GB, 64GB.
+**Test:** CREATE EXTENSION → functional → logs (RAM/CPU) → PgBouncer :6432 SHOW POOLS. Mem: 512MB/1GB/2GB/64GB.
 
-**CI/CD:** Manual trigger, multi-platform + SBOM/provenance, arm64 via QEMU.
+**CI/CD:** Manual, multi-platform, arm64 via QEMU.
 
 ## Gotchas
 
-1. **PgBouncer .pgpass:** Must exist in container. Check: `docker exec pgbouncer-primary ls -l /tmp/.pgpass`
-2. **Auto-config always on:** `-c` flags override `postgresql.conf`. Cannot disable.
-3. **SHA staleness:** Force-push to tag breaks. Verify: `https://github.com/<owner>/<repo>/commit/<SHA>`
-4. **No cgroup limit:** Reads `/proc/meminfo` (may = host RAM). Set `mem_limit` or `POSTGRES_MEMORY`.
-5. **Health check:** Use DB connection (`:6432/postgres`), NOT admin DB (`:6432/pgbouncer`).
-6. **Build vs runtime:** Extension versions = build ARGs (baked). RAM/CPU = runtime (adapts to VPS).
-7. **arm64 QEMU slow:** CI emulated (2-3x slower). Prod arm64 = native (no overhead).
+1. **PgBouncer .pgpass:** `docker exec pgbouncer-primary ls -l /tmp/.pgpass`
+2. **Auto-config always on:** `-c` overrides `postgresql.conf`
+3. **SHA staleness:** Verify `https://github.com/<owner>/<repo>/commit/<SHA>`
+4. **No cgroup limit:** `/proc/meminfo` = host RAM. Set `mem_limit` or `POSTGRES_MEMORY`
+5. **Health check:** DB `:6432/postgres`, NOT `:6432/pgbouncer`
+6. **Build vs runtime:** Exts = ARGs (baked). RAM/CPU = runtime (adapts)
+7. **arm64 QEMU slow:** CI (2-3x). Prod = native
 
 ## Monitoring
 
-`postgres_exporter` → `:9187/metrics` → `pg_stat_database_*`, custom queries (`postgres_exporter_queries.yaml`: replication lag, memory settings, uptime). Prometheus scrapes → Grafana dashboards.
+`postgres_exporter` `:9187/metrics` → `pg_stat_database_*`, custom queries. Prometheus → Grafana.
 
 ## Security
 
-- Extensions: SHA-pinned (immutable, prevent tag poisoning)
-- Auth: SCRAM-SHA-256 (no MD5/plaintext)
-- PgBouncer: SECURITY DEFINER auth_query (no plaintext userlist)
-- Networks: 127.0.0.1 default (prod: 0.0.0.0 + firewall)
-- Secrets: env vars only (dev test password safe for local)
+- SHA-pinned exts (immutable)
+- SCRAM-SHA-256 auth (no MD5)
+- SECURITY DEFINER auth_query
+- 127.0.0.1 default (prod: firewall)
+- Env vars only
 
 ## Upgrading
 
-**PG Major:** Update `PG_VERSION` ARG → check ext compat → update ext SHAs → rebuild → pg_upgrade.
+**PG Major:** `PG_VERSION` → check compat → SHAs → rebuild → pg_upgrade.
 
-**Ext Minor:** Find SHA from release → update `*_COMMIT_SHA` ARGs → rebuild → `ALTER EXTENSION <name> UPDATE;`
+**Ext Minor:** SHA → `*_COMMIT_SHA` → rebuild → `ALTER EXTENSION UPDATE;`
 
 ## Contributing
 
-1. Local test: `./scripts/build.sh` → deploy primary → verify
-2. Auto-config test: `./scripts/test/test-auto-config.sh` (manual/512MB/2GB/64GB)
-3. Regen configs: `bun run generate` or `./scripts/generate-configs.sh`
-4. No secrets: `grep -ri "password\|secret" . | grep -v .env.example`
-5. Update CHANGELOG.md
-6. PR with clear description
+1. `./scripts/build.sh` → deploy → verify
+2. `./scripts/test/test-auto-config.sh` (512MB/2GB/64GB)
+3. `bun run generate` or `./scripts/generate-configs.sh`
+4. `grep -ri "password\|secret" . | grep -v .env.example`
+5. Update CHANGELOG.md, PR
 
 ## Design Constraints
 
-**Target:** 2-16GB optimal, scales 2-128GB. 1-64 CPU. Compose-only (no K8s).
+**Target:** 2-16GB optimal, 2-128GB range. 1-64 CPU. Compose-only.
 
 **Limits:**
 
-- Max connections: 80/120/200 tiers (prevent OOM, PgBouncer multiplexes)
-- PgBouncer transaction mode: NO prepared statements/advisory locks/LISTEN/NOTIFY (use session mode if needed)
-- Auto-config: cgroup v2 → manual → /proc/meminfo (set limit for deterministic)
-- PG18 only (no multi-version)
+- Max conn: 80/120/200 tiers
+- PgBouncer txn mode: NO prepared/advisory/LISTEN/NOTIFY
+- Auto-config: cgroup v2 → manual → /proc/meminfo
+- PG18 only
 
-**Why transaction mode:** Stateless pooling maximizes efficiency. Session features break pooling. Direct :5432 if needed, :6432 for apps.
+**Why transaction mode:** Stateless pooling. Session breaks pooling. :5432 direct, :6432 for apps.
 
-**Why SHA pinning:** Tags mutable (attacker repush), SHAs immutable. Trade-off: manual updates vs supply chain security.
+**Why SHA pinning:** Tags mutable, SHAs immutable. Manual updates vs supply chain security.
 
 ## Dev Tooling
 
-**Runtime:** Bun 1.3.0+ (primary), TypeScript 5.9.3 strict, Node 24.0.0+ (engines). Bun-native APIs (`$`, bunx). NO Node-compat.
+**Runtime:** Bun 1.3.0+, TS 5.9.3 strict, Node 24.0.0+. Bun-native (`$`, bunx).
 
-**Quality:**
-
-- Oxlint 0.11.1 (Rust, 50-100x faster ESLint) — `bun run lint`
-- Prettier 3.6.2 — `bun run format`
-- TypeScript strict — `bun run type-check`
-- shellcheck — `bun run lint:shell`
-- hadolint — `bun run lint:docker`
-- yaml-lint — `bun run lint:yaml`
+**Quality:** Oxlint (`bun run lint`), Prettier (`bun run format`), TS (`bun run type-check`), shellcheck, hadolint, yaml-lint.
 
 **Validation:**
 
-- `bun run validate` — Oxlint + Prettier + TS (fast, pre-commit)
-- `bun run validate:full` — All linters (comprehensive, pre-push)
+- `bun run validate` (fast, pre-commit)
+- `bun run validate:full` (all, pre-push)
 
-**Git Hooks:**
+**Git Hooks:** Pre-commit (lint+format), pre-push (validate:full). Install: `bun run hooks:install`
 
-- Pre-commit: lint + format check
-- Pre-push: validate:full
-- Managed by bun-git-hooks (`git-hooks.config.ts`), installed as bash in `.git/hooks/`
-- Install: `bun run hooks:install`
-
-**Package:** bun.lock (binary, committed). All devDeps (infra project). ArkType validation (NOT Zod, locked in TOOLING.md).
-
-**Testing:** 4,185 lines integration tests (Docker, no mocks). `./scripts/test/*.ts` using Bun `$`. 11 scenarios: ext loading, auto-config, replication, stacks, multi-arch.
-
-**Critical files:** package.json, tsconfig.json (strict ES2024), .oxlintrc.json, .prettierrc.json, git-hooks.config.ts, .editorconfig, bunfig.toml
+**Testing:** 4,185 lines integration. 11 scenarios: exts, auto-config, replication, stacks, multi-arch.
 
 **Commands:**
 
 ```bash
-bun install                 # Deps
-bun run validate           # Fast (lint+format+types)
-bun run validate:full      # All linters
-bun run lint:fix           # Auto-fix
-bun run format             # Format
-./scripts/build.sh         # Build image
+bun install          # Deps
+bun run validate    # Fast
+bun run validate:full  # All
+./scripts/build.sh  # Build
 ```
-
-**Philosophy:** Bun-first, strict TS (no `any`), fast linters (Oxlint/Rust), comprehensive validation (shell/docker/yaml), immutable deps (bun.lock).
 
 ---
 
-**One image, minimal config. Auto-adapts to hardware. SHA-pinned for reproducibility. Env-driven for universality.**
+One image, minimal config. Auto-adapts hardware. SHA-pinned. Env-driven.

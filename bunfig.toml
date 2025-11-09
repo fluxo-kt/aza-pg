@@ -12,8 +12,8 @@ lockfile = true
 production = false
 
 [run]
-# Shell to use for executing scripts
-shell = "bash"
+# Shell to use for executing scripts (bun = Bun's shell, system = default system shell)
+shell = "system"
 
 # Enable hot reloading for development
 hot = false

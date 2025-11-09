@@ -120,7 +120,7 @@ Extension overhead ~100-250MB (pg_stat_statements, pgvector, timescaledb).
 
 1. Local test: `./scripts/build.sh` → deploy primary → verify
 2. Auto-config test: `./scripts/test/test-auto-config.sh` (manual/512MB/2GB/64GB)
-3. Regen configs: `./scripts/generate-configs.sh` (needs bun)
+3. Regen configs: `bun run generate` or `./scripts/generate-configs.sh`
 4. No secrets: `grep -ri "password\|secret" . | grep -v .env.example`
 5. Update CHANGELOG.md
 6. PR with clear description

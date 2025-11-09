@@ -140,27 +140,49 @@ ARG PGROUTING_VERSION
 ARG RUM_VERSION
 ARG SET_USER_VERSION
 
+# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
+# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \
     apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
-    apt-get install -y \
-      postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} \
-      postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} \
-      postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} \
-      postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} \
-      postgresql-${PG_MAJOR}-postgis-3=${POSTGIS_VERSION} \
-      postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} \
-      postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} \
-      postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} \
-      postgresql-${PG_MAJOR}-hll=${HLL_VERSION} \
-      postgresql-${PG_MAJOR}-http=${HTTP_VERSION} \
-      postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} \
-      postgresql-${PG_MAJOR}-pgrouting=${PGROUTING_VERSION} \
-      postgresql-${PG_MAJOR}-rum=${RUM_VERSION} \
-      postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
+    apt-get install -y jq && \
+    # Build package list dynamically from manifest (only enabled PGDG extensions)
+    PGDG_PACKAGES="" && \
+    # Helper function to conditionally add package if enabled
+    add_if_enabled() { \
+      local ext_name=$1; \
+      local pkg_name=$2; \
+      local pkg_version=$3; \
+      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and (.enabled // true) == true)' /tmp/extensions.manifest.json >/dev/null; then \
+        PGDG_PACKAGES="$PGDG_PACKAGES postgresql-${PG_MAJOR}-${pkg_name}=${pkg_version}"; \
+      fi; \
+    } && \
+    add_if_enabled "pg_cron" "cron" "${PGCRON_VERSION}" && \
+    add_if_enabled "pgaudit" "pgaudit" "${PGAUDIT_VERSION}" && \
+    add_if_enabled "vector" "pgvector" "${PGVECTOR_VERSION}" && \
+    add_if_enabled "timescaledb" "timescaledb" "${TIMESCALEDB_VERSION}" && \
+    add_if_enabled "postgis" "postgis-3" "${POSTGIS_VERSION}" && \
+    add_if_enabled "pg_partman" "partman" "${PARTMAN_VERSION}" && \
+    add_if_enabled "pg_repack" "repack" "${REPACK_VERSION}" && \
+    add_if_enabled "plpgsql_check" "plpgsql-check" "${PLPGSQL_CHECK_VERSION}" && \
+    add_if_enabled "hll" "hll" "${HLL_VERSION}" && \
+    add_if_enabled "http" "http" "${HTTP_VERSION}" && \
+    add_if_enabled "hypopg" "hypopg" "${HYPOPG_VERSION}" && \
+    add_if_enabled "pgrouting" "pgrouting" "${PGROUTING_VERSION}" && \
+    add_if_enabled "rum" "rum" "${RUM_VERSION}" && \
+    add_if_enabled "set_user" "set-user" "${SET_USER_VERSION}" && \
+    # Install only enabled packages (skip if none enabled)
+    if [ -n "$PGDG_PACKAGES" ]; then \
+      echo "Installing PGDG packages: $PGDG_PACKAGES" && \
+      apt-get install -y $PGDG_PACKAGES; \
+    else \
+      echo "No PGDG packages enabled in manifest"; \
+    fi && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 COPY --from=builder-pgxs /opt/ext-out/ /

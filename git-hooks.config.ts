@@ -10,12 +10,12 @@ import type { GitHooksConfig } from "bun-git-hooks";
  */
 const config: GitHooksConfig = {
   /**
-   * Pre-commit: Run linting and formatting checks on staged files
+   * Pre-commit: Run fast validation checks on staged files
    *
    * This ensures code quality before commits are created.
-   * Runs fast linting with Oxlint and formatting check with Prettier.
+   * Runs fast validation: Oxlint, Prettier check, and TypeScript type checking.
    */
-  "pre-commit": "bun run lint && bun run format:check",
+  "pre-commit": "bun run validate",
 
   /**
    * Pre-push: Run full validation suite before pushing

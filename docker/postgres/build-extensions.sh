@@ -117,8 +117,18 @@ clone_repo() {
   # Validate URL before cloning (security: prevent arbitrary git clones)
   validate_git_url "$repo"
 
-  log "Cloning $repo @ $commit"
-  git clone --filter=blob:none "$repo" "$target"
+  log "Cloning $repo @ $commit (shallow)"
+  # Shallow clone optimization: fetch only the specific commit (Phase 4.2)
+  # Benefits: faster clone, reduced disk usage, smaller attack surface
+  git init "$target"
+  git -C "$target" remote add origin "$repo"
+
+  # Try shallow fetch first, fallback to full fetch if server rejects
+  if ! git -C "$target" fetch --depth 1 origin "$commit" 2>/dev/null; then
+    log "Shallow fetch failed, falling back to full fetch for $commit"
+    git -C "$target" fetch origin "$commit"
+  fi
+
   git -C "$target" checkout --quiet "$commit"
   if [[ -f "$target/.gitmodules" ]]; then
     git -C "$target" submodule update --init --recursive
@@ -281,15 +291,8 @@ process_entry() {
     return
   fi
 
-  local install_via
-  install_via=$(jq -r '.install_via // ""' <<<"$entry")
-  if [[ "$install_via" == "pgdg" ]]; then
-    log "Skipping $name (installed via PGDG)"
-    return
-  fi
-
   # ────────────────────────────────────────────────────────────────────────────
-  # GATE 0: ENABLED CHECK
+  # GATE 0: ENABLED CHECK (Phase 4.4 - moved before PGDG skip check)
   # ────────────────────────────────────────────────────────────────────────────
   # CRITICAL REQUIREMENT: ALL extensions MUST be built and tested, even disabled ones.
   #
@@ -309,6 +312,18 @@ process_entry() {
     log "Extension $name disabled (reason: $disabled_reason) - building for testing only"
     DISABLED_EXTENSIONS+=("$name")
     # Continue to build and test
+  fi
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # GATE 1: PGDG SKIP CHECK (Phase 4.4 - moved after enabled check)
+  # ────────────────────────────────────────────────────────────────────────────
+  # Skip PGDG extensions here because they're installed via apt-get in Dockerfile
+  # Note: This happens AFTER enabled check so disabled PGDG extensions are tracked
+  local install_via
+  install_via=$(jq -r '.install_via // ""' <<<"$entry")
+  if [[ "$install_via" == "pgdg" ]]; then
+    log "Skipping $name (installed via PGDG)"
+    return
   fi
 
   local source_type

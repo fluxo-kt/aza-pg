@@ -203,6 +203,8 @@ Reference points:
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
 - 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈49152MB`, `work_mem≈32MB`, `max_connections=200`
 
+For comprehensive memory allocation table with additional tiers and extension overhead details, see [AGENTS.md Auto-Config section](AGENTS.md#auto-config-runtime).
+
 `shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, supautils, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var.
 
 **Note:** pg_stat_monitor may conflict with pg_stat_statements; test before enabling both in the same session.
@@ -426,7 +428,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 1. Fork the repository
 2. Create a feature branch
 3. Make changes
-4. Regenerate configs if you touch `scripts/config-generator` (`./scripts/generate-configs.sh`, requires `bun`)
+4. Regenerate configs if you touch `scripts/config-generator` (`bun run generate` or `./scripts/generate-configs.sh`)
 5. Test locally (build image + deploy stack)
 6. Submit pull request
 

@@ -1,0 +1,36 @@
+# ShellCheck Configuration for aza-pg
+# ===================================
+# Production PostgreSQL infrastructure scripts
+# Targets PostgreSQL 18, PgBouncer, and multi-stage Docker builds
+
+# SC2086: Quoted variables and globbing prevention
+# DISABLED: We use intentional variable expansion in docker buildx args and
+# apt package lists where unquoted expansion is safe (readonly, controlled sources)
+disable=SC2086
+
+# SC2155: Declare and assign separately
+# DISABLED: Style preference. We use readonly vars with assignment for immutability.
+# Example: readonly PG_MAJOR=$(grep PG_VERSION Dockerfile | head -1)
+disable=SC2155
+
+# SC1091: Not following sources (source file not specified)
+# DISABLED: Dynamic source paths in Docker context are intentional. Files are
+# validated at build time, not static analysis time.
+disable=SC1091
+
+# SC1090: Parsing issues when following source
+# DISABLED: Same rationale. Database auto-config paths are dynamic.
+disable=SC1090
+
+# Enable extended analysis for production scripts
+# (improves detection of edge cases and complex patterns)
+# Can be disabled per-script with `# shellcheck extended-analysis=false`
+# for auto-generated or very large (2000+ line) scripts
+enable-all-analyses=true
+
+# Sourcing preference: check sourced files even if not found
+# (useful for CI environments with mounted volumes)
+source-path=.
+
+# Color output when running interactively
+color=auto

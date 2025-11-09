@@ -24,7 +24,8 @@ scripts/
 ./scripts/build.sh --push             # Build and push to registry
 
 # Generate stack configurations
-./scripts/generate-configs.sh         # Requires bun
+bun run generate                      # Direct (requires workspace dependencies)
+./scripts/generate-configs.sh         # Shell wrapper (auto-installs deps, checks for bun)
 ```
 
 ### Testing

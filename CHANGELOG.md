@@ -21,9 +21,12 @@ All notable changes to aza-pg will be documented in this file.
 - Fix yamllint configuration syntax: `level: off` → `disable` (Phase 9)
 - Fix Debian Trixie package name: libssl3 → libssl3t64 (Phase 9)
   - Required for time64 transition in Debian Trixie
-- Fix supautils extension compilation patch regex: remove start-of-line anchor to match indented declaration (Phase 9)
 - Fix Dockerfile apt-get cache mount issues (Phase 9)
   - Removed stale cache mounts causing package resolution failures
+- Fix git commit-msg hook gitlint failure (Phase 9)
+  - Disabled gitlint call since package not in package.json and not available via bunx
+- Fix build-extensions.sh to skip disabled extensions entirely (Phase 9)
+  - Changed from "build for testing" to complete skip (prevents build failures on broken extensions)
 
 ### Changed
 

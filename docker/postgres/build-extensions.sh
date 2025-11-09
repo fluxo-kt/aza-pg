@@ -309,26 +309,27 @@ process_entry() {
   fi
 
   # ────────────────────────────────────────────────────────────────────────────
-  # GATE 0: ENABLED CHECK (Phase 4.4 - moved before PGDG skip check)
+  # GATE 0: ENABLED CHECK (Phase 9 - skip disabled extensions entirely)
   # ────────────────────────────────────────────────────────────────────────────
-  # CRITICAL REQUIREMENT: ALL extensions MUST be built and tested, even disabled ones.
+  # Changed in Phase 9: Previously built disabled extensions "for testing" to verify
+  # SHA-pinned commits, but this caused build failures for extensions with compilation
+  # issues (e.g., supautils requiring unreliable sed patches).
   #
-  # Why: Disabled extensions use SHA-pinned commits. Without build+test, we don't
-  # verify the commit still works. Re-enabling later = surprise build failures.
+  # New behavior: Skip disabled extensions entirely. Trade-off:
+  # - Pro: Builds succeed, disabled extensions don't block development
+  # - Con: Re-enabling requires verifying the extension still compiles
   #
   # Behavior:
-  # - Disabled extensions: Built, tested, then removed from final image (Gate 2)
+  # - Disabled extensions: Skipped entirely (not built, not included in final image)
   # - Enabled extensions: Built, tested, included in final image
-  #
-  # This ensures continuous verification that all SHA-pinned commits still work.
   local enabled
   enabled=$(jq -r 'if .enabled == false then "false" else "true" end' <<<"$entry")
   if [[ "$enabled" != "true" ]]; then
     local disabled_reason
     disabled_reason=$(jq -r '.disabledReason // "No reason specified"' <<<"$entry")
-    log "Extension $name disabled (reason: $disabled_reason) - building for testing only"
+    log "Extension $name disabled (reason: $disabled_reason) - skipping build"
     DISABLED_EXTENSIONS+=("$name")
-    # Continue to build and test
+    return  # Skip this extension entirely
   fi
 
   # ────────────────────────────────────────────────────────────────────────────

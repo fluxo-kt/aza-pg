@@ -6,7 +6,8 @@
 -- Edit docker/postgres/extensions.manifest.json and regenerate
 
 -- Core extensions pre-enabled by default.
-CREATE EXTENSION IF NOT EXISTS auto_explain; -- auto_explain (observability)
+-- Note: auto_explain is preload-only (loaded via shared_preload_libraries)
+-- No CREATE EXTENSION needed for auto_explain - it's configured via postgresql.conf
 CREATE EXTENSION IF NOT EXISTS pg_cron; -- pg_cron (operations)
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements; -- pg_stat_statements (observability)
 CREATE EXTENSION IF NOT EXISTS pg_trgm; -- pg_trgm (search)
@@ -15,6 +16,6 @@ CREATE EXTENSION IF NOT EXISTS vector; -- pgvector (ai)
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Baseline extensions enabled (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). Additional extensions are available but disabled by default.';
+  RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). Additional extensions are available but disabled by default.';
 END;
 $$;

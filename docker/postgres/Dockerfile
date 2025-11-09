@@ -119,6 +119,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y \
+      # postgresql-client provides psql CLI tool (base postgres image only has server)
+      # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
       postgresql-client-${PG_MAJOR} \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
@@ -177,7 +179,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # Install only enabled packages (skip if none enabled)
     if [ -n "$PGDG_PACKAGES" ]; then \
       echo "Installing PGDG packages: $PGDG_PACKAGES" && \
-      apt-get install -y $PGDG_PACKAGES; \
+      apt-get install -y $PGDG_PACKAGES && \
+      # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
+      dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
+      INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
+      echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
+      # Threshold based on 14 enabled extensions in manifest (allow some to be disabled)
+      # Fail if we have fewer than 5 packages (indicates major installation failure)
+      test "$INSTALLED_COUNT" -ge 5 || (echo "ERROR: Expected at least 5 PGDG packages, got $INSTALLED_COUNT" && exit 1) && \
+      rm -f /tmp/installed-pgdg-exts.log; \
     else \
       echo "No PGDG packages enabled in manifest"; \
     fi && \
@@ -203,7 +213,7 @@ RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD pg_isready -U postgres -d postgres || exit 1
+    CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1
 
 EXPOSE 5432
 

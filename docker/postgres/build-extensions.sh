@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ────────────────────────────────────────────────────────────────────────────
+# CRITICAL: PGDG EXTENSION BEHAVIOR
+# ────────────────────────────────────────────────────────────────────────────
+# Disabled PGDG extensions (install_via==pgdg AND enabled==false) are NOT built
+# or apt-installed. They are filtered out in the Dockerfile's dynamic package
+# selection (add_if_enabled function).
+#
+# This is expected behavior because:
+# - PGDG extensions are pre-compiled binaries from apt, not source builds
+# - The Dockerfile conditionally installs only enabled PGDG packages
+# - This script never sees disabled PGDG extensions (they're skipped early)
+# - Only compiled extensions (build.type specified) are built regardless of enabled status
+#
+# Result: Disabled PGDG extensions cannot be verified via build/test cycle.
+# They are simply never installed in the image.
+# ────────────────────────────────────────────────────────────────────────────
+
 MANIFEST_PATH=${1:?}
 BUILD_ROOT=${2:-/tmp/extensions-build}
 PG_MAJOR=${PG_MAJOR:-18}
@@ -372,6 +389,10 @@ process_entry() {
   patches_count=$(jq -r '.build.patches // [] | length' <<<"$entry")
   if [[ "$patches_count" -gt 0 ]]; then
     log "Applying $patches_count patch(es) for $name"
+
+    # Create timestamp marker for tracking modified files (Phase 4.3)
+    touch /tmp/patch-marker
+
     local i=0
     while [[ $i -lt $patches_count ]]; do
       local patch
@@ -385,6 +406,7 @@ process_entry() {
       elif [[ "$patch" == *".c"* ]]; then
         # For C projects, find specific C files mentioned in patch or all .c files
         if [[ "$patch" =~ log_skipped_evtrigs ]]; then
+          # Anchor to specific file for supautils patch (Phase 4.3 safety improvement)
           mapfile -t target_files < <(find "$dest" -name "supautils.c" -type f)
         else
           mapfile -t target_files < <(find "$dest" -name "*.c" -type f)
@@ -397,11 +419,25 @@ process_entry() {
       # Apply patch to each target file
       for target_file in "${target_files[@]}"; do
         if [[ -f "$target_file" ]] || [[ -d "$target_file" ]]; then
+          # Note: sed -i modifies mtime, so we can track which files changed
           sed -i "$patch" "$target_file" 2>/dev/null || log "    Warning: patch may not have matched in $target_file"
         fi
       done
       i=$((i+1))
     done
+
+    # Log patched files (Phase 4.3 improvement)
+    log "Patched files:"
+    local patched_files=()
+    mapfile -t patched_files < <(find "$dest" \( -name "*.c" -o -name "*.h" -o -name "Cargo.toml" \) -newer /tmp/patch-marker -type f 2>/dev/null || true)
+    if [[ ${#patched_files[@]} -gt 0 ]]; then
+      for pf in "${patched_files[@]}"; do
+        # Show relative path for readability
+        log "  - ${pf#$dest/}"
+      done
+    else
+      log "  (no files modified - patches may not have matched)"
+    fi
   fi
 
   subdir=$(jq -r '.build.subdir // ""' <<<"$entry")

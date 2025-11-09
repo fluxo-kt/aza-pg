@@ -1,7 +1,7 @@
 # PostgreSQL 18 with comprehensive extension suite
 
 ARG PG_VERSION=18
-ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+ARG PG_BASE_IMAGE_SHA=sha256:5d1822a7565aecbf17323dd54754ab8b832963e62b9512f465c2f155db9262dd
 
 # Build metadata for OCI labels
 ARG BUILD_DATE
@@ -48,10 +48,9 @@ RUN chmod +x /usr/local/bin/build-extensions.sh
 # Install build dependencies for builder-base stage
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -eu && \
-    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
+RUN set -eu && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
     apt-get install -y \
       build-essential \
       git \
@@ -136,10 +135,9 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -eu && \
-    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
+RUN set -eu && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y \
       # postgresql-client provides psql CLI tool (base postgres image only has server)
@@ -169,10 +167,9 @@ ARG SET_USER_VERSION
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -eu && \
-    apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false && \
+RUN set -eu && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
     apt-get install -y jq && \
     # Build package list dynamically from manifest (only enabled PGDG extensions)
     PGDG_PACKAGES="" && \

@@ -4,18 +4,35 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **CRITICAL**: Update PgBouncer SHA to fix CVE-2025-2291 password expiry bypass (Phase 9)
+  - Updated edoburu/pgbouncer:v1.24.1-p1 SHA from `3db3d72...` to `05079fd...`
+  - Affects all PgBouncer versions; must update for security compliance
+- Update PostgreSQL base image to latest postgres:18-trixie SHA (Phase 9)
+  - Updated from `41fc534...` to `5d1822a...` for ARM64 platform compatibility
+
 ### Fixed
 
 - Fix hardcoded test passwords in 6 test scripts (Phase 7)
 - Fix absolute paths in all TypeScript scripts for portability (Phase 6)
 - Fix 37 vs 38 extension count inconsistency across codebase (Phase 6)
 - Fix SQL identifier quoting in generated scripts (Phase 6)
+- Fix yamllint configuration syntax: `level: off` → `disable` (Phase 9)
+- Fix Debian Trixie package name: libssl3 → libssl3t64 (Phase 9)
+  - Required for time64 transition in Debian Trixie
+- Fix supautils extension compilation patch regex (Phase 9)
+- Fix Dockerfile apt-get cache mount issues (Phase 9)
+  - Removed stale cache mounts causing package resolution failures
 
 ### Changed
 
 - Modernize tsconfig types to Bun 1.3+ convention (Phase 6)
 - Standardize GitHub Actions to oven-sh/setup-bun@v2 (Phase 6)
 - Make Dockerfile PGDG assertion dynamic based on manifest (Phase 7)
+- Pin aquasecurity/trivy-action from @master to @0.33.1 for reproducibility (Phase 9)
+- Update github/codeql-action from @v3 to @v4 (latest stable) (Phase 9)
+- Bump Bun minimum version from >=1.3.0 to >=1.3.2 (latest stable) (Phase 9)
 
 ### Added
 
@@ -23,10 +40,14 @@ All notable changes to aza-pg will be documented in this file.
 - Add SARIF export for hadolint and shellcheck (Phase 7)
 - Add OCI metadata labels to Dockerfile (Phase 7)
 - Add Bun-not-in-final-image assertion (Phase 7)
+- Add documentation for PostgreSQL 18 built-in uuidv7() function (Phase 9)
 
 ### Removed
 
 - Remove unused yaml-lint npm package (Phase 6)
+- Remove uuid-ossp from test scripts and documentation (Phase 9)
+  - PostgreSQL 18 includes superior built-in uuidv7() for time-ordered UUIDs
+  - Better indexing performance than uuid-ossp's random UUIDs
 
 ---
 

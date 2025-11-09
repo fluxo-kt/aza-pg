@@ -7,7 +7,7 @@ liblz4-1
 libmecab2
 libmsgpack-c2
 libsodium23
-libssl3
+libssl3t64
 libtext-csv-xs-perl
 libyaml-0-2
 libzstd1

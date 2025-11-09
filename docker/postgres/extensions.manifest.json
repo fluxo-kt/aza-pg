@@ -729,7 +729,7 @@
       "build": {
         "type": "pgxs",
         "patches": [
-          "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+          "s/^bool[[:space:]]*log_skipped_evtrigs/static bool log_skipped_evtrigs/"
         ]
       },
       "runtime": {

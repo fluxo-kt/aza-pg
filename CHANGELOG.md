@@ -49,6 +49,12 @@ All notable changes to aza-pg will be documented in this file.
   - PostgreSQL 18 includes superior built-in uuidv7() for time-ordered UUIDs
   - Better indexing performance than uuid-ossp's random UUIDs
 
+### Disabled
+
+- Temporarily disable supautils extension (Phase 9)
+  - Compilation requires patching that proved unreliable with sed
+  - 36 extensions enabled (was 37)
+
 ---
 
 ## [2025-11-08] - Security & Documentation Audit

@@ -36,7 +36,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL 18 with 38 extensions (37 enabled)"
+LABEL org.opencontainers.image.description="PostgreSQL 18 with 38 extensions (36 enabled)"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

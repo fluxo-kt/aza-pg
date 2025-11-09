@@ -739,7 +739,7 @@
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "timescaledb",

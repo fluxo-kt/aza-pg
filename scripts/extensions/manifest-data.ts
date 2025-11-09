@@ -64,6 +64,7 @@ export interface ManifestEntry {
   notes?: string[];
   install_via?: "pgdg";
   enabled?: boolean;
+  disabledReason?: string;
 }
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
@@ -226,6 +227,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "tool",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
+    enabled: false,
+    disabledReason:
+      "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",

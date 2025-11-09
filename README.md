@@ -35,7 +35,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Features
 
 - **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (cgroup v2 preferred, `/proc/meminfo` fallback, or manual `POSTGRES_MEMORY` override)
-- **Production Extensions**: 38 extensions catalog (37 enabled by default, 1 disabled: pgq)
+- **Production Extensions**: 38 extensions catalog (36 enabled by default, 2 disabled: pgq, supautils)
 - **Complete Stacks**: Single instance, Primary with PgBouncer + Exporter, Replica
 - **Supply Chain Security**: SHA-pinned extension sources, multi-platform builds (amd64/arm64)
 - **Connection Pooling**: PgBouncer with auth_query (SCRAM-SHA-256)
@@ -207,7 +207,7 @@ Reference points:
 
 For comprehensive memory allocation table with additional tiers and extension overhead details, see [AGENTS.md Auto-Config section](AGENTS.md#auto-config-runtime).
 
-`shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, supautils, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var.
+`shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var. Note: supautils is disabled (compilation issues).
 
 **Note:** pg_stat_monitor may conflict with pg_stat_statements; test before enabling both in the same session.
 
@@ -344,6 +344,29 @@ gh workflow run build-postgres-image.yml
 ```
 
 Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
+
+### Testing & Validation
+
+Run comprehensive test suite (validation + build + functional tests):
+
+```bash
+# Full test suite (validation + Docker build + functional tests)
+bun run test:all
+
+# Fast mode (validation only, skips Docker build and functional tests)
+bun run test:all:fast
+
+# Show help
+bun scripts/test-all.ts --help
+```
+
+The test suite includes:
+
+- **Validation**: manifest, TypeScript, linting, formatting, docs, shell scripts, Dockerfile, YAML
+- **Build**: Docker image build, extension size checks, extension count verification
+- **Functional**: extension loading, auto-tuning (512MB/2GB/4GB), stack deployments, comprehensive extension tests
+
+See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
 
 ## Troubleshooting
 

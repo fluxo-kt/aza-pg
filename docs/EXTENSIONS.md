@@ -87,9 +87,10 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### queueing
 
-| Extension | Version | Enabled by Default | Shared Preload | Notes                                                            |
-| --------- | ------- | ------------------ | -------------- | ---------------------------------------------------------------- |
-| `pgmq`    | v1.7.0  | No                 | No             | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY. |
+| Extension   | Version | Enabled by Default | Shared Preload | Notes                                                                                             |
+| ----------- | ------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------------- |
+| `pgmq`      | v1.7.0  | No                 | No             | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| `pgq` (PgQ) | v3.5.1  | No                 | No             | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
 
@@ -97,7 +98,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | ---------------- | -------- | ------------------ | -------------- | -------------------------------------------------------------------- |
 | `pg_plan_filter` | 5081a7b5 | No                 | Yes            | Block high-cost plans or disallowed operations using planner hooks.  |
 | `pg_safeupdate`  | 1.5      | No                 | No             | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| `supautils`      | v3.0.2   | Yes                | Yes            | Shared superuser guards and hooks for managed Postgres environments. |
+| `supautils`      | v3.0.2   | No                 | Yes            | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
@@ -119,7 +120,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension             | Version | Enabled by Default | Shared Preload | Notes                                                                          |
 | --------------------- | ------- | ------------------ | -------------- | ------------------------------------------------------------------------------ |
-| `timescaledb`         | 2.23.0  | Yes                | Yes            | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| `timescaledb`         | 2.23.0  | No                 | Yes            | Hypertables, compression, and continuous aggregates for time-series workloads. |
 | `timescaledb_toolkit` | 1.22.0  | No                 | No             | Analytical hyperfunctions and sketches extending TimescaleDB.                  |
 
 ### utilities

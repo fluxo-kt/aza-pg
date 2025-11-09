@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-08T19:44:11.000Z",
+  "generatedAt": "2025-11-09T21:14:37.402Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -12,8 +12,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true
-      },
-      "enabled": true
+      }
     },
     {
       "name": "btree_gin",
@@ -26,8 +25,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "btree_gist",
@@ -40,8 +38,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "hll",
@@ -62,8 +59,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "http",
@@ -88,8 +84,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "hypopg",
@@ -109,8 +104,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "index_advisor",
@@ -132,8 +126,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_cron",
@@ -156,8 +149,7 @@
         "notes": [
           "Enable via shared_preload_libraries to activate scheduler workers."
         ]
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_hashids",
@@ -176,8 +168,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_jsonschema",
@@ -209,8 +200,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_partman",
@@ -233,8 +223,7 @@
         "notes": [
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_plan_filter",
@@ -253,8 +242,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_repack",
@@ -279,8 +267,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_safeupdate",
@@ -299,8 +286,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_stat_monitor",
@@ -323,8 +309,7 @@
       "notes": [
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
         "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support."
-      ],
-      "enabled": true
+      ]
     },
     {
       "name": "pg_stat_statements",
@@ -337,8 +322,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pg_trgm",
@@ -351,8 +335,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pgaudit",
@@ -375,8 +358,7 @@
         "notes": [
           "Tune pgaudit.log to control verbosity."
         ]
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pgbackrest",
@@ -407,8 +389,7 @@
       },
       "notes": [
         "Installs /usr/bin/pgbackrest."
-      ],
-      "enabled": true
+      ]
     },
     {
       "name": "pgbadger",
@@ -435,8 +416,7 @@
       },
       "notes": [
         "Binary installed to /usr/local/bin/pgbadger."
-      ],
-      "enabled": true
+      ]
     },
     {
       "name": "pgmq",
@@ -456,8 +436,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pgq",
@@ -483,9 +462,7 @@
         "Pure PLpgSQL extension with no external dependencies",
         "Installs into pg_catalog schema (non-relocatable)",
         "Build time: ~2-3 minutes"
-      ],
-      "enabled": false,
-      "disabledReason": "Not needed for AI workloads (user example)"
+      ]
     },
     {
       "name": "pgroonga",
@@ -517,8 +494,7 @@
       "notes": [
         "NOT available in PGDG for PostgreSQL 18 (available only for PG 13-17 in third-party repos like Pigsty)",
         "Compiled from source due to lack of official PGDG package support for PG18"
-      ],
-      "enabled": true
+      ]
     },
     {
       "name": "pgrouting",
@@ -545,8 +521,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "pgsodium",
@@ -568,8 +543,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "plpgsql",
@@ -581,13 +555,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "plpgsql is builtin since PostgreSQL 9.0 and always available.",
-          "No CREATE EXTENSION needed - automatically loaded on first use."
-        ]
-      },
-      "enabled": true
+        "defaultEnable": true
+      }
     },
     {
       "name": "plpgsql_check",
@@ -607,8 +576,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "postgis",
@@ -645,8 +613,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "rum",
@@ -666,8 +633,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "set_user",
@@ -688,8 +654,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "supabase_vault",
@@ -712,14 +677,15 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "supautils",
       "kind": "tool",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
+      "enabled": false,
+      "disabledReason": "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
@@ -729,7 +695,7 @@
       "build": {
         "type": "pgxs",
         "patches": [
-          "s/bool *log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+          "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
         ]
       },
       "runtime": {
@@ -738,8 +704,7 @@
         "notes": [
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
-      },
-      "enabled": false
+      }
     },
     {
       "name": "timescaledb",
@@ -770,8 +735,7 @@
         "notes": [
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
-      },
-      "enabled": true
+      }
     },
     {
       "name": "timescaledb_toolkit",
@@ -807,8 +771,7 @@
       },
       "notes": [
         "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility."
-      ],
-      "enabled": true
+      ]
     },
     {
       "name": "vector",
@@ -829,8 +792,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true
-      },
-      "enabled": true
+      }
     },
     {
       "name": "vectorscale",
@@ -863,8 +825,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "wal2json",
@@ -883,8 +844,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
-      },
-      "enabled": true
+      }
     },
     {
       "name": "wrappers",
@@ -924,8 +884,7 @@
       },
       "notes": [
         "Requires cargo-pgrx 0.16.1 aligned with PG18."
-      ],
-      "enabled": true
+      ]
     }
   ]
 }

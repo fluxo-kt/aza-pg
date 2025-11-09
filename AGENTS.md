@@ -5,7 +5,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 ## Invariants
 
 - Preload (default): auto_explain, pg_cron, pg_stat_statements, pgaudit
-- Extensions: 38 catalog total (37 enabled, 1 disabled: pgq)
+- Extensions: 38 catalog total (36 enabled, 2 disabled: pgq, supautils)
 - Tools ≠ extensions: 6 tools (no CREATE EXTENSION)
 - No Bun in final image
 - Manifest = single source of truth

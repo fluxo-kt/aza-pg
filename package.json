@@ -18,6 +18,8 @@
     "check:manifest": "bun scripts/validate-manifest.ts",
     "check:size": "bun scripts/check-size-regression.ts",
     "test:smoke": "bun scripts/test-smoke.ts",
+    "test:all": "bun scripts/test-all.ts",
+    "test:all:fast": "bun scripts/test-all.ts --fast",
     "hooks:install": "bun-git-hooks install",
     "hooks:uninstall": "bun-git-hooks uninstall"
   },

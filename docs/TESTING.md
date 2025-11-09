@@ -524,7 +524,81 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 
 ## Running Tests
 
-### Full Test Suite
+### Comprehensive Test Suite (All Validations + Build + Functional)
+
+The `test-all.ts` script orchestrates all validation checks, build tests, and functional tests:
+
+```bash
+# Run complete test suite (validation + build + functional)
+bun run test:all
+# OR: bun scripts/test-all.ts
+
+# Fast mode - validation only (skips Docker build and functional tests)
+bun run test:all:fast
+# OR: bun scripts/test-all.ts --fast
+
+# Skip build - run all tests except Docker build (useful if image exists)
+bun scripts/test-all.ts --skip-build
+
+# Show help
+bun scripts/test-all.ts --help
+```
+
+**Test Categories:**
+
+1. **Validation Checks** (run in parallel):
+   - Manifest validation
+   - TypeScript type checking
+   - Code linting (oxlint)
+   - Code formatting (prettier)
+   - Documentation consistency
+   - Smoke tests
+   - ShellCheck (shell script linting)
+   - Hadolint (Dockerfile linting)
+   - YAML linting
+   - Secret scanning
+
+2. **Build Tests** (run sequentially):
+   - Docker image build (with 15min timeout)
+   - Extension binary size verification
+   - Extension count verification (30+ extensions)
+
+3. **Functional Tests** (run sequentially):
+   - Basic extension loading (vector, pg_cron)
+   - Auto-tuning tests (512MB, 2GB, 4GB memory limits)
+   - Single-node stack deployment
+   - Replica/cluster stack deployment
+   - Comprehensive extension tests (all 37 enabled extensions)
+
+**Environment Variables:**
+
+```bash
+# Make optional checks non-critical (useful in environments without these tools)
+ALLOW_MISSING_SHELLCHECK=1 bun scripts/test-all.ts
+ALLOW_MISSING_HADOLINT=1 bun scripts/test-all.ts
+ALLOW_MISSING_YAMLLINT=1 bun scripts/test-all.ts
+
+# Use custom Docker image
+POSTGRES_IMAGE=my-custom:tag bun scripts/test-all.ts
+```
+
+**Exit Codes:**
+
+- `0`: All critical tests passed (non-critical failures are warnings)
+- `1`: One or more critical tests failed
+
+**Output Format:**
+
+The script provides:
+
+- Real-time progress indicators for each check
+- Parallel execution for validation checks (faster)
+- Sequential execution for build/functional tests (safer)
+- Categorized summary at the end (Validation, Build, Functional)
+- Timing for each test
+- Highlighted failures with actionable error messages
+
+### Extension Functional Tests
 
 ```bash
 # Run all 117+ functional tests

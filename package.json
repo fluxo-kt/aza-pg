@@ -1,7 +1,7 @@
 {
   "name": "aza-pg",
   "version": "1.0.0",
-  "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with 38 extensions",
+  "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with 38 extensions (37 enabled by default)",
   "type": "module",
   "private": true,
   "scripts": {
@@ -27,8 +27,7 @@
     "bun-git-hooks": "^0.3.1",
     "oxlint": "^1.26.0",
     "prettier": "^3.6.2",
-    "typescript": "^5.9.3",
-    "yaml-lint": "^1.7.0"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "bun": ">=1.3.0"

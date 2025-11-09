@@ -5,7 +5,7 @@
  */
 
 import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
+import { join } from "path";
 import { validateManifest } from "./manifest-schema.js";
 import * as logger from "../utils/logger.js";
 
@@ -17,17 +17,15 @@ const EXPECTED_COUNTS = {
   compiled: 18,
 };
 
-// File paths
-const MANIFEST_PATH = resolve(__dirname, "../../docker/postgres/extensions.manifest.json");
-const DOCKERFILE_PATH = resolve(__dirname, "../../docker/postgres/Dockerfile");
-const INIT_SQL_PATH = resolve(
-  __dirname,
-  "../../docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
+// File paths - derive PROJECT_ROOT from import.meta.dir
+const PROJECT_ROOT = join(import.meta.dir, "../..");
+const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
+const DOCKERFILE_PATH = join(PROJECT_ROOT, "docker/postgres/Dockerfile");
+const INIT_SQL_PATH = join(
+  PROJECT_ROOT,
+  "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
 );
-const ENTRYPOINT_PATH = resolve(
-  __dirname,
-  "../../docker/postgres/docker-auto-config-entrypoint.sh"
-);
+const ENTRYPOINT_PATH = join(PROJECT_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh");
 
 interface RuntimeSpec {
   sharedPreload: boolean;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive Extension Functional Test Suite
- * Tests all 38 PostgreSQL extensions systematically
+ * Tests all 37 enabled PostgreSQL extensions systematically
  *
  * Coverage:
  * - AI/Vector: vector (pgvector), vectorscale

@@ -10,7 +10,7 @@ The `validate-manifest.ts` script performs comprehensive validation of `docker/p
 
 Ensures the manifest contains exactly:
 
-- **Total**: 38 extensions
+- **Total catalog entries**: 38 extensions (37 enabled by default, 1 disabled)
 - **Builtin**: 6 (PostgreSQL core extensions)
 - **PGDG**: 14 (pre-compiled from apt.postgresql.org)
 - **Compiled**: 18 (built from source)
@@ -84,7 +84,7 @@ The script automatically runs as a preflight check in `scripts/build.sh`:
 
 === VALIDATION RESULTS ===
 
-✅ Manifest validation passed (38 extensions: 6 builtin + 14 PGDG + 18 compiled)
+✅ Manifest validation passed (38 total catalog entries, 37 enabled: 6 builtin + 14 PGDG + 18 compiled)
 ```
 
 ## Error Examples

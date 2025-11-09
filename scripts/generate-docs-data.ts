@@ -11,10 +11,13 @@
  * Output: docs/.generated/docs-data.json
  */
 
+import { join } from "path";
 import { info, success, error } from "./utils/logger.ts";
 
-const MANIFEST_PATH = "/opt/apps/art/infra/aza-pg/docker/postgres/extensions.manifest.json";
-const OUTPUT_PATH = "/opt/apps/art/infra/aza-pg/docs/.generated/docs-data.json";
+// Derive project root from current file location (scripts/generate-docs-data.ts)
+const PROJECT_ROOT = join(import.meta.dir, "..");
+const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
+const OUTPUT_PATH = join(PROJECT_ROOT, "docs/.generated/docs-data.json");
 
 interface ManifestEntry {
   name: string;

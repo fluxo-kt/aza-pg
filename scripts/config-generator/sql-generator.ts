@@ -27,7 +27,7 @@ export function generateExtensionsInitScript(extensionsToEnable: ManifestEntry[]
     for (const entry of extensionsToEnable) {
       const displayName = entry.displayName ?? entry.name;
       const category = entry.category ?? "misc";
-      lines.push(`CREATE EXTENSION IF NOT EXISTS ${entry.name}; -- ${displayName} (${category})`);
+      lines.push(`CREATE EXTENSION IF NOT EXISTS "${entry.name}"; -- ${displayName} (${category})`);
     }
   } else {
     lines.push("-- No extensions enabled by default.");

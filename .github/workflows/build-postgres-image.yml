@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: bun install
@@ -158,7 +158,8 @@ jobs:
           echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 38 total extensions (6 builtin + 14 PGDG + 18 compiled)" >> $GITHUB_STEP_SUMMARY
+          echo "- 38 total catalog entries (37 enabled, 1 disabled: pgq)" >> $GITHUB_STEP_SUMMARY
+          echo "- 37 enabled extensions: 6 builtin + 14 PGDG + 17 compiled" >> $GITHUB_STEP_SUMMARY
           echo "- 6 baseline extensions auto-created: auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector (plpgsql builtin)" >> $GITHUB_STEP_SUMMARY
           echo "- 4 extensions preloaded by default: auto_explain, pg_cron, pg_stat_statements, pgaudit" >> $GITHUB_STEP_SUMMARY
           echo "- 31 additional extensions available on-demand via CREATE EXTENSION" >> $GITHUB_STEP_SUMMARY
@@ -395,7 +396,7 @@ jobs:
 
       - name: Test all extensions (comprehensive)
         run: |
-          echo "🧪 Testing all 38 extensions comprehensively..."
+          echo "🧪 Testing all 37 enabled extensions comprehensively..."
           docker run -d --name pg-ext-test \
             -e POSTGRES_PASSWORD=test \
             --memory=4g \

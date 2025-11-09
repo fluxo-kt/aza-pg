@@ -398,11 +398,11 @@ PostgreSQL builtins that should always work:
 
 **Comprehensive CI Testing Coverage:**
 
-All 37 extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check), totaling 117+ smoke tests.
+All 37 enabled extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check), totaling 117+ smoke tests.
 
 **Test Suite:**
 
-- `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all 37 extensions
+- `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all 37 enabled extensions
 - `scripts/test/test-auto-config.sh` - Auto-config detection across 4 memory scenarios
 - `scripts/test/test-pgbouncer-healthcheck.sh` - PgBouncer auth flow validation
 
@@ -477,7 +477,7 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 
 **Functional Test Coverage:**
 
-- 37 extensions × 3 dimensions = CREATE EXTENSION, functional test, metadata check
+- 37 enabled extensions × 3 dimensions = CREATE EXTENSION, functional test, metadata check
 - 117+ smoke tests with assertions
 - 100% extension coverage (no deferred testing)
 
@@ -621,7 +621,7 @@ GitHub Actions workflow runs all tests on:
 
 ```
 scripts/test/
-├── test-all-extensions-functional.ts  (37 extensions, 117+ smoke tests)
+├── test-all-extensions-functional.ts  (37 enabled extensions, 117+ smoke tests)
 ├── test-auto-config.sh                (10 auto-config scenarios: 512MB-64GB)
 ├── test-pgbouncer-healthcheck.sh      (8 PgBouncer auth flow tests)
 ├── test-pgbouncer-failures.sh         (6 failure scenario tests)

@@ -28,8 +28,15 @@ const config: GitHooksConfig = {
   /**
    * Commit-msg: Validate commit message format (optional, currently disabled)
    *
+   * Note: If you have an active commit-msg hook in .git/hooks/ from a previous
+   * installation, you may want to uninstall and reinstall hooks to sync with this config.
+   *
    * Uncomment to enable conventional commit validation:
    * "commit-msg": "bunx commitlint --edit $1"
+   *
+   * To sync hooks with this config:
+   * - bun run hooks:uninstall
+   * - bun run hooks:install
    */
 
   /**

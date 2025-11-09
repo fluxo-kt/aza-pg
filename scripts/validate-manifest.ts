@@ -11,9 +11,11 @@
  *   ALLOW_PG_STAT_MONITOR_DUAL=1 bun scripts/validate-manifest.ts  # Allow dual enable
  */
 
+import { join } from "path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
-const MANIFEST_PATH = "/opt/apps/art/infra/aza-pg/docker/postgres/extensions.manifest.json";
+const PROJECT_ROOT = join(import.meta.dir, "..");
+const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 
 interface Extension {
   name: string;

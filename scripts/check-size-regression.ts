@@ -17,9 +17,12 @@
  *   bun scripts/check-size-regression.ts --baseline-only    # Show baselines without checking
  */
 
+import { join } from "path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
-const MANIFEST_PATH = "/opt/apps/art/infra/aza-pg/docker/postgres/extensions.manifest.json";
+// Derive project root from current file location (scripts/check-size-regression.ts)
+const PROJECT_ROOT = join(import.meta.dir, "..");
+const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 
 interface Extension {
   name: string;

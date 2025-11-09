@@ -40,7 +40,7 @@
     "lib": ["ES2024"],
 
     // Bun-specific
-    "types": ["bun-types"],
+    "types": ["bun"],
     "verbatimModuleSyntax": false,
 
     // Projects

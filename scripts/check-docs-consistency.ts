@@ -10,10 +10,12 @@
  * Exits with error if mismatches found.
  */
 
+import { join } from "path";
 import { info, success, error, warning, section } from "./utils/logger.ts";
 import { Glob } from "bun";
 
-const DOCS_DATA_PATH = "/opt/apps/art/infra/aza-pg/docs/.generated/docs-data.json";
+const PROJECT_ROOT = join(import.meta.dir, "..");
+const DOCS_DATA_PATH = join(PROJECT_ROOT, "docs/.generated/docs-data.json");
 const DOC_PATHS = ["AGENTS.md", "README.md", "docs/**/*.md"];
 
 interface DocsData {
@@ -44,18 +46,46 @@ interface CheckResult {
 
 /**
  * Check if file contains extension count mentions
+ *
+ * Accepts both qualified counts:
+ * - "38 total" or "38 catalog" = OK (catalog entries)
+ * - "37 enabled" = OK (enabled extensions)
+ * - Bare "38" or "37" without qualifier = warn
  */
-function checkExtensionCounts(content: string, data: DocsData, _file: string): string[] {
+function checkExtensionCounts(content: string, _data: DocsData, _file: string): string[] {
   const errors: string[] = [];
 
-  // Check for "38 extensions" or similar patterns (should be 37 now)
-  const countPattern = /(\d+)\s+(extensions?|exts)/gi;
-  const matches = [...content.matchAll(countPattern)];
+  // Check for unqualified "38 extensions" (should be qualified as "38 total catalog entries" or "37 enabled")
+  const unqualified38Pattern = /(?<!total\s)(?<!catalog\s)38\s+extensions?(?!\s+\()/gi;
+  const unqualified37Pattern = /(?<!enabled\s)37\s+extensions?(?!\s+\()/gi;
 
-  for (const match of matches) {
-    const count = parseInt(match[1] || "0", 10);
-    if (count === 38) {
-      errors.push(`Found incorrect extension count: ${count} (should be ${data.extensions.total})`);
+  const matches38 = [...content.matchAll(unqualified38Pattern)];
+  const matches37 = [...content.matchAll(unqualified37Pattern)];
+
+  // Only error on truly bare mentions without context
+  for (const match of matches38) {
+    const lineStart = Math.max(0, (match.index || 0) - 50);
+    const context = content.substring(lineStart, (match.index || 0) + 50);
+
+    // Allow if context contains "total", "catalog", or "(37 enabled"
+    if (
+      !context.includes("total") &&
+      !context.includes("catalog") &&
+      !context.includes("(37 enabled")
+    ) {
+      errors.push(
+        `Found unqualified "38 extensions" - should specify "38 total catalog entries (37 enabled)"`
+      );
+    }
+  }
+
+  for (const match of matches37) {
+    const lineStart = Math.max(0, (match.index || 0) - 50);
+    const context = content.substring(lineStart, (match.index || 0) + 50);
+
+    // Allow if context contains "enabled"
+    if (!context.includes("enabled")) {
+      errors.push(`Found unqualified "37 extensions" - should specify "37 enabled extensions"`);
     }
   }
 
@@ -170,8 +200,8 @@ async function main() {
   const docFiles: string[] = [];
   for (const pattern of DOC_PATHS) {
     const glob = new Glob(pattern);
-    for await (const file of glob.scan({ cwd: "/opt/apps/art/infra/aza-pg" })) {
-      const fullPath = `/opt/apps/art/infra/aza-pg/${file}`;
+    for await (const file of glob.scan({ cwd: PROJECT_ROOT })) {
+      const fullPath = join(PROJECT_ROOT, file);
       if (!fullPath.includes("node_modules") && !fullPath.includes(".archived")) {
         docFiles.push(fullPath);
       }

@@ -11,11 +11,12 @@
  *   bun scripts/test-smoke.ts
  */
 
+import { join } from "path";
 import { error, info, section, testSummary } from "./utils/logger.ts";
 import type { TestResult } from "./utils/logger.ts";
 import { Glob } from "bun";
 
-const PROJECT_ROOT = "/opt/apps/art/infra/aza-pg";
+const PROJECT_ROOT = join(import.meta.dir, "..");
 
 /**
  * Test: YAML lint configuration exists

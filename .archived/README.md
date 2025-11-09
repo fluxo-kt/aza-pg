@@ -1,25 +1,20 @@
-# Archive Documentation
+# Archive
 
-This directory contains historical analysis documents from previous development phases.
+This directory previously contained historical audit reports, remediation summaries, and completed TODO checklists from 2025-01-07 through 2025-11-09.
 
-## ⚠️ Note on Accuracy
+**All removed** (2025-11-09) as they provided no future value:
+- Audit reports documenting past code reviews
+- TODO progress trackers for completed work
+- Remediation summaries of historical fixes
+- Verification reports of old changes
 
-The documentation in this archive may contain **outdated information** that does not reflect the current state of the project. These documents are preserved for historical reference and to track the evolution of design decisions.
+**Rationale:** These were logs of "what was done" not design decisions or technical rationale. All meaningful information is preserved in:
+- Git commit history (granular changes)
+- CHANGELOG.md (breaking changes, features, fixes)
+- Current documentation (AGENTS.md, ARCHITECTURE.md, etc.)
 
-**Current Extension Count:** 38 total (6 builtin + 14 PGDG + 18 source-compiled: 12 extensions + 6 tools)
-
-## Archived Documents
-
-- **extension-size-analysis.md** - Per-extension size analysis (dated 2025-11-05)
-- **README.md** - Historical overview with outdated extension counts
-
-## For Current Information
-
-Refer to the main project documentation:
-- `/AGENTS.md` (or `/CLAUDE.md` symlink) - Current architecture guide
-- `/docs/extensions/` - Up-to-date extension documentation
-- `/CHANGELOG.md` - Recent changes and current state
+**Future archiving policy:** Archive ONLY design decisions, rejected alternatives, or technical trade-offs with lasting value. Do NOT archive completed work logs, audit reports, or historical checklists.
 
 ---
 
-*Last Updated: 2025-11-07*
+*Last updated: 2025-11-09*

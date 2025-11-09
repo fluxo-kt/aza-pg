@@ -31,6 +31,9 @@ All notable changes to aza-pg will be documented in this file.
   - Updated to match yamllint latest syntax requirements
 - Fix shellcheck SC2295 warning in build-extensions.sh (Phase 9)
   - Properly quoted variable expansion in parameter substitution: `${pf#$dest/}` → `${pf#"$dest"/}`
+- Fix dependency validation for cross-stage PGDG dependencies (Phase 9)
+  - timescaledb_toolkit (cargo) can now depend on timescaledb (PGDG)
+  - Validation now checks full manifest for install_via: "pgdg" when dependency not in current stage
 
 ### Changed
 

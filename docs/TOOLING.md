@@ -27,6 +27,24 @@ All tooling choices follow these principles:
 **Status**: ✅ LOCKED - Core dependency, do not replace with Node.js
 **Configuration**: `bunfig.toml`, `.tool-versions`
 
+#### Nested Bun Config (scripts/config-generator/)
+
+**Decision**: KEEP nested `bunfig.toml` and `bun.lock` in `scripts/config-generator/`
+**Rationale**:
+
+- Security hardening: OSV scanner enabled for dependency vulnerability scanning
+- Supply chain protection: 1-day release delay (`minimumReleaseAge = 86400`) prevents immediate zero-day exploits
+- Isolation: Config generator is critical infrastructure that generates all stack configs - deserves extra protection
+- Trade-off: Slight complexity increase is acceptable for security benefits on critical infrastructure code
+
+**Configuration**: `scripts/config-generator/bunfig.toml`
+
+```toml
+[install.security]
+scanner = "bun-osv-scanner"
+minimumReleaseAge = 86400  # 1 day delay
+```
+
 ### TypeScript
 
 **Version**: 5.9.3+

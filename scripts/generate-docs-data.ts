@@ -142,19 +142,19 @@ async function main() {
   const tools = enabledEntries
     .filter((e) => e.kind === "tool")
     .map((e) => e.name)
-    .sort();
+    .toSorted();
 
   // Extensions: kind=extension or kind=builtin (need CREATE EXTENSION, except plpgsql)
   const extensions = enabledEntries
     .filter((e) => (e.kind === "extension" || e.kind === "builtin") && e.name !== "plpgsql")
     .map((e) => e.name)
-    .sort();
+    .toSorted();
 
   // Preload libraries: sharedPreload=true AND defaultEnable=true
   const preloadLibraries = enabledEntries
     .filter((e) => e.runtime.sharedPreload && e.runtime.defaultEnable)
     .map((e) => e.name)
-    .sort();
+    .toSorted();
 
   // Generate data
   const docsData: DocsData = {

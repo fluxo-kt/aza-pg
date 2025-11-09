@@ -2,7 +2,35 @@
 
 All notable changes to aza-pg will be documented in this file.
 
-## [Unreleased] - 2025-11-08
+## [Unreleased]
+
+### Fixed
+
+- Fix hardcoded test passwords in 6 test scripts (Phase 7)
+- Fix absolute paths in all TypeScript scripts for portability (Phase 6)
+- Fix 37 vs 38 extension count inconsistency across codebase (Phase 6)
+- Fix SQL identifier quoting in generated scripts (Phase 6)
+
+### Changed
+
+- Modernize tsconfig types to Bun 1.3+ convention (Phase 6)
+- Standardize GitHub Actions to oven-sh/setup-bun@v2 (Phase 6)
+- Make Dockerfile PGDG assertion dynamic based on manifest (Phase 7)
+
+### Added
+
+- Add Trivy vulnerability scanning to CI/CD pipeline (Phase 7)
+- Add SARIF export for hadolint and shellcheck (Phase 7)
+- Add OCI metadata labels to Dockerfile (Phase 7)
+- Add Bun-not-in-final-image assertion (Phase 7)
+
+### Removed
+
+- Remove unused yaml-lint npm package (Phase 6)
+
+---
+
+## [2025-11-08] - Security & Documentation Audit
 
 ### ⚠️ BREAKING CHANGES
 

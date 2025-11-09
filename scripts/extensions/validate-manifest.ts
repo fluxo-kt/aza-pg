@@ -71,7 +71,7 @@ function readManifest(): Manifest {
   } catch (validationError) {
     const message =
       validationError instanceof Error ? validationError.message : String(validationError);
-    throw new Error(`Manifest schema validation failed: ${message}`);
+    throw new Error(`Manifest schema validation failed: ${message}`, { cause: validationError });
   }
 
   return rawData;

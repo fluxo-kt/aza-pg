@@ -83,7 +83,7 @@ async function main() {
         .flatMap((entry) => entry.aptPackages ?? [])
         .filter((pkg): pkg is string => typeof pkg === "string" && pkg.length > 0)
     )
-  ).sort((a, b) => a.localeCompare(b));
+  ).toSorted((a, b) => a.localeCompare(b));
   const packagesPath = join("docker", "postgres", "extensions.build-packages.txt");
   await Bun.write(packagesPath, packages.join("\n") + "\n");
 

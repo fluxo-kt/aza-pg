@@ -1237,7 +1237,7 @@ console.log(`Failed: ${failed}`);
 console.log(`Total Duration: ${totalDuration}ms`);
 
 // Group by category
-const categories = [...new Set(results.map((r) => r.category))].sort();
+const categories = [...new Set(results.map((r) => r.category))].toSorted();
 console.log("\n" + "=".repeat(80));
 console.log("RESULTS BY CATEGORY");
 console.log("=".repeat(80));

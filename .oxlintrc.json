@@ -4,6 +4,11 @@
     "node": true,
     "es2024": true
   },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
   "rules": {
     "no-unused-vars": "error",
     "no-useless-escape": "error",

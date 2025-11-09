@@ -31,7 +31,7 @@ export function loadManifest(repoRoot: string): Manifest {
     return manifest;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to load manifest from ${manifestPath}: ${errorMsg}`);
+    throw new Error(`Failed to load manifest from ${manifestPath}: ${errorMsg}`, { cause: error });
   }
 }
 

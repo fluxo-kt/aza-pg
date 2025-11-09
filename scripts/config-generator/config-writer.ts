@@ -17,7 +17,7 @@ export function writeConfigFile(filePath: string, content: string): void {
     writeFileSync(filePath, content);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to write file ${filePath}: ${errorMsg}`);
+    throw new Error(`Failed to write file ${filePath}: ${errorMsg}`, { cause: error });
   }
 }
 
@@ -31,7 +31,7 @@ export function ensureDirectory(dirPath: string): void {
     mkdirSync(dirPath, { recursive: true });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to create directory ${dirPath}: ${errorMsg}`);
+    throw new Error(`Failed to create directory ${dirPath}: ${errorMsg}`, { cause: error });
   }
 }
 

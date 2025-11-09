@@ -19,7 +19,7 @@ export class ContainerManager {
       await $`cd ${stackPath} && docker compose ${composeFileArg} up -d`.quiet();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to start containers in ${stackPath}: ${errorMsg}`);
+      throw new Error(`Failed to start containers in ${stackPath}: ${errorMsg}`, { cause: error });
     }
   }
 
@@ -33,7 +33,7 @@ export class ContainerManager {
       await $`cd ${stackPath} && docker compose down -v`.quiet();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to stop containers in ${stackPath}: ${errorMsg}`);
+      throw new Error(`Failed to stop containers in ${stackPath}: ${errorMsg}`, { cause: error });
     }
   }
 
@@ -155,7 +155,7 @@ export class ContainerManager {
       await $`docker run ${detachArg} --name ${containerName} ${platformArg} ${envArgs} ${image}`.quiet();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to start container ${containerName}: ${errorMsg}`);
+      throw new Error(`Failed to start container ${containerName}: ${errorMsg}`, { cause: error });
     }
   }
 
@@ -169,7 +169,7 @@ export class ContainerManager {
       await $`docker rm -f ${containerName}`.quiet();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to stop container ${containerName}: ${errorMsg}`);
+      throw new Error(`Failed to stop container ${containerName}: ${errorMsg}`, { cause: error });
     }
   }
 }

@@ -279,9 +279,9 @@ async function validate(mode: "fast" | "all", parallel: boolean = false): Promis
 }
 
 // Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
-const args = Bun.argv.slice(2);
-const mode = args.includes("--all") ? "all" : "fast";
-const parallel = args.includes("--parallel");
+const args = new Set(Bun.argv.slice(2));
+const mode = args.has("--all") ? "all" : "fast";
+const parallel = args.has("--parallel");
 
 // Run validation
 await validate(mode, parallel);

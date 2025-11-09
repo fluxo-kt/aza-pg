@@ -143,6 +143,7 @@ All notable changes to aza-pg will be documented in this file.
 For detailed changelog history before 2025-11-08, see [CHANGELOG.archive.md](CHANGELOG.archive.md).
 
 **Recent highlights:**
+
 - 2025-11-06: Added pgq extension, pgflow workflow orchestration, manifest-driven build system
 - 2025-11-05: Extension classification fixes, documentation updates, manifest validator
 - 2025-11: PGDG hybrid strategy (14 extensions migrated), image size optimization (1.41GB→1.14GB), extension enable/disable architecture

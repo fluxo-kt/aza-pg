@@ -129,7 +129,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
           echo "- 38 total extensions (6 builtin + 14 PGDG + 18 compiled)" >> $GITHUB_STEP_SUMMARY
-          echo "- 7 baseline extensions auto-created: auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector" >> $GITHUB_STEP_SUMMARY
+          echo "- 6 baseline extensions auto-created: auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector (plpgsql builtin)" >> $GITHUB_STEP_SUMMARY
           echo "- 4 extensions preloaded by default: auto_explain, pg_cron, pg_stat_statements, pgaudit" >> $GITHUB_STEP_SUMMARY
           echo "- 31 additional extensions available on-demand via CREATE EXTENSION" >> $GITHUB_STEP_SUMMARY
           echo "- PGDG packages: pgvector, pg_cron, pgaudit, timescaledb, postgis, etc." >> $GITHUB_STEP_SUMMARY

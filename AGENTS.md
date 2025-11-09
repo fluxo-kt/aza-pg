@@ -8,7 +8,7 @@ Production PG18 stack: auto-adaptive config, 38 extensions (SHA-pinned), PgBounc
 
 **Stacks:** `primary/` = PG + PgBouncer + exporter. `replica/` = streaming replication. `single/` = standalone. All env-driven.
 
-**Extensions:** 38 total: 6 builtin + 14 PGDG (apt) + 18 compiled (source). Hybrid = PGDG speed + source flexibility. 7 baseline auto-created: `auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector`. 4 preloaded: `auto_explain, pg_cron, pg_stat_statements, pgaudit`.
+**Extensions:** 38 total: 6 builtin + 14 PGDG (apt) + 18 compiled (source). Hybrid = PGDG speed + source flexibility. 6 baseline auto-created: `auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector`. plpgsql builtin. 4 preloaded: `auto_explain, pg_cron, pg_stat_statements, pgaudit`.
 
 ## Auto-Config (Runtime)
 
@@ -62,7 +62,7 @@ Extension overhead ~100-250MB (pg_stat_statements, pgvector, timescaledb).
 
 **Shared (all stacks):**
 
-1. `01-extensions.sql` — Creates 7 baseline (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+1. `01-extensions.sql` — Creates 6 baseline (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). plpgsql builtin.
 2. `02-replication.sh` — `replicator` user + slot
 3. `03-pgsodium-init.sh` — Encryption key (if `ENABLE_PGSODIUM_INIT=true`)
 

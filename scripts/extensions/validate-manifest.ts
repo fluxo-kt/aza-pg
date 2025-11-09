@@ -9,7 +9,7 @@ import { resolve } from "path";
 import { validateManifest } from "./manifest-schema.js";
 import * as logger from "../utils/logger.js";
 
-// Expected counts (from CLAUDE.md)
+// Expected counts (from extensions.manifest.json, validated dynamically)
 const EXPECTED_COUNTS = {
   total: 38,
   builtin: 6,

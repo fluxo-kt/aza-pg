@@ -327,7 +327,7 @@ Unlike traditional extensions, pgflow is schema-based workflow state management.
 
 **Shared Script Order (ALL stacks):**
 
-1. `01-extensions.sql` — Creates 5 baseline extensions (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector). Additional 33 extensions available but disabled by default. MUST run first.
+1. `01-extensions.sql` — Creates 7 baseline extensions (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector). Additional 31 extensions available but disabled by default. MUST run first.
 2. `02-replication.sh` — Creates `replicator` user + replication slot (if replication enabled).
 3. `03-pgsodium-init.sh` — Initializes pgsodium extension and generates root key (if ENABLE_PGSODIUM_INIT=true, optional).
 
@@ -560,9 +560,10 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 
 **Git Hooks:**
 
-- **pre-commit** — Secret detection (`.env` files, hardcoded creds, large files), shellcheck validation
-- **pre-push** — Full validation suite (`bun run validate`)
-- Hooks are bash scripts in `.git/hooks/`, NOT bun-git-hooks (manual install preferred)
+- **pre-commit** — Linting (oxlint) + format check (prettier)
+- **pre-push** — Full validation suite (`bun run validate:full`: all linters + types)
+- Managed by `bun-git-hooks` (config in `git-hooks.config.ts`), installed as bash scripts in `.git/hooks/`
+- Install: `bun run hooks:install`, Uninstall: `bun run hooks:uninstall`
 
 **IDE Consistency:** `.editorconfig` enforces LF line endings, 2-space indents, UTF-8, trim trailing whitespace
 

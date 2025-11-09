@@ -21,9 +21,9 @@ const config: GitHooksConfig = {
    * Pre-push: Run full validation suite before pushing
    *
    * This catches issues before they reach the remote repository.
-   * Includes linting, formatting, and TypeScript type checking.
+   * Includes all linters (oxlint, shellcheck, hadolint, yaml), formatting, and TypeScript type checking.
    */
-  "pre-push": "bun run validate",
+  "pre-push": "bun run validate:full",
 
   /**
    * Commit-msg: Validate commit message format (optional, currently disabled)

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-09T21:56:11.736Z",
+  "generatedAt": "2025-11-09T22:06:08.904Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -855,8 +855,8 @@
       "source": {
         "type": "git-ref",
         "repository": "https://github.com/supabase/wrappers.git",
-        "ref": "eea6f870e6d5c00d758bd48f27c7f4c7e44d10f7",
-        "commit": "eea6f870e6d5c00d758bd48f27c7f4c7e44d10f7"
+        "ref": "fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712",
+        "commit": "fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712"
       },
       "build": {
         "type": "cargo-pgrx",

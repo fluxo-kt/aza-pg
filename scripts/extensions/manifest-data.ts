@@ -270,7 +270,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/supabase/wrappers.git",
-      ref: "eea6f870e6d5c00d758bd48f27c7f4c7e44d10f7",
+      ref: "fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712",
     },
     build: {
       type: "cargo-pgrx",

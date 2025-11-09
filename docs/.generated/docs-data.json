@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2025-11-09T15:47:17.062Z",
+  "extensions": {
+    "total": 37,
+    "byKind": {
+      "builtin": 6,
+      "extension": 25,
+      "tool": 6
+    },
+    "byInstallVia": {
+      "pgdg": 14,
+      "compiled": 17
+    },
+    "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "supautils", "wal2json"],
+    "extensions": [
+      "auto_explain",
+      "btree_gin",
+      "btree_gist",
+      "hll",
+      "http",
+      "hypopg",
+      "index_advisor",
+      "pg_cron",
+      "pg_hashids",
+      "pg_jsonschema",
+      "pg_partman",
+      "pg_repack",
+      "pg_stat_monitor",
+      "pg_stat_statements",
+      "pg_trgm",
+      "pgaudit",
+      "pgmq",
+      "pgroonga",
+      "pgrouting",
+      "pgsodium",
+      "plpgsql_check",
+      "postgis",
+      "rum",
+      "set_user",
+      "supabase_vault",
+      "timescaledb",
+      "timescaledb_toolkit",
+      "vector",
+      "vectorscale",
+      "wrappers"
+    ],
+    "preloadLibraries": ["auto_explain", "pg_cron", "pg_stat_statements", "pgaudit"]
+  },
+  "memoryTiers": [
+    {
+      "ram": "2GB",
+      "shared_buffers": "512MB",
+      "effective_cache_size": "1536MB",
+      "work_mem": "4MB",
+      "maintenance_work_mem": "64MB",
+      "max_connections": 120
+    },
+    {
+      "ram": "4GB",
+      "shared_buffers": "1024MB",
+      "effective_cache_size": "3072MB",
+      "work_mem": "5MB",
+      "maintenance_work_mem": "128MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "8GB",
+      "shared_buffers": "2048MB",
+      "effective_cache_size": "6144MB",
+      "work_mem": "10MB",
+      "maintenance_work_mem": "256MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "16GB",
+      "shared_buffers": "4096MB",
+      "effective_cache_size": "12288MB",
+      "work_mem": "20MB",
+      "maintenance_work_mem": "512MB",
+      "max_connections": 200
+    },
+    {
+      "ram": "32GB",
+      "shared_buffers": "6553MB",
+      "effective_cache_size": "24576MB",
+      "work_mem": "32MB",
+      "maintenance_work_mem": "1024MB",
+      "max_connections": 200
+    }
+  ]
+}

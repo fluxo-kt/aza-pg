@@ -101,7 +101,7 @@ All tooling choices follow these principles:
 - ArkType is much faster than Zod for runtime validation
 - Lower memory overhead
 - Better TypeScript inference
-- More efficient for large schemas (like manifest with 38 extensions)
+- More efficient for large schemas (like manifest with 37 extensions)
 
 **⚠️ IMPORTANT**: If any code suggests using Zod, it MUST be replaced with ArkType.
 

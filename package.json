@@ -13,6 +13,7 @@
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
     "generate": "bun scripts/config-generator/generator.ts",
+    "check:docs": "bun scripts/check-docs-consistency.ts",
     "hooks:install": "bun-git-hooks install",
     "hooks:uninstall": "bun-git-hooks uninstall"
   },

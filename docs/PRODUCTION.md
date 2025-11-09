@@ -380,7 +380,7 @@ For comprehensive memory allocation table with specific RAM tiers and connection
 
 ### Extension Optimization
 
-The aza-pg image includes 38 extensions by default. You can reduce image size and build time by disabling unused extensions via the manifest-driven system. See [docs/EXTENSIONS.md](EXTENSIONS.md#enabling-and-disabling-extensions) for step-by-step instructions.
+The aza-pg image includes 37 extensions by default. You can reduce image size and build time by disabling unused extensions via the manifest-driven system. See [docs/EXTENSIONS.md](EXTENSIONS.md#enabling-and-disabling-extensions) for step-by-step instructions.
 
 ### Connection Limits
 

@@ -35,7 +35,7 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 ## Features
 
 - **Auto-Configuration**: Detects RAM and CPU cores at runtime, automatically scales settings (cgroup v2 preferred, `/proc/meminfo` fallback, or manual `POSTGRES_MEMORY` override)
-- **Production Extensions**: 38 PostgreSQL extensions (pgflow workflow orchestration available as optional add-on)
+- **Production Extensions**: 37 PostgreSQL extensions (pgflow workflow orchestration available as optional add-on)
 - **Complete Stacks**: Single instance, Primary with PgBouncer + Exporter, Replica
 - **Supply Chain Security**: SHA-pinned extension sources, multi-platform builds (amd64/arm64)
 - **Connection Pooling**: PgBouncer with auth_query (SCRAM-SHA-256)
@@ -228,7 +228,7 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 All extensions are SHA-pinned for reproducible builds.
 
-**Note:** This image includes 38 extensions (6 built-in, 14 PGDG, 18 compiled from source). 6 baseline extensions (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector) are created automatically by init scripts. plpgsql is builtin and always available. 4 extensions are preloaded by default via `shared_preload_libraries`: auto_explain, pg_cron, pg_stat_statements, pgaudit. The remaining 31 extensions are available on-demand via CREATE EXTENSION. pgflow workflow orchestration is available as an optional add-on (see `examples/pgflow/`).
+**Note:** This image includes 37 extensions (6 built-in, 14 PGDG, 17 compiled from source). 6 baseline extensions (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector) are created automatically by init scripts. plpgsql is builtin and always available. 4 extensions are preloaded by default via `shared_preload_libraries`: auto_explain, pg_cron, pg_stat_statements, pgaudit. The remaining 30 extensions are available on-demand via CREATE EXTENSION. pgflow workflow orchestration is available as an optional add-on (see `examples/pgflow/`).
 
 ### Customizing Extensions
 

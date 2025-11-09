@@ -243,7 +243,7 @@ PGAUDIT_VERSION=18.0
 GitHub Actions adding native arm64 runners (beta 2024). When available:
 
 - Replace QEMU with native execution
-- Expand test coverage (all 38 extensions)
+- Expand test coverage (all 37 extensions)
 - Add performance benchmarks (amd64 vs arm64)
 - Keep QEMU tests as fallback
 

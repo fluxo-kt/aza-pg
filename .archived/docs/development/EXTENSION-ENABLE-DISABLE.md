@@ -8,12 +8,12 @@
 
 ## Problem Statement
 
-The `aza-pg` image currently bundles **38 extensions** (6 builtin + 14 PGDG + 18 compiled from source) totaling **319MB** of extension content and **~1.14GB total image size**. While this provides broad functionality, it creates several issues:
+The `aza-pg` image currently bundles **37 extensions** (6 builtin + 14 PGDG + 18 compiled from source) totaling **319MB** of extension content and **~1.14GB total image size**. While this provides broad functionality, it creates several issues:
 
 ### Current Pain Points
 
 1. **Build Time:** ~12 minutes total (7 min PGXS/autotools, 5 min Rust cargo-pgrx)
-2. **Image Size:** All 38 extensions built regardless of need
+2. **Image Size:** All 37 extensions built regardless of need
 3. **No Granular Control:** Users cannot selectively disable extensions at build time
 4. **Hardcoded Defaults:** 7 extensions enabled by default in `01-extensions.sql` (pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector, timescaledb, supautils)
 5. **Runtime vs Build Confusion:** `runtime.defaultEnable` only controls SQL `CREATE EXTENSION`, not whether extension is built/bundled
@@ -654,7 +654,7 @@ docker run --rm aza-pg:latest dpkg -l | grep -q "postgresql-18-cron"
 **Test 5: Measure Size Impact**
 
 ```bash
-# Baseline: All 38 extensions enabled
+# Baseline: All 37 extensions enabled
 ./scripts/build.sh --load
 BASELINE_SIZE=$(docker images aza-pg:latest --format "{{.Size}}")
 
@@ -688,7 +688,7 @@ time ./scripts/build.sh --load
 
 **Default Behavior (Backward Compatible):**
 
-- All 38 extensions remain `enabled: true` by default
+- All 37 extensions remain `enabled: true` by default
 - Same 7 extensions enabled at runtime
 - No image size or behavior changes
 

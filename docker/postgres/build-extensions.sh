@@ -434,7 +434,7 @@ process_entry() {
     if [[ ${#patched_files[@]} -gt 0 ]]; then
       for pf in "${patched_files[@]}"; do
         # Show relative path for readability
-        log "  - ${pf#$dest/}"
+        log "  - ${pf#"$dest"/}"
       done
     else
       log "  (no files modified - patches may not have matched)"

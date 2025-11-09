@@ -58,7 +58,7 @@ rules:
   # Truthy values: Avoid yes/no/on/off, use true/false
   truthy:
     level: warning
-    allowed:
+    allowed-values:
       - 'true'
       - 'false'
 

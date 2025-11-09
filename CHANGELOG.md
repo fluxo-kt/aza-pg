@@ -27,6 +27,10 @@ All notable changes to aza-pg will be documented in this file.
   - Disabled gitlint call since package not in package.json and not available via bunx
 - Fix build-extensions.sh to skip disabled extensions entirely (Phase 9)
   - Changed from "build for testing" to complete skip (prevents build failures on broken extensions)
+- Fix yamllint configuration syntax: `allowed:` → `allowed-values:` (Phase 9)
+  - Updated to match yamllint latest syntax requirements
+- Fix shellcheck SC2295 warning in build-extensions.sh (Phase 9)
+  - Properly quoted variable expansion in parameter substitution: `${pf#$dest/}` → `${pf#"$dest"/}`
 
 ### Changed
 

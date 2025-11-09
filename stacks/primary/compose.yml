@@ -43,7 +43,7 @@ services:
       start_period: 120s
 
   pgbouncer:
-    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1@sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e}
+    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
 

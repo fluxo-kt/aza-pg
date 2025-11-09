@@ -117,7 +117,7 @@ echo
 
 # Test extension loading
 echo "🧪 Testing extensions..."
-EXTENSIONS=("vector" "pg_trgm" "pg_cron" "pgaudit" "pg_stat_statements" "uuid-ossp" "btree_gin" "btree_gist")
+EXTENSIONS=("vector" "pg_trgm" "pg_cron" "pgaudit" "pg_stat_statements" "btree_gin" "btree_gist")
 
 echo "Creating extensions..."
 FAILED_EXTENSIONS=()

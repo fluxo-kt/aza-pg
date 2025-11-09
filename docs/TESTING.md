@@ -313,11 +313,13 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaud
 
 ## Test Categories
 
-### Core Extensions (6)
+### Core Extensions (5)
 
 PostgreSQL builtins that should always work:
 
-- btree_gist, btree_gin, pg_trgm, fuzzystrmatch, unaccent, uuid-ossp
+- btree_gist, btree_gin, pg_trgm, fuzzystrmatch, unaccent
+
+> **Note:** uuid-ossp is intentionally NOT enabled. PostgreSQL 18 includes the superior built-in `uuidv7()` function for time-ordered UUIDs with better indexing performance.
 
 ### Vector Search (2)
 

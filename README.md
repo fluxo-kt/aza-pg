@@ -60,9 +60,9 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - **pgvector 0.8.1**: Vector similarity search
 - **pg_cron 1.6.7**: Job scheduling
 - **pgAudit 18.0**: Audit logging
-- **PostgreSQL contrib**: pg_trgm, pg_stat_statements, auto_explain (also available: uuid-ossp, pgcrypto)
+- **PostgreSQL contrib**: pg_trgm, pg_stat_statements, auto_explain
 
-> **Note:** uuid-ossp and pgcrypto are built-in PostgreSQL contrib extensions that ship with the base image. They don't require manifest tracking or separate compilation.
+> **Note:** Additional PostgreSQL contrib extensions (pgcrypto, etc.) are available in the base image but not enabled by default. uuid-ossp is intentionally NOT enabled as PostgreSQL 18 includes the superior built-in `uuidv7()` function (time-ordered UUIDs with better indexing performance).
 
 ## Quick Start
 

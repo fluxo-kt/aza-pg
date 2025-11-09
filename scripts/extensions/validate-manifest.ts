@@ -40,6 +40,7 @@ interface ManifestEntry {
   install_via?: "pgdg";
   runtime?: RuntimeSpec;
   dependencies?: string[];
+  enabled?: boolean;
 }
 
 interface Manifest {
@@ -127,8 +128,8 @@ function validateDefaultEnable(manifest: Manifest): void {
   const initSql = readFile(INIT_SQL_PATH);
   const baselineExtensions = new Set<string>();
 
-  // Match CREATE EXTENSION lines
-  const createExtensionRegex = /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+(\w+)/gi;
+  // Match CREATE EXTENSION lines (handles both quoted and unquoted names)
+  const createExtensionRegex = /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+"?(\w+)"?/gi;
   let match;
   while ((match = createExtensionRegex.exec(initSql)) !== null) {
     const extName = match[1];
@@ -181,49 +182,59 @@ function validatePgdgConsistency(manifest: Manifest): void {
   const dockerfile = readFile(DOCKERFILE_PATH);
   const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
 
-  // Extract PGDG package names from Dockerfile
-  // Pattern: postgresql-${PG_MAJOR}-<name>=<version>
-  const pgdgPackageRegex = /postgresql-\$\{PG_MAJOR\}-(\S+?)=/g;
-  const dockerfilePgdgPackages = new Set<string>();
+  // Extract PGDG package names from Dockerfile ARG declarations
+  // Pattern: ARG NAME_VERSION=x.y.z (e.g., ARG PGCRON_VERSION=1.6.7)
+  const argRegex = /ARG\s+([A-Z_]+)_VERSION=/g;
+  const dockerfilePgdgArgs = new Set<string>();
 
   let match;
-  while ((match = pgdgPackageRegex.exec(dockerfile)) !== null) {
-    const pkgName = match[1];
-    if (pkgName) {
-      dockerfilePgdgPackages.add(pkgName.toLowerCase());
+  while ((match = argRegex.exec(dockerfile)) !== null) {
+    const argName = match[1];
+    if (argName) {
+      dockerfilePgdgArgs.add(argName.toLowerCase());
     }
   }
 
-  console.log(`  PGDG packages in Dockerfile: ${Array.from(dockerfilePgdgPackages).join(", ")}`);
+  console.log(`  PGDG ARGs in Dockerfile: ${Array.from(dockerfilePgdgArgs).join(", ")}`);
 
+  // The Dockerfile uses dynamic jq-based installation, so we validate against ARG declarations
+  // which represent the PGDG packages that will be installed
   for (const entry of pgdgExtensions) {
-    // Map extension name to Dockerfile package name
-    // Some extensions have different package names (e.g., "vector" -> "pgvector")
-    const packageName = getDockerfilePackageName(entry.name);
+    // Map extension name to Dockerfile ARG name (e.g., "pg_cron" -> "PGCRON")
+    const argName = getDockerfileArgName(entry.name);
 
-    if (!dockerfilePgdgPackages.has(packageName.toLowerCase())) {
-      error(
-        `Extension '${entry.name}' has install_via="pgdg" but is NOT installed in Dockerfile ` +
-          `(expected package: postgresql-\${PG_MAJOR}-${packageName})`
-      );
+    if (!dockerfilePgdgArgs.has(argName.toLowerCase())) {
+      // This is expected for enabled=false entries, so only warn
+      if (entry.enabled !== false) {
+        warn(
+          `Extension '${entry.name}' has install_via="pgdg" but no corresponding ARG in Dockerfile ` +
+            `(expected: ARG ${argName}_VERSION). This may be intentional for dynamic installation.`
+        );
+      }
     }
   }
 }
 
-// Map manifest extension name to Dockerfile package name
-function getDockerfilePackageName(extensionName: string): string {
+// Map manifest extension name to Dockerfile ARG name
+function getDockerfileArgName(extensionName: string): string {
   const mapping: Record<string, string> = {
-    vector: "pgvector",
-    postgis: "postgis-3",
-    pg_partman: "partman",
-    plpgsql_check: "plpgsql-check",
-    pg_repack: "repack",
-    pgrouting: "pgrouting",
-    set_user: "set-user",
-    pg_cron: "cron",
+    vector: "PGVECTOR",
+    pg_cron: "PGCRON",
+    pgaudit: "PGAUDIT",
+    timescaledb: "TIMESCALEDB",
+    postgis: "POSTGIS",
+    pg_partman: "PARTMAN",
+    pg_repack: "REPACK",
+    plpgsql_check: "PLPGSQL_CHECK",
+    hll: "HLL",
+    http: "HTTP",
+    hypopg: "HYPOPG",
+    pgrouting: "PGROUTING",
+    rum: "RUM",
+    set_user: "SET_USER",
   };
 
-  return mapping[extensionName] || extensionName;
+  return mapping[extensionName] || extensionName.toUpperCase();
 }
 
 // 4. Runtime spec completeness

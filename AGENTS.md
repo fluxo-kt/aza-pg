@@ -540,6 +540,58 @@ Scripts in `stacks/*/configs/initdb/` execute alphabetically alongside shared sc
 
 **Why SHA Pinning:** Version tags are mutable (attacker repush). Commit SHAs are immutable forever. Trade-off: Manual SHA updates vs supply chain security.
 
+## Development Tooling
+
+**Runtime:** Bun 1.3.0+ (primary), TypeScript 5.9.3 strict mode, Node 24.0.0+ (engines min). All scripts/tools use Bun-native APIs (`$` spawn, bunx). NO Node-compat needed.
+
+**Code Quality:**
+
+- **Linting:** Oxlint 0.11.1 (Rust-based, 50-100x faster than ESLint) — `bun run lint`
+- **Formatting:** Prettier 3.6.2 — `bun run format` / `bun run format:check`
+- **Type Check:** TypeScript strict mode — `bun run type-check`
+- **Shell Linting:** shellcheck (20 bash scripts) — `bun run lint:shell`
+- **Dockerfile Linting:** hadolint via Docker — `bun run lint:docker`
+- **YAML Linting:** yaml-lint — `bun run lint:yaml`
+
+**Validation Pipelines:**
+
+- `bun run validate` — Oxlint + Prettier check + TypeScript (fast, pre-commit)
+- `bun run validate:full` — All linters including shell/docker/yaml (comprehensive, pre-push)
+
+**Git Hooks:**
+
+- **pre-commit** — Secret detection (`.env` files, hardcoded creds, large files), shellcheck validation
+- **pre-push** — Full validation suite (`bun run validate`)
+- Hooks are bash scripts in `.git/hooks/`, NOT bun-git-hooks (manual install preferred)
+
+**IDE Consistency:** `.editorconfig` enforces LF line endings, 2-space indents, UTF-8, trim trailing whitespace
+
+**Package Management:** bun.lock (binary format, committed). All deps in devDependencies (infrastructure project, no runtime deps). ArkType for runtime validation (NOT Zod — locked decision in TOOLING.md).
+
+**Testing:** 4,185 lines of integration tests (Docker-based, no mocks). Test via `./scripts/test/*.ts` using Bun's native `$` spawn. Tests cover 11 scenarios: extension loading, auto-config detection, replication, stack deployments, multi-arch builds.
+
+**Critical Files:**
+
+- `package.json` — Scripts, workspaces (root + `scripts/config-generator`)
+- `tsconfig.json` — Strict mode, ES2024 target, bundler module resolution
+- `.oxlintrc.json` — Linting rules (correctness/suspicious/pedantic/restriction)
+- `.prettierrc.json` — Code formatting rules
+- `git-hooks.config.ts` — Hook definitions (reference, but hooks installed manually)
+- `.editorconfig` — IDE settings
+
+**Key Commands:**
+
+```bash
+bun install                 # Install dependencies
+bun run validate           # Fast validation (lint + format + types)
+bun run validate:full      # Comprehensive (all linters)
+bun run lint:fix           # Auto-fix Oxlint issues
+bun run format             # Format all files
+./scripts/build.sh         # Build Docker image
+```
+
+**Tooling Philosophy:** Bun-first (no Node quirks), strict TypeScript (no `any` escape hatches), fast linters (Oxlint/Rust), comprehensive validation (shell/docker/yaml), immutable dependencies (bun.lock committed).
+
 ---
 
 **Philosophy:** One image, minimal config tuning. Auto-adapts to hardware. SHA-pinned for reproducibility. Env-driven for universality.

@@ -2,7 +2,7 @@
 
 **Purpose**: This document records all intentional tooling and library decisions for the aza-pg project. These choices must not be changed accidentally or without explicit approval.
 
-**Last Updated**: 2025-11-08
+**Last Updated**: 2025-11-09
 
 ---
 
@@ -53,13 +53,33 @@ All tooling choices follow these principles:
 - Sufficient rule coverage for infrastructure project
 - Better CI/CD performance
 
-### Prettier
+### Prettier (temporary - migrate to Oxfmt when stable)
 
 **Version**: 3.6.2+
 **Why**: Industry-standard code formatter, zero-config philosophy
-**Status**: ✅ LOCKED
+**Status**: ✅ CURRENT - **Planned migration to Oxfmt when stable**
 **Configuration**: `.prettierrc.json`, `.prettierignore`
 **Usage**: `bun run format`, `bun run format:check`
+
+**Decision Rationale**:
+
+- Prettier is battle-tested and production-ready (current stable: 3.6.2)
+- Oxfmt is preferred but **NOT YET STABLE** (pre-alpha as of Nov 2025, npm package marked "DO NOT USE")
+- When Oxfmt reaches stable (planned: 99.99% Prettier-compatible):
+  - Performance: ~45x faster than Prettier, 2-3x faster than Biome
+  - Migration: Minimal diffs due to high Prettier compatibility
+  - Config: Just rename `.prettierrc.json` → `.oxfmtrc.jsonc`
+
+**Migration Checklist (when Oxfmt stable)**:
+
+1. ✅ Verify Oxfmt npm package is stable (not pre-alpha)
+2. ✅ Test formatting on codebase: `npx oxfmt --check .`
+3. ✅ Compare diff size (should be minimal due to 99.99% compat)
+4. ✅ Rename config file: `.prettierrc.json` → `.oxfmtrc.jsonc`
+5. ✅ Update package.json: Replace `prettier` with `oxfmt`
+6. ✅ Update scripts: `oxfmt` instead of `prettier`
+7. ✅ Update git hooks to use `oxfmt`
+8. ✅ Document migration in CHANGELOG.md
 
 ---
 
@@ -178,18 +198,23 @@ All tooling choices follow these principles:
    - Reason: Replaced by Oxlint (50-100x faster)
    - Infrastructure project doesn't need ESLint's plugin ecosystem
 
-3. **Husky** ❌
+3. **Oxfmt** ❌ (temporarily)
+   - Reason: Pre-alpha, npm package marked "DO NOT USE" (as of Nov 2025)
+   - Status: Will migrate when stable (planned 99.99% Prettier compat, 45x faster)
+   - Current: Using Prettier 3.6.2 until Oxfmt reaches production-ready state
+
+4. **Husky** ❌
    - Reason: Replaced by bun-git-hooks (Bun-native, lighter)
 
-4. **Node.js** ❌ (for scripting)
+5. **Node.js** ❌ (for scripting)
    - Reason: Replaced by Bun (faster, native TypeScript)
    - Note: Node.js compatibility maintained in `package.json` engines for CI/CD
 
-5. **Jest/Vitest** ❌
+6. **Jest/Vitest** ❌
    - Reason: Using Bun's native test capabilities
    - Overhead not needed for infrastructure testing
 
-6. **ts-node** ❌
+7. **ts-node** ❌
    - Reason: Bun runs TypeScript natively
 
 ---
@@ -218,14 +243,14 @@ These choices are **LOCKED** and must not be changed without explicit approval:
 
 ## 📋 Quick Reference
 
-| Category   | Choice        | Alternative Rejected | Why                        |
-| ---------- | ------------- | -------------------- | -------------------------- |
-| Runtime    | Bun 1.3.0+    | Node.js              | Faster, native TS          |
-| Linting    | Oxlint 0.11+  | ESLint               | 50-100x faster             |
-| Formatting | Prettier 3.6+ | -                    | Standard                   |
-| Validation | **ArkType**   | **Zod**              | **Faster, more efficient** |
-| Git Hooks  | bun-git-hooks | Husky                | Bun-native                 |
-| Testing    | Bun native    | Jest/Vitest          | Simpler for infra          |
+| Category   | Choice        | Alternative Rejected | Why                            |
+| ---------- | ------------- | -------------------- | ------------------------------ |
+| Runtime    | Bun 1.3.0+    | Node.js              | Faster, native TS              |
+| Linting    | Oxlint 0.11+  | ESLint               | 50-100x faster                 |
+| Formatting | Prettier 3.6+ | Oxfmt (pre-alpha)    | Prettier stable, Oxfmt pending |
+| Validation | **ArkType**   | **Zod**              | **Faster, more efficient**     |
+| Git Hooks  | bun-git-hooks | Husky                | Bun-native                     |
+| Testing    | Bun native    | Jest/Vitest          | Simpler for infra              |
 
 ---
 

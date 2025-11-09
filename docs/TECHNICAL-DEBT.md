@@ -6,25 +6,26 @@ This document tracks known technical debt, temporary workarounds, and upstream d
 
 ### Issue 1: pg_jsonschema pgrx Version Mismatch
 
-**Location:** `docker/postgres/build-extensions.sh:251-254`
+**Location:** `docker/postgres/extensions.manifest.json` (pg_jsonschema.build.patches)
 
 **Problem:** pg_jsonschema uses pgrx 0.16.0 but PostgreSQL 18 requires pgrx 0.16.1+
 
-**Current Workaround:** Sed-based Cargo.toml patching during build:
+**Current Workaround:** Manifest-driven Cargo.toml patching:
 
-```bash
-sed -i 's/pgrx = "0\.16\.0"/pgrx = "=0.16.1"/' "$dest/Cargo.toml"
-sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml"
+```json
+"patches": [
+  "s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"
+]
 ```
 
-**Impact:** Fragile build process, patches may break with upstream changes
+**Impact:** Requires build-time patching; may break with upstream Cargo.toml changes
 
 **Resolution Path:**
 
 1. Monitor https://github.com/supabase/pg_jsonschema for pgrx 0.16.1+ update
 2. Test build without patch after upstream update
-3. Remove sed commands from build script
-4. Update manifest.json commit SHA to patched version
+3. Remove patches array from manifest.json
+4. Update manifest.json commit SHA to fixed upstream version
 
 **Last Verified:** 2025-11-09
 
@@ -32,27 +33,26 @@ sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml"
 
 ### Issue 2: wrappers pgrx Version Mismatch
 
-**Location:** `docker/postgres/build-extensions.sh:255-260`
+**Location:** `docker/postgres/extensions.manifest.json` (wrappers.build.patches)
 
 **Problem:** Supabase wrappers uses pgrx 0.16.0, needs 0.16.1+ for PG18
 
-**Current Workaround:** Sed-based patching across 2 Cargo.toml files:
+**Current Workaround:** Manifest-driven Cargo.toml patching:
 
-```bash
-sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' \
-  "$dest/supabase-wrappers/Cargo.toml"
-# ... (4 total sed commands)
+```json
+"patches": [
+  "s/pgrx = { version = \"=0\\.16\\.0\"/pgrx = { version = \"=0.16.1\"/"
+]
 ```
 
-**Impact:** Complex multi-file patching, high maintenance burden
+**Impact:** Requires build-time patching; may break with upstream Cargo.toml changes
 
 **Resolution Path:**
 
 1. Monitor https://github.com/supabase/wrappers for pgrx 0.16.1+ update
-2. Verify both supabase-wrappers/ and wrappers/ Cargo.toml updated
-3. Test build without patches
-4. Remove all 4 sed commands
-5. Update manifest.json commit SHA
+2. Test build without patches after upstream update
+3. Remove patches array from manifest.json
+4. Update manifest.json commit SHA to fixed upstream version
 
 **Last Verified:** 2025-11-09
 
@@ -60,26 +60,27 @@ sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' \
 
 ### Issue 3: supautils Static Keyword Missing
 
-**Location:** `docker/postgres/build-extensions.sh:261-263`
+**Location:** `docker/postgres/extensions.manifest.json` (supautils.build.patches)
 
 **Problem:** Variable `log_skipped_evtrigs` should be `static bool` not `bool`
 
-**Current Workaround:** Sed-based source code patching:
+**Current Workaround:** Manifest-driven C source patching:
 
-```bash
-sed -i 's/^bool[[:space:]]\{1,\}log_skipped_evtrigs/static bool log_skipped_evtrigs/' \
-  "$dest/src/supautils.c"
+```json
+"patches": [
+  "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+]
 ```
 
-**Impact:** Modifies C source at build time, non-standard approach
+**Impact:** Modifies C source at build time via sed; non-standard but automated
 
 **Resolution Path:**
 
 1. Monitor https://github.com/supabase/supautils for static keyword fix
 2. Alternative: Submit upstream PR with fix
-3. Test build without patch after merge
-4. Remove sed command
-5. Update manifest.json commit SHA
+3. Test build without patches after merge
+4. Remove patches array from manifest.json
+5. Update manifest.json commit SHA to fixed upstream version
 
 **Last Verified:** 2025-11-09
 

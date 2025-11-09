@@ -259,6 +259,39 @@ These choices are **LOCKED** and must not be changed without explicit approval:
 
 ---
 
+## 🔧 Script Execution Patterns
+
+### Command Execution Strategy
+
+**Pattern**: Mixed use of `Bun.spawn()` and shell template literals
+
+The codebase uses two different approaches for executing shell commands:
+
+1. **Bun.spawn()** (~76 usages)
+   - Use cases: Programmatic control, output capture, error handling
+   - Benefits: Better control over stdin/stdout/stderr, async handling
+   - Examples: Extension builds, validation checks, Docker operations
+
+2. **Template literals ($\`...\`)** (~202 usages)
+   - Use cases: Simple shell commands, Unix pipelines, quick operations
+   - Benefits: Concise syntax, natural shell command composition
+   - Examples: File operations, git commands, quick checks
+
+**Rationale**: Pragmatic approach - use the right tool for each case
+
+- `Bun.spawn()` when you need programmatic control or output processing
+- Template literals when the shell pipeline is the most natural expression
+- No mandate to unify - both have valid use cases
+
+**Decision**: This pattern is **intentional** and **not enforced**. Choose based on:
+
+- Complexity: Simple one-liners → template literals
+- Output handling: Need to parse/process → Bun.spawn()
+- Error handling: Critical operations → Bun.spawn() with proper error checking
+- Shell features: Pipelines, redirects → template literals
+
+---
+
 ## 📋 Quick Reference
 
 | Category   | Choice        | Alternative Rejected | Why                            |

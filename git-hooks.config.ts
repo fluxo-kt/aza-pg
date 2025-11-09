@@ -13,9 +13,9 @@ const config: GitHooksConfig = {
    * Pre-commit: Run fast validation checks on staged files
    *
    * This ensures code quality before commits are created.
-   * Runs fast validation: Oxlint, Prettier check, and TypeScript type checking.
+   * Runs fast validation with --staged flag: Oxlint and Prettier check on staged files only, TypeScript type checking on full project.
    */
-  "pre-commit": "bun run validate",
+  "pre-commit": "bun run validate --staged",
 
   /**
    * Pre-push: Run full validation suite before pushing

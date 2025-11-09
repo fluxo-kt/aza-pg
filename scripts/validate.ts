@@ -7,6 +7,7 @@
  *   bun scripts/validate.ts              # Fast validation (oxlint, prettier, tsc)
  *   bun scripts/validate.ts --fast       # Same as above (explicit)
  *   bun scripts/validate.ts --all        # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts --staged     # Run only on staged files (for pre-commit hooks)
  *   bun scripts/validate.ts --parallel   # Run checks in parallel (faster but less readable errors)
  *
  * Environment variables:
@@ -134,12 +135,17 @@ async function runChecksSequential(
 /**
  * Main validation function
  */
-async function validate(mode: "fast" | "all", parallel: boolean = false): Promise<void> {
+async function validate(
+  mode: "fast" | "all",
+  parallel: boolean = false,
+  stagedOnly: boolean = false
+): Promise<void> {
   const startTime = Date.now();
 
   const modeLabel = mode === "fast" ? "FAST" : "FULL";
   const parallelLabel = parallel ? " (PARALLEL)" : "";
-  section(`Validation Mode: ${modeLabel}${parallelLabel}`);
+  const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
+  section(`Validation Mode: ${modeLabel}${parallelLabel}${stagedLabel}`);
 
   // Core checks (always run)
   const coreChecks: ValidationCheck[] = [
@@ -151,20 +157,36 @@ async function validate(mode: "fast" | "all", parallel: boolean = false): Promis
     },
     {
       name: "Oxlint",
-      command: ["bun", "x", "oxlint", "."],
-      description: "JavaScript/TypeScript linting",
+      command: stagedOnly
+        ? [
+            "sh",
+            "-c",
+            "git diff --cached --name-only --diff-filter=d | grep '\\.tsx\\?$' | xargs -r bun x oxlint",
+          ]
+        : ["bun", "x", "oxlint", "."],
+      description: stagedOnly
+        ? "JavaScript/TypeScript linting (staged files only)"
+        : "JavaScript/TypeScript linting",
       required: true,
     },
     {
       name: "Prettier",
-      command: ["bun", "x", "prettier", "--check", "."],
-      description: "Code formatting check",
+      command: stagedOnly
+        ? [
+            "sh",
+            "-c",
+            "git diff --cached --name-only --diff-filter=d | xargs -r bun x prettier --check",
+          ]
+        : ["bun", "x", "prettier", "--check", "."],
+      description: stagedOnly
+        ? "Code formatting check (staged files only)"
+        : "Code formatting check",
       required: true,
     },
     {
       name: "TypeScript",
       command: ["bun", "x", "tsc", "--noEmit"],
-      description: "Type checking",
+      description: "Type checking (requires full project context)",
       required: true,
     },
   ];
@@ -282,6 +304,7 @@ async function validate(mode: "fast" | "all", parallel: boolean = false): Promis
 const args = new Set(Bun.argv.slice(2));
 const mode = args.has("--all") ? "all" : "fast";
 const parallel = args.has("--parallel");
+const stagedOnly = args.has("--staged");
 
 // Run validation
-await validate(mode, parallel);
+await validate(mode, parallel, stagedOnly);

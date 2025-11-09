@@ -60,7 +60,9 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - **pgvector 0.8.1**: Vector similarity search
 - **pg_cron 1.6.7**: Job scheduling
 - **pgAudit 18.0**: Audit logging
-- **PostgreSQL contrib**: pg_trgm, pg_stat_statements, auto_explain, uuid-ossp
+- **PostgreSQL contrib**: pg_trgm, pg_stat_statements, auto_explain (also available: uuid-ossp, pgcrypto)
+
+> **Note:** uuid-ossp and pgcrypto are built-in PostgreSQL contrib extensions that ship with the base image. They don't require manifest tracking or separate compilation.
 
 ## Quick Start
 
@@ -214,6 +216,8 @@ For comprehensive memory allocation table with additional tiers and extension ov
 ### PgBouncer Auth
 
 The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/scripts/pgbouncer-entrypoint.sh`). Provide `PGBOUNCER_AUTH_PASS` in `.env`; passwords may include special characters because they are escaped before being written to `.pgpass`. The rendered config never stores credentials in plaintext.
+
+> **Note:** For PgBouncer-specific password escaping rules (only `:` and `\` need escaping, NOT `@` or `&`), see [AGENTS.md § Gotchas](AGENTS.md#gotchas).
 
 ## Extensions
 

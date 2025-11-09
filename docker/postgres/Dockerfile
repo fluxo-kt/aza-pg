@@ -45,6 +45,9 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 COPY docker/postgres/build-extensions.sh /usr/local/bin/build-extensions.sh
 RUN chmod +x /usr/local/bin/build-extensions.sh
 
+# Install build dependencies for builder-base stage
+# Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
+# dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \
@@ -129,7 +132,10 @@ LABEL org.opencontainers.image.version="${PG_VERSION}"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
-# Runtime libraries for compiled extensions
+# Install runtime libraries for compiled extensions (final stage)
+# Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
+# Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
+# are intentional for multi-stage build optimization. DO NOT consolidate.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eu && \

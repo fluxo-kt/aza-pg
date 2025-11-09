@@ -186,9 +186,9 @@ log_success "Replication slot verified in pg_replication_slots"
 log_info "Step 3: Deploying replica stack..."
 cd "$REPLICA_STACK_PATH"
 
-cat > .env.test << 'EOF'
-POSTGRES_PASSWORD=test_password_replica_123
-PG_REPLICATION_PASSWORD=replication_test_replica_123
+cat > .env.test << EOF
+POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD}
+PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASSWORD}
 POSTGRES_IMAGE=aza-pg:pg18
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-replica-test-replica

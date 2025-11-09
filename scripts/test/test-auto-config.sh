@@ -29,6 +29,9 @@ fi
 
 IMAGE_TAG="${1:-aza-pg:pg18}"
 
+# Generate random test password at runtime
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+
 if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "❌ ERROR: Docker image not found: $IMAGE_TAG"
   echo "   Build image first: ./scripts/build.sh"
@@ -254,31 +257,31 @@ case_16gb_tier() {
 }
 
 run_case "Test 1: Manual override without memory limit" case_manual_override \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_MEMORY=1536
 
 run_case "Test 2: 2GB memory limit (cgroup detection)" case_cgroup_2g \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 3: 512MB memory limit (minimum supported)" case_low_mem \
   --memory="512m" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 4: Manual high-memory override (64GB)" case_high_mem_manual \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_MEMORY=65536
 
 run_case "Test 5: CPU detection with limits" case_cpu_detection \
   --cpus="2" \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 # Test 6: Below minimum memory - should fail
 echo "Test 6: Below minimum memory (256MB - should fail)"
 echo "===================================================="
 container="pg-autoconfig-below-min-$$"
-if docker run -d --name "$container" --memory="256m" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1; then
+if docker run -d --name "$container" --memory="256m" -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" "$IMAGE_TAG" >/dev/null 2>&1; then
   # Poll with timeout instead of fixed sleep
   if wait_for_postgres "localhost" "5432" "postgres" "15" "$container" >/dev/null 2>&1; then
     # Container actually started (unexpected - should fail for < 512MB)
@@ -306,20 +309,20 @@ echo
 
 run_case "Test 7: Custom shared_preload_libraries override" case_custom_shared_preload \
   --memory="1g" \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements"
 
 run_case "Test 8: 4GB memory tier (medium production)" case_4gb_tier \
   --memory=4g \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 9: 8GB memory tier (large production)" case_8gb_tier \
   --memory=8g \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 10: 16GB memory tier (high-load)" case_16gb_tier \
   --memory=16g \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 echo "========================================"
 echo "✅ All auto-config tests passed!"

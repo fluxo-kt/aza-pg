@@ -35,6 +35,9 @@ fi
 
 IMAGE_TAG="${1:-aza-pg:pg18}"
 
+# Generate random test password at runtime
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+
 if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
   log_error "Docker image not found: $IMAGE_TAG"
   echo "   Build image first: ./scripts/build.sh"
@@ -79,7 +82,7 @@ PYTHON
 
   # Copy manifest into container for parsing
   CONTAINER_NAME="pg-disabled-test1-$$"
-  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1
+  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" "$IMAGE_TAG" >/dev/null 2>&1
   docker cp "$MANIFEST_PATH" "$CONTAINER_NAME:/tmp/manifest.json" >/dev/null 2>&1
 
   disabled_exts=$(docker exec "$CONTAINER_NAME" python3 <<'PYTHON'
@@ -104,7 +107,7 @@ PYTHON
   # Check 01-extensions.sql inside the image
   INIT_SQL_PATH="/docker-entrypoint-initdb.d/01-extensions.sql"
   CONTAINER_NAME="pg-disabled-test1-verify-$$"
-  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1
+  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" "$IMAGE_TAG" >/dev/null 2>&1
 
   local init_sql
   init_sql=$(docker exec "$CONTAINER_NAME" cat "$INIT_SQL_PATH" 2>/dev/null || echo "")
@@ -147,7 +150,7 @@ test2() {
   # Read manifest to find disabled extensions
   MANIFEST_PATH="$SCRIPT_DIR/../../docker/postgres/extensions.manifest.json"
   CONTAINER_NAME="pg-disabled-test2-$$"
-  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1
+  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" "$IMAGE_TAG" >/dev/null 2>&1
   docker cp "$MANIFEST_PATH" "$CONTAINER_NAME:/tmp/manifest.json" >/dev/null 2>&1
 
   local disabled_exts
@@ -321,7 +324,7 @@ test5() {
   # Read manifest to find disabled extensions (excluding tools)
   MANIFEST_PATH="$SCRIPT_DIR/../../docker/postgres/extensions.manifest.json"
   CONTAINER_NAME="pg-disabled-test5-$$"
-  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD=test "$IMAGE_TAG" >/dev/null 2>&1
+  docker run -d --name "$CONTAINER_NAME" -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" "$IMAGE_TAG" >/dev/null 2>&1
   docker cp "$MANIFEST_PATH" "$CONTAINER_NAME:/tmp/manifest.json" >/dev/null 2>&1
 
   # Wait for PostgreSQL to be ready

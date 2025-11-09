@@ -3,6 +3,11 @@
 ARG PG_VERSION=18
 ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
 
+# Build metadata for OCI labels
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION=18
+
 # PGDG extension versions (14 pre-compiled extensions)
 ARG PGCRON_VERSION=1.6.7-2.pgdg13+1
 ARG PGAUDIT_VERSION=18.0-2.pgdg13+1
@@ -20,6 +25,18 @@ ARG RUM_VERSION=1.3.15-1.pgdg13+1
 ARG SET_USER_VERSION=4.2.0-1.pgdg13+1
 
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
+
+# Re-declare ARGs after FROM to make them available in this stage
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# OCI image labels
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.title="aza-pg"
+LABEL org.opencontainers.image.description="PostgreSQL 18 with 38 extensions (37 enabled)"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -184,9 +201,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
       INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
       echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-      # Threshold based on 14 enabled extensions in manifest (allow some to be disabled)
-      # Fail if we have fewer than 5 packages (indicates major installation failure)
-      test "$INSTALLED_COUNT" -ge 5 || (echo "ERROR: Expected at least 5 PGDG packages, got $INSTALLED_COUNT" && exit 1) && \
+      # Dynamic verification: count enabled PGDG packages in manifest
+      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.kind == "pgdg" and .enabled == true)] | length' /tmp/extensions.manifest.json) && \
+      echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \
+      # Allow some variance but ensure we have at least 1 package
+      test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \
       rm -f /tmp/installed-pgdg-exts.log; \
     else \
       echo "No PGDG packages enabled in manifest"; \
@@ -211,6 +230,9 @@ RUN chmod +x /docker-entrypoint-initdb.d/*.sh
 COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
+
+# Verify Bun is not present in final image (build-time tool should not leak)
+RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
     CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1

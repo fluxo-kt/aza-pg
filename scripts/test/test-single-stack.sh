@@ -73,10 +73,13 @@ trap cleanup EXIT
 
 cd "$SINGLE_STACK_PATH"
 
+# Generate random test password at runtime
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+
 # Create test .env file
 log_info "Creating test environment configuration..."
-cat > .env.test << 'EOF'
-POSTGRES_PASSWORD=test_password_single_123
+cat > .env.test << EOF
+POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD}
 POSTGRES_IMAGE=aza-pg:pg18
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-single-test

@@ -33,6 +33,9 @@ fi
 
 IMAGE_TAG="${1:-aza-pg:pg18}"
 
+# Generate random test password at runtime
+TEST_POSTGRES_PASSWORD="${TEST_POSTGRES_PASSWORD:-test_postgres_$(date +%s)_$$}"
+
 if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "❌ ERROR: Docker image not found: $IMAGE_TAG"
   echo "   Build image first: ./scripts/build.sh"
@@ -384,29 +387,29 @@ test_combined_preload() {
 
 run_case "Test 1: pg_plan_filter without preload" test_pg_plan_filter_not_preloaded \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 2: pg_plan_filter with preload" test_pg_plan_filter_preloaded \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter"
 
 run_case "Test 3: pg_safeupdate session preload" test_pg_safeupdate_session_preload \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 4: supautils without preload" test_supautils_not_preloaded \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD"
 
 run_case "Test 5: supautils with preload" test_supautils_preloaded \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils"
 
 run_case "Test 6: Combined preload (pg_plan_filter + supautils)" test_combined_preload \
   --memory="2g" \
-  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_PASSWORD="$TEST_POSTGRES_PASSWORD" \
   -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter,supautils"
 
 echo "========================================"

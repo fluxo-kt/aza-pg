@@ -30,7 +30,9 @@ fi
 IMAGE_TAG="${1:-aza-pg:pg18}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEST_PASSWORD="test_password_123"
+
+# Generate random test password at runtime
+TEST_PASSWORD="${TEST_PASSWORD:-test_postgres_$(date +%s)_$$}"
 
 # Guard: Verify Dockerfile exists
 DOCKERFILE_PATH="$PROJECT_ROOT/docker/postgres/Dockerfile"

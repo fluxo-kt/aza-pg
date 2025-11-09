@@ -40,7 +40,8 @@ async function isDockerAvailable(): Promise<boolean> {
     });
     const exitCode = await proc.exited;
     return exitCode === 0;
-  } catch {
+  } catch (err) {
+    console.debug(`Docker availability check failed: ${String(err)}`);
     return false;
   }
 }
@@ -184,18 +185,30 @@ async function validate(mode: "fast" | "all", parallel: boolean = false): Promis
     },
     {
       name: "ShellCheck",
-      command: [
-        "sh",
-        "-c",
-        'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -exec shellcheck {} +',
-      ],
+      command: Bun.env.CI
+        ? [
+            "sh",
+            "-c",
+            'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -print0 | xargs -0 shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; test ! -s shellcheck-results.json',
+          ]
+        : [
+            "sh",
+            "-c",
+            'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -exec shellcheck {} +',
+          ],
       description: "Shell script linting",
       required: true,
       envOverride: "ALLOW_MISSING_SHELLCHECK",
     },
     {
       name: "Hadolint",
-      command: ["sh", "-c", "docker run --rm -i hadolint/hadolint < docker/postgres/Dockerfile"],
+      command: Bun.env.CI
+        ? [
+            "sh",
+            "-c",
+            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q \'"level":"error"\' hadolint-results.sarif',
+          ]
+        : ["sh", "-c", "docker run --rm -i hadolint/hadolint < docker/postgres/Dockerfile"],
       description: "Dockerfile linting",
       required: true,
       requiresDocker: true,

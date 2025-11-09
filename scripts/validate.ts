@@ -4,14 +4,15 @@
  * Runs all linting, formatting, and type checking in one command
  *
  * Usage:
- *   bun scripts/validate.ts           # Fast validation (oxlint, prettier, tsc)
- *   bun scripts/validate.ts --fast    # Same as above (explicit)
- *   bun scripts/validate.ts --all     # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts              # Fast validation (oxlint, prettier, tsc)
+ *   bun scripts/validate.ts --fast       # Same as above (explicit)
+ *   bun scripts/validate.ts --all        # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts --parallel   # Run checks in parallel (faster but less readable errors)
  *
  * Environment variables:
- *   ALLOW_MISSING_SHELLCHECK=1        # Don't fail if shellcheck not installed
- *   ALLOW_MISSING_HADOLINT=1          # Don't fail if Docker/hadolint unavailable
- *   ALLOW_MISSING_YAMLLINT=1          # Don't fail if Docker/yamllint unavailable
+ *   ALLOW_MISSING_SHELLCHECK=1           # Don't fail if shellcheck not installed
+ *   ALLOW_MISSING_HADOLINT=1             # Don't fail if Docker/hadolint unavailable
+ *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
 import { error, info, section, success, warning } from "./utils/logger.ts";
@@ -46,9 +47,9 @@ async function isDockerAvailable(): Promise<boolean> {
 
 /**
  * Run a validation check
- * @returns true if check passed, false otherwise
+ * @returns object with passed status and whether it's critical
  */
-async function runCheck(check: ValidationCheck): Promise<boolean> {
+async function runCheck(check: ValidationCheck): Promise<{ passed: boolean; critical: boolean }> {
   info(`Running: ${check.description}`);
 
   // Check if this check can be skipped via environment variable
@@ -60,10 +61,10 @@ async function runCheck(check: ValidationCheck): Promise<boolean> {
     const message = `${check.name} skipped - Docker not available. Install Docker or set ${check.envOverride}=1`;
     if (effectivelyRequired) {
       error(message);
-      return false;
+      return { passed: false, critical: true };
     } else {
       warning(message);
-      return false;
+      return { passed: false, critical: false };
     }
   }
 
@@ -77,36 +78,76 @@ async function runCheck(check: ValidationCheck): Promise<boolean> {
 
     if (exitCode === 0) {
       success(`${check.name} passed`);
-      return true;
+      return { passed: true, critical: effectivelyRequired };
     } else {
       if (effectivelyRequired) {
         error(`${check.name} failed (exit code ${exitCode})`);
+        return { passed: false, critical: true };
       } else {
         warning(`${check.name} failed (exit code ${exitCode}) - non-critical`);
+        return { passed: false, critical: false };
       }
-      return false;
     }
   } catch (err) {
     const message = `${check.name} error: ${err instanceof Error ? err.message : String(err)}`;
     if (effectivelyRequired) {
       error(message);
+      return { passed: false, critical: true };
     } else {
       warning(`${message} - non-critical`);
+      return { passed: false, critical: false };
     }
-    return false;
   }
+}
+
+/**
+ * Run checks in parallel
+ */
+async function runChecksParallel(
+  checks: ValidationCheck[]
+): Promise<{ passed: boolean; critical: boolean }[]> {
+  info("Running checks in parallel...");
+
+  const promises = checks.map(async (check) => {
+    return await runCheck(check);
+  });
+
+  return await Promise.all(promises);
+}
+
+/**
+ * Run checks sequentially
+ */
+async function runChecksSequential(
+  checks: ValidationCheck[]
+): Promise<{ passed: boolean; critical: boolean }[]> {
+  const results: { passed: boolean; critical: boolean }[] = [];
+  for (const check of checks) {
+    const result = await runCheck(check);
+    results.push(result);
+    console.log(""); // Blank line between checks
+  }
+  return results;
 }
 
 /**
  * Main validation function
  */
-async function validate(mode: "fast" | "all"): Promise<void> {
+async function validate(mode: "fast" | "all", parallel: boolean = false): Promise<void> {
   const startTime = Date.now();
 
-  section(`Validation Mode: ${mode === "fast" ? "FAST" : "FULL"}`);
+  const modeLabel = mode === "fast" ? "FAST" : "FULL";
+  const parallelLabel = parallel ? " (PARALLEL)" : "";
+  section(`Validation Mode: ${modeLabel}${parallelLabel}`);
 
   // Core checks (always run)
   const coreChecks: ValidationCheck[] = [
+    {
+      name: "Manifest Validation",
+      command: ["bun", "scripts/validate-manifest.ts"],
+      description: "Extension manifest validation",
+      required: true,
+    },
     {
       name: "Oxlint",
       command: ["bun", "x", "oxlint", "."],
@@ -129,6 +170,18 @@ async function validate(mode: "fast" | "all"): Promise<void> {
 
   // Extended checks (only in --all mode)
   const extendedChecks: ValidationCheck[] = [
+    {
+      name: "Documentation Consistency",
+      command: ["bun", "scripts/check-docs-consistency.ts"],
+      description: "Documentation consistency check",
+      required: true,
+    },
+    {
+      name: "Smoke Tests",
+      command: ["bun", "scripts/test-smoke.ts"],
+      description: "Quick smoke tests (YAML lint, script refs, generated data)",
+      required: false,
+    },
     {
       name: "ShellCheck",
       command: [
@@ -170,40 +223,39 @@ async function validate(mode: "fast" | "all"): Promise<void> {
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,
     },
+    {
+      name: "Extension Size Regression",
+      command: ["bun", "scripts/check-size-regression.ts"],
+      description: "Check for unexpected extension binary size increases (warn-only)",
+      required: false,
+    },
   ];
 
   // Determine which checks to run
   const checks = mode === "all" ? [...coreChecks, ...extendedChecks] : coreChecks;
 
-  // Run all checks
-  const results: boolean[] = [];
-  for (const check of checks) {
-    const passed = await runCheck(check);
-    results.push(passed);
-    console.log(""); // Blank line between checks
-  }
+  // Run all checks (parallel or sequential)
+  const results = parallel ? await runChecksParallel(checks) : await runChecksSequential(checks);
 
   // Summary
   const duration = Date.now() - startTime;
   section("Validation Summary");
 
-  const passedCount = results.filter((r) => r).length;
-  const failedCount = results.filter((r) => !r).length;
+  const passedCount = results.filter((r) => r.passed).length;
+  const failedCount = results.filter((r) => !r.passed).length;
+  const criticalFailures = results.filter((r) => !r.passed && r.critical).length;
   const total = results.length;
 
   console.log(`Total checks: ${total}`);
   console.log(`Passed: ${passedCount}`);
   console.log(`Failed: ${failedCount}`);
+  console.log(`Critical failures: ${criticalFailures}`);
   console.log(`Duration: ${(duration / 1000).toFixed(2)}s`);
   console.log("");
 
   // Determine if we should exit with error
-  const criticalFailures = checks
-    .map((check, idx) => ({ check, passed: results[idx] }))
-    .filter(({ check, passed }) => check.required && !passed);
-
-  if (criticalFailures.length > 0) {
-    error(`${criticalFailures.length} critical check(s) failed`);
+  if (criticalFailures > 0) {
+    error(`${criticalFailures} critical check(s) failed`);
     throw new Error("Validation failed");
   } else if (failedCount > 0) {
     warning(`${failedCount} non-critical check(s) failed`);
@@ -216,6 +268,7 @@ async function validate(mode: "fast" | "all"): Promise<void> {
 // Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
 const args = Bun.argv.slice(2);
 const mode = args.includes("--all") ? "all" : "fast";
+const parallel = args.includes("--parallel");
 
 // Run validation
-await validate(mode);
+await validate(mode, parallel);

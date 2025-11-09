@@ -12,8 +12,12 @@
     "type-check": "tsc --noEmit",
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
+    "validate:parallel": "bun scripts/validate.ts --all --parallel",
     "generate": "bun scripts/config-generator/generator.ts",
     "check:docs": "bun scripts/check-docs-consistency.ts",
+    "check:manifest": "bun scripts/validate-manifest.ts",
+    "check:size": "bun scripts/check-size-regression.ts",
+    "test:smoke": "bun scripts/test-smoke.ts",
     "hooks:install": "bun-git-hooks install",
     "hooks:uninstall": "bun-git-hooks uninstall"
   },

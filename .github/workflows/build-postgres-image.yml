@@ -52,6 +52,12 @@ jobs:
       - name: Run full validation
         run: bun run validate:full
 
+      - name: Check documentation consistency
+        run: bun run check:docs
+
+      - name: Run smoke tests
+        run: bun run test:smoke
+
       - name: Verify manifest sync
         run: |
           bun run generate

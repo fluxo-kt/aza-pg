@@ -1,10 +1,10 @@
-# 📚 aza-pg Documentation Index
+# aza-pg Documentation Index
 
 **Welcome to the aza-pg documentation.** This index organizes all documentation by audience and purpose to help you find what you need quickly.
 
 ---
 
-## 🚀 Quick Start (New Users)
+## Quick Start (New Users)
 
 Start here if you're new to aza-pg:
 
@@ -14,7 +14,7 @@ Start here if you're new to aza-pg:
 
 ---
 
-## 👨‍💻 By Audience
+## By Audience
 
 ### For DevOps & System Administrators
 
@@ -194,13 +194,13 @@ docs/
 
 ---
 
-## 🗄️ Historical Documentation
+## Historical Documentation
 
 Historical audit reports and outdated documents are archived in **[../.archived/](../.archived/)** (not actively maintained).
 
 ---
 
-## 📝 Documentation Standards
+## Documentation Standards
 
 - **AGENTS.md**: Canonical architecture patterns and agent operations guide
 - **README.md**: User-facing quick start and feature overview (root directory)
@@ -219,6 +219,4 @@ Historical audit reports and outdated documents are archived in **[../.archived/
 
 ---
 
-**Last Updated:** 2025-11-08
-**Maintained By:** aza-pg project
 **Questions?** Check [../AGENTS.md](../AGENTS.md) for architecture patterns and conventions.

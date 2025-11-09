@@ -7,6 +7,7 @@ import { formatSetting } from "../utils/guc-formatter.js";
 import { loadManifest, getDefaultEnabledExtensions } from "./manifest-loader.js";
 import { generateExtensionsInitScript } from "./sql-generator.js";
 import { writeConfigFile, writeConfigWithDir } from "./config-writer.js";
+import { success, info, error } from "../utils/logger.js";
 
 const SHARED_CATEGORY_FIELDS = {
   io: ["ioMethod", "ioCombineLimit"] as const,
@@ -304,11 +305,11 @@ function generatePgHba(stack: StackType): string {
 }
 
 function generateConfigs() {
-  console.log("🔧 Generating PostgreSQL configurations...\n");
+  info("Generating PostgreSQL configurations...\n");
 
   try {
     // Generate base config
-    console.log("📝 Generating base configuration...");
+    info("Generating base configuration...");
     const baseConf = generateBaseConf(BASE_CONFIG.common);
     const baseConfPath = join(REPO_ROOT, "docker/postgres/configs/postgresql-base.conf");
 
@@ -319,7 +320,7 @@ function generateConfigs() {
     const stacks: StackType[] = ["primary", "replica", "single"];
 
     for (const stack of stacks) {
-      console.log(`\n📝 Generating ${stack} stack configurations...`);
+      info(`Generating ${stack} stack configurations...`);
 
       const stackOverrides = BASE_CONFIG.stacks[stack];
       const settings = mergeSettings(BASE_CONFIG.common, stackOverrides);
@@ -345,7 +346,7 @@ function generateConfigs() {
     }
 
     // Generate 01-extensions.sql init script
-    console.log("\n📝 Generating extension init script...");
+    info("Generating extension init script...");
     const manifest = loadManifest(REPO_ROOT);
     const extensionsToEnable = getDefaultEnabledExtensions(manifest);
     const extensionsInitScript = generateExtensionsInitScript(extensionsToEnable);
@@ -356,13 +357,13 @@ function generateConfigs() {
     writeConfigFile(extensionsInitPath, extensionsInitScript);
     console.log(`   ✓ ${extensionsInitPath}`);
   } catch (err) {
-    const error = err as Error;
-    console.error(`\n❌ Configuration generation failed: ${error.message}`);
+    const err_error = err as Error;
+    error(`Configuration generation failed: ${err_error.message}`);
     process.exit(1);
   }
 
-  console.log("\n✅ Configuration generation complete!\n");
-  console.log("📋 Generated files:");
+  success("Configuration generation complete!\n");
+  info("Generated files:");
   console.log("   - docker/postgres/configs/postgresql-base.conf");
   console.log("   - stacks/primary/configs/postgresql-primary.conf");
   console.log("   - stacks/primary/configs/pg_hba.conf");

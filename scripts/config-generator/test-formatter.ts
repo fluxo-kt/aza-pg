@@ -5,6 +5,8 @@
  * Validates camelCase to snake_case conversion and PostgreSQL GUC formatting
  */
 
+import { success, info } from "../utils/logger.js";
+
 // Import the functions (we'll need to export them from generator.ts first)
 // For now, we'll duplicate the core logic for testing
 
@@ -221,7 +223,7 @@ const testCases: TestCase[] = [
 ];
 
 // Run tests
-console.log("🧪 Running formatSetting() tests...\n");
+info("Running formatSetting() tests...\n");
 
 let passed = 0;
 let failed = 0;
@@ -253,4 +255,4 @@ if (failed > 0) {
   process.exit(1);
 }
 
-console.log("\n✅ All tests passed!");
+success("All tests passed!");

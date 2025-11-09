@@ -9,8 +9,7 @@ scripts/
 ├── lib/              # Shared library functions
 ├── test/             # Test and validation scripts
 ├── tools/            # Operational tooling
-├── build.sh          # Main build script
-└── generate-configs.sh  # Configuration generator
+└── build.sh          # Main build script
 ```
 
 ## Quick Reference
@@ -24,8 +23,7 @@ scripts/
 ./scripts/build.sh --push             # Build and push to registry
 
 # Generate stack configurations
-bun run generate                      # Direct (requires workspace dependencies)
-./scripts/generate-configs.sh         # Shell wrapper (auto-installs deps, checks for bun)
+bun run generate                      # Recommended method
 ```
 
 ### Testing
@@ -363,30 +361,21 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 
 ---
 
-#### `generate-configs.sh`
+#### `generate-configs.sh` (DEPRECATED)
 
-Generates PostgreSQL and PgBouncer configurations from TypeScript generator.
+**DEPRECATED:** Use `bun run generate` instead.
 
-**Features:**
+This script is a legacy shim that redirects to `bun run generate`.
 
-- DRY configuration management
-- Shared base config extraction
-- Stack-specific overrides
-- Consistent formatting
-
-**Usage:**
+**Migration:**
 
 ```bash
+# Old (deprecated)
 ./scripts/generate-configs.sh
+
+# New (recommended)
+bun run generate
 ```
-
-**Requirements:** `bun` (JavaScript runtime)
-
-**Output:** Regenerated configs in:
-
-- `docker/postgres/configs/postgresql-base.conf`
-- `stacks/*/configs/postgresql.conf`
-- `stacks/*/configs/pgbouncer.ini`
 
 ---
 

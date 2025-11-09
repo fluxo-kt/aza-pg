@@ -428,7 +428,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 1. Fork the repository
 2. Create a feature branch
 3. Make changes
-4. Regenerate configs if you touch `scripts/config-generator` (`bun run generate` or `./scripts/generate-configs.sh`)
+4. Regenerate configs if you touch `scripts/config-generator` (`bun run generate`)
 5. Test locally (build image + deploy stack)
 6. Submit pull request
 

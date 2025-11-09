@@ -7,6 +7,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
+import { success, info, error, warning } from "../utils/logger.js";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 
@@ -195,7 +196,7 @@ function validateReplicaConfig(result: ValidationResult): void {
 }
 
 // Run validations
-console.log("🔍 Validating PostgreSQL configurations...\n");
+info("Validating PostgreSQL configurations...\n");
 
 const configs = [
   {
@@ -220,7 +221,7 @@ let allValid = true;
 
 for (const config of configs) {
   const fullPath = join(REPO_ROOT, config.path);
-  console.log(`📄 ${config.path}`);
+  info(config.path);
 
   const result = parseConfig(fullPath);
   validateExtensionNamespaces(result);
@@ -230,22 +231,22 @@ for (const config of configs) {
   }
 
   if (result.errors.length > 0) {
-    console.log("   ❌ Errors:");
-    for (const error of result.errors) {
-      console.log(`      ${error}`);
+    error("Errors:");
+    for (const err of result.errors) {
+      console.log(`      ${err}`);
     }
     allValid = false;
   }
 
   if (result.warnings.length > 0) {
-    console.log("   ⚠️  Warnings:");
-    for (const warning of result.warnings) {
-      console.log(`      ${warning}`);
+    warning("Warnings:");
+    for (const warn of result.warnings) {
+      console.log(`      ${warn}`);
     }
   }
 
   if (result.valid && result.errors.length === 0) {
-    console.log(`   ✅ Valid (${result.settings.length} settings)`);
+    success(`Valid (${result.settings.length} settings)`);
   }
 
   console.log("");
@@ -254,9 +255,9 @@ for (const config of configs) {
 console.log("=".repeat(50));
 
 if (allValid) {
-  console.log("✅ All configurations are valid!\n");
+  success("All configurations are valid!\n");
   process.exit(0);
 } else {
-  console.log("❌ Some configurations have errors!\n");
+  error("Some configurations have errors!\n");
   process.exit(1);
 }

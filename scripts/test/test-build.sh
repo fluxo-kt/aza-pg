@@ -5,6 +5,9 @@
 # Examples:
 #   ./test-build.sh                    # Use default tag 'aza-pg:pg18'
 #   ./test-build.sh my-custom:tag       # Use custom tag
+#
+# NOTE: This bash script should eventually be migrated to TypeScript using Bun.
+# See scripts/test/test-*.ts for TypeScript test examples using container-manager.ts
 
 set -euo pipefail
 

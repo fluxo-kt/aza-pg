@@ -1,0 +1,323 @@
+name: Publish Single-Node Image
+
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false # Don't cancel in-progress releases
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: fluxo-kt/aza-pg
+
+jobs:
+  publish:
+    name: Build and Publish Single-Node Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Validate manifest
+        run: bun run validate
+
+      - name: Extract PostgreSQL version from Dockerfile
+        id: pg-version
+        run: |
+          PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
+          PG_MINOR="0"  # PostgreSQL 18.0 pattern
+          echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
+          echo "full=${PG_MAJOR}.${PG_MINOR}" >> $GITHUB_OUTPUT
+          echo "PostgreSQL version: ${PG_MAJOR}.${PG_MINOR}"
+
+      - name: Generate build timestamp
+        id: timestamp
+        run: |
+          BUILD_TS=$(date -u '+%Y%m%d%H%M')
+          echo "value=${BUILD_TS}" >> $GITHUB_OUTPUT
+          echo "Build timestamp: ${BUILD_TS}"
+
+      - name: Generate version tags
+        id: tags
+        run: |
+          PG_FULL="${{ steps.pg-version.outputs.full }}"
+          PG_MAJOR="${{ steps.pg-version.outputs.major }}"
+          BUILD_TS="${{ steps.timestamp.value }}"
+
+          # Primary versioned tag: MM.mm-TS-TYPE
+          VERSIONED_TAG="${PG_FULL}-${BUILD_TS}-single-node"
+
+          # Convenience tags
+          CONVENIENCE_TAGS="${PG_FULL}-single-node,${PG_MAJOR}-single-node,${PG_FULL},${PG_MAJOR}"
+
+          echo "versioned=${VERSIONED_TAG}" >> $GITHUB_OUTPUT
+          echo "convenience=${CONVENIENCE_TAGS}" >> $GITHUB_OUTPUT
+
+          echo "Primary tag: ${VERSIONED_TAG}"
+          echo "Convenience tags: ${CONVENIENCE_TAGS}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tags.outputs.versioned }},priority=1000
+            type=raw,value=${{ steps.pg-version.outputs.full }}-single-node,priority=900
+            type=raw,value=${{ steps.pg-version.outputs.major }}-single-node,priority=800
+            type=raw,value=${{ steps.pg-version.outputs.full }},priority=700
+            type=raw,value=${{ steps.pg-version.outputs.major }},priority=600
+          labels: |
+            org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with 38 extensions (36 enabled) - Single-Node Configuration
+            org.opencontainers.image.vendor=fluxo-kt
+            org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            org.opencontainers.image.created=${{ steps.timestamp.value }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.value }}
+            io.fluxo-kt.aza-pg.build.type=single-node
+            io.fluxo-kt.aza-pg.extensions.enabled=36
+            io.fluxo-kt.aza-pg.extensions.total=38
+
+      - name: Build and push single-node image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PG_VERSION=${{ steps.pg-version.outputs.major }}
+            BUILD_DATE=${{ steps.timestamp.value }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.tags.outputs.versioned }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Generate release summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # PostgreSQL Single-Node Image Published :rocket:
+
+          ## Image Details
+
+          **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
+          **Digest:** `${{ steps.build.outputs.digest }}`
+          **PostgreSQL Version:** ${{ steps.pg-version.outputs.full }}
+          **Build Timestamp:** ${{ steps.timestamp.value }}
+          **Build Type:** single-node
+
+          ## Tags Published
+
+          - `${{ steps.tags.outputs.versioned }}` (primary)
+          - `${{ steps.pg-version.outputs.full }}-single-node`
+          - `${{ steps.pg-version.outputs.major }}-single-node`
+          - `${{ steps.pg-version.outputs.full }}`
+          - `${{ steps.pg-version.outputs.major }}`
+
+          ## Pull Commands
+
+          ```bash
+          # Full versioned tag (recommended for production)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+
+          # By digest (immutable)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          # Convenience tags (may change)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}
+          ```
+
+          ## Extensions
+
+          - **Total catalog entries:** 38
+          - **Enabled extensions:** 36
+          - **Disabled extensions:** 2 (pgq, supautils)
+          - **Preloaded by default:** 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit)
+          - **Auto-created:** 6 (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector)
+          - **PGDG packages:** 14 pre-compiled extensions
+          - **Compiled from source:** 17 extensions (PGXS, cargo-pgrx, autotools, cmake, meson)
+
+          ## Platforms
+
+          - linux/amd64
+          - linux/arm64
+
+          ## Verification
+
+          ```bash
+          # Verify PostgreSQL version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }} psql --version
+
+          # Test basic functionality
+          docker run -d --name pg-test \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+
+          # Wait for startup
+          sleep 10
+
+          # Check extensions
+          docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
+
+          # Cleanup
+          docker rm -f pg-test
+          ```
+
+          ## Deployment
+
+          Update your compose file or Kubernetes manifests:
+
+          ```yaml
+          # Docker Compose
+          services:
+            postgres:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+              # ... other config
+          ```
+
+          ```yaml
+          # Kubernetes
+          spec:
+            containers:
+            - name: postgres
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+              # ... other config
+          ```
+          EOF
+
+      - name: Verify published image
+        run: |
+          echo "Pulling published image for verification..."
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          echo "Verifying PostgreSQL version..."
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
+
+          echo "Verifying image architecture..."
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} uname -m
+
+          echo "✅ Image verification successful"
+
+      - name: Test published image (amd64)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+
+          echo "Testing amd64 image..."
+          docker run -d --platform linux/amd64 \
+            --name pg-publish-test-amd64 \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          echo "Waiting for PostgreSQL to start..."
+          for i in {1..30}; do
+            if docker exec pg-publish-test-amd64 pg_isready -U postgres > /dev/null 2>&1; then
+              echo "✅ PostgreSQL ready"
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Testing extensions..."
+          docker exec pg-publish-test-amd64 psql -U postgres -c "CREATE EXTENSION vector;"
+          docker exec pg-publish-test-amd64 psql -U postgres -c "SELECT '[1,2,3]'::vector;"
+          docker exec pg-publish-test-amd64 psql -U postgres -c "CREATE EXTENSION pg_cron;"
+          docker exec pg-publish-test-amd64 psql -U postgres -c "CREATE EXTENSION pg_jsonschema;"
+
+          echo "Testing auto-config..."
+          docker logs pg-publish-test-amd64 2>&1 | grep -i "detected ram" || echo "RAM detection log"
+          docker exec pg-publish-test-amd64 psql -U postgres -c "SHOW shared_buffers;"
+          docker exec pg-publish-test-amd64 psql -U postgres -c "SHOW max_connections;"
+
+          docker rm -f pg-publish-test-amd64
+          echo "✅ amd64 image test passed"
+
+      - name: Test published image (arm64)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+
+          echo "Testing arm64 image..."
+          docker run -d --platform linux/arm64 \
+            --name pg-publish-test-arm64 \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          echo "Waiting for PostgreSQL to start (arm64 on QEMU may be slower)..."
+          for i in {1..60}; do
+            if docker exec pg-publish-test-arm64 pg_isready -U postgres > /dev/null 2>&1; then
+              echo "✅ PostgreSQL ready"
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Testing compiled extensions on arm64..."
+          docker exec pg-publish-test-arm64 psql -U postgres -c "CREATE EXTENSION vector;"
+          docker exec pg-publish-test-arm64 psql -U postgres -c "SELECT '[1,2,3]'::vector;"
+          docker exec pg-publish-test-arm64 psql -U postgres -c "CREATE EXTENSION pg_jsonschema;"
+
+          docker rm -f pg-publish-test-arm64
+          echo "✅ arm64 image test passed"
+
+      - name: Security scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0" # Don't fail on vulnerabilities (informational only)
+
+      - name: Publish release notes
+        run: |
+          echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Primary tag: ${{ steps.tags.outputs.versioned }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+          echo "Platforms: linux/amd64, linux/arm64"

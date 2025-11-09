@@ -2,6 +2,8 @@
 
 PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
+**Bun-First Philosophy**: All scripting and configuration uses Bun-tailored TypeScript. No Node.js compatibility needed. Use Bun-specific APIs with latest best practices. See "Development Standards" below.
+
 ## Invariants
 
 - Preload (default): auto_explain, pg_cron, pg_stat_statements, pgaudit
@@ -61,6 +63,46 @@ Preload error: Align shared_preload_libraries with manifest defaults
 RAM misdetection: Set POSTGRES_MEMORY explicitly
 Connection limit: Review max_connections in auto-config
 SHA staleness: Verify `https://github.com/<owner>/<repo>/commit/<SHA>` still valid
+
+## Development Standards
+
+**Bun-First TypeScript**:
+
+- Use Bun runtime for all scripts (no Node.js)
+- Leverage Bun-specific APIs (Bun.file, Bun.sleep, etc.)
+- No Node.js compatibility shims needed
+- Latest SOTA best practices for Bun
+
+**Linting & Formatting**:
+
+- Oxlint for TypeScript/JavaScript (supports all file types)
+- Shellcheck for bash scripts
+- yamllint for YAML files
+- hadolint for Dockerfiles
+- Prettier for code formatting
+
+**Git Hooks**:
+
+- Use bun-git-hooks (full-repo-wise from root)
+- Pre-commit: validate, lint, format
+- Pre-push: comprehensive checks
+
+**GitHub Workflows**:
+
+- `.github/workflows/ci.yml` - Fast CI for all commits/PRs (single workflow)
+- `.github/workflows/publish.yml` - Release to ghcr.io (release branch only)
+- Optimized for speed and cost-efficiency
+- No redundant workflows for PRs
+
+**Image Versioning**:
+
+- Format: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
+  - MM = PostgreSQL major (18)
+  - mm = PostgreSQL minor (0)
+  - TS = build timestamp YYYYMMDDHHmm
+  - TYPE = image type (single-node)
+- Convenience tags: `18.0-single-node`, `18-single-node`, `18.0`, `18`
+- Registry: `ghcr.io/fluxo-kt/aza-pg`
 
 ## References
 

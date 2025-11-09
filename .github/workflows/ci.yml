@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Fast CI Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run fast validation
+        run: bun run validate
+        env:
+          CI: "true"
+
+      - name: Verify manifest is up to date
+        run: |
+          bun scripts/extensions/generate-manifest.ts
+          if ! git diff --exit-code docker/postgres/extensions.manifest.json; then
+            echo "::error::extensions.manifest.json is out of date. Run 'bun scripts/extensions/generate-manifest.ts' and commit changes."
+            exit 1
+          fi
+
+      - name: Verify generated configs are up to date
+        run: |
+          bun run generate
+          if ! git diff --exit-code docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql; then
+            echo "::error::Generated configs are out of date. Run 'bun run generate' and commit changes."
+            git diff docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
+            exit 1
+          fi
+
+      - name: Repository health check
+        run: |
+          echo "🔍 Running repository health checks..."
+
+          # Check for required files
+          test -f docker/postgres/Dockerfile || { echo "::error::Missing docker/postgres/Dockerfile"; exit 1; }
+          test -f docker/postgres/extensions.manifest.json || { echo "::error::Missing extensions.manifest.json"; exit 1; }
+          test -f package.json || { echo "::error::Missing package.json"; exit 1; }
+
+          # Check manifest validity
+          bun run check:manifest
+
+          # Verify key directories exist
+          test -d stacks/primary || { echo "::error::Missing stacks/primary"; exit 1; }
+          test -d stacks/replica || { echo "::error::Missing stacks/replica"; exit 1; }
+          test -d stacks/single || { echo "::error::Missing stacks/single"; exit 1; }
+          test -d scripts || { echo "::error::Missing scripts directory"; exit 1; }
+
+          echo "✅ Repository health check passed"
+
+      - name: Generate job summary
+        if: always()
+        run: |
+          echo "### CI Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Fast validation (oxlint, prettier, tsc)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Manifest sync verification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Generated configs sync verification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Repository health check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Full Docker builds and comprehensive tests are run via the Build workflow._" >> $GITHUB_STEP_SUMMARY

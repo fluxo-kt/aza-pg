@@ -21,7 +21,7 @@ All notable changes to aza-pg will be documented in this file.
 - Fix yamllint configuration syntax: `level: off` → `disable` (Phase 9)
 - Fix Debian Trixie package name: libssl3 → libssl3t64 (Phase 9)
   - Required for time64 transition in Debian Trixie
-- Fix supautils extension compilation patch regex (Phase 9)
+- Fix supautils extension compilation patch regex: use `\\+` for one-or-more whitespace match (Phase 9)
 - Fix Dockerfile apt-get cache mount issues (Phase 9)
   - Removed stale cache mounts causing package resolution failures
 

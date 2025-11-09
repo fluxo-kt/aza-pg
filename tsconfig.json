@@ -38,11 +38,10 @@
     // Language and Environment
     "target": "ES2024",
     "lib": ["ES2024"],
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
 
     // Bun-specific
-    "types": [],
+    "types": ["bun-types"],
+    "verbatimModuleSyntax": false,
 
     // Projects
     "composite": false,

@@ -6,7 +6,12 @@
  * Usage:
  *   bun scripts/validate.ts           # Fast validation (oxlint, prettier, tsc)
  *   bun scripts/validate.ts --fast    # Same as above (explicit)
- *   bun scripts/validate.ts --all     # Full validation (includes shellcheck, hadolint, yaml)
+ *   bun scripts/validate.ts --all     # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *
+ * Environment variables:
+ *   ALLOW_MISSING_SHELLCHECK=1        # Don't fail if shellcheck not installed
+ *   ALLOW_MISSING_HADOLINT=1          # Don't fail if Docker/hadolint unavailable
+ *   ALLOW_MISSING_YAMLLINT=1          # Don't fail if Docker/yamllint unavailable
  */
 
 import { error, info, section, success, warning } from "./utils/logger.ts";
@@ -19,7 +24,25 @@ type ValidationCheck = {
   command: string[];
   description: string;
   required: boolean; // If false, failure only warns but doesn't fail the whole validation
+  requiresDocker?: boolean; // If true, check if Docker is available
+  envOverride?: string; // Environment variable to make check non-critical
 };
+
+/**
+ * Check if Docker is available
+ */
+async function isDockerAvailable(): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(["docker", "info"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Run a validation check
@@ -27,6 +50,22 @@ type ValidationCheck = {
  */
 async function runCheck(check: ValidationCheck): Promise<boolean> {
   info(`Running: ${check.description}`);
+
+  // Check if this check can be skipped via environment variable
+  const isOptional = check.envOverride && Bun.env[check.envOverride] === "1";
+  const effectivelyRequired = check.required && !isOptional;
+
+  // Check Docker availability if needed
+  if (check.requiresDocker && !(await isDockerAvailable())) {
+    const message = `${check.name} skipped - Docker not available. Install Docker or set ${check.envOverride}=1`;
+    if (effectivelyRequired) {
+      error(message);
+      return false;
+    } else {
+      warning(message);
+      return false;
+    }
+  }
 
   try {
     const proc = Bun.spawn(check.command, {
@@ -40,7 +79,7 @@ async function runCheck(check: ValidationCheck): Promise<boolean> {
       success(`${check.name} passed`);
       return true;
     } else {
-      if (check.required) {
+      if (effectivelyRequired) {
         error(`${check.name} failed (exit code ${exitCode})`);
       } else {
         warning(`${check.name} failed (exit code ${exitCode}) - non-critical`);
@@ -48,10 +87,11 @@ async function runCheck(check: ValidationCheck): Promise<boolean> {
       return false;
     }
   } catch (err) {
-    if (check.required) {
-      error(`${check.name} error: ${err}`);
+    const message = `${check.name} error: ${err instanceof Error ? err.message : String(err)}`;
+    if (effectivelyRequired) {
+      error(message);
     } else {
-      warning(`${check.name} error: ${err} - non-critical`);
+      warning(`${message} - non-critical`);
     }
     return false;
   }
@@ -69,19 +109,19 @@ async function validate(mode: "fast" | "all"): Promise<void> {
   const coreChecks: ValidationCheck[] = [
     {
       name: "Oxlint",
-      command: ["bunx", "oxlint", "."],
+      command: ["bun", "x", "oxlint", "."],
       description: "JavaScript/TypeScript linting",
       required: true,
     },
     {
       name: "Prettier",
-      command: ["bunx", "prettier", "--check", "."],
+      command: ["bun", "x", "prettier", "--check", "."],
       description: "Code formatting check",
       required: true,
     },
     {
       name: "TypeScript",
-      command: ["bunx", "tsc", "--noEmit"],
+      command: ["bun", "x", "tsc", "--noEmit"],
       description: "Type checking",
       required: true,
     },
@@ -92,38 +132,43 @@ async function validate(mode: "fast" | "all"): Promise<void> {
     {
       name: "ShellCheck",
       command: [
-        "find",
-        ".",
-        "-name",
-        "*.sh",
-        "-not",
-        "-path",
-        "./node_modules/*",
-        "-not",
-        "-path",
-        "./.git/*",
-        "-not",
-        "-path",
-        "./.archived/*",
-        "-exec",
-        "shellcheck",
-        "{}",
-        "+",
+        "sh",
+        "-c",
+        'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -exec shellcheck {} +',
       ],
       description: "Shell script linting",
-      required: false, // Non-critical if shellcheck not installed
+      required: true,
+      envOverride: "ALLOW_MISSING_SHELLCHECK",
     },
     {
       name: "Hadolint",
       command: ["sh", "-c", "docker run --rm -i hadolint/hadolint < docker/postgres/Dockerfile"],
       description: "Dockerfile linting",
-      required: false, // Non-critical if Docker not running
+      required: true,
+      requiresDocker: true,
+      envOverride: "ALLOW_MISSING_HADOLINT",
     },
     {
       name: "YAML Lint",
-      command: ["bunx", "yaml-lint", "**/*.{yml,yaml}", "--ignore=node_modules/**"],
-      description: "YAML file linting",
+      command: [
+        "sh",
+        "-c",
+        'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work',
+      ],
+      description: "YAML file linting (yamllint)",
       required: true,
+      requiresDocker: true,
+      envOverride: "ALLOW_MISSING_YAMLLINT",
+    },
+    {
+      name: "Secret Scan",
+      command: [
+        "sh",
+        "-c",
+        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|docs/|\\.[^/]*rc$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" || true',
+      ],
+      description: "Scan for potential secrets in tracked files (warn-only)",
+      required: false,
     },
   ];
 
@@ -159,7 +204,7 @@ async function validate(mode: "fast" | "all"): Promise<void> {
 
   if (criticalFailures.length > 0) {
     error(`${criticalFailures.length} critical check(s) failed`);
-    process.exit(1);
+    throw new Error("Validation failed");
   } else if (failedCount > 0) {
     warning(`${failedCount} non-critical check(s) failed`);
     success("All critical checks passed");
@@ -168,9 +213,9 @@ async function validate(mode: "fast" | "all"): Promise<void> {
   }
 }
 
-// Parse command line arguments
-const args = process.argv.slice(2);
+// Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
+const args = Bun.argv.slice(2);
 const mode = args.includes("--all") ? "all" : "fast";
 
 // Run validation
-validate(mode);
+await validate(mode);

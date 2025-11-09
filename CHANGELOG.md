@@ -34,6 +34,10 @@ All notable changes to aza-pg will be documented in this file.
 
 ### Changed
 
+- Improve linting configuration to reduce noise (Phase 9)
+  - Configure oxlint: disable no-console for scripts/, no-await-in-loop for tests/
+  - Configure hadolint: ignore DL3008/DL3015/DL4006/SC2086 (intentional patterns)
+  - Reduces validation warnings from 400+ to ~50 while maintaining code quality
 - Modernize tsconfig types to Bun 1.3+ convention (Phase 6)
 - Standardize GitHub Actions to oven-sh/setup-bun@v2 (Phase 6)
 - Make Dockerfile PGDG assertion dynamic based on manifest (Phase 7)

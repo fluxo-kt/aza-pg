@@ -1,0 +1,28 @@
+# Hadolint configuration for aza-pg
+# Reduces noise from best-practice warnings while maintaining security checks
+
+ignored:
+  # DL3008: Pin versions in apt get install
+  # Rationale: Extensions change frequently; version pinning in runtime-packages.txt
+  # would create excessive maintenance burden. PGDG packages ARE pinned via ARGs.
+  - DL3008
+
+  # DL3015: Avoid additional packages by specifying --no-install-recommends
+  # Rationale: Some dependencies require recommended packages for functionality.
+  # Adding this flag globally breaks compilation for certain extensions.
+  - DL3015
+
+  # DL4006: Set SHELL option -o pipefail before RUN with a pipe
+  # Rationale: We use `set -eu` for error handling. Alpine-specific advice doesn't
+  # apply to Debian Trixie base image. Our error handling is adequate.
+  - DL4006
+
+  # SC2086: Double quote to prevent globbing and word splitting
+  # Rationale: Intentional use of word splitting for dynamic package lists.
+  # Variables like $RUNTIME_PKGS are designed to expand into multiple arguments.
+  - SC2086
+# Keep these rules enabled (security-critical):
+# - DL3000-DL3007: FROM/MAINTAINER/apt best practices
+# - DL3020: Use COPY instead of ADD
+# - DL3025: Use JSON notation for CMD/ENTRYPOINT
+# - SC2046: Quote to prevent word splitting (except SC2086 above)

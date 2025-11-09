@@ -21,5 +21,25 @@
     "eqeqeq": "warn",
     "no-eval": "warn",
     "no-with": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "scripts/**/*.ts",
+        "scripts/**/*.js",
+        "stacks/**/scripts/**/*.ts",
+        "stacks/**/scripts/**/*.js"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["scripts/test/**/*.ts", "scripts/test/**/*.js"],
+      "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off"
+      }
+    }
+  ]
 }

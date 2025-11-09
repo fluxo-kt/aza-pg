@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { validateManifest } from "./manifest-schema.js";
+import * as logger from "../utils/logger.js";
 
 // Expected counts (from CLAUDE.md)
 const EXPECTED_COUNTS = {
@@ -47,15 +48,6 @@ interface Manifest {
   generatedAt: string;
   entries: ManifestEntry[];
 }
-
-// ANSI colors
-const colors = {
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  reset: "\x1b[0m",
-};
 
 const errors: string[] = [];
 const warnings: string[] = [];
@@ -106,7 +98,7 @@ function validateCounts(manifest: Manifest): void {
     (e) => e.kind !== "builtin" && e.install_via !== "pgdg"
   ).length;
 
-  console.log(`${colors.blue}[COUNT VALIDATION]${colors.reset}`);
+  logger.info("[COUNT VALIDATION]");
   console.log(`  Total extensions: ${total} (expected: ${EXPECTED_COUNTS.total})`);
   console.log(`  Builtin: ${builtin} (expected: ${EXPECTED_COUNTS.builtin})`);
   console.log(`  PGDG: ${pgdg} (expected: ${EXPECTED_COUNTS.pgdg})`);
@@ -130,7 +122,8 @@ function validateCounts(manifest: Manifest): void {
 
 // 2. defaultEnable consistency
 function validateDefaultEnable(manifest: Manifest): void {
-  console.log(`\n${colors.blue}[DEFAULT ENABLE VALIDATION]${colors.reset}`);
+  console.log(); // Empty line for spacing
+  logger.info("[DEFAULT ENABLE VALIDATION]");
 
   // Parse 01-extensions.sql for baseline extensions
   const initSql = readFile(INIT_SQL_PATH);
@@ -184,7 +177,8 @@ function validateDefaultEnable(manifest: Manifest): void {
 
 // 3. PGDG consistency
 function validatePgdgConsistency(manifest: Manifest): void {
-  console.log(`\n${colors.blue}[PGDG CONSISTENCY VALIDATION]${colors.reset}`);
+  console.log(); // Empty line for spacing
+  logger.info("[PGDG CONSISTENCY VALIDATION]");
 
   const dockerfile = readFile(DOCKERFILE_PATH);
   const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
@@ -236,7 +230,8 @@ function getDockerfilePackageName(extensionName: string): string {
 
 // 4. Runtime spec completeness
 function validateRuntimeSpec(manifest: Manifest): void {
-  console.log(`\n${colors.blue}[RUNTIME SPEC VALIDATION]${colors.reset}`);
+  console.log(); // Empty line for spacing
+  logger.info("[RUNTIME SPEC VALIDATION]");
 
   const toolExtensions = manifest.entries.filter((e) => e.kind === "tool");
 
@@ -249,7 +244,8 @@ function validateRuntimeSpec(manifest: Manifest): void {
 
 // 5. Dependency validation
 function validateDependencies(manifest: Manifest): void {
-  console.log(`\n${colors.blue}[DEPENDENCY VALIDATION]${colors.reset}`);
+  console.log(); // Empty line for spacing
+  logger.info("[DEPENDENCY VALIDATION]");
 
   const extensionNames = new Set(manifest.entries.map((e) => e.name));
 
@@ -268,7 +264,9 @@ function validateDependencies(manifest: Manifest): void {
 
 // Main validation
 async function main(): Promise<void> {
-  console.log(`${colors.blue}=== MANIFEST VALIDATION ===${colors.reset}\n`);
+  logger.separator();
+  console.log("  MANIFEST VALIDATION");
+  logger.separator();
 
   try {
     const manifest = readManifest();
@@ -281,37 +279,41 @@ async function main(): Promise<void> {
     validateDependencies(manifest);
 
     // Print results
-    console.log(`\n${colors.blue}=== VALIDATION RESULTS ===${colors.reset}`);
+    console.log();
+    logger.separator();
+    console.log("  VALIDATION RESULTS");
+    logger.separator();
 
     if (errors.length > 0) {
-      console.log(`\n${colors.red}ERRORS (${errors.length}):${colors.reset}`);
+      console.log();
+      logger.error(`ERRORS (${errors.length}):`);
       errors.forEach((err, i) => console.log(`  ${i + 1}. ${err}`));
     }
 
     if (warnings.length > 0) {
-      console.log(`\n${colors.yellow}WARNINGS (${warnings.length}):${colors.reset}`);
+      console.log();
+      logger.warning(`WARNINGS (${warnings.length}):`);
       warnings.forEach((warn, i) => console.log(`  ${i + 1}. ${warn}`));
     }
 
     if (errors.length === 0 && warnings.length === 0) {
-      console.log(
-        `\n${colors.green}✅ Manifest validation passed (${EXPECTED_COUNTS.total} extensions: ` +
-          `${EXPECTED_COUNTS.builtin} builtin + ${EXPECTED_COUNTS.pgdg} PGDG + ${EXPECTED_COUNTS.compiled} compiled)${colors.reset}`
+      console.log();
+      logger.success(
+        `Manifest validation passed (${EXPECTED_COUNTS.total} extensions: ` +
+          `${EXPECTED_COUNTS.builtin} builtin + ${EXPECTED_COUNTS.pgdg} PGDG + ${EXPECTED_COUNTS.compiled} compiled)`
       );
       process.exit(0);
     } else if (errors.length === 0) {
-      console.log(
-        `\n${colors.green}✅ Manifest validation passed with ${warnings.length} warning(s)${colors.reset}`
-      );
+      console.log();
+      logger.success(`Manifest validation passed with ${warnings.length} warning(s)`);
       process.exit(0);
     } else {
-      console.log(
-        `\n${colors.red}❌ Manifest validation failed with ${errors.length} error(s)${colors.reset}`
-      );
+      console.log();
+      logger.error(`Manifest validation failed with ${errors.length} error(s)`);
       process.exit(1);
     }
   } catch (err) {
-    console.error(`${colors.red}FATAL ERROR:${colors.reset} ${err}`);
+    logger.error(`FATAL ERROR: ${err}`);
     process.exit(1);
   }
 }

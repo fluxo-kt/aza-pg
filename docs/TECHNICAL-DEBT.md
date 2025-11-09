@@ -26,7 +26,7 @@ sed -i 's/pgrx-tests = "0\.16\.0"/pgrx-tests = "=0.16.1"/' "$dest/Cargo.toml"
 3. Remove sed commands from build script
 4. Update manifest.json commit SHA to patched version
 
-**Last Checked:** 2025-01-07
+**Last Verified:** 2025-11-09
 
 ---
 
@@ -54,7 +54,7 @@ sed -i 's/pgrx = { version = "=0\.16\.0"/pgrx = { version = "=0.16.1"/' \
 4. Remove all 4 sed commands
 5. Update manifest.json commit SHA
 
-**Last Checked:** 2025-01-07
+**Last Verified:** 2025-11-09
 
 ---
 
@@ -81,7 +81,7 @@ sed -i 's/^bool[[:space:]]\{1,\}log_skipped_evtrigs/static bool log_skipped_evtr
 4. Remove sed command
 5. Update manifest.json commit SHA
 
-**Last Checked:** 2025-01-07
+**Last Verified:** 2025-11-09
 
 ---
 
@@ -120,16 +120,28 @@ gh issue create --title "Remove supautils static keyword patch when upstream fix
 
 ### Config Generator Complexity
 
-**Status:** Evaluation needed (not blocking)
+**Status:** Acceptable trade-off
 **Details:** 19MB Bun/TypeScript toolchain generates 171 lines of config
-**See:** Audit report Phase 4.1
+
+**Trade-off Analysis:**
+
+- **Pros**: Type-safe config generation, single source of truth, automated consistency
+- **Cons**: Requires Bun runtime for config regeneration (19MB overhead)
+- **Assessment**: The type safety and maintainability benefits outweigh the minimal toolchain overhead
+- **Alternative rejected**: Hand-written configs would be error-prone and harder to maintain
 
 ### Manifest.json Duplication
 
-**Status:** Evaluation needed (not blocking)
+**Status:** Acceptable by design
 **Details:** 852-line JSON duplicates Dockerfile metadata
-**See:** Audit report Phase 4.2
+
+**Rationale:**
+
+- Manifest serves as machine-readable extension catalog for validation and documentation
+- Dockerfile is the build source of truth
+- Duplication is intentional to support automated validation and doc generation
+- Trade-off: Consistency is enforced by validate-manifest.ts cross-referencing checks
 
 ---
 
-**Last Updated:** 2025-01-07
+**Last Updated:** 2025-11-09

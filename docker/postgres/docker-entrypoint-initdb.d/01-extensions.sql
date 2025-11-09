@@ -6,7 +6,6 @@
 -- Edit docker/postgres/extensions.manifest.json and regenerate
 
 -- Core extensions pre-enabled by default.
--- Note: plpgsql is builtin and always available, no CREATE EXTENSION needed
 CREATE EXTENSION IF NOT EXISTS auto_explain; -- auto_explain (observability)
 CREATE EXTENSION IF NOT EXISTS pg_cron; -- pg_cron (operations)
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements; -- pg_stat_statements (observability)
@@ -16,6 +15,6 @@ CREATE EXTENSION IF NOT EXISTS vector; -- pgvector (ai)
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Baseline extensions enabled (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). Additional extensions are available but disabled by default. plpgsql is builtin and always available.';
+  RAISE NOTICE 'Baseline extensions enabled (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector). Additional extensions are available but disabled by default.';
 END;
 $$;

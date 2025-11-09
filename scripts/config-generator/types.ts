@@ -129,11 +129,31 @@ export interface ComposeService {
   restart?: string;
 }
 
+/**
+ * Docker Compose network configuration
+ */
+export interface ComposeNetwork {
+  driver?: string;
+  driver_opts?: Record<string, string>;
+  external?: boolean;
+  name?: string;
+}
+
+/**
+ * Docker Compose volume configuration
+ */
+export interface ComposeVolume {
+  driver?: string;
+  driver_opts?: Record<string, string>;
+  external?: boolean;
+  name?: string;
+}
+
 export interface ComposeConfig {
   name: string;
   services: Record<string, ComposeService>;
-  networks?: Record<string, any>;
-  volumes?: Record<string, any>;
+  networks?: Record<string, ComposeNetwork>;
+  volumes?: Record<string, ComposeVolume>;
 }
 
 export interface StackConfig {

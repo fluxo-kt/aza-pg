@@ -581,7 +581,11 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": true
+        "defaultEnable": false,
+        "notes": [
+          "plpgsql is builtin since PostgreSQL 9.0 and always available.",
+          "No CREATE EXTENSION needed - automatically loaded on first use."
+        ]
       },
       "enabled": true
     },

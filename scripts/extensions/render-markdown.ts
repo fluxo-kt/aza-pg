@@ -39,7 +39,8 @@ const tableBlocks: string[] = [];
 const sortedCategories = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
 
 for (const category of sortedCategories) {
-  const rows = groups.get(category)!.sort((a, b) => a.name.localeCompare(b.name));
+  // Safe to use non-null coalescing since we iterate over keys that exist in the map
+  const rows = (groups.get(category) ?? []).sort((a, b) => a.name.localeCompare(b.name));
   const lines: string[] = [];
   lines.push(`### ${category}`);
   lines.push("");

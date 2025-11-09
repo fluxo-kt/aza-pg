@@ -268,16 +268,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "integration",
     description: "Rust FDW framework powering Supabase foreign wrappers.",
     source: {
-      type: "git",
+      type: "git-ref",
       repository: "https://github.com/supabase/wrappers.git",
-      tag: "v0.5.6",
+      ref: "eea6f870e6d5c00d758bd48f27c7f4c7e44d10f7",
     },
     build: {
       type: "cargo-pgrx",
       features: ["pg18"],
       noDefaultFeatures: true,
       subdir: "wrappers",
-      patches: ['s/pgrx = { version = "=0\\.16\\.0"/pgrx = { version = "=0.16.1"/'],
     },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["pg_stat_statements"],

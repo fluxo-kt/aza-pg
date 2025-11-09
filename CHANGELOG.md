@@ -35,6 +35,9 @@ All notable changes to aza-pg will be documented in this file.
   - Cargo extensions can now depend on PGDG packages (e.g., timescaledb_toolkit → timescaledb)
   - Cargo extensions can now depend on builtin extensions (e.g., wrappers → pg_stat_statements)
   - Validation checks full manifest for install_via: "pgdg" or kind: "builtin" when dependency not in current stage
+- Fix wrappers extension pgrx version conflict (Phase 9)
+  - Updated from v0.5.6 (pgrx 0.16.0) to commit eea6f87 (pgrx 0.16.1)
+  - Resolves cargo dependency conflict with timescaledb_toolkit and vectorscale
 
 ### Changed
 

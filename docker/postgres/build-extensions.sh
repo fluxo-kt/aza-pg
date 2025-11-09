@@ -277,8 +277,8 @@ validate_dependencies() {
     dep_entry=$(jq -c --arg dep "$dep_name" '.entries[] | select(.name == $dep)' "$MANIFEST_PATH")
 
     if [[ -z "$dep_entry" ]]; then
-      # Dependency not in current manifest - check if it's a PGDG package in full manifest
-      # This happens when a cargo extension depends on a PGDG-installed extension
+      # Dependency not in current manifest - check if it's a PGDG package or builtin in full manifest
+      # This happens when a cargo extension depends on a PGDG-installed extension or builtin
       local full_manifest="/tmp/extensions.manifest.json"
       if [[ -f "$full_manifest" ]]; then
         local dep_entry_full
@@ -288,9 +288,17 @@ validate_dependencies() {
           local dep_install_via
           dep_install_via=$(jq -r '.install_via // ""' <<<"$dep_entry_full")
 
+          local dep_kind
+          dep_kind=$(jq -r '.kind // ""' <<<"$dep_entry_full")
+
           if [[ "$dep_install_via" == "pgdg" ]]; then
             # Dependency is a PGDG package - will be available at runtime
             log "  ✓ Dependency '$dep_name' will be installed via PGDG"
+            i=$((i+1))
+            continue
+          elif [[ "$dep_kind" == "builtin" ]]; then
+            # Dependency is a builtin extension - available in PostgreSQL
+            log "  ✓ Dependency '$dep_name' is builtin (included in PostgreSQL)"
             i=$((i+1))
             continue
           fi

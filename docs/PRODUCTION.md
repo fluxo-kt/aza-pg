@@ -376,6 +376,8 @@ Default settings target **2GB RAM**. Auto-config scales from there.
 
 **Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
 
+For comprehensive memory allocation table with specific RAM tiers and connection limits, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config-runtime).
+
 ### Extension Optimization
 
 The aza-pg image includes 38 extensions by default. You can reduce image size and build time by disabling unused extensions via the manifest-driven system. See [docs/EXTENSIONS.md](EXTENSIONS.md#enabling-and-disabling-extensions) for step-by-step instructions.

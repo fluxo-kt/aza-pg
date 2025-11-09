@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 # Safe PgBouncer bootstrap that injects password without leaking into config
-set -euo pipefail
+set -eu
 
 TEMPLATE="/etc/pgbouncer/pgbouncer.ini.template"
 OUTPUT="/tmp/pgbouncer.ini"
@@ -14,10 +14,9 @@ fi
 # Escape characters that need quoting inside .pgpass (colon and backslash)
 escape_password() {
   # shellcheck disable=SC2016
-  local result
   result=$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
-  local exit_code=$?
-  if [[ $exit_code -ne 0 ]]; then
+  exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
     echo "[PGBOUNCER] ERROR: Password escaping failed (sed exit code: $exit_code)" >&2
     return 1
   fi
@@ -40,7 +39,7 @@ if ! chmod 600 "$PGPASSFILE_PATH" 2>/dev/null; then
 fi
 # Double-check permissions are actually 600
 actual_perms=$(stat -c "%a" "$PGPASSFILE_PATH" 2>/dev/null || stat -f "%OLp" "$PGPASSFILE_PATH" 2>/dev/null || echo "unknown")
-if [[ "$actual_perms" != "600" ]]; then
+if [ "$actual_perms" != "600" ]; then
     echo "[PGBOUNCER] ERROR: .pgpass permissions are $actual_perms (expected 600)" >&2
     exit 1
 fi
@@ -54,29 +53,69 @@ PGBOUNCER_DEFAULT_POOL_SIZE="${PGBOUNCER_DEFAULT_POOL_SIZE:-25}"
 
 # Validate listen address format (IP address or wildcard patterns)
 # Accepts: IPv4 (e.g., 192.168.1.1), 0.0.0.0, *, *.*.*.*
-if ! [[ "$PGBOUNCER_LISTEN_ADDR" =~ ^(\*|([0-9]{1,3}\.){3}[0-9]{1,3}|(\*\.){0,3}\*)$ ]]; then
+case "$PGBOUNCER_LISTEN_ADDR" in
+  '*' | '0.0.0.0' | '127.0.0.1' | '*.0.0.0' | '*.*.0.0' | '*.*.*.0' | '*.*.*.*.0')
+    ;;
+  [0-9]*)
+    # Match IPv4 address pattern: digits.digits.digits.digits
+    case "$PGBOUNCER_LISTEN_ADDR" in
+      [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+        ;;
+      *)
+        echo "[PGBOUNCER] ERROR: Invalid PGBOUNCER_LISTEN_ADDR format: '$PGBOUNCER_LISTEN_ADDR'" >&2
+        echo "[PGBOUNCER] Expected: IPv4 address (e.g., 127.0.0.1), 0.0.0.0, or * wildcard" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  *)
     echo "[PGBOUNCER] ERROR: Invalid PGBOUNCER_LISTEN_ADDR format: '$PGBOUNCER_LISTEN_ADDR'" >&2
     echo "[PGBOUNCER] Expected: IPv4 address (e.g., 127.0.0.1), 0.0.0.0, or * wildcard" >&2
     exit 1
-fi
+    ;;
+esac
 
 # Additional validation: Check octet ranges for IP addresses (0-255)
-if [[ "$PGBOUNCER_LISTEN_ADDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    IFS='.' read -r -a octets <<< "$PGBOUNCER_LISTEN_ADDR"
-    for octet in "${octets[@]}"; do
-        if [[ $octet -gt 255 ]]; then
-            echo "[PGBOUNCER] ERROR: Invalid IP address: octet '$octet' exceeds 255" >&2
-            exit 1
-        fi
-    done
-fi
+case "$PGBOUNCER_LISTEN_ADDR" in
+  [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+    # Split IP by dots and validate each octet
+    octet1=$(printf '%s' "$PGBOUNCER_LISTEN_ADDR" | cut -d. -f1)
+    octet2=$(printf '%s' "$PGBOUNCER_LISTEN_ADDR" | cut -d. -f2)
+    octet3=$(printf '%s' "$PGBOUNCER_LISTEN_ADDR" | cut -d. -f3)
+    octet4=$(printf '%s' "$PGBOUNCER_LISTEN_ADDR" | cut -d. -f4)
+
+    # Validate each octet is numeric and <= 255
+    validate_octet() {
+      octet_val="$1"
+      octet_name="$2"
+      # Check if numeric and not empty
+      case "$octet_val" in
+        [0-9] | [0-9][0-9] | [0-2][0-5][0-5])
+          ;;
+        *)
+          echo "[PGBOUNCER] ERROR: Invalid IP address: octet '$octet_val' exceeds 255 or is invalid" >&2
+          exit 1
+          ;;
+      esac
+    }
+
+    validate_octet "$octet1" "first"
+    validate_octet "$octet2" "second"
+    validate_octet "$octet3" "third"
+    validate_octet "$octet4" "fourth"
+    ;;
+esac
 
 # Validate sslmode value
-if ! [[ "$PGBOUNCER_SERVER_SSLMODE" =~ ^(disable|allow|prefer|require|verify-ca|verify-full)$ ]]; then
+case "$PGBOUNCER_SERVER_SSLMODE" in
+  disable | allow | prefer | require | verify-ca | verify-full)
+    ;;
+  *)
     echo "[PGBOUNCER] ERROR: Invalid PGBOUNCER_SERVER_SSLMODE: '$PGBOUNCER_SERVER_SSLMODE'" >&2
     echo "[PGBOUNCER] Expected: disable, allow, prefer, require, verify-ca, or verify-full" >&2
     exit 1
-fi
+    ;;
+esac
 
 # Render configuration with all placeholders replaced
 sed -e "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" \

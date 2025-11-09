@@ -54,7 +54,7 @@ services:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
       - ./scripts/pgbouncer-entrypoint.sh:/opt/pgbouncer-entrypoint.sh:ro
 
-    entrypoint: ["/bin/bash", "/opt/pgbouncer-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/opt/pgbouncer-entrypoint.sh"]
 
     networks:
       - postgres_net

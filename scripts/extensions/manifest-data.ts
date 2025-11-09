@@ -46,6 +46,7 @@ export interface BuildSpec {
 export interface RuntimeSpec {
   sharedPreload?: boolean;
   defaultEnable?: boolean;
+  preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
   notes?: string[];
 }
 
@@ -133,7 +134,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "observability",
     description: "Logs plans for slow statements automatically.",
     source: { type: "builtin" },
-    runtime: { sharedPreload: true, defaultEnable: true },
+    runtime: { sharedPreload: true, defaultEnable: true, preloadOnly: true },
   },
   {
     name: "pg_trgm",

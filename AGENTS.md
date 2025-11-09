@@ -29,6 +29,7 @@ cd stacks/primary && docker compose up
 
 ## Gotchas
 
+- **auto_explain is a module, not an extension**: Loaded via shared_preload_libraries, NO CREATE EXTENSION needed (PostgreSQL design)
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
@@ -43,9 +44,10 @@ Preload warning: Disabling default-preload requires POSTGRES_SHARED_PRELOAD_LIBR
 
 **Classification:**
 
-- Tools (6): No CREATE EXTENSION needed
-- Extensions (31): Require CREATE EXTENSION (6 auto-created: auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector)
-- Preloaded (4): auto_explain, pg_cron, pg_stat_statements, pgaudit
+- Tools (6): No CREATE EXTENSION needed (CLI utilities)
+- Modules (1): auto_explain - preload-only, NO CREATE EXTENSION (PostgreSQL core module)
+- Extensions (31): Require CREATE EXTENSION (5 auto-created: pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector)
+- Preloaded (4): auto_explain (module), pg_cron, pg_stat_statements, pgaudit
 
 ## Auto-Config
 

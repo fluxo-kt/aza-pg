@@ -38,7 +38,7 @@ export function loadManifest(repoRoot: string): Manifest {
 /**
  * Get extensions that should be enabled by default
  * Filters manifest entries for extensions with enabled=true AND runtime.defaultEnable=true
- * Excludes "tool" kind extensions as they don't support CREATE EXTENSION
+ * Excludes "tool" kind extensions and preload-only extensions (no CREATE EXTENSION support)
  * @param manifest - Parsed manifest object
  * @returns Array of manifest entries for extensions to enable
  */
@@ -47,11 +47,13 @@ export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[]
     const enabled = entry.enabled ?? true; // Default to true for backward compatibility
     const defaultEnable = entry.runtime?.defaultEnable ?? false;
     const kind = entry.kind;
+    const preloadOnly = entry.runtime?.preloadOnly ?? false;
 
     // Only enable if:
     // 1. Extension is enabled in manifest (not disabled)
     // 2. Extension has runtime.defaultEnable = true
     // 3. Extension is not a "tool" (tools don't support CREATE EXTENSION)
-    return enabled && defaultEnable && kind !== "tool";
+    // 4. Extension is not preload-only (activated via shared_preload_libraries, no .control file)
+    return enabled && defaultEnable && kind !== "tool" && !preloadOnly;
   });
 }

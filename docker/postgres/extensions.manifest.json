@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-09T22:06:08.904Z",
+  "generatedAt": "2025-11-09T23:10:29.531Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -11,7 +11,8 @@
       },
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": true
+        "defaultEnable": true,
+        "preloadOnly": true
       }
     },
     {

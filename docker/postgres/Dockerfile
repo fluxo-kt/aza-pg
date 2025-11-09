@@ -119,6 +119,12 @@ RUN set -eu && \
     rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
+# Generate version-info.txt (small Bun stage, not included in final image)
+FROM oven/bun:1.1.38-alpine AS version-info-generator
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
+RUN bun run /tmp/generate-version-info.ts > /tmp/version-info.txt
+
 ARG PG_VERSION
 ARG PG_BASE_IMAGE_SHA
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
@@ -224,6 +230,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+COPY --from=version-info-generator /tmp/version-info.txt /etc/postgresql/version-info.txt
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 

@@ -5,7 +5,7 @@
  * Self-documenting image contents: PostgreSQL version, extensions, tools
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 interface Manifest {
@@ -30,8 +30,12 @@ interface Manifest {
   }>;
 }
 
-const REPO_ROOT = join(import.meta.dir, "..");
-const manifestPath = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+// Support both local dev and Docker build contexts
+// In Docker: manifest copied to /tmp/extensions.manifest.json (same dir as script)
+// In local: manifest at ../docker/postgres/extensions.manifest.json
+const dockerManifestPath = join(import.meta.dir, "extensions.manifest.json");
+const localManifestPath = join(import.meta.dir, "..", "docker/postgres/extensions.manifest.json");
+const manifestPath = existsSync(dockerManifestPath) ? dockerManifestPath : localManifestPath;
 
 try {
   const manifestJson = readFileSync(manifestPath, "utf-8");

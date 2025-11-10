@@ -1,6 +1,6 @@
 # Scripts Directory
 
-Comprehensive collection of build, test, and operational scripts for aza-pg PostgreSQL stack. All scripts follow consistent patterns, use shared utilities from `lib/common.sh`, and include robust error handling.
+Comprehensive collection of build, test, and operational scripts for aza-pg PostgreSQL stack. All scripts follow Bun-first TypeScript patterns, use shared utilities from `lib/common.ts`, and include robust error handling.
 
 ## Directory Structure
 
@@ -10,7 +10,6 @@ scripts/
 ├── test/             # Test and validation scripts
 ├── tools/            # Operational tooling
 ├── build.ts          # Main build script (Bun TypeScript)
-└── build.sh          # DEPRECATED: Use 'bun run build' instead
 ```
 
 ## Quick Reference
@@ -31,57 +30,60 @@ bun run generate                      # Recommended method
 
 ```bash
 # Comprehensive test suite
-./scripts/test/test-build.sh                    # Build image + verify extensions
-./scripts/test/test-auto-config.sh              # Validate auto-config detection
-./scripts/test/run-extension-smoke.sh           # Extension dependency order test
-./scripts/test/test-pgbouncer-healthcheck.sh    # PgBouncer connectivity test
-./scripts/test/wait-for-postgres.sh             # Wait for PostgreSQL readiness
+bun scripts/test/test-build.ts                    # Build image + verify extensions
+bun scripts/test/test-auto-config.ts              # Validate auto-config detection
+bun scripts/test/run-extension-smoke.ts           # Extension dependency order test
+bun scripts/test/test-pgbouncer-healthcheck.ts    # PgBouncer connectivity test
+bun scripts/test/wait-for-postgres.ts             # Wait for PostgreSQL readiness
 ```
 
 ### Operations
 
 ```bash
 # Backup and restore
-./scripts/tools/backup-postgres.sh mydb         # Backup database to .sql.gz
-./scripts/tools/restore-postgres.sh backup.sql.gz mydb  # Restore from backup
+bun scripts/tools/backup-postgres.ts mydb         # Backup database to .sql.gz
+bun scripts/tools/restore-postgres.ts backup.sql.gz mydb  # Restore from backup
 
 # Replica management
-./scripts/tools/promote-replica.sh              # Promote replica to primary
+bun scripts/tools/promote-replica.ts              # Promote replica to primary
 
 # SSL/TLS
-./scripts/tools/generate-ssl-certs.sh           # Generate self-signed certificates
+bun scripts/tools/generate-ssl-certs.ts           # Generate self-signed certificates
 ```
 
 ## Detailed Documentation
 
 ### lib/ - Shared Library Functions
 
-**`common.sh`** - Core utilities for all scripts
+**`common.ts`** - Core utilities for all scripts
 
 **Functions:**
 
-- `log_info()`, `log_success()`, `log_warning()`, `log_error()` - Colored logging
-- `docker_cleanup(container)` - Safe container removal
-- `check_command(cmd)` - Verify command availability
-- `check_docker_daemon()` - Verify Docker is running
-- `wait_for_postgres(host, port, user, timeout, [container])` - Wait for PostgreSQL readiness
+- `logInfo()`, `logSuccess()`, `logWarning()`, `logError()` - Colored logging
+- `dockerCleanup(container)` - Safe container removal
+- `checkCommand(cmd)` - Verify command availability
+- `checkDockerDaemon()` - Verify Docker is running
+- `waitForPostgres(host, port, user, timeout, container?)` - Wait for PostgreSQL readiness
 
 **Usage:**
 
-```bash
-# shellcheck source=scripts/lib/common.sh
-source "$SCRIPT_DIR/../lib/common.sh"
+```typescript
+import {
+  checkCommand,
+  checkDockerDaemon,
+  waitForPostgres,
+} from "../lib/common.ts";
 
-check_command docker || exit 1
-check_docker_daemon || exit 1
-wait_for_postgres localhost 5432 postgres 60
+await checkCommand("docker");
+await checkDockerDaemon();
+await waitForPostgres("localhost", 5432, "postgres", 60);
 ```
 
 ---
 
 ### test/ - Test Scripts
 
-#### `test-build.sh [image-tag]`
+#### `test-build.ts [image-tag]`
 
 Builds Docker image and verifies extensions are functional.
 
@@ -96,8 +98,8 @@ Builds Docker image and verifies extensions are functional.
 **Usage:**
 
 ```bash
-./scripts/test/test-build.sh                # Default tag: aza-pg:pg18
-./scripts/test/test-build.sh my-custom:tag  # Custom tag
+bun scripts/test/test-build.ts                # Default tag: aza-pg:pg18
+bun scripts/test/test-build.ts my-custom:tag  # Custom tag
 ```
 
 **Dependencies:** `docker`, `buildx`
@@ -106,7 +108,7 @@ Builds Docker image and verifies extensions are functional.
 
 ---
 
-#### `test-auto-config.sh [image-tag]`
+#### `test-auto-config.ts [image-tag]`
 
 Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 
@@ -123,8 +125,8 @@ Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 **Usage:**
 
 ```bash
-./scripts/test/test-auto-config.sh                # Default tag: aza-pg:pg18
-./scripts/test/test-auto-config.sh my-custom:tag  # Custom tag
+bun scripts/test/test-auto-config.ts                # Default tag: aza-pg:pg18
+bun scripts/test/test-auto-config.ts my-custom:tag  # Custom tag
 ```
 
 **Dependencies:** `docker`
@@ -133,7 +135,7 @@ Validates auto-config RAM/CPU detection and PostgreSQL tuning.
 
 ---
 
-#### `run-extension-smoke.sh [image-tag]`
+#### `run-extension-smoke.ts [image-tag]`
 
 Tests extension loading in dependency order using manifest.
 
@@ -146,17 +148,17 @@ Tests extension loading in dependency order using manifest.
 **Usage:**
 
 ```bash
-./scripts/test/run-extension-smoke.sh                # Default tag: aza-pg:test
-./scripts/test/run-extension-smoke.sh my-custom:tag  # Custom tag
+bun scripts/test/run-extension-smoke.ts                # Default tag: aza-pg:test
+bun scripts/test/run-extension-smoke.ts my-custom:tag  # Custom tag
 ```
 
-**Dependencies:** `docker`, `python3`
+**Dependencies:** `docker`
 
 **Output:** Dependency-ordered extension creation results
 
 ---
 
-#### `test-pgbouncer-healthcheck.sh [stack-dir]`
+#### `test-pgbouncer-healthcheck.ts [stack-dir]`
 
 Validates PgBouncer healthcheck and authentication.
 
@@ -171,8 +173,8 @@ Validates PgBouncer healthcheck and authentication.
 **Usage:**
 
 ```bash
-./scripts/test/test-pgbouncer-healthcheck.sh                  # Default: stacks/primary
-./scripts/test/test-pgbouncer-healthcheck.sh stacks/primary   # Explicit path
+bun scripts/test/test-pgbouncer-healthcheck.ts                  # Default: stacks/primary
+bun scripts/test/test-pgbouncer-healthcheck.ts stacks/primary   # Explicit path
 ```
 
 **Dependencies:** `docker`, `docker compose`, `psql`
@@ -181,17 +183,17 @@ Validates PgBouncer healthcheck and authentication.
 
 ---
 
-#### `wait-for-postgres.sh [host] [port] [user] [timeout]`
+#### `wait-for-postgres.ts [host] [port] [user] [timeout]`
 
 Waits for PostgreSQL to accept connections.
 
 **Usage:**
 
 ```bash
-./scripts/test/wait-for-postgres.sh                             # localhost:5432, 60s
-./scripts/test/wait-for-postgres.sh db.example.com 5432 admin   # Remote host
-PGHOST=localhost PGPORT=6432 ./scripts/test/wait-for-postgres.sh  # Via PgBouncer
-./scripts/test/wait-for-postgres.sh localhost 5432 postgres 120   # 2min timeout
+bun scripts/test/wait-for-postgres.ts                             # localhost:5432, 60s
+bun scripts/test/wait-for-postgres.ts db.example.com 5432 admin   # Remote host
+PGHOST=localhost PGPORT=6432 bun scripts/test/wait-for-postgres.ts  # Via PgBouncer
+bun scripts/test/wait-for-postgres.ts localhost 5432 postgres 120   # 2min timeout
 ```
 
 **Dependencies:** `pg_isready`
@@ -202,7 +204,7 @@ PGHOST=localhost PGPORT=6432 ./scripts/test/wait-for-postgres.sh  # Via PgBounce
 
 ### tools/ - Operational Scripts
 
-#### `backup-postgres.sh [database] [output-file]`
+#### `backup-postgres.ts [database] [output-file]`
 
 Creates compressed PostgreSQL backup using `pg_dump`.
 
@@ -217,10 +219,10 @@ Creates compressed PostgreSQL backup using `pg_dump`.
 **Usage:**
 
 ```bash
-./scripts/tools/backup-postgres.sh                      # Backup 'postgres' db
-./scripts/tools/backup-postgres.sh mydb                 # Backup 'mydb'
-./scripts/tools/backup-postgres.sh mydb backup.sql.gz   # Custom output file
-PGHOST=db.example.com PGUSER=admin ./scripts/tools/backup-postgres.sh mydb
+bun scripts/tools/backup-postgres.ts                      # Backup 'postgres' db
+bun scripts/tools/backup-postgres.ts mydb                 # Backup 'mydb'
+bun scripts/tools/backup-postgres.ts mydb backup.sql.gz   # Custom output file
+PGHOST=db.example.com PGUSER=admin bun scripts/tools/backup-postgres.ts mydb
 ```
 
 **Environment variables:**
@@ -236,7 +238,7 @@ PGHOST=db.example.com PGUSER=admin ./scripts/tools/backup-postgres.sh mydb
 
 ---
 
-#### `restore-postgres.sh <backup-file> [database]`
+#### `restore-postgres.ts <backup-file> [database]`
 
 Restores PostgreSQL database from backup.
 
@@ -250,12 +252,12 @@ Restores PostgreSQL database from backup.
 **Usage:**
 
 ```bash
-./scripts/tools/restore-postgres.sh backup.sql.gz           # Restore to 'postgres'
-./scripts/tools/restore-postgres.sh backup.sql.gz mydb      # Restore to 'mydb'
-PGHOST=db.example.com ./scripts/tools/restore-postgres.sh backup.sql.gz
+bun scripts/tools/restore-postgres.ts backup.sql.gz           # Restore to 'postgres'
+bun scripts/tools/restore-postgres.ts backup.sql.gz mydb      # Restore to 'mydb'
+PGHOST=db.example.com bun scripts/tools/restore-postgres.ts backup.sql.gz
 ```
 
-**Environment variables:** Same as `backup-postgres.sh`
+**Environment variables:** Same as `backup-postgres.ts`
 
 **Dependencies:** `psql`, `pg_isready`, `gunzip`
 
@@ -263,7 +265,7 @@ PGHOST=db.example.com ./scripts/tools/restore-postgres.sh backup.sql.gz
 
 ---
 
-#### `promote-replica.sh [OPTIONS]`
+#### `promote-replica.ts [OPTIONS]`
 
 Promotes PostgreSQL replica to primary role.
 
@@ -277,18 +279,18 @@ Promotes PostgreSQL replica to primary role.
 
 **Options:**
 
-- `-c, --container NAME` - Container name (default: postgres-replica)
-- `-d, --data-dir PATH` - Data directory (default: /var/lib/postgresql/data)
-- `-n, --no-backup` - Skip backup before promotion
-- `-y, --yes` - Skip confirmation prompt
-- `-h, --help` - Show help message
+- `--container NAME` - Container name (default: postgres-replica)
+- `--data-dir PATH` - Data directory (default: /var/lib/postgresql/data)
+- `--no-backup` - Skip backup before promotion
+- `--yes` - Skip confirmation prompt
+- `--help` - Show help message
 
 **Usage:**
 
 ```bash
-./scripts/tools/promote-replica.sh                     # Interactive promotion
-./scripts/tools/promote-replica.sh -c my-replica -y    # Skip confirmation
-./scripts/tools/promote-replica.sh -n -y               # Fast (no backup)
+bun scripts/tools/promote-replica.ts                     # Interactive promotion
+bun scripts/tools/promote-replica.ts --container my-replica --yes    # Skip confirmation
+bun scripts/tools/promote-replica.ts --no-backup --yes               # Fast (no backup)
 ```
 
 **Dependencies:** `docker`
@@ -303,7 +305,7 @@ Promotes PostgreSQL replica to primary role.
 
 ---
 
-#### `generate-ssl-certs.sh`
+#### `generate-ssl-certs.ts`
 
 Generates self-signed SSL certificates for PostgreSQL TLS.
 
@@ -315,7 +317,7 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 **Usage:**
 
 ```bash
-./scripts/tools/generate-ssl-certs.sh
+bun scripts/tools/generate-ssl-certs.ts
 ```
 
 **Dependencies:** `openssl`
@@ -368,88 +370,56 @@ bun scripts/build.ts --help        # Show help
 
 ---
 
-#### `build.sh` (DEPRECATED)
-
-**DEPRECATED:** Use `bun run build` instead.
-
-This script has been superseded by `scripts/build.ts` following the Bun-First philosophy. The bash version is kept temporarily for backwards compatibility but will be removed in a future release.
-
-**Migration:**
-
-```bash
-# Old (deprecated):
-./scripts/build.sh
-./scripts/build.sh --multi-arch --push
-
-# New (recommended):
-bun run build
-bun run build -- --multi-arch --push
-```
-
----
-
-#### `generate-configs.sh` (REMOVED)
-
-**REMOVED:** This script has been deleted. Use `bun run generate` instead.
-
-This was a 4-line bash wrapper that simply called `bun run generate`. Following the Bun-First philosophy, the wrapper has been removed.
-
-**Migration:**
-
-```bash
-# Old (removed):
-./scripts/generate-configs.sh
-
-# New (use instead):
-bun run generate
-```
-
 ---
 
 ## Common Patterns
 
 ### Error Handling
 
-All scripts follow consistent error handling:
+All scripts follow consistent error handling using Bun TypeScript:
 
-```bash
-set -euo pipefail  # Fail on errors, undefined vars, pipe failures
+```typescript
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+} from "./lib/common.ts";
 
-# Prerequisites check
-check_command docker || exit 1
-check_docker_daemon || exit 1
+// Prerequisites check
+await checkCommand("docker");
+await checkDockerDaemon();
 
-# Cleanup trap
-cleanup() {
-  docker_cleanup "$CONTAINER_NAME"
-}
-trap cleanup EXIT
+// Cleanup handler
+process.on("exit", () => {
+  dockerCleanup(containerName);
+});
 ```
 
-### Shellcheck Integration
+### Type Safety
 
-All scripts include shellcheck directives:
+All scripts use TypeScript with Bun for type safety:
 
-```bash
-# shellcheck source=scripts/lib/common.sh
-source "$SCRIPT_DIR/../lib/common.sh"
-```
+```typescript
+import type { BuildOptions } from "./types.ts";
 
-Run shellcheck validation:
-
-```bash
-shellcheck scripts/**/*.sh
+const options: BuildOptions = {
+  multiArch: false,
+  push: false,
+  tag: "aza-pg:pg18",
+};
 ```
 
 ### Logging
 
-Consistent colored logging via `common.sh`:
+Consistent colored logging via `common.ts`:
 
-```bash
-log_info "Starting operation..."
-log_success "Operation completed"
-log_warning "Non-critical issue detected"
-log_error "Critical failure"
+```typescript
+import { logInfo, logSuccess, logWarning, logError } from "./lib/common.ts";
+
+logInfo("Starting operation...");
+logSuccess("Operation completed");
+logWarning("Non-critical issue detected");
+logError("Critical failure");
 ```
 
 ## Testing Workflow
@@ -459,24 +429,24 @@ log_error "Critical failure"
 1. **Build verification:**
 
    ```bash
-   ./scripts/test/test-build.sh
+   bun scripts/test/test-build.ts
    ```
 
 2. **Auto-config validation:**
 
    ```bash
-   ./scripts/test/test-auto-config.sh
+   bun scripts/test/test-auto-config.ts
    ```
 
 3. **Extension smoke test:**
 
    ```bash
-   ./scripts/test/run-extension-smoke.sh
+   bun scripts/test/run-extension-smoke.ts
    ```
 
 4. **PgBouncer integration:**
    ```bash
-   ./scripts/test/test-pgbouncer-healthcheck.sh
+   bun scripts/test/test-pgbouncer-healthcheck.ts
    ```
 
 ## Operational Workflow
@@ -485,10 +455,10 @@ log_error "Critical failure"
 
 ```bash
 # Backup production database
-PGHOST=prod.db.example.com PGPASSWORD=xxx ./scripts/tools/backup-postgres.sh mydb
+PGHOST=prod.db.example.com PGPASSWORD=xxx bun scripts/tools/backup-postgres.ts mydb
 
 # Restore to staging
-PGHOST=staging.db.example.com PGPASSWORD=yyy ./scripts/tools/restore-postgres.sh backup_mydb_20250131_120000.sql.gz mydb
+PGHOST=staging.db.example.com PGPASSWORD=yyy bun scripts/tools/restore-postgres.ts backup_mydb_20250131_120000.sql.gz mydb
 ```
 
 **Replica promotion (failover):**
@@ -498,7 +468,7 @@ PGHOST=staging.db.example.com PGPASSWORD=yyy ./scripts/tools/restore-postgres.sh
 docker stop postgres-primary
 
 # 2. Promote replica
-./scripts/tools/promote-replica.sh -c postgres-replica
+bun scripts/tools/promote-replica.ts --container postgres-replica
 
 # 3. Verify promotion
 docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should return 'f'
@@ -510,13 +480,12 @@ docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  
 
 **Required for all scripts:**
 
-- `bash` 4.0+ (macOS: install via Homebrew)
+- `bun` 1.3.2+ (install via `curl -fsSL https://bun.sh/install | bash`)
 - `docker` (Docker Engine or Docker Desktop)
 
 **Test scripts:**
 
 - `docker buildx` (bundled with Docker Desktop)
-- `python3` (for extension smoke test)
 - `psql` / `pg_isready` (for PgBouncer test)
 
 **Tool scripts:**
@@ -524,10 +493,6 @@ docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  
 - `pg_dump`, `pg_isready`, `psql` (PostgreSQL client tools)
 - `gzip`, `gunzip`, `du` (standard Unix utilities)
 - `openssl` (for SSL cert generation)
-
-**Build/config:**
-
-- `bun` (for config generator)
 
 ## Troubleshooting
 
@@ -582,45 +547,61 @@ gunzip -c backup_file.sql.gz | head -100
 
 When adding new scripts:
 
-1. **Use common library:** Source `lib/common.sh` for shared functions
-2. **Add shellcheck directive:** `# shellcheck source=scripts/lib/common.sh`
-3. **Consistent error handling:** Use `set -euo pipefail`
-4. **Logging:** Use `log_*()` functions from common.sh
-5. **Cleanup traps:** Use `trap cleanup EXIT` pattern
-6. **Documentation:** Add usage header and update this README
+1. **Use common library:** Import from `lib/common.ts` for shared functions
+2. **Type safety:** Use TypeScript with proper type annotations
+3. **Consistent error handling:** Use try-catch with proper cleanup
+4. **Logging:** Use `logInfo()`, `logSuccess()`, etc. from common.ts
+5. **Cleanup handlers:** Use `process.on('exit')` pattern
+6. **Documentation:** Add JSDoc comments and update this README
 7. **Testing:** Verify script works on clean environment
 
 **Example script template:**
 
-```bash
-#!/bin/bash
-# Script description
-# Usage: ./script.sh [args]
-#
-# Examples:
-#   ./script.sh example1
-#   ./script.sh example2
+```typescript
+#!/usr/bin/env bun
+/**
+ * Script description
+ *
+ * Usage: bun script.ts [args]
+ *
+ * Examples:
+ *   bun script.ts example1
+ *   bun script.ts example2
+ */
 
-set -euo pipefail
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  logInfo,
+  logSuccess,
+  logError,
+} from "./lib/common.ts";
 
-# Source common library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/common.sh
-source "$SCRIPT_DIR/../lib/common.sh"
+const CONTAINER_NAME = "my-container";
 
-# Check prerequisites
-check_command docker || exit 1
+// Cleanup handler
+process.on("exit", () => {
+  dockerCleanup(CONTAINER_NAME);
+});
 
-# Cleanup trap
-cleanup() {
-  docker_cleanup "$CONTAINER_NAME"
+async function main() {
+  try {
+    // Check prerequisites
+    await checkCommand("docker");
+    await checkDockerDaemon();
+
+    // Main logic
+    logInfo("Starting operation...");
+    // ... implementation ...
+    logSuccess("Operation complete");
+  } catch (error) {
+    logError(`Operation failed: ${error}`);
+    process.exit(1);
+  }
 }
-trap cleanup EXIT
 
-# Main logic
-log_info "Starting operation..."
-# ... implementation ...
-log_success "Operation complete"
+main();
 ```
 
 ## License

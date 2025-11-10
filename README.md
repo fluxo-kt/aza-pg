@@ -379,7 +379,7 @@ See [docs/TESTING.md](docs/TESTING.md) for detailed testing documentation.
 
 By default, TLS is **not configured** (connections unencrypted). To enable:
 
-1. Generate certificates (see `scripts/tools/generate-ssl-certs.sh` for self-signed certs)
+1. Generate certificates (see `scripts/tools/generate-ssl-certs.ts` for self-signed certs)
 2. Mount certificates in compose.yml:
    ```yaml
    volumes:

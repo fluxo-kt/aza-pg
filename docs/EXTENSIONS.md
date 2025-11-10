@@ -9,7 +9,7 @@ Key principles:
   bun scripts/extensions/generate-manifest.ts
   bun scripts/extensions/render-markdown.ts
   ```
-- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and commit for each entry. `docker/postgres/build-extensions.sh` consumes this manifest during the Docker build.
+- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and commit for each entry. The Dockerfile consumes this manifest during the Docker build.
 - **Runtime minimalism.** Only a small baseline is enabled automatically; everything else is installed but disabled by default so teams can opt in without rebuilding the image.
 
 ## Extension Matrix

@@ -84,7 +84,7 @@ function parseConfig(): RestoreConfig {
     showUsage();
   }
 
-  const backupFile = args[0];
+  const backupFile = args[0] as string;
   const database = args[1] || "postgres";
 
   const pgHost = process.env.PGHOST || "localhost";
@@ -162,7 +162,7 @@ async function confirmRestore(database: string): Promise<void> {
   process.stdout.write("Press Ctrl+C to cancel, or Enter to continue...\n");
 
   // Read user input
-  for await (const line of console) {
+  for await (const _line of console) {
     // User pressed Enter, continue
     return;
   }

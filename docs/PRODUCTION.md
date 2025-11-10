@@ -230,7 +230,7 @@ scrape_configs:
 
 ```bash
 # Using provided script:
-./scripts/tools/backup-postgres.sh postgres backup.sql.gz
+bun scripts/tools/backup-postgres.ts postgres backup.sql.gz
 
 # Direct pg_dump:
 docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
@@ -253,7 +253,7 @@ Example backup commands:
 docker exec postgres-primary pgbackrest backup --stanza=main --type=full
 
 # Or use the provided script
-./scripts/tools/backup-postgres.sh postgres-primary backup.sql.gz
+bun scripts/tools/backup-postgres.ts postgres-primary backup.sql.gz
 ```
 
 See `examples/backup/README.md` for comprehensive backup strategy and automation examples.
@@ -493,7 +493,7 @@ Recommended Prometheus alerts:
 1. Generate certificates:
 
 ```bash
-./scripts/tools/generate-ssl-certs.sh stacks/primary/certs
+bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs
 ```
 
 2. Uncomment TLS lines in `postgresql.conf`:

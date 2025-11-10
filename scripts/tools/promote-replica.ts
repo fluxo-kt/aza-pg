@@ -123,7 +123,7 @@ function parseArgs(): PromoteConfig {
           logError("Missing value for --container option");
           process.exit(1);
         }
-        config.containerName = args[++i];
+        config.containerName = args[++i] ?? "";
         break;
 
       case "-d":
@@ -132,7 +132,7 @@ function parseArgs(): PromoteConfig {
           logError("Missing value for --data-dir option");
           process.exit(1);
         }
-        config.dataDir = args[++i];
+        config.dataDir = args[++i] ?? "";
         break;
 
       case "-n":

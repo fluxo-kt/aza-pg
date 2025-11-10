@@ -77,7 +77,7 @@ async function promptConfirmation(message: string): Promise<boolean> {
     return false;
   }
 
-  const response = String.fromCharCode(value[0]).toLowerCase();
+  const response = String.fromCharCode(value[0]!).toLowerCase();
   console.log(""); // Print newline
 
   return response === "y";

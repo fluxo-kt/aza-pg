@@ -97,7 +97,7 @@ su - postgres
 
 ```bash
 # Backup from old version
-./scripts/tools/backup-postgres.sh postgres backup-pg18.sql.gz
+bun scripts/tools/backup-postgres.ts postgres backup-pg18.sql.gz
 
 # Deploy new version with fresh data directory
 docker compose down
@@ -105,10 +105,10 @@ docker volume rm postgres-data
 docker compose up -d
 
 # Wait for Postgres ready
-./scripts/test/wait-for-postgres.sh
+bun scripts/test/wait-for-postgres.ts
 
 # Restore backup
-./scripts/tools/restore-postgres.sh backup-pg18.sql.gz postgres
+bun scripts/tools/restore-postgres.ts backup-pg18.sql.gz postgres
 ```
 
 #### Step 6: Update Extension Versions
@@ -238,7 +238,7 @@ docker compose down
 docker compose up -d  # Using old tag/digest
 
 # Restore backup if data corrupted
-./scripts/tools/restore-postgres.sh backup-pre-upgrade.sql.gz postgres
+bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres
 ```
 
 ### Delayed Rollback (After pg_upgrade)
@@ -253,7 +253,7 @@ docker pull ghcr.io/fluxo-kt/aza-pg:pg18
 docker volume create postgres-data-rollback
 
 # Restore backup
-./scripts/tools/restore-postgres.sh backup-pre-upgrade.sql.gz postgres
+bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres
 ```
 
 ## Best Practices

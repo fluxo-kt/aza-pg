@@ -405,8 +405,8 @@ All 37 enabled extensions have functional tests with 100% coverage across three 
 **Test Suite:**
 
 - `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all 37 enabled extensions
-- `scripts/test/test-auto-config.sh` - Auto-config detection across 4 memory scenarios
-- `scripts/test/test-pgbouncer-healthcheck.sh` - PgBouncer auth flow validation
+- `scripts/test/test-auto-config.ts` - Auto-config detection across 4 memory scenarios
+- `scripts/test/test-pgbouncer-healthcheck.ts` - PgBouncer auth flow validation
 
 ### Test Coverage Matrix
 
@@ -473,7 +473,7 @@ Comprehensive PgBouncer auth flow validation:
 5. **Healthcheck** - Validated healthcheck command execution
 6. **Connection pooling** - Functional integration testing
 
-See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
+See `scripts/test/test-pgbouncer-healthcheck.ts` for end-to-end stack testing.
 
 ### Test Quality Metrics
 
@@ -515,7 +515,7 @@ See `scripts/test/test-pgbouncer-healthcheck.sh` for end-to-end stack testing.
 - New extension added to manifest.json → add smoke test to test-all-extensions-functional.ts
 - Extension version upgraded → verify test still valid
 - Upstream API changes → update functional test
-- Auto-config logic changes → update test-auto-config.sh
+- Auto-config logic changes → update test-auto-config.ts
 
 **Who maintains:**
 
@@ -623,7 +623,7 @@ bun run scripts/test/test-all-extensions-functional.ts --category security
 
 ```bash
 # Validate RAM/CPU detection and configuration injection
-./scripts/test/test-auto-config.sh [image-tag]
+bun scripts/test/test-auto-config.ts [image-tag]
 
 # Tests:
 # - Manual override (POSTGRES_MEMORY=1536)
@@ -639,7 +639,7 @@ bun run scripts/test/test-all-extensions-functional.ts --category security
 
 ```bash
 # Validate PgBouncer auth flow and connection pooling
-./scripts/test/test-pgbouncer-healthcheck.sh [stack-dir]
+bun scripts/test/test-pgbouncer-healthcheck.ts [stack-dir]
 
 # Tests:
 # - .pgpass file existence and permissions
@@ -653,7 +653,7 @@ bun run scripts/test/test-all-extensions-functional.ts --category security
 
 ```bash
 # Validate hook-based extensions that load via shared_preload_libraries
-./scripts/test/test-hook-extensions.sh [image-tag]
+bun scripts/test/test-hook-extensions.ts [image-tag]
 
 # Extensions tested:
 # - pg_plan_filter (hook-based, requires shared_preload_libraries)
@@ -698,12 +698,12 @@ GitHub Actions workflow runs all tests on:
 ```
 scripts/test/
 ├── test-all-extensions-functional.ts  (37 enabled extensions, 117+ smoke tests)
-├── test-auto-config.sh                (10 auto-config scenarios: 512MB-64GB)
-├── test-pgbouncer-healthcheck.sh      (8 PgBouncer auth flow tests)
-├── test-pgbouncer-failures.sh         (6 failure scenario tests)
-├── test-hook-extensions.sh            (6 hook-based extension tests)
-├── test-replica-stack.sh              (7-step replication validation)
-├── test-single-stack.sh               (7-step standalone validation)
+├── test-auto-config.ts                (10 auto-config scenarios: 512MB-64GB)
+├── test-pgbouncer-healthcheck.ts      (8 PgBouncer auth flow tests)
+├── test-pgbouncer-failures.ts         (6 failure scenario tests)
+├── test-hook-extensions.ts            (6 hook-based extension tests)
+├── test-replica-stack.ts              (7-step replication validation)
+├── test-single-stack.ts               (7-step standalone validation)
 ├── test-extensions.ts                 (legacy baseline tests)
 ├── test-extension-performance.ts      (performance benchmarks)
 ├── test-integration-extension-combinations.ts
@@ -713,12 +713,12 @@ scripts/test/
 ## References
 
 - **Extension tests:** `scripts/test/test-all-extensions-functional.ts`
-- **Auto-config tests:** `scripts/test/test-auto-config.sh` (10 memory tier scenarios)
-- **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.sh` (happy path)
-- **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.sh` (6 failure scenarios)
-- **Hook extension tests:** `scripts/test/test-hook-extensions.sh`
-- **Replica stack tests:** `scripts/test/test-replica-stack.sh` (replication validation)
-- **Single stack tests:** `scripts/test/test-single-stack.sh` (standalone validation)
+- **Auto-config tests:** `scripts/test/test-auto-config.ts` (10 memory tier scenarios)
+- **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.ts` (happy path)
+- **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.ts` (6 failure scenarios)
+- **Hook extension tests:** `scripts/test/test-hook-extensions.ts`
+- **Replica stack tests:** `scripts/test/test-replica-stack.ts` (replication validation)
+- **Single stack tests:** `scripts/test/test-single-stack.ts` (standalone validation)
 - **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Auto-config entrypoint:** `docker/postgres/docker-auto-config-entrypoint.sh`
 - **Commit 89de009**: Test restoration with session isolation fixes (4 tests restored, 1 added)

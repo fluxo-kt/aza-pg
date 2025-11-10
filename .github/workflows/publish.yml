@@ -41,6 +41,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
 
       - name: Validate manifest
         run: bun run validate
@@ -154,6 +156,39 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Derive actual PostgreSQL version from built image
+        id: actual-version
+        run: |
+          echo "Pulling built image to verify PostgreSQL version..."
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          # Extract actual PostgreSQL version from image
+          PG_VERSION_OUTPUT=$(docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version)
+          echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
+
+          # Parse version (format: "psql (PostgreSQL) 18.1 (Debian 18.1-1.pgdg130+1)")
+          ACTUAL_VERSION=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
+          ACTUAL_MAJOR=$(echo "${ACTUAL_VERSION}" | cut -d'.' -f1)
+          ACTUAL_MINOR=$(echo "${ACTUAL_VERSION}" | cut -d'.' -f2)
+
+          echo "major=${ACTUAL_MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${ACTUAL_MINOR}" >> $GITHUB_OUTPUT
+          echo "full=${ACTUAL_VERSION}" >> $GITHUB_OUTPUT
+
+          echo "✅ Actual PostgreSQL version: ${ACTUAL_VERSION} (major: ${ACTUAL_MAJOR}, minor: ${ACTUAL_MINOR})"
+
+          # Verify it matches expected major version
+          if [ "${ACTUAL_MAJOR}" != "${{ steps.pg-version.outputs.major }}" ]; then
+            echo "❌ ERROR: Actual major version (${ACTUAL_MAJOR}) doesn't match expected (${{ steps.pg-version.outputs.major }})"
+            exit 1
+          fi
+
+          # Warn if minor version differs
+          if [ "${ACTUAL_MINOR}" != "${{ steps.pg-version.outputs.minor }}" ]; then
+            echo "⚠️  WARNING: Actual minor version (${ACTUAL_MINOR}) differs from hardcoded value (${{ steps.pg-version.outputs.minor }})"
+            echo "   Consider updating PG_MINOR in workflow or Dockerfile base image"
+          fi
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
@@ -188,7 +223,7 @@ jobs:
 
           **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
           **Digest:** `${{ steps.build.outputs.digest }}`
-          **PostgreSQL Version:** ${{ steps.pg-version.outputs.full }}
+          **PostgreSQL Version:** ${{ steps.actual-version.outputs.full }} (verified from image)
           **Build Timestamp:** ${{ steps.timestamp.outputs.value }}
           **Build Type:** single-node
 

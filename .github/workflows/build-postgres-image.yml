@@ -51,10 +51,9 @@
 #
 # OUTPUTS:
 # --------
-# - Multi-platform image pushed to ghcr.io/<owner>/aza-pg with:
-#   - Branch tags (e.g., main-abc123)
-#   - Custom version tags if specified
-#   - Full SBOM and provenance
+# - Built image (local by default, push optional via 'push_image' input)
+# - Dev-prefixed tags if pushed (e.g., dev-main, dev-main-abc123)
+# - Full SBOM and provenance (only when pushed)
 # - Test results in GitHub Actions UI
 # - Step summary with extension catalog, versions, test status
 #
@@ -63,7 +62,8 @@
 # vs ci.yml:     No Docker build (ci.yml only validates code/configs)
 # vs publish.yml: Manual trigger (publish.yml auto-runs on 'release' branch)
 #                 More detailed testing (publish.yml is minimal pre-signature)
-#                 Different tagging strategy (build.yml uses branch/custom tags)
+#                 Different tagging strategy (build.yml uses dev-prefixed tags)
+#                 No push by default (publish.yml always pushes production tags)
 #
 # TROUBLESHOOTING:
 # ---------------
@@ -100,6 +100,11 @@ on:
         description: "pgAudit version"
         required: false
         default: "18.0"
+      push_image:
+        description: "Push image to registry (for QA/testing only)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -137,6 +142,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
 
       - name: Run full validation
         run: bun run validate:full
@@ -194,14 +201,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-,format=short
-            type=raw,value=pg18-pgvector0.8.1
-            type=raw,value=pg18
-            type=raw,value=latest
+            type=ref,event=branch,prefix=dev-
+            type=sha,prefix=dev-{{branch}}-,format=short
           labels: |
-            org.opencontainers.image.title=aza-pg PostgreSQL Production Image
-            org.opencontainers.image.description=PostgreSQL 18 with pgvector, pg_cron, pgAudit, pg_stat_statements, auto_explain, pg_trgm
+            org.opencontainers.image.title=aza-pg PostgreSQL Development Image
+            org.opencontainers.image.description=PostgreSQL 18 with pgvector, pg_cron, pgAudit, pg_stat_statements, auto_explain, pg_trgm (dev build)
             org.opencontainers.image.vendor=fluxo-kt
 
       - name: Determine build args
@@ -222,8 +226,9 @@ jobs:
         with:
           context: .
           file: ./docker/postgres/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true # Push to registry so downstream test jobs can pull
+          platforms: ${{ github.event.inputs.push_image == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.event.inputs.push_image == 'true' }}
+          load: ${{ github.event.inputs.push_image != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -233,8 +238,8 @@ jobs:
             PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: true
-          sbom: true
+          provenance: ${{ github.event.inputs.push_image == 'true' }}
+          sbom: ${{ github.event.inputs.push_image == 'true' }}
 
       - name: Output image digest
         run: |
@@ -254,10 +259,17 @@ jobs:
           echo "- Versions managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify image
+        if: github.event.inputs.push_image == 'true'
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
           echo "✅ Image pulled and PostgreSQL version verified"
+
+      - name: Verify local image
+        if: github.event.inputs.push_image != 'true'
+        run: |
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
+          echo "✅ Local image verified"
 
       - name: Set up QEMU for arm64 testing
         uses: docker/setup-qemu-action@v3
@@ -265,6 +277,7 @@ jobs:
           platforms: arm64
 
       - name: Test arm64 image
+        if: github.event.inputs.push_image == 'true'
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -365,6 +378,7 @@ jobs:
     name: Scan Image for Vulnerabilities
     runs-on: ubuntu-latest
     needs: build
+    if: github.event.inputs.push_image == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -420,6 +434,7 @@ jobs:
     name: Test PostgreSQL Stack
     runs-on: ubuntu-latest
     needs: build
+    if: github.event.inputs.push_image == 'true'
     timeout-minutes: 25
 
     steps:

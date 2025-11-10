@@ -199,7 +199,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=aza-pg PostgreSQL Production Image
             org.opencontainers.image.description=PostgreSQL 18 with pgvector, pg_cron, pgAudit, pg_stat_statements, auto_explain, pg_trgm
-            org.opencontainers.image.vendor=aza-pg
+            org.opencontainers.image.vendor=fluxo-kt
 
       - name: Determine build args
         id: build-args
@@ -220,7 +220,7 @@ jobs:
           context: .
           file: ./docker/postgres/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: false # Build-only workflow - use publish.yml for releases
+          push: true # Push to registry so downstream test jobs can pull
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

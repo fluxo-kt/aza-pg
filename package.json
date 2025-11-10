@@ -19,7 +19,7 @@
     "check:manifest": "bun scripts/validate-manifest.ts",
     "check:size": "bun scripts/check-size-regression.ts",
     "check:shell": "shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh",
-    "check:yaml": "echo 'YAML linting temporarily disabled due to config parsing issue'",
+    "check:yaml": "docker run --rm -v \"$(pwd):/work:ro\" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts",
     "check:docker": "hadolint --config .hadolint.yaml docker/postgres/Dockerfile",
     "check:sql": "echo 'SQL linting: No SQL linter configured - SQL files exist but are auto-generated or example files'",
     "check:toml": "echo 'TOML linting: No TOML linter configured - TOML files are minimal config files'",

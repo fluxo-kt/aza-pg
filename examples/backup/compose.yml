@@ -14,7 +14,7 @@
 services:
   pgbackrest:
     image: pgbackrest/pgbackrest:2.53.1
-    container_name: pgbackrest
+    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbackrest
     restart: unless-stopped
 
     environment:

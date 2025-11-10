@@ -20,7 +20,7 @@ services:
       - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
 
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 
@@ -50,7 +50,7 @@ services:
       DATA_SOURCE_NAME: "postgresql://postgres@postgres:5432/postgres?sslmode=disable"
       # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
       # monitoring on private Docker networks. For production, consider Docker secrets.
-      PGPASSWORD: "${POSTGRES_PASSWORD}"
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
       PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
       PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
@@ -88,4 +88,5 @@ networks:
 
 volumes:
   postgres_data:
+    name: ${POSTGRES_DATA_VOLUME:-postgres_data}
     driver: local

@@ -18,6 +18,6 @@ services:
 
 networks:
   postgres_net:
-    name: postgres-replication
+    name: ${POSTGRES_NETWORK_NAME:-postgres-replication}
     driver: bridge
     attachable: true

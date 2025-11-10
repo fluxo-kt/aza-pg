@@ -10,13 +10,8 @@
 
 import { $ } from "bun";
 import { resolve, dirname } from "path";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  waitForPostgres,
-  logError,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import { error } from "../utils/logger.ts";
 
 /**
  * Build test configuration
@@ -66,16 +61,16 @@ function getProjectRoot(): string {
 async function checkPrerequisites(): Promise<void> {
   try {
     await checkCommand("docker");
-  } catch (error) {
-    logError((error as Error).message);
+  } catch (err) {
+    error((err as Error).message);
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
 
   try {
     await checkDockerDaemon();
-  } catch (error) {
-    logError((error as Error).message);
+  } catch (err) {
+    error((err as Error).message);
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -87,7 +82,7 @@ async function checkPrerequisites(): Promise<void> {
 function verifyDockerfile(projectRoot: string): void {
   const dockerfilePath = resolve(projectRoot, "docker/postgres/Dockerfile");
   if (!Bun.file(dockerfilePath).size) {
-    logError(`Dockerfile not found at: ${dockerfilePath}`);
+    error(`Dockerfile not found at: ${dockerfilePath}`);
     console.log(`   Check project structure: ls -la ${resolve(projectRoot, "docker/postgres/")}`);
     process.exit(1);
   }
@@ -106,7 +101,7 @@ async function buildDockerImage(config: BuildTestConfig): Promise<void> {
     console.log();
   } catch {
     console.log();
-    logError("Docker buildx build failed");
+    error("Docker buildx build failed");
     console.log("   Check Dockerfile syntax and build context");
     console.log(
       `   Retry with verbose output: docker buildx build --load --progress=plain -t ${config.imageTag} .`
@@ -125,7 +120,7 @@ async function verifyPostgresVersion(imageTag: string): Promise<void> {
     console.log(result.trim());
     console.log();
   } catch {
-    logError("Failed to verify PostgreSQL version");
+    error("Failed to verify PostgreSQL version");
     console.log(`   Image may be corrupted: docker images ${imageTag}`);
     process.exit(1);
   }
@@ -140,7 +135,7 @@ async function verifyEntrypoint(imageTag: string): Promise<void> {
     await $`docker run --rm ${imageTag} ls -la /usr/local/bin/docker-auto-config-entrypoint.sh`;
     console.log();
   } catch {
-    logError("Auto-config entrypoint not found in image");
+    error("Auto-config entrypoint not found in image");
     console.log("   Check Dockerfile COPY instructions");
     process.exit(1);
   }
@@ -154,7 +149,7 @@ async function startTestContainer(config: BuildTestConfig): Promise<void> {
   try {
     await $`docker run -d --name ${config.containerName} -e POSTGRES_PASSWORD=${config.testPassword} ${config.imageTag}`.quiet();
   } catch {
-    logError("Failed to start test container");
+    error("Failed to start test container");
     console.log(`   Check Docker logs: docker logs ${config.containerName}`);
     process.exit(1);
   }
@@ -247,7 +242,7 @@ async function testExtensionCreation(config: BuildTestConfig): Promise<void> {
 
   if (failedExtensions.length > 0) {
     console.log();
-    logError(`Failed to create extensions: ${failedExtensions.join(", ")}`);
+    error(`Failed to create extensions: ${failedExtensions.join(", ")}`);
     console.log("   Check container logs for compilation errors:");
     console.log(`   docker logs ${config.containerName} | grep -i error`);
     process.exit(1);
@@ -334,7 +329,7 @@ async function listInstalledExtensions(config: BuildTestConfig): Promise<void> {
       .join("\n");
     console.log(lines);
   } catch {
-    logError("Failed to list installed extensions");
+    error("Failed to list installed extensions");
   }
   console.log();
 }
@@ -424,9 +419,9 @@ async function main(): Promise<void> {
     // Cleanup
     await cleanup();
     process.exit(0);
-  } catch (error) {
+  } catch (err) {
     await cleanup();
-    logError((error as Error).message);
+    error((err as Error).message);
     process.exit(1);
   }
 }

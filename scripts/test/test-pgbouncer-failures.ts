@@ -19,14 +19,8 @@
 import { $ } from "bun";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
-import {
-  logInfo,
-  logSuccess,
-  logWarning,
-  logError,
-  checkCommand,
-  checkDockerDaemon,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { info, success, warning, error } from "../utils/logger.ts";
 
 // =====================================================
 // Interfaces
@@ -67,7 +61,7 @@ let cleanupProject = "";
  */
 async function cleanup(): Promise<void> {
   if (cleanupProject) {
-    logInfo(`Cleaning up test project: ${cleanupProject}...`);
+    info(`Cleaning up test project: ${cleanupProject}...`);
     try {
       await $`docker compose -f ${STACK_PATH}/compose.yml down -v --remove-orphans`
         .env({ COMPOSE_PROJECT_NAME: cleanupProject })
@@ -87,7 +81,7 @@ async function cleanup(): Promise<void> {
     // Suppress cleanup errors
   }
 
-  logSuccess("Cleanup completed");
+  success("Cleanup completed");
 }
 
 /**
@@ -194,7 +188,7 @@ async function createTestEnv(
  */
 async function testWrongPassword(): Promise<void> {
   console.log();
-  logInfo("Test 1: Wrong Password Authentication");
+  info("Test 1: Wrong Password Authentication");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -214,17 +208,17 @@ POSTGRES_MEMORY_LIMIT=512m
 
   try {
     // Start postgres first
-    logInfo("Starting PostgreSQL with correct password...");
+    info("Starting PostgreSQL with correct password...");
     await $`docker compose --env-file .env.test-wrong-pass up -d postgres`
       .cwd(STACK_PATH)
       .env({ COMPOSE_PROJECT_NAME: projectName })
       .quiet();
 
     if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      logSuccess("PostgreSQL started successfully");
+      success("PostgreSQL started successfully");
 
       // Modify password in database
-      logInfo("Starting PgBouncer with mismatched password...");
+      info("Starting PgBouncer with mismatched password...");
       const postgresContainer = await getContainerId(projectName, "postgres");
       if (postgresContainer) {
         await $`docker exec ${postgresContainer} psql -U postgres -d postgres -c "ALTER ROLE pgbouncer_auth WITH PASSWORD 'different_password_in_db';"`.quiet();
@@ -249,26 +243,26 @@ POSTGRES_MEMORY_LIMIT=512m
             .catch(() => false);
 
         if (connectionSucceeded) {
-          logError("Test FAILED: Connection succeeded with wrong password (should have failed)");
+          error("Test FAILED: Connection succeeded with wrong password (should have failed)");
           testResult.testsFailed++;
         } else {
           // Check logs for authentication failure
           if (
             await checkLogsForPattern(projectName, "pgbouncer", "authentication|login|password")
           ) {
-            logSuccess("Test PASSED: Authentication properly failed with wrong password");
+            success("Test PASSED: Authentication properly failed with wrong password");
             testResult.testsPassed++;
           } else {
-            logWarning("Test PARTIAL: Connection failed but logs don't show auth error");
+            warning("Test PARTIAL: Connection failed but logs don't show auth error");
             testResult.testsPassed++;
           }
         }
       } else {
-        logError("Test FAILED: PgBouncer container not found");
+        error("Test FAILED: PgBouncer container not found");
         testResult.testsFailed++;
       }
     } else {
-      logError("Test FAILED: PostgreSQL failed to start");
+      error("Test FAILED: PostgreSQL failed to start");
       testResult.testsFailed++;
     }
   } finally {
@@ -286,7 +280,7 @@ POSTGRES_MEMORY_LIMIT=512m
  */
 async function testMissingPgpass(): Promise<void> {
   console.log();
-  logInfo("Test 2: Missing .pgpass File");
+  info("Test 2: Missing .pgpass File");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -305,7 +299,7 @@ POSTGRES_MEMORY_LIMIT=512m
   );
 
   try {
-    logInfo("Starting services...");
+    info("Starting services...");
     await $`docker compose --env-file .env.test-no-pgpass up -d postgres pgbouncer`
       .cwd(STACK_PATH)
       .env({ COMPOSE_PROJECT_NAME: projectName })
@@ -317,7 +311,7 @@ POSTGRES_MEMORY_LIMIT=512m
       const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
       if (pgbouncerContainer) {
         // Remove .pgpass file
-        logInfo("Removing .pgpass file from PgBouncer container...");
+        info("Removing .pgpass file from PgBouncer container...");
         await $`docker exec ${pgbouncerContainer} rm -f /tmp/.pgpass`.quiet().nothrow();
 
         // Try to connect (should fail without .pgpass)
@@ -329,18 +323,18 @@ POSTGRES_MEMORY_LIMIT=512m
             .catch(() => false);
 
         if (connectionSucceeded) {
-          logWarning("Test PARTIAL: Connection succeeded without .pgpass (password may be cached)");
+          warning("Test PARTIAL: Connection succeeded without .pgpass (password may be cached)");
           testResult.testsPassed++;
         } else {
-          logSuccess("Test PASSED: Connection properly failed without .pgpass");
+          success("Test PASSED: Connection properly failed without .pgpass");
           testResult.testsPassed++;
         }
       } else {
-        logError("Test FAILED: PgBouncer container not found");
+        error("Test FAILED: PgBouncer container not found");
         testResult.testsFailed++;
       }
     } else {
-      logError("Test FAILED: PostgreSQL failed to start");
+      error("Test FAILED: PostgreSQL failed to start");
       testResult.testsFailed++;
     }
   } finally {
@@ -358,7 +352,7 @@ POSTGRES_MEMORY_LIMIT=512m
  */
 async function testInvalidListenAddress(): Promise<void> {
   console.log();
-  logInfo("Test 3: Invalid Listen Address");
+  info("Test 3: Invalid Listen Address");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -378,14 +372,14 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
   );
 
   try {
-    logInfo("Starting PostgreSQL...");
+    info("Starting PostgreSQL...");
     await $`docker compose --env-file .env.test-invalid-addr up -d postgres`
       .cwd(STACK_PATH)
       .env({ COMPOSE_PROJECT_NAME: projectName })
       .quiet();
 
     if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      logInfo("Starting PgBouncer with invalid listen address...");
+      info("Starting PgBouncer with invalid listen address...");
       await $`docker compose --env-file .env.test-invalid-addr up -d pgbouncer`
         .cwd(STACK_PATH)
         .env({ COMPOSE_PROJECT_NAME: projectName })
@@ -408,22 +402,22 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
               "ERROR.*Invalid|ERROR.*PGBOUNCER_LISTEN_ADDR"
             )
           ) {
-            logSuccess("Test PASSED: PgBouncer properly rejected invalid listen address");
+            success("Test PASSED: PgBouncer properly rejected invalid listen address");
             testResult.testsPassed++;
           } else {
-            logSuccess("Test PASSED: PgBouncer container exited (invalid config detected)");
+            success("Test PASSED: PgBouncer container exited (invalid config detected)");
             testResult.testsPassed++;
           }
         } else {
-          logError("Test FAILED: PgBouncer started with invalid listen address");
+          error("Test FAILED: PgBouncer started with invalid listen address");
           testResult.testsFailed++;
         }
       } else {
-        logSuccess("Test PASSED: PgBouncer container not running (failed to start as expected)");
+        success("Test PASSED: PgBouncer container not running (failed to start as expected)");
         testResult.testsPassed++;
       }
     } else {
-      logError("Test FAILED: PostgreSQL failed to start");
+      error("Test FAILED: PostgreSQL failed to start");
       testResult.testsFailed++;
     }
   } finally {
@@ -441,7 +435,7 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
  */
 async function testPostgresUnavailable(): Promise<void> {
   console.log();
-  logInfo("Test 4: PostgreSQL Unavailable (depends_on test)");
+  info("Test 4: PostgreSQL Unavailable (depends_on test)");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -460,7 +454,7 @@ POSTGRES_MEMORY_LIMIT=512m
   );
 
   try {
-    logInfo("Starting PgBouncer WITHOUT PostgreSQL...");
+    info("Starting PgBouncer WITHOUT PostgreSQL...");
     // Try to start only PgBouncer (should wait due to depends_on)
     await $`docker compose --env-file .env.test-no-postgres up -d pgbouncer`
       .cwd(STACK_PATH)
@@ -476,16 +470,14 @@ POSTGRES_MEMORY_LIMIT=512m
     const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
 
     if (postgresContainer) {
-      logSuccess(
-        "Test PASSED: Docker Compose automatically started PostgreSQL (depends_on working)"
-      );
+      success("Test PASSED: Docker Compose automatically started PostgreSQL (depends_on working)");
       testResult.testsPassed++;
     } else {
       if (!pgbouncerContainer) {
-        logSuccess("Test PASSED: PgBouncer did not start without PostgreSQL");
+        success("Test PASSED: PgBouncer did not start without PostgreSQL");
         testResult.testsPassed++;
       } else {
-        logError("Test FAILED: PgBouncer started without PostgreSQL");
+        error("Test FAILED: PgBouncer started without PostgreSQL");
         testResult.testsFailed++;
       }
     }
@@ -504,7 +496,7 @@ POSTGRES_MEMORY_LIMIT=512m
  */
 async function testMaxConnections(): Promise<void> {
   console.log();
-  logInfo("Test 5: Max Connections Exceeded");
+  info("Test 5: Max Connections Exceeded");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -523,7 +515,7 @@ POSTGRES_MEMORY_LIMIT=512m
   );
 
   try {
-    logInfo("Starting services...");
+    info("Starting services...");
     await $`docker compose --env-file .env.test-max-conn up -d postgres pgbouncer`
       .cwd(STACK_PATH)
       .env({ COMPOSE_PROJECT_NAME: projectName })
@@ -534,14 +526,14 @@ POSTGRES_MEMORY_LIMIT=512m
 
       const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
       if (pgbouncerContainer) {
-        logInfo("Setting very low connection limit on pgbouncer_auth user...");
+        info("Setting very low connection limit on pgbouncer_auth user...");
         const postgresContainer = await getContainerId(projectName, "postgres");
         if (postgresContainer) {
           await $`docker exec ${postgresContainer} psql -U postgres -d postgres -c "ALTER ROLE pgbouncer_auth CONNECTION LIMIT 1;"`.quiet();
         }
 
         // Open first connection (should succeed)
-        logInfo("Opening first connection...");
+        info("Opening first connection...");
         // Start first connection in background with sleep
         $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp timeout 5 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT pg_sleep(2); SELECT 1"'`
           .quiet()
@@ -549,7 +541,7 @@ POSTGRES_MEMORY_LIMIT=512m
         await Bun.sleep(1000);
 
         // Try second connection (should fail due to connection limit)
-        logInfo("Attempting second connection (should fail)...");
+        info("Attempting second connection (should fail)...");
         const errorOutput =
           await $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"'`
             .nothrow()
@@ -558,26 +550,26 @@ POSTGRES_MEMORY_LIMIT=512m
         const connectionSucceeded = !errorOutput.toLowerCase().includes("error");
 
         if (connectionSucceeded) {
-          logWarning(
+          warning(
             "Test PARTIAL: Second connection succeeded (may be pooled or first connection already closed)"
           );
           testResult.testsPassed++;
         } else {
           // Check if error mentions connection limit
           if (/connection|limit|too many/i.test(errorOutput)) {
-            logSuccess("Test PASSED: Connection properly rejected (connection limit enforced)");
+            success("Test PASSED: Connection properly rejected (connection limit enforced)");
             testResult.testsPassed++;
           } else {
-            logSuccess("Test PASSED: Second connection failed as expected");
+            success("Test PASSED: Second connection failed as expected");
             testResult.testsPassed++;
           }
         }
       } else {
-        logError("Test FAILED: PgBouncer container not found");
+        error("Test FAILED: PgBouncer container not found");
         testResult.testsFailed++;
       }
     } else {
-      logError("Test FAILED: PostgreSQL failed to start");
+      error("Test FAILED: PostgreSQL failed to start");
       testResult.testsFailed++;
     }
   } finally {
@@ -595,7 +587,7 @@ POSTGRES_MEMORY_LIMIT=512m
  */
 async function testPgpassPermissions(): Promise<void> {
   console.log();
-  logInfo("Test 6: .pgpass Wrong Permissions (777)");
+  info("Test 6: .pgpass Wrong Permissions (777)");
   console.log("----------------------------------------");
   testResult.testsRun++;
 
@@ -614,7 +606,7 @@ POSTGRES_MEMORY_LIMIT=512m
   );
 
   try {
-    logInfo("Starting services...");
+    info("Starting services...");
     await $`docker compose --env-file .env.test-pgpass-perms up -d postgres pgbouncer`
       .cwd(STACK_PATH)
       .env({ COMPOSE_PROJECT_NAME: projectName })
@@ -627,7 +619,7 @@ POSTGRES_MEMORY_LIMIT=512m
       if (pgbouncerContainer) {
         // SECURITY TEST: Intentionally set insecure permissions to verify PostgreSQL client warning behavior
         // This is NOT a security vulnerability - it's testing that psql properly rejects insecure .pgpass files
-        logInfo(
+        info(
           "Changing .pgpass permissions to 777 (insecure - this is a deliberate security test)..."
         );
         await $`docker exec ${pgbouncerContainer} chmod 777 /tmp/.pgpass`.quiet().nothrow();
@@ -639,7 +631,7 @@ POSTGRES_MEMORY_LIMIT=512m
             .text();
 
         if (/WARNING.*password file.*permissions/i.test(connectionOutput)) {
-          logSuccess("Test PASSED: PostgreSQL client warned about insecure .pgpass permissions");
+          success("Test PASSED: PostgreSQL client warned about insecure .pgpass permissions");
           testResult.testsPassed++;
         } else {
           // Connection may still work but should warn
@@ -651,21 +643,21 @@ POSTGRES_MEMORY_LIMIT=512m
               .catch(() => false);
 
           if (connectionSucceeded) {
-            logWarning(
+            warning(
               "Test PARTIAL: Connection succeeded despite wrong permissions (warning may be in logs)"
             );
             testResult.testsPassed++;
           } else {
-            logSuccess("Test PASSED: Connection failed with wrong .pgpass permissions");
+            success("Test PASSED: Connection failed with wrong .pgpass permissions");
             testResult.testsPassed++;
           }
         }
       } else {
-        logError("Test FAILED: PgBouncer container not found");
+        error("Test FAILED: PgBouncer container not found");
         testResult.testsFailed++;
       }
     } else {
-      logError("Test FAILED: PostgreSQL failed to start");
+      error("Test FAILED: PostgreSQL failed to start");
       testResult.testsFailed++;
     }
   } finally {
@@ -687,7 +679,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("docker");
   } catch {
-    logError("Required command 'docker' not found");
+    error("Required command 'docker' not found");
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
@@ -695,7 +687,7 @@ async function main(): Promise<void> {
   try {
     await checkDockerDaemon();
   } catch {
-    logError("Docker daemon is not running");
+    error("Docker daemon is not running");
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -703,21 +695,21 @@ async function main(): Promise<void> {
   try {
     await checkCommand("jq");
   } catch {
-    logError("Required command 'jq' not found");
+    error("Required command 'jq' not found");
     console.log("   Install jq: apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)");
     process.exit(1);
   }
 
   // Validate stack directory
   if (!existsSync(STACK_PATH)) {
-    logError(`Stack directory not found: ${STACK_PATH}`);
+    error(`Stack directory not found: ${STACK_PATH}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composePath = join(STACK_PATH, "compose.yml");
   if (!existsSync(composePath)) {
-    logError(`compose.yml not found in ${STACK_PATH}`);
+    error(`compose.yml not found in ${STACK_PATH}`);
     process.exit(1);
   }
 
@@ -764,7 +756,7 @@ async function main(): Promise<void> {
   console.log();
 
   if (testResult.testsFailed === 0) {
-    logSuccess("All PgBouncer failure scenario tests completed successfully!");
+    success("All PgBouncer failure scenario tests completed successfully!");
     console.log();
     console.log("Tested scenarios:");
     console.log("  ✅ Wrong password authentication (properly rejected)");
@@ -775,7 +767,7 @@ async function main(): Promise<void> {
     console.log("  ✅ .pgpass wrong permissions (security warning/rejection)");
     process.exit(0);
   } else {
-    logError("Some tests failed!");
+    error("Some tests failed!");
     console.log("Review the output above for details.");
     process.exit(1);
   }
@@ -783,6 +775,6 @@ async function main(): Promise<void> {
 
 // Run main with error handling
 main().catch((error) => {
-  logError(`Fatal error: ${error.message}`);
+  error(`Fatal error: ${error.message}`);
   cleanup().then(() => process.exit(1));
 });

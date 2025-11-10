@@ -12,7 +12,8 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, waitForPostgres, logInfo, logSuccess, logError } from "../lib/common.ts";
+import { checkCommand, waitForPostgres } from "../lib/common.ts";
+import { info, success, error } from "../utils/logger.ts";
 import { dirname } from "path";
 
 interface BackupConfig {
@@ -44,7 +45,7 @@ async function checkRequiredCommands(): Promise<void> {
 
   for (const cmd of commands) {
     if (!(await commandExists(cmd))) {
-      logError(`Required command not found: ${cmd}`);
+      error(`Required command not found: ${cmd}`);
       process.stdout.write(
         "   Install PostgreSQL client tools: https://www.postgresql.org/download/\n"
       );
@@ -87,7 +88,7 @@ function parseConfig(): BackupConfig {
  */
 function checkPgPassword(config: BackupConfig): void {
   if (config.pgHost !== "localhost" && config.pgHost !== "127.0.0.1" && !config.pgPassword) {
-    logError("PGPASSWORD environment variable required for remote connections");
+    error("PGPASSWORD environment variable required for remote connections");
     process.stdout.write("   Set password: export PGPASSWORD='your_password'\n");
     process.stdout.write(
       "   Or use .pgpass file: https://www.postgresql.org/docs/current/libpq-pgpass.html\n"
@@ -106,12 +107,12 @@ async function checkOutputDirectory(outputFile: string): Promise<void> {
   try {
     const stat = await Bun.file(outputDir).exists();
     if (!stat) {
-      logError(`Output directory does not exist: ${outputDir}`);
+      error(`Output directory does not exist: ${outputDir}`);
       process.stdout.write(`   Create directory: mkdir -p ${outputDir}\n`);
       process.exit(1);
     }
   } catch {
-    logError(`Output directory does not exist: ${outputDir}`);
+    error(`Output directory does not exist: ${outputDir}`);
     process.stdout.write(`   Create directory: mkdir -p ${outputDir}\n`);
     process.exit(1);
   }
@@ -122,7 +123,7 @@ async function checkOutputDirectory(outputFile: string): Promise<void> {
     await Bun.write(testFile, "test");
     await $`rm -f ${testFile}`.quiet();
   } catch {
-    logError(`Output directory not writable: ${outputDir}`);
+    error(`Output directory not writable: ${outputDir}`);
     process.stdout.write(`   Check permissions: ls -la ${outputDir}\n`);
     process.exit(1);
   }
@@ -134,7 +135,7 @@ async function checkOutputDirectory(outputFile: string): Promise<void> {
 async function checkFileExists(outputFile: string): Promise<void> {
   const exists = await Bun.file(outputFile).exists();
   if (exists) {
-    logError(`Output file already exists: ${outputFile}`);
+    error(`Output file already exists: ${outputFile}`);
     process.stdout.write(`   Remove existing file: rm ${outputFile}\n`);
     process.stdout.write("   Or specify different output file as second argument\n");
     process.exit(1);
@@ -145,7 +146,7 @@ async function checkFileExists(outputFile: string): Promise<void> {
  * Perform the backup operation
  */
 async function performBackup(config: BackupConfig): Promise<void> {
-  logInfo("Creating backup...");
+  info("Creating backup...");
 
   try {
     // Run pg_dump and pipe to gzip
@@ -164,7 +165,7 @@ async function performBackup(config: BackupConfig): Promise<void> {
     await Bun.write(config.outputFile, compressed);
   } catch {
     process.stdout.write("\n");
-    logError("Backup failed");
+    error("Backup failed");
     process.stdout.write("   Check pg_dump output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
@@ -192,7 +193,7 @@ async function verifyBackup(outputFile: string): Promise<void> {
   const exists = await file.exists();
 
   if (!exists) {
-    logError("Backup file is empty or was not created");
+    error("Backup file is empty or was not created");
     process.stdout.write("   This usually indicates pg_dump failed silently\n");
     try {
       await $`rm -f ${outputFile}`.quiet();
@@ -204,7 +205,7 @@ async function verifyBackup(outputFile: string): Promise<void> {
 
   const size = file.size;
   if (size === 0) {
-    logError("Backup file is empty or was not created");
+    error("Backup file is empty or was not created");
     process.stdout.write("   This usually indicates pg_dump failed silently\n");
     try {
       await $`rm -f ${outputFile}`.quiet();
@@ -218,7 +219,7 @@ async function verifyBackup(outputFile: string): Promise<void> {
   try {
     await $`gzip -t ${outputFile}`.quiet();
   } catch {
-    logError("Backup file is corrupted (invalid gzip format)");
+    error("Backup file is corrupted (invalid gzip format)");
     process.stdout.write("   The backup process may have been interrupted\n");
     try {
       await $`rm -f ${outputFile}`.quiet();
@@ -238,7 +239,7 @@ async function showBackupInfo(config: BackupConfig): Promise<void> {
   const backupSize = duResult.split("\t")[0];
 
   process.stdout.write("\n");
-  logSuccess("Backup complete!");
+  success("Backup complete!");
   process.stdout.write(`File: ${config.outputFile}\n`);
   process.stdout.write(`Size: ${backupSize}\n`);
   process.stdout.write("\n");
@@ -308,6 +309,6 @@ async function main(): Promise<void> {
 
 // Run main function
 main().catch((error) => {
-  logError(error.message);
+  error(error.message);
   process.exit(1);
 });

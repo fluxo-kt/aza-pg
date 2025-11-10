@@ -43,7 +43,7 @@
  */
 
 import { $ } from "bun";
-import { logInfo, logSuccess, logWarning, logError } from "../lib/common.ts";
+import { info, success, warning, error } from "../utils/logger.ts";
 
 interface PromoteConfig {
   containerName: string;
@@ -120,7 +120,7 @@ function parseArgs(): PromoteConfig {
       case "-c":
       case "--container":
         if (i + 1 >= args.length) {
-          logError("Missing value for --container option");
+          error("Missing value for --container option");
           process.exit(1);
         }
         config.containerName = args[++i] ?? "";
@@ -129,7 +129,7 @@ function parseArgs(): PromoteConfig {
       case "-d":
       case "--data-dir":
         if (i + 1 >= args.length) {
-          logError("Missing value for --data-dir option");
+          error("Missing value for --data-dir option");
           process.exit(1);
         }
         config.dataDir = args[++i] ?? "";
@@ -151,7 +151,7 @@ function parseArgs(): PromoteConfig {
         break;
 
       default:
-        logError(`Unknown option: ${arg}. Use -h for help.`);
+        error(`Unknown option: ${arg}. Use -h for help.`);
         process.exit(1);
     }
   }
@@ -163,13 +163,13 @@ function parseArgs(): PromoteConfig {
  * Check prerequisites
  */
 async function checkPrerequisites(config: PromoteConfig): Promise<void> {
-  logInfo("Checking prerequisites...");
+  info("Checking prerequisites...");
 
   // Check if docker is available
   try {
     await $`command -v docker`.quiet();
   } catch {
-    logError("Docker is not installed or not in PATH");
+    error("Docker is not installed or not in PATH");
     process.exit(1);
   }
 
@@ -178,11 +178,11 @@ async function checkPrerequisites(config: PromoteConfig): Promise<void> {
     const containers = await $`docker ps -a --format {{.Names}}`.text();
     const containerList = containers.split("\n").filter((name) => name.trim() !== "");
     if (!containerList.includes(config.containerName)) {
-      logError(`Container '${config.containerName}' does not exist`);
+      error(`Container '${config.containerName}' does not exist`);
       process.exit(1);
     }
   } catch {
-    logError(`Failed to check if container '${config.containerName}' exists`);
+    error(`Failed to check if container '${config.containerName}' exists`);
     process.exit(1);
   }
 
@@ -191,22 +191,22 @@ async function checkPrerequisites(config: PromoteConfig): Promise<void> {
     const runningContainers = await $`docker ps --format {{.Names}}`.text();
     const runningList = runningContainers.split("\n").filter((name) => name.trim() !== "");
     if (!runningList.includes(config.containerName)) {
-      logError(`Container '${config.containerName}' is not running`);
+      error(`Container '${config.containerName}' is not running`);
       process.exit(1);
     }
   } catch {
-    logError(`Failed to check if container '${config.containerName}' is running`);
+    error(`Failed to check if container '${config.containerName}' is running`);
     process.exit(1);
   }
 
-  logSuccess("Prerequisites check passed");
+  success("Prerequisites check passed");
 }
 
 /**
  * Verify replica is in recovery mode
  */
 async function verifyReplicaState(config: PromoteConfig): Promise<void> {
-  logInfo("Verifying replica state...");
+  info("Verifying replica state...");
 
   try {
     const result =
@@ -214,13 +214,13 @@ async function verifyReplicaState(config: PromoteConfig): Promise<void> {
     const inRecovery = result.trim();
 
     if (inRecovery !== "t") {
-      logError(`Container '${config.containerName}' is not in recovery mode (already a primary?)`);
+      error(`Container '${config.containerName}' is not in recovery mode (already a primary?)`);
       process.exit(1);
     }
 
-    logSuccess("Confirmed: Container is in standby/recovery mode");
+    success("Confirmed: Container is in standby/recovery mode");
   } catch {
-    logError("Failed to verify replica state");
+    error("Failed to verify replica state");
     process.exit(1);
   }
 }
@@ -230,11 +230,11 @@ async function verifyReplicaState(config: PromoteConfig): Promise<void> {
  */
 async function createBackup(config: PromoteConfig): Promise<void> {
   if (!config.createBackup) {
-    logWarning("Skipping backup (--no-backup flag set)");
+    warning("Skipping backup (--no-backup flag set)");
     return;
   }
 
-  logInfo("Creating backup before promotion...");
+  info("Creating backup before promotion...");
 
   const timestamp = new Date()
     .toISOString()
@@ -244,10 +244,10 @@ async function createBackup(config: PromoteConfig): Promise<void> {
 
   try {
     await $`docker exec ${config.containerName} pg_basebackup -D /backup/${backupName} -F tar -z -P`;
-    logSuccess(`Backup created: /backup/${backupName}`);
+    success(`Backup created: /backup/${backupName}`);
   } catch {
-    logWarning("Backup failed, but continuing with promotion");
-    logWarning("Manual backup recommended if this is production");
+    warning("Backup failed, but continuing with promotion");
+    warning("Manual backup recommended if this is production");
   }
 }
 
@@ -260,16 +260,16 @@ async function confirmPromotion(config: PromoteConfig): Promise<void> {
   }
 
   process.stdout.write("\n");
-  logWarning("=========================================");
-  logWarning("REPLICA PROMOTION WARNING");
-  logWarning("=========================================");
+  warning("=========================================");
+  warning("REPLICA PROMOTION WARNING");
+  warning("=========================================");
   process.stdout.write("You are about to promote replica to primary.\n");
   process.stdout.write("\n");
   process.stdout.write(`Container: ${config.containerName}\n`);
   process.stdout.write(`Data Dir:  ${config.dataDir}\n`);
   process.stdout.write(`Backup:    ${config.createBackup ? "Yes" : "No"}\n`);
   process.stdout.write("\n");
-  logWarning("IMPORTANT:");
+  warning("IMPORTANT:");
   process.stdout.write("  - This is a ONE-WAY operation\n");
   process.stdout.write("  - Ensure old primary is STOPPED to avoid split-brain\n");
   process.stdout.write("  - Clients must be redirected to new primary after promotion\n");
@@ -282,7 +282,7 @@ async function confirmPromotion(config: PromoteConfig): Promise<void> {
   const response = input.trim().toLowerCase();
 
   if (response !== "yes") {
-    logInfo("Promotion cancelled by user");
+    info("Promotion cancelled by user");
     process.exit(0);
   }
 }
@@ -303,13 +303,13 @@ async function readLine(): Promise<string> {
  * Stop replica container
  */
 async function stopContainer(config: PromoteConfig): Promise<void> {
-  logInfo(`Stopping container '${config.containerName}'...`);
+  info(`Stopping container '${config.containerName}'...`);
 
   try {
     await $`docker stop ${config.containerName}`.quiet();
-    logSuccess("Container stopped");
+    success("Container stopped");
   } catch {
-    logError("Failed to stop container");
+    error("Failed to stop container");
     process.exit(1);
   }
 }
@@ -318,13 +318,13 @@ async function stopContainer(config: PromoteConfig): Promise<void> {
  * Promote replica using pg_ctl
  */
 async function promoteReplica(config: PromoteConfig): Promise<void> {
-  logInfo("Promoting replica to primary...");
+  info("Promoting replica to primary...");
 
   // Start container temporarily to run pg_ctl promote
   try {
     await $`docker start ${config.containerName}`.quiet();
   } catch {
-    logError("Failed to start container");
+    error("Failed to start container");
     process.exit(1);
   }
 
@@ -334,14 +334,14 @@ async function promoteReplica(config: PromoteConfig): Promise<void> {
   // Run pg_ctl promote
   try {
     await $`docker exec ${config.containerName} su - postgres -c "pg_ctl promote -D ${config.dataDir}"`;
-    logSuccess("Replica promoted successfully");
+    success("Replica promoted successfully");
   } catch {
-    logError("Failed to promote replica");
+    error("Failed to promote replica");
     process.exit(1);
   }
 
   // Wait for promotion to complete
-  logInfo("Waiting for promotion to complete...");
+  info("Waiting for promotion to complete...");
   await Bun.sleep(5000);
 
   // Verify promotion
@@ -351,13 +351,13 @@ async function promoteReplica(config: PromoteConfig): Promise<void> {
     const inRecovery = result.trim();
 
     if (inRecovery === "f") {
-      logSuccess("Promotion verified: Container is now a primary");
+      success("Promotion verified: Container is now a primary");
     } else {
-      logError("Promotion verification failed: Container still in recovery mode");
+      error("Promotion verification failed: Container still in recovery mode");
       process.exit(1);
     }
   } catch {
-    logError("Failed to verify promotion");
+    error("Failed to verify promotion");
     process.exit(1);
   }
 }
@@ -366,7 +366,7 @@ async function promoteReplica(config: PromoteConfig): Promise<void> {
  * Update configuration for primary role
  */
 async function updateConfiguration(config: PromoteConfig): Promise<void> {
-  logInfo("Updating configuration for primary role...");
+  info("Updating configuration for primary role...");
 
   // Remove standby.signal if it exists
   try {
@@ -374,7 +374,7 @@ async function updateConfiguration(config: PromoteConfig): Promise<void> {
       await $`docker exec ${config.containerName} test -f ${config.dataDir}/standby.signal`.quiet();
     if (testResult.exitCode === 0) {
       await $`docker exec ${config.containerName} rm -f ${config.dataDir}/standby.signal`;
-      logSuccess("Removed standby.signal");
+      success("Removed standby.signal");
     }
   } catch {
     // File doesn't exist or already removed
@@ -383,41 +383,41 @@ async function updateConfiguration(config: PromoteConfig): Promise<void> {
   // Note: Config changes (e.g., hot_standby settings) are typically handled
   // by postgresql.conf mounted from host. If using auto-config, no changes needed.
 
-  logSuccess("Configuration updated");
+  success("Configuration updated");
 }
 
 /**
  * Restart as primary
  */
 async function restartPrimary(config: PromoteConfig): Promise<void> {
-  logInfo("Restarting container as primary...");
+  info("Restarting container as primary...");
 
   // Stop container
   try {
     await $`docker stop ${config.containerName}`.quiet();
   } catch {
-    logError("Failed to stop container");
+    error("Failed to stop container");
     process.exit(1);
   }
 
   // Start container
   try {
     await $`docker start ${config.containerName}`.quiet();
-    logSuccess("Container restarted");
+    success("Container restarted");
   } catch {
-    logError("Failed to restart container");
+    error("Failed to restart container");
     process.exit(1);
   }
 
   // Wait for PostgreSQL to be ready
-  logInfo("Waiting for PostgreSQL to accept connections...");
+  info("Waiting for PostgreSQL to accept connections...");
   const maxAttempts = 30;
   let attempt = 0;
 
   while (attempt < maxAttempts) {
     try {
       await $`docker exec ${config.containerName} pg_isready -U postgres`.quiet();
-      logSuccess("PostgreSQL is ready and accepting connections");
+      success("PostgreSQL is ready and accepting connections");
       return;
     } catch {
       // Not ready yet
@@ -427,7 +427,7 @@ async function restartPrimary(config: PromoteConfig): Promise<void> {
     await Bun.sleep(1000);
   }
 
-  logError(`PostgreSQL failed to start within ${maxAttempts} seconds`);
+  error(`PostgreSQL failed to start within ${maxAttempts} seconds`);
   process.exit(1);
 }
 
@@ -436,9 +436,9 @@ async function restartPrimary(config: PromoteConfig): Promise<void> {
  */
 function showPostPromotionInstructions(config: PromoteConfig): void {
   process.stdout.write("\n");
-  logSuccess("=========================================");
-  logSuccess("PROMOTION COMPLETE");
-  logSuccess("=========================================");
+  success("=========================================");
+  success("PROMOTION COMPLETE");
+  success("=========================================");
   process.stdout.write("\n");
   process.stdout.write("Next steps:\n");
   process.stdout.write("\n");
@@ -458,7 +458,7 @@ function showPostPromotionInstructions(config: PromoteConfig): void {
   process.stdout.write("\n");
   process.stdout.write("5. Stop or reconfigure old primary to prevent split-brain\n");
   process.stdout.write("\n");
-  logWarning("IMPORTANT: Ensure only ONE primary exists in your cluster!");
+  warning("IMPORTANT: Ensure only ONE primary exists in your cluster!");
   process.stdout.write("\n");
 }
 
@@ -469,9 +469,9 @@ async function main(): Promise<void> {
   const config = parseArgs();
 
   process.stdout.write("\n");
-  logInfo("=========================================");
-  logInfo("PostgreSQL Replica Promotion Script");
-  logInfo("=========================================");
+  info("=========================================");
+  info("PostgreSQL Replica Promotion Script");
+  info("=========================================");
   process.stdout.write("\n");
 
   await checkPrerequisites(config);
@@ -487,6 +487,6 @@ async function main(): Promise<void> {
 
 // Run main function
 main().catch((error) => {
-  logError(error.message);
+  error(error.message);
   process.exit(1);
 });

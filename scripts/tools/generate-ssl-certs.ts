@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { logInfo, logSuccess, logError, logWarning } from "../lib/common.ts";
+import { info, success, error, warning } from "../utils/logger.ts";
 
 interface CertConfig {
   certDir: string;
@@ -36,7 +36,7 @@ function parseArgs(): CertConfig | null {
   const daysValid = daysValidArg ? parseInt(daysValidArg, 10) : 3650;
 
   if (isNaN(daysValid) || daysValid <= 0) {
-    logError(`Invalid days-valid value: ${daysValidArg} (must be a positive integer)`);
+    error(`Invalid days-valid value: ${daysValidArg} (must be a positive integer)`);
     return null;
   }
 
@@ -100,19 +100,19 @@ async function removeExistingCerts(certDir: string): Promise<void> {
 async function generateCertificates(config: CertConfig): Promise<void> {
   const { certDir, daysValid, hostname } = config;
 
-  logInfo("Generating private key...");
+  info("Generating private key...");
 
   try {
     await $`openssl req -new -x509 -days ${daysValid.toString()} -nodes -text -out ${certDir}/server.crt -keyout ${certDir}/server.key -subj /CN=${hostname}/O=PostgreSQL/C=US`;
-  } catch (error) {
-    logError("Failed to generate certificates");
-    throw error;
+  } catch (err) {
+    error("Failed to generate certificates");
+    throw err;
   }
 
   // Verify that the key file was created
   const keyFile = Bun.file(`${certDir}/server.key`);
   if (!(await keyFile.exists())) {
-    logError("Failed to generate certificates");
+    error("Failed to generate certificates");
     throw new Error("Certificate key file not created");
   }
 }
@@ -136,7 +136,7 @@ async function createCACert(certDir: string): Promise<void> {
  * Print success message with next steps
  */
 function printSuccess(certDir: string): void {
-  logSuccess("Certificates generated successfully!");
+  success("Certificates generated successfully!");
   console.log("");
   console.log("Files created:");
   console.log(`  - ${certDir}/server.key  (private key, 600 permissions)`);
@@ -163,19 +163,19 @@ async function main(): Promise<void> {
 
   const { certDir, daysValid } = config;
 
-  logInfo(`Generating certificates in: ${certDir}`);
-  logInfo(`Validity period: ${daysValid} days`);
+  info(`Generating certificates in: ${certDir}`);
+  info(`Validity period: ${daysValid} days`);
 
   // Create certificate directory
   await $`mkdir -p ${certDir}`;
 
   // Check if certificates already exist
   if (await certificatesExist(certDir)) {
-    logWarning(`Certificates already exist in ${certDir}`);
+    warning(`Certificates already exist in ${certDir}`);
     const shouldOverwrite = await promptConfirmation("Overwrite existing certificates?");
 
     if (!shouldOverwrite) {
-      logInfo("Aborted");
+      info("Aborted");
       process.exit(0);
     }
 
@@ -198,11 +198,11 @@ async function main(): Promise<void> {
 // Run main function
 try {
   await main();
-} catch (error) {
-  if (error instanceof Error) {
-    logError(error.message);
+} catch (err) {
+  if (err instanceof Error) {
+    error(err.message);
   } else {
-    logError("Unknown error occurred");
+    error("Unknown error occurred");
   }
   process.exit(1);
 }

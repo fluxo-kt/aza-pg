@@ -16,15 +16,8 @@
  */
 
 import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  logError,
-  logInfo,
-  logSuccess,
-  waitForPostgres,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import { error, info, success } from "../utils/logger.ts";
 
 interface ManifestEntry {
   name: string;
@@ -83,8 +76,8 @@ print(' '.join(disabled))
 
     const disabled = result.trim();
     return disabled ? disabled.split(" ") : [];
-  } catch (error) {
-    throw new Error(`Failed to get disabled extensions: ${error}`);
+  } catch (err) {
+    throw new Error(`Failed to get disabled extensions: ${err}`);
   }
 }
 
@@ -116,8 +109,8 @@ print(' '.join(disabled))
 
     const disabled = result.trim();
     return disabled ? disabled.split(" ") : [];
-  } catch (error) {
-    throw new Error(`Failed to get disabled extensions (excluding tools): ${error}`);
+  } catch (err) {
+    throw new Error(`Failed to get disabled extensions (excluding tools): ${err}`);
   }
 }
 
@@ -125,13 +118,13 @@ print(' '.join(disabled))
  * TEST 1: Verify disabled extensions NOT in 01-extensions.sql
  */
 async function test1(): Promise<boolean> {
-  logInfo("Test 1: Verify disabled extensions NOT in 01-extensions.sql");
+  info("Test 1: Verify disabled extensions NOT in 01-extensions.sql");
   console.log("-------------------------------------------------------");
 
   // Check manifest exists
   const manifestFile = Bun.file(MANIFEST_PATH);
   if (!(await manifestFile.exists())) {
-    logError(`Manifest not found: ${MANIFEST_PATH}`);
+    error(`Manifest not found: ${MANIFEST_PATH}`);
     return false;
   }
 
@@ -144,13 +137,13 @@ async function test1(): Promise<boolean> {
     await dockerCleanup(containerName);
 
     if (disabledExts.length === 0) {
-      logInfo("No disabled extensions found in manifest (all enabled)");
-      logSuccess("Test 1 PASSED: No disabled extensions to validate");
+      info("No disabled extensions found in manifest (all enabled)");
+      success("Test 1 PASSED: No disabled extensions to validate");
       console.log();
       return true;
     }
 
-    logInfo(`Found disabled extensions: ${disabledExts.join(", ")}`);
+    info(`Found disabled extensions: ${disabledExts.join(", ")}`);
 
     // Check 01-extensions.sql inside the image
     const verifyContainerName = `pg-disabled-test1-verify-${process.pid}`;
@@ -161,14 +154,14 @@ async function test1(): Promise<boolean> {
       initSql = await $`docker exec ${verifyContainerName} cat ${INIT_SQL_PATH}`.text();
     } catch {
       await dockerCleanup(verifyContainerName);
-      logError(`Could not read ${INIT_SQL_PATH} from image`);
+      error(`Could not read ${INIT_SQL_PATH} from image`);
       return false;
     }
 
     await dockerCleanup(verifyContainerName);
 
     if (!initSql) {
-      logError(`Could not read ${INIT_SQL_PATH} from image`);
+      error(`Could not read ${INIT_SQL_PATH} from image`);
       return false;
     }
 
@@ -177,25 +170,25 @@ async function test1(): Promise<boolean> {
     for (const ext of disabledExts) {
       const regex = new RegExp(`CREATE EXTENSION.*${ext}[; ]`);
       if (regex.test(initSql)) {
-        logError(`Disabled extension '${ext}' found in ${INIT_SQL_PATH}`);
+        error(`Disabled extension '${ext}' found in ${INIT_SQL_PATH}`);
         foundDisabled = true;
       } else {
-        logInfo(`✓ Extension '${ext}' correctly excluded from init script`);
+        info(`✓ Extension '${ext}' correctly excluded from init script`);
       }
     }
 
     if (!foundDisabled) {
-      logSuccess("Test 1 PASSED: Disabled extensions not in 01-extensions.sql");
+      success("Test 1 PASSED: Disabled extensions not in 01-extensions.sql");
       console.log();
       return true;
     } else {
-      logError("Test 1 FAILED: Some disabled extensions found in init script");
+      error("Test 1 FAILED: Some disabled extensions found in init script");
       console.log();
       return false;
     }
-  } catch (error) {
+  } catch (err) {
     await dockerCleanup(containerName);
-    logError(`Test 1 failed with error: ${error}`);
+    error(`Test 1 failed with error: ${err}`);
     return false;
   }
 }
@@ -204,7 +197,7 @@ async function test1(): Promise<boolean> {
  * TEST 2: Verify disabled extensions NOT in final image (binaries removed)
  */
 async function test2(): Promise<boolean> {
-  logInfo("Test 2: Verify disabled extensions NOT in final image");
+  info("Test 2: Verify disabled extensions NOT in final image");
   console.log("-------------------------------------------------------");
 
   const containerName = `pg-disabled-test2-${process.pid}`;
@@ -215,13 +208,13 @@ async function test2(): Promise<boolean> {
 
     if (disabledExts.length === 0) {
       await dockerCleanup(containerName);
-      logInfo("No disabled extensions found in manifest");
-      logSuccess("Test 2 PASSED: No disabled extensions to validate");
+      info("No disabled extensions found in manifest");
+      success("Test 2 PASSED: No disabled extensions to validate");
       console.log();
       return true;
     }
 
-    logInfo(`Checking for missing binaries: ${disabledExts.join(", ")}`);
+    info(`Checking for missing binaries: ${disabledExts.join(", ")}`);
 
     // Check PostgreSQL lib/extension directories for binaries
     let foundBinaries = false;
@@ -231,13 +224,13 @@ async function test2(): Promise<boolean> {
         const soFile =
           await $`docker exec ${containerName} sh -c "ls ${PG_LIB_DIR}/${ext}.so 2>/dev/null || true"`.text();
         if (soFile.trim()) {
-          logError(`Binary still exists: ${PG_LIB_DIR}/${ext}.so`);
+          error(`Binary still exists: ${PG_LIB_DIR}/${ext}.so`);
           foundBinaries = true;
         } else {
-          logInfo(`✓ Binary removed: ${ext}.so`);
+          info(`✓ Binary removed: ${ext}.so`);
         }
       } catch {
-        logInfo(`✓ Binary removed: ${ext}.so`);
+        info(`✓ Binary removed: ${ext}.so`);
       }
 
       // Check for .control files
@@ -245,30 +238,30 @@ async function test2(): Promise<boolean> {
         const controlFile =
           await $`docker exec ${containerName} sh -c "ls ${PG_EXT_DIR}/${ext}.control 2>/dev/null || true"`.text();
         if (controlFile.trim()) {
-          logError(`Control file still exists: ${PG_EXT_DIR}/${ext}.control`);
+          error(`Control file still exists: ${PG_EXT_DIR}/${ext}.control`);
           foundBinaries = true;
         } else {
-          logInfo(`✓ Control file removed: ${ext}.control`);
+          info(`✓ Control file removed: ${ext}.control`);
         }
       } catch {
-        logInfo(`✓ Control file removed: ${ext}.control`);
+        info(`✓ Control file removed: ${ext}.control`);
       }
     }
 
     await dockerCleanup(containerName);
 
     if (!foundBinaries) {
-      logSuccess("Test 2 PASSED: Disabled extension binaries removed from image");
+      success("Test 2 PASSED: Disabled extension binaries removed from image");
       console.log();
       return true;
     } else {
-      logError("Test 2 FAILED: Some disabled extension binaries still present");
+      error("Test 2 FAILED: Some disabled extension binaries still present");
       console.log();
       return false;
     }
-  } catch (error) {
+  } catch (err) {
     await dockerCleanup(containerName);
-    logError(`Test 2 failed with error: ${error}`);
+    error(`Test 2 failed with error: ${err}`);
     return false;
   }
 }
@@ -277,18 +270,18 @@ async function test2(): Promise<boolean> {
  * TEST 3: Try to disable core extension (expect build failure)
  */
 async function test3(): Promise<boolean> {
-  logInfo("Test 3: Core extension disable protection (build-time validation)");
+  info("Test 3: Core extension disable protection (build-time validation)");
   console.log("-------------------------------------------------------");
 
-  logInfo("This test verifies build-time validation prevents disabling core extensions");
-  logInfo("Core extensions (sharedPreload=true AND defaultEnable=true):");
-  logInfo("  - auto_explain, pg_cron, pg_stat_statements, pgaudit");
-  logInfo("");
-  logInfo("Strategy: Examine manifest.json to verify core extensions cannot be disabled");
+  info("This test verifies build-time validation prevents disabling core extensions");
+  info("Core extensions (sharedPreload=true AND defaultEnable=true):");
+  info("  - auto_explain, pg_cron, pg_stat_statements, pgaudit");
+  info("");
+  info("Strategy: Examine manifest.json to verify core extensions cannot be disabled");
 
   const manifestFile = Bun.file(MANIFEST_PATH);
   if (!(await manifestFile.exists())) {
-    logError(`Manifest not found: ${MANIFEST_PATH}`);
+    error(`Manifest not found: ${MANIFEST_PATH}`);
     return false;
   }
 
@@ -308,30 +301,30 @@ async function test3(): Promise<boolean> {
       if (sharedPreload && defaultEnable) {
         coreExtensions.push(entry.name);
         if (!enabled) {
-          logError(`Core extension ${entry.name} is disabled`);
+          error(`Core extension ${entry.name} is disabled`);
           foundDisabledCore = true;
         }
       }
     }
 
     if (foundDisabledCore) {
-      logError("Found core extension marked as disabled in manifest");
-      logError("This should have been caught during build validation");
+      error("Found core extension marked as disabled in manifest");
+      error("This should have been caught during build validation");
       return false;
     }
 
-    logInfo(`Core extensions found: ${coreExtensions.join(", ")}`);
-    logInfo("✓ All core extensions are enabled in manifest");
-    logInfo("✓ Build validation prevents disabling core extensions");
-    logInfo("");
-    logInfo("Note: Build-time validation in docker/postgres/build-extensions.sh");
-    logInfo("      enforces this rule at Gate 2 (lines 473-501)");
+    info(`Core extensions found: ${coreExtensions.join(", ")}`);
+    info("✓ All core extensions are enabled in manifest");
+    info("✓ Build validation prevents disabling core extensions");
+    info("");
+    info("Note: Build-time validation in docker/postgres/build-extensions.sh");
+    info("      enforces this rule at Gate 2 (lines 473-501)");
 
-    logSuccess("Test 3 PASSED: Core extensions cannot be disabled");
+    success("Test 3 PASSED: Core extensions cannot be disabled");
     console.log();
     return true;
-  } catch (error) {
-    logError(`Failed to parse manifest: ${error}`);
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
     return false;
   }
 }
@@ -340,16 +333,16 @@ async function test3(): Promise<boolean> {
  * TEST 4: Verify warning for optional preloaded extensions
  */
 async function test4(): Promise<boolean> {
-  logInfo("Test 4: Warning for optional preloaded extensions");
+  info("Test 4: Warning for optional preloaded extensions");
   console.log("-------------------------------------------------------");
 
-  logInfo("Verifying build warnings for optional preloaded extensions");
-  logInfo("Optional preloaded: sharedPreload=true BUT defaultEnable=false");
-  logInfo("Examples: pg_partman, pg_plan_filter, set_user, supautils, timescaledb");
+  info("Verifying build warnings for optional preloaded extensions");
+  info("Optional preloaded: sharedPreload=true BUT defaultEnable=false");
+  info("Examples: pg_partman, pg_plan_filter, set_user, supautils, timescaledb");
 
   const manifestFile = Bun.file(MANIFEST_PATH);
   if (!(await manifestFile.exists())) {
-    logError(`Manifest not found: ${MANIFEST_PATH}`);
+    error(`Manifest not found: ${MANIFEST_PATH}`);
     return false;
   }
 
@@ -371,24 +364,24 @@ async function test4(): Promise<boolean> {
     }
 
     if (optionalDisabled.length === 0) {
-      logInfo("No optional preloaded extensions are disabled");
-      logSuccess("Test 4 PASSED: No warnings to validate (scenario not triggered)");
+      info("No optional preloaded extensions are disabled");
+      success("Test 4 PASSED: No warnings to validate (scenario not triggered)");
       console.log();
       return true;
     }
 
-    logInfo(`Found disabled optional preloaded extensions: ${optionalDisabled.join(", ")}`);
-    logInfo("✓ Build script should emit warnings for these extensions");
-    logInfo("  (Warning: extension has sharedPreload=true but defaultEnable=false)");
-    logInfo("");
-    logInfo("Note: Build-time validation in docker/postgres/build-extensions.sh");
-    logInfo("      emits warnings at Gate 2 (lines 504-513)");
+    info(`Found disabled optional preloaded extensions: ${optionalDisabled.join(", ")}`);
+    info("✓ Build script should emit warnings for these extensions");
+    info("  (Warning: extension has sharedPreload=true but defaultEnable=false)");
+    info("");
+    info("Note: Build-time validation in docker/postgres/build-extensions.sh");
+    info("      emits warnings at Gate 2 (lines 504-513)");
 
-    logSuccess("Test 4 PASSED: Optional preloaded extension warnings documented");
+    success("Test 4 PASSED: Optional preloaded extension warnings documented");
     console.log();
     return true;
-  } catch (error) {
-    logError(`Failed to parse manifest: ${error}`);
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
     return false;
   }
 }
@@ -397,7 +390,7 @@ async function test4(): Promise<boolean> {
  * TEST 5: Manual CREATE EXTENSION fails for disabled extensions
  */
 async function test5(): Promise<boolean> {
-  logInfo("Test 5: Manual CREATE EXTENSION fails for disabled extensions");
+  info("Test 5: Manual CREATE EXTENSION fails for disabled extensions");
   console.log("-------------------------------------------------------");
 
   const containerName = `pg-disabled-test5-${process.pid}`;
@@ -414,7 +407,7 @@ async function test5(): Promise<boolean> {
         container: containerName,
       });
     } catch {
-      logError("PostgreSQL failed to start");
+      error("PostgreSQL failed to start");
       await dockerCleanup(containerName);
       return false;
     }
@@ -423,13 +416,13 @@ async function test5(): Promise<boolean> {
 
     if (disabledExtensions.length === 0) {
       await dockerCleanup(containerName);
-      logInfo("No disabled extensions found (excluding tools)");
-      logSuccess("Test 5 PASSED: No disabled extensions to validate");
+      info("No disabled extensions found (excluding tools)");
+      success("Test 5 PASSED: No disabled extensions to validate");
       console.log();
       return true;
     }
 
-    logInfo(`Testing CREATE EXTENSION for: ${disabledExtensions.join(", ")}`);
+    info(`Testing CREATE EXTENSION for: ${disabledExtensions.join(", ")}`);
 
     // Try to create each disabled extension (should fail)
     let testPassed = true;
@@ -443,25 +436,25 @@ async function test5(): Promise<boolean> {
           result.includes("could not open extension control file") ||
           result.includes("does not exist")
         ) {
-          logInfo(`✓ Extension '${ext}' correctly fails: control file removed`);
+          info(`✓ Extension '${ext}' correctly fails: control file removed`);
         } else if (result.includes("ERROR")) {
-          logInfo(`✓ Extension '${ext}' correctly fails: ${result.trim()}`);
+          info(`✓ Extension '${ext}' correctly fails: ${result.trim()}`);
         } else {
-          logError(`Extension '${ext}' unexpectedly succeeded or gave unexpected output`);
-          logError(`Output: ${result}`);
+          error(`Extension '${ext}' unexpectedly succeeded or gave unexpected output`);
+          error(`Output: ${result}`);
           testPassed = false;
         }
-      } catch (error) {
+      } catch (err) {
         // Command failed (expected) - check error message
-        const errorMsg = String(error);
+        const errorMsg = String(err);
         if (
           errorMsg.includes("could not open extension control file") ||
           errorMsg.includes("does not exist") ||
           errorMsg.includes("ERROR")
         ) {
-          logInfo(`✓ Extension '${ext}' correctly fails: control file removed`);
+          info(`✓ Extension '${ext}' correctly fails: control file removed`);
         } else {
-          logError(`Extension '${ext}' gave unexpected error: ${errorMsg}`);
+          error(`Extension '${ext}' gave unexpected error: ${errorMsg}`);
           testPassed = false;
         }
       }
@@ -470,17 +463,17 @@ async function test5(): Promise<boolean> {
     await dockerCleanup(containerName);
 
     if (testPassed) {
-      logSuccess("Test 5 PASSED: Disabled extensions cannot be created manually");
+      success("Test 5 PASSED: Disabled extensions cannot be created manually");
       console.log();
       return true;
     } else {
-      logError("Test 5 FAILED: Some disabled extensions created successfully");
+      error("Test 5 FAILED: Some disabled extensions created successfully");
       console.log();
       return false;
     }
-  } catch (error) {
+  } catch (err) {
     await dockerCleanup(containerName);
-    logError(`Test 5 failed with error: ${error}`);
+    error(`Test 5 failed with error: ${err}`);
     return false;
   }
 }
@@ -493,7 +486,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("docker");
   } catch {
-    logError("Docker not found");
+    error("Docker not found");
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
@@ -501,7 +494,7 @@ async function main(): Promise<void> {
   try {
     await checkDockerDaemon();
   } catch {
-    logError("Docker daemon not running");
+    error("Docker daemon not running");
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -510,7 +503,7 @@ async function main(): Promise<void> {
   try {
     await $`docker image inspect ${IMAGE_TAG}`.quiet();
   } catch {
-    logError(`Docker image not found: ${IMAGE_TAG}`);
+    error(`Docker image not found: ${IMAGE_TAG}`);
     console.log("   Build image first: bun scripts/build.ts");
     console.log(`   Or run: bun scripts/test/test-build.ts ${IMAGE_TAG}`);
     process.exit(1);
@@ -563,10 +556,10 @@ async function main(): Promise<void> {
   console.log();
 
   if (testsFailed === 0) {
-    logSuccess("All disabled extension validation tests passed!");
+    success("All disabled extension validation tests passed!");
     process.exit(0);
   } else {
-    logError(`${testsFailed} test(s) failed`);
+    error(`${testsFailed} test(s) failed`);
     process.exit(1);
   }
 }

@@ -14,14 +14,8 @@
  */
 
 import { $ } from "bun";
-import {
-  logInfo,
-  logSuccess,
-  logWarning,
-  logError,
-  checkCommand,
-  checkDockerDaemon,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { info, success, warning, error } from "../utils/logger.ts";
 import { join } from "path";
 
 // Get script directory
@@ -40,16 +34,16 @@ async function main(): Promise<void> {
   // Check required commands
   try {
     await checkCommand("docker");
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     console.error("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
 
   try {
     await checkDockerDaemon();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     console.error("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -61,7 +55,7 @@ async function main(): Promise<void> {
     try {
       await $`docker-compose --version`.quiet();
     } catch {
-      logError("Required command 'docker compose' not found");
+      error("Required command 'docker compose' not found");
       console.error("   Install Docker Compose: https://docs.docker.com/compose/install/");
       process.exit(1);
     }
@@ -71,7 +65,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("jq");
   } catch {
-    logError("Required command 'jq' not found");
+    error("Required command 'jq' not found");
     console.error("   Install jq: apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)");
     process.exit(1);
   }
@@ -81,7 +75,7 @@ async function main(): Promise<void> {
   try {
     await stackDir.exists();
   } catch {
-    logError(`Single stack directory not found: ${singleStackPath}`);
+    error(`Single stack directory not found: ${singleStackPath}`);
     process.exit(1);
   }
 
@@ -98,7 +92,7 @@ async function main(): Promise<void> {
 
   // Cleanup function
   const cleanup = async (): Promise<void> => {
-    logInfo("Cleaning up test environment...");
+    info("Cleaning up test environment...");
     try {
       await $`docker compose --env-file ${envTestPath} down -v`.cwd(singleStackPath).quiet();
     } catch {
@@ -109,7 +103,7 @@ async function main(): Promise<void> {
     } catch {
       // Ignore errors
     }
-    logSuccess("Cleanup completed");
+    success("Cleanup completed");
   };
 
   // Set up cleanup on exit
@@ -124,7 +118,7 @@ async function main(): Promise<void> {
 
   try {
     // Create test .env file
-    logInfo("Creating test environment configuration...");
+    info("Creating test environment configuration...");
     const envContent = `POSTGRES_PASSWORD=${testPostgresPassword}
 POSTGRES_IMAGE=aza-pg:pg18
 POSTGRES_MEMORY_LIMIT=2g
@@ -134,23 +128,23 @@ POSTGRES_PORT=5432
 POSTGRES_EXPORTER_PORT=9189
 `;
     await Bun.write(envTestPath, envContent);
-    logSuccess("Test environment created");
+    success("Test environment created");
 
     // ============================================================
     // STEP 1: Deploy Single Stack
     // ============================================================
-    logInfo("Step 1: Starting single stack (postgres + postgres_exporter)...");
+    info("Step 1: Starting single stack (postgres + postgres_exporter)...");
     try {
       await $`docker compose --env-file .env.test up -d postgres`.cwd(singleStackPath);
     } catch {
-      logError("Failed to start single stack");
+      error("Failed to start single stack");
       await cleanup();
       process.exit(1);
     }
-    logSuccess("Single stack started");
+    success("Single stack started");
 
     // Wait for services to be healthy
-    logInfo("Waiting for PostgreSQL to be healthy (max 90 seconds)...");
+    info("Waiting for PostgreSQL to be healthy (max 90 seconds)...");
     const timeout = 90;
     let elapsed = 0;
     let postgresHealthy = false;
@@ -178,13 +172,13 @@ POSTGRES_EXPORTER_PORT=9189
     }
 
     if (!postgresHealthy) {
-      logError(`PostgreSQL failed to become healthy after ${timeout}s`);
+      error(`PostgreSQL failed to become healthy after ${timeout}s`);
       await $`docker compose --env-file .env.test logs postgres`.cwd(singleStackPath);
       await cleanup();
       process.exit(1);
     }
 
-    logSuccess("PostgreSQL is healthy");
+    success("PostgreSQL is healthy");
 
     const postgresContainer = await $`docker compose --env-file .env.test ps postgres -q`
       .cwd(singleStackPath)
@@ -194,86 +188,86 @@ POSTGRES_EXPORTER_PORT=9189
     // ============================================================
     // STEP 2: Verify Standalone Mode (Not in Recovery)
     // ============================================================
-    logInfo("Step 2: Verifying standalone mode (not a replica)...");
+    info("Step 2: Verifying standalone mode (not a replica)...");
 
     const inRecovery =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT pg_is_in_recovery();"`.text();
 
     if (inRecovery.trim() !== "f") {
-      logError(`PostgreSQL is in recovery mode (expected 'f', got: '${inRecovery.trim()}')`);
-      logError("Single stack should NOT be in recovery mode");
+      error(`PostgreSQL is in recovery mode (expected 'f', got: '${inRecovery.trim()}')`);
+      error("Single stack should NOT be in recovery mode");
       await cleanup();
       process.exit(1);
     }
 
-    logSuccess("PostgreSQL is in standalone mode (not a replica)");
+    success("PostgreSQL is in standalone mode (not a replica)");
 
     // ============================================================
     // STEP 3: Verify Basic Extension Availability
     // ============================================================
-    logInfo("Step 3: Testing baseline extensions...");
+    info("Step 3: Testing baseline extensions...");
 
     // Test pg_stat_statements
-    logInfo("Testing pg_stat_statements extension...");
+    info("Testing pg_stat_statements extension...");
     const pssExists =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'pg_stat_statements';"`.text();
 
     if (pssExists.trim() === "1") {
-      logSuccess("pg_stat_statements is installed");
+      success("pg_stat_statements is installed");
     } else {
-      logError("pg_stat_statements not found (expected in baseline extensions)");
+      error("pg_stat_statements not found (expected in baseline extensions)");
       await cleanup();
       process.exit(1);
     }
 
     // Test pg_trgm
-    logInfo("Testing pg_trgm extension...");
+    info("Testing pg_trgm extension...");
     const trgmExists =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'pg_trgm';"`.text();
 
     if (trgmExists.trim() === "1") {
-      logSuccess("pg_trgm is installed");
+      success("pg_trgm is installed");
     } else {
-      logError("pg_trgm not found (expected in baseline extensions)");
+      error("pg_trgm not found (expected in baseline extensions)");
       await cleanup();
       process.exit(1);
     }
 
     // Test pgaudit
-    logInfo("Testing pgaudit extension...");
+    info("Testing pgaudit extension...");
     const pgauditExists =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgaudit';"`.text();
 
     if (pgauditExists.trim() === "1") {
-      logSuccess("pgaudit is installed");
+      success("pgaudit is installed");
     } else {
-      logError("pgaudit not found (expected in baseline extensions)");
+      error("pgaudit not found (expected in baseline extensions)");
       await cleanup();
       process.exit(1);
     }
 
     // Test pg_cron
-    logInfo("Testing pg_cron extension...");
+    info("Testing pg_cron extension...");
     const pgcronExists =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'pg_cron';"`.text();
 
     if (pgcronExists.trim() === "1") {
-      logSuccess("pg_cron is installed");
+      success("pg_cron is installed");
     } else {
-      logError("pg_cron not found (expected in baseline extensions)");
+      error("pg_cron not found (expected in baseline extensions)");
       await cleanup();
       process.exit(1);
     }
 
     // Test vector
-    logInfo("Testing vector extension...");
+    info("Testing vector extension...");
     const vectorExists =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'vector';"`.text();
 
     if (vectorExists.trim() === "1") {
-      logSuccess("vector is installed");
+      success("vector is installed");
     } else {
-      logError("vector not found (expected in baseline extensions)");
+      error("vector not found (expected in baseline extensions)");
       await cleanup();
       process.exit(1);
     }
@@ -282,9 +276,9 @@ POSTGRES_EXPORTER_PORT=9189
     const trgmTest =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT similarity('test', 'test');"`.text();
     if (trgmTest.trim() === "1") {
-      logSuccess("pg_trgm functional test passed");
+      success("pg_trgm functional test passed");
     } else {
-      logError(`pg_trgm functional test failed (expected '1', got: '${trgmTest.trim()}')`);
+      error(`pg_trgm functional test failed (expected '1', got: '${trgmTest.trim()}')`);
       await cleanup();
       process.exit(1);
     }
@@ -293,9 +287,9 @@ POSTGRES_EXPORTER_PORT=9189
     const vectorTest =
       await $`docker exec ${containerName} psql -U postgres -tAc "SELECT '[1,2,3]'::vector;"`.text();
     if (vectorTest.includes("[1,2,3]")) {
-      logSuccess("vector functional test passed");
+      success("vector functional test passed");
     } else {
-      logError(`vector functional test failed (got: '${vectorTest.trim()}')`);
+      error(`vector functional test failed (got: '${vectorTest.trim()}')`);
       await cleanup();
       process.exit(1);
     }
@@ -303,30 +297,30 @@ POSTGRES_EXPORTER_PORT=9189
     // ============================================================
     // STEP 4: Verify Connection Limits
     // ============================================================
-    logInfo("Step 4: Checking connection limits...");
+    info("Step 4: Checking connection limits...");
 
     const maxConnections =
       await $`docker exec ${containerName} psql -U postgres -tAc "SHOW max_connections;"`.text();
     const maxConnectionsValue = Number.parseInt(maxConnections.trim(), 10);
 
-    logInfo(`max_connections: ${maxConnectionsValue}`);
+    info(`max_connections: ${maxConnectionsValue}`);
 
     // Should be 120 for 2GB memory limit (based on auto-config)
     if (maxConnectionsValue < 80) {
-      logWarning(`max_connections is very low (${maxConnectionsValue}), expected at least 80`);
+      warning(`max_connections is very low (${maxConnectionsValue}), expected at least 80`);
     } else if (maxConnectionsValue >= 80) {
-      logSuccess(`max_connections is adequate (${maxConnectionsValue})`);
+      success(`max_connections is adequate (${maxConnectionsValue})`);
     }
 
     // Test actual connection
-    logInfo("Testing direct connection...");
+    info("Testing direct connection...");
     const directConnect =
       await $`docker exec ${containerName} psql -U postgres -c "SELECT version();"`.text();
 
     if (directConnect.includes("PostgreSQL")) {
-      logSuccess("Direct connection works");
+      success("Direct connection works");
     } else {
-      logError("Direct connection failed");
+      error("Direct connection failed");
       console.log(directConnect);
       await cleanup();
       process.exit(1);
@@ -335,7 +329,7 @@ POSTGRES_EXPORTER_PORT=9189
     // ============================================================
     // STEP 5: Verify Auto-Config Memory Detection
     // ============================================================
-    logInfo("Step 5: Checking auto-config memory settings...");
+    info("Step 5: Checking auto-config memory settings...");
 
     const sharedBuffers =
       await $`docker exec ${containerName} psql -U postgres -tAc "SHOW shared_buffers;"`.text();
@@ -344,12 +338,12 @@ POSTGRES_EXPORTER_PORT=9189
     const workMem =
       await $`docker exec ${containerName} psql -U postgres -tAc "SHOW work_mem;"`.text();
 
-    logInfo(`shared_buffers: ${sharedBuffers.trim()}`);
-    logInfo(`effective_cache_size: ${effectiveCache.trim()}`);
-    logInfo(`work_mem: ${workMem.trim()}`);
+    info(`shared_buffers: ${sharedBuffers.trim()}`);
+    info(`effective_cache_size: ${effectiveCache.trim()}`);
+    info(`work_mem: ${workMem.trim()}`);
 
     // Check logs for auto-config detection
-    logInfo("Checking auto-config logs...");
+    info("Checking auto-config logs...");
     try {
       const autoConfigLogs = await $`docker logs ${containerName}`.text();
       const relevantLogs = autoConfigLogs
@@ -360,31 +354,31 @@ POSTGRES_EXPORTER_PORT=9189
       if (relevantLogs.length > 0) {
         console.log("Auto-config detection:");
         relevantLogs.forEach((line) => console.log(line));
-        logSuccess("Auto-config is active");
+        success("Auto-config is active");
       } else {
-        logWarning("No auto-config logs found (may be expected)");
+        warning("No auto-config logs found (may be expected)");
       }
     } catch {
-      logWarning("No auto-config logs found (may be expected)");
+      warning("No auto-config logs found (may be expected)");
     }
 
     // ============================================================
     // STEP 6: Start and Test postgres_exporter
     // ============================================================
-    logInfo("Step 6: Starting postgres_exporter...");
+    info("Step 6: Starting postgres_exporter...");
 
     try {
       await $`docker compose --env-file .env.test up -d postgres_exporter`.cwd(singleStackPath);
     } catch {
-      logError("Failed to start postgres_exporter");
+      error("Failed to start postgres_exporter");
       await cleanup();
       process.exit(1);
     }
 
-    logSuccess("postgres_exporter started");
+    success("postgres_exporter started");
 
     // Wait for exporter to be healthy
-    logInfo("Waiting for postgres_exporter to be healthy (max 60 seconds)...");
+    info("Waiting for postgres_exporter to be healthy (max 60 seconds)...");
     const exporterTimeout = 60;
     let exporterElapsed = 0;
     let exporterHealthy = false;
@@ -415,13 +409,13 @@ POSTGRES_EXPORTER_PORT=9189
     }
 
     if (!exporterHealthy) {
-      logWarning("postgres_exporter did not become healthy (may still work)");
+      warning("postgres_exporter did not become healthy (may still work)");
     } else {
-      logSuccess("postgres_exporter is healthy");
+      success("postgres_exporter is healthy");
     }
 
     // Test metrics endpoint
-    logInfo("Testing metrics endpoint...");
+    info("Testing metrics endpoint...");
     const exporterContainer = await $`docker compose --env-file .env.test ps postgres_exporter -q`
       .cwd(singleStackPath)
       .text();
@@ -432,37 +426,37 @@ POSTGRES_EXPORTER_PORT=9189
     const metricsPreview = metricsOutput.split("\n").slice(0, 20).join("\n");
 
     if (metricsOutput.length === 0) {
-      logError("Metrics endpoint returned empty output");
+      error("Metrics endpoint returned empty output");
       await cleanup();
       process.exit(1);
     }
 
     if (!metricsOutput.includes("pg_up")) {
-      logError("Metrics output does not contain 'pg_up' metric");
+      error("Metrics output does not contain 'pg_up' metric");
       console.log("Output:");
       console.log(metricsPreview);
       await cleanup();
       process.exit(1);
     }
 
-    logSuccess("postgres_exporter metrics endpoint works");
+    success("postgres_exporter metrics endpoint works");
 
     // ============================================================
     // STEP 7: Verify No PgBouncer
     // ============================================================
-    logInfo("Step 7: Verifying no PgBouncer (single stack simplicity)...");
+    info("Step 7: Verifying no PgBouncer (single stack simplicity)...");
 
     try {
       const pgbouncerRunning = await $`docker compose --env-file .env.test ps pgbouncer -q`
         .cwd(singleStackPath)
         .text();
       if (pgbouncerRunning.trim().length > 0) {
-        logWarning("PgBouncer is running (unexpected for single stack)");
+        warning("PgBouncer is running (unexpected for single stack)");
       } else {
-        logSuccess("PgBouncer not running (correct for single stack)");
+        success("PgBouncer not running (correct for single stack)");
       }
     } catch {
-      logSuccess("PgBouncer not running (correct for single stack)");
+      success("PgBouncer not running (correct for single stack)");
     }
 
     // ============================================================
@@ -485,8 +479,8 @@ POSTGRES_EXPORTER_PORT=9189
 
     // Cleanup
     await cleanup();
-  } catch (error) {
-    logError(`Test failed: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (err) {
+    error(`Test failed: ${err instanceof Error ? err.message : String(err)}`);
     await cleanup();
     process.exit(1);
   }

@@ -14,13 +14,8 @@
  */
 
 import { $ } from "bun";
-import {
-  logError,
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  waitForPostgres,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import { error } from "../utils/logger.ts";
 
 // Generate random test password at runtime
 const TEST_POSTGRES_PASSWORD =
@@ -438,7 +433,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("docker");
   } catch {
-    logError("Docker not found");
+    error("Docker not found");
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
@@ -446,7 +441,7 @@ async function main(): Promise<void> {
   try {
     await checkDockerDaemon();
   } catch {
-    logError("Docker daemon not running");
+    error("Docker daemon not running");
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -457,7 +452,7 @@ async function main(): Promise<void> {
   try {
     await $`docker image inspect ${imageTag}`.quiet();
   } catch {
-    logError(`Docker image not found: ${imageTag}`);
+    error(`Docker image not found: ${imageTag}`);
     console.log("   Build image first: bun scripts/build.ts");
     console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
     process.exit(1);
@@ -531,6 +526,6 @@ async function main(): Promise<void> {
 
 // Run main function
 main().catch((error) => {
-  logError(`Unexpected error: ${error}`);
+  error(`Unexpected error: ${error}`);
   process.exit(1);
 });

@@ -1,42 +1,16 @@
 /**
  * Common library for aza-pg scripts
- * Provides shared functions for Docker cleanup, logging, and PostgreSQL health checks
+ * Provides shared functions for Docker cleanup and PostgreSQL health checks
+ *
+ * Note: Logging functions have been moved to ../utils/logger.ts
  *
  * Usage:
- *   import { logInfo, dockerCleanup, waitForPostgres } from './lib/common.ts';
+ *   import { dockerCleanup, waitForPostgres } from './lib/common.ts';
+ *   import { info, success, warning, error } from '../utils/logger.ts';
  */
 
 import { $ } from "bun";
-
-import { COLORS } from "../utils/colors.js";
-
-/**
- * Log an informational message
- */
-export function logInfo(message: string): void {
-  process.stdout.write(`${COLORS.BLUE}[INFO]${COLORS.RESET} ${message}\n`);
-}
-
-/**
- * Log a success message
- */
-export function logSuccess(message: string): void {
-  process.stdout.write(`${COLORS.GREEN}[SUCCESS]${COLORS.RESET} ${message}\n`);
-}
-
-/**
- * Log a warning message
- */
-export function logWarning(message: string): void {
-  process.stdout.write(`${COLORS.YELLOW}[WARNING]${COLORS.RESET} ${message}\n`);
-}
-
-/**
- * Log an error message to stderr
- */
-export function logError(message: string): void {
-  process.stderr.write(`${COLORS.RED}[ERROR]${COLORS.RESET} ${message}\n`);
-}
+import { info, success } from "../utils/logger.js";
 
 /**
  * Remove a Docker container by name
@@ -133,7 +107,7 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
     throw new Error(`Port out of range: ${port} (must be between 1-65535)`);
   }
 
-  logInfo(`Waiting for PostgreSQL at ${host}:${port} (user: ${user}, timeout: ${timeout}s)...`);
+  info(`Waiting for PostgreSQL at ${host}:${port} (user: ${user}, timeout: ${timeout}s)...`);
 
   let secondsWaited = 0;
   while (secondsWaited < timeout) {
@@ -141,12 +115,12 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
       // If container specified, check from inside container
       if (container && container.trim() !== "") {
         await $`docker exec ${container} pg_isready -U ${user}`.quiet();
-        logSuccess("PostgreSQL is ready");
+        success("PostgreSQL is ready");
         return;
       } else {
         // Check from host
         await $`pg_isready -h ${host} -p ${port.toString()} -U ${user}`.quiet();
-        logSuccess(`PostgreSQL is ready at ${host}:${port}`);
+        success(`PostgreSQL is ready at ${host}:${port}`);
         return;
       }
     } catch {

@@ -11,7 +11,8 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, waitForPostgres, logInfo, logSuccess, logError } from "../lib/common.ts";
+import { checkCommand, waitForPostgres } from "../lib/common.ts";
+import { info, success, error } from "../utils/logger.ts";
 
 interface RestoreConfig {
   backupFile: string;
@@ -42,7 +43,7 @@ async function checkRequiredCommands(): Promise<void> {
 
   for (const cmd of commands) {
     if (!(await commandExists(cmd))) {
-      logError(`Required command not found: ${cmd}`);
+      error(`Required command not found: ${cmd}`);
       process.stdout.write(
         "   Install PostgreSQL client tools: https://www.postgresql.org/download/\n"
       );
@@ -56,7 +57,7 @@ async function checkRequiredCommands(): Promise<void> {
  */
 function showUsage(): void {
   const scriptName = process.argv[1];
-  logError("Backup file argument required");
+  error("Backup file argument required");
   process.stdout.write("\n");
   process.stdout.write(`Usage: ${scriptName} <backup-file> [database]\n`);
   process.stdout.write("\n");
@@ -108,7 +109,7 @@ function parseConfig(): RestoreConfig {
 async function verifyBackupFile(backupFile: string): Promise<void> {
   const exists = await Bun.file(backupFile).exists();
   if (!exists) {
-    logError(`Backup file not found: ${backupFile}`);
+    error(`Backup file not found: ${backupFile}`);
     process.stdout.write(`   Check file path: ls -la $(dirname "${backupFile}")\n`);
     process.exit(1);
   }
@@ -118,7 +119,7 @@ async function verifyBackupFile(backupFile: string): Promise<void> {
     const file = Bun.file(backupFile);
     await file.slice(0, 1).arrayBuffer();
   } catch {
-    logError(`Backup file not readable: ${backupFile}`);
+    error(`Backup file not readable: ${backupFile}`);
     process.stdout.write(`   Check permissions: ls -la ${backupFile}\n`);
     process.exit(1);
   }
@@ -132,7 +133,7 @@ async function verifyBackupFormat(backupFile: string): Promise<void> {
     try {
       await $`gzip -t ${backupFile}`.quiet();
     } catch {
-      logError("Backup file is corrupted (invalid gzip format)");
+      error("Backup file is corrupted (invalid gzip format)");
       process.stdout.write(`   File: ${backupFile}\n`);
       process.stdout.write(`   Try: gunzip -t ${backupFile}\n`);
       process.exit(1);
@@ -145,7 +146,7 @@ async function verifyBackupFormat(backupFile: string): Promise<void> {
  */
 function checkPgPassword(config: RestoreConfig): void {
   if (config.pgHost !== "localhost" && config.pgHost !== "127.0.0.1" && !config.pgPassword) {
-    logError("PGPASSWORD environment variable required for remote connections");
+    error("PGPASSWORD environment variable required for remote connections");
     process.stdout.write("   Set password: export PGPASSWORD='your_password'\n");
     process.stdout.write(
       "   Or use .pgpass file: https://www.postgresql.org/docs/current/libpq-pgpass.html\n"
@@ -172,7 +173,7 @@ async function confirmRestore(database: string): Promise<void> {
  * Perform the restore operation
  */
 async function performRestore(config: RestoreConfig): Promise<void> {
-  logInfo("Restoring backup...");
+  info("Restoring backup...");
 
   try {
     if (config.backupFile.endsWith(".gz")) {
@@ -184,7 +185,7 @@ async function performRestore(config: RestoreConfig): Promise<void> {
     }
   } catch {
     process.stdout.write("\n");
-    logError("Restore failed");
+    error("Restore failed");
     process.stdout.write("   Check psql output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
@@ -259,7 +260,7 @@ async function main(): Promise<void> {
   await performRestore(config);
 
   process.stdout.write("\n");
-  logSuccess("Restore complete!");
+  success("Restore complete!");
   process.stdout.write(`Database: ${config.database}\n`);
   process.stdout.write("\n");
 
@@ -268,6 +269,6 @@ async function main(): Promise<void> {
 
 // Run main function
 main().catch((error) => {
-  logError(error.message);
+  error(error.message);
   process.exit(1);
 });

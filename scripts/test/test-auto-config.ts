@@ -9,14 +9,8 @@
  */
 
 import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  logError,
-  logWarning,
-  waitForPostgres,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import { error, warning } from "../utils/logger.ts";
 
 /**
  * Assert that logs contain a pattern with a success message
@@ -48,7 +42,7 @@ async function assertPgConfig(
       await $`docker exec ${container} psql -U postgres -t -c "SHOW ${setting};"`.text();
     actual = result.trim();
   } catch {
-    logWarning(`${message} (PostgreSQL not ready yet)`);
+    warning(`${message} (PostgreSQL not ready yet)`);
     return;
   }
 
@@ -86,7 +80,7 @@ async function runCase(
     // Start container
     await $`docker run -d --name ${container} ${dockerArgs} ${imageTag}`.quiet();
   } catch {
-    logError(`Failed to start container for '${name}'`);
+    error(`Failed to start container for '${name}'`);
     await dockerCleanup(container);
     throw new Error(`Container start failed for: ${name}`);
   }
@@ -100,13 +94,13 @@ async function runCase(
       timeout: 60,
       container,
     });
-  } catch (error) {
-    logError("PostgreSQL failed to start in time");
+  } catch (err) {
+    error("PostgreSQL failed to start in time");
     const logs = await $`docker logs ${container}`.text();
     console.log("Container logs:");
     console.log(logs);
     await dockerCleanup(container);
-    throw error;
+    throw err;
   }
 
   // Get container logs
@@ -121,7 +115,7 @@ async function runCase(
 
   // Assert [AUTO-CONFIG] token exists in logs
   if (!logs.includes("[AUTO-CONFIG]")) {
-    logError("[AUTO-CONFIG] token not found in logs");
+    error("[AUTO-CONFIG] token not found in logs");
     console.log("   Expected auto-config logs with [AUTO-CONFIG] prefix");
     await dockerCleanup(container);
     throw new Error("[AUTO-CONFIG] token not found");
@@ -224,7 +218,7 @@ async function caseCustomSharedPreload(_logs: string, container: string): Promis
       await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
     actual = result.trim();
   } catch {
-    logError("Could not query shared_preload_libraries");
+    error("Could not query shared_preload_libraries");
     throw new Error("Failed to query shared_preload_libraries");
   }
 
@@ -309,7 +303,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("docker");
   } catch {
-    logError("Docker not found");
+    error("Docker not found");
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
@@ -317,7 +311,7 @@ async function main(): Promise<void> {
   try {
     await checkDockerDaemon();
   } catch {
-    logError("Docker daemon not running");
+    error("Docker daemon not running");
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -332,7 +326,7 @@ async function main(): Promise<void> {
   try {
     await $`docker image inspect ${imageTag}`.quiet();
   } catch {
-    logError(`Docker image not found: ${imageTag}`);
+    error(`Docker image not found: ${imageTag}`);
     console.log("   Build image first: bun scripts/build.ts");
     console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
     process.exit(1);
@@ -407,7 +401,7 @@ async function main(): Promise<void> {
         console.log("✅ Container rejected 256MB deployment (below 512MB minimum)");
         await dockerCleanup(containerBelowMin);
       } else {
-        logError("Container should reject < 512MB but didn't");
+        error("Container should reject < 512MB but didn't");
         console.log(logs);
         await dockerCleanup(containerBelowMin);
         throw new Error("Container should reject < 512MB");
@@ -471,6 +465,6 @@ async function main(): Promise<void> {
 
 // Run main function and handle errors
 main().catch((error) => {
-  logError(error.message || "Test execution failed");
+  error(error.message || "Test execution failed");
   process.exit(1);
 });

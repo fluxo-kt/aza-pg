@@ -9,14 +9,8 @@
  */
 
 import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  logError,
-  logInfo,
-  logSuccess,
-  logWarning,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 
@@ -86,7 +80,7 @@ async function getServiceHealth(stackPath: string, service: string): Promise<str
  * Wait for services to be healthy
  */
 async function waitForServicesHealthy(stackPath: string, timeout: number): Promise<void> {
-  logInfo(`Waiting for services to be healthy (max ${timeout} seconds)...`);
+  info(`Waiting for services to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
   let postgresHealthy = false;
@@ -116,18 +110,18 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
   }
 
   if (!postgresHealthy) {
-    logError(`PostgreSQL failed to become healthy after ${timeout}s`);
+    error(`PostgreSQL failed to become healthy after ${timeout}s`);
     await $`docker compose --env-file .env.test logs postgres`.cwd(stackPath);
     throw new Error("PostgreSQL health check failed");
   }
 
   if (!pgbouncerHealthy) {
-    logError(`PgBouncer failed to become healthy after ${timeout}s`);
+    error(`PgBouncer failed to become healthy after ${timeout}s`);
     await $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
     throw new Error("PgBouncer health check failed");
   }
 
-  logSuccess("Both services are healthy");
+  success("Both services are healthy");
 }
 
 /**
@@ -144,13 +138,13 @@ async function getContainerId(stackPath: string, service: string): Promise<strin
  * Test 1: Verify .pgpass file exists
  */
 async function testPgpassExists(containerId: string): Promise<void> {
-  logInfo("Test 1: Verifying .pgpass file exists...");
+  info("Test 1: Verifying .pgpass file exists...");
 
   try {
     await $`docker exec ${containerId} test -f /tmp/.pgpass`.quiet();
-    logSuccess(".pgpass file exists at /tmp/.pgpass");
+    success(".pgpass file exists at /tmp/.pgpass");
   } catch {
-    logError(".pgpass file not found at /tmp/.pgpass");
+    error(".pgpass file not found at /tmp/.pgpass");
     await $`docker exec ${containerId} ls -la /tmp/`;
     throw new Error(".pgpass file not found");
   }
@@ -160,15 +154,15 @@ async function testPgpassExists(containerId: string): Promise<void> {
  * Test 2: Verify .pgpass file permissions
  */
 async function testPgpassPermissions(containerId: string): Promise<void> {
-  logInfo("Test 2: Verifying .pgpass file permissions...");
+  info("Test 2: Verifying .pgpass file permissions...");
 
   const perms = await $`docker exec ${containerId} stat -c %a /tmp/.pgpass`.text();
   const permissions = perms.trim();
 
   if (permissions !== "600") {
-    logWarning(`.pgpass permissions are ${permissions} (expected 600, but may work)`);
+    warning(`.pgpass permissions are ${permissions} (expected 600, but may work)`);
   } else {
-    logSuccess(".pgpass has correct permissions (600)");
+    success(".pgpass has correct permissions (600)");
   }
 }
 
@@ -176,38 +170,38 @@ async function testPgpassPermissions(containerId: string): Promise<void> {
  * Test 3: Verify .pgpass entries
  */
 async function testPgpassEntries(containerId: string): Promise<void> {
-  logInfo("Test 3: Verifying .pgpass entries...");
+  info("Test 3: Verifying .pgpass entries...");
 
   const content = await $`docker exec ${containerId} cat /tmp/.pgpass`.text();
 
   if (!content.includes("localhost:6432")) {
-    logError(".pgpass missing entry for localhost:6432");
+    error(".pgpass missing entry for localhost:6432");
     console.log("Content:");
     console.log(content);
     throw new Error(".pgpass missing localhost:6432 entry");
   }
 
   if (!content.includes("pgbouncer:6432")) {
-    logError(".pgpass missing entry for pgbouncer:6432");
+    error(".pgpass missing entry for pgbouncer:6432");
     console.log("Content:");
     console.log(content);
     throw new Error(".pgpass missing pgbouncer:6432 entry");
   }
 
-  logSuccess(".pgpass has entries for both localhost:6432 and pgbouncer:6432");
+  success(".pgpass has entries for both localhost:6432 and pgbouncer:6432");
 }
 
 /**
  * Test 4: Test authentication via localhost:6432
  */
 async function testAuthLocalhost(containerId: string): Promise<void> {
-  logInfo("Test 4: Testing authentication via localhost:6432...");
+  info("Test 4: Testing authentication via localhost:6432...");
 
   try {
     await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"`.quiet();
-    logSuccess("Authentication successful via localhost:6432");
+    success("Authentication successful via localhost:6432");
   } catch {
-    logError("Authentication failed via localhost:6432");
+    error("Authentication failed via localhost:6432");
     throw new Error("Authentication failed via localhost:6432");
   }
 }
@@ -220,13 +214,13 @@ async function testAuthHostname(
   pgbouncerPassword: string,
   stackPath: string
 ): Promise<void> {
-  logInfo("Test 5: Testing authentication via pgbouncer:6432...");
+  info("Test 5: Testing authentication via pgbouncer:6432...");
 
   try {
     await $`docker exec ${postgresContainerId} sh -c PGPASSWORD=${pgbouncerPassword} psql -h pgbouncer -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
-    logSuccess("Authentication successful via pgbouncer:6432");
+    success("Authentication successful via pgbouncer:6432");
   } catch {
-    logError("Authentication failed via pgbouncer:6432 from postgres container");
+    error("Authentication failed via pgbouncer:6432 from postgres container");
     await $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
     throw new Error("Authentication failed via pgbouncer:6432");
   }
@@ -236,24 +230,24 @@ async function testAuthHostname(
  * Test 6: Verify SHOW POOLS works
  */
 async function testShowPools(containerId: string): Promise<void> {
-  logInfo("Test 6: Testing SHOW POOLS command...");
+  info("Test 6: Testing SHOW POOLS command...");
 
   const output =
     await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS" -t`.text();
 
   if (!output || output.trim() === "") {
-    logError("SHOW POOLS returned empty output");
+    error("SHOW POOLS returned empty output");
     throw new Error("SHOW POOLS returned empty output");
   }
 
   if (!output.includes("postgres")) {
-    logError("SHOW POOLS output does not contain 'postgres' database");
+    error("SHOW POOLS output does not contain 'postgres' database");
     console.log("Output:");
     console.log(output);
     throw new Error("SHOW POOLS missing postgres database");
   }
 
-  logSuccess("SHOW POOLS works correctly");
+  success("SHOW POOLS works correctly");
   console.log("Pool status:");
   console.log(output.split("\n").slice(0, 5).join("\n"));
 }
@@ -262,13 +256,13 @@ async function testShowPools(containerId: string): Promise<void> {
  * Test 7: Verify healthcheck command works
  */
 async function testHealthcheckCommand(containerId: string): Promise<void> {
-  logInfo("Test 7: Testing healthcheck command...");
+  info("Test 7: Testing healthcheck command...");
 
   try {
     await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
-    logSuccess("Healthcheck command works correctly");
+    success("Healthcheck command works correctly");
   } catch {
-    logError("Healthcheck command failed");
+    error("Healthcheck command failed");
     throw new Error("Healthcheck command failed");
   }
 }
@@ -277,7 +271,7 @@ async function testHealthcheckCommand(containerId: string): Promise<void> {
  * Test 8: Verify connection from host machine (if psql available)
  */
 async function testHostConnection(pgbouncerPassword: string): Promise<void> {
-  logInfo("Test 8: Testing connection from host machine...");
+  info("Test 8: Testing connection from host machine...");
 
   try {
     await $`command -v psql`.quiet();
@@ -286,12 +280,12 @@ async function testHostConnection(pgbouncerPassword: string): Promise<void> {
       await $`psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"`
         .env({ PGPASSWORD: pgbouncerPassword })
         .quiet();
-      logSuccess("Connection from host machine successful");
+      success("Connection from host machine successful");
     } catch {
-      logWarning("Connection from host machine failed (may be expected if port not exposed)");
+      warning("Connection from host machine failed (may be expected if port not exposed)");
     }
   } catch {
-    logWarning("psql not available on host, skipping host connection test");
+    warning("psql not available on host, skipping host connection test");
   }
 }
 
@@ -299,7 +293,7 @@ async function testHostConnection(pgbouncerPassword: string): Promise<void> {
  * Cleanup function to stop services and remove test environment
  */
 async function cleanup(stackPath: string): Promise<void> {
-  logInfo("Cleaning up test environment...");
+  info("Cleaning up test environment...");
 
   try {
     await $`docker compose --env-file .env.test down -v`.cwd(stackPath).quiet();
@@ -312,7 +306,7 @@ async function cleanup(stackPath: string): Promise<void> {
     await $`rm -f ${envFile}`.quiet();
   }
 
-  logSuccess("Cleanup completed");
+  success("Cleanup completed");
 }
 
 /**
@@ -323,7 +317,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("docker");
   } catch {
-    logError("Required command 'docker' not found");
+    error("Required command 'docker' not found");
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
@@ -331,7 +325,7 @@ async function main(): Promise<void> {
   try {
     await checkDockerDaemon();
   } catch {
-    logError("Docker daemon is not running");
+    error("Docker daemon is not running");
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -343,7 +337,7 @@ async function main(): Promise<void> {
     try {
       await $`docker-compose version`.quiet();
     } catch {
-      logError("Required command 'docker compose' not found");
+      error("Required command 'docker compose' not found");
       console.log("   Install Docker Compose: https://docs.docker.com/compose/install/");
       process.exit(1);
     }
@@ -353,7 +347,7 @@ async function main(): Promise<void> {
   try {
     await checkCommand("jq");
   } catch {
-    logError("Required command 'jq' not found");
+    error("Required command 'jq' not found");
     console.log("   Install jq: apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)");
     process.exit(1);
   }
@@ -365,14 +359,14 @@ async function main(): Promise<void> {
   const stackPath = join(projectRoot, stackDir);
 
   if (!existsSync(stackPath)) {
-    logError(`Stack directory not found: ${stackPath}`);
+    error(`Stack directory not found: ${stackPath}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composeFile = join(stackPath, "compose.yml");
   if (!existsSync(composeFile)) {
-    logError(`compose.yml not found in ${stackPath}`);
+    error(`compose.yml not found in ${stackPath}`);
     process.exit(1);
   }
 
@@ -387,17 +381,17 @@ async function main(): Promise<void> {
 
   try {
     // Create test environment
-    logInfo("Creating test environment configuration...");
+    info("Creating test environment configuration...");
     await createTestEnv(stackPath, credentials);
-    logSuccess("Test environment created");
+    success("Test environment created");
 
     // Start services
-    logInfo("Starting primary stack (postgres + pgbouncer)...");
+    info("Starting primary stack (postgres + pgbouncer)...");
     try {
       await $`docker compose --env-file .env.test up -d postgres pgbouncer`.cwd(stackPath);
-      logSuccess("Services started");
+      success("Services started");
     } catch {
-      logError("Failed to start services");
+      error("Failed to start services");
       await cleanup(stackPath);
       process.exit(1);
     }
@@ -442,6 +436,6 @@ async function main(): Promise<void> {
 
 // Run main and handle errors
 main().catch((error) => {
-  logError(error.message);
+  error(error.message);
   process.exit(1);
 });

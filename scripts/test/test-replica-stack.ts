@@ -15,14 +15,8 @@
 
 import { $ } from "bun";
 import { resolve } from "path";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  logError,
-  logInfo,
-  logSuccess,
-  logWarning,
-} from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { error, info, success, warning } from "../utils/logger.ts";
 
 /**
  * Replica test configuration
@@ -78,16 +72,16 @@ async function checkPrerequisites(): Promise<void> {
   // Check Docker
   try {
     await checkCommand("docker");
-  } catch (error) {
-    logError((error as Error).message);
+  } catch (err) {
+    error((err as Error).message);
     console.log("   Install Docker: https://docs.docker.com/get-docker/");
     process.exit(1);
   }
 
   try {
     await checkDockerDaemon();
-  } catch (error) {
-    logError((error as Error).message);
+  } catch (err) {
+    error((err as Error).message);
     console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
     process.exit(1);
   }
@@ -100,7 +94,7 @@ async function checkPrerequisites(): Promise<void> {
     try {
       await checkCommand("docker-compose");
     } catch {
-      logError("Required command 'docker compose' not found");
+      error("Required command 'docker compose' not found");
       console.log("   Install Docker Compose: https://docs.docker.com/compose/install/");
       process.exit(1);
     }
@@ -109,8 +103,8 @@ async function checkPrerequisites(): Promise<void> {
   // Check jq
   try {
     await checkCommand("jq");
-  } catch (error) {
-    logError((error as Error).message);
+  } catch (err) {
+    error((err as Error).message);
     console.log("   Install jq: apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)");
     process.exit(1);
   }
@@ -124,12 +118,12 @@ async function verifyStackDirectories(config: ReplicaTestConfig): Promise<void> 
   const replicaCompose = resolve(config.replicaStackPath, "compose.yml");
 
   if (!(await Bun.file(primaryCompose).exists())) {
-    logError(`Primary stack directory not found: ${config.primaryStackPath}`);
+    error(`Primary stack directory not found: ${config.primaryStackPath}`);
     process.exit(1);
   }
 
   if (!(await Bun.file(replicaCompose).exists())) {
-    logError(`Replica stack directory not found: ${config.replicaStackPath}`);
+    error(`Replica stack directory not found: ${config.replicaStackPath}`);
     process.exit(1);
   }
 }
@@ -138,20 +132,20 @@ async function verifyStackDirectories(config: ReplicaTestConfig): Promise<void> 
  * Create shared network for replication
  */
 async function createSharedNetwork(): Promise<void> {
-  logInfo("Creating shared network for replication...");
+  info("Creating shared network for replication...");
   try {
     await $`docker network create postgres-replica-test-net`.quiet();
   } catch {
     // Network may already exist, ignore error
   }
-  logSuccess("Network created: postgres-replica-test-net");
+  success("Network created: postgres-replica-test-net");
 }
 
 /**
  * Deploy primary stack
  */
 async function deployPrimaryStack(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 1: Deploying primary stack...");
+  info("Step 1: Deploying primary stack...");
 
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
@@ -168,16 +162,16 @@ REPLICATION_SLOT_NAME=replica_slot_test
   await Bun.write(resolve(config.primaryStackPath, ".env.test"), envContent);
 
   // Start primary stack
-  logInfo("Starting primary stack services...");
+  info("Starting primary stack services...");
   try {
     await $`docker compose --env-file .env.test up -d postgres`.cwd(config.primaryStackPath);
-  } catch (error) {
-    logError("Failed to start primary stack");
+  } catch (err) {
+    error("Failed to start primary stack");
     console.error(error);
     process.exit(1);
   }
 
-  logSuccess("Primary stack started");
+  success("Primary stack started");
 }
 
 /**
@@ -213,14 +207,14 @@ async function waitForPrimaryHealthy(
   config: ReplicaTestConfig,
   timeout: number = 90
 ): Promise<void> {
-  logInfo(`Waiting for primary to be healthy (max ${timeout} seconds)...`);
+  info(`Waiting for primary to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
   while (elapsed < timeout) {
     const status = await getServiceHealth(config.primaryStackPath, "postgres");
 
     if (status.health === "healthy") {
-      logSuccess("Primary PostgreSQL is healthy");
+      success("Primary PostgreSQL is healthy");
       return;
     }
 
@@ -229,7 +223,7 @@ async function waitForPrimaryHealthy(
     elapsed += 5;
   }
 
-  logError(`Primary PostgreSQL failed to become healthy after ${timeout}s`);
+  error(`Primary PostgreSQL failed to become healthy after ${timeout}s`);
   await $`docker compose --env-file .env.test logs postgres`.cwd(config.primaryStackPath);
   process.exit(1);
 }
@@ -246,19 +240,19 @@ async function getContainerId(stackPath: string, serviceName: string): Promise<s
  * Create replication slot on primary
  */
 async function createReplicationSlot(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 2: Creating replication slot on primary...");
+  info("Step 2: Creating replication slot on primary...");
 
   const containerId = await getContainerId(config.primaryStackPath, "postgres");
 
   try {
     await $`docker exec ${containerId} psql -U postgres -tAc "SELECT pg_create_physical_replication_slot('replica_slot_test');"`;
-  } catch (error) {
-    logError("Failed to create replication slot");
+  } catch (err) {
+    error("Failed to create replication slot");
     console.error(error);
     process.exit(1);
   }
 
-  logSuccess("Replication slot 'replica_slot_test' created");
+  success("Replication slot 'replica_slot_test' created");
 
   // Verify slot exists
   const result =
@@ -266,18 +260,18 @@ async function createReplicationSlot(config: ReplicaTestConfig): Promise<void> {
   const count = result.text().trim();
 
   if (count !== "1") {
-    logError(`Replication slot verification failed (expected 1, got: ${count})`);
+    error(`Replication slot verification failed (expected 1, got: ${count})`);
     process.exit(1);
   }
 
-  logSuccess("Replication slot verified in pg_replication_slots");
+  success("Replication slot verified in pg_replication_slots");
 }
 
 /**
  * Deploy replica stack
  */
 async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 3: Deploying replica stack...");
+  info("Step 3: Deploying replica stack...");
 
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
@@ -296,18 +290,18 @@ POSTGRES_EXPORTER_PORT=9188
   await Bun.write(resolve(config.replicaStackPath, ".env.test"), envContent);
 
   // Start replica stack
-  logInfo("Starting replica stack services...");
+  info("Starting replica stack services...");
   try {
     await $`docker compose --env-file .env.test up -d postgres-replica`.cwd(
       config.replicaStackPath
     );
   } catch {
-    logError("Failed to start replica stack");
+    error("Failed to start replica stack");
     await $`docker compose --env-file .env.test logs postgres-replica`.cwd(config.replicaStackPath);
     process.exit(1);
   }
 
-  logSuccess("Replica stack started");
+  success("Replica stack started");
 }
 
 /**
@@ -317,14 +311,14 @@ async function waitForReplicaHealthy(
   config: ReplicaTestConfig,
   timeout: number = 120
 ): Promise<void> {
-  logInfo(`Waiting for replica to be healthy (max ${timeout} seconds)...`);
+  info(`Waiting for replica to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
   while (elapsed < timeout) {
     const status = await getServiceHealth(config.replicaStackPath, "postgres-replica");
 
     if (status.health === "healthy") {
-      logSuccess("Replica PostgreSQL is healthy");
+      success("Replica PostgreSQL is healthy");
       return;
     }
 
@@ -333,7 +327,7 @@ async function waitForReplicaHealthy(
     elapsed += 5;
   }
 
-  logError(`Replica PostgreSQL failed to become healthy after ${timeout}s`);
+  error(`Replica PostgreSQL failed to become healthy after ${timeout}s`);
   await $`docker compose --env-file .env.test logs postgres-replica`.cwd(config.replicaStackPath);
   process.exit(1);
 }
@@ -342,7 +336,7 @@ async function waitForReplicaHealthy(
  * Verify standby mode (pg_is_in_recovery)
  */
 async function verifyStandbyMode(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 4: Verifying standby mode...");
+  info("Step 4: Verifying standby mode...");
 
   const containerId = await getContainerId(config.replicaStackPath, "postgres-replica");
 
@@ -351,19 +345,19 @@ async function verifyStandbyMode(config: ReplicaTestConfig): Promise<void> {
   const inRecovery = result.text().trim();
 
   if (inRecovery !== "t") {
-    logError(`Replica is NOT in recovery mode (expected 't', got: '${inRecovery}')`);
+    error(`Replica is NOT in recovery mode (expected 't', got: '${inRecovery}')`);
     await $`docker compose --env-file .env.test logs postgres-replica`.cwd(config.replicaStackPath);
     process.exit(1);
   }
 
-  logSuccess("Replica is in recovery mode (standby mode active)");
+  success("Replica is in recovery mode (standby mode active)");
 }
 
 /**
  * Verify hot standby settings
  */
 async function verifyHotStandby(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 5: Verifying hot standby settings...");
+  info("Step 5: Verifying hot standby settings...");
 
   const containerId = await getContainerId(config.replicaStackPath, "postgres-replica");
 
@@ -373,37 +367,37 @@ async function verifyHotStandby(config: ReplicaTestConfig): Promise<void> {
   const hotStandby = hotStandbyResult.text().trim();
 
   if (hotStandby !== "on") {
-    logWarning(`hot_standby is not 'on' (got: '${hotStandby}')`);
+    warning(`hot_standby is not 'on' (got: '${hotStandby}')`);
   } else {
-    logSuccess("hot_standby is enabled");
+    success("hot_standby is enabled");
   }
 
   // Test read-only query
-  logInfo("Testing read-only query on replica...");
+  info("Testing read-only query on replica...");
   const selectResult = await $`docker exec ${containerId} psql -U postgres -tAc "SELECT 1 + 1;"`;
   const result = selectResult.text().trim();
 
   if (result !== "2") {
-    logError(`Read-only query failed (expected '2', got: '${result}')`);
+    error(`Read-only query failed (expected '2', got: '${result}')`);
     process.exit(1);
   }
 
-  logSuccess("Read-only queries work on replica");
+  success("Read-only queries work on replica");
 
   // Test write attempt (should fail)
-  logInfo("Testing write protection on replica...");
+  info("Testing write protection on replica...");
   try {
     await $`docker exec ${containerId} psql -U postgres -c "CREATE TABLE test_write (id INT);"`;
-    logWarning("Write protection test inconclusive");
-  } catch (error) {
+    warning("Write protection test inconclusive");
+  } catch (err) {
     const errorOutput = error instanceof Error ? error.message : String(error);
     if (
       errorOutput.toLowerCase().includes("cannot execute") ||
       errorOutput.toLowerCase().includes("read-only")
     ) {
-      logSuccess("Replica is read-only (write protection verified)");
+      success("Replica is read-only (write protection verified)");
     } else {
-      logWarning(`Write protection test inconclusive (got: '${errorOutput}')`);
+      warning(`Write protection test inconclusive (got: '${errorOutput}')`);
     }
   }
 }
@@ -412,7 +406,7 @@ async function verifyHotStandby(config: ReplicaTestConfig): Promise<void> {
  * Verify replication lag
  */
 async function verifyReplicationLag(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 6: Checking replication lag...");
+  info("Step 6: Checking replication lag...");
 
   // Get WAL position from primary
   const primaryContainerId = await getContainerId(config.primaryStackPath, "postgres");
@@ -426,14 +420,14 @@ async function verifyReplicationLag(config: ReplicaTestConfig): Promise<void> {
     await $`docker exec ${replicaContainerId} psql -U postgres -tAc "SELECT pg_last_wal_replay_lsn();"`;
   const replicaWal = replicaWalResult.text().trim();
 
-  logInfo(`Primary WAL LSN: ${primaryWal}`);
-  logInfo(`Replica replay LSN: ${replicaWal}`);
+  info(`Primary WAL LSN: ${primaryWal}`);
+  info(`Replica replay LSN: ${replicaWal}`);
 
   // Check if replica has received WAL data
   if (!replicaWal || replicaWal === "0/0" || replicaWal === "") {
-    logWarning("Replica has not replayed any WAL yet (may need more time)");
+    warning("Replica has not replayed any WAL yet (may need more time)");
   } else {
-    logSuccess("Replica is replicating (WAL replay active)");
+    success("Replica is replicating (WAL replay active)");
   }
 }
 
@@ -441,22 +435,22 @@ async function verifyReplicationLag(config: ReplicaTestConfig): Promise<void> {
  * Start and test postgres_exporter
  */
 async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Step 7: Starting postgres_exporter on replica...");
+  info("Step 7: Starting postgres_exporter on replica...");
 
   try {
     await $`docker compose --env-file .env.test up -d postgres_exporter`.cwd(
       config.replicaStackPath
     );
-  } catch (error) {
-    logError("Failed to start postgres_exporter");
+  } catch (err) {
+    error("Failed to start postgres_exporter");
     console.error(error);
     process.exit(1);
   }
 
-  logSuccess("postgres_exporter started");
+  success("postgres_exporter started");
 
   // Wait for exporter to be healthy
-  logInfo("Waiting for postgres_exporter to be healthy (max 60 seconds)...");
+  info("Waiting for postgres_exporter to be healthy (max 60 seconds)...");
 
   let elapsed = 0;
   const timeout = 60;
@@ -476,13 +470,13 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
   }
 
   if (!exporterHealthy) {
-    logWarning("postgres_exporter did not become healthy (may still work)");
+    warning("postgres_exporter did not become healthy (may still work)");
   } else {
-    logSuccess("postgres_exporter is healthy");
+    success("postgres_exporter is healthy");
   }
 
   // Test metrics endpoint
-  logInfo("Testing metrics endpoint...");
+  info("Testing metrics endpoint...");
   const exporterContainerId = await getContainerId(config.replicaStackPath, "postgres_exporter");
 
   try {
@@ -491,20 +485,20 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
     const metricsOutput = metricsResult.text();
 
     if (!metricsOutput) {
-      logError("Metrics endpoint returned empty output");
+      error("Metrics endpoint returned empty output");
       process.exit(1);
     }
 
     if (!metricsOutput.includes("pg_up")) {
-      logError("Metrics output does not contain 'pg_up' metric");
+      error("Metrics output does not contain 'pg_up' metric");
       console.log("Output:");
       console.log(metricsOutput.split("\n").slice(0, 20).join("\n"));
       process.exit(1);
     }
 
-    logSuccess("postgres_exporter metrics endpoint works");
-  } catch (error) {
-    logError("Failed to test metrics endpoint");
+    success("postgres_exporter metrics endpoint works");
+  } catch (err) {
+    error("Failed to test metrics endpoint");
     console.error(error);
     process.exit(1);
   }
@@ -514,7 +508,7 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
  * Cleanup test environment
  */
 async function cleanup(config: ReplicaTestConfig): Promise<void> {
-  logInfo("Cleaning up test environment...");
+  info("Cleaning up test environment...");
 
   // Stop replica first
   try {
@@ -541,7 +535,7 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
     // Ignore if network doesn't exist
   }
 
-  logSuccess("Cleanup completed");
+  success("Cleanup completed");
 }
 
 /**
@@ -626,8 +620,8 @@ async function main(): Promise<void> {
 
     // Print summary
     printSummary();
-  } catch (error) {
-    logError("Test failed");
+  } catch (err) {
+    error("Test failed");
     console.error(error);
     process.exit(1);
   } finally {

@@ -60,7 +60,7 @@ jobs:
         id: pg-version
         run: |
           PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
-          PG_MINOR="0"  # TODO: Derive from built image via psql --version
+          PG_MINOR="0"  # Placeholder for initial tagging; actual version verified post-build
           echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
           echo "full=${PG_MAJOR}.${PG_MINOR}" >> $GITHUB_OUTPUT

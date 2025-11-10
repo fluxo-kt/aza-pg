@@ -337,13 +337,27 @@ Use the build script with Docker Buildx for fast, optimized builds:
 
 GitHub Actions workflow builds multi-platform images (linux/amd64, linux/arm64) with SBOM and provenance.
 
-Trigger manually via GitHub Actions UI or:
+**Manual Testing Workflow:** Use this for developer testing and pre-release validation:
 
 ```bash
+# Trigger manually via GitHub Actions UI or:
 gh workflow run build-postgres-image.yml
+
+# With custom extension versions:
+gh workflow run build-postgres-image.yml -r main \
+  -f pg_version=18 \
+  -f pgvector_version=0.8.1
 ```
 
-Images pushed to: `ghcr.io/fluxo-kt/aza-pg:pg18`
+See [`.archived/docs/ci/README.md`](.archived/docs/ci/README.md) → "build-postgres-image.yml" for full documentation on when to use this workflow vs local builds.
+
+**Automatic Validation:** Every commit triggers fast validation (~10 min) via `ci.yml` - no Docker build, just code checks.
+
+**Production Releases:** Pushing to `release` branch automatically triggers `publish.yml` which builds, signs, and publishes the image to `ghcr.io/fluxo-kt/aza-pg`.
+
+For complete workflow decision tree and comparison, see [`.archived/docs/ci/README.md`](.archived/docs/ci/README.md).
+
+### Testing & Validation
 
 ### Testing & Validation
 

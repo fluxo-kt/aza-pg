@@ -338,6 +338,67 @@ PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -p 6432 -U postgres -d postgres 
 psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
 ```
 
+## Image Versioning
+
+All images published to `ghcr.io/fluxo-kt/aza-pg` follow the **MM.mm-TS-TYPE** versioning scheme:
+
+**Format:** `MM.mm-YYYYMMDDHHMM-TYPE`
+
+- **MM**: PostgreSQL major version (e.g., `18`)
+- **mm**: PostgreSQL minor version (e.g., `0`)
+- **TS**: Build timestamp with minute precision (e.g., `202511092330`)
+- **TYPE**: Image type (`single-node`, `primary`, `replica`)
+
+**Example:** `18.0-202511092330-single-node`
+
+### Available Tags
+
+Each image is published with multiple tags for convenience:
+
+```bash
+# Full versioned tag (recommended for production - immutable)
+ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
+
+# Version-specific convenience tags
+ghcr.io/fluxo-kt/aza-pg:18.0-single-node  # Tracks PostgreSQL 18.0 minor
+ghcr.io/fluxo-kt/aza-pg:18-single-node    # Tracks PostgreSQL 18 major
+ghcr.io/fluxo-kt/aza-pg:18.0              # Latest 18.0 build (any type)
+ghcr.io/fluxo-kt/aza-pg:18                # Latest 18.x build (any type)
+```
+
+### Verification
+
+All published images are:
+
+- **Cryptographically signed** with Cosign (keyless, OIDC-based)
+- **Scanned for vulnerabilities** with Trivy (CRITICAL/HIGH blocked)
+- **Multi-platform**: linux/amd64 and linux/arm64
+- **Provenance-enabled**: SLSA attestations included
+- **SBOM-enabled**: Software Bill of Materials included
+
+**Verify image signature:**
+
+```bash
+cosign verify \
+  --certificate-identity-regexp="^https://github.com/fluxo-kt/aza-pg/.*$" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
+```
+
+### Version Selection for Production
+
+**Recommended**: Use full versioned tags for production:
+
+- ✅ Immutable (won't change unexpectedly)
+- ✅ Traceable to specific build
+- ✅ Easy rollback to exact version
+
+**Not recommended**: Convenience tags for production:
+
+- ⚠️ Mutable (updates when new builds published)
+- ⚠️ Risk of unexpected changes
+- ✅ OK for development/testing
+
 ## Upgrade Procedure
 
 ### PostgreSQL Minor Version

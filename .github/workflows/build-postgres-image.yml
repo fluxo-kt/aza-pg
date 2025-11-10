@@ -1,3 +1,86 @@
+# ============================================================================
+# Build PostgreSQL Image - Manual Development Workflow
+# ============================================================================
+#
+# PURPOSE:
+# --------
+# This workflow is for developers and QA to manually test PostgreSQL image
+# builds with different extension versions BEFORE releasing to production.
+#
+# WHO SHOULD USE THIS:
+# -------------------
+# - Developers: Testing extension version combinations
+# - QA/Validation: Multi-platform compatibility checks (amd64 + arm64)
+# - Pre-release validation before merging to 'release' branch
+#
+# WHEN TO USE THIS:
+# ----------------
+# MANUAL TRIGGER (GitHub UI or gh CLI):
+#   1. You want to test a custom combination of extension versions
+#   2. You're validating arm64 compatibility (QEMU testing)
+#   3. You're verifying a new extension or extension version works
+#   4. Before creating a PR/release candidate that should be published
+#
+# DO NOT USE THIS FOR:
+# -------------------
+# - Automatic CI on commits (use ci.yml for fast validation)
+# - Production releases (use publish.yml when pushing to 'release' branch)
+# - Simple validation (use local ./scripts/build.sh or 'bun run validate')
+#
+# WHAT IT DOES:
+# -----------
+# 1. Lint & Validate: Fast syntax checks, manifest validation, smoke tests
+# 2. Build: Multi-platform Docker image (linux/amd64 + linux/arm64)
+# 3. Test: Extension loading, auto-config, primary/replica/single stacks
+# 4. Scan: Trivy security vulnerability scan
+# 5. Output: Full test report, image digest, SHA hashes
+#
+# HOW TO TRIGGER:
+# ---------------
+# GitHub UI:
+#   Actions tab → "Build PostgreSQL Image" → "Run workflow"
+#   Choose branch and optional version inputs
+#
+# GitHub CLI:
+#   gh workflow run build-postgres-image.yml -r main
+#   gh workflow run build-postgres-image.yml -r main \
+#     -f pg_version=18 \
+#     -f pgvector_version=0.8.1 \
+#     -f pg_cron_version=1.6.7 \
+#     -f pgaudit_version=18.0
+#
+# OUTPUTS:
+# --------
+# - Multi-platform image pushed to ghcr.io/<owner>/aza-pg with:
+#   - Branch tags (e.g., main-abc123)
+#   - Custom version tags if specified
+#   - Full SBOM and provenance
+# - Test results in GitHub Actions UI
+# - Step summary with extension catalog, versions, test status
+#
+# DIFFERENCES FROM OTHER WORKFLOWS:
+# --------------------------------
+# vs ci.yml:     No Docker build (ci.yml only validates code/configs)
+# vs publish.yml: Manual trigger (publish.yml auto-runs on 'release' branch)
+#                 More detailed testing (publish.yml is minimal pre-signature)
+#                 Different tagging strategy (build.yml uses branch/custom tags)
+#
+# TROUBLESHOOTING:
+# ---------------
+# Failed tests → Check GitHub Actions logs in "Test PostgreSQL Stack" section
+# arm64 timeout → QEMU emulation is slow; check logs for actual error vs timing
+# Push fails → May need GHCR write permissions or GITHUB_TOKEN with packages scope
+# Build fails → Run locally: ./scripts/build.sh or check Dockerfile for syntax
+#
+# RELATED DOCUMENTATION:
+# ----------------------
+# - docs/.archived/ci/README.md - CI/CD pipeline overview
+# - docs/.archived/ci/ARM64-TESTING.md - arm64 validation details
+# - CLAUDE.md - Development standards and fast paths
+# - scripts/build.sh - Local build script
+#
+# ============================================================================
+
 name: Build PostgreSQL Image
 
 on:

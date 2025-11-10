@@ -262,3 +262,15 @@ To enable or disable extensions, edit `scripts/extensions/manifest-data.ts` and 
 3. Build the Docker image locally to verify (`./scripts/build.sh`).
 4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
 5. Commit both the manifest/data changes and the regenerated docs.
+
+## Extension Source Decisions
+
+**PIGSTY Repository Evaluation:**
+
+PIGSTY (PostgreSQL extension repository with 420+ extensions) was evaluated as an alternative to the current SHA-pinned source compilation strategy but not adopted due to:
+
+- **PostgreSQL 18 GA support:** PIGSTY v3.5.0/v3.6.0 only provide beta support for PG18; production-grade support is planned for v4.0 (timeline TBD, estimated Q1-Q2 2026)
+- **Supply chain model:** Current SHA-pinned approach provides immutable source verification; PIGSTY introduces package maintainer as intermediary in trust chain
+- **Maintenance strategy:** Single source approach (PGDG packages + selective source builds) maintains simplicity without added repository dependencies
+
+This decision may be revisited as PIGSTY v4.0 matures and demonstrates stable PostgreSQL 18 support in production environments. See git history (`.archived/docs/analysis/PIGSTY-EVALUATION.md`) for detailed evaluation including security assessment, compatibility matrix, and migration considerations.

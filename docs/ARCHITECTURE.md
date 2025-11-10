@@ -420,3 +420,27 @@ Primary PostgreSQL
 ---
 
 **Key Takeaway:** Build once (extensions), deploy anywhere (auto-config), secure by default (SHA pins + SCRAM-SHA-256).
+
+## Future Optimizations
+
+The following optimizations have been identified for potential implementation based on prior analysis:
+
+**Build Time Reduction:**
+
+- **Quick wins identified:** Remove LLVM bitcode directory (36MB, 0% runtime impact), strip debug symbols from `.so` files (10-20MB savings), cleanup static libraries and build headers (1-2MB)
+- **timescaledb_toolkit case study:** Successfully reduced from 186MB to 13MB (93% reduction) through aggressive Rust optimization flags (CARGO_PROFILE_RELEASE_OPT_LEVEL=s, LTO=thin, strip=symbols)
+- **Applicable techniques:** Similar bitcode/symbol stripping can be applied to other large extensions (pg_jsonschema: 4.4MB, pgroonga: 2.1MB)
+
+**Image Variant Strategy:**
+
+- **Core variant:** ~600MB image with essential extensions only (35% smaller than full 950MB image)
+- **Specialized variants:** Analytics-focused (timescaledb suite), search-focused (pgroonga, vectorscale), geospatial-focused (PostGIS suite)
+- **User benefit:** Faster deployment pulls, reduced storage requirements, clearer workload intentions
+
+**Long-term Considerations:**
+
+- **Rust compilation optimization:** Apply similar optimization flags to all cargo-pgrx extensions (pg_jsonschema, vectorscale, pgmq, pg_stat_monitor)
+- **Conditional builds:** Build-time arguments to skip large optional extensions for specific use cases
+- **Alpine base evaluation:** Potential 40% size reduction but requires extensive glibc vs musl compatibility testing
+
+See git history (`.archived/docs/analysis/`) for detailed analysis reports including extension size breakdowns, layer analysis, and implementation roadmaps.

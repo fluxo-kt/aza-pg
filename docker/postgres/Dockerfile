@@ -42,8 +42,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
-COPY docker/postgres/build-extensions.sh /usr/local/bin/build-extensions.sh
-RUN chmod +x /usr/local/bin/build-extensions.sh
+COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+RUN chmod +x /usr/local/bin/build-extensions.ts
 
 # Install build dependencies for builder-base stage
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
@@ -66,12 +66,17 @@ RUN set -eu && \
 RUN set -eu && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
+# Install Bun for running TypeScript build scripts
+RUN set -eu && \
+    curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs
 RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select((.build.type == "pgxs") or (.build.type == "autotools") or (.build.type == "cmake") or (.build.type == "meson") or (.build.type == "make") or (.build.type == "timescaledb")) ]}' /tmp/extensions.manifest.json > /tmp/extensions.pgxs.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \
-    /usr/local/bin/build-extensions.sh /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
+    /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
@@ -108,7 +113,7 @@ ENV CARGO_PROFILE_RELEASE_STRIP=symbols
 RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select(.build.type == "cargo-pgrx") ]}' /tmp/extensions.manifest.json > /tmp/extensions.cargo.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \
-    /usr/local/bin/build-extensions.sh /tmp/extensions.cargo.manifest.json /tmp/extensions-build
+    /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \

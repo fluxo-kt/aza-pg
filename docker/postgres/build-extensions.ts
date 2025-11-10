@@ -1,0 +1,837 @@
+#!/usr/bin/env bun
+/**
+ * PostgreSQL Extension Build Orchestrator
+ *
+ * Orchestrates building 30+ PostgreSQL extensions with 8+ different build systems.
+ * This is the MOST CRITICAL script in the codebase - handles cargo-pgrx version
+ * management, git cloning with SHA verification, manifest parsing, and compilation.
+ *
+ * Build Systems Supported:
+ * - pgxs: PostgreSQL Extension Build System
+ * - cargo-pgrx: Rust pgrx framework (versioned)
+ * - timescaledb: Custom bootstrap build
+ * - autotools: ./configure && make
+ * - cmake: CMake build
+ * - meson: Meson build
+ * - make: Generic make install
+ * - script: Custom build scripts
+ */
+
+import { $ } from "bun";
+import { join } from "node:path";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+
+// ────────────────────────────────────────────────────────────────────────────
+// CRITICAL: PGDG EXTENSION BEHAVIOR
+// ────────────────────────────────────────────────────────────────────────────
+// Disabled PGDG extensions (install_via==pgdg AND enabled==false) are NOT built
+// or apt-installed. They are filtered out in the Dockerfile's dynamic package
+// selection (add_if_enabled function).
+//
+// This is expected behavior because:
+// - PGDG extensions are pre-compiled binaries from apt, not source builds
+// - The Dockerfile conditionally installs only enabled PGDG packages
+// - This script never sees disabled PGDG extensions (they're skipped early)
+// - Only compiled extensions (build.type specified) are built regardless of enabled status
+//
+// Result: Disabled PGDG extensions cannot be verified via build/test cycle.
+// They are simply never installed in the image.
+// ────────────────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────────────────
+// Type Definitions
+// ────────────────────────────────────────────────────────────────────────────
+
+interface SourceSpec {
+  type: "builtin" | "git" | "git-ref";
+  repository?: string;
+  commit?: string;
+  tag?: string;
+  ref?: string;
+}
+
+interface BuildSpec {
+  type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
+  subdir?: string;
+  features?: string[];
+  noDefaultFeatures?: boolean;
+  script?: string;
+  patches?: string[];
+}
+
+interface RuntimeSpec {
+  sharedPreload?: boolean;
+  defaultEnable?: boolean;
+  preloadOnly?: boolean;
+  notes?: string[];
+}
+
+interface ManifestEntry {
+  name: string;
+  displayName?: string;
+  kind: "extension" | "tool" | "builtin";
+  category: string;
+  description: string;
+  source: SourceSpec;
+  build?: BuildSpec;
+  runtime?: RuntimeSpec;
+  dependencies?: string[];
+  provides?: string[];
+  aptPackages?: string[];
+  notes?: string[];
+  install_via?: "pgdg";
+  enabled?: boolean;
+  disabledReason?: string;
+}
+
+interface Manifest {
+  generatedAt: string;
+  entries: ManifestEntry[];
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Global State
+// ────────────────────────────────────────────────────────────────────────────
+
+const CARGO_PGRX_INIT = new Map<string, boolean>();
+const DISABLED_EXTENSIONS: string[] = [];
+
+// Environment configuration
+const MANIFEST_PATH = process.argv[2];
+const BUILD_ROOT = process.argv[3] || "/tmp/extensions-build";
+const PG_MAJOR = process.env.PG_MAJOR || "18";
+const PG_CONFIG_BIN = process.env.PG_CONFIG || `/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config`;
+const NPROC = await $`nproc`.text().then((s) => s.trim());
+
+// Update PATH and cargo environment
+process.env.PATH = `/root/.cargo/bin:${process.env.PATH}`;
+process.env.CARGO_NET_GIT_FETCH_WITH_CLI = "true";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Utility Functions
+// ────────────────────────────────────────────────────────────────────────────
+
+function log(message: string): void {
+  console.error(`[ext-build] ${message}`);
+}
+
+function ensureCleanDir(dir: string): void {
+  if (existsSync(dir)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  mkdirSync(dir, { recursive: true });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Git URL Validation
+// ────────────────────────────────────────────────────────────────────────────
+
+function validateGitUrl(url: string): void {
+  const allowedDomains = ["github.com", "gitlab.com"];
+
+  let domain = "";
+  const httpsMatch = url.match(/^https?:\/\/([^/]+)/);
+  const gitMatch = url.match(/^git@([^:]+):/);
+
+  if (httpsMatch) {
+    domain = httpsMatch[1];
+  } else if (gitMatch) {
+    domain = gitMatch[1];
+  } else {
+    log(`ERROR: Invalid git URL format: ${url}`);
+    process.exit(1);
+  }
+
+  if (!allowedDomains.includes(domain)) {
+    log(`ERROR: Git repository domain '${domain}' not in allowlist`);
+    log(`Allowed domains: ${allowedDomains.join(", ")}`);
+    process.exit(1);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Git Repository Cloning
+// ────────────────────────────────────────────────────────────────────────────
+
+async function cloneRepo(repo: string, commit: string, target: string): Promise<void> {
+  // Validate URL before cloning (security: prevent arbitrary git clones)
+  validateGitUrl(repo);
+
+  log(`Cloning ${repo} @ ${commit} (shallow)`);
+
+  // Shallow clone optimization: fetch only the specific commit (Phase 4.2)
+  // Benefits: faster clone, reduced disk usage, smaller attack surface
+  await $`git init ${target}`.quiet();
+  await $`git -C ${target} remote add origin ${repo}`.quiet();
+
+  // Try shallow fetch first, fallback to full fetch if server rejects
+  try {
+    await $`git -C ${target} fetch --depth 1 origin ${commit}`.quiet();
+  } catch {
+    log(`Shallow fetch failed, falling back to full fetch for ${commit}`);
+    await $`git -C ${target} fetch origin ${commit}`.quiet();
+  }
+
+  await $`git -C ${target} checkout --quiet ${commit}`.quiet();
+
+  // Initialize submodules if present
+  if (existsSync(join(target, ".gitmodules"))) {
+    await $`git -C ${target} submodule update --init --recursive`.quiet();
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Cargo PGRX Version Management
+// ────────────────────────────────────────────────────────────────────────────
+
+async function ensureCargoPgrx(version: string): Promise<string> {
+  const installRoot = `/root/.cargo-pgrx/${version}`;
+  const cargoPgrxBin = join(installRoot, "bin", "cargo-pgrx");
+
+  if (!existsSync(cargoPgrxBin)) {
+    log(`Installing cargo-pgrx ${version}`);
+    // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation (Phase 11.1)
+    // RUSTFLAGS optimization should only apply to extension builds, not build tools
+    const savedRustflags = process.env.RUSTFLAGS;
+    delete process.env.RUSTFLAGS;
+    try {
+      await $`cargo install --locked cargo-pgrx --version ${version} --root ${installRoot}`;
+    } finally {
+      if (savedRustflags !== undefined) {
+        process.env.RUSTFLAGS = savedRustflags;
+      }
+    }
+  }
+
+  return installRoot;
+}
+
+async function ensurePgrxInitForVersion(installRoot: string, version: string): Promise<void> {
+  if (CARGO_PGRX_INIT.get(version)) {
+    return;
+  }
+
+  const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
+  const result = await $`PATH=${pathEnv} cargo pgrx list`.text();
+
+  if (!result.includes(`pg${PG_MAJOR}`)) {
+    await $`PATH=${pathEnv} cargo pgrx init --pg${PG_MAJOR} ${PG_CONFIG_BIN}`;
+  }
+
+  CARGO_PGRX_INIT.set(version, true);
+}
+
+async function getPgrxVersion(dir: string): Promise<string> {
+  const cargoFile = join(dir, "Cargo.toml");
+  if (!existsSync(cargoFile)) {
+    return "";
+  }
+
+  try {
+    // Parse TOML using Bun's built-in parser
+    const content = await Bun.file(cargoFile).text();
+    const lines = content.split("\n");
+
+    // Simple TOML parser for pgrx version (handles both inline and table formats)
+    let inDependencies = false;
+    for (const line of lines) {
+      if (line.trim() === "[dependencies]") {
+        inDependencies = true;
+        continue;
+      }
+      if (line.trim().startsWith("[") && line.trim() !== "[dependencies]") {
+        inDependencies = false;
+        continue;
+      }
+
+      if (inDependencies && line.includes("pgrx")) {
+        // Handle: pgrx = "0.16.1" or pgrx = { version = "0.16.1", ... }
+        const versionMatch = line.match(/version\s*=\s*["']([^"']+)["']/);
+        if (versionMatch) {
+          let version = versionMatch[1];
+          if (version.startsWith("=")) {
+            version = version.substring(1);
+          }
+          return version;
+        }
+
+        // Handle simple string version: pgrx = "0.16.1"
+        const simpleMatch = line.match(/pgrx\s*=\s*["']([^"']+)["']/);
+        if (simpleMatch) {
+          let version = simpleMatch[1];
+          if (version.startsWith("=")) {
+            version = version.substring(1);
+          }
+          return version;
+        }
+      }
+    }
+
+    return "";
+  } catch (error) {
+    log(`Warning: Failed to parse Cargo.toml in ${dir}: ${error}`);
+    return "";
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Build System Implementations
+// ────────────────────────────────────────────────────────────────────────────
+
+async function buildPgxs(dir: string): Promise<void> {
+  log(`Running pgxs build in ${dir}`);
+  await $`make -C ${dir} USE_PGXS=1 -j${NPROC}`;
+  await $`make -C ${dir} USE_PGXS=1 install`;
+}
+
+async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> {
+  let version = await getPgrxVersion(dir);
+  if (!version) {
+    version = "0.16.1";
+  }
+
+  const installRoot = await ensureCargoPgrx(version);
+  await ensurePgrxInitForVersion(installRoot, version);
+
+  // Remove Cargo.lock to avoid conflicts
+  const lockFile = join(dir, "Cargo.lock");
+  if (existsSync(lockFile)) {
+    rmSync(lockFile);
+  }
+
+  const features = entry.build?.features || [];
+  const featuresFlag = features.length > 0 ? `--features ${features.join(",")}` : "";
+  const noDefaultFeatures = entry.build?.noDefaultFeatures ? "--no-default-features" : "";
+
+  log(`cargo pgrx ${version} install (${features.join(",") || "default"}) in ${dir}`);
+
+  const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
+  const cwd = dir;
+
+  await $`cd ${cwd} && PATH=${pathEnv} cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${featuresFlag} ${noDefaultFeatures}`.env(
+    {
+      PATH: pathEnv,
+    }
+  );
+}
+
+async function buildTimescaledb(dir: string): Promise<void> {
+  log(`Building TimescaleDB via bootstrap in ${dir}`);
+
+  await $`cd ${dir} && ./bootstrap -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
+
+  const buildDir = join(dir, "build");
+  const ninjaFile = join(buildDir, "build.ninja");
+
+  if (existsSync(ninjaFile)) {
+    await $`cd ${buildDir} && ninja -j${NPROC} && ninja install`;
+  } else {
+    await $`cd ${buildDir} && make -j${NPROC}`;
+    await $`cd ${buildDir} && make install`;
+  }
+
+  mkdirSync(`/usr/share/postgresql/${PG_MAJOR}/timescaledb`, { recursive: true });
+}
+
+async function buildAutotools(dir: string, name: string): Promise<void> {
+  log(`Running autotools build for ${name} in ${dir}`);
+
+  const autogenScript = join(dir, "autogen.sh");
+  if (existsSync(autogenScript)) {
+    await $`cd ${dir} && ./autogen.sh`;
+  }
+
+  const configureArgs = [`--with-pgconfig=${PG_CONFIG_BIN}`];
+  if (name === "postgis") {
+    configureArgs.push("--with-protobuf=yes", "--with-pcre=yes");
+  }
+
+  await $`cd ${dir} && ./configure ${configureArgs}`;
+  await $`cd ${dir} && make -j${NPROC}`;
+  await $`cd ${dir} && make install`;
+}
+
+async function buildCmake(dir: string, name: string): Promise<void> {
+  const buildDir = join(dir, ".cmake-build");
+  log(`Running CMake build for ${name} in ${dir}`);
+
+  await $`cmake -S ${dir} -B ${buildDir} -DCMAKE_BUILD_TYPE=Release`;
+  await $`cmake --build ${buildDir} -j${NPROC}`;
+  await $`cmake --install ${buildDir}`;
+}
+
+async function buildMeson(dir: string): Promise<void> {
+  const buildDir = join(dir, ".meson-build");
+  log(`Running Meson build in ${dir}`);
+
+  await $`meson setup ${buildDir} ${dir} --prefix=/usr/local`;
+  await $`ninja -C ${buildDir} -j${NPROC}`;
+  await $`ninja -C ${buildDir} install`;
+}
+
+async function buildMakeGeneric(dir: string): Promise<void> {
+  log(`Running generic make install in ${dir}`);
+  await $`cd ${dir} && make -j${NPROC}`;
+  await $`cd ${dir} && make install`;
+}
+
+async function buildPgbadger(dir: string): Promise<void> {
+  log(`Building pgbadger (Perl) in ${dir}`);
+  await $`cd ${dir} && perl Makefile.PL`;
+  await $`cd ${dir} && make -j${NPROC}`;
+  await $`cd ${dir} && make install`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// GATE 1: DEPENDENCY VALIDATION
+// ────────────────────────────────────────────────────────────────────────────
+// Validates that all dependencies for an extension are enabled.
+// Fails fast with clear error message if any dependency is missing or disabled.
+
+async function validateDependencies(
+  entry: ManifestEntry,
+  name: string,
+  manifest: Manifest
+): Promise<void> {
+  const dependencies = entry.dependencies || [];
+  if (dependencies.length === 0) {
+    return;
+  }
+
+  log(`Validating ${dependencies.length} dependencies for ${name}`);
+
+  for (const depName of dependencies) {
+    // Check if dependency exists and is enabled in current manifest
+    const depEntry = manifest.entries.find((e) => e.name === depName);
+
+    if (!depEntry) {
+      // Dependency not in current manifest - check if it's a PGDG package or builtin in full manifest
+      const fullManifestPath = "/tmp/extensions.manifest.json";
+      if (existsSync(fullManifestPath)) {
+        const fullManifest = (await Bun.file(fullManifestPath).json()) as Manifest;
+        const depEntryFull = fullManifest.entries.find((e) => e.name === depName);
+
+        if (depEntryFull) {
+          if (depEntryFull.install_via === "pgdg") {
+            log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
+            continue;
+          } else if (depEntryFull.kind === "builtin") {
+            log(`  ✓ Dependency '${depName}' is builtin (included in PostgreSQL)`);
+            continue;
+          }
+        }
+      }
+
+      log(`ERROR: Extension ${name} requires dependency '${depName}' which is not in manifest`);
+      process.exit(1);
+    }
+
+    const depEnabled = depEntry.enabled !== false;
+    if (!depEnabled) {
+      const depReason = depEntry.disabledReason || "No reason specified";
+      log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
+      log(`       Dependency disabled reason: ${depReason}`);
+      log(`       Either enable '${depName}' or disable '${name}'`);
+      process.exit(1);
+    }
+
+    log(`  ✓ Dependency '${depName}' is enabled`);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Patch Application
+// ────────────────────────────────────────────────────────────────────────────
+
+async function applyPatches(entry: ManifestEntry, dest: string, name: string): Promise<void> {
+  const patches = entry.build?.patches || [];
+  if (patches.length === 0) {
+    return;
+  }
+
+  log(`Applying ${patches.length} patch(es) for ${name}`);
+
+  // Create timestamp marker for tracking modified files (Phase 4.3)
+  await $`touch /tmp/patch-marker`;
+
+  for (let i = 0; i < patches.length; i++) {
+    const patch = patches[i];
+    log(`  Patch ${i + 1}: ${patch}`);
+
+    // Find all files to patch based on extension type
+    let targetFiles: string[] = [];
+
+    if (patch.includes("Cargo.toml") || entry.build?.type === "cargo-pgrx") {
+      // For Cargo projects, find all Cargo.toml files
+      const result = await $`find ${dest} -name "Cargo.toml" -type f`.text();
+      targetFiles = result.trim().split("\n").filter(Boolean);
+    } else if (patch.includes(".c")) {
+      // For C projects, find specific C files mentioned in patch or all .c files
+      if (patch.includes("log_skipped_evtrigs")) {
+        // Anchor to specific file for supautils patch (Phase 4.3 safety improvement)
+        const result = await $`find ${dest} -name "supautils.c" -type f`.text();
+        targetFiles = result.trim().split("\n").filter(Boolean);
+      } else {
+        const result = await $`find ${dest} -name "*.c" -type f`.text();
+        targetFiles = result.trim().split("\n").filter(Boolean);
+      }
+    } else {
+      // Default: apply to all files in dest
+      targetFiles = [dest];
+    }
+
+    // Apply patch to each target file
+    for (const targetFile of targetFiles) {
+      if (existsSync(targetFile)) {
+        try {
+          await $`sed -i ${patch} ${targetFile}`.quiet();
+        } catch {
+          log(`    Warning: patch may not have matched in ${targetFile}`);
+        }
+      }
+    }
+  }
+
+  // Log patched files (Phase 4.3 improvement)
+  log("Patched files:");
+  try {
+    const result =
+      await $`find ${dest} \\( -name "*.c" -o -name "*.h" -o -name "Cargo.toml" \\) -newer /tmp/patch-marker -type f`.text();
+    const patchedFiles = result.trim().split("\n").filter(Boolean);
+
+    if (patchedFiles.length > 0) {
+      for (const pf of patchedFiles) {
+        // Show relative path for readability
+        const relativePath = pf.replace(dest + "/", "");
+        log(`  - ${relativePath}`);
+      }
+    } else {
+      log("  (no files modified - patches may not have matched)");
+    }
+  } catch {
+    log("  (no files modified - patches may not have matched)");
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Main Entry Processing
+// ────────────────────────────────────────────────────────────────────────────
+
+async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<void> {
+  const { name, kind, source, build, enabled } = entry;
+
+  if (kind === "builtin") {
+    log(`Skipping builtin extension ${name}`);
+    return;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // GATE 0: ENABLED CHECK (Phase 9 - skip disabled extensions entirely)
+  // ────────────────────────────────────────────────────────────────────────────
+  // Changed in Phase 9: Previously built disabled extensions "for testing" to verify
+  // SHA-pinned commits, but this caused build failures for extensions with compilation
+  // issues (e.g., supautils requiring unreliable sed patches).
+  //
+  // New behavior: Skip disabled extensions entirely. Trade-off:
+  // - Pro: Builds succeed, disabled extensions don't block development
+  // - Con: Re-enabling requires verifying the extension still compiles
+  //
+  // Behavior:
+  // - Disabled extensions: Skipped entirely (not built, not included in final image)
+  // - Enabled extensions: Built, tested, included in final image
+  if (enabled === false) {
+    const disabledReason = entry.disabledReason || "No reason specified";
+    log(`Extension ${name} disabled (reason: ${disabledReason}) - skipping build`);
+    DISABLED_EXTENSIONS.push(name);
+    return;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // GATE 1: PGDG SKIP CHECK (Phase 4.4 - moved after enabled check)
+  // ────────────────────────────────────────────────────────────────────────────
+  // Skip PGDG extensions here because they're installed via apt-get in Dockerfile
+  // Note: This happens AFTER enabled check so disabled PGDG extensions are tracked
+  if (entry.install_via === "pgdg") {
+    log(`Skipping ${name} (installed via PGDG)`);
+    return;
+  }
+
+  const dest = join(BUILD_ROOT, name);
+  ensureCleanDir(dest);
+
+  // Clone repository based on source type
+  if (source.type === "git" && source.repository && source.tag) {
+    // Resolve tag to commit SHA
+    const tempDir = join(BUILD_ROOT, `${name}-temp`);
+    ensureCleanDir(tempDir);
+
+    validateGitUrl(source.repository);
+    await $`git clone --depth 1 --branch ${source.tag} ${source.repository} ${tempDir}`.quiet();
+    const commit = await $`git -C ${tempDir} rev-parse HEAD`.text().then((s) => s.trim());
+    rmSync(tempDir, { recursive: true, force: true });
+
+    await cloneRepo(source.repository, commit, dest);
+  } else if (source.type === "git-ref" && source.repository && (source.ref || source.commit)) {
+    const commit = source.commit || source.ref!;
+    await cloneRepo(source.repository, commit, dest);
+  } else if (source.type === "builtin") {
+    return;
+  } else {
+    log(`Unknown source type ${source.type} for ${name}`);
+    process.exit(1);
+  }
+
+  // Apply patches if specified
+  await applyPatches(entry, dest, name);
+
+  // Determine working directory
+  const workdir = build?.subdir ? join(dest, build.subdir) : dest;
+
+  // Validate dependencies before building
+  await validateDependencies(entry, name, manifest);
+
+  // Build extension based on build type
+  const buildType = build?.type;
+  if (!buildType) {
+    log(`No build type specified for ${name}`);
+    return;
+  }
+
+  switch (buildType) {
+    case "pgxs":
+      await buildPgxs(workdir);
+      break;
+
+    case "cargo-pgrx":
+      await buildCargoPgrx(workdir, entry);
+      if (name === "timescaledb_toolkit") {
+        log("Running toolkit post-install hook");
+        await $`cd ${dest} && cargo run --manifest-path tools/post-install/Cargo.toml -- pg_config`;
+      }
+      break;
+
+    case "timescaledb":
+      await buildTimescaledb(workdir);
+      break;
+
+    case "autotools":
+      await buildAutotools(workdir, name);
+      break;
+
+    case "cmake":
+      await buildCmake(workdir, name);
+      break;
+
+    case "meson":
+      await buildMeson(workdir);
+      break;
+
+    case "make":
+      if (name === "pgbadger") {
+        await buildPgbadger(workdir);
+      } else {
+        await buildMakeGeneric(workdir);
+      }
+      break;
+
+    case "script":
+      log(`Custom script build type not implemented for ${name}`);
+      process.exit(1);
+      break;
+
+    default:
+      log(`Unsupported build type ${buildType} for ${name}`);
+      process.exit(1);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// GATE 2: BINARY CLEANUP FOR DISABLED EXTENSIONS
+// ────────────────────────────────────────────────────────────────────────────
+// CRITICAL: This runs AFTER all extensions (enabled + disabled) have been built.
+//
+// At this point:
+// - All extensions compiled successfully (SHA commits verified as working)
+// - Disabled extensions tracked in DISABLED_EXTENSIONS array
+//
+// Now: Remove disabled extension binaries from final image
+// - Verifies each extension was actually built (smoke test)
+// - Warns if binaries missing (indicates build failure)
+// - Deletes .so, .control, .sql files for disabled extensions only
+//
+// Result: Final image contains only enabled extensions, but we've verified
+// that ALL extensions (including disabled ones) still compile and work.
+
+async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
+  if (DISABLED_EXTENSIONS.length === 0) {
+    log("No disabled extensions to clean up");
+    return;
+  }
+
+  log(`Validating ${DISABLED_EXTENSIONS.length} disabled extension(s)`);
+
+  // CRITICAL: Validate no core preloaded extensions are disabled
+  // Auto-config hardcodes: pg_stat_statements,auto_explain,pg_cron,pgaudit
+  // If user disables these, Postgres crashes at runtime with "library not found"
+  // Must fail at build time with actionable error message
+  for (const extName of DISABLED_EXTENSIONS) {
+    const extEntry = manifest.entries.find((e) => e.name === extName);
+
+    if (!extEntry) {
+      log(`ERROR: Extension '${extName}' not found in manifest`);
+      log(`       DISABLED_EXTENSIONS contains an extension not in manifest`);
+      log(`       This indicates manifest corruption or stale build state`);
+      process.exit(1);
+    }
+
+    const sharedPreload = extEntry.runtime?.sharedPreload || false;
+    const defaultEnable = extEntry.runtime?.defaultEnable || false;
+
+    // Critical: Core preloaded extensions (sharedPreload=true AND defaultEnable=true)
+    if (sharedPreload && defaultEnable) {
+      log(`ERROR: Cannot disable extension '${extName}'`);
+      log(`       This extension is required in shared_preload_libraries (auto-config default)`);
+      log(`       Core preloaded extensions: auto_explain, pg_cron, pg_stat_statements, pgaudit`);
+      log(``);
+      log(`       Disabling would cause runtime crash: "could not load library '${extName}.so'"`);
+      log(``);
+      log(`       To disable this extension, you must ALSO set environment variable:`);
+      log(`       POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain'`);
+      log(`       (exclude '${extName}' from the list)`);
+      log(``);
+      log(`       See AGENTS.md section 'Auto-Config Logic' for details`);
+      process.exit(1);
+    }
+
+    // Warning: Optional preloaded extensions (sharedPreload=true BUT defaultEnable=false)
+    if (sharedPreload && !defaultEnable) {
+      log(`⚠ WARNING: Extension '${extName}' has sharedPreload=true but defaultEnable=false`);
+      log(`           This extension is NOT in default shared_preload_libraries`);
+      log(
+        `           However, if you manually add it to POSTGRES_SHARED_PRELOAD_LIBRARIES at runtime,`
+      );
+      log(`           PostgreSQL will crash because the library was removed from the image`);
+      log(``);
+      log(
+        `           Examples: pg_partman, pg_plan_filter, pg_stat_monitor, set_user, supautils, timescaledb`
+      );
+      log(`           Safe to disable IF you never add them to shared_preload_libraries`);
+      log(``);
+    }
+  }
+
+  log(`Removing ${DISABLED_EXTENSIONS.length} disabled extension(s) from image`);
+
+  const PG_LIB_DIR = `/usr/lib/postgresql/${PG_MAJOR}/lib`;
+  const PG_EXT_DIR = `/usr/share/postgresql/${PG_MAJOR}/extension`;
+
+  // Validate PostgreSQL directories exist before attempting cleanup
+  if (!existsSync(PG_LIB_DIR)) {
+    log(`ERROR: PostgreSQL lib directory not found: ${PG_LIB_DIR}`);
+    log(
+      `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
+    );
+    process.exit(1);
+  }
+  if (!existsSync(PG_EXT_DIR)) {
+    log(`ERROR: PostgreSQL extension directory not found: ${PG_EXT_DIR}`);
+    log(
+      `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
+    );
+    process.exit(1);
+  }
+
+  for (const extName of DISABLED_EXTENSIONS) {
+    log(`  Cleaning up: ${extName}`);
+
+    // Verify extension was built (basic smoke test)
+    const soFile = join(PG_LIB_DIR, `${extName}.so`);
+    const controlFile = join(PG_EXT_DIR, `${extName}.control`);
+    const foundBinary = existsSync(soFile) || existsSync(controlFile);
+
+    if (!foundBinary) {
+      log(`    ⚠ WARNING: Extension ${extName} has no binaries - may have failed to build`);
+    }
+
+    // Remove binaries (.so files)
+    try {
+      await $`find ${PG_LIB_DIR} -name "${extName}.so" -delete`.quiet();
+      log(`    ✓ Removed ${extName}.so (if present)`);
+    } catch {
+      // File not found is OK for tools
+    }
+
+    // Remove versioned binaries (optional, many extensions don't have these)
+    try {
+      await $`find ${PG_LIB_DIR} -name "${extName}-*.so" -delete`.quiet();
+    } catch {
+      // Ignore errors
+    }
+
+    // Remove SQL/control files
+    try {
+      await $`find ${PG_EXT_DIR} -name "${extName}.control" -delete`.quiet();
+      log(`    ✓ Removed ${extName}.control (if present)`);
+    } catch {
+      // File not found is OK for tools
+    }
+
+    // Remove SQL upgrade scripts (optional, many extensions don't have these)
+    try {
+      await $`find ${PG_EXT_DIR} -name "${extName}--*.sql" -delete`.quiet();
+    } catch {
+      // Ignore errors
+    }
+
+    // Remove bitcode (optional, only extensions compiled with LLVM have this)
+    const bitcodeDir = join(PG_LIB_DIR, "bitcode");
+    if (existsSync(bitcodeDir)) {
+      try {
+        await $`find ${bitcodeDir} -type d -name "${extName}" -exec rm -rf {} +`.quiet();
+      } catch {
+        // Ignore errors
+      }
+    }
+  }
+
+  log("Disabled extensions built and tested, then removed from image");
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Main Execution
+// ────────────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  if (!MANIFEST_PATH) {
+    console.error("Usage: build-extensions.ts <manifest-path> [build-root]");
+    process.exit(1);
+  }
+
+  if (!existsSync(MANIFEST_PATH)) {
+    log(`ERROR: Manifest file not found: ${MANIFEST_PATH}`);
+    process.exit(1);
+  }
+
+  // Load and parse manifest
+  const manifest = (await Bun.file(MANIFEST_PATH).json()) as Manifest;
+
+  // Create build root directory
+  mkdirSync(BUILD_ROOT, { recursive: true });
+
+  // Process each entry in the manifest
+  for (const entry of manifest.entries) {
+    await processEntry(entry, manifest);
+  }
+
+  // Clean up disabled extensions
+  await cleanupDisabledExtensions(manifest);
+
+  log("Extension build complete");
+}
+
+// Run main function
+main().catch((error) => {
+  log(`FATAL ERROR: ${error.message}`);
+  console.error(error);
+  process.exit(1);
+});

@@ -93,7 +93,7 @@ case "$PGBOUNCER_LISTEN_ADDR" in
         [0-9] | [0-9][0-9] | [0-2][0-5][0-5])
           ;;
         *)
-          echo "[PGBOUNCER] ERROR: Invalid IP address: octet '$octet_val' exceeds 255 or is invalid" >&2
+          echo "[PGBOUNCER] ERROR: Invalid IP address: $octet_name octet '$octet_val' exceeds 255 or is invalid" >&2
           exit 1
           ;;
       esac

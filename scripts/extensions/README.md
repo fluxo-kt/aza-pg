@@ -197,9 +197,7 @@ echo $?  # 0 = success, 1 = failure
 ```bash
 # Install Bun (https://bun.sh)
 curl -fsSL https://bun.sh/install | bash
-
-# Or use Node.js with tsx
-npx tsx scripts/extensions/validate-manifest.ts
+# Note: This project is Bun-only. Node.js is not supported.
 ```
 
 ### False Positives

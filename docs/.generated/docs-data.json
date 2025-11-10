@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-10T20:10:18.139Z",
+  "generatedAt": "2025-11-10T20:44:37.624Z",
   "catalog": {
     "total": 38,
     "enabled": 36,
@@ -47,8 +47,8 @@
   ],
   "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgq"],
-    "tools": ["supautils"]
+    "extensions": ["pgq", "supautils"],
+    "tools": []
   },
   "preloaded": {
     "modules": ["auto_explain"],

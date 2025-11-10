@@ -54,12 +54,12 @@ jobs:
             exit 1
           fi
 
-      - name: Verify generated configs are up to date
+      - name: Verify generated files are up to date
         run: |
           bun run generate
-          if ! git diff --exit-code docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql; then
-            echo "::error::Generated configs are out of date. Run 'bun run generate' and commit changes."
-            git diff docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
+          if ! git diff --exit-code docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql docs/.generated/docs-data.json; then
+            echo "::error::Generated files are out of date. Run 'bun run generate' and commit changes."
+            git diff docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql docs/.generated/docs-data.json
             exit 1
           fi
 
@@ -95,7 +95,7 @@ jobs:
           echo "- ✅ Fast validation (oxlint, prettier, tsc)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manifest sync verification" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Generated configs sync verification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Generated files sync verification" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Repository health check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Full Docker builds and comprehensive tests are run via the Build workflow._" >> $GITHUB_STEP_SUMMARY

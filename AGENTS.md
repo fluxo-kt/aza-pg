@@ -35,7 +35,7 @@ cd stacks/primary && docker compose up
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
-- Tools vs extensions: No CREATE EXTENSION on tools (6: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils)
+- Tools vs extensions: No CREATE EXTENSION on tools (5: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate)
 - PGDG-disabled: compiled extensions only (PGDG are install-or-skip)
 - Auto-config: `-c` flags override postgresql.conf at runtime
 
@@ -43,7 +43,7 @@ cd stacks/primary && docker compose up
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Classification:** Tools (5), Modules (1: auto_explain), Extensions (26), Preloaded (4: auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
+**Classification:** Tools (5), Modules (1: auto_explain), Extensions (27), Preloaded (4: auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
 
 ## Auto-Config
 

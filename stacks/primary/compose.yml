@@ -79,7 +79,7 @@ services:
       start_period: 10s
 
   postgres_exporter:
-    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1}
+    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
     restart: unless-stopped
 
@@ -117,7 +117,7 @@ services:
       retries: 3
 
   pgbouncer_exporter:
-    image: ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0}
+    image: ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0@sha256:bf9a5189cc1d8be3f5f1cd4695f4cfec267318a3d7e340b9073a0ee7bf2efb44}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
     restart: unless-stopped
 

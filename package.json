@@ -16,7 +16,7 @@
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
     "validate:parallel": "bun scripts/validate.ts --all --parallel",
-    "generate": "bun scripts/config-generator/generator.ts",
+    "generate": "bun scripts/config-generator/generator.ts && bun scripts/generate-docs-data.ts",
     "check:docs": "bun scripts/check-docs-consistency.ts",
     "check:manifest": "bun scripts/validate-manifest.ts",
     "check:size": "bun scripts/check-size-regression.ts",

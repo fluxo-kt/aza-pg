@@ -150,6 +150,12 @@ async function validate(
   // Core checks (always run)
   const coreChecks: ValidationCheck[] = [
     {
+      name: "Environment File Check",
+      command: ["sh", "-c", "! git ls-files | grep -E '/\\.env$' | grep -v '\\.env\\.example'"],
+      description: "Verify no .env files are tracked (only .env.example allowed)",
+      required: true,
+    },
+    {
       name: "Manifest Validation",
       command: ["bun", "scripts/validate-manifest.ts"],
       description: "Extension manifest validation",

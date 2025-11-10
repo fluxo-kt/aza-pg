@@ -39,11 +39,20 @@ jobs:
       - name: Validate manifest
         run: bun run validate
 
+      - name: Derive catalog statistics
+        id: catalog
+        run: |
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
+          echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
+          echo "disabled=${CATALOG_DISABLED}" >> $GITHUB_OUTPUT
+          echo "Catalog: ${CATALOG_ENABLED} enabled, ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
+
       - name: Extract PostgreSQL version from Dockerfile
         id: pg-version
         run: |
           PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
-          PG_MINOR="0"  # PostgreSQL 18.0 pattern
+          PG_MINOR="0"  # TODO: Derive from built image via psql --version
           echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
           echo "full=${PG_MAJOR}.${PG_MINOR}" >> $GITHUB_OUTPUT
@@ -107,7 +116,7 @@ jobs:
             type=raw,value=${{ steps.pg-version.outputs.major }},priority=600
           labels: |
             org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
-            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with 38 extensions (36 enabled) - Single-Node Configuration
+            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions (${{ steps.catalog.outputs.enabled }} enabled) - Single-Node Configuration
             org.opencontainers.image.vendor=fluxo-kt
             org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
             org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
@@ -116,9 +125,8 @@ jobs:
             io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
             io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
             io.fluxo-kt.aza-pg.build.type=single-node
-            io.fluxo-kt.aza-pg.extensions.enabled=36
-            io.fluxo-kt.aza-pg.extensions.total=38
-            # TODO: Make extension counts manifest-driven instead of hardcoded
+            io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
+            io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
 
       - name: Build and push single-node image
         id: build

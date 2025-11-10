@@ -3,37 +3,17 @@
 /**
  * Generate version-info.txt and version-info.json for container image
  *
+ * Usage:
+ *   bun generate-version-info.ts [txt|json|both] [--pg-version=MM.mm]
+ *
+ * Arguments:
+ *   txt|json|both     Output format (default: txt)
+ *   --pg-version      PostgreSQL version (default: 18.0)
+ *
  * Human-readable (.txt): Self-documenting image contents for `cat /etc/postgresql/version-info.txt`
  * Machine-readable (.json): Structured metadata for automation and tooling
- *
- * JSON Schema:
- * {
- *   "postgres_version": "18.0",           // PostgreSQL major.minor version
- *   "build_timestamp": "YYYYMMDDHHNN",    // Build time (ISO date)
- *   "build_type": "single-node",          // Image type
- *   "manifest_generated": "ISO timestamp", // Manifest generation time
- *   "extensions": {
- *     "total": 38,                        // All extensions in catalog
- *     "enabled": 36,                      // Extensions enabled in image
- *     "disabled": 2                       // Extensions disabled in manifest
- *   },
- *   "categories": {
- *     "preloaded": 9,                     // shared_preload_libraries count
- *     "auto_created": 6,                  // defaultEnable extensions
- *     "builtin": 6,                       // PostgreSQL core extensions
- *     "pgdg": 14,                         // PGDG pre-compiled packages
- *     "compiled": 16,                     // Source-compiled extensions/tools
- *     "tools": 5                          // CLI tools (no CREATE EXTENSION)
- *   },
- *   "preloaded_modules": ["auto_explain", "pg_cron", "pg_partman", "pg_plan_filter", "pg_stat_monitor", "pg_stat_statements", "pgaudit", "pgaudit_set_user", "timescaledb"],
- *   "disabled_extensions": [
- *     {"name": "pgq", "reason": "Disabled by default to reduce image size..."},
- *     {"name": "supautils", "reason": "Compilation requires patching..."}
- *   ]
- * }
  */
 
-import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 interface Manifest {
@@ -60,16 +40,24 @@ interface Manifest {
   }>;
 }
 
+// Parse command-line arguments
+const args = Bun.argv.slice(2);
+const outputMode = args.find((arg) => !arg.startsWith("--")) ?? "txt";
+const pgVersionArg = args.find((arg) => arg.startsWith("--pg-version="))?.split("=")[1];
+const pgVersion = pgVersionArg ?? "18.0";
+
 // Support both local dev and Docker build contexts
 // In Docker: manifest copied to /tmp/extensions.manifest.json (same dir as script)
 // In local: manifest at ../docker/postgres/extensions.manifest.json
 const dockerManifestPath = join(import.meta.dir, "extensions.manifest.json");
 const localManifestPath = join(import.meta.dir, "..", "docker/postgres/extensions.manifest.json");
-const manifestPath = existsSync(dockerManifestPath) ? dockerManifestPath : localManifestPath;
 
 try {
-  const manifestJson = readFileSync(manifestPath, "utf-8");
-  const manifest: Manifest = JSON.parse(manifestJson);
+  const dockerFile = Bun.file(dockerManifestPath);
+  const localFile = Bun.file(localManifestPath);
+
+  const manifestFile = (await dockerFile.exists()) ? dockerFile : localFile;
+  const manifest: Manifest = await manifestFile.json();
 
   // Build timestamp (YYYYMMDDHHNN format)
   const now = new Date();
@@ -101,7 +89,7 @@ try {
 
   // Generate machine-readable JSON
   const versionInfo = {
-    postgres_version: "18.0",
+    postgres_version: pgVersion,
     build_timestamp: buildTimestamp,
     build_type: "single-node",
     manifest_generated: manifest.generatedAt,
@@ -131,17 +119,18 @@ try {
   const lines: string[] = [];
 
   // Header
+  const pgMajor = pgVersion.split(".")[0];
   lines.push("===============================================================================");
-  lines.push("aza-pg - PostgreSQL 18 with Extensions");
+  lines.push(`aza-pg - PostgreSQL ${pgMajor} with Extensions`);
   lines.push("===============================================================================");
   lines.push("");
   lines.push(`Build Date: ${now.toISOString().split("T")[0]}`);
   lines.push(`Manifest Generated: ${manifest.generatedAt}`);
   lines.push("");
 
-  // PostgreSQL version
+  // PostgreSQL version (note: actual package version determined at build time)
   lines.push("POSTGRESQL");
-  lines.push("  PostgreSQL 18.0 (Debian 18.0-1.pgdg13+3)");
+  lines.push(`  PostgreSQL ${pgVersion} (upstream tag version)`);
   lines.push("");
 
   // Preloaded modules
@@ -210,10 +199,7 @@ try {
   lines.push("Documentation: https://github.com/fluxo-kt/aza-pg");
   lines.push("===============================================================================");
 
-  // Detect output mode from command line args
-  const args = process.argv.slice(2);
-  const outputMode = args[0] ?? "txt";
-
+  // Output based on mode
   if (outputMode === "json") {
     // JSON output only
     console.log(JSON.stringify(versionInfo, null, 2));

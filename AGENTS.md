@@ -31,7 +31,7 @@ cd stacks/primary && docker compose up
 
 ## Gotchas
 
-- **auto_explain is a module, not an extension**: Loaded via shared_preload_libraries, NO CREATE EXTENSION needed (PostgreSQL design)
+- **auto_explain is a MODULE, not an extension**: PostgreSQL core module (preload-only). NO CREATE EXTENSION needed. This is by PostgreSQL design, not a bug. Loaded via shared_preload_libraries only.
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit

@@ -51,32 +51,30 @@ rules:
     max-spaces-after: 1
     level: error
 
-  # Empty lines: Reasonable limits
-  empty-lines:
-    max: 2
-    level: warning
+   # Empty lines: Reasonable limits
+   empty-lines:
+     max: 2
+     level: warning
 
-  # New line at end of file
-  new-line-at-end-of-file:
-    level: error
+   # New line at end of file
+   new-line-at-end-of-file:
+     level: error
 
-  # Truthy values: Avoid yes/no/on/off, use true/false
-  truthy:
-    level: warning
-    allowed-values:
-      - 'true'
-      - 'false'
+   # Truthy values: Allow common YAML values
+   truthy:
+     allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+     level: warning
 
-  # Document start: Not required (single-document files)
-  document-start: disable
+   # Document start: Not required (single-document files)
+   document-start: disable
 
-  # Document end: Not required
-  document-end: disable
+   # Document end: Not required
+   document-end: disable
 
-  # Trailing spaces
-  trailing-spaces:
-    level: error
+   # Trailing spaces
+   trailing-spaces:
+     level: error
 
-  # Key duplicates: Disallow duplicate keys
-  key-duplicates:
-    level: error
+   # Key duplicates: Disallow duplicate keys
+   key-duplicates:
+     level: error

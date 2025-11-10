@@ -443,4 +443,4 @@ The following optimizations have been identified for potential implementation ba
 - **Conditional builds:** Build-time arguments to skip large optional extensions for specific use cases
 - **Alpine base evaluation:** Potential 40% size reduction but requires extensive glibc vs musl compatibility testing
 
-See git history (`.archived/docs/analysis/`) for detailed analysis reports including extension size breakdowns, layer analysis, and implementation roadmaps.
+See git history for detailed analysis reports including extension size breakdowns, layer analysis, and implementation roadmaps.

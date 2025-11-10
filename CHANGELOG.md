@@ -322,8 +322,6 @@ All notable changes to aza-pg will be documented in this file.
 
 ## [Previous Releases] - 2025-11-05 and Earlier
 
-For detailed changelog history before 2025-11-08, see [CHANGELOG.archive.md](CHANGELOG.archive.md).
-
 **Recent highlights:**
 
 - 2025-11-06: Added pgq extension, pgflow workflow orchestration, manifest-driven build system

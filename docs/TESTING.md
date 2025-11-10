@@ -8,7 +8,7 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 2. [Testing Extension Functionality](#testing-extension-functionality)
 3. [Common Pitfalls](#common-pitfalls)
 4. [Test Categories](#test-categories)
-5. [Testing Strategy & Coverage](#testing-strategy--coverage)
+5. [Testing Strategy & Coverage](#testing-strategy-coverage)
 6. [Running Tests](#running-tests)
 
 ## Session Isolation Pattern

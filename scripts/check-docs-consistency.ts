@@ -19,15 +19,20 @@ const DOCS_DATA_PATH = join(PROJECT_ROOT, "docs/.generated/docs-data.json");
 const DOC_PATHS = ["AGENTS.md", "README.md", "docs/**/*.md"];
 
 interface DocsData {
-  extensions: {
+  catalog: {
     total: number;
-    byKind: {
-      builtin: number;
-      extension: number;
-      tool: number;
-    };
-    preloadLibraries: string[];
-    tools: string[];
+    enabled: number;
+    disabled: number;
+  };
+  byKind: {
+    builtin: number;
+    extension: number;
+    tool: number;
+  };
+  tools: string[];
+  preloaded: {
+    modules: string[];
+    extensions: string[];
   };
   memoryTiers: Array<{
     ram: string;
@@ -167,7 +172,7 @@ function checkPasswordEscaping(content: string, _file: string): string[] {
  */
 function checkToolClassification(content: string, data: DocsData, file: string): string[] {
   const errors: string[] = [];
-  const tools = data.extensions.tools;
+  const tools = data.tools;
 
   // pgbackrest, pgbadger, wal2json should be called "tools" not "extensions"
   for (const tool of tools) {
@@ -194,7 +199,7 @@ async function main() {
   }
 
   const data: DocsData = await docsDataFile.json();
-  info(`Loaded docs data: ${data.extensions.total} extensions`);
+  info(`Loaded docs data: ${data.catalog.enabled} extensions`);
 
   // Find all documentation files
   const docFiles: string[] = [];

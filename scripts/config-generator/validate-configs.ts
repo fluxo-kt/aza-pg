@@ -5,7 +5,6 @@
  * Checks that all GUC names are valid and all expected settings are present
  */
 
-import { readFileSync } from "fs";
 import { join } from "path";
 import { success, info, error, warning } from "../utils/logger.js";
 
@@ -28,8 +27,9 @@ const GUC_NAME_REGEX = /^[a-z_][a-z0-9_.]*$/;
 /**
  * Parse a PostgreSQL config file and extract all settings
  */
-function parseConfig(filePath: string): ValidationResult {
-  const content = readFileSync(filePath, "utf-8");
+async function parseConfig(filePath: string): Promise<ValidationResult> {
+  const file = Bun.file(filePath);
+  const content = await file.text();
   const lines = content.split("\n");
 
   const result: ValidationResult = {
@@ -196,68 +196,72 @@ function validateReplicaConfig(result: ValidationResult): void {
 }
 
 // Run validations
-info("Validating PostgreSQL configurations...\n");
+async function main() {
+  info("Validating PostgreSQL configurations...\n");
 
-const configs = [
-  {
-    path: "docker/postgres/configs/postgresql-base.conf",
-    validator: validateBaseConfig,
-  },
-  {
-    path: "stacks/primary/configs/postgresql-primary.conf",
-    validator: validatePrimaryConfig,
-  },
-  {
-    path: "stacks/replica/configs/postgresql-replica.conf",
-    validator: validateReplicaConfig,
-  },
-  {
-    path: "stacks/single/configs/postgresql.conf",
-    validator: null, // Minimal validation, no specific requirements
-  },
-];
+  const configs = [
+    {
+      path: "docker/postgres/configs/postgresql-base.conf",
+      validator: validateBaseConfig,
+    },
+    {
+      path: "stacks/primary/configs/postgresql-primary.conf",
+      validator: validatePrimaryConfig,
+    },
+    {
+      path: "stacks/replica/configs/postgresql-replica.conf",
+      validator: validateReplicaConfig,
+    },
+    {
+      path: "stacks/single/configs/postgresql.conf",
+      validator: null, // Minimal validation, no specific requirements
+    },
+  ];
 
-let allValid = true;
+  let allValid = true;
 
-for (const config of configs) {
-  const fullPath = join(REPO_ROOT, config.path);
-  info(config.path);
+  for (const config of configs) {
+    const fullPath = join(REPO_ROOT, config.path);
+    info(config.path);
 
-  const result = parseConfig(fullPath);
-  validateExtensionNamespaces(result);
+    const result = await parseConfig(fullPath);
+    validateExtensionNamespaces(result);
 
-  if (config.validator) {
-    config.validator(result);
-  }
-
-  if (result.errors.length > 0) {
-    error("Errors:");
-    for (const err of result.errors) {
-      console.log(`      ${err}`);
+    if (config.validator) {
+      config.validator(result);
     }
-    allValid = false;
-  }
 
-  if (result.warnings.length > 0) {
-    warning("Warnings:");
-    for (const warn of result.warnings) {
-      console.log(`      ${warn}`);
+    if (result.errors.length > 0) {
+      error("Errors:");
+      for (const err of result.errors) {
+        console.log(`      ${err}`);
+      }
+      allValid = false;
     }
+
+    if (result.warnings.length > 0) {
+      warning("Warnings:");
+      for (const warn of result.warnings) {
+        console.log(`      ${warn}`);
+      }
+    }
+
+    if (result.valid && result.errors.length === 0) {
+      success(`Valid (${result.settings.length} settings)`);
+    }
+
+    console.log("");
   }
 
-  if (result.valid && result.errors.length === 0) {
-    success(`Valid (${result.settings.length} settings)`);
-  }
+  console.log("=".repeat(50));
 
-  console.log("");
+  if (allValid) {
+    success("All configurations are valid!\n");
+    process.exit(0);
+  } else {
+    error("Some configurations have errors!\n");
+    process.exit(1);
+  }
 }
 
-console.log("=".repeat(50));
-
-if (allValid) {
-  success("All configurations are valid!\n");
-  process.exit(0);
-} else {
-  error("Some configurations have errors!\n");
-  process.exit(1);
-}
+main();

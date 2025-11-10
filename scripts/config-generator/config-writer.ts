@@ -3,8 +3,8 @@
  * Handles writing generated configuration files to disk
  */
 
-import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
+import { mkdir } from "fs/promises";
 
 /**
  * Write content to a file, creating parent directories if needed
@@ -12,9 +12,9 @@ import { join } from "path";
  * @param content - Content to write
  * @throws Error if file cannot be written
  */
-export function writeConfigFile(filePath: string, content: string): void {
+export async function writeConfigFile(filePath: string, content: string): Promise<void> {
   try {
-    writeFileSync(filePath, content);
+    await Bun.write(filePath, content);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to write file ${filePath}: ${errorMsg}`, { cause: error });
@@ -26,9 +26,9 @@ export function writeConfigFile(filePath: string, content: string): void {
  * @param dirPath - Path to the directory
  * @throws Error if directory cannot be created
  */
-export function ensureDirectory(dirPath: string): void {
+export async function ensureDirectory(dirPath: string): Promise<void> {
   try {
-    mkdirSync(dirPath, { recursive: true });
+    await mkdir(dirPath, { recursive: true });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to create directory ${dirPath}: ${errorMsg}`, { cause: error });
@@ -43,9 +43,13 @@ export function ensureDirectory(dirPath: string): void {
  * @returns Full path of the written file
  * @throws Error if file or directory operations fail
  */
-export function writeConfigWithDir(dirPath: string, fileName: string, content: string): string {
-  ensureDirectory(dirPath);
+export async function writeConfigWithDir(
+  dirPath: string,
+  fileName: string,
+  content: string
+): Promise<string> {
+  await ensureDirectory(dirPath);
   const filePath = join(dirPath, fileName);
-  writeConfigFile(filePath, content);
+  await writeConfigFile(filePath, content);
   return filePath;
 }

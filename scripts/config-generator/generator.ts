@@ -304,7 +304,7 @@ function generatePgHba(stack: StackType): string {
   return lines.join("\n");
 }
 
-function generateConfigs() {
+async function generateConfigs() {
   info("Generating PostgreSQL configurations...\n");
 
   try {
@@ -313,7 +313,7 @@ function generateConfigs() {
     const baseConf = generateBaseConf(BASE_CONFIG.common);
     const baseConfPath = join(REPO_ROOT, "docker/postgres/configs/postgresql-base.conf");
 
-    writeConfigFile(baseConfPath, baseConf);
+    await writeConfigFile(baseConfPath, baseConf);
     console.log(`   ✓ ${baseConfPath}`);
 
     // Generate stack-specific configs
@@ -337,24 +337,24 @@ function generateConfigs() {
         confName = `postgresql-${stack}.conf`;
       }
 
-      const postgresqlConfPath = writeConfigWithDir(confDir, confName, postgresqlConf);
+      const postgresqlConfPath = await writeConfigWithDir(confDir, confName, postgresqlConf);
       console.log(`   ✓ ${postgresqlConfPath}`);
 
       const pgHbaConf = generatePgHba(stack);
-      const pgHbaPath = writeConfigWithDir(confDir, "pg_hba.conf", pgHbaConf);
+      const pgHbaPath = await writeConfigWithDir(confDir, "pg_hba.conf", pgHbaConf);
       console.log(`   ✓ ${pgHbaPath}`);
     }
 
     // Generate 01-extensions.sql init script
     info("Generating extension init script...");
-    const manifest = loadManifest(REPO_ROOT);
+    const manifest = await loadManifest(REPO_ROOT);
     const extensionsToEnable = getDefaultEnabledExtensions(manifest);
     const extensionsInitScript = generateExtensionsInitScript(extensionsToEnable);
     const extensionsInitPath = join(
       REPO_ROOT,
       "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
     );
-    writeConfigFile(extensionsInitPath, extensionsInitScript);
+    await writeConfigFile(extensionsInitPath, extensionsInitScript);
     console.log(`   ✓ ${extensionsInitPath}`);
   } catch (err) {
     const err_error = err as Error;

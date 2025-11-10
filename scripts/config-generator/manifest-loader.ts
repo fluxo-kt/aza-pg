@@ -3,7 +3,6 @@
  * Handles loading and parsing of extension manifest files
  */
 
-import { readFileSync } from "fs";
 import { join } from "path";
 import type { ManifestEntry } from "../extensions/manifest-data.js";
 
@@ -21,11 +20,12 @@ export interface Manifest {
  * @returns Parsed manifest object
  * @throws Error if manifest file cannot be read or parsed
  */
-export function loadManifest(repoRoot: string): Manifest {
+export async function loadManifest(repoRoot: string): Promise<Manifest> {
   const manifestPath = join(repoRoot, "docker/postgres/extensions.manifest.json");
 
   try {
-    const manifestJson = readFileSync(manifestPath, "utf-8");
+    const manifestFile = Bun.file(manifestPath);
+    const manifestJson = await manifestFile.text();
     const manifest = JSON.parse(manifestJson) as Manifest;
 
     return manifest;

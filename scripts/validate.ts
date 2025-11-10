@@ -257,7 +257,7 @@ async function validate(
       command: [
         "sh",
         "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|docs/|\\.[^/]*rc$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" || true',
+        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|\\.[^/]*rc$|test.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
       ],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,

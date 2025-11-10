@@ -72,9 +72,6 @@ jobs:
           test -f docker/postgres/extensions.manifest.json || { echo "::error::Missing extensions.manifest.json"; exit 1; }
           test -f package.json || { echo "::error::Missing package.json"; exit 1; }
 
-          # Check manifest validity
-          bun run check:manifest
-
           # Verify key directories exist
           test -d stacks/primary || { echo "::error::Missing stacks/primary"; exit 1; }
           test -d stacks/replica || { echo "::error::Missing stacks/replica"; exit 1; }

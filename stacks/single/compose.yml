@@ -74,7 +74,7 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9187/metrics || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -52,6 +52,13 @@ minimumReleaseAge = 86400  # 1 day delay
 **Status**: ✅ LOCKED
 **Configuration**: `tsconfig.json` (strict mode enabled)
 
+### Bun-Only Scripting
+
+**Policy**: All build and utility scripts use Bun TypeScript exclusively. Node.js is not supported.
+**Bun APIs**: Use `Bun.file()`, `Bun.write()`, `Bun.spawn()`, `Bun.$` `, `Bun.argv`, `Bun.env`instead of Node.js equivalents.
+**Status**: Migration from Node.js APIs ongoing where practical; production containers contain no Bun.
+**Examples**: See`scripts/` directory for Bun-native patterns.
+
 ---
 
 ## 🔍 Code Quality & Linting

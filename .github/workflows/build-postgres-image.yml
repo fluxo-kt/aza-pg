@@ -74,8 +74,6 @@
 #
 # RELATED DOCUMENTATION:
 # ----------------------
-# - docs/.archived/ci/README.md - CI/CD pipeline overview
-# - docs/.archived/ci/ARM64-TESTING.md - arm64 validation details
 # - CLAUDE.md - Development standards and fast paths
 # - scripts/build.ts - Local build script (Bun TypeScript)
 #

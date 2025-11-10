@@ -147,9 +147,10 @@ async function imageExists(imageName: string): Promise<boolean> {
 async function getSoSize(imageName: string, extensionName: string): Promise<number | null> {
   try {
     // Common locations for .so files
+    const pgVersion = Bun.env.PG_VERSION ?? "18";
     const possiblePaths = [
-      `/usr/lib/postgresql/18/lib/${extensionName}.so`,
-      `/usr/share/postgresql/18/extension/${extensionName}.so`,
+      `/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`,
+      `/usr/share/postgresql/${pgVersion}/extension/${extensionName}.so`,
     ];
 
     for (const path of possiblePaths) {

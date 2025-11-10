@@ -20,7 +20,7 @@
     "check:size": "bun scripts/check-size-regression.ts",
     "check:shell": "shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh",
     "check:yaml": "echo 'YAML linting temporarily disabled due to config parsing issue'",
-    "check:docker": "hadolint docker/postgres/Dockerfile",
+    "check:docker": "hadolint --config .hadolint.yaml docker/postgres/Dockerfile",
     "check:sql": "echo 'SQL linting: No SQL linter configured - SQL files exist but are auto-generated or example files'",
     "check:toml": "echo 'TOML linting: No TOML linter configured - TOML files are minimal config files'",
     "test:smoke": "bun scripts/test-smoke.ts",

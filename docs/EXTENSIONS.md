@@ -12,6 +12,31 @@ Key principles:
 - **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and commit for each entry. The Dockerfile consumes this manifest during the Docker build.
 - **Runtime minimalism.** Only a small baseline is enabled automatically; everything else is installed but disabled by default so teams can opt in without rebuilding the image.
 
+## Extension Classification
+
+**This is the canonical reference for extension classification. Other docs reference this section.**
+
+The aza-pg PostgreSQL extensions are classified into four categories:
+
+- **Tools** (6): CLI utilities that do not require `CREATE EXTENSION`
+  - Examples: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils
+  - Installed in `/usr/local/bin/` or configured via PostgreSQL hooks
+
+- **Modules** (1): Core PostgreSQL modules loaded via `shared_preload_libraries`
+  - `auto_explain` - Preload-only module (NO CREATE EXTENSION needed)
+  - Part of PostgreSQL core, activated via configuration only
+
+- **Extensions** (36): Standard extensions requiring `CREATE EXTENSION`
+  - Installed in PostgreSQL extension directory
+  - 6 auto-created by default: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector
+  - 30 available on-demand
+
+- **Preloaded** (4): Extensions/modules loaded by default in `shared_preload_libraries`
+  - auto_explain (module)
+  - pg_cron (extension)
+  - pg_stat_statements (extension)
+  - pgaudit (extension)
+
 ## Extension Matrix
 
 The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.

@@ -58,7 +58,7 @@ minimumReleaseAge = 86400  # 1 day delay
 
 ### Oxlint
 
-**Version**: 0.11.0+
+**Version**: 1.26.0
 **Why**: Extremely fast TypeScript/JavaScript linter (50-100x faster than ESLint), Rust-based
 **Status**: ✅ LOCKED - Do NOT replace with ESLint
 **Configuration**: `.oxlintrc.json`

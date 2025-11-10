@@ -195,7 +195,11 @@ async function main() {
     .toSorted();
 
   // Auto-created extensions (from 01-extensions.sql)
-  const autoCreated = ["pg_cron", "pg_stat_statements", "pg_trgm", "pgaudit", "plpgsql", "vector"];
+  // Dynamically derived from manifest entries with defaultEnable=true (not preloadOnly)
+  const autoCreated = enabledEntries
+    .filter((e) => e.runtime?.defaultEnable && !e.runtime?.preloadOnly)
+    .map((e) => e.name)
+    .toSorted();
 
   // Group by category (enabled entries only)
   const byCategory: { [category: string]: string[] } = {};

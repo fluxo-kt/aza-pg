@@ -181,7 +181,7 @@ async function validate(
         ? [
             "sh",
             "-c",
-            "git diff --cached --name-only --diff-filter=d | xargs -r bun x prettier --check",
+            "git diff --cached --name-only --diff-filter=d | xargs -r bun x prettier --check --ignore-unknown",
           ]
         : ["bun", "x", "prettier", "--check", "."],
       description: stagedOnly

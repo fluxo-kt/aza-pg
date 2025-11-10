@@ -171,8 +171,8 @@ docker compose exec postgres psql -U postgres -c "SELECT extname, extversion FRO
 #### Step 4: Apply to Production
 
 ```bash
-# Deploy new image
-docker pull ghcr.io/fluxo-kt/aza-pg:pg18-latest
+# Deploy new image (use versioned tag for production)
+docker pull ghcr.io/fluxo-kt/aza-pg:18.0
 
 # Rolling update (one instance at a time)
 docker compose up -d --no-deps postgres

@@ -33,7 +33,7 @@ docker compose up -d
 Add the init script to your custom Dockerfile:
 
 ```dockerfile
-FROM ghcr.io/fluxo-kt/aza-pg:latest
+FROM ghcr.io/fluxo-kt/aza-pg:18.0
 COPY examples/pgflow/10-pgflow.sql /docker-entrypoint-initdb.d/
 ```
 

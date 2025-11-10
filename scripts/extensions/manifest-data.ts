@@ -225,7 +225,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supautils",
-    kind: "tool",
+    kind: "extension",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
     enabled: false,
@@ -242,6 +242,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     runtime: {
       sharedPreload: true,
+      preloadOnly: true,
       defaultEnable: false,
       notes: ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."],
     },

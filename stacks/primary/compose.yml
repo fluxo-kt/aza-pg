@@ -157,6 +157,6 @@ networks:
 
 volumes:
   postgres_data:
-    name: ${POSTGRES_DATA_VOLUME:-postgres-primary-data}
+    name: ${POSTGRES_DATA_VOLUME:-postgres_data}
   postgres_backup:
-    name: ${POSTGRES_BACKUP_VOLUME:-postgres-primary-backup}
+    name: ${POSTGRES_BACKUP_VOLUME:-postgres_backup}

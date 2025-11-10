@@ -118,6 +118,7 @@ jobs:
             io.fluxo-kt.aza-pg.build.type=single-node
             io.fluxo-kt.aza-pg.extensions.enabled=36
             io.fluxo-kt.aza-pg.extensions.total=38
+            # TODO: Make extension counts manifest-driven instead of hardcoded
 
       - name: Build and push single-node image
         id: build

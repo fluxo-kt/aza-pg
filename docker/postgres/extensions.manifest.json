@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-10T18:25:14.153Z",
+  "generatedAt": "2025-11-10T20:11:11.270Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -684,7 +684,7 @@
     },
     {
       "name": "supautils",
-      "kind": "tool",
+      "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
       "enabled": false,
@@ -703,6 +703,7 @@
       },
       "runtime": {
         "sharedPreload": true,
+        "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."

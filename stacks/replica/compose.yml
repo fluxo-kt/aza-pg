@@ -84,8 +84,8 @@ services:
 
 networks:
   postgres_net:
-    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
-    external: true
+    name: ${POSTGRES_NETWORK_NAME:-postgres-replica-net}
+    driver: bridge
   monitoring:
     external: true
 

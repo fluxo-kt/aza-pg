@@ -1,0 +1,457 @@
+================================================================================
+DOCKER COMPOSE FILES - DETAILED CONSISTENCY CHECK
+================================================================================
+
+ALL FILES FOUND AND CHECKED:
+✓ /opt/apps/art/infra/aza-pg/stacks/primary/compose.yml
+✓ /opt/apps/art/infra/aza-pg/stacks/primary/compose.dev.yml
+✓ /opt/apps/art/infra/aza-pg/stacks/replica/compose.yml
+✓ /opt/apps/art/infra/aza-pg/stacks/single/compose.yml
+✓ /opt/apps/art/infra/aza-pg/examples/backup/compose.yml
+
+================================================================================
+1. SERVICE NAMING PATTERNS
+================================================================================
+
+PRIMARY SERVICE NAME:
+├─ primary/compose.yml:        postgres (line 2)
+├─ replica/compose.yml:        postgres-replica (line 6)  ⚠️ INCONSISTENT
+├─ single/compose.yml:         postgres (line 6)
+├─ backup/compose.yml:         pgbackrest (line 15)
+└─ primary/compose.dev.yml:    postgres (line 2, inherited)
+
+CONTAINER NAMES:
+├─ primary/compose.yml:        ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-primary
+├─ replica/compose.yml:        ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-replica
+├─ single/compose.yml:         ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-single
+├─ backup/compose.yml:         pgbackrest  ⚠️ NO PROJECT PREFIX
+└─ primary/compose.dev.yml:    (inherited from primary)
+
+EXPORTER SERVICE NAMES:
+├─ primary/compose.yml:        postgres_exporter
+├─ primary/compose.yml:        pgbouncer_exporter
+├─ replica/compose.yml:        postgres_exporter
+├─ single/compose.yml:         postgres_exporter
+└─ backup/compose.yml:         (none)
+
+VERDICT: 3 INCONSISTENCIES
+├─ Replica uses -replica suffix while primary/single don't
+├─ Backup container lacks project name prefix
+└─ PgBouncer exporter only in primary
+
+================================================================================
+2. NETWORK NAMING PATTERNS
+================================================================================
+
+NETWORK NAMES (default values when env vars not set):
+
+Primary:
+├─ Network: postgres_net (logical)
+├─ Actual Name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+├─ Type: bridge (created)
+└─ Line: 152
+
+Replica:
+├─ Network: postgres_net (logical)
+├─ Actual Name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}  ⚠️ CRITICAL BUG
+├─ Type: external (requires existing network)
+└─ Line: 87
+
+Single:
+├─ Network: postgres_net (logical)
+├─ Actual Name: ${POSTGRES_NETWORK_NAME:-postgres-single-net}  ⚠️ INCONSISTENT
+├─ Type: bridge (created)
+└─ Line: 84
+
+Dev Override:
+├─ Network: postgres_net (logical)
+├─ Actual Name: postgres-replication  ⚠️ HARDCODED, NOT ENV VAR
+├─ Type: bridge (created)
+└─ Line: 21
+
+VERDICT: 4 CRITICAL INCONSISTENCIES
+├─ Replica defaults to PRIMARY network name (wrong!)
+├─ Single uses different naming pattern
+├─ Dev hardcodes network name
+└─ All use different default names (no central pattern)
+
+IMPACT: If primary and replica run together, replica won't connect!
+
+================================================================================
+3. PORT BINDING PATTERNS
+================================================================================
+
+POSTGRES SERVICE PORTS:
+┌─────────────────┬──────────────┬────────────────────────┐
+│ Stack           │ Port Binding │ Default Port           │
+├─────────────────┼──────────────┼────────────────────────┤
+│ primary         │ 5432         │ POSTGRES_PORT:-5432    │
+│ replica         │ 5433         │ POSTGRES_PORT:-5433    │ ⚠️
+│ single          │ 5432         │ POSTGRES_PORT:-5432    │
+│ dev override    │ 5433         │ (hardcoded)            │
+└─────────────────┴──────────────┴────────────────────────┘
+
+PGBOUNCER PORTS:
+┌─────────────────┬──────────────┬────────────────────────┐
+│ Stack           │ Port Binding │ Default Port           │
+├─────────────────┼──────────────┼────────────────────────┤
+│ primary         │ 6432         │ PGBOUNCER_PORT:-6432   │
+│ dev override    │ 6433         │ (hardcoded)            │
+│ replica         │ (none)       │ NOT PROVIDED           │
+│ single          │ (none)       │ NOT PROVIDED           │
+└─────────────────┴──────────────┴────────────────────────┘
+
+POSTGRES EXPORTER PORTS:
+┌─────────────────┬──────────────┬─────────────────────────┐
+│ Stack           │ Port Binding │ Default Port            │
+├─────────────────┼──────────────┼─────────────────────────┤
+│ primary         │ 9187         │ POSTGRES_EXPORTER:9187  │
+│ replica         │ 9188         │ POSTGRES_EXPORTER:9188  │ ⚠️
+│ single          │ 9189         │ POSTGRES_EXPORTER:9189  │ ⚠️
+│ dev override    │ 9188         │ (hardcoded)             │
+└─────────────────┴──────────────┴─────────────────────────┘
+
+PGBOUNCER EXPORTER PORTS:
+┌─────────────────┬──────────────┬──────────────────────────┐
+│ Stack           │ Port Binding │ Default Port             │
+├─────────────────┼──────────────┼──────────────────────────┤
+│ primary         │ 9127         │ PGBOUNCER_EXPORTER:9127  │
+│ replica         │ (none)       │ NOT PROVIDED             │
+│ single          │ (none)       │ NOT PROVIDED             │
+└─────────────────┴──────────────┴──────────────────────────┘
+
+VERDICT: 6 INCONSISTENCIES
+├─ Replica postgres uses 5433 (non-standard)
+├─ Each exporter uses different port number
+├─ No centralized port allocation strategy
+├─ Port spacing unclear (9187, 9188, 9189)
+├─ Missing PgBouncer in replica/single
+└─ Missing PgBouncer exporter in replica/single
+
+================================================================================
+4. VOLUME NAMING PATTERNS
+================================================================================
+
+DATA VOLUMES:
+┌────────────────┬──────────────────────────────────────────┬─────────┐
+│ Stack          │ Volume Definition                        │ Line    │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ primary mount  │ ${POSTGRES_DATA_VOLUME:-postgres_data}   │ 18 ⚠️   │
+│ primary def    │ postgres_data: {...}                     │ 159     │
+│                │ name: postgres-primary-data              │ 160     │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ replica mount  │ postgres-replica-data                    │ 27      │
+│ replica def    │ postgres-replica-data: {...}            │ 93      │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ single mount   │ postgres_data                            │ 23      │
+│ single def     │ postgres_data: {...}                    │ 90      │
+│                │ (no env var)                            │         │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ backup ref     │ ${POSTGRES_DATA_VOLUME:-postgres...}    │ 60      │
+│                │ external: true (references primary)      │         │
+└────────────────┴──────────────────────────────────────────┴─────────┘
+
+⚠️ CRITICAL MISMATCH IN PRIMARY:
+  Mount uses: postgres_data (default)
+  Volume def uses: postgres-primary-data (default)
+  These don't match!
+
+BACKUP VOLUMES:
+┌────────────────┬──────────────────────────────────────────┬─────────┐
+│ Stack          │ Volume Definition                        │ Line    │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ primary mount  │ ${POSTGRES_BACKUP_VOLUME:-postgres_...}  │ 19 ⚠️   │
+│ primary def    │ postgres_backup: {...}                   │ 161     │
+│                │ name: postgres-primary-backup            │ 162     │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ replica        │ (not provided)                           │ -       │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ single         │ (not provided)                           │ -       │
+├────────────────┼──────────────────────────────────────────┼─────────┤
+│ backup example │ pgbackrest_repo, wal_archive            │ 54, 56  │
+└────────────────┴──────────────────────────────────────────┴─────────┘
+
+⚠️ CRITICAL MISMATCH IN PRIMARY:
+  Mount uses: postgres_backup (default)
+  Volume def uses: postgres-primary-backup (default)
+  These don't match!
+
+VERDICT: 4 CRITICAL INCONSISTENCIES
+├─ Primary data mount/def mismatch
+├─ Primary backup mount/def mismatch
+├─ Single lacks env var support
+├─ Replica lacks env var support
+└─ No consistent naming pattern
+
+IMPACT: Volumes won't mount correctly in primary!
+
+================================================================================
+5. ENVIRONMENT VARIABLE PATTERNS
+================================================================================
+
+POSTGRES USER QUOTING:
+├─ primary/compose.yml:     POSTGRES_USER: ${POSTGRES_USER:-postgres}     (unquoted)
+├─ replica/compose.yml:     POSTGRES_USER: ${POSTGRES_USER:-postgres}     (unquoted)
+├─ single/compose.yml:      POSTGRES_USER: ${POSTGRES_USER:-postgres}     (unquoted)
+└─ VERDICT: Consistent ✓
+
+POSTGRES PASSWORD QUOTING:
+├─ primary/compose.yml:     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?...}  (unquoted)  ⚠️
+├─ replica/compose.yml:     POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?...}"(quoted)   ⚠️
+├─ single/compose.yml:      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?...}"(quoted)   ⚠️
+└─ VERDICT: Inconsistent - primary differs from replica/single
+
+REPLICATION VARIABLES:
+Primary (Lines 13-15):
+  POSTGRES_PASSWORD: ...
+  PG_REPLICATION_PASSWORD: ...  (uses PG_ prefix)
+  REPLICATION_SLOT_NAME: ...
+
+Replica (Lines 14-21):
+  POSTGRES_PASSWORD: ...
+  PG_REPLICATION_USER: ...      (uses PG_ prefix)
+  PG_REPLICATION_PASSWORD: ...  (uses PG_ prefix)
+  PRIMARY_HOST: ...
+  PRIMARY_PORT: ...
+
+⚠️ INCONSISTENCY: Primary uses REPLICATION_SLOT_NAME, Replica uses PG_REPLICATION_*
+
+EXPORTER PASSWORD ERROR HANDLING:
+Primary (line 90):
+  PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  (enforces required)
+
+Replica (line 56):
+  PGPASSWORD: "${POSTGRES_PASSWORD}"
+  (no error enforcement)
+
+Single (line 53):
+  PGPASSWORD: "${POSTGRES_PASSWORD}"
+  (no error enforcement)
+
+⚠️ INCONSISTENCY: Primary enforces `:?` but replica/single don't
+
+VERDICT: 2 INCONSISTENCIES
+├─ Password quoting differs
+└─ Error handling differs
+
+================================================================================
+6. RESOURCE LIMIT PATTERNS
+================================================================================
+
+POSTGRES MEMORY LIMITS:
+┌─────────────────┬──────────────────┬──────────────────────┐
+│ Stack           │ mem_limit        │ mem_reservation      │
+├─────────────────┼──────────────────┼──────────────────────┤
+│ primary         │ 2048m (line 34)  │ 1024m (line 35)      │
+│ replica         │ 512m (line 32)   │ 256m (line 33)       │
+│ single          │ 512m (line 27)   │ 256m (line 28)       │
+│ dev override    │ 2000m (line 5)   │ 512m (line 6)    ⚠️  │
+└─────────────────┴──────────────────┴──────────────────────┘
+
+⚠️ Dev uses 2000m not 2048m, and 512m not 1024m
+
+POSTGRES CPU LIMITS:
+├─ primary:    cpus: 2 (line 36)
+├─ replica:    cpus: 0.5 (line 35)
+├─ single:     cpus: 0.5 (line 42)   ⚠️ LINE POSITION INCONSISTENT
+└─ dev:        (inherited)
+
+EXPORTER MEMORY LIMITS (postgres_exporter):
+┌─────────────────┬──────────────────┬──────────────────────┐
+│ Stack           │ mem_limit        │ mem_reservation      │
+├─────────────────┼──────────────────┼──────────────────────┤
+│ primary         │ 64m (line 106)   │ 32m (line 107)       │
+│ replica         │ 64m (line 72)    │ 32m (line 73)        │
+│ single          │ 64m (line 69)    │ 32m (line 70)        │
+└─────────────────┴──────────────────┴──────────────────────┘
+Status: Consistent ✓
+
+EXPORTER MEMORY LIMITS (pgbouncer_exporter):
+├─ primary: 32m limit / 16m reservation (lines 137-138)
+├─ replica: (not provided)
+├─ single: (not provided)
+└─ Status: Only in primary
+
+PGBOUNCER MEMORY LIMITS:
+├─ primary: 200m limit / 100m reservation (lines 69-70)
+├─ replica: (not provided)
+├─ single: (not provided)
+└─ Status: Only in primary
+
+BACKUP MEMORY FORMAT (different syntax):
+├─ backup/compose.yml: deploy.resources.limits (line 48-51)
+├─ All others: mem_limit/mem_reservation
+└─ Status: Different format ⚠️
+
+VERDICT: 3 INCONSISTENCIES
+├─ Dev memory values differ from primary
+├─ CPU limit placement inconsistent
+├─ Backup uses different memory specification format
+
+================================================================================
+7. HEALTH CHECK PATTERNS
+================================================================================
+
+POSTGRES HEALTH CHECKS:
+┌─────────────┬──────────────┬────────────┬──────────┬────────────────┐
+│ Stack       │ interval     │ timeout    │ retries  │ start_period   │
+├─────────────┼──────────────┼────────────┼──────────┼────────────────┤
+│ primary     │ 10s (41)     │ 5s (41)    │ 5 (42)   │ 120s (43)      │
+│ replica     │ 10s (42)     │ 5s (42)    │ 5 (44)   │ 120s (45)      │
+│ single      │ 10s (37)     │ 5s (37)    │ 5 (39)   │ 120s (40)      │
+│ dev         │ (none)       │ (none)     │ (none)   │ (none)         │
+└─────────────┴──────────────┴────────────┴──────────┴────────────────┘
+Status: Consistent for all (except dev intentionally omits) ✓
+
+PGBOUNCER HEALTH CHECKS:
+┌──────────────┬──────────────┬────────────┬──────────┬────────────────┐
+│ Stack        │ interval     │ timeout    │ retries  │ start_period   │
+├──────────────┼──────────────┼────────────┼──────────┼────────────────┤
+│ primary      │ 30s (76)     │ 10s (77)   │ 3 (78)   │ 10s (79)       │
+│ replica      │ (none)       │ (none)     │ (none)   │ (none)         │
+│ single       │ (none)       │ (none)     │ (none)   │ (none)         │
+└──────────────┴──────────────┴────────────┴──────────┴────────────────┘
+
+⚠️ PgBouncer has different timing than postgres (30s vs 10s interval)
+
+EXPORTER HEALTH CHECKS (postgres_exporter):
+┌──────────────┬──────────────┬────────────┬──────────┐
+│ Stack        │ interval     │ timeout    │ retries  │
+├──────────────┼──────────────┼────────────┼──────────┤
+│ primary      │ 30s (115)    │ 5s (116)   │ 3 (117)  │
+│ replica      │ 30s (81)     │ 5s (82)    │ 3 (83)   │
+│ single       │ 30s (78)     │ 5s (79)    │ 3 (80)   │
+└──────────────┴──────────────┴────────────┴──────────┘
+Status: Consistent ✓
+
+EXPORTER HEALTH CHECKS (pgbouncer_exporter):
+├─ primary: 30s/5s/3 (lines 146-148)
+├─ replica: (none)
+├─ single: (none)
+└─ Status: Only in primary
+
+VERDICT: 1 INCONSISTENCY
+└─ PgBouncer health check timing differs from postgres
+
+================================================================================
+8. CONFIGURATION FILE MOUNTING
+================================================================================
+
+POSTGRESQL CONFIG FILES:
+├─ primary:    ./configs/postgresql-primary.conf (line 20)     ⚠️
+├─ replica:    ./configs/postgresql-replica.conf (line 28)     ⚠️
+├─ single:     ./configs/postgresql.conf (line 24)             ⚠️
+└─ VERDICT: Inconsistent naming convention
+
+PG_HBA CONFIG FILES:
+├─ primary:    ./configs/pg_hba.conf (line 21)
+├─ replica:    ./configs/pg_hba.conf (line 29)
+├─ single:     ./configs/pg_hba.conf (line 25)
+└─ VERDICT: Consistent ✓
+
+PGBOUNCER CONFIG FILES:
+├─ primary:    ./configs/pgbouncer.ini.template (line 54)
+├─ replica:    (none - no pgbouncer)
+├─ single:     (none - no pgbouncer)
+└─ VERDICT: Only in primary
+
+INITDB SCRIPTS:
+Primary (lines 22):
+├─ ./configs/initdb/03-pgbouncer-auth.sh
+
+Replica (line 30):
+├─ ./scripts/00-setup-replica.sh
+
+Single (none):
+└─ (no initdb scripts)
+
+⚠️ Different paths: configs/initdb/ vs scripts/
+
+VERDICT: 2 INCONSISTENCIES
+├─ Config file naming convention inconsistent
+└─ Initdb script paths inconsistent
+
+================================================================================
+9. IMAGE PINNING AND VERSIONING
+================================================================================
+
+POSTGRES IMAGE:
+├─ primary:    ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+├─ replica:    ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+├─ single:     ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+├─ dev:        ${POSTGRES_IMAGE:-aza-pg:pg18-dev}     ⚠️ DIFFERENT
+└─ VERDICT: Dev uses different image (local)
+
+PGBOUNCER IMAGE:
+├─ primary:    edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279...
+│              (SHA pinned)
+├─ replica:    (none)
+├─ single:     (none)
+└─ VERDICT: Only primary has pgbouncer, and only primary uses SHA pin
+
+POSTGRES EXPORTER IMAGE:
+├─ primary:    prometheuscommunity/postgres-exporter:v0.18.1    (no SHA)
+├─ replica:    prometheuscommunity/postgres-exporter:v0.18.1    (no SHA)
+├─ single:     prometheuscommunity/postgres-exporter:v0.18.1    (no SHA)
+└─ VERDICT: Consistent version but no SHA pinning ⚠️
+
+PGBOUNCER EXPORTER IMAGE:
+├─ primary:    prometheuscommunity/pgbouncer-exporter:v0.9.0    (no SHA)
+├─ replica:    (none)
+├─ single:     (none)
+└─ VERDICT: Only primary, no SHA pinning ⚠️
+
+BACKUP IMAGE:
+├─ backup:     pgbackrest/pgbackrest:2.53.1                     (no SHA)
+└─ VERDICT: No SHA pinning ⚠️
+
+VERDICT: 3 INCONSISTENCIES
+├─ Dev uses local image vs registry image
+├─ Only pgbouncer has SHA pinning
+└─ Exporters lack SHA pinning
+
+================================================================================
+10. SERVICE DEPENDENCY PATTERNS
+================================================================================
+
+PRIMARY STACK DEPENDENCIES:
+├─ pgbouncer → depends on postgres (service_healthy)
+├─ postgres_exporter → depends on postgres (service_healthy)
+└─ pgbouncer_exporter → depends on pgbouncer (service_healthy)
+
+REPLICA STACK DEPENDENCIES:
+└─ postgres_exporter → depends on postgres-replica (service_healthy)
+
+SINGLE STACK DEPENDENCIES:
+└─ postgres_exporter → depends on postgres (service_healthy)
+
+⚠️ INCONSISTENCY: No standard dependency pattern
+  Exporters should depend on supporting infrastructure?
+  Services don't wait for network initialization?
+
+VERDICT: 1 INCONSISTENCY
+└─ Dependency chain incomplete/inconsistent
+
+================================================================================
+OVERALL SUMMARY: 21+ INCONSISTENCIES IDENTIFIED
+================================================================================
+
+CRITICAL (must fix):
+├─ Volume mount/definition mismatch in primary
+├─ Replica network name incorrect
+└─ Port allocation strategy missing
+
+MAJOR (should fix):
+├─ Service naming inconsistent
+├─ Network naming pattern inconsistent
+├─ Environment variable quoting inconsistent
+├─ Resource limits inconsistent
+└─ Configuration file paths inconsistent
+
+MINOR (nice to fix):
+├─ Image SHA pinning incomplete
+├─ Health check timing differences
+├─ Dependency patterns inconsistent
+└─ Backup volume strategy inconsistent
+

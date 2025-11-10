@@ -37,6 +37,7 @@ LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.title="aza-pg"
 LABEL org.opencontainers.image.description="PostgreSQL 18 with 38 extensions (36 enabled)"
+LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -140,6 +141,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
 LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
 LABEL org.opencontainers.image.version="${PG_VERSION}"
+LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
@@ -217,7 +219,7 @@ RUN set -eu && \
       INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
       echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
       # Dynamic verification: count enabled PGDG packages in manifest
-      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.kind == "pgdg" and .enabled == true)] | length' /tmp/extensions.manifest.json) && \
+      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and .enabled == true)] | length' /tmp/extensions.manifest.json) && \
       echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \
       # Allow some variance but ensure we have at least 1 package
       test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \

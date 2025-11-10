@@ -249,7 +249,7 @@ Common dependency chains:
 - `timescaledb_toolkit` → `timescaledb`
 - `pgrouting` → `postgis`
 
-See [docs/development/EXTENSION-ENABLE-DISABLE.md](development/EXTENSION-ENABLE-DISABLE.md) for complete implementation details, testing strategy, and advanced customization scenarios.
+To enable or disable extensions, edit `scripts/extensions/manifest-data.ts` and set the `enabled` field, then run `bun run generate` and rebuild the image.
 
 ## Upgrade Workflow
 

@@ -133,7 +133,7 @@ Automatic on `release` branch:
 - `18.0`
 - `18`
 
-See [`.archived/docs/ci/README.md`](../.archived/docs/ci/README.md) for complete workflow documentation.
+See `.github/workflows/README.md` or the workflow files directly in `.github/workflows/` for complete workflow documentation.
 
 ## Build Architecture
 

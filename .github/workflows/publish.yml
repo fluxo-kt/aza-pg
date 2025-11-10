@@ -195,7 +195,7 @@ jobs:
           - **Enabled extensions:** 36
           - **Disabled extensions:** 2 (pgq, supautils)
           - **Preloaded by default:** 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit)
-          - **Auto-created:** 6 (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector)
+          - **Auto-created:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
           - **PGDG packages:** 14 pre-compiled extensions
           - **Compiled from source:** 17 extensions (PGXS, cargo-pgrx, autotools, cmake, meson)
 

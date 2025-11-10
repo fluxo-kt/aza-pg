@@ -48,7 +48,7 @@ Preload warning: Disabling default-preload requires POSTGRES_SHARED_PRELOAD_LIBR
 
 - Tools (6): No CREATE EXTENSION needed (CLI utilities)
 - Modules (1): auto_explain - preload-only, NO CREATE EXTENSION (PostgreSQL core module)
-- Extensions (31): Require CREATE EXTENSION (5 auto-created: pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector)
+- Extensions (26): Require CREATE EXTENSION (6 auto-created: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
 - Preloaded (4): auto_explain (module), pg_cron, pg_stat_statements, pgaudit
 
 ## Auto-Config

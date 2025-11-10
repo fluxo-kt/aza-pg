@@ -232,7 +232,7 @@ The PgBouncer container renders `/tmp/.pgpass` at startup (see `stacks/primary/s
 
 All extensions are SHA-pinned for reproducible builds.
 
-**Note:** This image includes 38 total catalog entries (37 enabled extensions, 1 disabled: pgq). Enabled extensions: 6 built-in, 14 PGDG, 17 compiled from source. 6 baseline extensions (auto_explain, pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector) are created automatically by init scripts. plpgsql is builtin and always available. 4 extensions are preloaded by default via `shared_preload_libraries`: auto_explain, pg_cron, pg_stat_statements, pgaudit. The remaining 31 extensions are available on-demand via CREATE EXTENSION. pgflow workflow orchestration is available as an optional add-on (see `examples/pgflow/`).
+**Note:** This image includes 38 total catalog entries (36 enabled extensions, 2 disabled: pgq, supautils). Enabled extensions: 6 built-in, 14 PGDG, 17 compiled from source. 6 extensions (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector) are created automatically by init scripts. auto_explain is a preloaded module (not an extension), and plpgsql is builtin and always available. 4 extensions are preloaded by default via `shared_preload_libraries`: pg_cron, pg_stat_statements, pgaudit, vector. The remaining 30 extensions are available on-demand via CREATE EXTENSION. pgflow workflow orchestration is available as an optional add-on (see `examples/pgflow/`).
 
 ### Customizing Extensions
 

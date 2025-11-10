@@ -17,8 +17,8 @@ import {
   logSuccess,
   logWarning,
 } from "../lib/common.ts";
-import { join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { join, resolve } from "path";
+import { existsSync } from "fs";
 
 /**
  * Service health status from Docker Compose

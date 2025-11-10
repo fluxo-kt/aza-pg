@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname } from "path";
 import {
   checkCommand,
   checkDockerDaemon,

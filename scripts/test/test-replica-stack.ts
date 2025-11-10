@@ -14,7 +14,7 @@
  */
 
 import { $ } from "bun";
-import { resolve } from "node:path";
+import { resolve } from "path";
 import {
   checkCommand,
   checkDockerDaemon,

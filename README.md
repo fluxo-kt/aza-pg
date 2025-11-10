@@ -420,7 +420,10 @@ A: Yes - detects Docker Desktop memory limits. Use `POSTGRES_MEMORY=<MB>` to ove
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+Private Repository - see [LICENSE](LICENSE) for details.
+
+**Source Code:** Proprietary (private repository)
+**Docker Images:** Freely usable, provided AS-IS
 
 ## Contributing
 

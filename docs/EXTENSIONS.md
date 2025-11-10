@@ -166,7 +166,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ## Runtime Defaults
 
-- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, and `vector` (pgvector) are created automatically during cluster bootstrap.
+- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, `plpgsql`, and `vector` (pgvector) are created automatically during cluster bootstrap. Note: auto_explain is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
 - Default `shared_preload_libraries` is `pg_stat_statements,auto_explain,pg_cron,pgaudit` (4 extensions preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 - Optional extensions can be preloaded: `pg_stat_monitor`, `supautils`, `timescaledb`, `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).

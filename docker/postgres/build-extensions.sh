@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ⚠️  DEPRECATED: This script is superseded by build-extensions.ts
+# ═══════════════════════════════════════════════════════════════════════════
+# This bash script is NO LONGER USED in the Docker build process.
+# The Dockerfile now uses `docker/postgres/build-extensions.ts` (Bun TypeScript)
+# which provides better type safety, error handling, and maintainability.
+#
+# This file is kept for historical reference only and may be removed in future.
+# See: docker/postgres/Dockerfile (uses build-extensions.ts)
+# ═══════════════════════════════════════════════════════════════════════════
+
 # ────────────────────────────────────────────────────────────────────────────
 # CRITICAL: PGDG EXTENSION BEHAVIOR
 # ────────────────────────────────────────────────────────────────────────────

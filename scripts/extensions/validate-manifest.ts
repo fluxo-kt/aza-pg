@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { validateManifest } from "./manifest-schema.js";
+import { validateManifest } from "./manifest-schema.ts";
 import * as logger from "../utils/logger.js";
 
 // Expected counts (from extensions.manifest.json, validated dynamically)

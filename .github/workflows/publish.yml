@@ -144,13 +144,25 @@ jobs:
         with:
           cosign-release: "v2.4.1"
 
-      - name: Sign container image with Cosign
+      - name: Sign container image with Cosign (keyless OIDC)
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode (explicit, though default in v2.x)
         run: |
-          echo "Signing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          # Sign by digest (immutable reference)
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
-          echo "✅ Image signed successfully"
+
+          # Sign all convenience tags for easier verification
+          echo "Signing convenience tags..."
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}"
+
+          echo "✅ Image and all tags signed successfully with keyless OIDC"
+          echo "📝 Signatures uploaded to Rekor transparency log"
 
       - name: Generate release summary
         run: |
@@ -194,8 +206,8 @@ jobs:
           - **Total catalog entries:** 38
           - **Enabled extensions:** 36
           - **Disabled extensions:** 2 (pgq, supautils)
-          - **Preloaded by default:** 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit)
-          - **Auto-created:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
+          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
           - **PGDG packages:** 14 pre-compiled extensions
           - **Compiled from source:** 17 extensions (PGXS, cargo-pgrx, autotools, cmake, meson)
 

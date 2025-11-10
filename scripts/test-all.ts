@@ -441,7 +441,7 @@ const allChecks: Check[] = [
   {
     name: "Docker Build",
     category: "build",
-    command: ["sh", "scripts/build.sh"],
+    command: ["bun", "scripts/build.ts"],
     description: "Build PostgreSQL Docker image",
     critical: true,
     requiresDocker: true,
@@ -555,7 +555,7 @@ const allChecks: Check[] = [
   {
     name: "Single Stack Deployment",
     category: "functional",
-    command: ["sh", "scripts/test/test-single-stack.sh"],
+    command: ["bun", "scripts/test/test-single-stack.ts"],
     description: "Test single-node stack deployment",
     critical: false,
     requiresDocker: true,
@@ -565,7 +565,7 @@ const allChecks: Check[] = [
   {
     name: "Replica Stack Deployment",
     category: "functional",
-    command: ["sh", "scripts/test/test-replica-stack.sh"],
+    command: ["bun", "scripts/test/test-replica-stack.ts"],
     description: "Test cluster/replica stack deployment",
     critical: false,
     requiresDocker: true,

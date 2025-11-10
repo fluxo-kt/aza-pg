@@ -511,8 +511,8 @@ async function main(): Promise<void> {
     await $`docker image inspect ${IMAGE_TAG}`.quiet();
   } catch {
     logError(`Docker image not found: ${IMAGE_TAG}`);
-    console.log("   Build image first: ./scripts/build.sh");
-    console.log(`   Or run: ./scripts/test/test-build.sh ${IMAGE_TAG}`);
+    console.log("   Build image first: bun scripts/build.ts");
+    console.log(`   Or run: bun scripts/test/test-build.ts ${IMAGE_TAG}`);
     process.exit(1);
   }
 

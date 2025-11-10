@@ -228,9 +228,13 @@ async function validate(
         ? [
             "sh",
             "-c",
-            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q \'"level":"error"\' hadolint-results.sarif',
+            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q \'"level":"error"\' hadolint-results.sarif',
           ]
-        : ["sh", "-c", "docker run --rm -i hadolint/hadolint < docker/postgres/Dockerfile"],
+        : [
+            "sh",
+            "-c",
+            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile',
+          ],
       description: "Dockerfile linting",
       required: true,
       requiresDocker: true,
@@ -241,7 +245,7 @@ async function validate(
       command: [
         "sh",
         "-c",
-        'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work',
+        'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts',
       ],
       description: "YAML file linting (yamllint)",
       required: true,

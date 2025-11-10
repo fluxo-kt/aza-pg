@@ -17,12 +17,21 @@ ignored:
   # apply to Debian Trixie base image. Our error handling is adequate.
   - DL4006
 
+  # SC2046: Quote to prevent word splitting
+  # Rationale: Intentional command substitution expansion for dynamic operations.
+  # Used in contexts where word splitting is expected behavior.
+  - SC2046
+
   # SC2086: Double quote to prevent globbing and word splitting
   # Rationale: Intentional use of word splitting for dynamic package lists.
   # Variables like $RUNTIME_PKGS are designed to expand into multiple arguments.
   - SC2086
+
+  # DL3059: Multiple consecutive RUN instructions
+  # Rationale: Separate RUN commands improve Docker layer caching and readability.
+  # Consolidation would hurt build performance for unchanged layers.
+  - DL3059
 # Keep these rules enabled (security-critical):
 # - DL3000-DL3007: FROM/MAINTAINER/apt best practices
 # - DL3020: Use COPY instead of ADD
 # - DL3025: Use JSON notation for CMD/ENTRYPOINT
-# - SC2046: Quote to prevent word splitting (except SC2086 above)

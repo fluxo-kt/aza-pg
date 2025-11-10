@@ -43,7 +43,6 @@ services:
       start_period: 120s
 
   pgbouncer:
-    # yamllint disable-line rule:line-length
     image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
@@ -71,11 +70,9 @@ services:
     mem_reservation: ${PGBOUNCER_MEMORY_RESERVATION:-100m}
 
     healthcheck:
-      test: [
-          "CMD-SHELL",
-          # yamllint disable-line rule:line-length
-          'PGPASSWORD="${PGBOUNCER_AUTH_PASS}" psql -U pgbouncer_auth -d postgres -h localhost -p 6432 -c "SELECT 1" || exit 1',
-        ]
+      test:
+        - "CMD-SHELL"
+        - 'PGPASSWORD="${PGBOUNCER_AUTH_PASS}" psql -U pgbouncer_auth -d postgres -h localhost -p 6432 -c "SELECT 1" || exit 1'
       interval: 30s
       timeout: 10s
       retries: 3

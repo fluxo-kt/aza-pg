@@ -5,6 +5,11 @@
 
 extends: default
 
+ignore: |
+  /node_modules/
+  /.archived/
+  /.git/
+
 rules:
   # Line length: Practical limit with warning threshold
   # Docker Compose can have long environment variable definitions

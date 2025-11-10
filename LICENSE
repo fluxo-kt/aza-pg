@@ -1,21 +1,36 @@
-MIT License
+Private Repository Notice and Docker Image Use Statement
 
-Copyright (c) 2025 aza-pg contributors
+Copyright (c) 2025 aza-pg contributors. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This repository and its source code are private and proprietary. The source code,
+documentation, and other materials in this repository are not licensed for public
+use, distribution, modification, or redistribution except as expressly permitted
+in writing by the copyright holder.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Public artifacts:
+- The Docker images produced from this repository are the only public artifacts.
+  These images are provided for use under the terms described below.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Docker image use:
+- Docker images published from this repository may be used freely, subject to any
+  terms displayed in the image metadata or associated image registry listing.
+- The Docker images are provided "AS IS", without warranty of any kind. Use of
+  the images is at your own risk. There are no guarantees regarding functionality,
+  fitness for a particular purpose, performance, or security.
+
+Restrictions:
+- You may not copy, modify, distribute, sublicense, or create derivative works
+  from the repository source code without prior written permission from the
+  copyright holder.
+- Nothing in this notice grants any intellectual property rights or permissions
+  beyond the limited use of the publicly published Docker images described above.
+
+Disclaimer of liability:
+- To the maximum extent permitted by law, the copyright holders and contributors
+  shall not be liable for any claim, damages, or other liability arising from,
+  out of, or in connection with the repository, its source code, or the use of
+  the Docker images.
+
+Contact:
+- For permissions, questions, or licensing inquiries, contact the repository
+  owner or the organization that provided access to this repository.

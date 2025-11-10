@@ -79,4 +79,5 @@ See docs/TOOLING.md for complete tool decisions and configuration details.
 - ARCHITECTURE.md - System design, flows
 - TESTING.md - Test patterns, session isolation
 - PRODUCTION.md - Deployment, security
+- docs/BUILD.md - Build instructions, CI/CD workflows
 - docs/TOOLING.md - Tech choices, locked decisions

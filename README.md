@@ -299,67 +299,25 @@ scrape_configs:
 
 ## Build from Source
 
-### Local Builds (Recommended)
+See [docs/BUILD.md](docs/BUILD.md) for complete build instructions, including:
 
-Use the build script with Docker Buildx for fast, optimized builds:
+- Local builds with Docker Buildx and intelligent caching
+- CI/CD workflows for automated builds
+- Multi-platform builds (amd64 + arm64)
+- Build troubleshooting and performance optimization
+- Extension customization and manifest-driven builds
+
+**Quick Start:**
 
 ```bash
-# Default: Single-platform with intelligent caching
+# Local build with cache (recommended)
 ./scripts/build.sh
 
-# Multi-platform build (amd64 + arm64, requires push)
-./scripts/build.sh --multi-arch --push
-
-# Build and push to registry
-./scripts/build.sh --push
+# Verify build
+docker run --rm aza-pg:pg18 psql --version
 ```
 
-**Performance:**
-
-- First build: ~12 minutes (compiles all extensions)
-- Cached build: ~2 minutes (reuses CI artifacts)
-- No network: ~12 minutes (falls back to local cache)
-
-**How it works:**
-
-- Uses Docker Buildx with BuildKit for parallel builds
-- Pulls remote cache from GitHub Container Registry
-- Falls back to local cache if network unavailable
-- Automatically creates buildx builder if needed
-
-**Requirements:**
-
-- Docker Buildx v0.8+ (bundled with Docker 19.03+)
-- Network access to `ghcr.io` for cache pull (optional but recommended)
-- Registry write access for `--push` (run `docker login ghcr.io`)
-
-### CI/CD Builds
-
-GitHub Actions workflow builds multi-platform images (linux/amd64, linux/arm64) with SBOM and provenance.
-
-**Manual Testing Workflow:** Use this for developer testing and pre-release validation:
-
-```bash
-# Trigger manually via GitHub Actions UI or:
-gh workflow run build-postgres-image.yml
-
-# With custom extension versions:
-gh workflow run build-postgres-image.yml -r main \
-  -f pg_version=18 \
-  -f pgvector_version=0.8.1
-```
-
-See [`.archived/docs/ci/README.md`](.archived/docs/ci/README.md) → "build-postgres-image.yml" for full documentation on when to use this workflow vs local builds.
-
-**Automatic Validation:** Every commit triggers fast validation (~10 min) via `ci.yml` - no Docker build, just code checks.
-
-**Production Releases:** Pushing to `release` branch automatically triggers `publish.yml` which builds, signs, and publishes the image to `ghcr.io/fluxo-kt/aza-pg`.
-
-For complete workflow decision tree and comparison, see [`.archived/docs/ci/README.md`](.archived/docs/ci/README.md).
-
-### Testing & Validation
-
-### Testing & Validation
+## Testing & Validation
 
 Run comprehensive test suite (validation + build + functional tests):
 

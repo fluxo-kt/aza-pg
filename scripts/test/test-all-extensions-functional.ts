@@ -88,6 +88,45 @@ console.log(`Container: ${CONTAINER}`);
 console.log("");
 
 // ============================================================================
+// CLEANUP PHASE - Ensure clean state before tests
+// ============================================================================
+console.log("\n🧹 Pre-Test Cleanup Phase");
+console.log("-".repeat(80));
+
+const CLEANUP_TABLES = [
+  "test_vectors",
+  "test_vectorscale",
+  "test_hll",
+  "test_wal2json_table",
+  "test_postgis",
+  "test_routing",
+  "test_btree_gin",
+  "test_btree_gist",
+  "test_exclusion",
+  "test_trigger_table",
+  "test_partman",
+  "test_hypopg",
+  "test_safeupdate",
+  "test_trgm",
+  "test_pgroonga",
+  "test_rum",
+  "test_audit",
+  "test_timescale",
+];
+
+for (const table of CLEANUP_TABLES) {
+  await runSQL(`DROP TABLE IF EXISTS ${table} CASCADE`);
+}
+
+// Cleanup pg_partman config and partitions
+await runSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'");
+
+// Cleanup materialized views
+await runSQL("DROP MATERIALIZED VIEW IF EXISTS test_timescale_hourly CASCADE");
+
+console.log("✅ Pre-test cleanup complete\n");
+
+// ============================================================================
 // AI/VECTOR EXTENSIONS
 // ============================================================================
 console.log("📊 AI/Vector Extensions");
@@ -780,24 +819,32 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
 await test("pg_safeupdate - Verify loaded via shared_preload_libraries", "safety", async () => {
   // pg_safeupdate is a hook-based tool
   const check = await runSQL("SHOW shared_preload_libraries");
-  assert(check.success, "Failed to check shared_preload_libraries");
+  assert(
+    check.success && check.stdout.includes("pg_safeupdate"),
+    "pg_safeupdate not found in shared_preload_libraries"
+  );
 });
 
 await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
   await runSQL("CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)");
   await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
 
-  // Attempt UPDATE without WHERE (should be blocked if pg_safeupdate is active)
-  await runSQL("UPDATE test_safeupdate SET val = 99");
-  // If pg_safeupdate is loaded and configured, this should fail
-  // If not, it will succeed (we just verify the query executes)
-  assert(true, "pg_safeupdate test completed");
+  // Attempt UPDATE without WHERE (should be BLOCKED by pg_safeupdate)
+  const updateResult = await runSQL("UPDATE test_safeupdate SET val = 99");
+
+  // Verify the UPDATE was blocked (not successful)
+  assert(!updateResult.success, "pg_safeupdate should block UPDATE without WHERE clause");
+
+  // Verify UPDATE with WHERE clause still works
+  const safeUpdate = await runSQL("UPDATE test_safeupdate SET val = 99 WHERE id = 1");
+  assert(safeUpdate.success, "UPDATE with WHERE should succeed");
 });
 
 await test("supautils - Verify extension structure", "safety", async () => {
   // supautils is a tool, check its GUC parameters
   const check = await runSQL("SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'");
-  assert(check.success, "supautils settings query failed");
+  const count = parseInt(check.stdout.trim());
+  assert(check.success && count >= 0, `supautils GUC parameters check failed (found: ${count})`);
 });
 
 // ============================================================================
@@ -1219,6 +1266,21 @@ await test("pg_jsonschema - Schema with constraints", "validation", async () => 
   );
   assert(validate.success && validate.stdout === "t", "Constrained schema validation failed");
 });
+
+// ============================================================================
+// POST-TEST CLEANUP - Remove test artifacts
+// ============================================================================
+console.log("\n🧹 Post-Test Cleanup Phase");
+console.log("-".repeat(80));
+
+for (const table of CLEANUP_TABLES) {
+  await runSQL(`DROP TABLE IF EXISTS ${table} CASCADE`);
+}
+
+await runSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'");
+await runSQL("DROP MATERIALIZED VIEW IF EXISTS test_timescale_hourly CASCADE");
+
+console.log("✅ Post-test cleanup complete\n");
 
 // ============================================================================
 // PRINT SUMMARY

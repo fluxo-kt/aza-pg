@@ -4,6 +4,8 @@
   "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with 38 extensions (36 enabled by default)",
   "type": "module",
   "private": true,
+  "author": "Art Shendrik",
+  "license": "UNLICENSED",
   "scripts": {
     "build": "bun scripts/build.ts",
     "lint": "oxlint .",
@@ -49,7 +51,5 @@
     "extensions",
     "infrastructure",
     "production"
-  ],
-  "author": "fluxo-kt",
-  "license": "MIT"
+  ]
 }

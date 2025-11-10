@@ -49,3 +49,6 @@ dist/
 build/
 *.egg-info/
 .tsbuildinfo
+
+# Archived documentation
+.archived/

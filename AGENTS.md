@@ -2,7 +2,7 @@
 
 PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
-**Bun-First Philosophy**: All scripting and configuration uses Bun-tailored TypeScript. No Node.js compatibility needed. Use Bun-specific APIs with latest best practices. See "Development Standards" below.
+**Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below.
 
 ## Invariants
 
@@ -31,25 +31,19 @@ cd stacks/primary && docker compose up
 
 ## Gotchas
 
-- **auto_explain is a MODULE, not an extension**: PostgreSQL core module (preload-only). NO CREATE EXTENSION needed. This is by PostgreSQL design, not a bug. Loaded via shared_preload_libraries only.
+- **auto_explain**: Module (preload-only), NOT extension. NO CREATE EXTENSION needed (PostgreSQL design)
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
-- Tools vs extensions: avoid CREATE EXTENSION on tools (6: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils)
-- PGDG-disabled invariant: applies to compiled extensions only (PGDG are install-or-skip)
-- Auto-config always active: `-c` flags override `postgresql.conf` at runtime
+- Tools vs extensions: No CREATE EXTENSION on tools (6: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils)
+- PGDG-disabled: compiled extensions only (PGDG are install-or-skip)
+- Auto-config: `-c` flags override postgresql.conf at runtime
 
 ## Extension System
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
-Preload warning: Disabling default-preload requires POSTGRES_SHARED_PRELOAD_LIBRARIES alignment
 
-**Classification:**
-
-- Tools (6): No CREATE EXTENSION needed (CLI utilities)
-- Modules (1): auto_explain - preload-only, NO CREATE EXTENSION (PostgreSQL core module)
-- Extensions (26): Require CREATE EXTENSION (6 auto-created: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
-- Preloaded (4): auto_explain (module), pg_cron, pg_stat_statements, pgaudit
+**Classification:** Tools (6), Modules (1: auto_explain), Extensions (26), Preloaded (4: auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
 
 ## Auto-Config
 
@@ -58,21 +52,21 @@ Caps: shared_buffers ≤ 32GB, work_mem ≤ 32MB, connections: 80/120/200
 
 ## Troubleshooting
 
-Extension missing: Check manifest enabled flag + Dockerfile build
-Preload error: Align shared_preload_libraries with manifest defaults
-RAM misdetection: Set POSTGRES_MEMORY explicitly
-Connection limit: Review max_connections in auto-config
-SHA staleness: Verify `https://github.com/<owner>/<repo>/commit/<SHA>` still valid
+- Extension missing: Check manifest enabled flag + Dockerfile build
+- Preload error: Align shared_preload_libraries with manifest defaults
+- RAM misdetection: Set POSTGRES_MEMORY explicitly
+- Connection limit: Review max_connections in auto-config
+- SHA staleness: Verify `https://github.com/<owner>/<repo>/commit/<SHA>` valid
 
 ## Development Standards
 
-- **Bun-first TypeScript** - All scripts use Bun runtime, no Node.js compat needed
-- **Linting** - oxlint, shellcheck, yamllint, hadolint, prettier (see docs/TOOLING.md)
-- **Git hooks** - bun-git-hooks at root, pre-commit (validate) + pre-push (full checks)
-- **CI/CD** - Single fast workflow for PRs, release-only publish to `ghcr.io/fluxo-kt/aza-pg`
-- **Versioning** - `MM.mm-TS-TYPE` format (e.g., `18.0-202511092330-single-node`)
+- **Bun-first** - All scripts use Bun, no Node.js compat
+- **Linting** - oxlint, shellcheck, yamllint, hadolint, prettier
+- **Git hooks** - pre-commit (validate) + pre-push (full checks)
+- **CI/CD** - Fast workflow for PRs, release-only publish
+- **Versioning** - `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
 
-See docs/TOOLING.md for complete tool decisions and configuration details.
+See docs/TOOLING.md for details.
 
 ## References
 

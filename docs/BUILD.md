@@ -133,7 +133,7 @@ Automatic on `release` branch:
 - `18.0`
 - `18`
 
-See `.github/workflows/README.md` or the workflow files directly in `.github/workflows/` for complete workflow documentation.
+See workflow files in `.github/workflows/` for complete workflow details.
 
 ## Build Architecture
 
@@ -202,14 +202,9 @@ All extensions are pinned to specific commit SHAs (not tags):
 
 ### Extension System
 
-**Classification:**
-
-- **Tools (6):** No CREATE EXTENSION needed (CLI utilities: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils)
-- **Modules (1):** auto_explain - preload-only, NO CREATE EXTENSION (PostgreSQL core module)
-- **Extensions (26):** Require CREATE EXTENSION (6 auto-created: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
-- **Preloaded (4):** auto_explain (module), pg_cron, pg_stat_statements, pgaudit
-
 **Total Catalog:** 38 entries (36 enabled, 2 disabled: pgq, supautils)
+
+See [EXTENSIONS.md § Extension Classification](EXTENSIONS.md#extension-classification) for complete classification details (tools vs modules vs extensions, preloaded defaults).
 
 **Manifest-Driven:**
 

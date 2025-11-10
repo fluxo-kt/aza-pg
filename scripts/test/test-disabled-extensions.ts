@@ -67,15 +67,19 @@ async function getDisabledExtensions(containerName: string): Promise<string[]> {
     await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
 
     // Parse manifest using Python inside container
-    const result = await $`docker exec ${containerName} python3`
-      .stdin(
-        Buffer.from(`import json
+    const pythonCode = `import json
 manifest = json.load(open('/tmp/manifest.json'))
 disabled = [e['name'] for e in manifest['entries'] if e.get('enabled') == False]
 print(' '.join(disabled))
-`)
-      )
-      .text();
+`;
+    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin.write(pythonCode);
+    proc.stdin.end();
+    const result = await new Response(proc.stdout).text();
 
     const disabled = result.trim();
     return disabled ? disabled.split(" ") : [];
@@ -91,9 +95,7 @@ async function getDisabledExtensionsExcludingTools(containerName: string): Promi
   try {
     await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
 
-    const result = await $`docker exec ${containerName} python3`
-      .stdin(
-        Buffer.from(`import json
+    const pythonCode = `import json
 manifest = json.load(open('/tmp/manifest.json'))
 disabled = []
 for e in manifest['entries']:
@@ -102,9 +104,15 @@ for e in manifest['entries']:
     if not enabled and kind != 'tool':
         disabled.append(e['name'])
 print(' '.join(disabled))
-`)
-      )
-      .text();
+`;
+    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin.write(pythonCode);
+    proc.stdin.end();
+    const result = await new Response(proc.stdout).text();
 
     const disabled = result.trim();
     return disabled ? disabled.split(" ") : [];

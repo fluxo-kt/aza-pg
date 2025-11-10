@@ -215,7 +215,7 @@ async function caseCpuDetection(logs: string, container: string): Promise<void> 
 /**
  * Test 7: Custom shared_preload_libraries override
  */
-async function caseCustomSharedPreload(logs: string, container: string): Promise<void> {
+async function caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
   // Verify custom shared_preload_libraries override (default is pg_stat_statements,auto_explain,pg_cron,pgaudit)
   // Override to minimal set to prove it works
   let actual: string;

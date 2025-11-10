@@ -11,6 +11,7 @@
  *   ALLOW_PG_STAT_MONITOR_DUAL=1 bun scripts/validate-manifest.ts  # Allow dual enable
  */
 
+import { getErrorMessage } from "./utils/errors.js";
 import { join } from "path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
@@ -128,7 +129,7 @@ async function main() {
     manifest = await manifestFile.json();
     info(`Loaded manifest: ${manifest.entries.length} extensions`);
   } catch (err) {
-    error(`Failed to parse manifest JSON: ${err instanceof Error ? err.message : String(err)}`);
+    error(`Failed to parse manifest JSON: ${getErrorMessage(err)}`);
     process.exit(1);
   }
 
@@ -160,6 +161,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  error(`Validation error: ${err instanceof Error ? err.message : String(err)}`);
+  error(`Validation error: ${getErrorMessage(err)}`);
   process.exit(1);
 });

@@ -2,6 +2,7 @@
  * Shared test utilities for database testing
  * Provides reusable test execution and SQL helpers
  */
+import { getErrorMessage } from "../utils/errors.js";
 
 import { $ } from "bun";
 import * as logger from "../utils/logger";
@@ -39,7 +40,7 @@ export async function runSQL(
       exitCode: result.exitCode,
     };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = getErrorMessage(err);
     return {
       success: false,
       stdout: "",
@@ -68,7 +69,7 @@ export async function runTest(name: string, fn: () => Promise<void>): Promise<lo
     };
   } catch (err) {
     const duration = performance.now() - startTime;
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = getErrorMessage(err);
     return {
       name,
       passed: false,

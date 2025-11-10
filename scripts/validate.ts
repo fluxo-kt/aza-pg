@@ -16,6 +16,7 @@
  *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
+import { getErrorMessage } from "./utils/errors.js";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
 /**
@@ -91,7 +92,7 @@ async function runCheck(check: ValidationCheck): Promise<{ passed: boolean; crit
       }
     }
   } catch (err) {
-    const message = `${check.name} error: ${err instanceof Error ? err.message : String(err)}`;
+    const message = `${check.name} error: ${getErrorMessage(err)}`;
     if (effectivelyRequired) {
       error(message);
       return { passed: false, critical: true };

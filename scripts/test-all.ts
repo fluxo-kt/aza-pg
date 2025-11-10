@@ -16,6 +16,7 @@
  * Exit code: 0 only if ALL tests pass
  */
 
+import { getErrorMessage } from "./utils/errors.js";
 import { join } from "path";
 import {
   error,
@@ -234,7 +235,7 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
     }
   } catch (err) {
     const duration = Date.now() - startTime;
-    const message = err instanceof Error ? err.message : String(err);
+    const message = getErrorMessage(err);
     if (effectivelyCritical) {
       error(`${check.name} error - ${message}`);
     } else {
@@ -735,7 +736,7 @@ async function main() {
 
 // Run main
 main().catch((err) => {
-  error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+  error(`Fatal error: ${getErrorMessage(err)}`);
   if (err instanceof Error && err.stack) {
     console.error(err.stack);
   }

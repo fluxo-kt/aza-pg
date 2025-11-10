@@ -11,6 +11,7 @@
  *   bun scripts/test-smoke.ts
  */
 
+import { getErrorMessage } from "./utils/errors.js";
 import { join } from "path";
 import { error, info, section, testSummary } from "./utils/logger.ts";
 import type { TestResult } from "./utils/logger.ts";
@@ -67,7 +68,7 @@ async function testYamlLintConfig(): Promise<TestResult> {
       name: "YAML lint config exists",
       passed: false,
       duration: Date.now() - startTime,
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     };
   }
 }
@@ -149,7 +150,7 @@ async function testScriptReferences(): Promise<TestResult> {
       name: "Script references are valid",
       passed: false,
       duration: Date.now() - startTime,
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     };
   }
 }
@@ -207,7 +208,7 @@ async function testGeneratedDataFreshness(): Promise<TestResult> {
       name: "Generated docs data exists",
       passed: false,
       duration: Date.now() - startTime,
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     };
   }
 }
@@ -263,7 +264,7 @@ async function testEssentialStructure(): Promise<TestResult> {
       name: "Essential directories exist",
       passed: false,
       duration: Date.now() - startTime,
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     };
   }
 }
@@ -313,7 +314,7 @@ async function testEssentialFiles(): Promise<TestResult> {
       name: "Essential files exist",
       passed: false,
       duration: Date.now() - startTime,
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     };
   }
 }
@@ -344,6 +345,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  error(`Smoke tests failed: ${err instanceof Error ? err.message : String(err)}`);
+  error(`Smoke tests failed: ${getErrorMessage(err)}`);
   process.exit(1);
 });

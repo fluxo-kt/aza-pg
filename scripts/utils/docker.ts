@@ -2,6 +2,7 @@
  * Docker utility functions for test scripts
  * TypeScript equivalent of scripts/lib/common.sh Docker functions
  */
+import { getErrorMessage } from "./errors.js";
 
 import { spawn } from "bun";
 import { error, info, success } from "./logger.js";
@@ -125,7 +126,7 @@ export async function dockerRun(args: string[]): Promise<{ success: boolean; out
   } catch (err) {
     return {
       success: false,
-      output: err instanceof Error ? err.message : String(err),
+      output: getErrorMessage(err),
     };
   }
 }

@@ -331,7 +331,7 @@ Deployment Environment
 - maintenance_work_mem: max 2GB
 - work_mem: max 32MB
 
-For comprehensive memory allocation table with additional RAM tiers, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config-runtime).
+For comprehensive memory allocation table with additional RAM tiers, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
 
 ## Monitoring Data Flow
 

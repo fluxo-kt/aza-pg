@@ -66,43 +66,13 @@ SHA staleness: Verify `https://github.com/<owner>/<repo>/commit/<SHA>` still val
 
 ## Development Standards
 
-**Bun-First TypeScript**:
+- **Bun-first TypeScript** - All scripts use Bun runtime, no Node.js compat needed
+- **Linting** - oxlint, shellcheck, yamllint, hadolint, prettier (see docs/TOOLING.md)
+- **Git hooks** - bun-git-hooks at root, pre-commit (validate) + pre-push (full checks)
+- **CI/CD** - Single fast workflow for PRs, release-only publish to `ghcr.io/fluxo-kt/aza-pg`
+- **Versioning** - `MM.mm-TS-TYPE` format (e.g., `18.0-202511092330-single-node`)
 
-- Use Bun runtime for all scripts (no Node.js)
-- Leverage Bun-specific APIs (Bun.file, Bun.sleep, etc.)
-- No Node.js compatibility shims needed
-- Latest SOTA best practices for Bun
-
-**Linting & Formatting**:
-
-- Oxlint for TypeScript/JavaScript (supports all file types)
-- Shellcheck for bash scripts
-- yamllint for YAML files
-- hadolint for Dockerfiles
-- Prettier for code formatting
-
-**Git Hooks**:
-
-- Use bun-git-hooks (full-repo-wise from root)
-- Pre-commit: validate, lint, format
-- Pre-push: comprehensive checks
-
-**GitHub Workflows**:
-
-- `.github/workflows/ci.yml` - Fast CI for all commits/PRs (single workflow)
-- `.github/workflows/publish.yml` - Release to ghcr.io (release branch only)
-- Optimized for speed and cost-efficiency
-- No redundant workflows for PRs
-
-**Image Versioning**:
-
-- Format: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
-  - MM = PostgreSQL major (18)
-  - mm = PostgreSQL minor (0)
-  - TS = build timestamp YYYYMMDDHHmm
-  - TYPE = image type (single-node)
-- Convenience tags: `18.0-single-node`, `18-single-node`, `18.0`, `18`
-- Registry: `ghcr.io/fluxo-kt/aza-pg`
+See docs/TOOLING.md for complete tool decisions and configuration details.
 
 ## References
 

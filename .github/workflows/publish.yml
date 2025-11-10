@@ -137,6 +137,19 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign container image with Cosign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Signing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          echo "✅ Image signed successfully"
+
       - name: Generate release summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
@@ -313,7 +326,7 @@ jobs:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "table"
           severity: "CRITICAL,HIGH"
-          exit-code: "0" # Don't fail on vulnerabilities (informational only)
+          exit-code: "1" # Fail on CRITICAL/HIGH vulnerabilities
 
       - name: Publish release notes
         run: |

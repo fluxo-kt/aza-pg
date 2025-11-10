@@ -205,7 +205,7 @@ Reference points:
 - 8GB limit → `shared_buffers=2048MB`, `effective_cache_size=6144MB`, `work_mem≈10MB`, `max_connections=200`
 - 64GB manual override (`POSTGRES_MEMORY=65536`) → `shared_buffers≈9830MB`, `effective_cache_size≈49152MB`, `work_mem≈32MB`, `max_connections=200`
 
-For comprehensive memory allocation table with additional tiers and extension overhead details, see [AGENTS.md Auto-Config section](AGENTS.md#auto-config-runtime).
+For comprehensive memory allocation table with additional tiers and extension overhead details, see [AGENTS.md Auto-Config section](AGENTS.md#auto-config).
 
 `shared_preload_libraries` is enforced at runtime with 4 preloaded by default (`pg_stat_statements`, `auto_explain`, `pg_cron`, `pgaudit`) to keep required extensions consistent even if static configs drift. Optional extensions (pgsodium, timescaledb, pg_stat_monitor) can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES` env var. Note: supautils is disabled (compilation issues).
 
@@ -246,7 +246,7 @@ You can build custom images with only the extensions you need. The manifest-driv
 
 **Restrictions:** Core preloaded extensions (auto_explain, pg_cron, pg_stat_statements, pgaudit) cannot be disabled.
 
-See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for step-by-step instructions and [docs/development/EXTENSION-ENABLE-DISABLE.md](docs/development/EXTENSION-ENABLE-DISABLE.md) for complete design details.
+See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete details and step-by-step instructions.
 
 ## Monitoring
 

@@ -460,7 +460,7 @@ Details:
 6. **8GB tier** - Large production, shared_buffers 2048MB (25%), connection tier 200
 7. **16GB tier** - High-load deployment, shared_buffers 3276MB (20%), connection tier 200
 
-For comprehensive memory allocation table with all RAM tiers and formulas, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config-runtime).
+For comprehensive memory allocation table with all RAM tiers and formulas, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
 
 ### PgBouncer Test Coverage
 

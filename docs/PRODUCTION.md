@@ -376,7 +376,7 @@ Default settings target **2GB RAM**. Auto-config scales from there.
 
 **Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
 
-For comprehensive memory allocation table with specific RAM tiers and connection limits, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config-runtime).
+For comprehensive memory allocation table with specific RAM tiers and connection limits, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
 
 ### Extension Optimization
 

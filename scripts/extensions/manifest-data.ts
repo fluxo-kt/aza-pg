@@ -452,6 +452,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "queueing",
     description:
       "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
+    enabled: false,
+    disabledReason:
+      "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
     source: {
       type: "git",
       repository: "https://github.com/pgq/pgq.git",

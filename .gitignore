@@ -50,5 +50,6 @@ build/
 *.egg-info/
 .tsbuildinfo
 
-# Archived documentation
+# Archived documentation and AI logs
 .archived/
+.ai/

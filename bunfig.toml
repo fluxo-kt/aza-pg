@@ -2,14 +2,22 @@
 # See: https://bun.sh/docs/runtime/bunfig
 
 [install]
-# Use npm registry (default)
-registry = "https://registry.npmjs.org"
-
-# Enable lockfile (binary format for performance)
-lockfile = true
+linker = "hoisted"
+#linkWorkspacePackages = false # optimization for CI
 
 # Production-focused install (exclude devDependencies in prod)
 production = false
+
+# 1 day delay by default to harden against supply chain attacks.
+# https://bun.com/blog/bun-v1.3#minimum-release-age
+minimumReleaseAge = 86400 # 1 day in seconds
+
+[install.security]
+scanner = "bun-osv-scanner"
+#scanner = "@acme/bun-security-scanner"
+
+[console]
+depth = 5
 
 [run]
 # Shell to use for executing scripts (bun = Bun's shell, system = default system shell)

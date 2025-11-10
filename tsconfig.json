@@ -55,5 +55,5 @@
     "skipLibCheck": true
   },
   "include": ["scripts/**/*.ts", "*.ts"],
-  "exclude": ["node_modules", "dist", "build", ".archived", "**/*.spec.ts", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "build", ".archived", ".ai", "**/*.spec.ts", "**/*.test.ts"]
 }

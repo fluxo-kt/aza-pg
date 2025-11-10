@@ -10,10 +10,9 @@ The `validate-manifest.ts` script performs comprehensive validation of `docker/p
 
 Ensures the manifest contains exactly:
 
-- **Total catalog entries**: 38 extensions (37 enabled by default, 1 disabled)
-- **Builtin**: 6 (PostgreSQL core extensions)
-- **PGDG**: 14 (pre-compiled from apt.postgresql.org)
-- **Compiled**: 18 (built from source)
+- **Total catalog entries**: 38 (36 enabled by default, 2 disabled: pgq, supautils)
+- **By kind**: 6 builtin + 26 extensions + 5 tools + 1 module (auto_explain)
+- **By install**: 14 PGDG + 12 compiled from source + 6 builtin + 5 tools + 1 module
 
 ### 2. defaultEnable Consistency
 
@@ -84,7 +83,7 @@ bun run build  # Validation runs before Docker build
 
 === VALIDATION RESULTS ===
 
-✅ Manifest validation passed (38 total catalog entries, 37 enabled: 6 builtin + 14 PGDG + 18 compiled)
+✅ Manifest validation passed (38 total catalog entries, 36 enabled)
 ```
 
 ## Error Examples

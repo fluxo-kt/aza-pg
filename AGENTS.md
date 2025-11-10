@@ -8,7 +8,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
 - Preload (default): auto_explain, pg_cron, pg_stat_statements, pgaudit
 - Extensions: 38 catalog total (36 enabled, 2 disabled: pgq, supautils)
-- Tools ≠ extensions: 6 tools (no CREATE EXTENSION)
+- Tools ≠ extensions: 5 tools (no CREATE EXTENSION)
 - No Bun in final image
 - Manifest = single source of truth
 
@@ -43,7 +43,7 @@ cd stacks/primary && docker compose up
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Classification:** Tools (6), Modules (1: auto_explain), Extensions (26), Preloaded (4: auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
+**Classification:** Tools (5), Modules (1: auto_explain), Extensions (26), Preloaded (4: auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
 
 ## Auto-Config
 

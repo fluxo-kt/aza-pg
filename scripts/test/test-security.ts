@@ -15,6 +15,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { $ } from "bun";
+import type { ManifestEntry } from "../extensions/manifest-data";
 
 const TEST_CONTAINER = "aza-pg-security-test-primary-1";
 const TEST_PASSWORD = "secureTestPass123!";
@@ -309,7 +310,7 @@ describe("Security - Extension Security", () => {
     }
 
     // All entries in our manifest should be enabled (no disabled entries)
-    const disabledEntries = manifest.entries.filter((e: any) => e.enabled === false);
+    const disabledEntries = manifest.entries.filter((e: ManifestEntry) => e.enabled === false);
     expect(disabledEntries.length).toBe(0);
   });
 

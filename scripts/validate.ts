@@ -168,7 +168,7 @@ async function validate(
         ? [
             "sh",
             "-c",
-            "git diff --cached --name-only --diff-filter=d | grep '\\.tsx\\?$' | xargs -r bun x oxlint",
+            "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint",
           ]
         : ["bun", "x", "oxlint", "."],
       description: stagedOnly
@@ -182,7 +182,7 @@ async function validate(
         ? [
             "sh",
             "-c",
-            "git diff --cached --name-only --diff-filter=d | xargs -r bun x prettier --check --ignore-unknown",
+            "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --check --ignore-unknown",
           ]
         : ["bun", "x", "prettier", "--check", "."],
       description: stagedOnly

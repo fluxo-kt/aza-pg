@@ -18,18 +18,20 @@ Key principles:
 
 The aza-pg PostgreSQL extensions are classified into four categories:
 
-- **Tools** (6): CLI utilities that do not require `CREATE EXTENSION`
-  - Examples: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils
+- **Tools** (5 enabled): CLI utilities that do not require `CREATE EXTENSION`
+  - Examples: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate
   - Installed in `/usr/local/bin/` or configured via PostgreSQL hooks
+  - Note: supautils is a tool but currently disabled
 
-- **Modules** (1): Core PostgreSQL modules loaded via `shared_preload_libraries`
-  - `auto_explain` - Preload-only module (NO CREATE EXTENSION needed)
-  - Part of PostgreSQL core, activated via configuration only
+- **Builtins** (6): Core PostgreSQL extensions from contrib
+  - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist
+  - Included in base PostgreSQL, require CREATE EXTENSION (except auto_explain module)
 
-- **Extensions** (36): Standard extensions requiring `CREATE EXTENSION`
+- **Extensions** (25 enabled): Additional extensions requiring `CREATE EXTENSION`
   - Installed in PostgreSQL extension directory
   - 6 auto-created by default: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector
-  - 30 available on-demand
+  - 19 additional available on-demand
+  - Total enabled catalog: 36 (6 builtin + 25 extensions + 5 tools)
 
 - **Preloaded** (4): Extensions/modules loaded by default in `shared_preload_libraries`
   - auto_explain (module)

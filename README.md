@@ -55,6 +55,25 @@ Production-ready PostgreSQL 18 with auto-adaptive configuration, compiled extens
 - Minimal runtime dependencies (ca-certificates, zstd, lz4 only)
 - Parallel extension compilation (~40% faster builds)
 
+### Self-Documenting Image
+
+Every image includes version metadata at `/etc/postgresql/version-info.{txt,json}`:
+
+```bash
+# View human-readable version info
+docker run --rm ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node cat /etc/postgresql/version-info.txt
+
+# Output example:
+# aza-pg PostgreSQL 18.0
+# PostgreSQL: 18.0
+# pgvector: 0.8.1
+# pg_cron: 1.6.7
+# pgaudit: 18.0
+# [... all extensions with versions ...]
+```
+
+Use this to verify image contents before deployment.
+
 ### Extensions Included
 
 - **pgvector 0.8.1**: Vector similarity search

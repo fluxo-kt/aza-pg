@@ -2,7 +2,7 @@
  * Shared logging utilities for scripts and tests
  * Provides consistent colored output formatting across the codebase
  */
-
+import { RED, GREEN, YELLOW, BLUE, RESET } from "./colors.js";
 /**
  * Test result data structure
  */
@@ -12,13 +12,6 @@ export type TestResult = {
   duration?: number;
   error?: string;
 };
-
-// ANSI color codes
-const RED = "\x1b[31m";
-const GREEN = "\x1b[32m";
-const YELLOW = "\x1b[33m";
-const BLUE = "\x1b[34m";
-const RESET = "\x1b[0m";
 
 /**
  * Print success message with green ✅ prefix

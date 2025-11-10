@@ -8,41 +8,34 @@
 
 import { $ } from "bun";
 
-// Color codes for logging
-const COLORS = {
-  RED: "\x1b[0;31m",
-  GREEN: "\x1b[0;32m",
-  YELLOW: "\x1b[1;33m",
-  BLUE: "\x1b[0;34m",
-  NC: "\x1b[0m", // No Color
-} as const;
+import { COLORS } from "../utils/colors.js";
 
 /**
  * Log an informational message
  */
 export function logInfo(message: string): void {
-  process.stdout.write(`${COLORS.BLUE}[INFO]${COLORS.NC} ${message}\n`);
+  process.stdout.write(`${COLORS.BLUE}[INFO]${COLORS.RESET} ${message}\n`);
 }
 
 /**
  * Log a success message
  */
 export function logSuccess(message: string): void {
-  process.stdout.write(`${COLORS.GREEN}[SUCCESS]${COLORS.NC} ${message}\n`);
+  process.stdout.write(`${COLORS.GREEN}[SUCCESS]${COLORS.RESET} ${message}\n`);
 }
 
 /**
  * Log a warning message
  */
 export function logWarning(message: string): void {
-  process.stdout.write(`${COLORS.YELLOW}[WARNING]${COLORS.NC} ${message}\n`);
+  process.stdout.write(`${COLORS.YELLOW}[WARNING]${COLORS.RESET} ${message}\n`);
 }
 
 /**
  * Log an error message to stderr
  */
 export function logError(message: string): void {
-  process.stderr.write(`${COLORS.RED}[ERROR]${COLORS.NC} ${message}\n`);
+  process.stderr.write(`${COLORS.RED}[ERROR]${COLORS.RESET} ${message}\n`);
 }
 
 /**

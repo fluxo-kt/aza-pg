@@ -669,7 +669,7 @@ jobs:
           echo "🧪 Running replica stack tests..."
 
           cd "$GITHUB_WORKSPACE"
-          if ! ./scripts/test/test-replica-stack.sh; then
+          if ! bun scripts/test/test-replica-stack.ts; then
             echo "❌ Replica stack tests failed"
             exit 1
           fi
@@ -712,7 +712,7 @@ jobs:
           echo "🧪 Running single stack tests..."
 
           cd "$GITHUB_WORKSPACE"
-          if ! ./scripts/test/test-single-stack.sh; then
+          if ! bun scripts/test/test-single-stack.ts; then
             echo "❌ Single stack tests failed"
             exit 1
           fi

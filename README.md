@@ -88,7 +88,7 @@ Before deploying any stack:
 
 ```bash
 # Recommended: Use build script with intelligent caching
-./scripts/build.sh
+bun run build
 
 # Verify build
 docker run --rm aza-pg:pg18 psql --version
@@ -242,7 +242,7 @@ You can build custom images with only the extensions you need. The manifest-driv
 
 1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
 2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
-3. Build: `./scripts/build.sh`
+3. Build: `bun run build`
 
 **Restrictions:** Core preloaded extensions (auto_explain, pg_cron, pg_stat_statements, pgaudit) cannot be disabled.
 
@@ -311,7 +311,7 @@ See [docs/BUILD.md](docs/BUILD.md) for complete build instructions, including:
 
 ```bash
 # Local build with cache (recommended)
-./scripts/build.sh
+bun run build
 
 # Verify build
 docker run --rm aza-pg:pg18 psql --version

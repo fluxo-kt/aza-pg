@@ -22,7 +22,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 ## Fast Paths
 
 ```bash
-./scripts/build.sh                    # Build image
+bun run build                         # Build image
 bun run validate                      # Fast checks
 bun run validate:full                 # Full suite
 bun run generate                      # Generate configs

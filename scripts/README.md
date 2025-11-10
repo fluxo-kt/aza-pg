@@ -9,7 +9,8 @@ scripts/
 ├── lib/              # Shared library functions
 ├── test/             # Test and validation scripts
 ├── tools/            # Operational tooling
-└── build.sh          # Main build script
+├── build.ts          # Main build script (Bun TypeScript)
+└── build.sh          # DEPRECATED: Use 'bun run build' instead
 ```
 
 ## Quick Reference
@@ -18,9 +19,9 @@ scripts/
 
 ```bash
 # Build PostgreSQL image (canonical method)
-./scripts/build.sh                    # Single-platform build
-./scripts/build.sh --multi-arch       # Multi-platform (amd64 + arm64)
-./scripts/build.sh --push             # Build and push to registry
+bun run build                         # Single-platform build
+bun run build -- --multi-arch --push  # Multi-platform (amd64 + arm64)
+bun run build -- --push               # Build and push to registry
 
 # Generate stack configurations
 bun run generate                      # Recommended method
@@ -323,9 +324,9 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 
 ### Root Scripts
 
-#### `build.sh`
+#### `build.ts`
 
-**Canonical build script** for PostgreSQL image using Docker Buildx.
+**Canonical build script** for PostgreSQL image using Docker Buildx (Bun TypeScript).
 
 **Features:**
 
@@ -333,17 +334,23 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 - Fast cached builds (~2min vs ~12min cold build)
 - Multi-platform support (amd64 + arm64)
 - Automatic fallback to local cache without network
+- Type-safe Bun TypeScript implementation
 
 **Usage:**
 
 ```bash
-./scripts/build.sh                 # Single-platform (current arch)
-./scripts/build.sh --multi-arch    # Multi-platform (amd64 + arm64)
-./scripts/build.sh --push          # Build and push to registry
+bun run build                      # Single-platform (current arch)
+bun run build -- --multi-arch --push  # Multi-platform (amd64 + arm64)
+bun run build -- --push            # Build and push to registry
+
+# Or directly:
+bun scripts/build.ts               # Single-platform
+bun scripts/build.ts --help        # Show help
 ```
 
 **Requirements:**
 
+- Bun runtime (>=1.3.2)
 - Docker Buildx (bundled with Docker Desktop / Docker 19.03+)
 - Network access to ghcr.io for cache pull
 - ghcr.io write access for `--push` (requires `docker login ghcr.io`)
@@ -361,19 +368,39 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 
 ---
 
-#### `generate-configs.sh` (DEPRECATED)
+#### `build.sh` (DEPRECATED)
 
-**DEPRECATED:** Use `bun run generate` instead.
+**DEPRECATED:** Use `bun run build` instead.
 
-This script is a legacy shim that redirects to `bun run generate`.
+This script has been superseded by `scripts/build.ts` following the Bun-First philosophy. The bash version is kept temporarily for backwards compatibility but will be removed in a future release.
 
 **Migration:**
 
 ```bash
-# Old (deprecated)
+# Old (deprecated):
+./scripts/build.sh
+./scripts/build.sh --multi-arch --push
+
+# New (recommended):
+bun run build
+bun run build -- --multi-arch --push
+```
+
+---
+
+#### `generate-configs.sh` (REMOVED)
+
+**REMOVED:** This script has been deleted. Use `bun run generate` instead.
+
+This was a 4-line bash wrapper that simply called `bun run generate`. Following the Bun-First philosophy, the wrapper has been removed.
+
+**Migration:**
+
+```bash
+# Old (removed):
 ./scripts/generate-configs.sh
 
-# New (recommended)
+# New (use instead):
 bun run generate
 ```
 

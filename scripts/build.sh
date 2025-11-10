@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 #
+# ============================================================================
+# DEPRECATED: This script has been superseded by scripts/build.ts
+# ============================================================================
+#
+# This bash script is kept temporarily for backwards compatibility but will
+# be removed in a future release. Following the Bun-First philosophy, all
+# scripts have been migrated to TypeScript.
+#
+# MIGRATION:
+#   Old (deprecated):    ./scripts/build.sh
+#   New (recommended):   bun run build
+#
+# For more information, see: scripts/build.ts or run 'bun run build --help'
+#
+# ============================================================================
+#
 # Build PostgreSQL image (canonical build script)
 # Uses Docker Buildx with intelligent caching for fast builds
 #
@@ -19,6 +35,12 @@
 #   - No network: ~12min (falls back to local cache)
 #
 set -euo pipefail
+
+# Show deprecation warning
+echo "⚠️  WARNING: scripts/build.sh is deprecated."
+echo "⚠️  Please use 'bun run build' instead."
+echo "⚠️  See scripts/build.ts for the TypeScript implementation."
+echo ""
 
 # Configuration
 BUILDER_NAME="aza-pg-builder"

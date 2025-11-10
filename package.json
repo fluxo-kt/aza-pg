@@ -5,6 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "build": "bun scripts/build.ts",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "prettier --write .",
@@ -17,6 +18,9 @@
     "check:docs": "bun scripts/check-docs-consistency.ts",
     "check:manifest": "bun scripts/validate-manifest.ts",
     "check:size": "bun scripts/check-size-regression.ts",
+    "check:shell": "shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh",
+    "check:yaml": "yamllint -c .yamllint .",
+    "check:docker": "hadolint docker/postgres/Dockerfile",
     "test:smoke": "bun scripts/test-smoke.ts",
     "test:all": "bun scripts/test-all.ts",
     "test:all:fast": "bun scripts/test-all.ts --fast",

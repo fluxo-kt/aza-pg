@@ -6,7 +6,7 @@ Complete guide to building aza-pg PostgreSQL images locally and in CI/CD.
 
 ```bash
 # Default: Single-platform with intelligent caching
-./scripts/build.sh
+bun run build
 
 # Verify build
 docker run --rm aza-pg:pg18 psql --version
@@ -21,13 +21,13 @@ Use the build script with Docker Buildx for fast, optimized builds:
 
 ```bash
 # Default: Single-platform with intelligent caching
-./scripts/build.sh
+bun run build
 
 # Multi-platform build (amd64 + arm64, requires push)
-./scripts/build.sh --multi-arch --push
+bun run build -- --multi-arch --push
 
 # Build and push to registry
-./scripts/build.sh --push
+bun run build -- --push
 ```
 
 **Performance:**
@@ -226,7 +226,7 @@ To disable an extension (e.g., reduce image size):
 
 1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
 2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
-3. Rebuild: `./scripts/build.sh`
+3. Rebuild: `bun run build`
 
 **Restrictions:** Core preloaded extensions (auto_explain, pg_cron, pg_stat_statements, pgaudit) cannot be disabled.
 
@@ -291,7 +291,7 @@ ERROR [final 4/8] COPY --from=builder /extensions/*.so /usr/share/postgresql/18/
 
 ```bash
 # Use remote cache
-./scripts/build.sh  # automatically uses cache
+bun run build  # automatically uses cache
 
 # Or manually with buildx
 docker buildx build --build-arg BUILDKIT_INLINE_CACHE=1 \
@@ -332,7 +332,7 @@ If 404, update SHA in `scripts/extensions/manifest-data.ts` and regenerate.
 **Speed up:**
 
 1. Enable BuildKit: `export DOCKER_BUILDKIT=1`
-2. Use build script (handles caching): `./scripts/build.sh`
+2. Use build script (handles caching): `bun run build`
 3. Pull cache first: `docker pull ghcr.io/fluxo-kt/aza-pg:buildcache`
 
 **Multi-platform build very slow:**
@@ -341,7 +341,7 @@ If 404, update SHA in `scripts/extensions/manifest-data.ts` and regenerate.
 
 **Options:**
 
-- Build single platform for local testing: `./scripts/build.sh` (default)
+- Build single platform for local testing: `bun run build` (default)
 - Use CI/CD for multi-platform releases
 - Use native arm64 builder for arm64 builds (buildx with remote builder)
 
@@ -378,8 +378,8 @@ See [TOOLING.md](TOOLING.md) for complete tooling decisions.
 
 ```bash
 # Build
-./scripts/build.sh                    # Local build with cache
-./scripts/build.sh --multi-arch --push  # Multi-platform + push
+bun run build                         # Local build with cache
+bun run build -- --multi-arch --push  # Multi-platform + push
 
 # Validate
 bun run validate                      # Fast checks

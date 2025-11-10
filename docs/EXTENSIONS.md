@@ -189,7 +189,7 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
 
 4. **Build the image:** Build your custom image:
    ```bash
-   ./scripts/build.sh
+   bun run build
    ```
 
 ### Manifest Fields
@@ -259,7 +259,7 @@ To enable or disable extensions, edit `scripts/extensions/manifest-data.ts` and 
    bun scripts/extensions/generate-manifest.ts
    bun scripts/extensions/render-markdown.ts
    ```
-3. Build the Docker image locally to verify (`./scripts/build.sh`).
+3. Build the Docker image locally to verify (`bun run build`).
 4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
 5. Commit both the manifest/data changes and the regenerated docs.
 

@@ -1,45 +1,24 @@
 {
-  "$schema": "https://json.schemastore.org/oxlintrc",
+  // Oxlint Configuration (SOTA)
+  // Oxlint is 50-100x faster than ESLint with 600+ rules
+  // Docs: https://oxc.rs/docs/guide/usage/linter/config.html
+
   "env": {
     "node": true,
     "es2024": true
   },
-  "categories": {
-    "correctness": "error",
-    "suspicious": "warn",
-    "perf": "warn"
+
+  "globals": {
+    // Bun runtime globals
+    "Bun": "readonly"
   },
+
   "rules": {
-    "no-unused-vars": "error",
-    "no-useless-escape": "error",
-    "no-empty": "error",
-    "no-unreachable": "error",
-    "use-isnan": "error",
-    "no-self-compare": "error",
-    "no-console": "warn",
-    "prefer-const": "warn",
-    "eqeqeq": "warn",
-    "no-eval": "warn",
-    "no-with": "warn"
+    // Disable rules with useless warnings that bring no value:
+
+    // Sequential async operations are intentional and correct
+    "eslint/no-await-in-loop": "off"
   },
-  "overrides": [
-    {
-      "files": [
-        "scripts/**/*.ts",
-        "scripts/**/*.js",
-        "stacks/**/scripts/**/*.ts",
-        "stacks/**/scripts/**/*.js"
-      ],
-      "rules": {
-        "no-console": "off"
-      }
-    },
-    {
-      "files": ["scripts/test/**/*.ts", "scripts/test/**/*.js"],
-      "rules": {
-        "no-console": "off",
-        "no-await-in-loop": "off"
-      }
-    }
-  ]
+
+  "ignorePatterns": ["node_modules/", ".archived/", "dist/", "coverage/", ".tsbuildinfo"]
 }

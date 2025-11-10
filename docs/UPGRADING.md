@@ -41,7 +41,7 @@ Update extension versions and SHAs if needed.
 
 ```bash
 # Build with buildx (uses intelligent caching)
-./scripts/build.sh
+bun run build
 
 # Verify build
 docker run --rm aza-pg:pg18 postgres --version
@@ -157,7 +157,7 @@ ARG PGVECTOR_COMMIT_SHA=<new-commit-sha>
 
 ```bash
 # Build with buildx (uses intelligent caching)
-./scripts/build.sh
+bun run build
 
 # Test in development
 cd stacks/single

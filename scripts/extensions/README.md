@@ -49,10 +49,10 @@ bun run scripts/extensions/validate-manifest.ts
 
 ### Integrated in Build
 
-The script automatically runs as a preflight check in `scripts/build.sh`:
+The script automatically runs as a preflight check in `scripts/build.ts`:
 
 ```bash
-./scripts/build.sh  # Validation runs before Docker build
+bun run build  # Validation runs before Docker build
 ```
 
 ## Exit Codes

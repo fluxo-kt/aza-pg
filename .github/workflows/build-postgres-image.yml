@@ -25,7 +25,7 @@
 # -------------------
 # - Automatic CI on commits (use ci.yml for fast validation)
 # - Production releases (use publish.yml when pushing to 'release' branch)
-# - Simple validation (use local ./scripts/build.sh or 'bun run validate')
+# - Simple validation (use local 'bun run build' or 'bun run validate')
 #
 # WHAT IT DOES:
 # -----------
@@ -70,14 +70,14 @@
 # Failed tests → Check GitHub Actions logs in "Test PostgreSQL Stack" section
 # arm64 timeout → QEMU emulation is slow; check logs for actual error vs timing
 # Push fails → May need GHCR write permissions or GITHUB_TOKEN with packages scope
-# Build fails → Run locally: ./scripts/build.sh or check Dockerfile for syntax
+# Build fails → Run locally: bun run build or check Dockerfile for syntax
 #
 # RELATED DOCUMENTATION:
 # ----------------------
 # - docs/.archived/ci/README.md - CI/CD pipeline overview
 # - docs/.archived/ci/ARM64-TESTING.md - arm64 validation details
 # - CLAUDE.md - Development standards and fast paths
-# - scripts/build.sh - Local build script
+# - scripts/build.ts - Local build script (Bun TypeScript)
 #
 # ============================================================================
 

@@ -66,6 +66,17 @@ export interface ManifestEntry {
   install_via?: "pgdg";
   enabled?: boolean;
   disabledReason?: string;
+  /**
+   * Direct URL to source code repository (e.g., GitHub, GitLab).
+   * For extensions/tools: usually the git repository URL.
+   * For builtins: PostgreSQL source tree or official extension page.
+   */
+  sourceUrl?: string;
+  /**
+   * URL to external documentation site if separate from repository.
+   * Falls back to repository README if not provided.
+   */
+  docsUrl?: string;
 }
 
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
@@ -83,6 +94,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: true },
+    sourceUrl: "https://github.com/pgvector/pgvector",
+    docsUrl: "https://github.com/pgvector/pgvector#readme",
   },
   {
     name: "pg_cron",
@@ -101,6 +114,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: ["Enable via shared_preload_libraries to activate scheduler workers."],
     },
+    sourceUrl: "https://github.com/citusdata/pg_cron",
+    docsUrl: "https://github.com/citusdata/pg_cron#readme",
   },
   {
     name: "pgaudit",
@@ -119,6 +134,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: ["Tune pgaudit.log to control verbosity."],
     },
+    sourceUrl: "https://github.com/pgaudit/pgaudit",
+    docsUrl: "https://www.pgaudit.org",
   },
   {
     name: "pg_stat_statements",
@@ -127,6 +144,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Tracks execution statistics for normalized SQL statements.",
     source: { type: "builtin" },
     runtime: { sharedPreload: true, defaultEnable: true },
+    sourceUrl: "https://www.postgresql.org/docs/18/pgstatstatements.html",
+    docsUrl: "https://www.postgresql.org/docs/18/pgstatstatements.html",
   },
   {
     name: "auto_explain",
@@ -135,6 +154,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Logs plans for slow statements automatically.",
     source: { type: "builtin" },
     runtime: { sharedPreload: true, defaultEnable: true, preloadOnly: true },
+    sourceUrl: "https://www.postgresql.org/docs/18/auto-explain.html",
+    docsUrl: "https://www.postgresql.org/docs/18/auto-explain.html",
   },
   {
     name: "pg_trgm",
@@ -143,6 +164,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Trigram-based fuzzy matching indexes.",
     source: { type: "builtin" },
     runtime: { sharedPreload: false, defaultEnable: true },
+    sourceUrl: "https://www.postgresql.org/docs/18/pgtrgm.html",
+    docsUrl: "https://www.postgresql.org/docs/18/pgtrgm.html",
   },
   {
     name: "btree_gin",
@@ -151,6 +174,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Adds B-tree emulation operator classes for GIN indexes.",
     source: { type: "builtin" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://www.postgresql.org/docs/18/btree-gin.html",
+    docsUrl: "https://www.postgresql.org/docs/18/btree-gin.html",
   },
   {
     name: "btree_gist",
@@ -159,6 +184,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Adds B-tree emulation operator classes for GiST indexes.",
     source: { type: "builtin" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://www.postgresql.org/docs/18/btree-gist.html",
+    docsUrl: "https://www.postgresql.org/docs/18/btree-gist.html",
   },
   {
     name: "plpgsql",
@@ -167,6 +194,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "Built-in procedural language for PostgreSQL.",
     source: { type: "builtin" },
     runtime: { sharedPreload: false, defaultEnable: true },
+    sourceUrl: "https://www.postgresql.org/docs/18/plpgsql.html",
+    docsUrl: "https://www.postgresql.org/docs/18/plpgsql.html",
   },
   {
     name: "hypopg",
@@ -181,6 +210,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/HypoPG/hypopg",
+    docsUrl: "https://hypopg.readthedocs.io",
   },
   {
     name: "index_advisor",
@@ -195,6 +226,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     dependencies: ["hypopg"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/supabase/index_advisor",
+    docsUrl: "https://supabase.com/docs/guides/database/extensions/index_advisor",
   },
   {
     name: "plpgsql_check",
@@ -209,6 +242,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/okbob/plpgsql_check",
+    docsUrl: "https://github.com/okbob/plpgsql_check#readme",
   },
   {
     name: "pg_safeupdate",
@@ -222,6 +257,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/eradman/pg-safeupdate",
+    docsUrl: "https://github.com/eradman/pg-safeupdate#readme",
   },
   {
     name: "supautils",
@@ -246,6 +283,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."],
     },
+    sourceUrl: "https://github.com/supabase/supautils",
+    docsUrl: "https://github.com/supabase/supautils#readme",
   },
   {
     name: "http",
@@ -262,6 +301,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     aptPackages: ["libcurl4-openssl-dev", "libjson-c-dev"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/pramsey/pgsql-http",
+    docsUrl: "https://github.com/pramsey/pgsql-http#readme",
   },
   {
     name: "wrappers",
@@ -284,6 +325,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: ["Requires cargo-pgrx 0.16.1 aligned with PG18."],
+    sourceUrl: "https://github.com/supabase/wrappers",
+    docsUrl: "https://supabase.com/docs/guides/database/extensions/wrappers/overview",
   },
   {
     name: "pgroonga",
@@ -310,6 +353,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "NOT available in PGDG for PostgreSQL 18 (available only for PG 13-17 in third-party repos like Pigsty)",
       "Compiled from source due to lack of official PGDG package support for PG18",
     ],
+    sourceUrl: "https://github.com/pgroonga/pgroonga",
+    docsUrl: "https://pgroonga.github.io",
   },
   {
     name: "rum",
@@ -324,6 +369,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/postgrespro/rum",
+    docsUrl: "https://github.com/postgrespro/rum#readme",
   },
   {
     name: "postgis",
@@ -355,6 +402,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "flex",
     ],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/postgis/postgis",
+    docsUrl: "https://postgis.net/documentation",
   },
   {
     name: "pgrouting",
@@ -371,6 +420,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["postgis"],
     aptPackages: ["cmake", "libboost-graph-dev"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/pgRouting/pgrouting",
+    docsUrl: "https://docs.pgrouting.org",
   },
   {
     name: "pgsodium",
@@ -385,6 +436,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     aptPackages: ["libsodium-dev"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/michelp/pgsodium",
+    docsUrl: "https://michelp.github.io/pgsodium",
   },
   {
     name: "supabase_vault",
@@ -400,6 +453,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     dependencies: ["pgsodium"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/supabase/vault",
+    docsUrl: "https://supabase.com/docs/guides/database/vault",
   },
   {
     name: "pg_jsonschema",
@@ -419,6 +474,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/supabase/pg_jsonschema",
+    docsUrl: "https://supabase.com/docs/guides/database/extensions/pg_jsonschema",
   },
   {
     name: "pg_hashids",
@@ -432,6 +489,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/iCyberon/pg_hashids",
+    docsUrl: "https://github.com/iCyberon/pg_hashids#readme",
   },
   {
     name: "pgmq",
@@ -445,6 +504,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/pgmq/pgmq",
+    docsUrl: "https://github.com/pgmq/pgmq#readme",
   },
   {
     name: "pgq",
@@ -469,6 +530,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "Installs into pg_catalog schema (non-relocatable)",
       "Build time: ~2-3 minutes",
     ],
+    sourceUrl: "https://github.com/pgq/pgq",
+    docsUrl: "https://wiki.postgresql.org/wiki/PGQ_Tutorial",
   },
   {
     name: "pg_repack",
@@ -484,6 +547,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     aptPackages: ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/reorg/pg_repack",
+    docsUrl: "https://reorg.github.io/pg_repack",
   },
   {
     name: "pg_stat_monitor",
@@ -501,6 +566,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support.",
     ],
+    sourceUrl: "https://github.com/percona/pg_stat_monitor",
+    docsUrl: "https://docs.percona.com/pg-stat-monitor",
   },
   {
     name: "pg_plan_filter",
@@ -514,6 +581,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: true, defaultEnable: false },
+    sourceUrl: "https://github.com/pgexperts/pg_plan_filter",
+    docsUrl: "https://github.com/pgexperts/pg_plan_filter#readme",
   },
   {
     name: "timescaledb",
@@ -533,6 +602,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: ["timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."],
     },
+    sourceUrl: "https://github.com/timescale/timescaledb",
+    docsUrl: "https://docs.timescale.com/timescaledb/latest",
   },
   {
     name: "timescaledb_toolkit",
@@ -551,6 +622,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     notes: [
       "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility.",
     ],
+    sourceUrl: "https://github.com/timescale/timescaledb-toolkit",
+    docsUrl: "https://github.com/timescale/timescaledb-toolkit/tree/main/docs",
   },
   {
     name: "wal2json",
@@ -564,6 +637,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/eulerto/wal2json",
+    docsUrl: "https://github.com/eulerto/wal2json#readme",
   },
   {
     name: "pg_partman",
@@ -582,6 +657,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: ["Set pg_partman_bgw.role and interval to enable background worker."],
     },
+    sourceUrl: "https://github.com/pgpartman/pg_partman",
+    docsUrl: "https://github.com/pgpartman/pg_partman#readme",
   },
   {
     name: "vectorscale",
@@ -598,6 +675,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["vector"],
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/timescale/pgvectorscale",
+    docsUrl: "https://github.com/timescale/pgvectorscale#readme",
   },
   {
     name: "hll",
@@ -613,6 +692,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
+    sourceUrl: "https://github.com/citusdata/postgresql-hll",
+    docsUrl: "https://github.com/citusdata/postgresql-hll#readme",
   },
   {
     name: "pgbackrest",
@@ -636,6 +717,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     ],
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: ["Installs /usr/bin/pgbackrest."],
+    sourceUrl: "https://github.com/pgbackrest/pgbackrest",
+    docsUrl: "https://pgbackrest.org/user-guide.html",
   },
   {
     name: "pgbadger",
@@ -651,6 +734,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: ["Binary installed to /usr/local/bin/pgbadger."],
+    sourceUrl: "https://github.com/darold/pgbadger",
+    docsUrl: "https://pgbadger.darold.net/documentation.html",
   },
   {
     name: "set_user",
@@ -666,5 +751,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: true, defaultEnable: false },
+    sourceUrl: "https://github.com/pgaudit/set_user",
+    docsUrl: "https://github.com/pgaudit/set_user#readme",
   },
 ];

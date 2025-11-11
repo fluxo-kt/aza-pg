@@ -18,8 +18,10 @@ type Manifest = {
     kind: string;
     category: string;
     description: string;
-    source: { tag?: string; commit?: string };
+    source: { tag?: string; commit?: string; repository?: string };
     runtime?: { sharedPreload?: boolean; defaultEnable?: boolean };
+    sourceUrl?: string;
+    docsUrl?: string;
   }>;
 };
 
@@ -35,6 +37,33 @@ for (const entry of manifest.entries) {
 
 const escape = (text: string) => text.replace(/\|/g, "\\|");
 
+/**
+ * Generate a clickable version link to the appropriate GitHub page.
+ * For tags: links to releases/tag/{tag}
+ * For commits: links to commit/{sha}
+ */
+function getVersionLink(entry: Manifest["entries"][0]): string {
+  const version = entry.source.tag ?? entry.source.commit?.slice(0, 8) ?? "";
+  if (!version) return "";
+
+  const repo = entry.source.repository;
+  if (!repo) return version;
+
+  // Extract owner/repo from GitHub URL
+  const match = repo.match(/github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/);
+  if (!match) return version;
+
+  const ownerRepo = match[1];
+
+  if (entry.source.tag) {
+    return `[${version}](https://github.com/${ownerRepo}/releases/tag/${entry.source.tag})`;
+  } else if (entry.source.commit) {
+    return `[${version}](https://github.com/${ownerRepo}/commit/${entry.source.commit})`;
+  }
+
+  return version;
+}
+
 const tableBlocks: string[] = [];
 const sortedCategories = Array.from(groups.keys()).toSorted((a, b) => a.localeCompare(b));
 
@@ -44,18 +73,37 @@ for (const category of sortedCategories) {
   const lines: string[] = [];
   lines.push(`### ${category}`);
   lines.push("");
-  lines.push("| Extension | Version | Enabled by Default | Shared Preload | Notes |");
-  lines.push("|-----------|---------|--------------------|----------------|-------|");
+  lines.push(
+    "| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |"
+  );
+  lines.push(
+    "|-----------|---------|--------------------|----------------|---------------|-------|"
+  );
   for (const entry of rows) {
-    const version = entry.source.tag ?? entry.source.commit?.slice(0, 8) ?? "";
+    const versionLink = getVersionLink(entry);
     const defaultEnable = entry.runtime?.defaultEnable ? "Yes" : "No";
     const sharedPreload = entry.runtime?.sharedPreload ? "Yes" : "No";
     const notes = escape(entry.description);
-    const label =
+
+    // Create clickable extension name
+    const displayText =
       entry.displayName && entry.displayName !== entry.name
-        ? `\`${entry.name}\` (${escape(entry.displayName)})`
-        : `\`${entry.name}\``;
-    lines.push(`| ${label} | ${version} | ${defaultEnable} | ${sharedPreload} | ${notes} |`);
+        ? `${entry.name} (${escape(entry.displayName)})`
+        : entry.name;
+    const nameLink = entry.sourceUrl
+      ? `[\`${escape(displayText)}\`](${entry.sourceUrl})`
+      : `\`${escape(displayText)}\``;
+
+    // Create documentation link
+    const docsLink = entry.docsUrl
+      ? `[Docs](${entry.docsUrl})`
+      : entry.sourceUrl
+        ? `[README](${entry.sourceUrl}#readme)`
+        : "—";
+
+    lines.push(
+      `| ${nameLink} | ${versionLink} | ${defaultEnable} | ${sharedPreload} | ${docsLink} | ${notes} |`
+    );
   }
   lines.push("");
   tableBlocks.push(lines.join("\n"));

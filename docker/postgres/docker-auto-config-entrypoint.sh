@@ -12,7 +12,7 @@ readonly DEFAULT_RAM_MB=1024
 #   - supautils: Superuser guards for managed Postgres
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
 # Note: timescaledb and pg_safeupdate require preload per manifest configuration
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,timescaledb,pg_safeupdate"
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,timescaledb,safeupdate"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048

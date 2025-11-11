@@ -36,6 +36,7 @@
     "test:smoke": "bun scripts/test-smoke.ts",
     "test:all": "bun scripts/test-all.ts",
     "test:all:fast": "bun scripts/test-all.ts --fast",
+    "test:image": "bun scripts/docker/test-image.ts",
     "hooks:install": "bun-git-hooks",
     "hooks:uninstall": "bun-git-hooks uninstall",
     "postinstall": "bun-git-hooks"

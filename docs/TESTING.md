@@ -681,6 +681,72 @@ bun run scripts/test/test-integration.ts
 # - pgsodium + supabase_vault (encryption stack)
 ```
 
+### Comprehensive Image Testing
+
+```bash
+# Comprehensive Docker image test harness
+bun run test:image [image-tag]                      # Test aza-pg:latest (default)
+bun run test:image aza-pg:18.0-202511092330        # Test specific image
+bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18-single-node  # Full registry path
+
+# Options:
+# --no-cleanup   Keep container running after tests (for debugging)
+# --fast         Skip time-consuming functional tests
+
+# Test Phases:
+# Phase 1: Filesystem Verification
+#   - Extension directory structure exists
+#   - Manifest file present in image
+#   - Version info files present (txt, json)
+#   - Enabled PGDG extensions present
+#   - Disabled PGDG extensions not present
+#
+# Phase 2: Runtime Verification
+#   - Version info counts correct (txt, json)
+#   - Preloaded extensions in shared_preload_libraries
+#   - Enabled extensions can be created
+#   - Disabled extensions cannot be created
+#   - PostgreSQL configuration valid
+#
+# Phase 3: Tools Verification
+#   - Tools present (pgbackrest, pgbadger, wal2json, etc.)
+#   - pgBackRest functional (version command)
+#   - pgBadger functional (version command)
+#
+# Phase 4: Auto-Configuration Tests
+#   - Auto-config applied (shared_buffers, work_mem, etc.)
+#
+# Phase 5: Functional Tests (Sample)
+#   - Basic extension functionality (pgvector, pg_trgm, hstore)
+#   - Skipped in --fast mode
+
+# Example output:
+# ============================================================
+#   Comprehensive Docker Image Test Harness
+# ============================================================
+# ✅ Docker daemon is running
+# ✅ Manifest loaded: 38 total entries
+# ✅ Test container started
+# ✅ PostgreSQL ready in 5.23s
+#
+# ============================================================
+#   Phase 1: Filesystem Verification
+# ============================================================
+# ✅ Extension directory structure (125ms)
+# ✅ Manifest file present (89ms)
+# ✅ Version info files present (72ms)
+# ✅ Enabled PGDG extensions present (25 verified) (1.45s)
+# ✅ Disabled PGDG extensions not present (2 verified) (345ms)
+#
+# [... additional phases ...]
+#
+# ============================================================
+#   Test Summary
+# ============================================================
+# ✅ All tests passed!
+# Total: 18 | Passed: 18 | Failed: 0
+```
+
 ### CI Integration
 
 GitHub Actions workflow runs all tests on:
@@ -708,6 +774,9 @@ scripts/test/
 ├── test-extension-performance.ts      (performance benchmarks)
 ├── test-integration-extension-combinations.ts
 └── test-pgq-functional.ts             (pgmq queue tests)
+
+scripts/docker/
+└── test-image.ts                      (comprehensive image test harness)
 ```
 
 ## References
@@ -719,6 +788,7 @@ scripts/test/
 - **Hook extension tests:** `scripts/test/test-hook-extensions.ts`
 - **Replica stack tests:** `scripts/test/test-replica-stack.ts` (replication validation)
 - **Single stack tests:** `scripts/test/test-single-stack.ts` (standalone validation)
+- **Image test harness:** `scripts/docker/test-image.ts` (comprehensive image validation)
 - **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Auto-config entrypoint:** `docker/postgres/docker-auto-config-entrypoint.sh`
 - **Commit 89de009**: Test restoration with session isolation fixes (4 tests restored, 1 added)

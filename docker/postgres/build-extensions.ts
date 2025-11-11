@@ -212,11 +212,10 @@ async function ensurePgrxInitForVersion(installRoot: string, version: string): P
   }
 
   const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
-  const result = await $`env PATH=${pathEnv} cargo pgrx list`.text();
 
-  if (!result.includes(`pg${PG_MAJOR}`)) {
-    await $`env PATH=${pathEnv} cargo pgrx init --pg${PG_MAJOR} ${PG_CONFIG_BIN}`;
-  }
+  // cargo pgrx init is idempotent - safe to run multiple times
+  // Note: "cargo pgrx list" was removed in v0.16+, so we just run init unconditionally
+  await $`env PATH=${pathEnv} cargo pgrx init --pg${PG_MAJOR} ${PG_CONFIG_BIN}`;
 
   CARGO_PGRX_INIT.set(version, true);
 }

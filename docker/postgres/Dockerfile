@@ -59,6 +59,7 @@ RUN set -eu && \
       curl \
       ca-certificates \
       rsync \
+      unzip \
       postgresql-server-dev-${PG_MAJOR} \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
@@ -66,6 +67,9 @@ RUN set -eu && \
 
 RUN set -eu && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+
+# Add Rust/Cargo to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Bun for running TypeScript build scripts
 RUN set -eu && \

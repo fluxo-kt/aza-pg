@@ -7,14 +7,16 @@
 
 -- Core extensions pre-enabled by default.
 CREATE EXTENSION IF NOT EXISTS "pg_cron"; -- pg_cron (operations)
+CREATE EXTENSION IF NOT EXISTS "pg_stat_monitor"; -- pg_stat_monitor (observability)
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements"; -- pg_stat_statements (observability)
 CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- pg_trgm (search)
 CREATE EXTENSION IF NOT EXISTS "pgaudit"; -- pgaudit (security)
 CREATE EXTENSION IF NOT EXISTS "plpgsql"; -- plpgsql (language)
 CREATE EXTENSION IF NOT EXISTS "vector"; -- pgvector (ai)
+CREATE EXTENSION IF NOT EXISTS "vectorscale"; -- pgvectorscale (ai)
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector). Additional extensions are available but disabled by default.';
+  RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector, vectorscale). Additional extensions are available but disabled by default.';
 END;
 $$;

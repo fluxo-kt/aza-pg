@@ -18,6 +18,7 @@
  */
 
 import { $ } from "bun";
+import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -211,10 +212,10 @@ async function ensurePgrxInitForVersion(installRoot: string, version: string): P
   }
 
   const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
-  const result = await $`PATH=${pathEnv} cargo pgrx list`.text();
+  const result = await $`env PATH=${pathEnv} cargo pgrx list`.text();
 
   if (!result.includes(`pg${PG_MAJOR}`)) {
-    await $`PATH=${pathEnv} cargo pgrx init --pg${PG_MAJOR} ${PG_CONFIG_BIN}`;
+    await $`env PATH=${pathEnv} cargo pgrx init --pg${PG_MAJOR} ${PG_CONFIG_BIN}`;
   }
 
   CARGO_PGRX_INIT.set(version, true);
@@ -307,7 +308,7 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
   const cwd = dir;
 
-  await $`cd ${cwd} && PATH=${pathEnv} cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${featuresFlag} ${noDefaultFeatures}`.env(
+  await $`cd ${cwd} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${featuresFlag} ${noDefaultFeatures}`.env(
     {
       PATH: pathEnv,
     }

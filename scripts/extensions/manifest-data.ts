@@ -378,6 +378,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "pgdg",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
+    enabled: false,
+    disabledReason:
+      "Disabled to reduce build time and image size. GIS functionality not currently required. Enable when spatial data support is needed.",
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
@@ -411,6 +414,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "pgdg",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
+    enabled: false,
+    disabledReason:
+      "Disabled to reduce build time and image size. Depends on PostGIS which is also disabled. Enable when routing functionality is needed.",
     source: {
       type: "git",
       repository: "https://github.com/pgRouting/pgrouting.git",
@@ -561,7 +567,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       ref: "4ac02b24433894b320b044ed30747d0c38e79fa5",
     },
     build: { type: "pgxs" },
-    runtime: { sharedPreload: true, defaultEnable: false },
+    runtime: { sharedPreload: true, defaultEnable: true },
     notes: [
       "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support.",
@@ -674,7 +680,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "cargo-pgrx", subdir: "pgvectorscale", features: ["pg18"] },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["vector"],
-    runtime: { sharedPreload: false, defaultEnable: false },
+    runtime: { sharedPreload: false, defaultEnable: true },
     sourceUrl: "https://github.com/timescale/pgvectorscale",
     docsUrl: "https://github.com/timescale/pgvectorscale#readme",
   },

@@ -11,8 +11,8 @@ readonly DEFAULT_RAM_MB=1024
 #   - pgsodium: Requires pgsodium_getkey script for TCE (Transparent Column Encryption)
 #   - timescaledb: Heavy extension for time-series data
 #   - supautils: Superuser guards for managed Postgres
-#   - pg_stat_monitor: Alternative to pg_stat_statements (may conflict)
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit"
+# Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048

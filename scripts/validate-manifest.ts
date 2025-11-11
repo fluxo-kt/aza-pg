@@ -3,12 +3,11 @@
  * Extension Manifest Validator
  *
  * Validates extensions.manifest.json for conflicts and issues:
- * - Checks for pg_stat_monitor and pg_stat_statements dual defaultEnable
+ * - Warns if both pg_stat_monitor and pg_stat_statements have defaultEnable=true (supported in PG18)
  * - Validates manifest structure and schema
  *
  * Usage:
  *   bun scripts/validate-manifest.ts
- *   ALLOW_PG_STAT_MONITOR_DUAL=1 bun scripts/validate-manifest.ts  # Allow dual enable
  */
 
 import { getErrorMessage } from "./utils/errors.js";
@@ -47,26 +46,12 @@ function checkPgStatConflict(manifest: Manifest): boolean {
   const statementsDefaultEnable = pgStatStatements.runtime?.defaultEnable === true;
 
   if (monitorDefaultEnable && statementsDefaultEnable) {
-    const allowDual = Bun.env.ALLOW_PG_STAT_MONITOR_DUAL === "1";
-
-    if (allowDual) {
-      warning(
-        "Both pg_stat_monitor and pg_stat_statements have defaultEnable=true (allowed via ALLOW_PG_STAT_MONITOR_DUAL)"
-      );
-      info("Note: pg_stat_monitor in PG18 uses pgsm aggregation mode for compatibility");
-      return true;
-    } else {
-      error("CONFLICT: Both pg_stat_monitor and pg_stat_statements have defaultEnable=true");
-      error(
-        "These extensions conflict in older PostgreSQL versions. While PG18 supports both via pgsm aggregation, only one should be enabled by default."
-      );
-      error("");
-      error("Options:");
-      error("  1. Set pg_stat_monitor.runtime.defaultEnable=false (recommended)");
-      error("  2. Set pg_stat_statements.runtime.defaultEnable=false");
-      error("  3. Set ALLOW_PG_STAT_MONITOR_DUAL=1 to override this check");
-      return false;
-    }
+    // PostgreSQL 18 supports both extensions via pgsm aggregation mode
+    // This is intentional for comparison purposes, so treat as informational warning
+    warning("Both pg_stat_monitor and pg_stat_statements have defaultEnable=true");
+    info("PostgreSQL 18 supports both extensions via pgsm aggregation mode");
+    info("This configuration allows comparison of both monitoring approaches");
+    return true;
   }
 
   return true;

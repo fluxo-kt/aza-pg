@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2025-11-11T12:00:27.868Z",
+  "generatedAt": "2025-11-11T14:35:22.476Z",
   "catalog": {
     "total": 38,
-    "enabled": 36,
-    "disabled": 2
+    "enabled": 34,
+    "disabled": 4
   },
   "byKind": {
     "builtin": 6,
-    "extension": 25,
+    "extension": 23,
     "tool": 5
   },
   "builtins": [
@@ -32,10 +32,8 @@
     "pgaudit",
     "pgmq",
     "pgroonga",
-    "pgrouting",
     "pgsodium",
     "plpgsql_check",
-    "postgis",
     "rum",
     "set_user",
     "supabase_vault",
@@ -47,14 +45,23 @@
   ],
   "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgq", "supautils"],
+    "extensions": ["pgq", "pgrouting", "postgis", "supautils"],
     "tools": []
   },
   "preloaded": {
     "modules": ["auto_explain"],
-    "extensions": ["pg_cron", "pg_stat_statements", "pgaudit"]
+    "extensions": ["pg_cron", "pg_stat_monitor", "pg_stat_statements", "pgaudit"]
   },
-  "autoCreated": ["pg_cron", "pg_stat_statements", "pg_trgm", "pgaudit", "plpgsql", "vector"],
+  "autoCreated": [
+    "pg_cron",
+    "pg_stat_monitor",
+    "pg_stat_statements",
+    "pg_trgm",
+    "pgaudit",
+    "plpgsql",
+    "vector",
+    "vectorscale"
+  ],
   "byCategory": {
     "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements", "pgbadger"],
     "indexing": ["btree_gin", "btree_gist"],
@@ -69,7 +76,6 @@
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
     "queueing": ["pgmq"],
-    "gis": ["pgrouting", "postgis"],
     "language": ["plpgsql"],
     "quality": ["plpgsql_check"],
     "timeseries": ["timescaledb", "timescaledb_toolkit"],

@@ -4,11 +4,14 @@
  * Runs all linting, formatting, and type checking in one command
  *
  * Usage:
- *   bun scripts/validate.ts              # Fast validation (oxlint, prettier, tsc)
- *   bun scripts/validate.ts --fast       # Same as above (explicit)
- *   bun scripts/validate.ts --all        # Full validation (includes shellcheck, hadolint, yaml, secret scan)
- *   bun scripts/validate.ts --staged     # Run only on staged files (for pre-commit hooks)
- *   bun scripts/validate.ts --parallel   # Run checks in parallel (faster but less readable errors)
+ *   bun scripts/validate.ts                       # Fast validation (oxlint, prettier, tsc)
+ *   bun scripts/validate.ts --fast                # Same as above (explicit)
+ *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
+ *   bun scripts/validate.ts --parallel            # Run checks in parallel (faster but less readable errors)
+ *   bun scripts/validate.ts --runtime             # Include runtime verification (requires --image=<tag>)
+ *   bun scripts/validate.ts --filesystem          # Include filesystem verification (requires --image=<tag>)
+ *   bun scripts/validate.ts --image=<tag>         # Docker image tag for runtime/filesystem verification
  *
  * Environment variables:
  *   ALLOW_MISSING_SHELLCHECK=1           # Don't fail if shellcheck not installed
@@ -139,14 +142,21 @@ async function runChecksSequential(
 async function validate(
   mode: "fast" | "all",
   parallel: boolean = false,
-  stagedOnly: boolean = false
+  stagedOnly: boolean = false,
+  includeRuntime: boolean = false,
+  includeFilesystem: boolean = false,
+  imageTag?: string
 ): Promise<void> {
   const startTime = Date.now();
 
   const modeLabel = mode === "fast" ? "FAST" : "FULL";
   const parallelLabel = parallel ? " (PARALLEL)" : "";
   const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
-  section(`Validation Mode: ${modeLabel}${parallelLabel}${stagedLabel}`);
+  const runtimeLabel = includeRuntime ? " + RUNTIME" : "";
+  const filesystemLabel = includeFilesystem ? " + FILESYSTEM" : "";
+  section(
+    `Validation Mode: ${modeLabel}${parallelLabel}${stagedLabel}${runtimeLabel}${filesystemLabel}`
+  );
 
   // Core checks (always run)
   const coreChecks: ValidationCheck[] = [
@@ -291,8 +301,40 @@ async function validate(
     },
   ];
 
+  // Docker verification checks (optional, require image tag)
+  const dockerVerificationChecks: ValidationCheck[] = [];
+
+  if (includeRuntime && imageTag) {
+    dockerVerificationChecks.push({
+      name: "Runtime Verification",
+      command: ["bun", "scripts/docker/verify-runtime.ts", imageTag],
+      description: `Docker image runtime verification (${imageTag})`,
+      required: true,
+      requiresDocker: true,
+    });
+  }
+
+  if (includeFilesystem && imageTag) {
+    dockerVerificationChecks.push({
+      name: "Filesystem Verification",
+      command: ["bun", "scripts/docker/verify-filesystem.ts", imageTag],
+      description: `Docker image filesystem verification (${imageTag})`,
+      required: true,
+      requiresDocker: true,
+    });
+  }
+
+  // Validate image tag requirement
+  if ((includeRuntime || includeFilesystem) && !imageTag) {
+    error("Runtime and filesystem verification require --image=<tag> parameter");
+    throw new Error("Missing required --image parameter");
+  }
+
   // Determine which checks to run
-  const checks = mode === "all" ? [...coreChecks, ...extendedChecks] : coreChecks;
+  const checks =
+    mode === "all"
+      ? [...coreChecks, ...extendedChecks, ...dockerVerificationChecks]
+      : [...coreChecks, ...dockerVerificationChecks];
 
   // Run all checks (parallel or sequential)
   const results = parallel ? await runChecksParallel(checks) : await runChecksSequential(checks);
@@ -326,10 +368,15 @@ async function validate(
 }
 
 // Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
-const args = new Set(Bun.argv.slice(2));
-const mode = args.has("--all") ? "all" : "fast";
-const parallel = args.has("--parallel");
-const stagedOnly = args.has("--staged");
+const args = Bun.argv.slice(2);
+const argsSet = new Set(args);
+const mode = argsSet.has("--all") ? "all" : "fast";
+const parallel = argsSet.has("--parallel");
+const stagedOnly = argsSet.has("--staged");
+const includeRuntime = argsSet.has("--runtime");
+const includeFilesystem = argsSet.has("--filesystem");
+const imageArg = args.find((arg) => arg.startsWith("--image="));
+const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
 
 // Run validation
-await validate(mode, parallel, stagedOnly);
+await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag);

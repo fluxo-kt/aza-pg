@@ -10,20 +10,30 @@ import type { GitHooksConfig } from "bun-git-hooks";
  */
 const config: GitHooksConfig = {
   /**
-   * Pre-commit: Run fast validation checks on staged files
+   * Pre-commit: Auto-fix issues and stage fixes
    *
-   * This ensures code quality before commits are created.
-   * Runs fast validation with --staged flag: Oxlint and Prettier check on staged files only, TypeScript type checking on full project.
+   * Philosophy: Hooks should HELP, not BLOCK development
+   *
+   * Auto-fixes:
+   * - Linting issues (oxlint --fix)
+   * - Code formatting (prettier --write)
+   * - Regenerates artifacts if manifest-data.ts changed
+   * - Auto-stages all fixes
+   *
+   * Only fails if there are real errors that can't be auto-fixed (e.g., type errors)
    */
-  "pre-commit": "bun run validate --staged",
+  "pre-commit": "bun scripts/pre-commit.ts",
 
   /**
-   * Pre-push: Run full validation suite before pushing
+   * Pre-push: Disabled (rely on CI instead)
    *
-   * This catches issues before they reach the remote repository.
-   * Includes all linters (oxlint, shellcheck, hadolint, yaml), formatting, and TypeScript type checking.
+   * Rationale: Pre-push hooks are slow and annoying during development.
+   * CI will catch issues anyway. Trust developers, let CI enforce quality.
+   *
+   * If you want to run full validation before pushing, manually run:
+   *   bun run validate:full
    */
-  "pre-push": "bun run validate:full",
+  // "pre-push": "bun run validate:full",
 
   /**
    * Commit-msg: Validate commit message format (optional, currently disabled)

@@ -16,7 +16,7 @@
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
     "validate:parallel": "bun scripts/validate.ts --all --parallel",
-    "generate": "bun scripts/extensions/generate-manifest.ts && bun scripts/config-generator/generator.ts && bun scripts/generate-docs-data.ts && bun scripts/extensions/render-markdown.ts",
+    "generate": "bun generate:manifest & bun generate:configs & bun generate:docs & bun generate:markdown",
     "generate:manifest": "bun scripts/extensions/generate-manifest.ts",
     "generate:configs": "bun scripts/config-generator/generator.ts",
     "generate:docs": "bun scripts/generate-docs-data.ts",

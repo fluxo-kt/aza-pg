@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-11T11:57:27.819Z",
+  "generatedAt": "2025-11-11T12:00:27.868Z",
   "catalog": {
     "total": 38,
     "enabled": 36,
@@ -45,113 +45,36 @@
     "vectorscale",
     "wrappers"
   ],
-  "tools": [
-    "pg_plan_filter",
-    "pg_safeupdate",
-    "pgbackrest",
-    "pgbadger",
-    "wal2json"
-  ],
+  "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": [
-      "pgq",
-      "supautils"
-    ],
+    "extensions": ["pgq", "supautils"],
     "tools": []
   },
   "preloaded": {
-    "modules": [
-      "auto_explain"
-    ],
-    "extensions": [
-      "pg_cron",
-      "pg_stat_statements",
-      "pgaudit"
-    ]
+    "modules": ["auto_explain"],
+    "extensions": ["pg_cron", "pg_stat_statements", "pgaudit"]
   },
-  "autoCreated": [
-    "pg_cron",
-    "pg_stat_statements",
-    "pg_trgm",
-    "pgaudit",
-    "plpgsql",
-    "vector"
-  ],
+  "autoCreated": ["pg_cron", "pg_stat_statements", "pg_trgm", "pgaudit", "plpgsql", "vector"],
   "byCategory": {
-    "observability": [
-      "auto_explain",
-      "pg_stat_monitor",
-      "pg_stat_statements",
-      "pgbadger"
-    ],
-    "indexing": [
-      "btree_gin",
-      "btree_gist"
-    ],
-    "analytics": [
-      "hll"
-    ],
-    "integration": [
-      "http",
-      "wrappers"
-    ],
-    "performance": [
-      "hypopg",
-      "index_advisor"
-    ],
-    "operations": [
-      "pg_cron",
-      "pgbackrest"
-    ],
-    "utilities": [
-      "pg_hashids"
-    ],
-    "validation": [
-      "pg_jsonschema"
-    ],
-    "maintenance": [
-      "pg_partman",
-      "pg_repack"
-    ],
-    "safety": [
-      "pg_plan_filter",
-      "pg_safeupdate"
-    ],
-    "search": [
-      "pg_trgm",
-      "pgroonga",
-      "rum"
-    ],
-    "security": [
-      "pgaudit",
-      "pgsodium",
-      "set_user",
-      "supabase_vault"
-    ],
-    "queueing": [
-      "pgmq"
-    ],
-    "gis": [
-      "pgrouting",
-      "postgis"
-    ],
-    "language": [
-      "plpgsql"
-    ],
-    "quality": [
-      "plpgsql_check"
-    ],
-    "timeseries": [
-      "timescaledb",
-      "timescaledb_toolkit"
-    ],
-    "ai": [
-      "vector",
-      "vectorscale"
-    ],
-    "cdc": [
-      "wal2json"
-    ]
+    "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements", "pgbadger"],
+    "indexing": ["btree_gin", "btree_gist"],
+    "analytics": ["hll"],
+    "integration": ["http", "wrappers"],
+    "performance": ["hypopg", "index_advisor"],
+    "operations": ["pg_cron", "pgbackrest"],
+    "utilities": ["pg_hashids"],
+    "validation": ["pg_jsonschema"],
+    "maintenance": ["pg_partman", "pg_repack"],
+    "safety": ["pg_plan_filter", "pg_safeupdate"],
+    "search": ["pg_trgm", "pgroonga", "rum"],
+    "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
+    "queueing": ["pgmq"],
+    "gis": ["pgrouting", "postgis"],
+    "language": ["plpgsql"],
+    "quality": ["plpgsql_check"],
+    "timeseries": ["timescaledb", "timescaledb_toolkit"],
+    "ai": ["vector", "vectorscale"],
+    "cdc": ["wal2json"]
   },
   "memoryTiers": [
     {

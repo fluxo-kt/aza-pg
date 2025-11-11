@@ -12,6 +12,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 - **No Bun in final image** (build-only dependency)
 - **Image includes /etc/postgresql/version-info.{txt,json}** (self-documenting)
 - Manifest = single source of truth
+- **Dockerfile is auto-generated** from template + manifest (never edit directly)
 - Private repo | Public images (free, no guarantees)
 
 ## Paths
@@ -34,6 +35,7 @@ cd stacks/primary && docker compose up
 ## Gotchas
 
 - **auto_explain**: Module (preload-only), NOT extension. NO CREATE EXTENSION needed (PostgreSQL design)
+- **Dockerfile editing**: NEVER edit Dockerfile directly - edit Dockerfile.template and run `bun run generate`
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
@@ -54,7 +56,8 @@ Caps: shared_buffers ≤ 32GB, work_mem ≤ 32MB, connections: 80/120/200
 
 ## Troubleshooting
 
-- Extension missing: Check manifest enabled flag + Dockerfile build
+- Extension missing: Check manifest enabled flag + run `bun run generate` + rebuild
+- Dockerfile out of date: Run `bun run generate` to regenerate from template
 - Preload error: Align shared_preload_libraries with manifest defaults
 - RAM misdetection: Set POSTGRES_MEMORY explicitly
 - Connection limit: Review max_connections in auto-config

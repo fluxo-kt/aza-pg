@@ -163,6 +163,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Dockerfile Validation",
+      command: ["bun", "scripts/docker/validate-dockerfile.ts"],
+      description: "Verify Dockerfile is up-to-date with template and manifest",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: stagedOnly
         ? [

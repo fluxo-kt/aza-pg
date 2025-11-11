@@ -1,330 +1,83 @@
 # Changelog
 
-All notable changes to aza-pg will be documented in this file.
-
 ## [Unreleased]
 
-## [2025-11-09] - Phase 9: PostgreSQL 18 Production Improvements
+## [2025-11-09]
 
 ### Added
 
-- **Version Info Self-Documentation** ✅
-  - Created `generate-version-info.ts` Bun script to generate `/etc/postgresql/version-info.txt` in container
-  - Lists PostgreSQL version, preloaded modules, extensions, and tools for easy inspection
-  - Uses lightweight Bun stage (not included in final image)
-  - **Impact**: Self-documenting images with complete extension inventory
-
-- **GitHub Actions Workflows** ✅
-  - `.github/workflows/ci.yml` - Fast CI for all commits/PRs (validates manifest, configs, repository health; ~5-10 minutes; minimal cost)
-  - `.github/workflows/publish.yml` - Release to ghcr.io (release branch only; multi-platform: amd64, arm64; SBOM and provenance attestation)
-  - **Versioning Format**: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
-  - **Convenience Tags**: `18.0-single-node`, `18-single-node`, `18.0`, `18`
-  - **Registry**: `ghcr.io/fluxo-kt/aza-pg`
-
-- **Development Standards Documentation** ✅
-  - Bun-first philosophy documented in CLAUDE.md
-  - Linting and formatting standards (Oxlint, Shellcheck, yamllint, hadolint, Prettier)
-  - Git hooks configuration (bun-git-hooks)
-  - Image versioning schema
+- `/etc/postgresql/version-info.txt` for self-documenting images (PostgreSQL version, extensions, tools)
+- GitHub Actions workflows: `ci.yml` (fast validation ~5-10min), `publish.yml` (release to ghcr.io, multi-platform)
+- Image versioning: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
+- Development standards documentation (Bun-first, linting, git hooks)
 
 ### Fixed
 
-- **auto_explain Module Classification** ✅
-  - Properly identified auto_explain as PostgreSQL core module (not extension)
-  - Added `preloadOnly` flag to manifest RuntimeSpec
-  - Excluded from CREATE EXTENSION SQL generation
-  - Updated documentation to clarify module vs extension distinction
-  - **Impact**: No more misleading "extension not available" errors
-
-- **wrappers Version Conflict Resolution** ✅
-  - Fixed pgrx dependency conflict (0.16.0 → 0.16.1)
-  - Updated from tag v0.5.6 to main branch commit fc63ad1
-  - Resolves conflict with timescaledb_toolkit and vectorscale
-  - **Impact**: Successful cargo builds without version conflicts
-
-- **PgBouncer POSIX Compatibility** ✅
-  - Converted `pgbouncer-entrypoint.sh` from bash to POSIX sh
-  - Replaced bash-specific features (arrays, [[, =~, pipefail)
-  - Maintained all security checks (password escaping, permissions)
-  - Updated compose.yml entrypoint to `/bin/sh`
-  - **Impact**: Works on Alpine Linux (busybox) without bash
+- auto_explain classification (module, not extension - no CREATE EXTENSION needed)
+- wrappers pgrx version conflict (0.16.0 → 0.16.1)
+- PgBouncer POSIX sh compatibility (removed bash-isms)
+- Extension classification: 6 tools, 1 module, 31 extensions, 4 preloaded
+- Auto-config validated across 512MB/2GB/4GB memory tiers
 
 ### Changed
 
-- **Extension Classification System** - Proper categorization of 38 extensions:
-  - **Tools** (6): pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate, supautils - CLI utilities, no CREATE EXTENSION needed
-  - **Modules** (1): auto_explain - preload-only, NO CREATE EXTENSION (PostgreSQL core module)
-  - **Extensions** (31): pg_cron, pgvector, postgis, etc. - require CREATE EXTENSION
-  - **Preloaded** (4): auto_explain, pg_cron, pg_stat_statements, pgaudit
-
-- **Auto-Configuration Validation** - Tested across memory limits (512MB, 2GB, 4GB):
-  - 512MB: shared_buffers=128MB (25%), work_mem=1MB, max_connections=80, effective_cache_size=384MB (75%)
-  - 2GB: shared_buffers=512MB (25%), work_mem=4MB, max_connections=120, effective_cache_size=1536MB (75%)
-  - 4GB: shared_buffers=1024MB (25%), work_mem=5MB, max_connections=200, effective_cache_size=3072MB (75%)
-
-- **Build Optimization** - Multi-stage Docker build with Bun integration:
-  - No Bun in final image (build-time only)
-  - Proper layer caching
-  - **Result**: 1.19GB final image size
-
-### Testing
-
-- **Deployment Tests** ✅
-  - Single-node stack: PASSED
-  - Primary stack (replication ready): PASSED
-  - Auto-tuning (512MB, 2GB, 4GB): PASSED
-  - Extension availability: 38 extensions cataloged
-  - All 4 preloaded modules verified (auto_explain, pg_cron, pg_stat_statements, pgaudit)
-
-- **Validation Tests** ✅
-  - Manifest validation, config generation, TypeScript compilation
-  - Linting (Oxlint), formatting (Prettier)
-
-- **Test Suite Creation** ✅
-  - Created `test-all.ts` comprehensive test script
-  - Validation, build, and functional test phases
-  - Parallel check execution
-
-### Production Readiness
-
-**Status**: ✅ READY FOR PRODUCTION
-
-**Metrics**:
-
-- Build Time: ~10-15 minutes
-- Image Size: 1.19GB
-- Extensions: 36/38 enabled (95%)
-- Preloaded: 4 modules
-- Auto-created: 5 extensions
-- Test Coverage: Comprehensive validation + deployment
-
-**Recommended Next Steps**:
-
-1. Create `release` branch for automated publishing
-2. Test first automated release via GitHub Actions
-3. Deploy to staging environment
-4. Performance testing under load
-
-**Commits**:
-
-- af9d5ab: fix: Use correct wrappers commit hash with pgrx 0.16.1
-- f37e69a: fix: Phase 9 improvements - auto_explain, PgBouncer POSIX, version-info
-- 7fc6fd4: feat: Add GitHub Actions workflows and document Bun-first standards
-
----
+- Multi-stage build with Bun (build-time only, not in final image)
+- Final image: 1.19GB, 36/38 extensions enabled
 
 ### Security
 
-- **CRITICAL**: Update PgBouncer SHA to fix CVE-2025-2291 password expiry bypass (Phase 9)
-  - Updated edoburu/pgbouncer:v1.24.1-p1 SHA from `3db3d72...` to `05079fd...`
-  - Affects all PgBouncer versions; must update for security compliance
-- Update PostgreSQL base image to latest postgres:18-trixie SHA (Phase 9)
-  - Updated from `41fc534...` to `5d1822a...` for ARM64 platform compatibility
+- PgBouncer SHA update (CVE-2025-2291 password expiry bypass)
+- PostgreSQL base image updated to postgres:18-trixie (ARM64 compatibility)
 
-### Fixed
+## [2025-11-08]
 
-- Fix hardcoded test passwords in 6 test scripts (Phase 7)
-- Fix absolute paths in all TypeScript scripts for portability (Phase 6)
-- Fix 37 vs 38 extension count inconsistency across codebase (Phase 6)
-- Fix SQL identifier quoting in generated scripts (Phase 6)
-- Fix yamllint configuration syntax: `level: off` → `disable` (Phase 9)
-- Fix Debian Trixie package name: libssl3 → libssl3t64 (Phase 9)
-  - Required for time64 transition in Debian Trixie
-- Fix Dockerfile apt-get cache mount issues (Phase 9)
-  - Removed stale cache mounts causing package resolution failures
-- Fix git commit-msg hook gitlint failure (Phase 9)
-  - Disabled gitlint call since package not in package.json and not available via bunx
-- Fix build-extensions.sh to skip disabled extensions entirely (Phase 9)
-  - Changed from "build for testing" to complete skip (prevents build failures on broken extensions)
-- Fix yamllint configuration syntax: `allowed:` → `allowed-values:` (Phase 9)
-  - Updated to match yamllint latest syntax requirements
-- Fix shellcheck SC2295 warning in build-extensions.sh (Phase 9)
-  - Properly quoted variable expansion in parameter substitution: `${pf#$dest/}` → `${pf#"$dest"/}`
-- Fix dependency validation for cross-stage dependencies (Phase 9)
-  - Cargo extensions can now depend on PGDG packages (e.g., timescaledb_toolkit → timescaledb)
-  - Cargo extensions can now depend on builtin extensions (e.g., wrappers → pg_stat_statements)
-  - Validation checks full manifest for install_via: "pgdg" or kind: "builtin" when dependency not in current stage
-- Fix wrappers extension pgrx version conflict (Phase 9)
-  - Updated from v0.5.6 (pgrx 0.16.0) to main branch commit fc63ad1 (pgrx 0.16.1)
-  - Resolves cargo dependency conflict with timescaledb_toolkit and vectorscale
+### Breaking Changes
 
-### Changed
+- `PGBOUNCER_SERVER_SSLMODE`: `require` → `prefer` (TLS optional by default)
+- `POSTGRES_BIND_IP`: Now honors specific IPs (not forced to 0.0.0.0)
+- Test credentials: Removed hardcoded passwords (runtime generation)
 
-- Improve linting configuration to reduce noise (Phase 9)
-  - Configure oxlint: disable no-console for scripts/, no-await-in-loop for tests/
-  - Configure hadolint: ignore DL3008/DL3015/DL4006/SC2086 (intentional patterns)
-  - Reduces validation warnings from 400+ to ~50 while maintaining code quality
-- Modernize tsconfig types to Bun 1.3+ convention (Phase 6)
-- Standardize GitHub Actions to oven-sh/setup-bun@v2 (Phase 6)
-- Make Dockerfile PGDG assertion dynamic based on manifest (Phase 7)
-- Pin aquasecurity/trivy-action from @master to @0.33.1 for reproducibility (Phase 9)
-- Update github/codeql-action from @v3 to @v4 (latest stable) (Phase 9)
-- Bump Bun minimum version from >=1.3.0 to >=1.3.2 (latest stable) (Phase 9)
+### Security Fixes
 
-### Added
+- Removed hardcoded test credentials
+- Hardened pgsodium init (search_path injection prevention)
+- .pgpass permission verification (600)
+- PgBouncer healthcheck (actual connectivity test)
+- Git URL allowlist (github.com, gitlab.com)
+- Password validation in compose.yml
+- PgBouncer sed injection fix
+- effective_cache_size cap (75% RAM)
+- POSTGRES_MEMORY upper bound (≤1TB)
+- REPLICATION_SLOT_NAME validation
 
-- Add Trivy vulnerability scanning to CI/CD pipeline (Phase 7)
-- Add SARIF export for hadolint and shellcheck (Phase 7)
-- Add OCI metadata labels to Dockerfile (Phase 7)
-- Add Bun-not-in-final-image assertion (Phase 7)
-- Add documentation for PostgreSQL 18 built-in uuidv7() function (Phase 9)
+### Performance
 
-### Removed
+- Image size: -60-95MB (removed Python3 runtime, stripped .so libraries, apt-get clean)
 
-- Remove unused yaml-lint npm package (Phase 6)
-- Remove uuid-ossp from test scripts and documentation (Phase 9)
-  - PostgreSQL 18 includes superior built-in uuidv7() for time-ordered UUIDs
-  - Better indexing performance than uuid-ossp's random UUIDs
+### Bug Fixes
 
-### Disabled
+- Healthcheck timeout: 60s → 120s (large database startup)
+- Fixed wait loop in run-extension-smoke.sh
+- listen_addresses honors specific IPs
+- max_worker_processes cap (64)
+- CPU core sanity check (1-128)
 
-- Temporarily disable supautils extension (Phase 9)
-  - Compilation requires patching that proved unreliable with sed
-  - 36 extensions enabled (was 37)
+### Configuration
+
+- 29 new environment variables
+- 5 variables made configurable: `PGBOUNCER_SERVER_SSLMODE`, `PGBOUNCER_MAX_CLIENT_CONN`, `PGBOUNCER_DEFAULT_POOL_SIZE`, `POSTGRES_MEMORY`, `POSTGRES_SHARED_PRELOAD_LIBRARIES`
 
 ---
 
-## [2025-11-08] - Security & Documentation Audit
+## [2025-11-06]
 
-### ⚠️ BREAKING CHANGES
+- pgq extension, pgflow workflow orchestration, manifest-driven build system
 
-- **PGBOUNCER_SERVER_SSLMODE**: Changed from `require` to `prefer` (TLS now optional by default)
-  - **Impact**: Existing deployments expecting enforced TLS must explicitly set `PGBOUNCER_SERVER_SSLMODE=require`
-  - **Rationale**: PostgreSQL TLS disabled by default in image; `require` mode breaks all connections without certificates
-  - **Migration**: Deploy TLS certificates first, then set `PGBOUNCER_SERVER_SSLMODE=require` in .env
-- **POSTGRES_BIND_IP**: Now honors specific IP addresses instead of forcing 0.0.0.0
-  - **Impact**: Setting `POSTGRES_BIND_IP=192.168.1.100` now binds to that specific IP only (not all interfaces)
-  - **Migration**: Deployments expecting all-interface binding should explicitly set `POSTGRES_BIND_IP=0.0.0.0`
-- **Test Credentials**: Removed hardcoded `dev_pgbouncer_auth_test_2025` password
-  - **Impact**: All test scripts now generate unique passwords at runtime
-  - **Migration**: Update any external test automation that relied on hardcoded credentials
+## [2025-11-05]
 
-### 🔒 Security Fixes
+- Extension classification fixes, documentation updates, manifest validator
 
-**Critical:**
+## [2025-11 - Earlier]
 
-- Remove hardcoded test credentials from all test scripts (generate unique passwords at runtime)
-- Harden pgsodium init script with `SET search_path=pg_catalog` (prevents search_path injection attacks)
-- Add explicit .pgpass permission verification (600) in pgbouncer-entrypoint.sh (fail fast with clear error if permissions cannot be set)
-- Fixed PgBouncer healthcheck (tests actual connectivity via psql SELECT 1, not version output)
-- Added git URL domain allowlist validation (github.com, gitlab.com only) in build-extensions.sh
-- Fixed password validation in primary compose.yml (added :? operators for POSTGRES_PASSWORD, PG_REPLICATION_PASSWORD, PGBOUNCER_AUTH_PASS)
-- Fixed PgBouncer sed injection vulnerability (changed to pipe delimiter)
-- Fixed effective_cache_size calculation to cap at 75% RAM (prevents over-allocation)
-- Added POSTGRES_MEMORY upper bound validation (rejects > 1TB)
-- Added REPLICATION_SLOT_NAME validation (prevents SQL injection)
-
-**High:**
-
-- Add password complexity guidance to primary/.env.example (minimum 16 chars, avoid special chars that need escaping)
-- Improved IP validation regex in pgbouncer-entrypoint.sh (proper 0-255 octet range validation, rejects 999.999.999)
-- Fixed PgBouncer healthcheck .pgpass mismatch (added localhost:6432 and pgbouncer:6432 entries)
-- Add defensive .gitignore patterns (certificates, backups, additional log patterns)
-
-**Medium:**
-
-- Added password escape error checking in pgbouncer-entrypoint.sh (validates sed success before continuing)
-- Add security test comment to test-pgbouncer-failures.sh (clarify chmod 777 is intentional test behavior, not vulnerability)
-
-### ⚡ Performance & Build Optimizations (Phase 1)
-
-**Size Reductions (-60-95MB total):**
-
-- Remove Python3 from runtime packages (-100MB, only needed at build time)
-- Strip PGDG .so libraries post-install (-5-15MB debug symbols)
-- Add `apt-get clean` to all Dockerfile RUN blocks (-60MB across 3 layers)
-
-**Total Savings:** 60-95MB image size reduction (timescaledb_toolkit: 186MB→13MB from Phase 11 Rust optimization)
-
-### 📚 Documentation Fixes
-
-**Critical:**
-
-- **TLS enablement guide** added to README.md Security section
-- **Memory allocation table** fixed: 10 incorrect values across 8 rows (64GB: 54706MB→49152MB, aligned with 75% cap)
-- **timescaledb_toolkit size** updated across 8 files (186MB→13MB, 52 references with historical context)
-- Fixed postgres_exporter_queries.yaml path reference in AGENTS.md (line 277: @stacks/... → docker/postgres/...)
-- Updated AGENTS.md init script execution order to include 03-pgsodium-init.sh
-- Remove obsolete !override tag requirement from README.md and AGENTS.md
-
-**High:**
-
-- **Extension counts**: Clarified 38 total (6 builtin + 14 PGDG + 18 source-compiled)
-- **shared_preload_libraries**: Enhanced runtime config comments (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)
-- Fixed default shared_preload_libraries documentation (7→4 extensions)
-- Fixed "creates all extensions" claim (→"creates 5 baseline extensions")
-- Added exporter ports for all stacks (primary:9187/9127, replica:9188, single:9189)
-
-**Medium:**
-
-- Created docs/archive/README.md explaining historical documents contain outdated information
-- Updated hook-based extensions section to enumerate all 6 tools (pgbackrest, pgbadger, pg_plan_filter, pg_safeupdate, supautils, wal2json)
-- Fixed listen_addresses docs (127.0.0.1 not \*), AUTO-CONFIG grep instructions, synchronous replication guidance
-
-### 🐛 Bug Fixes
-
-**Critical:**
-
-- **Healthcheck timeouts**: postgres start_period 60s → 120s (primary/replica/single stacks) - prevents failures on large database startup
-- Fixed wait loop in run-extension-smoke.sh (replaced broken for loop with proper while loop + timeout)
-- Fixed dev memory override in compose.dev.yml (hardcoded 512m → ${POSTGRES_DEV_MEMORY_RESERVATION:-512m})
-- Added comprehensive error handling to config generator (wraps all writeFileSync in try-catch, exits on failure)
-- Fixed Dockerfile ARG duplication (inherit from parent stage properly)
-- Fixed postgresql-base.conf precedence comment (command-line -c overrides file)
-
-**High:**
-
-- Fix undefined `cleanup_test_container` function in test-auto-config.sh (use docker_cleanup from common.sh)
-- Fix listen_addresses to honor specific IPs instead of forcing 0.0.0.0
-- Add max_worker_processes cap at 64 (prevent exceeding PostgreSQL hard limits)
-- Add CPU core sanity check (clamp 1-128 cores with warnings for out-of-range values)
-
-**Medium:**
-
-- Remove non-standard !override YAML tag from compose.dev.yml (Docker Compose v2.24.4+ handles merges correctly)
-- Removed orphaned cleanup_test_container() function from common.sh (consolidated to docker_cleanup)
-- Added log_replication_commands to replica config
-- Fixed primary compose.dev.yml network conflict (proper override behavior)
-- Fixed supautils defaultEnable (true→false, reflects actual behavior)
-- Fixed test-extensions.ts extension name (safeupdate→pg_safeupdate)
-
-### 🔧 Configuration Enhancements
-
-**New Environment Variables:** 29 total added to .env.example files (11 PRIMARY, 9 REPLICA, 9 SINGLE)
-
-- Key additions: `COMPOSE_PROJECT_NAME`, `POSTGRES_USER`, exporter images/bind IPs, `DISABLE_DATA_CHECKSUMS`, `ENABLE_PGSODIUM_INIT`, `POSTGRES_INITDB_ARGS`, network names
-
-**Variables Made Configurable:**
-
-- `PGBOUNCER_SERVER_SSLMODE`, `PGBOUNCER_MAX_CLIENT_CONN`, `PGBOUNCER_DEFAULT_POOL_SIZE`, `POSTGRES_MEMORY`, `POSTGRES_SHARED_PRELOAD_LIBRARIES`
-
-### 🔍 Operational Improvements (Phase 3)
-
-**Enhanced Logging:**
-
-- Log exact computed worker values (max_worker_processes, max_parallel_workers, max_parallel_workers_per_gather)
-- Enhanced auto-config logging for troubleshooting
-- Warn when /proc/meminfo fallback is used (may reflect host RAM instead of container limit)
-- Recommend setting POSTGRES_MEMORY for deterministic tuning in containerized environments
-- Warn when nproc fallback is used for CPU detection (no cgroup quota set)
-
-### 📊 Impact Summary
-
-- **Security**: 6 vulnerabilities fixed (3 critical, 2 high, 1 medium) - eliminated hardcoded credentials, hardened pgsodium against injection
-- **Performance**: 60-95MB image reduction, healthcheck timeouts optimized, worker process caps added
-- **Configuration**: 29 new env vars, 5 made configurable, TLS defaults to optional
-- **Documentation**: 52 size refs + 10 memory values corrected, TLS guide added, init script order clarified
-- **Reliability**: 3 critical bugs fixed (healthcheck timeouts, listen_addresses, cleanup functions)
-
-**Audit:** 4-phase audit 2025-11-08 - All critical/high-priority issues resolved (60+ findings).
-
----
-
-## [Previous Releases] - 2025-11-05 and Earlier
-
-**Recent highlights:**
-
-- 2025-11-06: Added pgq extension, pgflow workflow orchestration, manifest-driven build system
-- 2025-11-05: Extension classification fixes, documentation updates, manifest validator
-- 2025-11: PGDG hybrid strategy (14 extensions migrated), image size optimization (1.41GB→1.14GB), extension enable/disable architecture
-- 2025-05: Security hardening (SHA-pinned base image, TLS support), configuration improvements, comprehensive documentation
+- PGDG hybrid strategy (14 extensions), image optimization (1.41GB→1.14GB), enable/disable architecture
+- Security hardening (SHA-pinned, TLS support), configuration improvements

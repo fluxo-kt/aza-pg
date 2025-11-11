@@ -65,8 +65,10 @@ Caps: shared_buffers ≤ 32GB, work_mem ≤ 32MB, connections: 80/120/200
 **Bun-Tailored TS (SOTA best practices)**:
 
 - Use Bun APIs: `Bun.file()`, `Bun.spawn()`, `Bun.$`, `Bun.env` (NO `node:` imports)
-- TypeScript strict mode, ES2024, bundler resolution
+- Node stdlib OK when Bun lacks API: `path` module acceptable; avoid `fs`/`fs/promises`
+- TypeScript strict mode enabled (tsconfig.json), ES2024, bundler resolution
 - Run via: `bun run <script>.ts` (never node/tsx)
+- **Extension defaults**: `scripts/extension-defaults.ts` is single source of truth for PGDG versions
 
 **Linting (comprehensive)**:
 
@@ -97,9 +99,10 @@ Caps: shared_buffers ≤ 32GB, work_mem ≤ 32MB, connections: 80/120/200
 
 **Image Versioning**:
 
-- Format: `MM.mm-TS-TYPE` where MM=PG major, mm=PG minor, TS=YYYYMMDDHHmm, TYPE=single-node
+- Format: `MM.mm-TS-TYPE` where MM=PG major, mm=PG minor (actual), TS=YYYYMMDDHHmm, TYPE=single-node
 - Example: `ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node`
-- Version info: `docker run <image> cat /etc/postgresql/version-info.txt`
+- Version extracted from base image BEFORE tagging (publish.yml pulls base, runs psql --version)
+- Version info generated in final stage with actual PostgreSQL version: `docker run <image> cat /etc/postgresql/version-info.txt`
 
 See docs/TOOLING.md, docs/BUILD.md for details.
 

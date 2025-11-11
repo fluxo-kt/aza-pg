@@ -24,6 +24,7 @@ import { error, info, section, success, warning } from "./utils/logger.ts";
 // Derive project root from current file location (scripts/check-size-regression.ts)
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
+const SIZE_BASELINES_PATH = join(import.meta.dir, "config/size-baselines.json");
 
 interface Extension {
   name: string;
@@ -35,56 +36,34 @@ interface Manifest {
   entries: Extension[];
 }
 
+interface SizeBaseline {
+  min: number;
+  max: number;
+  description: string;
+}
+
 /**
  * Known large extensions with baseline sizes (in MB)
+ * Loaded from config file for easier maintenance
  */
-const SIZE_BASELINES: Record<string, { min: number; max: number; description: string }> = {
-  timescaledb: {
-    min: 3.0,
-    max: 5.0,
-    description: "TimescaleDB time-series extension",
-  },
-  pg_stat_monitor: {
-    min: 2.0,
-    max: 3.0,
-    description: "Enhanced query performance monitoring",
-  },
-  vector: {
-    min: 1.0,
-    max: 2.0,
-    description: "pgvector - vector similarity search",
-  },
-  postgis: {
-    min: 4.0,
-    max: 6.0,
-    description: "PostGIS spatial database extension",
-  },
-  pgroonga: {
-    min: 2.0,
-    max: 4.0,
-    description: "PGroonga full-text search",
-  },
-  timescaledb_toolkit: {
-    min: 2.0,
-    max: 4.0,
-    description: "TimescaleDB analytical hyperfunctions",
-  },
-  pg_jsonschema: {
-    min: 1.0,
-    max: 2.5,
-    description: "JSON Schema validation (Rust/pgrx)",
-  },
-  wrappers: {
-    min: 1.5,
-    max: 3.0,
-    description: "Supabase foreign data wrappers (Rust/pgrx)",
-  },
-  vectorscale: {
-    min: 1.0,
-    max: 2.5,
-    description: "pgvectorscale DiskANN index (Rust/pgrx)",
-  },
-};
+let SIZE_BASELINES: Record<string, SizeBaseline> = {};
+
+/**
+ * Load size baselines from config file
+ */
+async function loadSizeBaselines(): Promise<void> {
+  try {
+    const file = Bun.file(SIZE_BASELINES_PATH);
+    if (!(await file.exists())) {
+      error(`Size baselines config not found at ${SIZE_BASELINES_PATH}`);
+      process.exit(1);
+    }
+    SIZE_BASELINES = await file.json();
+  } catch (err) {
+    error(`Failed to load size baselines: ${getErrorMessage(err)}`);
+    process.exit(1);
+  }
+}
 
 /**
  * Maximum allowed size increase threshold (as percentage)
@@ -215,6 +194,9 @@ async function checkExtensionSize(
 
 async function main() {
   const args = Bun.argv.slice(2);
+
+  // Load size baselines from config
+  await loadSizeBaselines();
 
   if (args.includes("--baseline-only")) {
     showBaselines();

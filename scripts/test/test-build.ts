@@ -10,8 +10,13 @@
 
 import { $ } from "bun";
 import { resolve, dirname } from "path";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
-import { error } from "../utils/logger.ts";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  waitForPostgres,
+} from "../utils/docker.js";
+import { error } from "../utils/logger.js";
 
 /**
  * Build test configuration
@@ -38,7 +43,7 @@ interface ExtensionTest {
  * Generate random test password at runtime
  */
 function generateTestPassword(): string {
-  const envPassword = process.env.TEST_PASSWORD;
+  const envPassword = Bun.env.TEST_PASSWORD;
   if (envPassword) {
     return envPassword;
   }
@@ -339,7 +344,7 @@ async function listInstalledExtensions(config: BuildTestConfig): Promise<void> {
  */
 async function main(): Promise<void> {
   // Parse arguments
-  const imageTag = process.argv[2] ?? "aza-pg:pg18";
+  const imageTag = Bun.argv[2] ?? "aza-pg:pg18";
   const projectRoot = getProjectRoot();
   const testPassword = generateTestPassword();
   const containerName = `pg-test-${process.pid}`;

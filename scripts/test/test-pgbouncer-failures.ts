@@ -18,8 +18,7 @@
 
 import { $ } from "bun";
 import { join, resolve } from "path";
-import { existsSync } from "fs";
-import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
 import { info, success, warning, error } from "../utils/logger.ts";
 
 // =====================================================
@@ -38,7 +37,7 @@ interface TestResult {
 
 const SCRIPT_DIR = import.meta.dir;
 const PROJECT_ROOT = resolve(SCRIPT_DIR, "../..");
-const STACK_DIR = process.argv[2] ?? "stacks/primary";
+const STACK_DIR = Bun.argv[2] ?? "stacks/primary";
 const STACK_PATH = join(PROJECT_ROOT, STACK_DIR);
 
 // Test result tracker
@@ -701,14 +700,14 @@ async function main(): Promise<void> {
   }
 
   // Validate stack directory
-  if (!existsSync(STACK_PATH)) {
+  if (!(await Bun.file(STACK_PATH).exists())) {
     error(`Stack directory not found: ${STACK_PATH}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composePath = join(STACK_PATH, "compose.yml");
-  if (!existsSync(composePath)) {
+  if (!(await Bun.file(composePath).exists())) {
     error(`compose.yml not found in ${STACK_PATH}`);
     process.exit(1);
   }

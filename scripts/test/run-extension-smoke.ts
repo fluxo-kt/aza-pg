@@ -9,7 +9,7 @@
 
 import { $ } from "bun";
 import { join } from "path";
-import { dockerCleanup } from "../lib/common.ts";
+import { dockerCleanup } from "../utils/docker.js";
 
 // Get script directory
 const scriptDir = import.meta.dir;
@@ -93,9 +93,9 @@ function topologicalSort(extensions: ManifestEntry[]): string[] {
  * Main test function
  */
 async function main(): Promise<void> {
-  const image = process.argv[2] ?? "aza-pg:test";
+  const image = Bun.argv[2] ?? "aza-pg:test";
   const containerName = `aza-pg-ext-smoke-${process.pid}`;
-  const postgresPassword = process.env.POSTGRES_PASSWORD ?? "postgres";
+  const postgresPassword = Bun.env.POSTGRES_PASSWORD ?? "postgres";
 
   // Cleanup function
   const cleanup = async (): Promise<void> => {

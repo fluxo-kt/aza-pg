@@ -318,6 +318,35 @@ curl -I https://github.com/pgvector/pgvector/commit/a1ecca1cc67b9f952e43a5d29e0c
 
 If 404, update SHA in `scripts/extensions/manifest-data.ts` and regenerate.
 
+**Base image SHA validation failed:**
+
+The Dockerfile pins the PostgreSQL base image to a specific SHA for reproducibility. If the SHA becomes stale or invalid:
+
+```bash
+# Check current base image SHA
+bun run check:base-image
+
+# Get latest SHA from Docker Hub
+docker pull postgres:18-trixie
+docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
+
+# Update PG_BASE_IMAGE_SHA in docker/postgres/Dockerfile
+# Example: sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+```
+
+**Why pin base image SHA:**
+
+- Ensures reproducible builds
+- Prevents unexpected base image changes
+- Security: explicit opt-in for base image updates
+- Validates SHA exists before building
+
+**When to update:**
+
+- Monthly security patches from PostgreSQL upstream
+- After verifying new base image in staging
+- When validation script reports staleness
+
 ### Performance Issues
 
 **Slow first build:**

@@ -11,7 +11,7 @@
  *   ./wait-for-postgres.ts localhost 5432 postgres 120  # 2 minute timeout
  */
 
-import { checkCommand, waitForPostgres } from "../lib/common.ts";
+import { checkCommand, waitForPostgres } from "../utils/docker.js";
 
 /**
  * Parse CLI arguments and environment variables
@@ -24,11 +24,11 @@ interface ParsedArgs {
 }
 
 function parseArgs(): ParsedArgs {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
 
-  const host = args[0] ?? process.env.PGHOST ?? "localhost";
-  const portStr = args[1] ?? process.env.PGPORT ?? "5432";
-  const user = args[2] ?? process.env.PGUSER ?? "postgres";
+  const host = args[0] ?? Bun.env.PGHOST ?? "localhost";
+  const portStr = args[1] ?? Bun.env.PGPORT ?? "5432";
+  const user = args[2] ?? Bun.env.PGUSER ?? "postgres";
   const timeoutStr = args[3] ?? "60";
 
   // Parse port

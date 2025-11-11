@@ -105,9 +105,9 @@ WARNINGS:
  * Parse command line arguments
  */
 function parseArgs(): PromoteConfig {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
   const config: PromoteConfig = {
-    containerName: process.env.POSTGRES_CONTAINER_NAME || "postgres-replica",
+    containerName: Bun.env.POSTGRES_CONTAINER_NAME || "postgres-replica",
     dataDir: "/var/lib/postgresql/data",
     createBackup: true,
     skipConfirmation: false,

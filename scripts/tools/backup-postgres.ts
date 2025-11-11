@@ -12,7 +12,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, waitForPostgres } from "../lib/common.ts";
+import { checkCommand, waitForPostgres } from "../utils/docker.js";
 import { info, success, error } from "../utils/logger.ts";
 import { dirname } from "path";
 
@@ -58,7 +58,7 @@ async function checkRequiredCommands(): Promise<void> {
  * Parse configuration from arguments and environment
  */
 function parseConfig(): BackupConfig {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
   const database = args[0] || "postgres";
 
   // Generate default output filename with timestamp
@@ -68,10 +68,10 @@ function parseConfig(): BackupConfig {
     .replace(/\.\d{3}Z$/, "");
   const outputFile = args[1] || `backup_${database}_${timestamp}.sql.gz`;
 
-  const pgHost = process.env.PGHOST || "localhost";
-  const pgPort = Number.parseInt(process.env.PGPORT || "5432", 10);
-  const pgUser = process.env.PGUSER || "postgres";
-  const pgPassword = process.env.PGPASSWORD;
+  const pgHost = Bun.env.PGHOST || "localhost";
+  const pgPort = Number.parseInt(Bun.env.PGPORT || "5432", 10);
+  const pgUser = Bun.env.PGUSER || "postgres";
+  const pgPassword = Bun.env.PGPASSWORD;
 
   return {
     database,

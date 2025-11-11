@@ -49,7 +49,7 @@ async function startContainer(): Promise<void> {
       await $`docker exec ${CONTAINER_NAME} pg_isready -U postgres`.quiet();
       break;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       retries--;
     }
   }
@@ -86,7 +86,7 @@ async function testExtension(
               error.includes("No such file or directory") ||
               error.includes("Connection refused"))
           ) {
-            await new Promise((resolve) => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            await Bun.sleep(2000 * attempt); // Exponential backoff
             continue;
           }
           return { success: false, error };
@@ -107,7 +107,7 @@ async function testExtension(
               error.includes("No such file or directory") ||
               error.includes("Connection refused"))
           ) {
-            await new Promise((resolve) => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            await Bun.sleep(2000 * attempt); // Exponential backoff
             continue;
           }
           return { success: false, error };
@@ -125,7 +125,7 @@ async function testExtension(
           errorStr.includes("No such file or directory") ||
           errorStr.includes("Connection refused"))
       ) {
-        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+        await Bun.sleep(2000 * attempt); // Exponential backoff
         continue;
       }
       return { success: false, error: errorStr };

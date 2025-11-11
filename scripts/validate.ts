@@ -207,6 +207,14 @@ async function validate(
       required: true,
     },
     {
+      name: "Base Image SHA",
+      command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
+      description: "Base image SHA validation (warn if stale)",
+      required: false,
+      requiresDocker: true,
+      envOverride: "ALLOW_MISSING_DOCKER",
+    },
+    {
       name: "Smoke Tests",
       command: ["bun", "scripts/test-smoke.ts"],
       description: "Quick smoke tests (YAML lint, script refs, generated data)",

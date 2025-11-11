@@ -59,7 +59,7 @@ export class ContainerManager {
         // Container might not exist yet, continue waiting
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       retries--;
     }
 

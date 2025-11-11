@@ -9,10 +9,9 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
-import { existsSync } from "fs";
 
 /**
  * Service health status from Docker Compose
@@ -38,10 +37,10 @@ function generateTestCredentials(): TestCredentials {
   const pid = process.pid;
 
   return {
-    pgbouncerPassword: process.env.TEST_PGBOUNCER_PASSWORD ?? `test_pgbouncer_${timestamp}_${pid}`,
-    postgresPassword: process.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${timestamp}_${pid}`,
+    pgbouncerPassword: Bun.env.TEST_PGBOUNCER_PASSWORD ?? `test_pgbouncer_${timestamp}_${pid}`,
+    postgresPassword: Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${timestamp}_${pid}`,
     replicationPassword:
-      process.env.TEST_REPLICATION_PASSWORD ?? `test_replication_${timestamp}_${pid}`,
+      Bun.env.TEST_REPLICATION_PASSWORD ?? `test_replication_${timestamp}_${pid}`,
   };
 }
 
@@ -302,7 +301,7 @@ async function cleanup(stackPath: string): Promise<void> {
   }
 
   const envFile = join(stackPath, ".env.test");
-  if (existsSync(envFile)) {
+  if (await Bun.file(envFile).exists()) {
     await $`rm -f ${envFile}`.quiet();
   }
 
@@ -353,19 +352,19 @@ async function main(): Promise<void> {
   }
 
   // Get stack directory from command line or use default
-  const stackDir = process.argv[2] ?? "stacks/primary";
+  const stackDir = Bun.argv[2] ?? "stacks/primary";
   const scriptDir = import.meta.dir;
   const projectRoot = resolve(scriptDir, "../..");
   const stackPath = join(projectRoot, stackDir);
 
-  if (!existsSync(stackPath)) {
+  if (!(await Bun.file(stackPath).exists())) {
     error(`Stack directory not found: ${stackPath}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composeFile = join(stackPath, "compose.yml");
-  if (!existsSync(composeFile)) {
+  if (!(await Bun.file(composeFile).exists())) {
     error(`compose.yml not found in ${stackPath}`);
     process.exit(1);
   }

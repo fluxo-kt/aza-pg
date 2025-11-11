@@ -1,6 +1,10 @@
 /**
  * Docker utility functions for test scripts
- * TypeScript equivalent of scripts/lib/common.sh Docker functions
+ * Consolidated from scripts/lib/common.ts and scripts/utils/docker.ts
+ *
+ * This module provides both boolean-returning and exception-throwing variants:
+ * - Boolean variants: Useful for conditional logic, return true/false
+ * - Throwing variants: Useful for prerequisite checks, throw descriptive errors
  */
 import { getErrorMessage } from "./errors.js";
 
@@ -9,8 +13,9 @@ import { error, info, success } from "./logger.js";
 
 /**
  * Check if Docker daemon is running
+ * @returns true if Docker daemon is accessible, false otherwise
  */
-export async function checkDockerDaemon(): Promise<boolean> {
+export async function isDockerDaemonRunning(): Promise<boolean> {
   try {
     const proc = spawn(["docker", "info"], {
       stdout: "ignore",
@@ -24,9 +29,26 @@ export async function checkDockerDaemon(): Promise<boolean> {
 }
 
 /**
- * Check if a command exists
+ * Check if Docker daemon is running (throws on failure)
+ * @throws Error if Docker daemon is not running
  */
-export async function checkCommand(cmd: string): Promise<boolean> {
+export async function checkDockerDaemon(): Promise<void> {
+  const isRunning = await isDockerDaemonRunning();
+  if (!isRunning) {
+    throw new Error("Docker daemon is not running");
+  }
+}
+
+/**
+ * Check if a command exists in PATH
+ * @param cmd - Command name to check
+ * @returns true if command exists, false otherwise
+ */
+export async function hasCommand(cmd: string): Promise<boolean> {
+  if (!cmd || cmd.trim() === "") {
+    return false;
+  }
+
   try {
     const proc = spawn(["which", cmd], {
       stdout: "ignore",
@@ -40,34 +62,89 @@ export async function checkCommand(cmd: string): Promise<boolean> {
 }
 
 /**
- * Clean up Docker container by name
+ * Check if a command exists in PATH (throws on failure)
+ * @param cmd - Command name to check
+ * @throws Error if command name is empty or command not found
+ */
+export async function checkCommand(cmd: string): Promise<void> {
+  if (!cmd || cmd.trim() === "") {
+    throw new Error("checkCommand: command name is required");
+  }
+
+  const exists = await hasCommand(cmd);
+  if (!exists) {
+    throw new Error(`Required command not found: ${cmd}`);
+  }
+}
+
+/**
+ * Remove a Docker container by name
+ * Suppresses errors if the container doesn't exist
+ * @param containerName - Name of the container to remove
+ * @throws Error if container name is empty
  */
 export async function dockerCleanup(containerName: string): Promise<void> {
+  if (!containerName || containerName.trim() === "") {
+    throw new Error("dockerCleanup: container name is required");
+  }
+
   try {
-    spawn(["docker", "rm", "-f", containerName], {
+    const proc = spawn(["docker", "rm", "-f", containerName], {
       stdout: "ignore",
       stderr: "ignore",
     });
+    await proc.exited;
   } catch {
     // Ignore errors (container might not exist)
   }
 }
 
 /**
- * Wait for PostgreSQL to be ready
- * @param host - PostgreSQL host
- * @param port - PostgreSQL port
- * @param user - PostgreSQL user
- * @param timeout - Timeout in seconds
- * @param container - Optional container name to check from inside container
+ * Options for waiting for PostgreSQL to be ready
  */
-export async function waitForPostgres(
-  host: string = "localhost",
-  port: number = 5432,
-  user: string = "postgres",
-  timeout: number = 60,
-  container?: string
-): Promise<boolean> {
+export interface WaitForPostgresOptions {
+  /** PostgreSQL host (default: localhost) */
+  host?: string;
+  /** PostgreSQL port (default: 5432) */
+  port?: number;
+  /** PostgreSQL user (default: postgres) */
+  user?: string;
+  /** Timeout in seconds (default: 60) */
+  timeout?: number;
+  /** Docker container name (if checking from inside container) */
+  container?: string;
+}
+
+/**
+ * Wait for PostgreSQL to be ready
+ * If container is provided, runs pg_isready inside container (for Docker tests)
+ *
+ * @param options - Configuration options
+ * @returns true if PostgreSQL becomes ready, false if timeout reached
+ * @throws Error if invalid parameters provided
+ */
+export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<boolean> {
+  const host = options.host ?? "localhost";
+  const port = options.port ?? 5432;
+  const user = options.user ?? "postgres";
+  const timeout = options.timeout ?? 60;
+  const container = options.container;
+
+  // Validate timeout is a positive integer
+  if (!Number.isInteger(timeout) || timeout < 0) {
+    throw new Error(`Invalid timeout value: ${timeout} (must be a positive integer)`);
+  }
+
+  // Validate port is a number
+  if (!Number.isInteger(port)) {
+    throw new Error(`Invalid port value: ${port} (must be a number between 1-65535)`);
+  }
+
+  // Validate port range
+  if (port < 1 || port > 65535) {
+    throw new Error(`Port out of range: ${port} (must be between 1-65535)`);
+  }
+
   info(`Waiting for PostgreSQL at ${host}:${port} (user: ${user}, timeout: ${timeout}s)...`);
 
   const startTime = Date.now();
@@ -76,7 +153,7 @@ export async function waitForPostgres(
   while (Date.now() - startTime < timeoutMs) {
     try {
       let proc;
-      if (container) {
+      if (container && container.trim() !== "") {
         // Check from inside container
         proc = spawn(["docker", "exec", container, "pg_isready", "-U", user], {
           stdout: "ignore",

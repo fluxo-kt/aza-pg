@@ -4,7 +4,6 @@
  * Validates extensions.manifest.json against expected counts, consistency rules, and cross-references
  */
 
-import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { validateManifest } from "./manifest-schema.ts";
 import * as logger from "../utils/logger.js";
@@ -59,11 +58,12 @@ function warn(msg: string): void {
   warnings.push(msg);
 }
 
-function readManifest(): Manifest {
-  if (!existsSync(MANIFEST_PATH)) {
+async function readManifest(): Promise<Manifest> {
+  const file = Bun.file(MANIFEST_PATH);
+  if (!(await file.exists())) {
     throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
   }
-  const content = readFileSync(MANIFEST_PATH, "utf-8");
+  const content = await file.text();
   const rawData = JSON.parse(content);
 
   // Runtime validation with ArkType
@@ -78,11 +78,12 @@ function readManifest(): Manifest {
   return rawData;
 }
 
-function readFile(path: string): string {
-  if (!existsSync(path)) {
+async function readFile(path: string): Promise<string> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
     throw new Error(`File not found: ${path}`);
   }
-  return readFileSync(path, "utf-8");
+  return await file.text();
 }
 
 // 1. Count validation
@@ -120,12 +121,12 @@ function validateCounts(manifest: Manifest): void {
 }
 
 // 2. defaultEnable consistency
-function validateDefaultEnable(manifest: Manifest): void {
+async function validateDefaultEnable(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
   logger.info("[DEFAULT ENABLE VALIDATION]");
 
   // Parse 01-extensions.sql for baseline extensions
-  const initSql = readFile(INIT_SQL_PATH);
+  const initSql = await readFile(INIT_SQL_PATH);
   const baselineExtensions = new Set<string>();
 
   // Match CREATE EXTENSION lines (handles both quoted and unquoted names)
@@ -143,7 +144,7 @@ function validateDefaultEnable(manifest: Manifest): void {
   );
 
   // Parse docker-auto-config-entrypoint.sh for DEFAULT_SHARED_PRELOAD_LIBRARIES
-  const entrypoint = readFile(ENTRYPOINT_PATH);
+  const entrypoint = await readFile(ENTRYPOINT_PATH);
   const preloadMatch = entrypoint.match(/DEFAULT_SHARED_PRELOAD_LIBRARIES="([^"]+)"/);
   const preloadLibraries = new Set<string>();
 
@@ -175,11 +176,11 @@ function validateDefaultEnable(manifest: Manifest): void {
 }
 
 // 3. PGDG consistency
-function validatePgdgConsistency(manifest: Manifest): void {
+async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
   logger.info("[PGDG CONSISTENCY VALIDATION]");
 
-  const dockerfile = readFile(DOCKERFILE_PATH);
+  const dockerfile = await readFile(DOCKERFILE_PATH);
   const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
 
   // Extract PGDG package names from Dockerfile ARG declarations
@@ -238,7 +239,7 @@ function getDockerfileArgName(extensionName: string): string {
 }
 
 // 4. Runtime spec completeness
-function validateRuntimeSpec(manifest: Manifest): void {
+async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
   logger.info("[RUNTIME SPEC VALIDATION]");
 
@@ -278,13 +279,13 @@ async function main(): Promise<void> {
   logger.separator();
 
   try {
-    const manifest = readManifest();
+    const manifest = await readManifest();
 
     // Run all validations
     validateCounts(manifest);
-    validateDefaultEnable(manifest);
-    validatePgdgConsistency(manifest);
-    validateRuntimeSpec(manifest);
+    await validateDefaultEnable(manifest);
+    await validatePgdgConsistency(manifest);
+    await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
 
     // Print results

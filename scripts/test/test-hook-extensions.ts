@@ -14,12 +14,17 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  waitForPostgres,
+} from "../utils/docker.js";
 import { error } from "../utils/logger.ts";
 
 // Generate random test password at runtime
 const TEST_POSTGRES_PASSWORD =
-  process.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
+  Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
 
 /**
  * Assert SQL command succeeds
@@ -446,7 +451,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const imageTag = process.argv[2] ?? "aza-pg:pg18";
+  const imageTag = Bun.argv[2] ?? "aza-pg:pg18";
 
   // Check if image exists
   try {

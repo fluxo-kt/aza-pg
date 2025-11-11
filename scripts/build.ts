@@ -37,8 +37,8 @@ interface BuildConfig {
 function parseArgs(): BuildConfig {
   const config: BuildConfig = {
     builderName: "aza-pg-builder",
-    imageName: process.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg",
-    imageTag: process.env.POSTGRES_TAG || "pg18",
+    imageName: Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg",
+    imageTag: Bun.env.POSTGRES_TAG || "pg18",
     cacheRegistry: "ghcr.io/fluxo-kt/aza-pg",
     cacheTag: "buildcache",
     multiArch: false,
@@ -46,7 +46,7 @@ function parseArgs(): BuildConfig {
     load: true,
   };
 
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
 
   for (const arg of args) {
     switch (arg) {
@@ -106,6 +106,43 @@ async function validateManifest(): Promise<void> {
     }
   } catch {
     console.error("ERROR: Manifest validation failed");
+    process.exit(1);
+  }
+  console.log("");
+}
+
+// Check Dockerfile with hadolint
+async function checkHadolint(): Promise<void> {
+  console.log("Checking Dockerfile with hadolint...");
+
+  // Check if hadolint is available
+  try {
+    await $`which hadolint`.quiet();
+  } catch {
+    console.log("WARNING: hadolint not found, skipping Dockerfile lint");
+    console.log("Install hadolint for Dockerfile validation:");
+    console.log("  brew install hadolint  (macOS)");
+    console.log("  or visit: https://github.com/hadolint/hadolint");
+    console.log("");
+    return;
+  }
+
+  // Run hadolint on the Dockerfile
+  try {
+    const result = await $`hadolint docker/postgres/Dockerfile`.quiet();
+    if (result.exitCode !== 0) {
+      console.error("ERROR: hadolint found issues in Dockerfile");
+      console.error("");
+      // Show the actual hadolint output
+      const output = await $`hadolint docker/postgres/Dockerfile`.text();
+      console.error(output);
+      console.error("Fix the Dockerfile issues before building");
+      process.exit(1);
+    }
+    console.log("Dockerfile passed hadolint validation");
+  } catch (err) {
+    console.error("ERROR: hadolint validation failed");
+    console.error(String(err));
     process.exit(1);
   }
   console.log("");
@@ -281,6 +318,7 @@ async function main(): Promise<void> {
   const config = parseArgs();
 
   await validateManifest();
+  await checkHadolint();
   await checkDockerLogin(config);
   await setupBuilder(config.builderName);
   await buildImage(config);

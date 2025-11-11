@@ -19,6 +19,7 @@
     "generate": "bun scripts/config-generator/generator.ts && bun scripts/generate-docs-data.ts",
     "check:docs": "bun scripts/check-docs-consistency.ts",
     "check:manifest": "bun scripts/validate-manifest.ts",
+    "check:base-image": "bun scripts/validate-base-image-sha.ts",
     "check:size": "bun scripts/check-size-regression.ts",
     "check:shell": "shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh",
     "check:yaml": "docker run --rm -v \"$(pwd):/work:ro\" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts",

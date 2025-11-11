@@ -18,8 +18,7 @@
  */
 
 import { $ } from "bun";
-import { join } from "node:path";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "path";
 
 // ────────────────────────────────────────────────────────────────────────────
 // CRITICAL: PGDG EXTENSION BEHAVIOR
@@ -97,10 +96,10 @@ const CARGO_PGRX_INIT = new Map<string, boolean>();
 const DISABLED_EXTENSIONS: string[] = [];
 
 // Environment configuration
-const MANIFEST_PATH = process.argv[2];
-const BUILD_ROOT = process.argv[3] || "/tmp/extensions-build";
-const PG_MAJOR = process.env.PG_MAJOR || "18";
-const PG_CONFIG_BIN = process.env.PG_CONFIG || `/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config`;
+const MANIFEST_PATH = Bun.argv[2];
+const BUILD_ROOT = Bun.argv[3] || "/tmp/extensions-build";
+const PG_MAJOR = Bun.env.PG_MAJOR || "18";
+const PG_CONFIG_BIN = Bun.env.PG_CONFIG || `/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config`;
 const NPROC = await $`nproc`.text().then((s) => s.trim());
 
 // Update PATH and cargo environment

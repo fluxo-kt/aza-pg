@@ -14,7 +14,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { join } from "path";
 
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
 
   // Generate random test password
   const testPostgresPassword =
-    process.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
+    Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
   const envTestPath = join(singleStackPath, ".env.test");
 
   // Cleanup function

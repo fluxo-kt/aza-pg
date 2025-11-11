@@ -54,7 +54,7 @@ describe("Negative Scenarios - Invalid Memory Settings", () => {
     // Container should start but entrypoint should log error
     // We check the logs for error message
     if (result.exitCode === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await Bun.sleep(2000);
       const logs = await $`docker logs ${TEST_CONTAINER_PREFIX}-primary-1`.nothrow();
       expect(logs.stdout.toString() + logs.stderr.toString()).toMatch(/invalid|error|warning/i);
     }
@@ -71,7 +71,7 @@ describe("Negative Scenarios - Missing Required Environment Variables", () => {
 
     // Should fail or container should exit quickly
     if (result.exitCode === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await Bun.sleep(3000);
       const inspect =
         await $`docker inspect ${TEST_CONTAINER_PREFIX}-primary-1 --format='{{.State.Running}}'`.nothrow();
       const isRunning = inspect.stdout.toString().trim() === "true";
@@ -91,7 +91,7 @@ describe("Negative Scenarios - Missing Required Environment Variables", () => {
 
     // Should fail or exit quickly due to missing auth
     if (result.exitCode === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await Bun.sleep(3000);
       const inspect =
         await $`docker inspect ${TEST_CONTAINER_PREFIX}-pgbouncer-1 --format='{{.State.Running}}'`.nothrow();
       const isRunning = inspect.stdout.toString().trim() === "true";
@@ -125,7 +125,7 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
     }
 
     // Wait for database to be ready
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await Bun.sleep(5000);
 
     // Try to create a non-existent extension
     const result = await $`docker exec ${TEST_CONTAINER_PREFIX}-primary-1 \
@@ -152,7 +152,7 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
     }
 
     // Wait for database to be ready
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await Bun.sleep(5000);
 
     // Try to create an extension that doesn't exist
     const result = await $`docker exec ${TEST_CONTAINER_PREFIX}-primary-1 \
@@ -180,7 +180,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
       return;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await Bun.sleep(5000);
 
     // Try to inject invalid configuration
     const configResult = await $`docker exec ${TEST_CONTAINER_PREFIX}-primary-1 \
@@ -222,7 +222,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
       return;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 8000));
+    await Bun.sleep(8000);
 
     // Check if container is still running
     const inspect =
@@ -262,7 +262,7 @@ describe("Negative Scenarios - Resource Constraints", () => {
       return;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await Bun.sleep(5000);
 
     // Container should start but may have warnings
     const logs = await $`docker logs ${TEST_CONTAINER_PREFIX}-primary-1 2>&1`.nothrow();
@@ -291,7 +291,7 @@ describe("Negative Scenarios - Network Configuration", () => {
       return;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await Bun.sleep(5000);
 
     // Check container status and logs
     const inspect =

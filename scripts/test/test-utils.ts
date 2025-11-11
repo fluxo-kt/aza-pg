@@ -120,7 +120,7 @@ export async function waitForDatabase(
     }
 
     // Wait 1 second before retrying
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await Bun.sleep(1000);
   }
 
   logger.error(`Database not ready after ${maxRetries} attempts`);

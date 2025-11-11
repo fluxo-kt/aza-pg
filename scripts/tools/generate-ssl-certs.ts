@@ -40,7 +40,7 @@ function parseArgs(): CertConfig | null {
     return null;
   }
 
-  const hostname = process.env.POSTGRES_HOSTNAME || "postgres.local";
+  const hostname = Bun.env.POSTGRES_HOSTNAME || "postgres.local";
 
   return {
     certDir,

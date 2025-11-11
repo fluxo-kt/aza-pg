@@ -48,7 +48,7 @@ async function startContainer(): Promise<void> {
       await $`docker exec ${CONTAINER_NAME} pg_isready -U postgres`.quiet();
       break;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       retries--;
     }
   }

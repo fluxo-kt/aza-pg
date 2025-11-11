@@ -15,7 +15,7 @@
 
 import { $ } from "bun";
 import { resolve } from "path";
-import { checkCommand, checkDockerDaemon } from "../lib/common.ts";
+import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
 import { error, info, success, warning } from "../utils/logger.ts";
 
 /**
@@ -49,11 +49,10 @@ function generateTestPasswords(): Pick<
   const pid = process.pid;
 
   return {
-    testPostgresPassword: process.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${timestamp}_${pid}`,
-    testPgBouncerPassword:
-      process.env.TEST_PGBOUNCER_PASSWORD ?? `test_pgbouncer_${timestamp}_${pid}`,
+    testPostgresPassword: Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${timestamp}_${pid}`,
+    testPgBouncerPassword: Bun.env.TEST_PGBOUNCER_PASSWORD ?? `test_pgbouncer_${timestamp}_${pid}`,
     testReplicationPassword:
-      process.env.TEST_REPLICATION_PASSWORD ?? `test_replication_${timestamp}_${pid}`,
+      Bun.env.TEST_REPLICATION_PASSWORD ?? `test_replication_${timestamp}_${pid}`,
   };
 }
 

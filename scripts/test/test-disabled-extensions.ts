@@ -16,7 +16,12 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  waitForPostgres,
+} from "../utils/docker.js";
 import { error, info, success } from "../utils/logger.ts";
 
 interface ManifestEntry {
@@ -40,10 +45,10 @@ const testsTotal = 5;
 
 // Generate random test password at runtime
 const TEST_POSTGRES_PASSWORD =
-  process.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
+  Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
 
 // Get image tag from command line args or use default
-const IMAGE_TAG = process.argv[2] ?? "aza-pg:pg18";
+const IMAGE_TAG = Bun.argv[2] ?? "aza-pg:pg18";
 
 // Paths
 const MANIFEST_PATH = `${import.meta.dir}/../../docker/postgres/extensions.manifest.json`;

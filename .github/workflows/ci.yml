@@ -58,16 +58,23 @@ jobs:
         run: |
           bun scripts/extensions/generate-manifest.ts
           if ! git diff --exit-code docker/postgres/extensions.manifest.json; then
-            echo "::error::extensions.manifest.json is out of date. Run 'bun scripts/extensions/generate-manifest.ts' and commit changes."
+            echo "::error::extensions.manifest.json is out of date." && \
+            echo "Run: bun scripts/extensions/generate-manifest.ts"
             exit 1
           fi
 
       - name: Verify generated files are up to date
         run: |
           bun run generate
-          if ! git diff --exit-code docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql docs/.generated/docs-data.json; then
+          if ! git diff --exit-code docker/postgres/configs/ \
+            stacks/primary/configs/ stacks/replica/configs/ \
+            stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql \
+            docs/.generated/docs-data.json; then
             echo "::error::Generated files are out of date. Run 'bun run generate' and commit changes."
-            git diff docker/postgres/configs/ stacks/primary/configs/ stacks/replica/configs/ stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql docs/.generated/docs-data.json
+            git diff docker/postgres/configs/ stacks/primary/configs/ \
+            stacks/replica/configs/ stacks/single/configs/ \
+            docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql \
+            docs/.generated/docs-data.json
             exit 1
           fi
 
@@ -77,7 +84,8 @@ jobs:
 
           # Check for required files
           test -f docker/postgres/Dockerfile || { echo "::error::Missing docker/postgres/Dockerfile"; exit 1; }
-          test -f docker/postgres/extensions.manifest.json || { echo "::error::Missing extensions.manifest.json"; exit 1; }
+          test -f docker/postgres/extensions.manifest.json || \
+            { echo "::error::Missing extensions.manifest.json"; exit 1; }
           test -f package.json || { echo "::error::Missing package.json"; exit 1; }
 
           # Verify key directories exist

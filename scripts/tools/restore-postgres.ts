@@ -11,7 +11,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, waitForPostgres } from "../lib/common.ts";
+import { checkCommand, waitForPostgres } from "../utils/docker.js";
 import { info, success, error } from "../utils/logger.ts";
 
 interface RestoreConfig {
@@ -56,7 +56,7 @@ async function checkRequiredCommands(): Promise<void> {
  * Show usage information
  */
 function showUsage(): void {
-  const scriptName = process.argv[1];
+  const scriptName = Bun.argv[1];
   error("Backup file argument required");
   process.stdout.write("\n");
   process.stdout.write(`Usage: ${scriptName} <backup-file> [database]\n`);
@@ -78,7 +78,7 @@ function showUsage(): void {
  * Parse configuration from arguments and environment
  */
 function parseConfig(): RestoreConfig {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
 
   // Guard: Check backup file argument
   if (args.length === 0 || !args[0]) {
@@ -88,10 +88,10 @@ function parseConfig(): RestoreConfig {
   const backupFile = args[0] as string;
   const database = args[1] || "postgres";
 
-  const pgHost = process.env.PGHOST || "localhost";
-  const pgPort = Number.parseInt(process.env.PGPORT || "5432", 10);
-  const pgUser = process.env.PGUSER || "postgres";
-  const pgPassword = process.env.PGPASSWORD;
+  const pgHost = Bun.env.PGHOST || "localhost";
+  const pgPort = Number.parseInt(Bun.env.PGPORT || "5432", 10);
+  const pgUser = Bun.env.PGUSER || "postgres";
+  const pgPassword = Bun.env.PGPASSWORD;
 
   return {
     backupFile,

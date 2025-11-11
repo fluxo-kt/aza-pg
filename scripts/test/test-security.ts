@@ -57,7 +57,7 @@ async function startContainer() {
       console.log("Database is ready");
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await Bun.sleep(1000);
   }
 
   throw new Error("Database did not become ready in time");

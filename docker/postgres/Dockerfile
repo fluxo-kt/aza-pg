@@ -1,7 +1,7 @@
 # PostgreSQL 18 with comprehensive extension suite
 
 ARG PG_VERSION=18
-ARG PG_BASE_IMAGE_SHA=sha256:5d1822a7565aecbf17323dd54754ab8b832963e62b9512f465c2f155db9262dd
+ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
 
 # Build metadata for OCI labels
 ARG BUILD_DATE
@@ -125,12 +125,7 @@ RUN set -eu && \
     rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
-# Generate version-info.txt and version-info.json (small Bun stage, not included in final image)
-FROM oven/bun:1.1.38-alpine AS version-info-generator
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
-RUN bun run /tmp/generate-version-info.ts txt > /tmp/version-info.txt
-RUN bun run /tmp/generate-version-info.ts json > /tmp/version-info.json
+# Version info will be generated in final stage where PostgreSQL is available
 
 ARG PG_VERSION
 ARG PG_BASE_IMAGE_SHA
@@ -238,8 +233,71 @@ COPY --from=builder-cargo /opt/ext-out/ /
 RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
-COPY --from=version-info-generator /tmp/version-info.txt /etc/postgresql/version-info.txt
-COPY --from=version-info-generator /tmp/version-info.json /etc/postgresql/version-info.json
+
+# Generate version-info files in final stage with actual PostgreSQL version
+RUN set -ex; \
+    apt-get update && apt-get install -y --no-install-recommends jq && \
+    \
+    # Extract actual PostgreSQL version
+    PG_VERSION=$(psql --version | grep -oP '\d+\.\d+' | head -1); \
+    BUILD_DATE=$(date -u '+%Y-%m-%d'); \
+    BUILD_TS=$(date -u '+%Y%m%d%H%M'); \
+    MANIFEST="/etc/postgresql/extensions.manifest.json"; \
+    \
+    # Count extensions
+    TOTAL=$(jq '.entries | length' "$MANIFEST"); \
+    ENABLED=$(jq '[.entries[] | select(.enabled // true)] | length' "$MANIFEST"); \
+    DISABLED=$(jq '[.entries[] | select(.enabled // true | not)] | length' "$MANIFEST"); \
+    PRELOADED=$(jq '[.entries[] | select((.enabled // true) and .runtime.sharedPreload)] | length' "$MANIFEST"); \
+    \
+    # Generate version-info.txt (human-readable)
+    cat > /etc/postgresql/version-info.txt <<EOF
+===============================================================================
+aza-pg - PostgreSQL ${PG_VERSION%.*} with Extensions
+===============================================================================
+
+Build Date: ${BUILD_DATE}
+PostgreSQL Version: ${PG_VERSION}
+
+SUMMARY
+  Total Catalog: ${TOTAL}
+  Enabled: ${ENABLED}
+  Disabled: ${DISABLED}
+  Preloaded: ${PRELOADED}
+
+===============================================================================
+Use CREATE EXTENSION <name>; to enable available extensions
+View manifest: cat /etc/postgresql/extensions.manifest.json
+Documentation: https://github.com/fluxo-kt/aza-pg
+===============================================================================
+EOF
+    \
+    # Generate version-info.json (machine-readable)
+    jq -n \
+      --arg pg_version "$PG_VERSION" \
+      --arg build_ts "$BUILD_TS" \
+      --arg build_date "$BUILD_DATE" \
+      --argjson total "$TOTAL" \
+      --argjson enabled "$ENABLED" \
+      --argjson disabled "$DISABLED" \
+      --argjson preloaded "$PRELOADED" \
+      '{
+        postgres_version: $pg_version,
+        build_timestamp: $build_ts,
+        build_date: $build_date,
+        build_type: "single-node",
+        extensions: {
+          total: $total,
+          enabled: $enabled,
+          disabled: $disabled,
+          preloaded: $preloaded
+        }
+      }' > /etc/postgresql/version-info.json && \
+    \
+    # Remove jq (only needed for generation)
+    apt-get purge -y jq && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 

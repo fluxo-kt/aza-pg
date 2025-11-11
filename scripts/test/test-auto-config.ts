@@ -9,7 +9,12 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../lib/common.ts";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  waitForPostgres,
+} from "../utils/docker.js";
 import { error, warning } from "../utils/logger.ts";
 
 /**
@@ -320,7 +325,7 @@ async function main(): Promise<void> {
 
   // Generate random test password at runtime
   const testPassword =
-    process.env.TEST_POSTGRES_PASSWORD || `test_postgres_${Date.now()}_${process.pid}`;
+    Bun.env.TEST_POSTGRES_PASSWORD || `test_postgres_${Date.now()}_${process.pid}`;
 
   // Check if image exists
   try {

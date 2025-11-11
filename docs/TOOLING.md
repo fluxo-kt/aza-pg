@@ -346,4 +346,64 @@ Before adding ANY new dependency:
 
 ---
 
+## 🔗 Tool References & Documentation
+
+Comprehensive list of all tools used in this project with links to their documentation and source code.
+
+### Runtime & Language
+
+| Tool                                         | Repository                                        | Documentation                               | Purpose                                                                       |
+| -------------------------------------------- | ------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| [Bun](https://bun.sh)                        | [GitHub](https://github.com/oven-sh/bun)          | [Docs](https://bun.sh/docs)                 | Fast JavaScript/TypeScript runtime, bundler, test runner, and package manager |
+| [TypeScript](https://www.typescriptlang.org) | [GitHub](https://github.com/microsoft/TypeScript) | [Docs](https://www.typescriptlang.org/docs) | Type-safe JavaScript superset with strict mode                                |
+
+### Code Quality & Linting
+
+| Tool                                             | Repository                                        | Documentation                                          | Purpose                                                                  |
+| ------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| [Oxlint](https://oxc.rs)                         | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/linter)         | Rust-based fast linter (50-100x faster than ESLint)                      |
+| [Prettier](https://prettier.io)                  | [GitHub](https://github.com/prettier/prettier)    | [Docs](https://prettier.io/docs/)                      | Industry-standard opinionated code formatter                             |
+| [Oxfmt](https://oxc.rs)                          | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/formatter.html) | Fast formatter (planned migration when stable, 45x faster than Prettier) |
+| [shellcheck](https://www.shellcheck.net)         | [GitHub](https://github.com/koalaman/shellcheck)  | [Wiki](https://github.com/koalaman/shellcheck/wiki)    | Static analysis tool for shell scripts                                   |
+| [hadolint](https://hadolint.github.io/hadolint/) | [GitHub](https://github.com/hadolint/hadolint)    | [Docs](https://hadolint.github.io/hadolint/)           | Dockerfile linter with best practices validation                         |
+| [yamllint](https://yamllint.readthedocs.io)      | [GitHub](https://github.com/adrienverge/yamllint) | [Docs](https://yamllint.readthedocs.io)                | YAML linter for syntax and cosmetic checking                             |
+
+### Validation & Schema
+
+| Tool                          | Repository                                     | Documentation                   | Purpose                                                                     |
+| ----------------------------- | ---------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| [ArkType](https://arktype.io) | [GitHub](https://github.com/arktypeio/arktype) | [Docs](https://arktype.io/docs) | TypeScript 1:1 validator optimized from editor to runtime (faster than Zod) |
+
+### Git Hooks
+
+| Tool                                                       | Repository                                          | Documentation                                              | Purpose                                              |
+| ---------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------- |
+| [bun-git-hooks](https://github.com/stacksjs/bun-git-hooks) | [GitHub](https://github.com/stacksjs/bun-git-hooks) | [README](https://github.com/stacksjs/bun-git-hooks#readme) | Bun-native git hooks manager (lightweight, no Husky) |
+
+### Docker & Infrastructure
+
+| Tool                                               | Repository                                       | Documentation                                                  | Purpose                                                    |
+| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| [Docker Compose](https://docs.docker.com/compose/) | [GitHub](https://github.com/docker/compose)      | [Docs](https://docs.docker.com/compose/)                       | Multi-container Docker application orchestration           |
+| [Docker Buildx](https://docs.docker.com/build/)    | [GitHub](https://github.com/docker/buildx)       | [Docs](https://docs.docker.com/build/building/multi-platform/) | Multi-platform Docker builds (amd64 + arm64)               |
+| [PostgreSQL](https://www.postgresql.org)           | [GitHub](https://github.com/postgres/postgres)   | [Docs](https://www.postgresql.org/docs/18/)                    | PostgreSQL 18 database (official postgres:18-trixie image) |
+| [PgBouncer](https://www.pgbouncer.org)             | [GitHub](https://github.com/pgbouncer/pgbouncer) | [Docs](https://www.pgbouncer.org/usage.html)                   | Lightweight PostgreSQL connection pooler                   |
+
+### Build Tools
+
+| Tool                                                      | Repository                                            | Documentation                                                                        | Purpose                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| [Rust](https://www.rust-lang.org)                         | [GitHub](https://github.com/rust-lang/rust)           | [Docs](https://doc.rust-lang.org/book/)                                              | Systems programming language for extension compilation                     |
+| [Cargo](https://doc.rust-lang.org/cargo/)                 | [GitHub](https://github.com/rust-lang/cargo)          | [Docs](https://doc.rust-lang.org/cargo/)                                             | Rust package manager and build system                                      |
+| [cargo-pgrx](https://github.com/pgcentralfoundation/pgrx) | [GitHub](https://github.com/pgcentralfoundation/pgrx) | [Docs](https://github.com/pgcentralfoundation/pgrx/blob/master/cargo-pgrx/README.md) | Build PostgreSQL extensions with Rust (pg_jsonschema, timescaledb_toolkit) |
+
+### Monitoring & Security
+
+| Tool                                                                           | Repository                                                          | Documentation                                                              | Purpose                                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------- |
+| [postgres_exporter](https://github.com/prometheus-community/postgres_exporter) | [GitHub](https://github.com/prometheus-community/postgres_exporter) | [README](https://github.com/prometheus-community/postgres_exporter#readme) | Prometheus-compatible PostgreSQL metrics exporter |
+| [Cosign](https://docs.sigstore.dev)                                            | [GitHub](https://github.com/sigstore/cosign)                        | [Docs](https://docs.sigstore.dev/cosign/signing/signing_with_containers/)  | Container signing and verification (Sigstore)     |
+
+---
+
 **Remember**: These tooling choices are intentional and performance-critical. Do not change without explicit justification and approval.

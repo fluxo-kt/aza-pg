@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-11T12:41:13.194Z",
+  "generatedAt": "2025-11-11T16:09:44.016Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -311,8 +311,11 @@
         "type": "pgxs"
       },
       "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "notes": [
+          "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
+        ]
       },
       "sourceUrl": "https://github.com/eradman/pg-safeupdate",
       "docsUrl": "https://github.com/eradman/pg-safeupdate#readme"
@@ -923,7 +926,10 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": [
+          "Requires wal_level=logical in postgresql.conf for CDC functionality."
+        ]
       },
       "sourceUrl": "https://github.com/eulerto/wal2json",
       "docsUrl": "https://github.com/eulerto/wal2json#readme"

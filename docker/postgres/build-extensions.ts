@@ -299,7 +299,6 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   }
 
   const features = entry.build?.features || [];
-  const featuresFlag = features.length > 0 ? `--features ${features.join(",")}` : "";
   const noDefaultFeatures = entry.build?.noDefaultFeatures ? "--no-default-features" : "";
 
   log(`cargo pgrx ${version} install (${features.join(",") || "default"}) in ${dir}`);
@@ -307,11 +306,28 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
   const cwd = dir;
 
-  await $`cd ${cwd} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${featuresFlag} ${noDefaultFeatures}`.env(
-    {
-      PATH: pathEnv,
-    }
-  );
+  // Build command args array to ensure proper argument separation for Bun's $
+  const args = [
+    "cd",
+    cwd,
+    "&&",
+    "cargo",
+    "pgrx",
+    "install",
+    "--release",
+    "--pg-config",
+    PG_CONFIG_BIN,
+  ];
+  if (features.length > 0) {
+    args.push("--features", features.join(","));
+  }
+  if (noDefaultFeatures) {
+    args.push(noDefaultFeatures);
+  }
+
+  await $`${args}`.env({
+    PATH: pathEnv,
+  });
 }
 
 async function buildTimescaledb(dir: string): Promise<void> {

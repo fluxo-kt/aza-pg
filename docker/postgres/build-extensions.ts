@@ -304,30 +304,26 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   log(`cargo pgrx ${version} install (${features.join(",") || "default"}) in ${dir}`);
 
   const pathEnv = `${installRoot}/bin:${process.env.PATH}`;
-  const cwd = dir;
 
-  // Build command args array to ensure proper argument separation for Bun's $
-  const args = [
-    "cd",
-    cwd,
-    "&&",
-    "cargo",
-    "pgrx",
-    "install",
-    "--release",
-    "--pg-config",
-    PG_CONFIG_BIN,
-  ];
-  if (features.length > 0) {
-    args.push("--features", features.join(","));
+  // Use conditional template literals to handle --features flag properly
+  // Bun's $ template requires separate arguments for flags, not array spreading
+  if (features.length > 0 && noDefaultFeatures) {
+    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} --features ${features.join(",")} ${noDefaultFeatures}`.env(
+      { PATH: pathEnv }
+    );
+  } else if (features.length > 0) {
+    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} --features ${features.join(",")}`.env(
+      { PATH: pathEnv }
+    );
+  } else if (noDefaultFeatures) {
+    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${noDefaultFeatures}`.env(
+      { PATH: pathEnv }
+    );
+  } else {
+    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN}`.env({
+      PATH: pathEnv,
+    });
   }
-  if (noDefaultFeatures) {
-    args.push(noDefaultFeatures);
-  }
-
-  await $`${args}`.env({
-    PATH: pathEnv,
-  });
 }
 
 async function buildTimescaledb(dir: string): Promise<void> {

@@ -251,48 +251,29 @@ RUN set -ex; \
     PRELOADED=$(jq '[.entries[] | select((.enabled // true) and .runtime.sharedPreload)] | length' "$MANIFEST"); \
     \
     # Generate version-info.txt (human-readable)
-    cat > /etc/postgresql/version-info.txt <<EOF
-===============================================================================
-aza-pg - PostgreSQL ${PG_VERSION%.*} with Extensions
-===============================================================================
-
-Build Date: ${BUILD_DATE}
-PostgreSQL Version: ${PG_VERSION}
-
-SUMMARY
-  Total Catalog: ${TOTAL}
-  Enabled: ${ENABLED}
-  Disabled: ${DISABLED}
-  Preloaded: ${PRELOADED}
-
-===============================================================================
-Use CREATE EXTENSION <name>; to enable available extensions
-View manifest: cat /etc/postgresql/extensions.manifest.json
-Documentation: https://github.com/fluxo-kt/aza-pg
-===============================================================================
-EOF
+    printf '%s\n' \
+      '===============================================================================' \
+      "aza-pg - PostgreSQL ${PG_VERSION%.*} with Extensions" \
+      '===============================================================================' \
+      '' \
+      "Build Date: ${BUILD_DATE}" \
+      "PostgreSQL Version: ${PG_VERSION}" \
+      '' \
+      'SUMMARY' \
+      "  Total Catalog: ${TOTAL}" \
+      "  Enabled: ${ENABLED}" \
+      "  Disabled: ${DISABLED}" \
+      "  Preloaded: ${PRELOADED}" \
+      '' \
+      '===============================================================================' \
+      'Use CREATE EXTENSION <name>; to enable available extensions' \
+      'View manifest: cat /etc/postgresql/extensions.manifest.json' \
+      'Documentation: https://github.com/fluxo-kt/aza-pg' \
+      '===============================================================================' \
+      > /etc/postgresql/version-info.txt && \
     \
     # Generate version-info.json (machine-readable)
-    jq -n \
-      --arg pg_version "$PG_VERSION" \
-      --arg build_ts "$BUILD_TS" \
-      --arg build_date "$BUILD_DATE" \
-      --argjson total "$TOTAL" \
-      --argjson enabled "$ENABLED" \
-      --argjson disabled "$DISABLED" \
-      --argjson preloaded "$PRELOADED" \
-      '{
-        postgres_version: $pg_version,
-        build_timestamp: $build_ts,
-        build_date: $build_date,
-        build_type: "single-node",
-        extensions: {
-          total: $total,
-          enabled: $enabled,
-          disabled: $disabled,
-          preloaded: $preloaded
-        }
-      }' > /etc/postgresql/version-info.json && \
+    jq -n --arg pg_version "$PG_VERSION" --arg build_ts "$BUILD_TS" --arg build_date "$BUILD_DATE" --argjson total "$TOTAL" --argjson enabled "$ENABLED" --argjson disabled "$DISABLED" --argjson preloaded "$PRELOADED" '{postgres_version: $pg_version, build_timestamp: $build_ts, build_date: $build_date, build_type: "single-node", extensions: {total: $total, enabled: $enabled, disabled: $disabled, preloaded: $preloaded}}' > /etc/postgresql/version-info.json && \
     \
     # Remove jq (only needed for generation)
     apt-get purge -y jq && \

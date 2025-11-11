@@ -47,120 +47,120 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### ai
 
-| Extension                                                                   | Version                                                                | Enabled by Default | Shared Preload | Documentation                                             | Notes                                                                  |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.1](https://github.com/pgvector/pgvector/releases/tag/v0.8.1)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
-| [`vectorscale (pgvectorscale)`](https://github.com/timescale/pgvectorscale) | [0.9.0](https://github.com/timescale/pgvectorscale/releases/tag/0.9.0) | No                 | No             | [Docs](https://github.com/timescale/pgvectorscale#readme) | DiskANN-inspired ANN index and quantization for pgvector embeddings.   |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`vector (pgvector)`](https://github.com/pgvector/pgvector) | [v0.8.1](https://github.com/pgvector/pgvector/releases/tag/v0.8.1) | Yes | No | [Docs](https://github.com/pgvector/pgvector#readme) | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| [`vectorscale (pgvectorscale)`](https://github.com/timescale/pgvectorscale) | [0.9.0](https://github.com/timescale/pgvectorscale/releases/tag/0.9.0) | No | No | [Docs](https://github.com/timescale/pgvectorscale#readme) | DiskANN-inspired ANN index and quantization for pgvector embeddings. |
 
 ### analytics
 
-| Extension                                                             | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                         |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.19](https://github.com/citusdata/postgresql-hll/releases/tag/v2.19) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.19](https://github.com/citusdata/postgresql-hll/releases/tag/v2.19) | No | No | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
-| Extension                                         | Version                                                                       | Enabled by Default | Shared Preload | Documentation                                      | Notes                                                       |
-| ------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------- | ----------------------------------------------------------- |
-| [`wal2json`](https://github.com/eulerto/wal2json) | [wal2json_2_6](https://github.com/eulerto/wal2json/releases/tag/wal2json_2_6) | No                 | No             | [Docs](https://github.com/eulerto/wal2json#readme) | Logical decoding output plugin streaming JSON data for CDC. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`wal2json`](https://github.com/eulerto/wal2json) | [wal2json_2_6](https://github.com/eulerto/wal2json/releases/tag/wal2json_2_6) | No | No | [Docs](https://github.com/eulerto/wal2json#readme) | Logical decoding output plugin streaming JSON data for CDC. |
 
 ### gis
 
-| Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                             |
-| ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v3.8.0](https://github.com/pgRouting/pgrouting/releases/tag/v3.8.0) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.0](https://github.com/postgis/postgis/releases/tag/3.6.0)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v3.8.0](https://github.com/pgRouting/pgrouting/releases/tag/v3.8.0) | No | No | [Docs](https://docs.pgrouting.org) | Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs. |
+| [`postgis`](https://github.com/postgis/postgis) | [3.6.0](https://github.com/postgis/postgis/releases/tag/3.6.0) | No | No | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL. |
 
 ### integration
 
-| Extension                                                              | Version                                                                                          | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                    |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0)                              | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl. |
-| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [fc63ad1f](https://github.com/supabase/wrappers/commit/fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.   |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http) | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No | No | [Docs](https://github.com/pramsey/pgsql-http#readme) | Synchronous HTTP client for PostgreSQL built on libcurl. |
+| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [fc63ad1f](https://github.com/supabase/wrappers/commit/fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712) | No | No | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers. |
 
 ### maintenance
 
-| Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.3.1](https://github.com/pgpartman/pg_partman/releases/tag/v5.3.1)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
-| [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.3.1](https://github.com/pgpartman/pg_partman/releases/tag/v5.3.1) | No | Yes | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_repack`](https://github.com/reorg/pg_repack) | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No | No | [Docs](https://reorg.github.io/pg_repack) | Online table/index reorganization without long locks. |
 
 ### observability
 
-| Extension                                                       | Version                                                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [4ac02b24](https://github.com/percona/pg_stat_monitor/commit/4ac02b24433894b320b044ed30747d0c38e79fa5) | No                 | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
-| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1)                                         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [4ac02b24](https://github.com/percona/pg_stat_monitor/commit/4ac02b24433894b320b044ed30747d0c38e79fa5) | No | Yes | [Docs](https://docs.percona.com/pg-stat-monitor) | Enhanced query performance telemetry with bucketed metrics. |
+| [`pgbadger`](https://github.com/darold/pgbadger) | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1) | No | No | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
 
-| Extension                                                | Version                                                                                | Enabled by Default | Shared Preload | Documentation                                       | Notes                                                |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------- | ---------------------------------------------------- |
-| [`pg_cron`](https://github.com/citusdata/pg_cron)        | [v1.6.7](https://github.com/citusdata/pg_cron/releases/tag/v1.6.7)                     | Yes                | Yes            | [Docs](https://github.com/citusdata/pg_cron#readme) | Lightweight cron-based job runner inside PostgreSQL. |
-| [`pgbackrest`](https://github.com/pgbackrest/pgbackrest) | [release/2.57.0](https://github.com/pgbackrest/pgbackrest/releases/tag/release/2.57.0) | No                 | No             | [Docs](https://pgbackrest.org/user-guide.html)      | Parallel, incremental backup and restore CLI.        |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_cron`](https://github.com/citusdata/pg_cron) | [v1.6.7](https://github.com/citusdata/pg_cron/releases/tag/v1.6.7) | Yes | Yes | [Docs](https://github.com/citusdata/pg_cron#readme) | Lightweight cron-based job runner inside PostgreSQL. |
+| [`pgbackrest`](https://github.com/pgbackrest/pgbackrest) | [release/2.57.0](https://github.com/pgbackrest/pgbackrest/releases/tag/release/2.57.0) | No | No | [Docs](https://pgbackrest.org/user-guide.html) | Parallel, incremental backup and restore CLI. |
 
 ### performance
 
-| Extension                                                    | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                               |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`hypopg`](https://github.com/HypoPG/hypopg)                 | [1.4.2](https://github.com/HypoPG/hypopg/releases/tag/1.4.2)            | No                 | No             | [Docs](https://hypopg.readthedocs.io)                                      | Simulate hypothetical indexes for planner what-if analysis.         |
-| [`index_advisor`](https://github.com/supabase/index_advisor) | [v0.2.0](https://github.com/supabase/index_advisor/releases/tag/v0.2.0) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/index_advisor) | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`hypopg`](https://github.com/HypoPG/hypopg) | [1.4.2](https://github.com/HypoPG/hypopg/releases/tag/1.4.2) | No | No | [Docs](https://hypopg.readthedocs.io) | Simulate hypothetical indexes for planner what-if analysis. |
+| [`index_advisor`](https://github.com/supabase/index_advisor) | [v0.2.0](https://github.com/supabase/index_advisor/releases/tag/v0.2.0) | No | No | [Docs](https://supabase.com/docs/guides/database/extensions/index_advisor) | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
 
 ### quality
 
-| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.3](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.3) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.3](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.3) | No | No | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
-| Extension                                 | Version                                                        | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
-| ----------------------------------------- | -------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.7.0](https://github.com/tembo-io/pgmq/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
-| [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)       | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pgmq`](https://github.com/pgmq/pgmq) | [v1.7.0](https://github.com/tembo-io/pgmq/releases/tag/v1.7.0) | No | No | [Docs](https://github.com/pgmq/pgmq#readme) | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY. |
+| [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1) | No | No | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
 
-| Extension                                                       | Version                                                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                                                |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [5081a7b5](https://github.com/pgexperts/pg_plan_filter/commit/5081a7b5cb890876e67d8e7486b6a64c38c9a492) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
-| [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.5](https://github.com/eradman/pg-safeupdate/releases/tag/1.5)                                        | No                 | No             | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| [`supautils`](https://github.com/supabase/supautils)            | [v3.0.2](https://github.com/supabase/supautils/releases/tag/v3.0.2)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [5081a7b5](https://github.com/pgexperts/pg_plan_filter/commit/5081a7b5cb890876e67d8e7486b6a64c38c9a492) | No | Yes | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks. |
+| [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate) | [1.5](https://github.com/eradman/pg-safeupdate/releases/tag/1.5) | No | No | [Docs](https://github.com/eradman/pg-safeupdate#readme) | Guards UPDATE/DELETE without WHERE clause or LIMIT. |
+| [`supautils`](https://github.com/supabase/supautils) | [v3.0.2](https://github.com/supabase/supautils/releases/tag/v3.0.2) | No | Yes | [Docs](https://github.com/supabase/supautils#readme) | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
-| Extension                                          | Version                                                          | Enabled by Default | Shared Preload | Documentation                                     | Notes                                                           |
-| -------------------------------------------------- | ---------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------- | --------------------------------------------------------------- |
-| [`pgroonga`](https://github.com/pgroonga/pgroonga) | [4.0.4](https://github.com/pgroonga/pgroonga/releases/tag/4.0.4) | No                 | No             | [Docs](https://pgroonga.github.io)                | Full-text search powered by Groonga for multilingual workloads. |
-| [`rum`](https://github.com/postgrespro/rum)        | [1.3.15](https://github.com/postgrespro/rum/releases/tag/1.3.15) | No                 | No             | [Docs](https://github.com/postgrespro/rum#readme) | RUM GiST access method for ranked full-text search.             |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pgroonga`](https://github.com/pgroonga/pgroonga) | [4.0.4](https://github.com/pgroonga/pgroonga/releases/tag/4.0.4) | No | No | [Docs](https://pgroonga.github.io) | Full-text search powered by Groonga for multilingual workloads. |
+| [`rum`](https://github.com/postgrespro/rum) | [1.3.15](https://github.com/postgrespro/rum/releases/tag/1.3.15) | No | No | [Docs](https://github.com/postgrespro/rum#readme) | RUM GiST access method for ranked full-text search. |
 
 ### security
 
-| Extension                                                            | Version                                                               | Enabled by Default | Shared Preload | Documentation                                           | Notes                                                                |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pgaudit`](https://github.com/pgaudit/pgaudit)                      | [18.0](https://github.com/pgaudit/pgaudit/releases/tag/18.0)          | Yes                | Yes            | [Docs](https://www.pgaudit.org)                         | Detailed auditing for DDL/DML activity with class-level granularity. |
-| [`pgsodium`](https://github.com/michelp/pgsodium)                    | [v3.1.9](https://github.com/michelp/pgsodium/releases/tag/v3.1.9)     | No                 | No             | [Docs](https://michelp.github.io/pgsodium)              | Modern cryptography and envelope encryption with libsodium.          |
-| [`set_user (pgaudit_set_user)`](https://github.com/pgaudit/set_user) | [REL4_2_0](https://github.com/pgaudit/set_user/releases/tag/REL4_2_0) | No                 | Yes            | [Docs](https://github.com/pgaudit/set_user#readme)      | Audited SET ROLE helper complementing pgaudit.                       |
-| [`supabase_vault (vault)`](https://github.com/supabase/vault)        | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1)       | No                 | No             | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials.         |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pgaudit`](https://github.com/pgaudit/pgaudit) | [18.0](https://github.com/pgaudit/pgaudit/releases/tag/18.0) | Yes | Yes | [Docs](https://www.pgaudit.org) | Detailed auditing for DDL/DML activity with class-level granularity. |
+| [`pgsodium`](https://github.com/michelp/pgsodium) | [v3.1.9](https://github.com/michelp/pgsodium/releases/tag/v3.1.9) | No | No | [Docs](https://michelp.github.io/pgsodium) | Modern cryptography and envelope encryption with libsodium. |
+| [`set_user (pgaudit_set_user)`](https://github.com/pgaudit/set_user) | [REL4_2_0](https://github.com/pgaudit/set_user/releases/tag/REL4_2_0) | No | Yes | [Docs](https://github.com/pgaudit/set_user#readme) | Audited SET ROLE helper complementing pgaudit. |
+| [`supabase_vault (vault)`](https://github.com/supabase/vault) | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1) | No | No | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials. |
 
 ### timeseries
 
-| Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                          |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.0](https://github.com/timescale/timescaledb/releases/tag/2.23.0)         | No                 | Yes            | [Docs](https://docs.timescale.com/timescaledb/latest)                   | Hypertables, compression, and continuous aggregates for time-series workloads. |
-| [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                  |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`timescaledb`](https://github.com/timescale/timescaledb) | [2.23.0](https://github.com/timescale/timescaledb/releases/tag/2.23.0) | No | Yes | [Docs](https://docs.tigerdata.com/use-timescale/latest/) | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No | No | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB. |
 
 ### utilities
 
-| Extension                                              | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                          |
-| ------------------------------------------------------ | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
-| [`pg_hashids`](https://github.com/iCyberon/pg_hashids) | [v1.2.1](https://github.com/iCyberon/pg_hashids/releases/tag/v1.2.1) | No                 | No             | [Docs](https://github.com/iCyberon/pg_hashids#readme) | Encode integers into short hashids for obfuscated identifiers. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_hashids`](https://github.com/iCyberon/pg_hashids) | [v1.2.1](https://github.com/iCyberon/pg_hashids/releases/tag/v1.2.1) | No | No | [Docs](https://github.com/iCyberon/pg_hashids#readme) | Encode integers into short hashids for obfuscated identifiers. |
 
 ### validation
 
-| Extension                                                    | Version                                                                                               | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                        |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [e7834142](https://github.com/supabase/pg_jsonschema/commit/e7834142a3cce347b6082c5245de939810d3f9c4) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| Extension | Version | Enabled by Default | Shared Preload | Documentation | Notes |
+|-----------|---------|--------------------|----------------|---------------|-------|
+| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [e7834142](https://github.com/supabase/pg_jsonschema/commit/e7834142a3cce347b6082c5245de939810d3f9c4) | No | No | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 <!-- extensions-table:end -->
 

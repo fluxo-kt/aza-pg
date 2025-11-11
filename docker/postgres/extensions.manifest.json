@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-11T11:32:17.299Z",
+  "generatedAt": "2025-11-11T11:44:59.794Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -805,7 +805,7 @@
         ]
       },
       "sourceUrl": "https://github.com/timescale/timescaledb",
-      "docsUrl": "https://docs.timescale.com/timescaledb/latest"
+      "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
     },
     {
       "name": "timescaledb_toolkit",

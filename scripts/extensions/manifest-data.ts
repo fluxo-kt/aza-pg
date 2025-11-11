@@ -603,7 +603,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       notes: ["timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."],
     },
     sourceUrl: "https://github.com/timescale/timescaledb",
-    docsUrl: "https://docs.timescale.com/timescaledb/latest",
+    docsUrl: "https://docs.tigerdata.com/use-timescale/latest/",
   },
   {
     name: "timescaledb_toolkit",

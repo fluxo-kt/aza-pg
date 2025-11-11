@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-11T19:10:42.509Z
+# Generated at: 2025-11-11T19:36:25.111Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -198,7 +198,7 @@ RUN set -eu && \
       local ext_name=$1; \
       local pkg_name=$2; \
       local pkg_version=$3; \
-      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and (.enabled // true) == true)' /tmp/extensions.manifest.json >/dev/null; then \
+      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and .enabled != false)' /tmp/extensions.manifest.json >/dev/null; then \
         PGDG_PACKAGES="$PGDG_PACKAGES postgresql-${PG_MAJOR}-${pkg_name}=${pkg_version}"; \
       fi; \
     } && \
@@ -225,7 +225,7 @@ RUN set -eu && \
       INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
       echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
       # Dynamic verification: count enabled PGDG packages in manifest
-      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and .enabled == true)] | length' /tmp/extensions.manifest.json) && \
+      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and .enabled != false)] | length' /tmp/extensions.manifest.json) && \
       echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \
       # Allow some variance but ensure we have at least 1 package
       test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \
@@ -257,9 +257,9 @@ RUN set -ex; \
     \
     # Count extensions
     TOTAL=$(jq '.entries | length' "$MANIFEST"); \
-    ENABLED=$(jq '[.entries[] | select(.enabled // true)] | length' "$MANIFEST"); \
-    DISABLED=$(jq '[.entries[] | select(.enabled // true | not)] | length' "$MANIFEST"); \
-    PRELOADED=$(jq '[.entries[] | select((.enabled // true) and .runtime.sharedPreload)] | length' "$MANIFEST"); \
+    ENABLED=$(jq '[.entries[] | select(.enabled != false)] | length' "$MANIFEST"); \
+    DISABLED=$(jq '[.entries[] | select(.enabled == false)] | length' "$MANIFEST"); \
+    PRELOADED=$(jq '[.entries[] | select(.enabled != false and .runtime.sharedPreload)] | length' "$MANIFEST"); \
     \
     # Generate version-info.txt (human-readable)
     printf '%s\n' \

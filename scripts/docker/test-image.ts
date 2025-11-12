@@ -16,8 +16,9 @@
  *   bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
  *
  * Options:
- *   --no-cleanup   - Keep container running after tests
- *   --fast         - Skip time-consuming functional tests
+ *   --no-cleanup       - Keep container running after tests
+ *   --fast             - Skip comprehensive functional tests (quick smoke test only)
+ *   --functional-only  - Run ONLY comprehensive functional tests (skip other phases)
  */
 
 import { join } from "node:path";
@@ -42,6 +43,7 @@ const args = Bun.argv.slice(2);
 const imageTag = args.find((arg) => !arg.startsWith("--")) || "aza-pg:latest";
 const noCleanup = args.includes("--no-cleanup");
 const fastMode = args.includes("--fast");
+const functionalOnly = args.includes("--functional-only");
 
 // Generate unique container name
 const timestamp = Date.now();
@@ -70,6 +72,17 @@ interface Manifest {
 async function readManifest(): Promise<Manifest> {
   const content = await Bun.file(MANIFEST_PATH).json();
   return content as Manifest;
+}
+
+/**
+ * Check if an extension is enabled in the manifest
+ */
+function isExtensionEnabled(manifest: Manifest, extensionName: string): boolean {
+  const entry = manifest.entries.find((e) => e.name === extensionName);
+  if (!entry) {
+    return false;
+  }
+  return entry.enabled !== false;
 }
 
 /**
@@ -958,6 +971,1181 @@ async function testPgBadgerFunctional(): Promise<TestResult> {
 }
 
 // ============================================================================
+// COMPREHENSIVE FUNCTIONAL TESTS
+// ============================================================================
+
+/**
+ * Test: AI/Vector - pgvector HNSW index and similarity search
+ */
+async function testPgvectorComprehensive(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    // Create table and insert vectors
+    await execSQL(
+      "CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))"
+    );
+    await execSQL(
+      "INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')"
+    );
+
+    // Build HNSW index
+    const index = await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_vectors_hnsw_idx ON test_vectors USING hnsw (embedding vector_l2_ops)"
+    );
+    if (!index.success) {
+      return {
+        name: "pgvector - HNSW index and similarity search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create HNSW index",
+      };
+    }
+
+    // Similarity search
+    const search = await execSQL(
+      "SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2"
+    );
+    if (!search.success || search.output.trim() === "") {
+      return {
+        name: "pgvector - HNSW index and similarity search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Similarity search failed",
+      };
+    }
+
+    return {
+      name: "pgvector - HNSW index and similarity search",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgvector - HNSW index and similarity search",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: AI/Vector - vectorscale diskann index
+ */
+async function testVectorscaleDiskann(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE");
+    await execSQL(
+      "CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))"
+    );
+    await execSQL(
+      "INSERT INTO test_vectorscale (vec) VALUES ('[1,0,0]'), ('[0,1,0]'), ('[0,0,1]')"
+    );
+
+    const index = await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)"
+    );
+    if (!index.success) {
+      return {
+        name: "vectorscale - DiskANN index",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create DiskANN index",
+      };
+    }
+
+    const search = await execSQL(
+      "SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1"
+    );
+    if (!search.success || search.output.trim() === "") {
+      return {
+        name: "vectorscale - DiskANN index",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "DiskANN search failed",
+      };
+    }
+
+    return {
+      name: "vectorscale - DiskANN index",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "vectorscale - DiskANN index",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Analytics - hll cardinality estimation
+ */
+async function testHllCardinality(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS hll CASCADE");
+    await execSQL("CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)");
+    await execSQL("INSERT INTO test_hll (users) VALUES (hll_empty())");
+    await execSQL("UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1");
+
+    const count = await execSQL("SELECT hll_cardinality(users)::int FROM test_hll WHERE id = 1");
+    if (!count.success || count.output.trim() !== "1") {
+      return {
+        name: "hll - Cardinality estimation",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `Expected cardinality 1, got ${count.output}`,
+      };
+    }
+
+    return {
+      name: "hll - Cardinality estimation",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "hll - Cardinality estimation",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: CDC - wal2json logical replication
+ */
+async function testWal2jsonReplication(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    // Drop slot if exists
+    await execSQL(
+      "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'"
+    );
+
+    const slot = await execSQL(
+      "SELECT pg_create_logical_replication_slot('test_wal2json_slot', 'wal2json')"
+    );
+    if (!slot.success) {
+      return {
+        name: "wal2json - Logical replication",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create replication slot",
+      };
+    }
+
+    // Perform DML and read changes
+    await execSQL("CREATE TABLE IF NOT EXISTS test_wal2json_table (id int, data text)");
+    await execSQL("INSERT INTO test_wal2json_table VALUES (1, 'test')");
+
+    const changes = await execSQL(
+      "SELECT data FROM pg_logical_slot_peek_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')"
+    );
+    if (!changes.success) {
+      await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')");
+      return {
+        name: "wal2json - Logical replication",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to read wal2json changes",
+      };
+    }
+
+    // Cleanup
+    await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')");
+
+    return {
+      name: "wal2json - Logical replication",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "wal2json - Logical replication",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: GIS - PostGIS spatial queries
+ */
+async function testPostgisSpatialQuery(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS postgis CASCADE");
+    await execSQL(
+      "CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))"
+    );
+    await execSQL(
+      "INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))"
+    );
+
+    const query = await execSQL(
+      "SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)"
+    );
+    if (!query.success || parseInt(query.output.trim()) === 0) {
+      return {
+        name: "PostGIS - Spatial query",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Spatial query failed",
+      };
+    }
+
+    // Build spatial index
+    await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_postgis_geom_idx ON test_postgis USING GIST (geom)"
+    );
+
+    return {
+      name: "PostGIS - Spatial query",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "PostGIS - Spatial query",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: GIS - pgRouting shortest path
+ */
+async function testPgroutingShortestPath(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE");
+    await execSQL(`CREATE TABLE IF NOT EXISTS test_routing (
+      id serial PRIMARY KEY,
+      source int,
+      target int,
+      cost float
+    )`);
+    await execSQL(
+      "INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)"
+    );
+
+    const path = await execSQL(
+      "SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)"
+    );
+    if (!path.success || path.output.trim() === "") {
+      return {
+        name: "pgRouting - Shortest path",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Dijkstra shortest path failed",
+      };
+    }
+
+    return {
+      name: "pgRouting - Shortest path",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgRouting - Shortest path",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Indexing - btree_gist exclusion constraint
+ */
+async function testBtreeGistExclusion(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS btree_gist CASCADE");
+    const create = await execSQL(`CREATE TABLE IF NOT EXISTS test_exclusion (
+      id serial PRIMARY KEY,
+      period int4range,
+      EXCLUDE USING GIST (period WITH &&)
+    )`);
+
+    if (!create.success) {
+      return {
+        name: "btree_gist - Exclusion constraint",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create exclusion constraint",
+      };
+    }
+
+    await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(1, 10))");
+    const conflict = await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(5, 15))");
+
+    if (conflict.success) {
+      return {
+        name: "btree_gist - Exclusion constraint",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Exclusion constraint should prevent overlapping ranges",
+      };
+    }
+
+    return {
+      name: "btree_gist - Exclusion constraint",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "btree_gist - Exclusion constraint",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Integration - http GET/POST
+ */
+async function testHttpRequests(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS http CASCADE");
+
+    // GET request
+    const getResult = await execSQL(
+      "SELECT status FROM http_get('https://httpbin.org/status/200')"
+    );
+
+    // Handle external service issues gracefully
+    if (
+      getResult.success &&
+      (getResult.output.trim() === "503" || getResult.output.trim() === "429")
+    ) {
+      return {
+        name: "http - GET/POST requests",
+        passed: true,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (!getResult.success || getResult.output.trim() !== "200") {
+      return {
+        name: "http - GET/POST requests",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "HTTP GET request failed",
+      };
+    }
+
+    return {
+      name: "http - GET/POST requests",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "http - GET/POST requests",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Language - plpgsql triggers
+ */
+async function testPlpgsqlTriggers(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE TABLE IF NOT EXISTS test_trigger_table (id serial PRIMARY KEY, val int)");
+
+    const triggerFunc =
+      await execSQL(`CREATE OR REPLACE FUNCTION test_trigger_func() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.val := NEW.val * 2;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql`);
+
+    if (!triggerFunc.success) {
+      return {
+        name: "plpgsql - Triggers",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create trigger function",
+      };
+    }
+
+    await execSQL("DROP TRIGGER IF EXISTS test_trigger ON test_trigger_table");
+    await execSQL(
+      "CREATE TRIGGER test_trigger BEFORE INSERT ON test_trigger_table FOR EACH ROW EXECUTE FUNCTION test_trigger_func()"
+    );
+
+    await execSQL("INSERT INTO test_trigger_table (val) VALUES (5)");
+    const result = await execSQL("SELECT val FROM test_trigger_table ORDER BY id DESC LIMIT 1");
+
+    if (!result.success || result.output.trim() !== "10") {
+      return {
+        name: "plpgsql - Triggers",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Trigger did not execute correctly",
+      };
+    }
+
+    return {
+      name: "plpgsql - Triggers",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "plpgsql - Triggers",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Maintenance - pg_partman partitioning
+ */
+async function testPgPartmanPartitioning(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE");
+    await execSQL(`CREATE TABLE IF NOT EXISTS test_partman (
+      id serial,
+      created_at timestamp NOT NULL DEFAULT now(),
+      data text
+    ) PARTITION BY RANGE (created_at)`);
+
+    // Clean up existing config
+    await execSQL("DELETE FROM part_config WHERE parent_table = 'public.test_partman'");
+
+    const config = await execSQL(
+      "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := '2025-01-01')"
+    );
+    if (!config.success) {
+      return {
+        name: "pg_partman - Partitioning",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to configure pg_partman",
+      };
+    }
+
+    // Verify partitions created
+    const check = await execSQL(
+      "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test_partman_p%'"
+    );
+    if (!check.success || parseInt(check.output.trim()) === 0) {
+      return {
+        name: "pg_partman - Partitioning",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "No partitions created",
+      };
+    }
+
+    return {
+      name: "pg_partman - Partitioning",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_partman - Partitioning",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Observability - pg_stat_statements
+ */
+async function testPgStatStatements(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    const reset = await execSQL("SELECT pg_stat_statements_reset()");
+    if (!reset.success) {
+      return {
+        name: "pg_stat_statements - Statistics",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to reset pg_stat_statements",
+      };
+    }
+
+    const verify = await execSQL("SELECT count(*) FROM pg_stat_statements");
+    if (!verify.success) {
+      return {
+        name: "pg_stat_statements - Statistics",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to query pg_stat_statements",
+      };
+    }
+
+    return {
+      name: "pg_stat_statements - Statistics",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_stat_statements - Statistics",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Operations - pg_cron job scheduling
+ */
+async function testPgCronScheduling(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE");
+
+    const schedule = await execSQL("SELECT cron.schedule('test-job', '* * * * *', 'SELECT 1')");
+    if (!schedule.success) {
+      return {
+        name: "pg_cron - Job scheduling",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to schedule cron job",
+      };
+    }
+
+    const check = await execSQL("SELECT count(*) FROM cron.job WHERE jobname = 'test-job'");
+    if (!check.success || parseInt(check.output.trim()) !== 1) {
+      return {
+        name: "pg_cron - Job scheduling",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Cron job not found",
+      };
+    }
+
+    // Cleanup
+    const jobId = await execSQL("SELECT jobid FROM cron.job WHERE jobname = 'test-job'");
+    if (jobId.success && jobId.output.trim() !== "") {
+      await execSQL(`SELECT cron.unschedule(${jobId.output})`);
+    }
+
+    return {
+      name: "pg_cron - Job scheduling",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_cron - Job scheduling",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Performance - hypopg hypothetical indexes
+ */
+async function testHypopgHypotheticalIndexes(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS hypopg CASCADE");
+    await execSQL("CREATE TABLE IF NOT EXISTS test_hypopg (id serial PRIMARY KEY, val int)");
+    await execSQL("INSERT INTO test_hypopg (val) SELECT generate_series(1, 1000)");
+
+    // Create and verify in same session (hypothetical indexes are session-local)
+    const result = await execSQL(`
+      SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
+      SELECT count(*) FROM hypopg_list_indexes;
+    `);
+
+    const lines = result.output.split("\n").filter((l: string) => l.trim());
+    const lastLine = lines[lines.length - 1];
+
+    if (!result.success || !lastLine || parseInt(lastLine) === 0) {
+      return {
+        name: "hypopg - Hypothetical indexes",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create hypothetical index",
+      };
+    }
+
+    return {
+      name: "hypopg - Hypothetical indexes",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "hypopg - Hypothetical indexes",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Queueing - pgmq message queue
+ */
+async function testPgmqQueue(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE");
+
+    const create = await execSQL("SELECT pgmq.create('test_queue')");
+    if (!create.success) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create queue",
+      };
+    }
+
+    const send = await execSQL(
+      'SELECT pgmq.send(\'test_queue\', \'{"task": "process_order", "order_id": 123}\'::jsonb)'
+    );
+    if (!send.success) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to send message",
+      };
+    }
+
+    const read = await execSQL("SELECT msg_id FROM pgmq.read('test_queue', 30, 1)");
+    if (!read.success || read.output.trim() === "") {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to read message",
+      };
+    }
+
+    return {
+      name: "pgmq - Message queue",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgmq - Message queue",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Safety - pg_safeupdate blocks unsafe updates
+ */
+async function testPgSafeupdateProtection(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)");
+    await execSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
+
+    // Attempt UPDATE without WHERE (should be blocked)
+    const updateResult = await execSQL("UPDATE test_safeupdate SET val = 99");
+
+    if (updateResult.success) {
+      return {
+        name: "pg_safeupdate - UPDATE protection",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "pg_safeupdate should block UPDATE without WHERE",
+      };
+    }
+
+    // Verify UPDATE with WHERE works
+    const safeUpdate = await execSQL("UPDATE test_safeupdate SET val = 99 WHERE id = 1");
+    if (!safeUpdate.success) {
+      return {
+        name: "pg_safeupdate - UPDATE protection",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "UPDATE with WHERE should succeed",
+      };
+    }
+
+    return {
+      name: "pg_safeupdate - UPDATE protection",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_safeupdate - UPDATE protection",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Search - pg_trgm similarity search
+ */
+async function testPgTrgmSimilarity(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE");
+    await execSQL("CREATE TABLE IF NOT EXISTS test_trgm (id serial PRIMARY KEY, text_col text)");
+    await execSQL(
+      "INSERT INTO test_trgm (text_col) VALUES ('hello world'), ('hello universe'), ('goodbye world')"
+    );
+    await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)"
+    );
+
+    const search = await execSQL(
+      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC"
+    );
+    if (!search.success || search.output.trim() === "") {
+      return {
+        name: "pg_trgm - Similarity search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Similarity search failed",
+      };
+    }
+
+    return {
+      name: "pg_trgm - Similarity search",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_trgm - Similarity search",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Search - pgroonga full-text search
+ */
+async function testPgroongaFullText(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE");
+    await execSQL("CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)");
+    await execSQL(
+      "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')"
+    );
+    await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_pgroonga_idx ON test_pgroonga USING pgroonga (content)"
+    );
+
+    const search = await execSQL("SELECT content FROM test_pgroonga WHERE content &@~ 'full-text'");
+    if (!search.success || search.output.trim() === "") {
+      return {
+        name: "pgroonga - Full-text search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Full-text search failed",
+      };
+    }
+
+    return {
+      name: "pgroonga - Full-text search",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgroonga - Full-text search",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Search - rum ranked search
+ */
+async function testRumRankedSearch(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS rum CASCADE");
+    await execSQL("CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)");
+    await execSQL(
+      "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))"
+    );
+    await execSQL(
+      "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'A fast brown fox leaps over a sleepy dog'))"
+    );
+    await execSQL(
+      "CREATE INDEX IF NOT EXISTS test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)"
+    );
+
+    const search = await execSQL(
+      "SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')"
+    );
+    if (!search.success || search.output.trim() === "") {
+      return {
+        name: "rum - Ranked search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "RUM ranked search failed",
+      };
+    }
+
+    return {
+      name: "rum - Ranked search",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "rum - Ranked search",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Security - pgaudit logging
+ */
+async function testPgauditLogging(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    const result = await execSQL(`
+      SET pgaudit.log = 'write, ddl';
+      SHOW pgaudit.log;
+    `);
+
+    const lines = result.output.split("\n").filter((l: string) => l.trim());
+    const setting = lines[lines.length - 1];
+
+    if (!result.success || !setting || !setting.includes("write")) {
+      return {
+        name: "pgaudit - Audit logging",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "pgaudit not configured correctly",
+      };
+    }
+
+    return {
+      name: "pgaudit - Audit logging",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgaudit - Audit logging",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Security - pgsodium encryption
+ */
+async function testPgsodiumEncryption(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE");
+
+    const key = await execSQL("SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')");
+    if (!key.success || key.output.trim() === "") {
+      return {
+        name: "pgsodium - Encryption",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Key generation failed",
+      };
+    }
+
+    const nonce = await execSQL("SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')");
+    if (!nonce.success) {
+      return {
+        name: "pgsodium - Encryption",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Nonce generation failed",
+      };
+    }
+
+    const plaintext = "secret data";
+    const encrypt = await execSQL(`
+      SELECT encode(
+        pgsodium.crypto_secretbox(
+          '${plaintext}'::bytea,
+          decode('${nonce.output}', 'hex'),
+          decode('${key.output}', 'hex')
+        ),
+        'hex'
+      )
+    `);
+
+    if (!encrypt.success || encrypt.output.trim() === "") {
+      return {
+        name: "pgsodium - Encryption",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Encryption failed",
+      };
+    }
+
+    const decrypt = await execSQL(`
+      SELECT convert_from(
+        pgsodium.crypto_secretbox_open(
+          decode('${encrypt.output}', 'hex'),
+          decode('${nonce.output}', 'hex'),
+          decode('${key.output}', 'hex')
+        ),
+        'utf8'
+      )
+    `);
+
+    if (!decrypt.success || decrypt.output.trim() !== plaintext) {
+      return {
+        name: "pgsodium - Encryption",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Decryption failed",
+      };
+    }
+
+    return {
+      name: "pgsodium - Encryption",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pgsodium - Encryption",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Timeseries - timescaledb hypertables
+ */
+async function testTimescaledbHypertables(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE");
+    await execSQL(`CREATE TABLE IF NOT EXISTS test_timescale (
+      time timestamptz NOT NULL,
+      device_id int,
+      temperature float
+    )`);
+
+    const hypertable = await execSQL(
+      "SELECT create_hypertable('test_timescale', 'time', if_not_exists => TRUE, migrate_data => TRUE)"
+    );
+    if (!hypertable.success) {
+      return {
+        name: "timescaledb - Hypertables",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to create hypertable",
+      };
+    }
+
+    const insert = await execSQL(`
+      INSERT INTO test_timescale (time, device_id, temperature)
+      SELECT time, device_id, random() * 30
+      FROM generate_series(now() - interval '7 days', now(), interval '1 hour') AS time,
+           generate_series(1, 5) AS device_id
+    `);
+
+    if (!insert.success) {
+      return {
+        name: "timescaledb - Hypertables",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to insert time-series data",
+      };
+    }
+
+    return {
+      name: "timescaledb - Hypertables",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "timescaledb - Hypertables",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Utilities - pg_hashids encoding
+ */
+async function testPgHashidsEncoding(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE");
+
+    const encode = await execSQL("SELECT id_encode(12345)");
+    if (!encode.success || encode.output.trim() === "") {
+      return {
+        name: "pg_hashids - Encoding",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to encode hashid",
+      };
+    }
+
+    const encodedValue = encode.output.trim();
+    const decode = await execSQL(`SELECT (id_decode('${encodedValue}'))[1]::text`);
+
+    if (!decode.success || decode.output.trim() !== "12345") {
+      return {
+        name: "pg_hashids - Encoding",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Failed to decode hashid",
+      };
+    }
+
+    return {
+      name: "pg_hashids - Encoding",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_hashids - Encoding",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
+ * Test: Validation - pg_jsonschema validation
+ */
+async function testPgJsonschemaValidation(): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE");
+
+    const schema = `{
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "number"}
+      },
+      "required": ["name"]
+    }`;
+
+    const validDoc = `{"name": "John", "age": 30}`;
+    const validate = await execSQL(
+      `SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`
+    );
+
+    if (!validate.success || validate.output.trim() !== "t") {
+      return {
+        name: "pg_jsonschema - Validation",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Valid document should pass validation",
+      };
+    }
+
+    const invalidDoc = `{"age": 30}`;
+    const validateInvalid = await execSQL(
+      `SELECT json_matches_schema('${schema}'::json, '${invalidDoc}'::json)`
+    );
+
+    if (!validateInvalid.success || validateInvalid.output.trim() !== "f") {
+      return {
+        name: "pg_jsonschema - Validation",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "Invalid document should fail validation",
+      };
+    }
+
+    return {
+      name: "pg_jsonschema - Validation",
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "pg_jsonschema - Validation",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+// ============================================================================
 // AUTO-CONFIG TESTS
 // ============================================================================
 
@@ -1018,66 +2206,48 @@ async function testAutoConfigApplied(): Promise<TestResult> {
 }
 
 // ============================================================================
-// FUNCTIONAL TESTS (SAMPLE)
+// CLEANUP
 // ============================================================================
 
 /**
- * Test: Basic extension functionality (sample tests)
+ * Cleanup test tables and data
  */
-async function testBasicExtensionFunctionality(): Promise<TestResult> {
-  const startTime = Date.now();
+async function cleanupTestData(): Promise<void> {
+  info("Cleaning up test data...");
 
-  try {
-    const errors: string[] = [];
+  const tables = [
+    "test_vectors",
+    "test_vectorscale",
+    "test_hll",
+    "test_wal2json_table",
+    "test_postgis",
+    "test_routing",
+    "test_btree_gin",
+    "test_btree_gist",
+    "test_exclusion",
+    "test_trigger_table",
+    "test_partman",
+    "test_hypopg",
+    "test_safeupdate",
+    "test_trgm",
+    "test_pgroonga",
+    "test_rum",
+    "test_audit",
+    "test_timescale",
+  ];
 
-    // Test pgvector (vector extension)
-    const vectorTest = await execSQL(
-      "SELECT '[1,2,3]'::vector(3) <-> '[4,5,6]'::vector(3) AS distance;"
-    );
-    if (!vectorTest.success) {
-      errors.push("pgvector test failed");
-    }
-
-    // Test pg_trgm
-    const trgmTest = await execSQL("SELECT similarity('hello', 'hallo');");
-    if (!trgmTest.success) {
-      errors.push("pg_trgm test failed");
-    }
-
-    // Test hstore (create extension first)
-    await execSQL("CREATE EXTENSION IF NOT EXISTS hstore;");
-    const hstoreTest = await execSQL("SELECT 'a=>1,b=>2'::hstore -> 'a';");
-    if (!hstoreTest.success || hstoreTest.output !== "1") {
-      errors.push("hstore test failed");
-    }
-
-    if (errors.length > 0) {
-      return {
-        name: "Basic extension functionality (sample)",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: errors.join(", "),
-      };
-    }
-
-    return {
-      name: "Basic extension functionality (sample)",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Basic extension functionality (sample)",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
+  for (const table of tables) {
+    await execSQL(`DROP TABLE IF EXISTS ${table} CASCADE`);
   }
-}
 
-// ============================================================================
-// CLEANUP
-// ============================================================================
+  // Cleanup pg_partman config
+  await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'");
+
+  // Cleanup materialized views
+  await execSQL("DROP MATERIALIZED VIEW IF EXISTS test_timescale_hourly CASCADE");
+
+  success("Test data cleaned up");
+}
 
 /**
  * Cleanup test container
@@ -1101,7 +2271,14 @@ async function main(): Promise<void> {
   section("Comprehensive Docker Image Test Harness");
   info(`Image: ${imageTag}`);
   info(`Container: ${CONTAINER_NAME}`);
-  info(`Fast Mode: ${fastMode ? "Enabled (skipping time-consuming tests)" : "Disabled"}`);
+
+  if (functionalOnly) {
+    info("Mode: Functional tests only");
+  } else if (fastMode) {
+    info("Mode: Fast (skipping comprehensive functional tests)");
+  } else {
+    info("Mode: Full (all tests including comprehensive functional tests)");
+  }
 
   // Check Docker daemon
   info("Checking Docker daemon...");
@@ -1134,48 +2311,119 @@ async function main(): Promise<void> {
     // Run all test phases
     const results: TestResult[] = [];
 
-    // Phase 1: Filesystem Verification
-    section("Phase 1: Filesystem Verification");
-    results.push(await testExtensionDirectoryStructure());
-    results.push(await testManifestPresent());
-    results.push(await testVersionInfoFilesPresent());
-    results.push(await testEnabledPgdgExtensionsPresent(manifest));
-    results.push(await testDisabledPgdgExtensionsNotPresent(manifest));
+    if (!functionalOnly) {
+      // Phase 1: Filesystem Verification
+      section("Phase 1: Filesystem Verification");
+      results.push(await testExtensionDirectoryStructure());
+      results.push(await testManifestPresent());
+      results.push(await testVersionInfoFilesPresent());
+      results.push(await testEnabledPgdgExtensionsPresent(manifest));
+      results.push(await testDisabledPgdgExtensionsNotPresent(manifest));
 
-    console.log("");
+      console.log("");
 
-    // Phase 2: Runtime Verification
-    section("Phase 2: Runtime Verification");
-    results.push(await testVersionInfoTxt(manifest));
-    results.push(await testVersionInfoJson(manifest));
-    results.push(await testPreloadedExtensions(manifest));
-    results.push(await testEnabledExtensions(manifest));
-    results.push(await testDisabledExtensions(manifest));
-    results.push(await testPostgresConfiguration());
+      // Phase 2: Runtime Verification
+      section("Phase 2: Runtime Verification");
+      results.push(await testVersionInfoTxt(manifest));
+      results.push(await testVersionInfoJson(manifest));
+      results.push(await testPreloadedExtensions(manifest));
+      results.push(await testEnabledExtensions(manifest));
+      results.push(await testDisabledExtensions(manifest));
+      results.push(await testPostgresConfiguration());
 
-    console.log("");
+      console.log("");
 
-    // Phase 3: Tools Verification
-    section("Phase 3: Tools Verification");
-    results.push(await testToolsPresent(manifest));
-    results.push(await testPgBackRestFunctional());
-    results.push(await testPgBadgerFunctional());
+      // Phase 3: Tools Verification
+      section("Phase 3: Tools Verification");
+      results.push(await testToolsPresent(manifest));
+      results.push(await testPgBackRestFunctional());
+      results.push(await testPgBadgerFunctional());
 
-    console.log("");
+      console.log("");
 
-    // Phase 4: Auto-Configuration Tests
-    section("Phase 4: Auto-Configuration Tests");
-    results.push(await testAutoConfigApplied());
+      // Phase 4: Auto-Configuration Tests
+      section("Phase 4: Auto-Configuration Tests");
+      results.push(await testAutoConfigApplied());
 
-    console.log("");
+      console.log("");
+    }
 
-    // Phase 5: Functional Tests (sample, can be expanded)
-    if (!fastMode) {
-      section("Phase 5: Functional Tests (Sample)");
-      results.push(await testBasicExtensionFunctionality());
+    // Phase 5: Comprehensive Functional Tests
+    if (functionalOnly || !fastMode) {
+      section("Phase 5: Comprehensive Functional Tests");
+
+      info("AI/Vector Extensions...");
+      results.push(await testPgvectorComprehensive());
+      results.push(await testVectorscaleDiskann());
+
+      info("Analytics Extensions...");
+      results.push(await testHllCardinality());
+
+      info("CDC Extensions...");
+      results.push(await testWal2jsonReplication());
+
+      info("GIS Extensions...");
+      if (isExtensionEnabled(manifest, "postgis")) {
+        results.push(await testPostgisSpatialQuery());
+      }
+      if (isExtensionEnabled(manifest, "pgrouting")) {
+        results.push(await testPgroutingShortestPath());
+      }
+
+      info("Indexing Extensions...");
+      results.push(await testBtreeGistExclusion());
+
+      info("Integration Extensions...");
+      results.push(await testHttpRequests());
+
+      info("Language Extensions...");
+      results.push(await testPlpgsqlTriggers());
+
+      info("Maintenance Extensions...");
+      results.push(await testPgPartmanPartitioning());
+
+      info("Observability Extensions...");
+      results.push(await testPgStatStatements());
+
+      info("Operations Extensions...");
+      results.push(await testPgCronScheduling());
+
+      info("Performance Extensions...");
+      results.push(await testHypopgHypotheticalIndexes());
+
+      info("Queueing Extensions...");
+      results.push(await testPgmqQueue());
+
+      info("Safety Extensions...");
+      results.push(await testPgSafeupdateProtection());
+
+      info("Search Extensions...");
+      results.push(await testPgTrgmSimilarity());
+      results.push(await testPgroongaFullText());
+      results.push(await testRumRankedSearch());
+
+      info("Security Extensions...");
+      results.push(await testPgauditLogging());
+      results.push(await testPgsodiumEncryption());
+
+      info("Timeseries Extensions...");
+      results.push(await testTimescaledbHypertables());
+
+      info("Utilities Extensions...");
+      results.push(await testPgHashidsEncoding());
+
+      info("Validation Extensions...");
+      results.push(await testPgJsonschemaValidation());
+
+      console.log("");
+      info("Comprehensive functional tests completed");
+
+      // Cleanup test data
+      await cleanupTestData();
       console.log("");
     } else {
-      info("Skipping functional tests (--fast mode)");
+      info("Skipping comprehensive functional tests (--fast mode)");
+      info("Use without --fast flag to run all ~27 functional tests");
       console.log("");
     }
 

@@ -1447,6 +1447,12 @@ async function testPgPartmanPartitioning(): Promise<TestResult> {
     // Clean up existing config
     await execSQL("DELETE FROM part_config WHERE parent_table = 'public.test_partman'");
 
+    // Ensure pgsodium is created first and trigger disabled (pg_partman CASCADE dependency)
+    await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE");
+    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE").catch(() => {
+      /* Ignore if trigger doesn't exist */
+    });
+
     const config = await execSQL(
       "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := '2025-01-01')"
     );
@@ -1455,7 +1461,7 @@ async function testPgPartmanPartitioning(): Promise<TestResult> {
         name: "pg_partman - Partitioning",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Failed to configure pg_partman",
+        error: `Failed to configure pg_partman: ${config.output}`,
       };
     }
 
@@ -1904,6 +1910,11 @@ async function testPgsodiumEncryption(): Promise<TestResult> {
 
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE");
+
+    // Disable event triggers if pgsodium not preloaded (prevents GUC parameter errors)
+    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE").catch(() => {
+      /* Ignore if trigger doesn't exist */
+    });
 
     const key = await execSQL("SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')");
     if (!key.success || key.output.trim() === "") {

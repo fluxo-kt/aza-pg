@@ -24,6 +24,8 @@ jobs:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment:
+      name: production
     outputs:
       pg_version_major: ${{ steps.pg-version.outputs.major }}
       pg_version_minor: ${{ steps.pg-version.outputs.minor }}

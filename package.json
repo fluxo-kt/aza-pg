@@ -1,7 +1,7 @@
 {
   "name": "aza-pg",
   "version": "1.0.0",
-  "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with 38 extensions (36 enabled by default)",
+  "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with extensions and tools",
   "type": "module",
   "private": true,
   "author": "Art Shendrik",
@@ -16,7 +16,7 @@
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
     "validate:parallel": "bun scripts/validate.ts --all --parallel",
-    "generate": "bun generate:manifest & bun generate:configs & bun generate:docs & bun generate:markdown & bun generate:dockerfile",
+    "generate": "bun generate:manifest && bun generate:configs && bun generate:docs && bun generate:markdown && bun generate:dockerfile",
     "generate:manifest": "bun scripts/extensions/generate-manifest.ts",
     "generate:configs": "bun scripts/config-generator/generator.ts",
     "generate:docs": "bun scripts/generate-docs-data.ts",

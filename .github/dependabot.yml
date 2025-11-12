@@ -21,6 +21,22 @@ updates:
       prefix: "ci"
       include: "scope"
 
+  # Monitor npm/Bun package dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "bun"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
   # Monitor Docker base images and dependencies
   - package-ecosystem: "docker"
     directory: "/docker/postgres"

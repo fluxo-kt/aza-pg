@@ -166,7 +166,7 @@ REPLICATION_SLOT_NAME=replica_slot_test
     await $`docker compose --env-file .env.test up -d postgres`.cwd(config.primaryStackPath);
   } catch (err) {
     error("Failed to start primary stack");
-    console.error(error);
+    console.error(err);
     process.exit(1);
   }
 
@@ -247,7 +247,7 @@ async function createReplicationSlot(config: ReplicaTestConfig): Promise<void> {
     await $`docker exec ${containerId} psql -U postgres -tAc "SELECT pg_create_physical_replication_slot('replica_slot_test');"`;
   } catch (err) {
     error("Failed to create replication slot");
-    console.error(error);
+    console.error(err);
     process.exit(1);
   }
 
@@ -389,7 +389,7 @@ async function verifyHotStandby(config: ReplicaTestConfig): Promise<void> {
     await $`docker exec ${containerId} psql -U postgres -c "CREATE TABLE test_write (id INT);"`;
     warning("Write protection test inconclusive");
   } catch (err) {
-    const errorOutput = error instanceof Error ? error.message : String(error);
+    const errorOutput = err instanceof Error ? err.message : String(err);
     if (
       errorOutput.toLowerCase().includes("cannot execute") ||
       errorOutput.toLowerCase().includes("read-only")
@@ -442,7 +442,7 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
     );
   } catch (err) {
     error("Failed to start postgres_exporter");
-    console.error(error);
+    console.error(err);
     process.exit(1);
   }
 
@@ -498,7 +498,7 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
     success("postgres_exporter metrics endpoint works");
   } catch (err) {
     error("Failed to test metrics endpoint");
-    console.error(error);
+    console.error(err);
     process.exit(1);
   }
 }
@@ -621,7 +621,7 @@ async function main(): Promise<void> {
     printSummary();
   } catch (err) {
     error("Test failed");
-    console.error(error);
+    console.error(err);
     process.exit(1);
   } finally {
     // Cleanup

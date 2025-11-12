@@ -7,7 +7,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 ## Invariants
 
 - Preload (default): auto_explain, pg_cron, pg_stat_statements, pgaudit
-- Extensions: 38 catalog total (36 enabled, 2 disabled: pgq, supautils)
+- Extensions: 38 catalog total (34 enabled, 4 disabled: pgq, postgis, pgrouting, supautils)
 - Tools ≠ extensions: 5 tools (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
 - **Image includes /etc/postgresql/version-info.{txt,json}** (self-documenting)
@@ -47,7 +47,7 @@ cd stacks/primary && docker compose up
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Classification:** 6 builtin + 25 extensions + 5 tools = 36 enabled. Modules: 1 (auto_explain). Preloaded: 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit). See docs/EXTENSIONS.md for details.
+**Key details:** Modules: 1 (auto_explain). Preloaded: 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit). Tools (no CREATE EXTENSION): 5. See docs/EXTENSIONS.md for full catalog.
 
 ## Auto-Config
 
@@ -104,8 +104,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **Git Hooks (bun-git-hooks, repo-wide)**:
 
 - Installed via: `bun-git-hooks` (auto-runs on postinstall)
-- pre-commit: `bun run validate --staged` (fast, staged files only)
-- pre-push: `bun run validate:full` (complete validation)
+- pre-commit: Auto-fixes linting/formatting, regenerates artifacts if manifest changed, auto-stages fixes
+- pre-push: Disabled (CI enforces validation instead)
 
 **CI/CD Workflows**:
 

@@ -54,6 +54,7 @@ async function preCommit(): Promise<void> {
 
       // Stage all generated files
       const generatedFiles = [
+        "docker/postgres/Dockerfile",
         "docker/postgres/extensions.manifest.json",
         "docker/postgres/extensions.build-packages.txt",
         "docs/.generated/docs-data.json",

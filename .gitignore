@@ -49,6 +49,7 @@ dist/
 build/
 *.egg-info/
 .tsbuildinfo
+*.tmp
 
 # Archived documentation and AI logs
 .archived/

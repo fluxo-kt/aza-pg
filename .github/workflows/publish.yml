@@ -832,13 +832,13 @@ jobs:
               sleep 2  # Brief pause for registry to update
               if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
                 echo "⚠️ Tag still exists after deletion attempt - may need manual cleanup"
-                exit 1
+                # Don't fail the workflow for cleanup issues
               else
                 echo "✅ Verified: Tag has been removed from registry"
               fi
             else
-              echo "⚠️ Failed to delete testing tag"
-              exit 1
+              echo "⚠️ Failed to delete testing tag - will be garbage collected"
+              # Don't fail the workflow for cleanup issues
             fi
           else
             echo "✅ Testing tag not found (already cleaned or never created)"

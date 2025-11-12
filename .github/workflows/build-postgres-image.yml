@@ -113,7 +113,6 @@ concurrency:
 permissions:
   contents: read
   packages: write
-  id-token: write
 
 env:
   REGISTRY: ghcr.io
@@ -224,7 +223,7 @@ jobs:
       - name: Generate cache key
         id: cache-key
         run: |
-          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**') }}"
+          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
           CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}"
           echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
@@ -526,6 +525,7 @@ jobs:
           image-ref: "aza-pg:scan"
           format: "table"
           severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "1" # Fail build on CRITICAL/HIGH vulnerabilities
 
       - name: Generate vulnerability summary
         if: always()

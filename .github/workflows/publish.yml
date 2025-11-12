@@ -13,6 +13,7 @@ permissions:
   contents: read
   packages: write
   id-token: write
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
@@ -23,6 +24,8 @@ jobs:
     name: Build and Publish Single-Node Image
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment:
+      name: production
 
     steps:
       - name: Checkout repository
@@ -86,10 +89,18 @@ jobs:
           PG_FULL=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
           PG_MINOR=$(echo "${PG_FULL}" | cut -d'.' -f2)
 
+          # Capture base image digest for provenance
+          BASE_IMAGE="docker.io/library/postgres:${PG_MAJOR}-trixie"
+          BASE_DIGEST=$(docker inspect postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA} \
+            --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+
           echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
           echo "full=${PG_FULL}" >> $GITHUB_OUTPUT
+          echo "base_image_name=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "base_image_digest=${BASE_DIGEST}" >> $GITHUB_OUTPUT
           echo "✅ Actual PostgreSQL version from base image: ${PG_FULL}"
+          echo "✅ Base image digest: ${BASE_DIGEST}"
 
       - name: Generate build timestamp
         id: timestamp
@@ -136,6 +147,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Document existing tags (for rollback reference)
+        continue-on-error: true
+        run: |
+          echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for TAG in "${{ steps.pg-version.outputs.full }}-single-node" \
+                     "${{ steps.pg-version.outputs.major }}-single-node" \
+                     "${{ steps.pg-version.outputs.full }}" \
+                     "${{ steps.pg-version.outputs.major }}"; do
+            if PREV_DIGEST=$(docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} 2>/dev/null | \
+                             jq -r '.manifests[0].digest // .digest' 2>/dev/null); then
+              echo "- **${TAG}**: Previous digest \`${PREV_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+              echo "Previous ${TAG}: ${PREV_DIGEST}"
+            else
+              echo "- **${TAG}**: New tag (no previous version)" >> $GITHUB_STEP_SUMMARY
+              echo "${TAG}: New tag"
+            fi
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -156,22 +190,40 @@ jobs:
             org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
             io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
             io.fluxo-kt.aza-pg.build.type=single-node
             io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
             io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
+          annotations: |
+            index,manifest:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
+            index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
+            index,manifest:org.opencontainers.image.vendor=fluxo-kt
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
+            index,manifest:org.opencontainers.image.licenses=Apache-2.0
+            index,manifest:org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
+            index,manifest:org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
+            index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
+            index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
+            index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
 
       - name: Generate cache key
         id: cache-key
         run: |
-          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**') }}"
+          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
           CACHE_KEY="publish-cache-${{ github.ref_name }}-${CONTENT_HASH}"
           echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
           echo "Generated cache key: ${CACHE_KEY}"
 
-      - name: Build and push single-node image
+      - name: Build and push to testing tag
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -179,8 +231,9 @@ jobs:
           file: ./docker/postgres/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           build-args: |
             PG_VERSION=${{ steps.pg-version.outputs.major }}
             BUILD_DATE=${{ steps.timestamp.outputs.value }}
@@ -395,6 +448,58 @@ jobs:
               image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
               # ... other config
           ```
+
+          ## Signature Verification
+
+          This image is signed with Cosign using keyless OIDC. Verify the signature before deploying:
+
+          ```bash
+          # Install Cosign (if not already installed)
+          # macOS: brew install cosign
+          # Linux: https://docs.sigstore.dev/cosign/installation/
+          # Windows: https://docs.sigstore.dev/cosign/installation/
+
+          # Verify signature (keyless OIDC)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+
+          # Verify specific tag
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node
+
+          # Verify by digest (immutable reference)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          ```
+
+          **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
+
+          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
+
+          ```bash
+          # Search Rekor for this image
+          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+          ```
+
+          ## Supply Chain Verification
+
+          View SBOM and provenance attestations:
+
+          ```bash
+          # View SBOM
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+
+          # View provenance
+          cosign download attestation \
+            --predicate-type=https://slsa.dev/provenance/v0.2 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
+          ```
           EOF
 
       - name: Verify published image
@@ -484,13 +589,54 @@ jobs:
           docker rm -f pg-publish-test-arm64
           echo "✅ arm64 image test passed"
 
-      - name: Security scan
+      - name: Best practices scan (Dockle)
+        uses: erzz/dockle-action@v1
+        with:
+          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          exit-code: "1"
+          failure-threshold: WARN
+          accept-keywords: key
+          accept-filenames: /docker-entrypoint-initdb.d
+
+      - name: Security scan (SARIF for GitHub Security)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Security scan (blocking on failures)
         uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "table"
           severity: "CRITICAL,HIGH"
           exit-code: "1" # Fail on CRITICAL/HIGH vulnerabilities
+
+      - name: Promote testing image to production tags
+        run: |
+          echo "✅ All security scans passed. Promoting testing image to production tags..."
+
+          # Use docker buildx imagetools to create production tags
+          # This points new tags to the same manifest digest (no re-push needed)
+          docker buildx imagetools create \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}
+
+          echo "✅ Production tags created successfully"
+          echo "Primary tag: ${{ steps.tags.outputs.versioned }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
 
       - name: Publish release notes
         run: |

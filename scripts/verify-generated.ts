@@ -4,9 +4,6 @@
  * Run 'bun run generate' if this fails.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
-
 const filesToCheck = [
   "docker/postgres/Dockerfile",
   "docker/postgres/extensions.manifest.json",
@@ -15,15 +12,22 @@ const filesToCheck = [
   "docs/EXTENSIONS.md",
 ];
 
-function verifyGeneratedFiles(): boolean {
+async function verifyGeneratedFiles(): Promise<boolean> {
   console.log("🔍 Verifying generated files are up-to-date...\n");
 
   // Run generate command to create fresh versions
   console.log("📝 Generating fresh files...");
-  execSync("bun run generate", { stdio: "pipe" });
+  const proc = Bun.spawn(["bun", "run", "generate"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await proc.exited;
 
   // Check git status for modifications
-  const gitStatus = execSync("git status --porcelain", { encoding: "utf-8" });
+  const gitStatusProc = Bun.spawn(["git", "status", "--porcelain"], {
+    stdout: "pipe",
+  });
+  const gitStatus = await new Response(gitStatusProc.stdout).text();
   const modifiedFiles = gitStatus
     .split("\n")
     .filter((line) => line.trim())
@@ -37,24 +41,23 @@ function verifyGeneratedFiles(): boolean {
   if (modifiedGeneratedFiles.length > 0) {
     console.error("❌ Generated files are out of date!\n");
     console.error("Modified files:");
-    modifiedGeneratedFiles.forEach((file) => {
+    for (const file of modifiedGeneratedFiles) {
       console.error(`  - ${file}`);
-    });
+    }
 
     console.error("\n📋 Showing differences:\n");
     // Show diff for each modified file
-    modifiedGeneratedFiles.forEach((file) => {
+    for (const file of modifiedGeneratedFiles) {
       console.error(`\n--- Diff for ${file} ---`);
-      try {
-        const diff = execSync(`git diff --no-index --color=always ${file} || true`, {
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        });
+      const diffProc = Bun.spawn(["git", "diff", "--color=always", file], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const diff = await new Response(diffProc.stdout).text();
+      if (diff) {
         console.error(diff);
-      } catch (e) {
-        // git diff exits with 1 when files differ, which is expected
       }
-    });
+    }
 
     console.error("\n💡 Run 'bun run generate' and commit the changes.");
     return false;
@@ -65,5 +68,5 @@ function verifyGeneratedFiles(): boolean {
 }
 
 // Main execution
-const success = verifyGeneratedFiles();
+const success = await verifyGeneratedFiles();
 process.exit(success ? 0 : 1);

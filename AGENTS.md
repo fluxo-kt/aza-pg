@@ -88,8 +88,11 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Bun-Tailored TS (SOTA best practices)**:
 
-- Use Bun APIs: `Bun.file()`, `Bun.spawn()`, `Bun.$`, `Bun.env` (NO `node:` imports)
-- Node stdlib OK when Bun lacks API: `path` module acceptable; avoid `fs`/`fs/promises`
+- **ALWAYS prefer Bun native APIs** when available: `Bun.file()`, `Bun.spawn()`, `Bun.$`, `Bun.env`
+- File I/O: Use `Bun.file()`, `Bun.write()` instead of `fs`/`fs/promises`
+- Process execution: Use `Bun.spawn()` or `Bun.$` instead of `child_process.exec/execSync`
+- Environment: Use `Bun.env` instead of `process.env`
+- Node stdlib ONLY when Bun lacks equivalent: `path` module acceptable (no Bun alternative yet)
 - TypeScript strict mode enabled (tsconfig.json), ES2024, bundler resolution
 - Run via: `bun run <script>.ts` (never node/tsx)
 - **Extension defaults**: `scripts/extension-defaults.ts` is single source of truth for PGDG versions

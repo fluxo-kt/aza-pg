@@ -135,6 +135,69 @@ Automatic on `release` branch:
 
 See workflow files in `.github/workflows/` for complete workflow details.
 
+## CI/CD Performance Optimizations
+
+### Current Optimizations (2025-11-12)
+
+**Trivy Security Scanning:**
+
+- **Problem solved:** SARIF upload failures when no vulnerabilities found
+- **Solution:** Conditional upload using `hashFiles()` check
+- **Database caching:** Trivy vulnerability DB cached between scans
+- **Time saved:** 3-5 minutes per workflow (duplicate DB downloads eliminated)
+
+**Build Times (publish.yml):**
+
+- Before optimizations: ~44 minutes
+- After optimizations: ~38-40 minutes (11-14% improvement)
+- Further optimization potential: 15-20 minutes (see below)
+
+**ARM64 Testing:**
+
+- build-postgres-image.yml: Already conditional (only when `push_image=true`)
+- publish.yml: Sequential tests on QEMU (unavoidable without architecture change)
+
+### Future Optimization Opportunities
+
+**Native ARM64 Runners (High Impact, Medium Effort):**
+
+GitHub Actions now offers native ARM64 runners (`ubuntu-24.04-arm`) that eliminate QEMU emulation overhead:
+
+```yaml
+strategy:
+  matrix:
+    include:
+      - platform: linux/amd64
+        runner: ubuntu-latest
+      - platform: linux/arm64
+        runner: ubuntu-24.04-arm # Native ARM64, no emulation
+```
+
+**Benefits:**
+
+- 3-4x faster ARM64 builds (2-3 minutes vs 10-15 minutes)
+- Parallel platform builds (amd64 and arm64 simultaneously)
+- Estimated total time: ~20-25 minutes (from current 38-40 minutes)
+
+**Implementation considerations:**
+
+- Requires workflow restructuring (matrix strategy + manifest merge step)
+- Architecture-specific cache scoping needed
+- Testing on both platforms in parallel
+- May require additional runner minutes quota
+
+**Status:** Deferred for future sprint (current optimizations provide immediate value)
+
+**Cache Optimization (Low Hanging Fruit):**
+
+Current cache strategy uses workflow-specific keys. Could be optimized with:
+
+- Date-based cache keys for Trivy DB (daily rotation aligns with DB updates)
+- Content-hash specific caching for Docker layers
+- Cross-workflow cache sharing
+
+See workflow files in `.github/workflows/` for complete workflow details.
+
 ## Build Architecture
 
 ### Multi-Stage Build

@@ -183,6 +183,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: lint
     timeout-minutes: 60
+    # Only run arm64 build when push_image=true, always run amd64
+    if: matrix.platform == 'linux/amd64' || github.event.inputs.push_image == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -190,17 +192,10 @@ jobs:
           - platform: linux/amd64
             runner: ubuntu-latest
             artifact: linux-amd64
-          # Only build arm64 when push_image=true
-          - platform: ${{ github.event.inputs.push_image == 'true' && 'linux/arm64' || '' }}
-            runner: ${{ github.event.inputs.push_image == 'true' && 'ubuntu-24.04-arm' || '' }}
-            artifact: ${{ github.event.inputs.push_image == 'true' && 'linux-arm64' || '' }}
-        exclude:
-          # Exclude empty matrix entries when push_image=false
-          - platform: ""
-
-    outputs:
-      digest-amd64: ${{ steps.build.outputs.digest }}
-      digest-arm64: ${{ steps.build.outputs.digest }}
+          # arm64 build - will be skipped by job-level if when push_image=false
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
 
     steps:
       - name: Checkout repository
@@ -386,8 +381,16 @@ jobs:
       - name: Verify local image
         if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'
         run: |
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
-          echo "✅ Local image verified"
+          # When loaded locally, image may not include registry prefix
+          # Try with registry prefix first, fallback to local tag
+          if docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version 2>/dev/null; then
+            echo "✅ Local image verified (with registry prefix)"
+          elif docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1 | xargs -I {} docker run --rm {} psql --version; then
+            echo "✅ Local image verified (local tag)"
+          else
+            echo "❌ Failed to verify local image"
+            exit 1
+          fi
 
   merge:
     name: Create Multi-Platform Manifest
@@ -468,7 +471,7 @@ jobs:
   scan-image:
     name: Scan Image for Vulnerabilities
     runs-on: ubuntu-latest
-    needs: [build, merge]
+    needs: build
     if: always() && needs.build.result == 'success'
     timeout-minutes: 15
     permissions:
@@ -511,8 +514,21 @@ jobs:
         if: github.event.inputs.push_image != 'true'
         run: |
           echo "🔍 Using locally built image for security scan..."
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan
-          echo "📦 Scanning local image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
+          # When loaded locally, image name may not include registry prefix
+          # Try with registry prefix first, fallback to finding local tag
+          if docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan 2>/dev/null; then
+            echo "📦 Tagged image with registry prefix for scanning"
+          else
+            # Find the locally built image by tag pattern
+            LOCAL_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1)
+            if [ -n "$LOCAL_IMAGE" ]; then
+              docker tag "$LOCAL_IMAGE" aza-pg:scan
+              echo "📦 Tagged local image $LOCAL_IMAGE for scanning"
+            else
+              echo "❌ Could not find locally built image"
+              exit 1
+            fi
+          fi
 
       - name: Cache Trivy vulnerability database
         uses: actions/cache@v4
@@ -575,6 +591,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Parse Bun version from .tool-versions
+        id: bun-version
+        run: |
+          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
+          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.version }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -696,17 +723,6 @@ jobs:
           docker rm pg-test-4gb
           echo "✅ Auto-config test passed!"
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Install Bun for extension tests
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
-
       - name: Test all extensions (comprehensive)
         run: |
           echo "🧪 Testing all 36 enabled extensions comprehensively..."
@@ -825,6 +841,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Parse Bun version from .tool-versions
+        id: bun-version
+        run: |
+          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
+          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.version }}
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -881,6 +908,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Parse Bun version from .tool-versions
+        id: bun-version
+        run: |
+          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
+          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.version }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3

@@ -360,7 +360,12 @@ jobs:
 
           # Get the digest of the manifest list
           MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
-            --format '{{json .}}' | jq -r '.manifest.digest')
+            --format '{{json .}}' | jq -r '.manifest.digest // empty')
+
+          if [ -z "$MANIFEST_DIGEST" ]; then
+            echo "ERROR: Failed to extract manifest digest"
+            exit 1
+          fi
 
           echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
           echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
@@ -403,6 +408,7 @@ jobs:
     name: Test Multi-Platform Image
     runs-on: ubuntu-latest
     needs: [prep, merge]
+    if: needs.merge.result == 'success'
     timeout-minutes: 15
 
     steps:
@@ -487,6 +493,13 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Validate merge digest
+        run: |
+          if [ -z "${{ needs.merge.outputs.image_digest }}" ]; then
+            echo "ERROR: Merge job did not provide valid digest"
+            exit 1
+          fi
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -564,6 +577,7 @@ jobs:
           DIGEST: ${{ needs.merge.outputs.image_digest }}
           COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
         run: |
+          set -e  # Exit on any error
           # Sign by digest (immutable reference)
           echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
@@ -578,21 +592,30 @@ jobs:
           # Use docker buildx imagetools to create production tags
           # This points new tags to the same manifest digest (no re-push needed)
           docker buildx imagetools create \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
 
           echo "✅ Production tags created successfully"
           echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
 
+      - name: Clean up testing tag
+        run: |
+          echo "Removing temporary testing tag..."
+          # Testing tag is no longer needed after promotion
+          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-cleanup-${{ github.sha }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} || true
+          echo "Testing tag will be garbage collected by registry"
+
       - name: Sign all convenience tags
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
+          set -e  # Exit on any error
           echo "Signing convenience tags..."
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}"
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node"

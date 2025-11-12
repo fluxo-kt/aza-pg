@@ -24,8 +24,6 @@ jobs:
     name: Build and Publish Single-Node Image
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    environment:
-      name: production
 
     steps:
       - name: Checkout repository

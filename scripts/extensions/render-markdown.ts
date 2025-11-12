@@ -5,9 +5,12 @@
 
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
+import { info, success, error } from "../utils/logger.ts";
 
-const MANIFEST_PATH = join("docker", "postgres", "extensions.manifest.json");
-const DOC_PATH = join("docs", "EXTENSIONS.md");
+// Derive project root from current file location (scripts/extensions/render-markdown.ts)
+const PROJECT_ROOT = join(import.meta.dir, "../..");
+const MANIFEST_PATH = join(PROJECT_ROOT, "docker", "postgres", "extensions.manifest.json");
+const DOC_PATH = join(PROJECT_ROOT, "docs", "EXTENSIONS.md");
 const START_MARK = "<!-- extensions-table:start -->";
 const END_MARK = "<!-- extensions-table:end -->";
 
@@ -115,11 +118,26 @@ const docContent = await readFile(DOC_PATH, "utf8");
 const startIdx = docContent.indexOf(START_MARK);
 const endIdx = docContent.indexOf(END_MARK);
 if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-  throw new Error("Marker comments not found in docs/EXTENSIONS.md");
+  error("Marker comments not found in docs/EXTENSIONS.md");
+  process.exit(1);
 }
 const before = docContent.slice(0, startIdx);
 const after = docContent.slice(endIdx + END_MARK.length);
 const next = `${before}${replacement}${after}`;
 
 await writeFile(DOC_PATH, next, "utf8");
-console.log("Updated docs/EXTENSIONS.md tables.");
+info("Updated docs/EXTENSIONS.md tables.");
+
+// Format with Prettier for consistent output across platforms
+info("Formatting generated Markdown with Prettier...");
+const prettierProcess = Bun.spawn(["prettier", "--write", DOC_PATH], {
+  cwd: PROJECT_ROOT,
+});
+
+const prettierExit = await prettierProcess.exited;
+if (prettierExit !== 0) {
+  error(`Prettier formatting failed with exit code ${prettierExit}`);
+  process.exit(1);
+}
+
+success(`Generated EXTENSIONS.md: ${DOC_PATH}`);

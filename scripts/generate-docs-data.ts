@@ -246,6 +246,18 @@ async function main() {
   // Write output
   await Bun.write(OUTPUT_PATH, JSON.stringify(docsData, null, 2) + "\n");
 
+  // Format with Prettier for consistent output across platforms
+  info("Formatting generated JSON with Prettier...");
+  const prettierProcess = Bun.spawn(["prettier", "--write", OUTPUT_PATH], {
+    cwd: PROJECT_ROOT,
+  });
+
+  const prettierExit = await prettierProcess.exited;
+  if (prettierExit !== 0) {
+    error(`Prettier formatting failed with exit code ${prettierExit}`);
+    process.exit(1);
+  }
+
   success(`Generated docs data: ${OUTPUT_PATH}`);
   info(
     `Catalog total: ${docsData.catalog.total} (enabled: ${docsData.catalog.enabled}, disabled: ${docsData.catalog.disabled})`

@@ -6,8 +6,8 @@ on:
       - release
 
 concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: false # Don't cancel in-progress releases
+  group: publish-single-node
+  cancel-in-progress: true # Cancel any in-progress publish to start fresh
 
 permissions:
   contents: read

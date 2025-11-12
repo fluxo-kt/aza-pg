@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-12T17:08:01.460Z
+# Generated at: 2025-11-12T21:14:45.970Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -302,6 +302,10 @@ COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
 # Verify Bun is not present in final image (build-time tool should not leak)
 RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
+
+# Switch to postgres user for security (fixes CIS-DI-0001)
+# All setup is complete, now run as non-root user
+USER postgres
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
     CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1

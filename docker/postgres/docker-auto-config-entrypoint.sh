@@ -243,6 +243,7 @@ set -- "$@" \
     -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
     -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
     -c "max_connections=${MAX_CONNECTIONS}" \
+    -c "wal_level=logical" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
 
 # Apply listen_addresses override if network mode enabled

@@ -231,7 +231,7 @@ export const BASE_CONFIG: BaseConfig = {
     effectiveIoConcurrency: EFFECTIVE_IO_CONCURRENCY,
 
     // WAL
-    walLevel: "replica",
+    walLevel: "logical",
     walCompression: "lz4",
     maxWalSize: "2GB",
     minWalSize: "1GB",
@@ -240,7 +240,7 @@ export const BASE_CONFIG: BaseConfig = {
   stacks: {
     primary: {
       // WAL
-      walLevel: "replica",
+      walLevel: "logical",
 
       // Replication
       maxWalSenders: MAX_WAL_SENDERS_PRIMARY,

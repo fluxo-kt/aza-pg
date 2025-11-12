@@ -20,10 +20,27 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  publish:
-    name: Build and Publish Single-Node Image
+  prep:
+    name: Prepare Build Metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
+    outputs:
+      pg_version_major: ${{ steps.pg-version.outputs.major }}
+      pg_version_minor: ${{ steps.pg-version.outputs.minor }}
+      pg_version_full: ${{ steps.pg-version.outputs.full }}
+      base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
+      base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
+      timestamp: ${{ steps.timestamp.outputs.value }}
+      tag_versioned: ${{ steps.tags.outputs.versioned }}
+      tag_convenience: ${{ steps.tags.outputs.convenience }}
+      catalog_total: ${{ steps.catalog.outputs.total }}
+      catalog_enabled: ${{ steps.catalog.outputs.enabled }}
+      catalog_disabled: ${{ steps.catalog.outputs.disabled }}
+      cache_key: ${{ steps.cache-key.outputs.key }}
+      content_hash: ${{ steps.cache-key.outputs.content_hash }}
+      meta_labels: ${{ steps.meta.outputs.labels }}
+      meta_annotations: ${{ steps.meta.outputs.annotations }}
+      bun_version: ${{ steps.bun-version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -126,48 +143,6 @@ jobs:
           echo "Primary tag: ${VERSIONED_TAG}"
           echo "Convenience tags: ${CONVENIENCE_TAGS}"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Document existing tags (for rollback reference)
-        continue-on-error: true
-        run: |
-          echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          for TAG in "${{ steps.pg-version.outputs.full }}-single-node" \
-                     "${{ steps.pg-version.outputs.major }}-single-node" \
-                     "${{ steps.pg-version.outputs.full }}" \
-                     "${{ steps.pg-version.outputs.major }}"; do
-            if PREV_DIGEST=$(docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} 2>/dev/null | \
-                             jq -r '.manifests[0].digest // .digest' 2>/dev/null); then
-              echo "- **${TAG}**: Previous digest \`${PREV_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
-              echo "Previous ${TAG}: ${PREV_DIGEST}"
-            else
-              echo "- **${TAG}**: New tag (no previous version)" >> $GITHUB_STEP_SUMMARY
-              echo "${TAG}: New tag"
-            fi
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
-
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -221,28 +196,97 @@ jobs:
           echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
           echo "Generated cache key: ${CACHE_KEY}"
 
-      - name: Build and push to testing tag
+      - name: Document existing tags (for rollback reference)
+        continue-on-error: true
+        run: |
+          echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for TAG in "${{ steps.pg-version.outputs.full }}-single-node" \
+                     "${{ steps.pg-version.outputs.major }}-single-node" \
+                     "${{ steps.pg-version.outputs.full }}" \
+                     "${{ steps.pg-version.outputs.major }}"; do
+            if PREV_DIGEST=$(docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} 2>/dev/null | \
+                             jq -r '.manifests[0].digest // .digest' 2>/dev/null); then
+              echo "- **${TAG}**: Previous digest \`${PREV_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+              echo "Previous ${TAG}: ${PREV_DIGEST}"
+            else
+              echo "- **${TAG}**: New tag (no previous version)" >> $GITHUB_STEP_SUMMARY
+              echo "${TAG}: New tag"
+            fi
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: prep
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            artifact: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/postgres/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.prep.outputs.meta_labels }}
+          annotations: ${{ needs.prep.outputs.meta_annotations }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            PG_VERSION=${{ steps.pg-version.outputs.major }}
-            BUILD_DATE=${{ steps.timestamp.outputs.value }}
+            PG_VERSION=${{ needs.prep.outputs.pg_version_major }}
+            BUILD_DATE=${{ needs.prep.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
-            VERSION=${{ steps.tags.outputs.versioned }}
-          cache-from: |
-            type=gha,scope=${{ github.ref_name }}
-            type=gha,scope=${{ steps.cache-key.outputs.key }}
-          cache-to: type=gha,mode=max,scope=${{ steps.cache-key.outputs.key }}
-          provenance: true
+            VERSION=${{ needs.prep.outputs.tag_versioned }}
+          cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          provenance: mode=max
           sbom: true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          echo "Exported digest: ${digest}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Monitor cache usage
         if: always()
@@ -259,7 +303,7 @@ jobs:
             if command -v bc >/dev/null 2>&1; then
               CACHE_GB=$(echo "scale=2; $CACHE_USAGE / 1073741824" | bc)
             else
-              # Fallback if bc not available (shouldn't happen on ubuntu-latest)
+              # Fallback if bc not available
               CACHE_GB=$(awk "BEGIN {printf \"%.2f\", $CACHE_USAGE / 1073741824}")
             fi
 
@@ -269,37 +313,70 @@ jobs:
             if command -v bc >/dev/null 2>&1; then
               if (( $(echo "$CACHE_GB > 4" | bc -l) )); then
                 echo "⚠️ WARNING: Cache usage approaching GitHub limit (5GB)"
-                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit" && \
-                echo "Consider cleaning old cache entries for more space"
+                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit"
               fi
             fi
 
             # Add to step summary
-            echo "### Cache Usage: ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if (( $(echo "$CACHE_GB > 4" | bc -l 2>/dev/null || echo 0) )); then
-              echo "⚠️ **WARNING:** Approaching GitHub cache limit" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "✅ Cache usage within acceptable limits" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "### Cache Usage (${{ matrix.platform }}): ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Unable to fetch cache usage data from GitHub API"
-            echo "This is informational only and does not affect the build"
           fi
 
-      - name: Verify PostgreSQL version in built image
-        id: actual-version
+  merge:
+    name: Create Multi-Platform Manifest
+    runs-on: ubuntu-latest
+    needs: [prep, build]
+    timeout-minutes: 15
+    outputs:
+      image_digest: ${{ steps.merge.outputs.digest }}
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push (testing tag)
+        id: merge
+        working-directory: ${{ runner.temp }}/digests
         run: |
-          echo "Pulling built image to verify PostgreSQL version..."
+          # Create testing tag from digests
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+          # Get the digest of the manifest list
+          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --format '{{json .}}' | jq -r '.manifest.digest')
+
+          echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
+          echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
+
+      - name: Verify PostgreSQL version in merged image
+        run: |
+          echo "Pulling merged image to verify PostgreSQL version..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}; then
-              echo "✅ Built image pulled successfully"
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}; then
+              echo "✅ Merged image pulled successfully"
               break
             else
               echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
               sleep $((i * 5))
               if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull built image after 3 attempts"
+                echo "❌ Failed to pull merged image after 3 attempts"
                 exit 1
               fi
             fi
@@ -307,234 +384,50 @@ jobs:
 
           # Extract PostgreSQL version from built image
           PG_VERSION_OUTPUT=$(docker run --rm \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
             psql --version)
           echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
 
           # Parse version
           ACTUAL_VERSION=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
 
-          echo "major=${{ steps.pg-version.outputs.major }}" >> $GITHUB_OUTPUT
-          echo "minor=${{ steps.pg-version.outputs.minor }}" >> $GITHUB_OUTPUT
-          echo "full=${ACTUAL_VERSION}" >> $GITHUB_OUTPUT
-
           # Verify version matches what we used for tagging
-          if [ "${ACTUAL_VERSION}" != "${{ steps.pg-version.outputs.full }}" ]; then
-            echo "❌ ERROR: Version mismatch (expected ${{ steps.pg-version.outputs.full }})"
-            echo "   This should not happen - version was extracted from base image before build"
+          if [ "${ACTUAL_VERSION}" != "${{ needs.prep.outputs.pg_version_full }}" ]; then
+            echo "❌ ERROR: Version mismatch (expected ${{ needs.prep.outputs.pg_version_full }}, got ${ACTUAL_VERSION})"
             exit 1
           fi
 
           echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+  test:
+    name: Test Multi-Platform Image
+    runs-on: ubuntu-latest
+    needs: [prep, merge]
+    timeout-minutes: 15
+
+    steps:
+      - name: Set up QEMU (for arm64 testing only)
+        uses: docker/setup-qemu-action@v3
         with:
-          cosign-release: "v2.4.1"
+          platforms: linux/arm64
 
-      - name: Sign container image with Cosign (keyless OIDC)
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode (explicit, though default in v2.x)
-        run: |
-          # Sign by digest (immutable reference)
-          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-          # Sign all convenience tags for easier verification
-          echo "Signing convenience tags..."
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node"
-          TAG_SINGLE="${{ steps.pg-version.outputs.major }}-single-node"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_SINGLE}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}"
-
-          echo "✅ Image and all tags signed successfully with keyless OIDC"
-          echo "📝 Signatures uploaded to Rekor transparency log"
-
-      - name: Generate release summary
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          # PostgreSQL Single-Node Image Published :rocket:
-
-          ## Image Details
-
-          **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
-          **Digest:** `${{ steps.build.outputs.digest }}`
-          **PostgreSQL Version:** ${{ steps.actual-version.outputs.full }} (verified from image)
-          **Build Timestamp:** ${{ steps.timestamp.outputs.value }}
-          **Build Type:** single-node
-
-          ## Tags Published
-
-          - `${{ steps.tags.outputs.versioned }}` (primary)
-          - `${{ steps.pg-version.outputs.full }}-single-node`
-          - `${{ steps.pg-version.outputs.major }}-single-node`
-          - `${{ steps.pg-version.outputs.full }}`
-          - `${{ steps.pg-version.outputs.major }}`
-
-          ## Pull Commands
-
-          ```bash
-          # Full versioned tag (recommended for production)
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-
-          # By digest (immutable)
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-
-          # Convenience tags (may change)
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}
-          ```
-
-          ## Extensions
-
-          - **Total catalog entries:** 38
-          - **Enabled extensions:** 36
-          - **Disabled extensions:** 2 (pgq, supautils)
-          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
-          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
-          - **PGDG packages:** 14 pre-compiled extensions
-          - **Compiled from source:** 17 extensions (PGXS, cargo-pgrx, autotools, cmake, meson)
-
-          ## Platforms
-
-          - linux/amd64
-          - linux/arm64
-
-          ## Verification
-
-          ```bash
-          # Verify PostgreSQL version
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }} psql --version
-
-          # Test basic functionality
-          docker run -d --name pg-test \
-            -e POSTGRES_PASSWORD=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-
-          # Wait for startup
-          sleep 10
-
-          # Check extensions
-          docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
-
-          # Cleanup
-          docker rm -f pg-test
-          ```
-
-          ## Deployment
-
-          Update your compose file or Kubernetes manifests:
-
-          ```yaml
-          # Docker Compose
-          services:
-            postgres:
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-              # ... other config
-          ```
-
-          ```yaml
-          # Kubernetes
-          spec:
-            containers:
-            - name: postgres
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-              # ... other config
-          ```
-
-          ## Signature Verification
-
-          This image is signed with Cosign using keyless OIDC. Verify the signature before deploying:
-
-          ```bash
-          # Install Cosign (if not already installed)
-          # macOS: brew install cosign
-          # Linux: https://docs.sigstore.dev/cosign/installation/
-          # Windows: https://docs.sigstore.dev/cosign/installation/
-
-          # Verify signature (keyless OIDC)
-          cosign verify \
-            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-
-          # Verify specific tag
-          cosign verify \
-            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node
-
-          # Verify by digest (immutable reference)
-          cosign verify \
-            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-          ```
-
-          **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
-
-          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
-
-          ```bash
-          # Search Rekor for this image
-          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-          ```
-
-          ## Supply Chain Verification
-
-          View SBOM and provenance attestations:
-
-          ```bash
-          # View SBOM
-          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-
-          # View provenance
-          cosign download attestation \
-            --predicate-type=https://slsa.dev/provenance/v0.2 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }}
-          ```
-          EOF
-
-      - name: Verify published image
-        run: |
-          echo "Pulling published image for verification..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}; then
-              echo "✅ Published image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull published image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
-
-          echo "Verifying PostgreSQL version..."
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
-
-          echo "Verifying image architecture..."
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} uname -m
-
-          echo "✅ Image verification successful"
-
-      - name: Test published image (amd64)
+      - name: Test amd64 image (native)
         timeout-minutes: 5
         run: |
           set -euo pipefail
 
-          echo "Testing amd64 image..."
+          echo "Testing amd64 image (native build, no emulation)..."
           docker run -d --platform linux/amd64 \
             --name pg-publish-test-amd64 \
             -e POSTGRES_PASSWORD=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
 
           echo "Waiting for PostgreSQL to start..."
           for i in {1..30}; do
@@ -559,16 +452,16 @@ jobs:
           docker rm -f pg-publish-test-amd64
           echo "✅ amd64 image test passed"
 
-      - name: Test published image (arm64)
+      - name: Test arm64 image (QEMU emulation for testing)
         timeout-minutes: 5
         run: |
           set -euo pipefail
 
-          echo "Testing arm64 image..."
+          echo "Testing arm64 image (native build, QEMU for testing only)..."
           docker run -d --platform linux/arm64 \
             --name pg-publish-test-arm64 \
             -e POSTGRES_PASSWORD=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
 
           echo "Waiting for PostgreSQL to start (arm64 on QEMU may be slower)..."
           for i in {1..60}; do
@@ -587,6 +480,20 @@ jobs:
           docker rm -f pg-publish-test-arm64
           echo "✅ arm64 image test passed"
 
+  scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test]
+    timeout-minutes: 20
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Cache Trivy vulnerability database
         uses: actions/cache@v4
         with:
@@ -598,7 +505,7 @@ jobs:
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@v1
         with:
-          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
           failure-threshold: WARN
           accept-keywords: key
@@ -609,7 +516,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -625,10 +532,44 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
           format: "table"
           severity: "CRITICAL,HIGH"
           exit-code: "1" # Fail on CRITICAL/HIGH vulnerabilities
+
+  release:
+    name: Sign and Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, scan]
+    timeout-minutes: 15
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign container image with Cosign (keyless OIDC)
+        env:
+          DIGEST: ${{ needs.merge.outputs.image_digest }}
+          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
+        run: |
+          # Sign by digest (immutable reference)
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+
+          echo "✅ Image signed successfully with keyless OIDC"
+          echo "📝 Signature uploaded to Rekor transparency log"
 
       - name: Promote testing image to production tags
         run: |
@@ -638,19 +579,178 @@ jobs:
           # This points new tags to the same manifest digest (no re-push needed)
           docker buildx imagetools create \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.versioned }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }}-single-node \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}-single-node \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.full }} \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.pg-version.outputs.major }}
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}
 
           echo "✅ Production tags created successfully"
-          echo "Primary tag: ${{ steps.tags.outputs.versioned }}"
-          echo "Digest: ${{ steps.build.outputs.digest }}"
+          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
+          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
+
+      - name: Sign all convenience tags
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          echo "Signing convenience tags..."
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}"
+
+          echo "✅ All convenience tags signed"
+
+      - name: Generate release summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # PostgreSQL Single-Node Image Published :rocket:
+
+          ## Image Details
+
+          **Registry:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`
+          **Digest:** `${{ needs.merge.outputs.image_digest }}`
+          **PostgreSQL Version:** ${{ needs.prep.outputs.pg_version_full }} (verified from image)
+          **Build Timestamp:** ${{ needs.prep.outputs.timestamp }}
+          **Build Type:** single-node
+          **Build Method:** Native ARM64 runners (parallel builds, no QEMU)
+
+          ## Tags Published
+
+          - `${{ needs.prep.outputs.tag_versioned }}` (primary)
+          - `${{ needs.prep.outputs.pg_version_full }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_major }}-single-node`
+          - `${{ needs.prep.outputs.pg_version_full }}`
+          - `${{ needs.prep.outputs.pg_version_major }}`
+
+          ## Pull Commands
+
+          ```bash
+          # Full versioned tag (recommended for production)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # By digest (immutable)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+
+          # Convenience tags (may change)
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}
+          ```
+
+          ## Extensions
+
+          - **Total catalog entries:** ${{ needs.prep.outputs.catalog_total }}
+          - **Enabled extensions:** ${{ needs.prep.outputs.catalog_enabled }}
+          - **Disabled extensions:** ${{ needs.prep.outputs.catalog_disabled }}
+          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
+          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+
+          ## Platforms
+
+          - linux/amd64 (native build on ubuntu-latest)
+          - linux/arm64 (native build on ubuntu-24.04-arm)
+
+          ## Verification
+
+          ```bash
+          # Verify PostgreSQL version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} psql --version
+
+          # Test basic functionality
+          docker run -d --name pg-test \
+            -e POSTGRES_PASSWORD=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # Wait for startup
+          sleep 10
+
+          # Check extensions
+          docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
+
+          # Cleanup
+          docker rm -f pg-test
+          ```
+
+          ## Deployment
+
+          Update your compose file or Kubernetes manifests:
+
+          ```yaml
+          # Docker Compose
+          services:
+            postgres:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              # ... other config
+          ```
+
+          ```yaml
+          # Kubernetes
+          spec:
+            containers:
+            - name: postgres
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              # ... other config
+          ```
+
+          ## Signature Verification
+
+          This image is signed with Cosign using keyless OIDC. Verify the signature before deploying:
+
+          ```bash
+          # Install Cosign (if not already installed)
+          # macOS: brew install cosign
+          # Linux: https://docs.sigstore.dev/cosign/installation/
+          # Windows: https://docs.sigstore.dev/cosign/installation/
+
+          # Verify signature (keyless OIDC)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # Verify specific tag
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node
+
+          # Verify by digest (immutable reference)
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
+          ```
+
+          **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
+
+          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
+
+          ```bash
+          # Search Rekor for this image
+          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          ```
+
+          ## Supply Chain Verification
+
+          View SBOM and provenance attestations:
+
+          ```bash
+          # View SBOM
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+
+          # View provenance
+          cosign download attestation \
+            --predicate-type=https://slsa.dev/provenance/v0.2 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          ```
+          EOF
 
       - name: Publish release notes
         run: |
           echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          echo "Primary tag: ${{ steps.tags.outputs.versioned }}"
-          echo "Digest: ${{ steps.build.outputs.digest }}"
-          echo "Platforms: linux/amd64, linux/arm64"
+          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
+          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
+          echo "Platforms: linux/amd64, linux/arm64 (native builds)"

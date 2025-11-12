@@ -18,6 +18,57 @@ readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
 
+# Additional caps for new parameters
+readonly WORK_MEM_DW_CAP_MB=256
+readonly OS_RESERVE_MB=512
+readonly CONNECTION_OVERHEAD_PER_CONN_MB=10
+
+# Fixed parameters
+readonly CHECKPOINT_COMPLETION_TARGET="0.9"
+readonly DEFAULT_STATISTICS_TARGET_DW=500
+readonly DEFAULT_STATISTICS_TARGET_STANDARD=100
+
+# Workload type lookup tables (associative arrays)
+declare -A WORKLOAD_MAX_CONN=(
+    [web]=200
+    [oltp]=300
+    [dw]=100
+    [mixed]=120
+)
+
+declare -A WORKLOAD_MIN_WAL_MB=(
+    [web]=1024
+    [oltp]=2048
+    [dw]=4096
+    [mixed]=1024
+)
+
+declare -A WORKLOAD_MAX_WAL_MB=(
+    [web]=4096
+    [oltp]=8192
+    [dw]=16384
+    [mixed]=4096
+)
+
+# Storage type lookup tables
+declare -A STORAGE_RANDOM_COST=(
+    [ssd]=1.1
+    [san]=1.1
+    [hdd]=4.0
+)
+
+declare -A STORAGE_IO_CONCURRENCY=(
+    [ssd]=200
+    [san]=300
+    [hdd]=2
+)
+
+declare -A STORAGE_MAINT_IO_CONCURRENCY=(
+    [ssd]=20
+    [san]=20
+    [hdd]=10
+)
+
 if [ "$#" -eq 0 ]; then
     set -- postgres
 elif [ "${1#-}" != "$1" ]; then
@@ -109,6 +160,34 @@ detect_cpu() {
     echo "$cpu_cores:$source"
 }
 
+get_workload_type() {
+    local workload="${POSTGRES_WORKLOAD_TYPE:-mixed}"
+
+    case "$workload" in
+        web|oltp|dw|mixed)
+            echo "$workload"
+            ;;
+        *)
+            echo "[POSTGRES] WARNING: Invalid POSTGRES_WORKLOAD_TYPE='$workload' - defaulting to 'mixed'" >&2
+            echo "mixed"
+            ;;
+    esac
+}
+
+get_storage_type() {
+    local storage="${POSTGRES_STORAGE_TYPE:-ssd}"
+
+    case "$storage" in
+        ssd|hdd|san)
+            echo "$storage"
+            ;;
+        *)
+            echo "[POSTGRES] WARNING: Invalid POSTGRES_STORAGE_TYPE='$storage' - defaulting to 'ssd'" >&2
+            echo "ssd"
+            ;;
+    esac
+}
+
 RAM_INFO=$(detect_ram)
 TOTAL_RAM_MB=$(echo "$RAM_INFO" | cut -d: -f1)
 RAM_SOURCE=$(echo "$RAM_INFO" | cut -d: -f2)
@@ -143,13 +222,26 @@ if [ "$TOTAL_RAM_MB" -lt 512 ]; then
     exit 1
 fi
 
-if [ "$TOTAL_RAM_MB" -lt 1024 ]; then
-    MAX_CONNECTIONS=80
-elif [ "$TOTAL_RAM_MB" -lt 4096 ]; then
-    MAX_CONNECTIONS=120
-else
-    MAX_CONNECTIONS=200
-fi
+calculate_max_connections() {
+    local workload=$(get_workload_type)
+    local base_conn=${WORKLOAD_MAX_CONN[$workload]}
+
+    # Scale for small VPS (shared resources)
+    if [ "$TOTAL_RAM_MB" -lt 2048 ]; then
+        base_conn=$(( base_conn * 50 / 100 ))
+    elif [ "$TOTAL_RAM_MB" -lt 4096 ]; then
+        base_conn=$(( base_conn * 70 / 100 ))
+    elif [ "$TOTAL_RAM_MB" -lt 8192 ]; then
+        base_conn=$(( base_conn * 85 / 100 ))
+    fi
+
+    # Minimum 20 connections
+    [ "$base_conn" -lt 20 ] && base_conn=20
+
+    echo "$base_conn"
+}
+
+MAX_CONNECTIONS=$(calculate_max_connections)
 
 calculate_shared_buffers() {
     local ratio
@@ -173,20 +265,35 @@ calculate_shared_buffers() {
 }
 
 calculate_effective_cache() {
-    local value=$((TOTAL_RAM_MB - SHARED_BUFFERS_MB))
-    local min_value=$((SHARED_BUFFERS_MB * 2))
+    # Account for OS (512MB minimum) + other services (20% of RAM)
+    local other_usage=$(( TOTAL_RAM_MB * 20 / 100 ))
+    [ "$other_usage" -lt "$OS_RESERVE_MB" ] && other_usage=$OS_RESERVE_MB
 
+    # Available for OS page cache
+    local cache_avail=$(( TOTAL_RAM_MB - SHARED_BUFFERS_MB - other_usage ))
+
+    # Use 70% of that (conservative)
+    local value=$(( cache_avail * 70 / 100 ))
+
+    # Minimum: 2× shared_buffers
+    local min_value=$(( SHARED_BUFFERS_MB * 2 ))
     [ "$value" -lt "$min_value" ] && value=$min_value
     [ "$value" -lt 0 ] && value=0
-
-    local max_value=$((TOTAL_RAM_MB * 3 / 4))
-    [ "$value" -gt "$max_value" ] && value=$max_value
 
     echo "$value"
 }
 
 calculate_maintenance_work_mem() {
-    local value=$((TOTAL_RAM_MB / 32))
+    local workload=$(get_workload_type)
+    local value
+
+    if [ "$workload" = "dw" ]; then
+        # DW: 12.5% of RAM
+        value=$(( TOTAL_RAM_MB / 8 ))
+    else
+        # Others: 6.25% of RAM
+        value=$(( TOTAL_RAM_MB / 16 ))
+    fi
 
     [ "$value" -lt 32 ] && value=32
     [ "$value" -gt "$MAINTENANCE_WORK_MEM_CAP_MB" ] && value=$MAINTENANCE_WORK_MEM_CAP_MB
@@ -195,15 +302,72 @@ calculate_maintenance_work_mem() {
 }
 
 calculate_work_mem() {
-    local divisor=$((MAX_CONNECTIONS * 4))
+    local workload=$(get_workload_type)
+
+    # Account for connection overhead (10MB per connection)
+    local conn_overhead=$(( MAX_CONNECTIONS * CONNECTION_OVERHEAD_PER_CONN_MB ))
+
+    # Available memory pool
+    local pool=$(( TOTAL_RAM_MB - SHARED_BUFFERS_MB - conn_overhead - OS_RESERVE_MB ))
+
+    # Safety floor
+    [ "$pool" -lt 256 ] && pool=256
+
+    # Divide by connections × operations × safety margin
+    local divisor=$(( MAX_CONNECTIONS * 4 ))
     [ "$divisor" -lt 1 ] && divisor=1
 
-    local value=$((TOTAL_RAM_MB / divisor))
+    local value=$(( pool / divisor ))
 
+    # Minimum 1MB
     [ "$value" -lt 1 ] && value=1
-    [ "$value" -gt "$WORK_MEM_CAP_MB" ] && value=$WORK_MEM_CAP_MB
+
+    # RAM-tiered caps based on workload
+    local cap=$WORK_MEM_CAP_MB
+
+    if [ "$workload" = "dw" ] || [ "$workload" = "mixed" ]; then
+        if [ "$TOTAL_RAM_MB" -ge 32768 ]; then
+            cap=$WORK_MEM_DW_CAP_MB  # 256MB for 32GB+ RAM
+        elif [ "$TOTAL_RAM_MB" -ge 8192 ]; then
+            cap=128  # 128MB for 8-32GB RAM
+        elif [ "$TOTAL_RAM_MB" -ge 2048 ]; then
+            cap=64   # 64MB for 2-8GB RAM
+        fi
+    fi
+
+    [ "$value" -gt "$cap" ] && value=$cap
 
     echo "$value"
+}
+
+calculate_wal_buffers() {
+    # wal_buffers = 3% of shared_buffers, min 32KB (expressed as fraction of MB), max 16MB
+    local value=$(( (SHARED_BUFFERS_MB * 3) / 100 ))
+
+    # Minimum: 32KB = 0.03125 MB, but we work in MB, so minimum 1MB is practical
+    [ "$value" -lt 1 ] && value=1
+
+    # Maximum: 16MB
+    [ "$value" -gt 16 ] && value=16
+
+    # Special rounding: if between 14-16MB, round up to 16MB
+    if [ "$value" -gt 14 ] && [ "$value" -lt 16 ]; then
+        value=16
+    fi
+
+    echo "$value"
+}
+
+calculate_io_workers() {
+    # io_workers: max(3, CPU_CORES / 4) for systems with 12+ cores
+    if [ "$CPU_CORES" -lt 12 ]; then
+        echo "3"  # PostgreSQL 18 default
+    else
+        local value=$(( CPU_CORES / 4 ))
+        [ "$value" -lt 3 ] && value=3
+        [ "$value" -gt 64 ] && value=64
+        echo "$value"
+    fi
 }
 
 SHARED_BUFFERS_MB=$(calculate_shared_buffers)
@@ -211,13 +375,54 @@ EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
 MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
 WORK_MEM_MB=$(calculate_work_mem)
 
-# Cap max_worker_processes at 64 to prevent exceeding PostgreSQL limits on high-core machines
-MAX_WORKER_PROCESSES=$((CPU_CORES * 2))
+# Leave CPU headroom for other services: CPU × 1.5 (was CPU × 2)
+MAX_WORKER_PROCESSES=$(( CPU_CORES + CPU_CORES / 2 ))
+[ "$MAX_WORKER_PROCESSES" -lt 2 ] && MAX_WORKER_PROCESSES=2
 [ "$MAX_WORKER_PROCESSES" -gt 64 ] && MAX_WORKER_PROCESSES=64
 
-MAX_PARALLEL_WORKERS=$CPU_CORES
-MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
-[ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
+# Only enable parallel workers if CPU >= 4 cores
+if [ "$CPU_CORES" -ge 4 ]; then
+    MAX_PARALLEL_WORKERS=$CPU_CORES
+    MAX_PARALLEL_WORKERS_PER_GATHER=$(( CPU_CORES / 2 ))
+    [ "$MAX_PARALLEL_WORKERS_PER_GATHER" -lt 1 ] && MAX_PARALLEL_WORKERS_PER_GATHER=1
+
+    # PostgreSQL 11+ feature
+    MAX_PARALLEL_MAINTENANCE_WORKERS=$(( CPU_CORES / 2 ))
+    [ "$MAX_PARALLEL_MAINTENANCE_WORKERS" -gt 4 ] && MAX_PARALLEL_MAINTENANCE_WORKERS=4
+else
+    # Disable parallel workers on low-core systems
+    MAX_PARALLEL_WORKERS=""
+    MAX_PARALLEL_WORKERS_PER_GATHER=""
+    MAX_PARALLEL_MAINTENANCE_WORKERS=""
+fi
+
+# Calculate new parameters
+WORKLOAD_TYPE=$(get_workload_type)
+STORAGE_TYPE=$(get_storage_type)
+
+WAL_BUFFERS_MB=$(calculate_wal_buffers)
+IO_WORKERS=$(calculate_io_workers)
+
+# Workload-based parameters
+MIN_WAL_SIZE_MB=${WORKLOAD_MIN_WAL_MB[$WORKLOAD_TYPE]}
+MAX_WAL_SIZE_MB=${WORKLOAD_MAX_WAL_MB[$WORKLOAD_TYPE]}
+
+if [ "$WORKLOAD_TYPE" = "dw" ]; then
+    DEFAULT_STATISTICS_TARGET=$DEFAULT_STATISTICS_TARGET_DW
+else
+    DEFAULT_STATISTICS_TARGET=$DEFAULT_STATISTICS_TARGET_STANDARD
+fi
+
+# Storage-based parameters
+RANDOM_PAGE_COST=${STORAGE_RANDOM_COST[$STORAGE_TYPE]}
+MAINTENANCE_IO_CONCURRENCY=${STORAGE_MAINT_IO_CONCURRENCY[$STORAGE_TYPE]}
+
+# Linux-only parameter
+if [ "$(uname -s)" = "Linux" ]; then
+    EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
+else
+    EFFECTIVE_IO_CONCURRENCY=""
+fi
 
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
@@ -247,19 +452,37 @@ if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDRESSES_OVERRIDE}"
 fi
 
-echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, max_worker_processes=${MAX_WORKER_PROCESSES}, max_parallel_workers=${MAX_PARALLEL_WORKERS}, max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}, wal_level=${WAL_LEVEL}"
+echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \
     -c "effective_cache_size=${EFFECTIVE_CACHE_MB}MB" \
     -c "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB" \
     -c "work_mem=${WORK_MEM_MB}MB" \
-    -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
-    -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
-    -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
     -c "max_connections=${MAX_CONNECTIONS}" \
+    -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
     -c "wal_level=${WAL_LEVEL}" \
-    -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
+    -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
+    -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \
+    -c "wal_buffers=${WAL_BUFFERS_MB}MB" \
+    -c "min_wal_size=${MIN_WAL_SIZE_MB}MB" \
+    -c "max_wal_size=${MAX_WAL_SIZE_MB}MB" \
+    -c "random_page_cost=${RANDOM_PAGE_COST}" \
+    -c "default_statistics_target=${DEFAULT_STATISTICS_TARGET}" \
+    -c "io_workers=${IO_WORKERS}" \
+    -c "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
+
+# Conditional parameters
+if [ -n "$MAX_PARALLEL_WORKERS" ]; then
+    set -- "$@" \
+        -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
+        -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
+        -c "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
+fi
+
+if [ -n "$EFFECTIVE_IO_CONCURRENCY" ]; then
+    set -- "$@" -c "effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}"
+fi
 
 # wal_level=minimal requires max_wal_senders=0 (no replication)
 if [ "$WAL_LEVEL" = "minimal" ]; then

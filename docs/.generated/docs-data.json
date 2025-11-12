@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2025-11-11T22:14:11.629Z",
+  "generatedAt": "2025-11-11T23:55:34.522Z",
   "catalog": {
     "total": 38,
-    "enabled": 34,
-    "disabled": 4
+    "enabled": 36,
+    "disabled": 2
   },
   "byKind": {
     "builtin": 6,
-    "extension": 23,
+    "extension": 25,
     "tool": 5
   },
   "builtins": [
@@ -32,8 +32,10 @@
     "pgaudit",
     "pgmq",
     "pgroonga",
+    "pgrouting",
     "pgsodium",
     "plpgsql_check",
+    "postgis",
     "rum",
     "set_user",
     "supabase_vault",
@@ -45,7 +47,7 @@
   ],
   "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgq", "pgrouting", "postgis", "supautils"],
+    "extensions": ["pgq", "supautils"],
     "tools": []
   },
   "preloaded": {
@@ -76,6 +78,7 @@
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
     "queueing": ["pgmq"],
+    "gis": ["pgrouting", "postgis"],
     "language": ["plpgsql"],
     "quality": ["plpgsql_check"],
     "timeseries": ["timescaledb", "timescaledb_toolkit"],

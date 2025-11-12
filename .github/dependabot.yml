@@ -37,9 +37,9 @@ updates:
       prefix: "deps"
       include: "scope"
 
-  # Monitor Docker base images and dependencies
+  # Monitor Docker images and dependencies
   - package-ecosystem: "docker"
-    directory: "/docker/postgres"
+    directory: "/"
     schedule:
       interval: "monthly"
       day: "monday"
@@ -49,57 +49,6 @@ updates:
     labels:
       - "dependencies"
       - "docker"
-    commit-message:
-      prefix: "build"
-      include: "scope"
-
-  # Monitor primary stack compose dependencies
-  - package-ecosystem: "docker"
-    directory: "/stacks/primary"
-    schedule:
-      interval: "monthly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "docker"
-      - "stack-primary"
-    commit-message:
-      prefix: "build"
-      include: "scope"
-
-  # Monitor replica stack compose dependencies
-  - package-ecosystem: "docker"
-    directory: "/stacks/replica"
-    schedule:
-      interval: "monthly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "docker"
-      - "stack-replica"
-    commit-message:
-      prefix: "build"
-      include: "scope"
-
-  # Monitor single stack compose dependencies
-  - package-ecosystem: "docker"
-    directory: "/stacks/single"
-    schedule:
-      interval: "monthly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "docker"
-      - "stack-single"
     commit-message:
       prefix: "build"
       include: "scope"

@@ -51,8 +51,29 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 ## Auto-Config
 
-RAM detect order: POSTGRES_MEMORY → cgroup v2 → /proc/meminfo (warn)
-Caps: shared_buffers ≤ 32GB, work_mem ≤ 32MB, connections: 80/120/200
+**Resource Detection**:
+
+- RAM: POSTGRES_MEMORY → cgroup v2 → /proc/meminfo (warn)
+- CPU: `nproc` (cgroup-aware)
+
+**Workload Optimization** (`POSTGRES_WORKLOAD_TYPE`):
+
+- `web` (default): max_connections=200, balanced for OLTP + read-heavy queries
+- `oltp`: max_connections=300, optimized for high-concurrency transactions
+- `dw`: max_connections=100, optimized for analytics/data warehouse (high statistics_target=500)
+- `mixed`: max_connections=120, balanced general-purpose workload
+
+**Storage Tuning** (`POSTGRES_STORAGE_TYPE`):
+
+- `ssd` (default): random_page_cost=1.1, effective_io_concurrency=200
+- `hdd`: random_page_cost=4.0, effective_io_concurrency=2 (mechanical drives)
+- `san`: random_page_cost=1.1, effective_io_concurrency=1 (network storage with low iops variance)
+
+**Scaling Caps**:
+
+- shared_buffers ≤ 32GB (25% of RAM)
+- work_mem ≤ 32MB (prevents OOM on complex queries)
+- Connections: RAM-scaled (50%/70%/85%/100% across 4 tiers: <2GB, 2-4GB, 4-8GB, ≥8GB)
 
 ## Troubleshooting
 

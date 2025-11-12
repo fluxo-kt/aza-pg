@@ -380,7 +380,8 @@ MAX_WORKER_PROCESSES=$(( CPU_CORES + CPU_CORES / 2 ))
 [ "$MAX_WORKER_PROCESSES" -lt 2 ] && MAX_WORKER_PROCESSES=2
 [ "$MAX_WORKER_PROCESSES" -gt 64 ] && MAX_WORKER_PROCESSES=64
 
-# Only enable parallel workers if CPU >= 4 cores
+# Set parallel workers based on CPU cores
+# For <4 cores: limit parallel workers to prevent resource exhaustion
 if [ "$CPU_CORES" -ge 4 ]; then
     MAX_PARALLEL_WORKERS=$CPU_CORES
     MAX_PARALLEL_WORKERS_PER_GATHER=$(( CPU_CORES / 2 ))
@@ -390,10 +391,10 @@ if [ "$CPU_CORES" -ge 4 ]; then
     MAX_PARALLEL_MAINTENANCE_WORKERS=$(( CPU_CORES / 2 ))
     [ "$MAX_PARALLEL_MAINTENANCE_WORKERS" -gt 4 ] && MAX_PARALLEL_MAINTENANCE_WORKERS=4
 else
-    # Disable parallel workers on low-core systems
-    MAX_PARALLEL_WORKERS=""
-    MAX_PARALLEL_WORKERS_PER_GATHER=""
-    MAX_PARALLEL_MAINTENANCE_WORKERS=""
+    # Low-core systems: set conservative parallel worker limits
+    MAX_PARALLEL_WORKERS=$CPU_CORES
+    MAX_PARALLEL_WORKERS_PER_GATHER=1
+    MAX_PARALLEL_MAINTENANCE_WORKERS=1
 fi
 
 # Calculate new parameters

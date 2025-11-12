@@ -221,6 +221,21 @@ MAX_PARALLEL_WORKERS_PER_GATHER=$((CPU_CORES / 2))
 
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
+# WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
+# Default: logical (safest, enables CDC extensions like wal2json)
+# Override: Set POSTGRES_WAL_LEVEL to 'minimal' (single-node) or 'replica' (read replica)
+WAL_LEVEL=${POSTGRES_WAL_LEVEL:-logical}
+
+# Validate wal_level value
+case "$WAL_LEVEL" in
+    minimal|replica|logical)
+        ;;
+    *)
+        echo "[POSTGRES] ERROR: Invalid POSTGRES_WAL_LEVEL='$WAL_LEVEL' (must be: minimal, replica, or logical)" >&2
+        exit 1
+        ;;
+esac
+
 # Override listen_addresses based on POSTGRES_BIND_IP
 # Default: 127.0.0.1 (localhost only, secure)
 # Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
@@ -232,7 +247,7 @@ if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDRESSES_OVERRIDE}"
 fi
 
-echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, max_worker_processes=${MAX_WORKER_PROCESSES}, max_parallel_workers=${MAX_PARALLEL_WORKERS}, max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
+echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE) → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, max_worker_processes=${MAX_WORKER_PROCESSES}, max_parallel_workers=${MAX_PARALLEL_WORKERS}, max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}, wal_level=${WAL_LEVEL}"
 
 set -- "$@" \
     -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \
@@ -243,8 +258,13 @@ set -- "$@" \
     -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
     -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
     -c "max_connections=${MAX_CONNECTIONS}" \
-    -c "wal_level=logical" \
+    -c "wal_level=${WAL_LEVEL}" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
+
+# wal_level=minimal requires max_wal_senders=0 (no replication)
+if [ "$WAL_LEVEL" = "minimal" ]; then
+    set -- "$@" -c "max_wal_senders=0"
+fi
 
 # Apply listen_addresses override if network mode enabled
 if [ -n "$LISTEN_ADDRESSES_OVERRIDE" ]; then

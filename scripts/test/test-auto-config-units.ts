@@ -77,7 +77,7 @@ function calculateSharedBuffers(totalRamMB: number): number {
 }
 
 function calculateMaxConnections(totalRamMB: number, workload: string = "mixed"): number {
-  const config = WORKLOAD_CONFIGS[workload] || WORKLOAD_CONFIGS.mixed;
+  const config = (WORKLOAD_CONFIGS[workload] || WORKLOAD_CONFIGS.mixed)!;
   let baseConn = config.maxConnections;
 
   // Scale for small VPS
@@ -592,28 +592,28 @@ describe("worker_processes calculation", () => {
 
 describe("Workload configurations", () => {
   test("Web workload config", () => {
-    const config = WORKLOAD_CONFIGS.web;
+    const config = WORKLOAD_CONFIGS.web!;
     expect(config.maxConnections).toBe(200);
     expect(config.minWalSizeMB).toBe(1024);
     expect(config.maxWalSizeMB).toBe(4096);
   });
 
   test("OLTP workload config", () => {
-    const config = WORKLOAD_CONFIGS.oltp;
+    const config = WORKLOAD_CONFIGS.oltp!;
     expect(config.maxConnections).toBe(300);
     expect(config.minWalSizeMB).toBe(2048);
     expect(config.maxWalSizeMB).toBe(8192);
   });
 
   test("DW workload config", () => {
-    const config = WORKLOAD_CONFIGS.dw;
+    const config = WORKLOAD_CONFIGS.dw!;
     expect(config.maxConnections).toBe(100);
     expect(config.minWalSizeMB).toBe(4096);
     expect(config.maxWalSizeMB).toBe(16384);
   });
 
   test("Mixed workload config", () => {
-    const config = WORKLOAD_CONFIGS.mixed;
+    const config = WORKLOAD_CONFIGS.mixed!;
     expect(config.maxConnections).toBe(120);
     expect(config.minWalSizeMB).toBe(1024);
     expect(config.maxWalSizeMB).toBe(4096);
@@ -622,21 +622,21 @@ describe("Workload configurations", () => {
 
 describe("Storage configurations", () => {
   test("SSD storage config", () => {
-    const config = STORAGE_CONFIGS.ssd;
+    const config = STORAGE_CONFIGS.ssd!;
     expect(config.randomPageCost).toBe(1.1);
     expect(config.ioConcurrency).toBe(200);
     expect(config.maintIoConcurrency).toBe(20);
   });
 
   test("HDD storage config", () => {
-    const config = STORAGE_CONFIGS.hdd;
+    const config = STORAGE_CONFIGS.hdd!;
     expect(config.randomPageCost).toBe(4.0);
     expect(config.ioConcurrency).toBe(2);
     expect(config.maintIoConcurrency).toBe(10);
   });
 
   test("SAN storage config", () => {
-    const config = STORAGE_CONFIGS.san;
+    const config = STORAGE_CONFIGS.san!;
     expect(config.randomPageCost).toBe(1.1);
     expect(config.ioConcurrency).toBe(300);
     expect(config.maintIoConcurrency).toBe(20);

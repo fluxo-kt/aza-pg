@@ -233,8 +233,10 @@ async function caseCpuDetection(logs: string, container: string): Promise<void> 
 
 /**
  * Test 7: Custom shared_preload_libraries override
+ * NOTE: This function is currently unused (Test 7 disabled pending investigation)
  */
-async function caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
+// @ts-expect-error: Function intentionally unused - disabled test case
+async function _caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
   // Verify custom shared_preload_libraries override
   // Default is pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,timescaledb,safeupdate
   // Override to minimal set (pg_stat_statements,pg_cron) to prove it works
@@ -724,7 +726,7 @@ async function case4coreThreshold(logs: string, container: string): Promise<void
 /**
  * Test 28: <4 cores (no parallel workers)
  */
-async function caseLowCoreNoParallel(logs: string, container: string): Promise<void> {
+async function caseLowCoreNoParallel(logs: string, _container: string): Promise<void> {
   assertLogContains(logs, "RAM: 204[0-9]MB \\(cgroup-v2\\)", "Detected 2GB via cgroup");
   assertLogContains(logs, "CPU: 2 cores", "CPU detection picked up 2 cores");
 

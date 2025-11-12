@@ -17,7 +17,7 @@
 # ----------------
 # MANUAL TRIGGER (GitHub UI or gh CLI):
 #   1. You want to test a custom combination of extension versions
-#   2. You're validating arm64 compatibility (QEMU testing)
+#   2. You're validating arm64 compatibility (native ARM64 runners)
 #   3. You're verifying a new extension or extension version works
 #   4. Before creating a PR/release candidate that should be published
 #
@@ -30,10 +30,27 @@
 # WHAT IT DOES:
 # -----------
 # 1. Lint & Validate: Fast syntax checks, manifest validation, smoke tests
-# 2. Build: Multi-platform Docker image (linux/amd64 + linux/arm64)
+# 2. Build: Single or multi-platform based on push_image input
+#    - push_image=false: Single-platform amd64, local load (no push)
+#    - push_image=true: Multi-platform (amd64 + arm64 native), push to registry
 # 3. Test: Extension loading, auto-config, primary/replica/single stacks
 # 4. Scan: Trivy security vulnerability scan
 # 5. Output: Full test report, image digest, SHA hashes
+#
+# BUILD METHOD:
+# ------------
+# When push_image=true:
+#   - Native builds on platform-specific runners (no QEMU emulation)
+#   - amd64: ubuntu-latest (x86_64)
+#   - arm64: ubuntu-24.04-arm (ARM64 native)
+#   - Builds run in parallel for faster execution
+#   - Each platform pushes by digest
+#   - Final manifest combines both architectures
+#
+# When push_image=false:
+#   - Single-platform amd64 build
+#   - No push to registry (local load only)
+#   - Fast iteration for local testing
 #
 # HOW TO TRIGGER:
 # ---------------
@@ -47,7 +64,8 @@
 #     -f pg_version=18 \
 #     -f pgvector_version=0.8.1 \
 #     -f pg_cron_version=1.6.7 \
-#     -f pgaudit_version=18.0
+#     -f pgaudit_version=18.0 \
+#     -f push_image=true
 #
 # OUTPUTS:
 # --------
@@ -64,11 +82,12 @@
 #                 More detailed testing (publish.yml is minimal pre-signature)
 #                 Different tagging strategy (build.yml uses dev-prefixed tags)
 #                 No push by default (publish.yml always pushes production tags)
+#                 No Cosign signing (dev builds only)
 #
 # TROUBLESHOOTING:
 # ---------------
 # Failed tests → Check GitHub Actions logs in "Test PostgreSQL Stack" section
-# arm64 timeout → QEMU emulation is slow; check logs for actual error vs timing
+# arm64 timeout → Native builds should be fast; check logs for actual error
 # Push fails → May need GHCR write permissions or GITHUB_TOKEN with packages scope
 # Build fails → Run locally: bun run build or check Dockerfile for syntax
 #
@@ -160,13 +179,28 @@ jobs:
             docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
 
   build:
-    name: Build and Push PostgreSQL Image
-    runs-on: ubuntu-latest
+    name: Build PostgreSQL Image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     needs: lint
-    timeout-minutes: 30
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            artifact: linux-amd64
+          # Only build arm64 when push_image=true
+          - platform: ${{ github.event.inputs.push_image == 'true' && 'linux/arm64' || '' }}
+            runner: ${{ github.event.inputs.push_image == 'true' && 'ubuntu-24.04-arm' || '' }}
+            artifact: ${{ github.event.inputs.push_image == 'true' && 'linux-arm64' || '' }}
+        exclude:
+          # Exclude empty matrix entries when push_image=false
+          - platform: ""
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest-amd64: ${{ steps.build.outputs.digest }}
+      digest-arm64: ${{ steps.build.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -189,6 +223,7 @@ jobs:
             network=host
 
       - name: Log in to GitHub Container Registry
+        if: github.event.inputs.push_image == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -224,33 +259,68 @@ jobs:
         id: cache-key
         run: |
           CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
-          CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}"
+          CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}-${{ matrix.artifact }}"
           echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
           echo "Generated cache key: ${CACHE_KEY}"
 
-      - name: Build and push Docker image
+      - name: Build and push by digest (multi-platform)
         id: build
+        if: github.event.inputs.push_image == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/postgres/Dockerfile
-          platforms: ${{ github.event.inputs.push_image == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-          push: ${{ github.event.inputs.push_image == 'true' }}
-          load: ${{ github.event.inputs.push_image != 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             PG_VERSION=${{ steps.build-args.outputs.pg_version }}
             PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
             PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}-2.pgdg13+1
             PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
-          cache-from: |
-            type=gha,scope=${{ github.ref_name }}
-            type=gha,scope=${{ steps.cache-key.outputs.key }}
-          cache-to: type=gha,mode=max,scope=${{ steps.cache-key.outputs.key }}
-          provenance: ${{ github.event.inputs.push_image == 'true' }}
-          sbom: ${{ github.event.inputs.push_image == 'true' }}
+          cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and load (local only)
+        id: build-local
+        if: github.event.inputs.push_image != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          platforms: ${{ matrix.platform }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          build-args: |
+            PG_VERSION=${{ steps.build-args.outputs.pg_version }}
+            PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
+            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}-2.pgdg13+1
+            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
+          cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          provenance: false
+          sbom: false
+
+      - name: Export digest (multi-platform)
+        if: github.event.inputs.push_image == 'true'
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          echo "Exported digest: ${digest}"
+
+      - name: Upload digest (multi-platform)
+        if: github.event.inputs.push_image == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Monitor cache usage
         if: always()
@@ -267,7 +337,7 @@ jobs:
             if command -v bc >/dev/null 2>&1; then
               CACHE_GB=$(echo "scale=2; $CACHE_USAGE / 1073741824" | bc)
             else
-              # Fallback if bc not available (shouldn't happen on ubuntu-latest)
+              # Fallback if bc not available
               CACHE_GB=$(awk "BEGIN {printf \"%.2f\", $CACHE_USAGE / 1073741824}")
             fi
 
@@ -277,29 +347,28 @@ jobs:
             if command -v bc >/dev/null 2>&1; then
               if (( $(echo "$CACHE_GB > 4" | bc -l) )); then
                 echo "⚠️ WARNING: Cache usage approaching GitHub limit (5GB)"
-                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit" && \
-                echo "Consider cleaning old cache entries for more space"
+                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit"
               fi
             fi
 
             # Add to step summary
-            echo "### Cache Usage: ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if (( $(echo "$CACHE_GB > 4" | bc -l 2>/dev/null || echo 0) )); then
-              echo "⚠️ **WARNING:** Approaching GitHub cache limit" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "✅ Cache usage within acceptable limits" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "### Cache Usage (${{ matrix.platform }}): ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Unable to fetch cache usage data from GitHub API"
-            echo "This is informational only and does not affect the build"
           fi
 
-      - name: Output image digest
+      - name: Output build information (amd64 only)
+        if: matrix.platform == 'linux/amd64'
         run: |
           echo "### PostgreSQL Image Built Successfully :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
+            echo "**Build Type:** Multi-platform (amd64 + arm64 native)" >> $GITHUB_STEP_SUMMARY
+            echo "**Image Digest (amd64):** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Build Type:** Local single-platform (amd64)" >> $GITHUB_STEP_SUMMARY
+            echo "**Image Digest:** \`${{ steps.build-local.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
@@ -314,12 +383,61 @@ jobs:
           echo "- Compiled extensions: pg_jsonschema, wrappers, pgsodium, vectorscale, etc." >> $GITHUB_STEP_SUMMARY
           echo "- Versions managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
 
+      - name: Verify local image
+        if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'
+        run: |
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
+          echo "✅ Local image verified"
+
+  merge:
+    name: Create Multi-Platform Manifest
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.push_image == 'true'
+    timeout-minutes: 15
+    outputs:
+      image_digest: ${{ steps.merge.outputs.digest }}
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        id: merge
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # Create dev tags from digests
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}-${{ github.sha }} \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+          # Get the digest of the manifest list
+          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} \
+            --format '{{json .}}' | jq -r '.manifest.digest')
+
+          echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
+          echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
+
       - name: Verify image
-        if: github.event.inputs.push_image == 'true'
         run: |
           echo "🔍 Verifying pushed image..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
               echo "✅ Image pulled successfully"
               break
             else
@@ -331,136 +449,27 @@ jobs:
               fi
             fi
           done
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} psql --version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
           echo "✅ Image pulled and PostgreSQL version verified"
 
-      - name: Verify local image
-        if: github.event.inputs.push_image != 'true'
+      - name: Output manifest digest
         run: |
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
-          echo "✅ Local image verified"
-
-      - name: Set up QEMU for arm64 testing
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Test arm64 image
-        if: github.event.inputs.push_image == 'true'
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-
-          echo "🏗️ Testing arm64 architecture variant..."
-
-          # Pull arm64 variant explicitly with retry
-          echo "📦 Pulling arm64 image..."
-          for i in {1..3}; do
-            if docker pull --platform linux/arm64 \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}; then
-              echo "✅ arm64 image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull arm64 image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
-
-          # Start container with timeout protection
-          CONTAINER=$(docker run -d --platform linux/arm64 \
-            -e POSTGRES_PASSWORD=test \
-            --name pg-arm64-test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }})
-
-          echo "⏳ Waiting for PostgreSQL to start (arm64 on QEMU may be slower)..."
-          READY=0
-          for i in {1..60}; do
-            if docker exec pg-arm64-test pg_isready -U postgres > /dev/null 2>&1; then
-              echo "✅ PostgreSQL ready on arm64"
-              READY=1
-              break
-            fi
-            sleep 2
-          done
-
-          if [ $READY -eq 0 ]; then
-            echo "❌ PostgreSQL failed to start on arm64"
-            docker logs pg-arm64-test
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-
-          echo "🧪 Testing architecture detection..."
-          ARCH=$(docker exec pg-arm64-test uname -m)
-          echo "Detected architecture: $ARCH"
-          if [[ "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
-            echo "❌ Expected arm64/aarch64, got: $ARCH"
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-
-          echo "🧪 Testing PostgreSQL version..."
-          if ! docker exec pg-arm64-test psql -U postgres -c "SELECT version();" > /dev/null; then
-            echo "❌ PostgreSQL version check failed"
-            docker logs pg-arm64-test
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-
-          echo "🧪 Testing pgvector (compiled extension - architecture-specific)..."
-          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION vector; SELECT '[1,2,3]'::vector;"; then
-            echo "❌ pgvector failed on arm64 (compilation issue?)"
-            docker logs pg-arm64-test
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-          echo "✅ pgvector functional on arm64"
-
-          echo "🧪 Testing pg_cron (PGDG package - multi-arch)..."
-          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION pg_cron;"; then
-            echo "❌ pg_cron failed on arm64"
-            docker logs pg-arm64-test
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-          echo "✅ pg_cron functional on arm64"
-
-          echo "🧪 Testing compiled extension with dependencies (pg_jsonschema)..."
-          if ! docker exec pg-arm64-test psql -U postgres -c "CREATE EXTENSION pg_jsonschema;"; then
-            echo "❌ pg_jsonschema failed on arm64 (Rust compilation issue?)"
-            docker logs pg-arm64-test
-            docker rm -f pg-arm64-test
-            exit 1
-          fi
-          echo "✅ pg_jsonschema functional on arm64"
-
-          echo "🧪 Testing auto-config on arm64..."
-          docker logs pg-arm64-test 2>&1 | grep -i "detected ram" || echo "⚠️ Auto-config log not found"
-          docker logs pg-arm64-test 2>&1 | grep -i "shared_buffers" || echo "⚠️ shared_buffers log not found"
-
-          docker exec pg-arm64-test psql -U postgres -c "SHOW shared_buffers;"
-          docker exec pg-arm64-test psql -U postgres -c "SHOW max_connections;"
-
-          # Cleanup
-          docker rm -f pg-arm64-test
-
-          echo "✅ arm64 image validation passed!"
-          echo "### arm64 Validation :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "### Multi-Platform Manifest Created :package:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Architecture: $ARCH" >> $GITHUB_STEP_SUMMARY
-          echo "- pgvector (compiled): ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_cron (PGDG): ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- pg_jsonschema (Rust): ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Auto-config: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`dev-${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:**" >> $GITHUB_STEP_SUMMARY
+          echo "- linux/amd64 (native build on ubuntu-latest)" >> $GITHUB_STEP_SUMMARY
+          echo "- linux/arm64 (native build on ubuntu-24.04-arm)" >> $GITHUB_STEP_SUMMARY
 
   scan-image:
     name: Scan Image for Vulnerabilities
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, merge]
+    if: always() && needs.build.result == 'success'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -483,7 +492,7 @@ jobs:
         run: |
           echo "🔍 Pulling pushed image from registry for security scan..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
               echo "✅ Image pulled successfully"
               break
             else
@@ -495,8 +504,8 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:scan
-          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan
+          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
 
       - name: Use local image (not pushed)
         if: github.event.inputs.push_image != 'true'
@@ -545,7 +554,7 @@ jobs:
           echo "### Security Scan Results :shield:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
-            DIGEST="${{ needs.build.outputs.digest }}"
+            DIGEST="${{ needs.merge.outputs.image_digest }}"
           echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST:0:12}\`" >> $GITHUB_STEP_SUMMARY
           else
             TAG="dev-${{ github.ref_name }}"
@@ -559,7 +568,7 @@ jobs:
   test:
     name: Test PostgreSQL Stack
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, merge]
     if: github.event.inputs.push_image == 'true'
     timeout-minutes: 25
 
@@ -578,7 +587,7 @@ jobs:
         run: |
           echo "📦 Pulling image for testing..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
               echo "✅ Image pulled successfully"
               break
             else
@@ -590,7 +599,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:test
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:test
 
       - name: Test extension loading
         run: |
@@ -808,7 +817,8 @@ jobs:
   test-replica-stack:
     name: Test Replica Stack
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, merge]
+    if: github.event.inputs.push_image == 'true'
     timeout-minutes: 25
 
     steps:
@@ -826,7 +836,7 @@ jobs:
         run: |
           echo "📦 Pulling image for replica stack testing..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
               echo "✅ Image pulled successfully"
               break
             else
@@ -838,7 +848,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:pg18
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:pg18
 
       - name: Run replica stack tests
         run: |
@@ -864,7 +874,8 @@ jobs:
   test-single-stack:
     name: Test Single Stack
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, merge]
+    if: github.event.inputs.push_image == 'true'
     timeout-minutes: 20
 
     steps:
@@ -882,7 +893,7 @@ jobs:
         run: |
           echo "📦 Pulling image for single stack testing..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
               echo "✅ Image pulled successfully"
               break
             else
@@ -894,7 +905,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }} aza-pg:pg18
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:pg18
 
       - name: Run single stack tests
         run: |

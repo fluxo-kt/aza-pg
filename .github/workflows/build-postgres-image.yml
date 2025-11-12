@@ -228,7 +228,7 @@ jobs:
             type=ref,event=branch,prefix=dev-
             type=sha,prefix=dev-{{branch}}-,format=short
           labels: |
-            org.opencontainers.image.title=aza-pg PostgreSQL Development Image
+            org.opencontainers.image.title=aza-pg-testing PostgreSQL Development Image
             org.opencontainers.image.description=PostgreSQL 18 with extensions (dev build)
             org.opencontainers.image.vendor=fluxo-kt
 
@@ -501,7 +501,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan
           echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
 
       - name: Use local image (not pushed)
@@ -510,13 +510,13 @@ jobs:
           echo "🔍 Using locally built image for security scan..."
           # When loaded locally, image name may not include registry prefix
           # Try with registry prefix first, fallback to finding local tag
-          if docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan 2>/dev/null; then
+          if docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan 2>/dev/null; then
             echo "📦 Tagged image with registry prefix for scanning"
           else
             # Find the locally built image by tag pattern
             LOCAL_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1)
             if [ -n "$LOCAL_IMAGE" ]; then
-              docker tag "$LOCAL_IMAGE" aza-pg:scan
+              docker tag "$LOCAL_IMAGE" aza-pg-testing:scan
               echo "📦 Tagged local image $LOCAL_IMAGE for scanning"
             else
               echo "❌ Could not find locally built image"
@@ -537,7 +537,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "aza-pg:scan"
+          image-ref: "aza-pg-testing:scan"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -553,7 +553,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "aza-pg:scan"
+          image-ref: "aza-pg-testing:scan"
           format: "table"
           severity: "CRITICAL,HIGH,MEDIUM"
           exit-code: "1" # Fail build on CRITICAL/HIGH vulnerabilities
@@ -620,14 +620,14 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:test
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:test
 
       - name: Test extension loading
         run: |
           echo "🧪 Testing extension loading..."
           docker run -d --name pg-test \
             -e POSTGRES_PASSWORD=test \
-            aza-pg:test
+            aza-pg-testing:test
 
           echo "⏳ Waiting for PostgreSQL to start..."
           for i in {1..30}; do
@@ -674,7 +674,7 @@ jobs:
           docker run -d --name pg-test-2gb \
             -e POSTGRES_PASSWORD=test \
             --memory=2g \
-            aza-pg:test
+            aza-pg-testing:test
 
           for i in {1..30}; do
             if docker exec pg-test-2gb pg_isready -U postgres > /dev/null 2>&1; then
@@ -697,7 +697,7 @@ jobs:
           docker run -d --name pg-test-4gb \
             -e POSTGRES_PASSWORD=test \
             --memory=4g \
-            aza-pg:test
+            aza-pg-testing:test
 
           for i in {1..30}; do
             if docker exec pg-test-4gb pg_isready -U postgres > /dev/null 2>&1; then
@@ -723,7 +723,7 @@ jobs:
           docker run -d --name pg-ext-test \
             -e POSTGRES_PASSWORD=test \
             --memory=4g \
-            aza-pg:test
+            aza-pg-testing:test
 
           echo "⏳ Waiting for PostgreSQL to start..."
           for i in {1..30}; do
@@ -773,7 +773,7 @@ jobs:
           POSTGRES_PASSWORD=${TEST_POSTGRES_PASS}
           PGBOUNCER_AUTH_PASS=${TEST_PGBOUNCER_PASS}
           PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASS}
-          POSTGRES_IMAGE=aza-pg:test
+          POSTGRES_IMAGE=aza-pg-testing:test
           POSTGRES_MEMORY_LIMIT=2g
           EOF
 
@@ -869,7 +869,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:pg18
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
 
       - name: Run replica stack tests
         run: |
@@ -937,7 +937,7 @@ jobs:
               fi
             fi
           done
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:pg18
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
 
       - name: Run single stack tests
         run: |

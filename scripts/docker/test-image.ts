@@ -40,7 +40,7 @@ const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json"
 
 // Parse command line arguments
 const args = Bun.argv.slice(2);
-const imageTag = args.find((arg) => !arg.startsWith("--")) || "aza-pg:latest";
+const imageTag = args.find((arg) => !arg.startsWith("--")) || "aza-pg-testing:latest";
 const noCleanup = args.includes("--no-cleanup");
 const fastMode = args.includes("--fast");
 const functionalOnly = args.includes("--functional-only");

@@ -6,17 +6,13 @@ on:
       - main
     paths-ignore:
       - "*.md"
-      - "docs/**/*.md"
-      - "CHANGELOG.md"
-      - "!AGENTS.md"
+      - "**/*.md"
   pull_request:
     branches:
       - "**"
     paths-ignore:
       - "*.md"
-      - "docs/**/*.md"
-      - "CHANGELOG.md"
-      - "!AGENTS.md"
+      - "**/*.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

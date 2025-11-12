@@ -587,6 +587,14 @@ jobs:
           docker rm -f pg-publish-test-arm64
           echo "✅ arm64 image test passed"
 
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/publish.yml') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@v1
         with:
@@ -598,6 +606,8 @@ jobs:
 
       - name: Security scan (SARIF for GitHub Security)
         uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
         with:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "sarif"
@@ -606,12 +616,14 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
 
       - name: Security scan (blocking on failures)
         uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
         with:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "table"

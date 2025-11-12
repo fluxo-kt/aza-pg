@@ -505,8 +505,18 @@ jobs:
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg:scan
           echo "📦 Scanning local image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
 
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/build-postgres-image.yml') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
         with:
           image-ref: "aza-pg:scan"
           format: "sarif"
@@ -515,12 +525,14 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
 
       - name: Run Trivy for console output
         uses: aquasecurity/trivy-action@0.33.1
+        env:
+          TRIVY_CACHE_DIR: .trivy-cache
         with:
           image-ref: "aza-pg:scan"
           format: "table"

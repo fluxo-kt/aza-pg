@@ -75,19 +75,7 @@ jobs:
           fi
 
       - name: Verify generated files are up to date
-        run: |
-          bun run generate
-          if ! git diff --exit-code docker/postgres/Dockerfile docker/postgres/configs/ \
-            stacks/primary/configs/ stacks/replica/configs/ \
-            stacks/single/configs/ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql \
-            docs/.generated/docs-data.json docs/EXTENSIONS.md; then
-            echo "::error::Generated files are out of date. Run 'bun run generate' and commit changes."
-            git diff docker/postgres/Dockerfile docker/postgres/configs/ stacks/primary/configs/ \
-            stacks/replica/configs/ stacks/single/configs/ \
-            docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql \
-            docs/.generated/docs-data.json docs/EXTENSIONS.md
-            exit 1
-          fi
+        run: bun run verify:generated
 
       - name: Repository health check
         run: |

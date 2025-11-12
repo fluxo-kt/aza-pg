@@ -173,18 +173,13 @@ jobs:
         run: bun run test:smoke
 
       - name: Verify manifest sync
-        run: |
-          bun run generate
-          git diff --exit-code docker/postgres/extensions.manifest.json \
-            docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
+        run: bun run verify:generated
 
   build:
     name: Build PostgreSQL Image (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     needs: lint
     timeout-minutes: 60
-    # Only run arm64 build when push_image=true, always run amd64
-    if: matrix.platform == 'linux/amd64' || github.event.inputs.push_image == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -192,7 +187,6 @@ jobs:
           - platform: linux/amd64
             runner: ubuntu-latest
             artifact: linux-amd64
-          # arm64 build - will be skipped by job-level if when push_image=false
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
             artifact: linux-arm64

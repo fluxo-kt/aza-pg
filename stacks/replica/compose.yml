@@ -19,6 +19,7 @@ services:
       PG_REPLICATION_PASSWORD: "${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}"
       PRIMARY_HOST: ${PRIMARY_HOST:?PRIMARY_HOST is required}
       PRIMARY_PORT: ${PRIMARY_PORT:-5432}
+      POSTGRES_WAL_LEVEL: ${POSTGRES_WAL_LEVEL:-replica} # replica level for read-only standby
 
     ports:
       - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432"

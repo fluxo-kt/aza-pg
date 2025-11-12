@@ -13,6 +13,7 @@ services:
       PG_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}
       PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS:?PGBOUNCER_AUTH_PASS is required}
       REPLICATION_SLOT_NAME: ${REPLICATION_SLOT_NAME:-replica_slot_1}
+      POSTGRES_WAL_LEVEL: ${POSTGRES_WAL_LEVEL:-logical} # logical for CDC and replication
 
     volumes:
       - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql

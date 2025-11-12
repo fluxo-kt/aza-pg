@@ -15,9 +15,6 @@ updates:
       timezone: "UTC"
     cooldown:
       default-days: 5
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -57,9 +54,6 @@ updates:
       timezone: "UTC"
     cooldown:
       default-days: 5
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
     open-pull-requests-limit: 5
     labels:
       - "dependencies"

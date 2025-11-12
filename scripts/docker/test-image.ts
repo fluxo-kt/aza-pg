@@ -490,6 +490,74 @@ async function testEnabledExtensions(manifest: Manifest): Promise<TestResult> {
 }
 
 /**
+ * Test: Pre-created extensions are already available on startup
+ */
+async function testPrecreatedExtensions(_manifest: Manifest): Promise<TestResult> {
+  const startTime = Date.now();
+
+  try {
+    // Extensions that should be pre-created in 01-extensions.sql
+    const precreatedExtensions = [
+      "pg_cron",
+      "pg_stat_monitor",
+      "pg_stat_statements",
+      "pg_trgm",
+      "pgaudit",
+      "plpgsql",
+      "vector",
+      "vectorscale",
+    ];
+
+    const failed: string[] = [];
+
+    for (const extName of precreatedExtensions) {
+      const result = await execSQL(
+        `SELECT COUNT(*) FROM pg_extension WHERE extname = '${extName}'`
+      );
+
+      if (!result.success) {
+        failed.push(`${extName}: Query failed - ${result.output.slice(0, 100)}`);
+      } else {
+        const count = parseInt(result.output.trim());
+        if (count !== 1) {
+          failed.push(`${extName}: Not found in pg_extension (count: ${count})`);
+        }
+      }
+
+      // Also verify CREATE EXTENSION IF NOT EXISTS works (doesn't fail)
+      const createResult = await execSQL(`CREATE EXTENSION IF NOT EXISTS "${extName}"`);
+      if (!createResult.success) {
+        failed.push(
+          `${extName}: CREATE IF NOT EXISTS failed - ${createResult.output.slice(0, 100)}`
+        );
+      }
+    }
+
+    if (failed.length > 0) {
+      return {
+        name: "Pre-created extensions available on startup",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `${failed.length} extension(s) had issues:\n  ${failed.join("\n  ")}`,
+      };
+    }
+
+    return {
+      name: `Pre-created extensions available on startup (${precreatedExtensions.length} tested)`,
+      passed: true,
+      duration: Date.now() - startTime,
+    };
+  } catch (err) {
+    return {
+      name: "Pre-created extensions available on startup",
+      passed: false,
+      duration: Date.now() - startTime,
+      error: getErrorMessage(err),
+    };
+  }
+}
+
+/**
  * Test: Disabled extensions cannot be created
  */
 async function testDisabledExtensions(manifest: Manifest): Promise<TestResult> {
@@ -2338,6 +2406,7 @@ async function main(): Promise<void> {
       results.push(await testVersionInfoTxt(manifest));
       results.push(await testVersionInfoJson(manifest));
       results.push(await testPreloadedExtensions(manifest));
+      results.push(await testPrecreatedExtensions(manifest));
       results.push(await testEnabledExtensions(manifest));
       results.push(await testDisabledExtensions(manifest));
       results.push(await testPostgresConfiguration());

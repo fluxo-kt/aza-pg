@@ -132,3 +132,6 @@ Container publication
 - https://github.com/cloudnative-pg/postgres-containers
   - https://github.com/cloudnative-pg/postgres-containers/issues/115#issuecomment-2563173289 (how to extend/change/add extensions)
 - https://ardentperf.com/2025/04/07/waiting-for-postgres-18-docker-containers-34-smaller/
+- Docker Build with provenance (https://github.com/actions/attest-build-provenance)
+  - https://github.com/brendanbank/gpsd-prometheus-exporter/blob/d4e0a24/docker-publish-org.yml#L85
+  - https://github.com/pagopa/dx/blob/a8f597a/actions/docker-build-push/action.yaml#L193

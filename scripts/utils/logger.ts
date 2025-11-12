@@ -23,15 +23,19 @@ export function success(msg: string): void {
 /**
  * Print error message with red ❌ prefix
  */
-export function error(msg: string): void {
-  console.log(`${RED}❌ ${msg}${RESET}`);
+export function error(msg: string, err?: any): void {
+  const message = `${RED}❌ ${msg}${RESET}`;
+  if (err) console.error(message, err);
+  else console.error(message);
 }
 
 /**
  * Print warning message with yellow ⚠️ prefix
  */
-export function warning(msg: string): void {
-  console.log(`${YELLOW}⚠️  ${msg}${RESET}`);
+export function warning(msg: string, err?: any): void {
+  const message = `${YELLOW}⚠️  ${msg}${RESET}`;
+  if (err) console.warn(message, err);
+  else console.warn(message);
 }
 
 /**

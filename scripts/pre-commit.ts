@@ -70,7 +70,7 @@ async function preCommit(): Promise<void> {
       await stageFiles(generatedFiles);
       info("📝 Auto-staged generated files");
     } catch (err) {
-      error("❌ Failed to regenerate artifacts");
+      error("❌ Failed to regenerate artifacts", err);
       throw err;
     }
   }
@@ -87,8 +87,8 @@ async function preCommit(): Promise<void> {
       success("✅ Auto-fixed linting issues");
       filesToRestage.push(...lintableFiles);
     } catch (err) {
-      // Oxlint --fix doesn't fail on unfixable issues, so this is a real error
-      warning("⚠️  Some linting issues couldn't be auto-fixed");
+      // Oxlint --fix doesn't fail on unfixable issues, so this is a real error.
+      warning("⚠️  Some linting issues couldn't be auto-fixed", err);
     }
   }
 
@@ -112,7 +112,7 @@ async function preCommit(): Promise<void> {
       success("✅ Auto-formatted code");
       filesToRestage.push(...formattableFiles);
     } catch (err) {
-      error("❌ Failed to format code");
+      error("❌ Failed to format code", err);
       throw err;
     }
   }
@@ -136,6 +136,6 @@ try {
   await preCommit();
   process.exit(0);
 } catch (err) {
-  error("❌ Pre-commit failed");
+  error("❌ Pre-commit failed", err);
   process.exit(1);
 }

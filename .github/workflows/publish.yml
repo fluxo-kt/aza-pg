@@ -180,7 +180,7 @@ jobs:
             index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
-            index,manifest:org.opencontainers.image.licenses=Apache-2.0
+            index,manifest:org.opencontainers.image.licenses=MIT
             index,manifest:org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
             index,manifest:org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}

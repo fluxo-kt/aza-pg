@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with extensions and tools",
   "type": "module",
-  "private": true,
   "author": "Art Shendrik",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
     "lint": "oxlint .",

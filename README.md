@@ -2,6 +2,8 @@
 
 PostgreSQL 18 with auto-configuration, 36 compiled extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
 
+> **Open Source Notice:** This is MIT licensed open source software provided AS IS with NO WARRANTY, NO SUPPORT, and NO LIABILITY. Docker images are published for convenience but come with NO GUARANTEES of functionality, security, or maintenance. Use at your own risk.
+
 **Features:** Auto-config (RAM/CPU detection), SHA-pinned (reproducibility), PgBouncer pooling, replication, SCRAM-SHA-256, monitoring
 
 ## Requirements
@@ -139,7 +141,9 @@ See [docs/PRODUCTION.md](docs/PRODUCTION.md).
 
 ## License
 
-Private repository. Images provided AS-IS (free, no guarantees).
+MIT License - see [LICENSE](LICENSE) file.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. NO SUPPORT, NO GUARANTEES, NO LIABILITY. Use entirely at your own risk.
 
 ## Contributing
 

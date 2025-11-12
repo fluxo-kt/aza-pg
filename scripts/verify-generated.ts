@@ -122,3 +122,6 @@ async function verifyGeneratedFiles(): Promise<boolean> {
 // Main execution
 const success = await verifyGeneratedFiles();
 process.exit(success ? 0 : 1);
+
+// Export to make this a module for TypeScript
+export {};

@@ -779,9 +779,10 @@ jobs:
     name: Cleanup Testing Artifacts
     runs-on: ubuntu-latest
     needs: [merge, test, scan]
-    # Always run cleanup after merge succeeds (which creates the testing tag)
-    # Waits for test and scan to complete to avoid race conditions
-    if: always() && needs.merge.result == 'success'
+    # ALWAYS run cleanup regardless of any job failures or skips
+    # With 'if: always()', this runs even if test/scan are skipped due to merge failure
+    # Waits for test/scan to complete if they run, preventing race conditions
+    if: always()
     timeout-minutes: 10
 
     steps:
@@ -812,12 +813,15 @@ jobs:
 
       - name: Delete testing tag if it exists
         run: |
-          echo "🧹 Cleanup job: Ensuring testing artifacts are removed"
+          echo "🧹 Cleanup job: Ensuring ALL testing artifacts are removed"
           TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}"
 
-          # Strategy: This job runs with 'if: always()' to ensure cleanup happens
-          # regardless of workflow success/failure. This prevents registry pollution
-          # from orphaned testing tags when builds fail.
+          # This job runs with 'if: always()' to guarantee cleanup regardless of:
+          # - Build failures
+          # - Partial image pushes
+          # - Test/scan failures
+          # - Any job being cancelled or timing out
+          # Even if merge only partially completed, we still attempt cleanup.
 
           # Check if the tag exists
           echo "Checking for testing tag: testing-${{ github.sha }}"

@@ -62,9 +62,14 @@ jobs:
 
       - name: Verify manifest is up to date
         run: |
+          # Generate fresh manifest
           bun scripts/extensions/generate-manifest.ts
-          if ! git diff --exit-code docker/postgres/extensions.manifest.json; then
-            echo "::error::extensions.manifest.json is out of date." && \
+
+          # Compare content excluding generatedAt timestamp (which always changes)
+          if ! diff -u \
+            <(git show HEAD:docker/postgres/extensions.manifest.json | jq 'del(.generatedAt)') \
+            <(jq 'del(.generatedAt)' docker/postgres/extensions.manifest.json); then
+            echo "::error::extensions.manifest.json content is out of date (excluding timestamp)."
             echo "Run: bun scripts/extensions/generate-manifest.ts"
             exit 1
           fi

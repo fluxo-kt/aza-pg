@@ -456,6 +456,14 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
             --fast
 
+      - name: Mark test failure for cleanup
+        if: failure()
+        run: |
+          echo "⚠️ Tests failed - marking for cleanup"
+          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          # The dedicated cleanup job will handle the actual deletion
+          # This avoids redundant tool installations and ensures consistent cleanup
+
   scan:
     name: Security Scanning
     runs-on: ubuntu-latest
@@ -520,10 +528,18 @@ jobs:
           severity: "CRITICAL,HIGH"
           exit-code: "1" # Fail on CRITICAL/HIGH vulnerabilities
 
+      - name: Mark scan failure for cleanup
+        if: failure()
+        run: |
+          echo "⚠️ Security scan failed - marking for cleanup"
+          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          # The dedicated cleanup job will handle the actual deletion
+          # This avoids redundant tool installations and ensures consistent cleanup
+
   release:
     name: Sign and Release
     runs-on: ubuntu-latest
-    needs: [prep, merge, scan]
+    needs: [prep, merge, scan, test]
     timeout-minutes: 15
 
     steps:
@@ -575,11 +591,22 @@ jobs:
 
       - name: Clean up testing tag
         run: |
-          echo "Removing temporary testing tag..."
-          # Testing tag is no longer needed after promotion
-          docker buildx imagetools create --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-cleanup-${{ github.sha }} \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} || true
-          echo "Testing tag will be garbage collected by registry"
+          echo "Removing temporary testing tag after successful promotion..."
+          # Install regclient for proper tag deletion
+          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
+            echo "⚠️ Failed to download regctl, skipping inline cleanup"
+            echo "The cleanup job will handle removal"
+            exit 0
+          fi
+          chmod +x regctl
+          sudo mv regctl /usr/local/bin/
+
+          # Delete the testing tag now that promotion is complete
+          if regctl tag delete "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}" 2>/dev/null; then
+            echo "✅ Successfully deleted testing tag after promotion"
+          else
+            echo "ℹ️ Testing tag may already be deleted or will be cleaned by cleanup job"
+          fi
 
       - name: Sign all convenience tags
         env:
@@ -747,3 +774,88 @@ jobs:
           echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
           echo "Platforms: linux/amd64, linux/arm64 (native builds)"
+
+  cleanup:
+    name: Cleanup Testing Artifacts
+    runs-on: ubuntu-latest
+    needs: [merge, test, scan]
+    # Always run cleanup after merge succeeds (which creates the testing tag)
+    # Waits for test and scan to complete to avoid race conditions
+    if: always() && needs.merge.result == 'success'
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup cleanup tools
+        run: |
+          # Install regclient for proper registry operations
+          # This tool is required because docker/buildx cannot delete tags directly
+          echo "Installing regclient for registry operations..."
+          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
+            echo "❌ Failed to download regctl"
+            exit 1
+          fi
+          chmod +x regctl
+          sudo mv regctl /usr/local/bin/
+
+          # Verify installation
+          if ! regctl version; then
+            echo "❌ regctl installation failed"
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete testing tag if it exists
+        run: |
+          echo "🧹 Cleanup job: Ensuring testing artifacts are removed"
+          TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}"
+
+          # Strategy: This job runs with 'if: always()' to ensure cleanup happens
+          # regardless of workflow success/failure. This prevents registry pollution
+          # from orphaned testing tags when builds fail.
+
+          # Check if the tag exists
+          echo "Checking for testing tag: testing-${{ github.sha }}"
+          if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+            echo "Found testing tag: $TESTING_TAG"
+
+            # Delete the tag
+            if regctl tag delete "$TESTING_TAG"; then
+              echo "✅ Successfully deleted testing tag"
+
+              # Verify deletion
+              sleep 2  # Brief pause for registry to update
+              if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+                echo "⚠️ Tag still exists after deletion attempt - may need manual cleanup"
+                exit 1
+              else
+                echo "✅ Verified: Tag has been removed from registry"
+              fi
+            else
+              echo "⚠️ Failed to delete testing tag"
+              exit 1
+            fi
+          else
+            echo "✅ Testing tag not found (already cleaned or never created)"
+          fi
+
+      - name: Report cleanup status
+        if: always()
+        run: |
+          echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup attempted but may have encountered issues" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Testing Tag:** \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY

@@ -133,6 +133,84 @@ Automatic on `release` branch:
 - `18.0`
 - `18`
 
+#### Automated GitHub Releases
+
+The publish workflow automatically creates GitHub Releases to showcase image contents and extension catalog. This provides:
+
+- Extension list visibility on repository homepage
+- Categorized catalog (AI/ML, time-series, GIS, search, security, operations)
+- Quick start examples (Docker + SQL)
+- Verification commands (Cosign signature, SBOM download)
+- RSS/notification subscriptions for new releases
+
+**How it works:**
+
+1. `scripts/generate-release-notes.ts` reads extension manifest
+2. Groups enabled extensions by category (18 categories)
+3. Generates structured markdown with:
+   - Extension catalog by use case with versions
+   - Image metadata (tags, digest, platforms)
+   - Quick start examples (Docker run + SQL CREATE EXTENSION)
+   - Auto-configuration details
+   - Verification commands
+   - Documentation links
+
+4. `create-release` job creates GitHub Release via `gh` CLI
+5. Tag format: `v{version}` (e.g., `v18.0-202511132330-single-node`)
+
+**Release notes include:**
+
+- 34 enabled extensions across 18 categories
+- Version information for each extension
+- Image digest and multi-platform confirmation
+- Production-ready quick start commands
+- Security verification steps
+
+**Example release notes structure:**
+
+```markdown
+# aza-pg PostgreSQL 18.0
+
+Production-ready PostgreSQL with **34 enabled extensions** across 18 categories.
+
+## What's Inside
+
+### AI/ML & Vector Search (2 extensions)
+
+- **pgvector** 0.8.1 - Vector similarity search
+- **pgvectorscale** 0.5.1 - DiskANN indexing
+
+### Time-Series (2 extensions)
+
+- **columnar** 11.1.8 - Columnar storage
+- **TimescaleDB** 2.17.2 - Time-series database
+
+[... complete catalog ...]
+
+## Image Details
+
+- Registry: ghcr.io/fluxo-kt/aza-pg
+- Tags: `18.0-202511132330-single-node`, `18-single-node`, `18`
+- Digest: `sha256:abc123...`
+- Platforms: linux/amd64, linux/arm64
+
+## Quick Start
+
+[Docker run + SQL examples]
+
+## Verification
+
+[Cosign verification + SBOM download]
+```
+
+**Discoverability benefits:**
+
+- Releases appear on GitHub homepage and repository insights
+- Extension names indexed by GitHub search
+- RSS feeds available for new releases (`/releases.atom`)
+- Email notifications for watchers
+- Historical record of extension changes per version
+
 See workflow files in `.github/workflows/` for complete workflow details.
 
 ## CI/CD Performance Optimizations

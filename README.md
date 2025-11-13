@@ -20,11 +20,73 @@ PostgreSQL 18 with auto-configuration, 36 compiled extensions, and deployment st
 - Connection limits: 80 (≤512MB), 120 (<4GB), 200 (≥4GB)
 - PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
 
+## Why aza-pg?
+
+| Feature                | Official postgres:18 | aza-pg:18                              |
+| ---------------------- | -------------------- | -------------------------------------- |
+| **Extensions**         | Contrib only (~10)   | 36 compiled extensions                 |
+| **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                   |
+| **Connection Pooling** | Separate setup       | PgBouncer integrated                   |
+| **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter |
+| **ARM64**              | QEMU emulation       | Native builds                          |
+| **Reproducibility**    | Latest tags          | SHA-pinned base + extensions           |
+| **Image Size**         | ~150MB               | ~450MB (with extensions)               |
+| **Use Case**           | Minimal baseline     | Production-ready batteries included    |
+
 ## Extensions
 
 36 enabled (6 builtin + 25 external + 5 tools): pgvector 0.8.1, pg_cron 1.6.7, pgAudit 18.0, PostGIS, contrib (pg_trgm, pg_stat_statements, auto_explain). 4 preloaded by default.
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
+
+### Popular Use Cases
+
+**AI/ML & Vector Search**
+
+```sql
+CREATE EXTENSION vector;           -- pgvector: Embeddings & similarity search
+CREATE EXTENSION vectorscale;      -- pgvectorscale: DiskANN indexing
+```
+
+**Time-Series Analytics**
+
+```sql
+CREATE EXTENSION timescaledb;      -- Hypertables, continuous aggregates
+CREATE EXTENSION columnar;         -- Columnar storage for analytics
+```
+
+**GIS & Spatial**
+
+```sql
+CREATE EXTENSION postgis;          -- Spatial types, indexes, functions
+CREATE EXTENSION pgrouting;        -- Network routing algorithms
+```
+
+**Full-Text Search**
+
+```sql
+CREATE EXTENSION pgroonga;         -- Multi-language full-text search
+CREATE EXTENSION rum;              -- Fast phrase search
+CREATE EXTENSION pg_trgm;          -- Trigram similarity (builtin)
+```
+
+**Security & Compliance**
+
+```sql
+CREATE EXTENSION pgaudit;          -- Audit logging (preloaded)
+CREATE EXTENSION pgsodium;         -- Encryption functions
+CREATE EXTENSION vault;            -- HashiCorp Vault integration
+```
+
+**Operations & Automation**
+
+```sql
+CREATE EXTENSION pg_cron;          -- Job scheduler (preloaded)
+CREATE EXTENSION pg_repack;        -- Online table reorganization
+CREATE EXTENSION pg_partman;       -- Partition management
+```
+
+See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.
 
 ## Image Details
 

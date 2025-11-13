@@ -293,6 +293,18 @@ Expected output shows both platforms and all annotations:
 }
 ```
 
+### Impact on Existing Tags
+
+**Important:** This annotation implementation only affects **future releases**. Existing published tags (pre-dating this change) were created without manifest-level annotations and will continue to show "No description provided" on GitHub Container Registry.
+
+To update existing tags with annotations:
+
+1. Tags will be automatically updated when the next release is published to the `release` branch
+2. The `publish.yml` workflow creates new tags with annotations for each release
+3. GitHub displays metadata from the most recent push of each tag
+
+**No action required** - the next publish workflow run will apply annotations to all tags.
+
 ### Applied Annotations
 
 Standard OCI annotations applied to all published images:

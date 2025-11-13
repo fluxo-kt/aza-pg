@@ -357,6 +357,24 @@ jobs:
         id: merge
         working-directory: ${{ runner.temp }}/digests
         run: |
+          set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+          echo "=== Pre-merge Validation ==="
+
+          # Verify we have exactly 2 digest files (amd64 + arm64)
+          DIGEST_COUNT=$(ls -1 | wc -l)
+          echo "Digest files found: ${DIGEST_COUNT}"
+          ls -1
+
+          if [ "${DIGEST_COUNT}" -ne 2 ]; then
+            echo "❌ ERROR: Expected 2 digest files (amd64 + arm64), found ${DIGEST_COUNT}"
+            exit 1
+          fi
+          echo "✅ Confirmed 2 platform digests present"
+
+          echo ""
+          echo "=== Creating Multi-Arch Manifest ==="
+
           # Create testing tag from digests with OCI annotations
           # Annotations are required for GitHub Container Registry to display package metadata
           docker buildx imagetools create \
@@ -379,37 +397,58 @@ jobs:
             --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
+          echo ""
+          echo "=== Extracting Manifest Digest ==="
+
           # Get the digest of the manifest list
           MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
             --format '{{json .}}' | jq -r '.manifest.digest // empty')
 
           if [ -z "$MANIFEST_DIGEST" ]; then
-            echo "ERROR: Failed to extract manifest digest"
+            echo "❌ ERROR: Failed to extract manifest digest"
             exit 1
           fi
 
           echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
-          echo "✅ Multi-platform manifest created with OCI annotations: ${MANIFEST_DIGEST}"
+          echo "✅ Multi-platform manifest created with OCI annotations"
+          echo "   Digest: ${MANIFEST_DIGEST}"
 
       - name: Verify manifest annotations and platforms
         run: |
-          echo "Verifying multi-arch manifest structure and annotations..."
+          set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+          echo "=== Verifying Multi-Arch Manifest Structure ==="
 
           # Get manifest in raw format
           MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} --raw)
 
           # Verify it's a multi-arch manifest (OCI Image Index)
           MEDIA_TYPE=$(echo "$MANIFEST_JSON" | jq -r '.mediaType')
+          echo "Media Type: ${MEDIA_TYPE}"
+
           if [[ "$MEDIA_TYPE" != "application/vnd.oci.image.index.v1+json" && "$MEDIA_TYPE" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
-            echo "❌ ERROR: Not a multi-arch manifest (mediaType: $MEDIA_TYPE)"
+            echo "❌ ERROR: Not a multi-arch manifest"
+            echo "   Expected: application/vnd.oci.image.index.v1+json or application/vnd.docker.distribution.manifest.list.v2+json"
+            echo "   Got: ${MEDIA_TYPE}"
             exit 1
           fi
-          echo "✅ Confirmed multi-arch manifest type: $MEDIA_TYPE"
+          echo "✅ Confirmed multi-arch manifest type: ${MEDIA_TYPE}"
+
+          echo ""
+          echo "=== Verifying Platforms ==="
 
           # Verify both platforms are present
+          PLATFORM_COUNT=$(echo "$MANIFEST_JSON" | jq '.manifests | length')
+          echo "Platform count: ${PLATFORM_COUNT}"
+
+          if [ "${PLATFORM_COUNT}" -ne 2 ]; then
+            echo "❌ ERROR: Expected 2 platforms, found ${PLATFORM_COUNT}"
+            exit 1
+          fi
+
           PLATFORMS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"')
           echo "Platforms found:"
-          echo "$PLATFORMS"
+          echo "$PLATFORMS" | sed 's/^/  - /'
 
           if ! echo "$PLATFORMS" | grep -q "linux/amd64"; then
             echo "❌ ERROR: linux/amd64 platform missing"
@@ -419,21 +458,52 @@ jobs:
             echo "❌ ERROR: linux/arm64 platform missing"
             exit 1
           fi
-          echo "✅ Both linux/amd64 and linux/arm64 platforms present"
+          echo "✅ Both linux/amd64 and linux/arm64 platforms confirmed"
+
+          echo ""
+          echo "=== Verifying OCI Annotations ==="
 
           # Verify annotations are present
           ANNOTATIONS=$(echo "$MANIFEST_JSON" | jq -r '.annotations // {}')
-          DESCRIPTION=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.description" // empty')
+          ANNOTATION_COUNT=$(echo "$ANNOTATIONS" | jq 'length')
+          echo "Annotation count: ${ANNOTATION_COUNT}"
 
-          if [ -z "$DESCRIPTION" ]; then
-            echo "⚠️ WARNING: org.opencontainers.image.description annotation not found"
-            echo "Annotations present:"
-            echo "$ANNOTATIONS" | jq '.'
-          else
-            echo "✅ Description annotation present: $DESCRIPTION"
-            echo "All annotations:"
-            echo "$ANNOTATIONS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+          if [ "${ANNOTATION_COUNT}" -eq 0 ]; then
+            echo "❌ ERROR: No annotations found on manifest index"
+            echo "   This will cause GitHub to show 'No description provided'"
+            exit 1
           fi
+
+          # Verify critical annotations
+          DESCRIPTION=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.description" // empty')
+          VENDOR=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.vendor" // empty')
+          LICENSE=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.licenses" // empty')
+
+          MISSING_ANNOTATIONS=()
+          [ -z "$DESCRIPTION" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.description")
+          [ -z "$VENDOR" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.vendor")
+          [ -z "$LICENSE" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.licenses")
+
+          if [ ${#MISSING_ANNOTATIONS[@]} -gt 0 ]; then
+            echo "❌ ERROR: Critical annotations missing:"
+            printf '  - %s\n' "${MISSING_ANNOTATIONS[@]}"
+            echo ""
+            echo "All annotations present:"
+            echo "$ANNOTATIONS" | jq '.'
+            exit 1
+          fi
+
+          echo "✅ Critical annotations verified:"
+          echo "  - Description: ${DESCRIPTION}"
+          echo "  - Vendor: ${VENDOR}"
+          echo "  - License: ${LICENSE}"
+
+          echo ""
+          echo "=== All Annotations ==="
+          echo "$ANNOTATIONS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+
+          echo ""
+          echo "✅ Manifest validation complete - ready for testing"
 
       - name: Verify PostgreSQL version in merged image
         run: |

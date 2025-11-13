@@ -357,9 +357,26 @@ jobs:
         id: merge
         working-directory: ${{ runner.temp }}/digests
         run: |
-          # Create testing tag from digests
+          # Create testing tag from digests with OCI annotations
+          # Annotations are required for GitHub Container Registry to display package metadata
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions - Single-Node" \
+            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
+            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
+            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
+            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
+            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
           # Get the digest of the manifest list
@@ -372,7 +389,51 @@ jobs:
           fi
 
           echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
-          echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
+          echo "✅ Multi-platform manifest created with OCI annotations: ${MANIFEST_DIGEST}"
+
+      - name: Verify manifest annotations and platforms
+        run: |
+          echo "Verifying multi-arch manifest structure and annotations..."
+
+          # Get manifest in raw format
+          MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} --raw)
+
+          # Verify it's a multi-arch manifest (OCI Image Index)
+          MEDIA_TYPE=$(echo "$MANIFEST_JSON" | jq -r '.mediaType')
+          if [[ "$MEDIA_TYPE" != "application/vnd.oci.image.index.v1+json" && "$MEDIA_TYPE" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
+            echo "❌ ERROR: Not a multi-arch manifest (mediaType: $MEDIA_TYPE)"
+            exit 1
+          fi
+          echo "✅ Confirmed multi-arch manifest type: $MEDIA_TYPE"
+
+          # Verify both platforms are present
+          PLATFORMS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"')
+          echo "Platforms found:"
+          echo "$PLATFORMS"
+
+          if ! echo "$PLATFORMS" | grep -q "linux/amd64"; then
+            echo "❌ ERROR: linux/amd64 platform missing"
+            exit 1
+          fi
+          if ! echo "$PLATFORMS" | grep -q "linux/arm64"; then
+            echo "❌ ERROR: linux/arm64 platform missing"
+            exit 1
+          fi
+          echo "✅ Both linux/amd64 and linux/arm64 platforms present"
+
+          # Verify annotations are present
+          ANNOTATIONS=$(echo "$MANIFEST_JSON" | jq -r '.annotations // {}')
+          DESCRIPTION=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.description" // empty')
+
+          if [ -z "$DESCRIPTION" ]; then
+            echo "⚠️ WARNING: org.opencontainers.image.description annotation not found"
+            echo "Annotations present:"
+            echo "$ANNOTATIONS" | jq '.'
+          else
+            echo "✅ Description annotation present: $DESCRIPTION"
+            echo "All annotations:"
+            echo "$ANNOTATIONS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+          fi
 
       - name: Verify PostgreSQL version in merged image
         run: |
@@ -575,17 +636,34 @@ jobs:
         run: |
           echo "✅ All security scans passed. Promoting testing image to production tags..."
 
-          # Use docker buildx imagetools to create production tags
+          # Use docker buildx imagetools to create production tags with OCI annotations
           # This points new tags to the same manifest digest (no re-push needed)
+          # Annotations must be reapplied when creating new tags to ensure GitHub displays metadata
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }} \
+            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions - Single-Node" \
+            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
+            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
+            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
+            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
+            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
+            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
+            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
 
-          echo "✅ Production tags created successfully"
+          echo "✅ Production tags created successfully with OCI annotations"
           echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
 

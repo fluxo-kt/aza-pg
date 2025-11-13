@@ -225,6 +225,102 @@ Prevents cache conflicts and improves hit rates.
 
 See workflow files in `.github/workflows/` for complete implementation details.
 
+## OCI Annotations for Multi-Arch Manifests
+
+### Overview
+
+GitHub Container Registry (GHCR) displays package metadata (description, license, documentation links) by reading **OCI annotations** from the image manifest. For multi-arch images, these annotations must be applied to the **image index** (manifest list), not just the individual platform images.
+
+**Why annotations matter:**
+
+- GitHub shows "No description provided" warning without `org.opencontainers.image.description`
+- Source repository linking requires `org.opencontainers.image.source`
+- License information displayed from `org.opencontainers.image.licenses`
+- All standard OCI annotations improve discoverability and documentation
+
+### Application Method
+
+Annotations are applied using `docker buildx imagetools create` with `--annotation` flags. The `index:` prefix indicates the annotation applies to the image index (multi-arch manifest list) rather than individual platform manifests.
+
+**Example from publish.yml merge job:**
+
+```bash
+docker buildx imagetools create \
+  -t ghcr.io/fluxo-kt/aza-pg:testing-sha \
+  --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
+  --annotation "index:org.opencontainers.image.description=PostgreSQL 18.1 with 38 extensions - Single-Node" \
+  --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+  --annotation "index:org.opencontainers.image.version=18.1-202511130900-single-node" \
+  --annotation "index:org.opencontainers.image.source=https://github.com/fluxo-kt/aza-pg" \
+  --annotation "index:org.opencontainers.image.licenses=MIT" \
+  ghcr.io/fluxo-kt/aza-pg@sha256:amd64-digest \
+  ghcr.io/fluxo-kt/aza-pg@sha256:arm64-digest
+```
+
+**Critical notes:**
+
+- Annotations must be reapplied when creating new tags (they don't automatically propagate)
+- Both merge and release jobs apply annotations to ensure all tags have proper metadata
+- The `index:` prefix is required for multi-arch manifests (OCI 1.1 spec)
+- Annotations are applied to the manifest list, not individual platform images
+
+### Verification
+
+Verify annotations are present in the image index:
+
+```bash
+# View manifest in raw format
+docker buildx imagetools inspect ghcr.io/fluxo-kt/aza-pg:18-single-node --raw | jq '.annotations'
+
+# Check specific annotation
+docker buildx imagetools inspect ghcr.io/fluxo-kt/aza-pg:18-single-node --raw | \
+  jq -r '.annotations."org.opencontainers.image.description"'
+
+# Verify multi-arch structure
+docker buildx imagetools inspect ghcr.io/fluxo-kt/aza-pg:18-single-node --raw | \
+  jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"'
+```
+
+Expected output shows both platforms and all annotations:
+
+```json
+{
+  "org.opencontainers.image.title": "aza-pg Single-Node PostgreSQL",
+  "org.opencontainers.image.description": "PostgreSQL 18.1 with 38 extensions - Single-Node",
+  "org.opencontainers.image.vendor": "fluxo-kt",
+  "org.opencontainers.image.source": "https://github.com/fluxo-kt/aza-pg",
+  "org.opencontainers.image.licenses": "MIT"
+}
+```
+
+### Applied Annotations
+
+Standard OCI annotations applied to all published images:
+
+| Annotation                               | Purpose             | Example Value                                            |
+| ---------------------------------------- | ------------------- | -------------------------------------------------------- |
+| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                          |
+| `org.opencontainers.image.description`   | Package description | `PostgreSQL 18.1 with 38 extensions - Single-Node`       |
+| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt`                                               |
+| `org.opencontainers.image.version`       | Full version tag    | `18.1-202511130900-single-node`                          |
+| `org.opencontainers.image.created`       | Build timestamp     | `202511130900`                                           |
+| `org.opencontainers.image.revision`      | Git commit SHA      | `abc123def456...`                                        |
+| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                     |
+| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                     |
+| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md` |
+| `org.opencontainers.image.licenses`      | License             | `MIT`                                                    |
+| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:18-trixie`                   |
+| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:...`                                             |
+
+Custom annotations for aza-pg metadata:
+
+| Annotation                              | Purpose                 | Example Value |
+| --------------------------------------- | ----------------------- | ------------- |
+| `io.fluxo-kt.aza-pg.postgres.version`   | PostgreSQL version      | `18.1`        |
+| `io.fluxo-kt.aza-pg.build.type`         | Deployment type         | `single-node` |
+| `io.fluxo-kt.aza-pg.extensions.enabled` | Enabled extension count | `34`          |
+| `io.fluxo-kt.aza-pg.extensions.total`   | Total extension count   | `38`          |
+
 ## Build Architecture
 
 ### Multi-Stage Build

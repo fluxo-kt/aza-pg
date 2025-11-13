@@ -166,42 +166,19 @@ The publish workflow automatically creates GitHub Releases to showcase image con
 - Production-ready quick start commands
 - Security verification steps
 
-**Example release notes structure:**
+**Release notes structure:**
 
-```markdown
-# aza-pg PostgreSQL 18.0
+Generated release notes include:
 
-Production-ready PostgreSQL with **34 enabled extensions** across 18 categories.
+- Extension catalog grouped by category (AI/ML, time-series, search, security, operations, etc.)
+- Version information for each extension
+- Image metadata (registry, tags, digest, platforms)
+- Quick start examples (Docker run + SQL CREATE EXTENSION)
+- Auto-configuration details
+- Verification commands (Cosign signature, SBOM download)
+- Documentation links
 
-## What's Inside
-
-### AI/ML & Vector Search (2 extensions)
-
-- **pgvector** 0.8.1 - Vector similarity search
-- **pgvectorscale** 0.5.1 - DiskANN indexing
-
-### Time-Series (2 extensions)
-
-- **columnar** 11.1.8 - Columnar storage
-- **TimescaleDB** 2.17.2 - Time-series database
-
-[... complete catalog ...]
-
-## Image Details
-
-- Registry: ghcr.io/fluxo-kt/aza-pg
-- Tags: `18.0-202511132330-single-node`, `18-single-node`, `18`
-- Digest: `sha256:abc123...`
-- Platforms: linux/amd64, linux/arm64
-
-## Quick Start
-
-[Docker run + SQL examples]
-
-## Verification
-
-[Cosign verification + SBOM download]
-```
+All data is dynamically generated from `docker/postgres/extensions.manifest.json`.
 
 **Discoverability benefits:**
 
@@ -326,13 +303,13 @@ Annotations are applied using `docker buildx imagetools create` with `--annotati
 docker buildx imagetools create \
   -t ghcr.io/fluxo-kt/aza-pg:testing-sha \
   --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
-  --annotation "index:org.opencontainers.image.description=PostgreSQL 18.1 with 38 extensions - Single-Node" \
+  --annotation "index:org.opencontainers.image.description=PostgreSQL {version} with {count} extensions..." \
   --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
-  --annotation "index:org.opencontainers.image.version=18.1-202511130900-single-node" \
+  --annotation "index:org.opencontainers.image.version={version}-{timestamp}-single-node" \
   --annotation "index:org.opencontainers.image.source=https://github.com/fluxo-kt/aza-pg" \
   --annotation "index:org.opencontainers.image.licenses=MIT" \
-  ghcr.io/fluxo-kt/aza-pg@sha256:amd64-digest \
-  ghcr.io/fluxo-kt/aza-pg@sha256:arm64-digest
+  ghcr.io/fluxo-kt/aza-pg@sha256:{amd64-digest} \
+  ghcr.io/fluxo-kt/aza-pg@sha256:{arm64-digest}
 ```
 
 **Critical notes:**
@@ -364,7 +341,7 @@ Expected output shows both platforms and all annotations:
 ```json
 {
   "org.opencontainers.image.title": "aza-pg Single-Node PostgreSQL",
-  "org.opencontainers.image.description": "PostgreSQL 18.1 with 38 extensions - Single-Node",
+  "org.opencontainers.image.description": "PostgreSQL {version} with {count} extensions...",
   "org.opencontainers.image.vendor": "fluxo-kt",
   "org.opencontainers.image.source": "https://github.com/fluxo-kt/aza-pg",
   "org.opencontainers.image.licenses": "MIT"
@@ -387,29 +364,29 @@ To update existing tags with annotations:
 
 Standard OCI annotations applied to all published images:
 
-| Annotation                               | Purpose             | Example Value                                            |
+| Annotation                               | Purpose             | Format/Example                                           |
 | ---------------------------------------- | ------------------- | -------------------------------------------------------- |
 | `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                          |
-| `org.opencontainers.image.description`   | Package description | `PostgreSQL 18.1 with 38 extensions - Single-Node`       |
+| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`        |
 | `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt`                                               |
-| `org.opencontainers.image.version`       | Full version tag    | `18.1-202511130900-single-node`                          |
-| `org.opencontainers.image.created`       | Build timestamp     | `202511130900`                                           |
-| `org.opencontainers.image.revision`      | Git commit SHA      | `abc123def456...`                                        |
+| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                     |
+| `org.opencontainers.image.created`       | Build timestamp     | `YYYYMMDDHHmm`                                           |
+| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                  |
 | `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                     |
 | `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                     |
 | `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md` |
 | `org.opencontainers.image.licenses`      | License             | `MIT`                                                    |
-| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:18-trixie`                   |
-| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:...`                                             |
+| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:{major}-trixie`              |
+| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:{digest}`                                        |
 
 Custom annotations for aza-pg metadata:
 
-| Annotation                              | Purpose                 | Example Value |
-| --------------------------------------- | ----------------------- | ------------- |
-| `io.fluxo-kt.aza-pg.postgres.version`   | PostgreSQL version      | `18.1`        |
-| `io.fluxo-kt.aza-pg.build.type`         | Deployment type         | `single-node` |
-| `io.fluxo-kt.aza-pg.extensions.enabled` | Enabled extension count | `34`          |
-| `io.fluxo-kt.aza-pg.extensions.total`   | Total extension count   | `38`          |
+| Annotation                              | Purpose                 | Format/Source                                  |
+| --------------------------------------- | ----------------------- | ---------------------------------------------- |
+| `io.fluxo-kt.aza-pg.postgres.version`   | PostgreSQL version      | From base image (`{major}.{minor}`)            |
+| `io.fluxo-kt.aza-pg.build.type`         | Deployment type         | `single-node`                                  |
+| `io.fluxo-kt.aza-pg.extensions.enabled` | Enabled extension count | From manifest (count where `enabled != false`) |
+| `io.fluxo-kt.aza-pg.extensions.total`   | Total extension count   | From manifest (total entries)                  |
 
 ## Build Architecture
 
@@ -478,7 +455,7 @@ All extensions are pinned to specific commit SHAs (not tags):
 
 ### Extension System
 
-**Total Catalog:** 38 entries (36 enabled, 2 disabled: pgq, supautils)
+**Total Catalog:** 38 entries (34 enabled, 4 disabled: pgq, postgis, pgrouting, supautils)
 
 See [EXTENSIONS.md § Extension Classification](EXTENSIONS.md#extension-classification) for complete classification details (tools vs modules vs extensions, preloaded defaults).
 

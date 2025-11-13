@@ -1,6 +1,6 @@
 # aza-pg
 
-PostgreSQL 18 with auto-configuration, 36 compiled extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
+PostgreSQL 18 with auto-configuration, 34 enabled extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
 
 > **Open Source Notice:** This is MIT licensed open source software provided AS IS with NO WARRANTY, NO SUPPORT, and NO LIABILITY. Docker images are published for convenience but come with NO GUARANTEES of functionality, security, or maintenance. Use at your own risk.
 
@@ -24,7 +24,7 @@ PostgreSQL 18 with auto-configuration, 36 compiled extensions, and deployment st
 
 | Feature                | Official postgres:18 | aza-pg:18                              |
 | ---------------------- | -------------------- | -------------------------------------- |
-| **Extensions**         | Contrib only (~10)   | 36 compiled extensions                 |
+| **Extensions**         | Contrib only (~10)   | 34 enabled extensions                  |
 | **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                   |
 | **Connection Pooling** | Separate setup       | PgBouncer integrated                   |
 | **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter |
@@ -35,7 +35,7 @@ PostgreSQL 18 with auto-configuration, 36 compiled extensions, and deployment st
 
 ## Extensions
 
-36 enabled (6 builtin + 25 external + 5 tools): pgvector 0.8.1, pg_cron 1.6.7, pgAudit 18.0, PostGIS, contrib (pg_trgm, pg_stat_statements, auto_explain). 4 preloaded by default.
+34 enabled extensions across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. 4 preloaded by default. See "Popular Use Cases" below for examples.
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
 
@@ -51,15 +51,8 @@ CREATE EXTENSION vectorscale;      -- pgvectorscale: DiskANN indexing
 **Time-Series Analytics**
 
 ```sql
-CREATE EXTENSION timescaledb;      -- Hypertables, continuous aggregates
-CREATE EXTENSION columnar;         -- Columnar storage for analytics
-```
-
-**GIS & Spatial**
-
-```sql
-CREATE EXTENSION postgis;          -- Spatial types, indexes, functions
-CREATE EXTENSION pgrouting;        -- Network routing algorithms
+CREATE EXTENSION timescaledb;            -- Hypertables, continuous aggregates
+CREATE EXTENSION timescaledb_toolkit;    -- Analytical hyperfunctions
 ```
 
 **Full-Text Search**
@@ -75,7 +68,7 @@ CREATE EXTENSION pg_trgm;          -- Trigram similarity (builtin)
 ```sql
 CREATE EXTENSION pgaudit;          -- Audit logging (preloaded)
 CREATE EXTENSION pgsodium;         -- Encryption functions
-CREATE EXTENSION vault;            -- HashiCorp Vault integration
+CREATE EXTENSION supabase_vault;   -- Supabase Vault secrets management
 ```
 
 **Operations & Automation**

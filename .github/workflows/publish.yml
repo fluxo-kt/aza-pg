@@ -380,7 +380,7 @@ jobs:
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
             --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
-            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across 19 categories: AI/ML (pgvector, pgvectorscale), time-series (timescaledb), GIS (postgis, pgrouting), search (pgroonga, rum), security (pgaudit, pgsodium, vault), ops (pg_cron, pgbackrest, pg_repack), data (http, wrappers, pg_partman). Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
             --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
             --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
             --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
@@ -716,7 +716,7 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }} \
             --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
-            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across 19 categories: AI/ML (pgvector, pgvectorscale), time-series (timescaledb), GIS (postgis, pgrouting), search (pgroonga, rum), security (pgaudit, pgsodium, vault), ops (pg_cron, pgbackrest, pg_repack), data (http, wrappers, pg_partman). Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
+            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
             --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
             --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
             --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \

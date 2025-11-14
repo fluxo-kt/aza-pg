@@ -600,6 +600,69 @@ docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
 - After verifying new base image in staging
 - When validation script reports staleness
 
+### CI Workflow Failure Diagnostics
+
+Both `publish.yml` and `build-postgres-image.yml` workflows automatically capture comprehensive failure diagnostics when tests or scans fail.
+
+**Diagnostic Artifacts Available:**
+
+**Test Failures** (`test-failure-diagnostics-<SHA>`):
+
+- PostgreSQL container logs (full output)
+- Complete PostgreSQL configuration (`SHOW ALL`)
+- Shared preload libraries configuration
+- Installed extensions list
+- Image version info (`/etc/postgresql/version-info.txt`)
+- Docker Compose logs (for stack tests)
+
+**Scan Failures** (`scan-failure-diagnostics-<SHA>`):
+
+- Full Trivy scan output (all severities)
+- Trivy JSON results (for programmatic analysis)
+- Image metadata (manifest inspection)
+- SARIF file (if generated)
+
+**Stack Test Failures** (`replica-test-failure-diagnostics-<SHA>`, `single-test-failure-diagnostics-<SHA>`):
+
+- Docker Compose logs from respective stacks
+
+**Accessing Diagnostics:**
+
+1. Navigate to failed workflow run in GitHub Actions
+2. Scroll to "Artifacts" section at bottom of run summary
+3. Download diagnostic artifact(s) for the specific failure
+4. Extract and review logs/configs
+
+**Retention:** All diagnostic artifacts are retained for 7 days.
+
+**Example - Debugging Test Failure:**
+
+```bash
+# Download test-failure-diagnostics artifact from GitHub Actions UI
+unzip test-failure-diagnostics-abc1234.zip
+cd diagnostics/
+
+# Review PostgreSQL logs
+cat pg-ext-test-logs.txt
+
+# Check configuration
+cat postgres-config.txt
+
+# Verify shared preload libraries
+cat shared-preload.txt
+
+# Check which extensions are available
+cat extensions.txt
+```
+
+**When diagnostics are NOT captured:**
+
+- Successful workflows (no failures)
+- Build step failures (before test/scan jobs run)
+- Cancelled workflows (manual cancellation)
+
+**Pro tip:** Check diagnostic artifacts BEFORE re-running failed workflows - they often contain the root cause immediately.
+
 ### Performance Issues
 
 **Slow first build:**

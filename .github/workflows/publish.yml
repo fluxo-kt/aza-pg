@@ -636,10 +636,40 @@ jobs:
       - name: Capture PostgreSQL logs on failure
         if: failure()
         run: |
-          echo "=== PostgreSQL Container Logs ==="
-          docker logs test-postgres-container 2>&1 || echo "Could not retrieve logs"
-          echo "=== PostgreSQL Config ==="
-          docker exec test-postgres-container psql -U postgres -c "SHOW shared_preload_libraries;" 2>&1 || true
+          mkdir -p ${{ runner.temp }}/diagnostics
+
+          echo "=== Capturing PostgreSQL Diagnostics ==="
+
+          # Capture container logs
+          echo "=== PostgreSQL Container Logs ===" | tee ${{ runner.temp }}/diagnostics/postgres-logs.txt
+          docker logs test-postgres-container 2>&1 | tee -a ${{ runner.temp }}/diagnostics/postgres-logs.txt || echo "Could not retrieve logs"
+
+          # Capture PostgreSQL configuration
+          echo "=== PostgreSQL Configuration ===" | tee ${{ runner.temp }}/diagnostics/postgres-config.txt
+          docker exec test-postgres-container psql -U postgres -c "SHOW ALL;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/postgres-config.txt || true
+
+          # Capture shared_preload_libraries specifically
+          echo "=== Shared Preload Libraries ===" | tee ${{ runner.temp }}/diagnostics/shared-preload.txt
+          docker exec test-postgres-container psql -U postgres -c "SHOW shared_preload_libraries;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/shared-preload.txt || true
+
+          # Capture extension list
+          echo "=== Installed Extensions ===" | tee ${{ runner.temp }}/diagnostics/extensions.txt
+          docker exec test-postgres-container psql -U postgres -c "SELECT * FROM pg_available_extensions ORDER BY name;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/extensions.txt || true
+
+          # Capture version info from image
+          echo "=== Image Version Info ===" | tee ${{ runner.temp }}/diagnostics/version-info.txt
+          docker exec test-postgres-container cat /etc/postgresql/version-info.txt 2>&1 | tee -a ${{ runner.temp }}/diagnostics/version-info.txt || echo "version-info.txt not found"
+
+          echo "✅ Diagnostics captured to ${{ runner.temp }}/diagnostics/"
+
+      - name: Upload test failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-failure-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/diagnostics/*
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Mark test failure for cleanup
         if: failure()
@@ -712,6 +742,55 @@ jobs:
           format: "table"
           severity: "CRITICAL"
           exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
+
+      - name: Capture security scan diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/scan-diagnostics
+
+          echo "=== Capturing Security Scan Diagnostics ==="
+
+          # Capture full Trivy scan output (all severities)
+          echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
+          docker run --rm \
+            -v .trivy-cache:/root/.cache/ \
+            aquasec/trivy:latest image \
+            --format table \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
+
+          # Capture Trivy scan in JSON format for detailed analysis
+          echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
+          docker run --rm \
+            -v .trivy-cache:/root/.cache/ \
+            aquasec/trivy:latest image \
+            --format json \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
+
+          # Capture image metadata
+          echo "=== Image Metadata ===" | tee ${{ runner.temp }}/scan-diagnostics/image-metadata.txt
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/image-metadata.txt || true
+
+          # Copy SARIF file if it exists
+          if [ -f "trivy-results.sarif" ]; then
+            cp trivy-results.sarif ${{ runner.temp }}/scan-diagnostics/
+          fi
+
+          echo "✅ Security scan diagnostics captured"
+
+      - name: Upload security scan failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: scan-failure-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/scan-diagnostics/*
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Mark scan failure for cleanup
         if: failure()

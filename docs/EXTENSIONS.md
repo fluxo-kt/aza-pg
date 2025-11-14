@@ -68,15 +68,15 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v3.8.0](https://github.com/pgRouting/pgrouting/releases/tag/v3.8.0) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.0](https://github.com/postgis/postgis/releases/tag/3.6.0)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
+| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.0](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.0) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
+| [`postgis`](https://github.com/postgis/postgis)       | [3.6.1](https://github.com/postgis/postgis/releases/tag/3.6.1)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
 
 ### integration
 
 | Extension                                                              | Version                                                                                          | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                    |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------- |
 | [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0)                              | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl. |
-| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [fc63ad1f](https://github.com/supabase/wrappers/commit/fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.   |
+| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [303da1dd](https://github.com/supabase/wrappers/commit/303da1dd0e7a94365ecf5d48866739fe9fda4d07) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.   |
 
 ### maintenance
 
@@ -89,7 +89,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                       | Version                                                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [4ac02b24](https://github.com/percona/pg_stat_monitor/commit/4ac02b24433894b320b044ed30747d0c38e79fa5) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [b00caafb](https://github.com/percona/pg_stat_monitor/commit/b00caafb684b3bd64f020ccd057303cd8a7af0d8) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
 | [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1)                                         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
@@ -147,7 +147,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                          |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.0](https://github.com/timescale/timescaledb/releases/tag/2.23.0)         | No                 | Yes            | [Docs](https://docs.tigerdata.com/use-timescale/latest/)                | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.1](https://github.com/timescale/timescaledb/releases/tag/2.23.1)         | No                 | Yes            | [Docs](https://docs.tigerdata.com/use-timescale/latest/)                | Hypertables, compression, and continuous aggregates for time-series workloads. |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                  |
 
 ### utilities
@@ -160,7 +160,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                    | Version                                                                                               | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                        |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [e7834142](https://github.com/supabase/pg_jsonschema/commit/e7834142a3cce347b6082c5245de939810d3f9c4) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [5492c7d1](https://github.com/supabase/pg_jsonschema/commit/5492c7d1a28c5a2c85b48f89c47f258acc93d241) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 <!-- extensions-table:end -->
 

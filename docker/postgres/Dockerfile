@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-12T21:14:45.970Z
+# Generated at: 2025-11-14T02:50:18.554Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -8,7 +8,7 @@
 # PostgreSQL 18 with comprehensive extension suite
 
 ARG PG_VERSION=18
-ARG PG_BASE_IMAGE_SHA=sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+ARG PG_BASE_IMAGE_SHA=sha256:1477c9abe8bb7204b6d8ae3c2aa1a96408a535854fab9a289ca91bfcdc7d414d
 
 # Build metadata for OCI labels
 ARG BUILD_DATE

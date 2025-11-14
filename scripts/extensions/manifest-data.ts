@@ -317,7 +317,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/supabase/wrappers.git",
-      ref: "fc63ad1fee7fcf94a84b7f5dfc6a1aa2124c7712",
+      ref: "303da1dd0e7a94365ecf5d48866739fe9fda4d07",
     },
     build: {
       type: "cargo-pgrx",
@@ -388,7 +388,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
-      tag: "3.6.0",
+      tag: "3.6.1",
     },
     build: { type: "autotools" },
     aptPackages: [
@@ -424,7 +424,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgRouting/pgrouting.git",
-      tag: "v3.8.0",
+      tag: "v4.0.0",
     },
     build: { type: "cmake" },
     dependencies: ["postgis"],
@@ -474,7 +474,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/supabase/pg_jsonschema.git",
-      ref: "e7834142a3cce347b6082c5245de939810d3f9c4",
+      ref: "5492c7d1a28c5a2c85b48f89c47f258acc93d241",
     },
     build: {
       type: "cargo-pgrx",
@@ -568,7 +568,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      ref: "4ac02b24433894b320b044ed30747d0c38e79fa5",
+      ref: "b00caafb684b3bd64f020ccd057303cd8a7af0d8",
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: true, defaultEnable: true },
@@ -603,7 +603,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.23.0",
+      tag: "2.23.1",
     },
     build: { type: "timescaledb" },
     aptPackages: ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],

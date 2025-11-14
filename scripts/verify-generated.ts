@@ -6,6 +6,7 @@
 
 const filesToCheck = [
   "docker/postgres/Dockerfile",
+  "docker/postgres/docker-auto-config-entrypoint.sh",
   "docker/postgres/extensions.manifest.json",
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
   "docs/.generated/docs-data.json",

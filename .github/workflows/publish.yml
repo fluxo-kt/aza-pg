@@ -18,6 +18,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME_TESTING: fluxo-kt/aza-pg-testing
 
 jobs:
   prep:
@@ -264,7 +265,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.prep.outputs.meta_labels }}
           annotations: ${{ needs.prep.outputs.meta_annotations }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           build-args: |
             PG_VERSION=${{ needs.prep.outputs.pg_version_major }}
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
@@ -383,7 +384,7 @@ jobs:
           # Create testing tag from digests with OCI annotations
           # Annotations are required for GitHub Container Registry to display package metadata
           docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
             --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
             --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
             --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
@@ -400,13 +401,13 @@ jobs:
             --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
             --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
             --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s ' *)
 
           echo ""
           echo "=== Extracting Manifest Digest ==="
 
           # Get the digest of the manifest list
-          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
             --format '{{json .}}' | jq -r '.manifest.digest // empty')
 
           if [ -z "$MANIFEST_DIGEST" ]; then
@@ -425,7 +426,7 @@ jobs:
           echo "=== Verifying Multi-Arch Manifest Structure ==="
 
           # Get manifest in raw format
-          MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} --raw)
+          MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} --raw)
 
           # Verify manifest format (prefer OCI Image Index for annotation support)
           MEDIA_TYPE=$(echo "$MANIFEST_JSON" | jq -r '.mediaType // empty')
@@ -554,7 +555,7 @@ jobs:
         run: |
           echo "Pulling merged image to verify PostgreSQL version..."
           for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}; then
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}; then
               echo "✅ Merged image pulled successfully"
               break
             else
@@ -569,7 +570,7 @@ jobs:
 
           # Extract PostgreSQL version from built image
           PG_VERSION_OUTPUT=$(docker run --rm \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
             psql --version)
           echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
 
@@ -629,8 +630,16 @@ jobs:
           # Use the same test infrastructure as local development
           # This ensures CI and local tests are always in sync
           bun scripts/docker/test-image.ts \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
             --fast
+
+      - name: Capture PostgreSQL logs on failure
+        if: failure()
+        run: |
+          echo "=== PostgreSQL Container Logs ==="
+          docker logs test-postgres-container 2>&1 || echo "Could not retrieve logs"
+          echo "=== PostgreSQL Config ==="
+          docker exec test-postgres-container psql -U postgres -c "SHOW shared_preload_libraries;" 2>&1 || true
 
       - name: Mark test failure for cleanup
         if: failure()
@@ -672,7 +681,7 @@ jobs:
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@v1
         with:
-          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
           failure-threshold: WARN
           accept-keywords: key
@@ -683,7 +692,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -699,7 +708,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
           format: "table"
           severity: "CRITICAL"
           exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
@@ -744,9 +753,9 @@ jobs:
           COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
         run: |
           set -e  # Exit on any error
-          # Sign by digest (immutable reference)
-          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          # Sign by digest using testing repository reference (immutable reference)
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
 
           echo "✅ Image signed successfully with keyless OIDC"
           echo "📝 Signature uploaded to Rekor transparency log"
@@ -754,9 +763,11 @@ jobs:
       - name: Promote testing image to production tags
         run: |
           echo "✅ All security scans passed. Promoting testing image to production tags..."
+          echo "Source: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          echo "Target: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
 
-          # Use docker buildx imagetools to create production tags with OCI annotations
-          # This points new tags to the same manifest digest (no re-push needed)
+          # Use docker buildx imagetools to create production tags from testing digest
+          # This promotes by digest reference (immutable, secure)
           # Annotations must be reapplied when creating new tags to ensure GitHub displays metadata
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
@@ -780,30 +791,25 @@ jobs:
             --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
             --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
             --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+
+          echo ""
+          echo "=== Verifying Promotion ==="
+          # Verify promoted image has same digest
+          PROMOTED_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
+            --format '{{json .}}' | jq -r '.manifest.digest // empty')
+
+          if [ "$PROMOTED_DIGEST" != "${{ needs.merge.outputs.image_digest }}" ]; then
+            echo "❌ ERROR: Digest mismatch after promotion"
+            echo "   Expected: ${{ needs.merge.outputs.image_digest }}"
+            echo "   Got: $PROMOTED_DIGEST"
+            exit 1
+          fi
 
           echo "✅ Production tags created successfully with OCI annotations"
           echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
-
-      - name: Clean up testing tag
-        run: |
-          echo "Removing temporary testing tag after successful promotion..."
-          # Install regclient for proper tag deletion
-          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
-            echo "⚠️ Failed to download regctl, skipping inline cleanup"
-            echo "The cleanup job will handle removal"
-            exit 0
-          fi
-          chmod +x regctl
-          sudo mv regctl /usr/local/bin/
-
-          # Delete the testing tag now that promotion is complete
-          if regctl tag delete "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}" 2>/dev/null; then
-            echo "✅ Successfully deleted testing tag after promotion"
-          else
-            echo "ℹ️ Testing tag may already be deleted or will be cleaned by cleanup job"
-          fi
+          echo "✅ Digest verified: Promotion successful"
 
       - name: Sign all convenience tags
         env:
@@ -1072,7 +1078,7 @@ jobs:
       - name: Delete testing tag if it exists
         run: |
           echo "🧹 Cleanup job: Ensuring ALL testing artifacts are removed"
-          TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing-${{ github.sha }}"
+          TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
 
           # This job runs with 'if: always()' to guarantee cleanup regardless of:
           # - Build failures
@@ -1083,24 +1089,45 @@ jobs:
 
           # Check if the tag exists
           echo "Checking for testing tag: testing-${{ github.sha }}"
-          if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+          if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
             echo "Found testing tag: $TESTING_TAG"
 
-            # Delete the tag
-            if regctl tag delete "$TESTING_TAG"; then
-              echo "✅ Successfully deleted testing tag"
+            # Delete the tag with retry logic (3 attempts with exponential backoff)
+            MAX_RETRIES=3
+            RETRY_DELAY=5
+            SUCCESS=false
 
-              # Verify deletion
-              sleep 2  # Brief pause for registry to update
-              if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
-                echo "⚠️ Tag still exists after deletion attempt - may need manual cleanup"
-                # Don't fail the workflow for cleanup issues
+            for attempt in $(seq 1 $MAX_RETRIES); do
+              echo "Deletion attempt $attempt of $MAX_RETRIES..."
+              if regctl tag delete "$TESTING_TAG" 2>&1; then
+                echo "✅ Successfully deleted testing tag on attempt $attempt"
+                SUCCESS=true
+                break
               else
-                echo "✅ Verified: Tag has been removed from registry"
+                echo "⚠️ Deletion attempt $attempt failed"
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  WAIT_TIME=$((RETRY_DELAY * attempt))
+                  echo "Waiting ${WAIT_TIME}s before retry..."
+                  sleep $WAIT_TIME
+                fi
               fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ ERROR: Failed to delete testing tag after $MAX_RETRIES attempts"
+              echo "Tag may need manual cleanup or will be garbage collected"
+              exit 1
+            fi
+
+            # Verify deletion
+            echo "Verifying deletion..."
+            sleep 3  # Brief pause for registry to update
+            if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+              echo "❌ ERROR: Tag still exists after deletion"
+              echo "Registry may be experiencing delays or deletion failed"
+              exit 1
             else
-              echo "⚠️ Failed to delete testing tag - will be garbage collected"
-              # Don't fail the workflow for cleanup issues
+              echo "✅ Verified: Tag has been removed from registry"
             fi
           else
             echo "✅ Testing tag not found (already cleaned or never created)"

@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-14T08:43:45.434Z
+# Generated at: 2025-11-14T21:58:55.098Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -19,9 +19,9 @@ ARG VERSION=18.1
 ARG PGCRON_VERSION=1.6.7-2.pgdg13+1
 ARG PGAUDIT_VERSION=18.0-2.pgdg13+1
 ARG PGVECTOR_VERSION=0.8.1-2.pgdg13+1
-ARG TIMESCALEDB_VERSION=2.23.0+dfsg-1.pgdg13+1
+ARG TIMESCALEDB_VERSION=2.23.1+dfsg-1.pgdg13+1
 ARG POSTGIS_VERSION=3.6.0+dfsg-3.pgdg13+1
-ARG PARTMAN_VERSION=5.3.1-1.pgdg13+1
+ARG PARTMAN_VERSION=5.3.1-2.pgdg13+1
 ARG REPACK_VERSION=1.5.3-1.pgdg13+1
 ARG PLPGSQL_CHECK_VERSION=2.8.3-1.pgdg13+1
 ARG HLL_VERSION=2.19-1.pgdg13+1
@@ -198,7 +198,7 @@ RUN set -eu && \
       local ext_name=$1; \
       local pkg_name=$2; \
       local pkg_version=$3; \
-      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and .enabled != false)' /tmp/extensions.manifest.json >/dev/null; then \
+      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))' /tmp/extensions.manifest.json >/dev/null; then \
         PGDG_PACKAGES="$PGDG_PACKAGES postgresql-${PG_MAJOR}-${pkg_name}=${pkg_version}"; \
       fi; \
     } && \
@@ -225,7 +225,7 @@ RUN set -eu && \
       INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
       echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
       # Dynamic verification: count enabled PGDG packages in manifest
-      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and .enabled != false)] | length' /tmp/extensions.manifest.json) && \
+      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))] | length' /tmp/extensions.manifest.json) && \
       echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \
       # Allow some variance but ensure we have at least 1 package
       test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \
@@ -257,9 +257,9 @@ RUN set -ex; \
     \
     # Count extensions
     TOTAL=$(jq '.entries | length' "$MANIFEST"); \
-    ENABLED=$(jq '[.entries[] | select(.enabled != false)] | length' "$MANIFEST"); \
+    ENABLED=$(jq '[.entries[] | select((.enabled == null) or (.enabled == true))] | length' "$MANIFEST"); \
     DISABLED=$(jq '[.entries[] | select(.enabled == false)] | length' "$MANIFEST"); \
-    PRELOADED=$(jq '[.entries[] | select(.enabled != false and .runtime.sharedPreload)] | length' "$MANIFEST"); \
+    PRELOADED=$(jq '[.entries[] | select(((.enabled == null) or (.enabled == true)) and .runtime.sharedPreload)] | length' "$MANIFEST"); \
     \
     # Generate version-info.txt (human-readable)
     printf '%s\n' \

@@ -175,7 +175,81 @@ async function validateDefaultEnable(manifest: Manifest): Promise<void> {
   }
 }
 
-// 3. PGDG consistency
+// 3. Shared preload libraries synchronization
+async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void> {
+  console.log(); // Empty line for spacing
+  logger.info("[SHARED PRELOAD LIBRARIES VALIDATION]");
+
+  // Parse docker-auto-config-entrypoint.sh for DEFAULT_SHARED_PRELOAD_LIBRARIES
+  const entrypoint = await readFile(ENTRYPOINT_PATH);
+  const preloadMatch = entrypoint.match(/DEFAULT_SHARED_PRELOAD_LIBRARIES="([^"]+)"/);
+  const preloadLibraries = new Set<string>();
+
+  if (preloadMatch?.[1]) {
+    preloadMatch[1].split(",").forEach((lib) => preloadLibraries.add(lib.trim()));
+  }
+
+  console.log(`  Configured preload libraries: ${Array.from(preloadLibraries).join(", ")}`);
+
+  // Find all extensions that SHOULD be in preload (sharedPreload: true AND defaultEnable: true)
+  const expectedPreload = manifest.entries
+    .filter((e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.enabled !== false)
+    .map((e) => e.name);
+
+  console.log(`  Expected preload (from manifest): ${expectedPreload.join(", ")}`);
+
+  // Check for libraries in DEFAULT_SHARED_PRELOAD_LIBRARIES that shouldn't be there
+  for (const lib of preloadLibraries) {
+    const entry = manifest.entries.find((e) => e.name === lib);
+
+    if (!entry) {
+      error(
+        `Library '${lib}' is in DEFAULT_SHARED_PRELOAD_LIBRARIES but NOT in manifest. ` +
+          `Either add to manifest or remove from preload list.`
+      );
+      continue;
+    }
+
+    if (!entry.runtime?.sharedPreload) {
+      error(
+        `Library '${lib}' is in DEFAULT_SHARED_PRELOAD_LIBRARIES but has sharedPreload=false in manifest. ` +
+          `Either enable sharedPreload or remove from preload list.`
+      );
+    }
+
+    if (!entry.runtime?.defaultEnable) {
+      error(
+        `Library '${lib}' is in DEFAULT_SHARED_PRELOAD_LIBRARIES but has defaultEnable=false in manifest. ` +
+          `This should be opt-in via POSTGRES_SHARED_PRELOAD_LIBRARIES env var. ` +
+          `Remove '${lib}' from DEFAULT_SHARED_PRELOAD_LIBRARIES.`
+      );
+    }
+
+    if (entry.enabled === false) {
+      error(
+        `Library '${lib}' is in DEFAULT_SHARED_PRELOAD_LIBRARIES but is disabled in manifest. ` +
+          `Either enable the extension or remove from preload list.`
+      );
+    }
+  }
+
+  // Check for extensions that should be preloaded but aren't
+  for (const expectedLib of expectedPreload) {
+    if (!preloadLibraries.has(expectedLib)) {
+      error(
+        `Extension '${expectedLib}' has sharedPreload=true and defaultEnable=true but is NOT in ` +
+          `DEFAULT_SHARED_PRELOAD_LIBRARIES. Add '${expectedLib}' to the preload list.`
+      );
+    }
+  }
+
+  // Verification message
+  if (errors.length === 0) {
+    console.log(`  ✓ All preload libraries match manifest configuration`);
+  }
+}
+
+// 4. PGDG consistency
 async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
   logger.info("[PGDG CONSISTENCY VALIDATION]");
@@ -238,7 +312,7 @@ function getDockerfileArgName(extensionName: string): string {
   return mapping[extensionName] || extensionName.toUpperCase();
 }
 
-// 4. Runtime spec completeness
+// 5. Runtime spec completeness
 async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
   logger.info("[RUNTIME SPEC VALIDATION]");
@@ -252,7 +326,7 @@ async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   }
 }
 
-// 5. Dependency validation
+// 6. Dependency validation
 function validateDependencies(manifest: Manifest): void {
   console.log(); // Empty line for spacing
   logger.info("[DEPENDENCY VALIDATION]");
@@ -284,6 +358,7 @@ async function main(): Promise<void> {
     // Run all validations
     validateCounts(manifest);
     await validateDefaultEnable(manifest);
+    await validateSharedPreloadLibraries(manifest);
     await validatePgdgConsistency(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);

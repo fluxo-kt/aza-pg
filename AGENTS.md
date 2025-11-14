@@ -6,7 +6,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
 ## Invariants
 
-- Preload (default): auto_explain, pg_cron, pg_stat_statements, pgaudit
+- Preload (default): auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit
 - Extensions: 38 catalog total (34 enabled, 4 disabled: pgq, postgis, pgrouting, supautils)
 - Tools ≠ extensions: 5 tools (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
@@ -14,6 +14,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 - Manifest = single source of truth
 - **Dockerfile is auto-generated** from template + manifest (never edit directly)
 - Private repo | Public images (free, no guarantees)
+- **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`)
 
 ## Paths
 
@@ -47,7 +48,22 @@ cd stacks/primary && docker compose up
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Key details:** Modules: 1 (auto_explain). Preloaded: 4 (auto_explain, pg_cron, pg_stat_statements, pgaudit). Tools (no CREATE EXTENSION): 5. See docs/EXTENSIONS.md for full catalog.
+**Key details:** Modules: 1 (auto_explain). Preloaded: 5 (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). Tools (no CREATE EXTENSION): 5. See docs/EXTENSIONS.md for full catalog.
+
+**Optional preload modules** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`):
+
+- `timescaledb`: Time-series database features (hypertables, compression)
+- `safeupdate` (pg_safeupdate): Prevents UPDATE/DELETE without WHERE clause
+- `pgsodium`: Encryption library (requires pgsodium_getkey script)
+- `set_user`: Audited SET ROLE for privilege escalation tracking
+- `pg_partman`: Automated partition management background worker
+- `pg_plan_filter`: Query plan safety filter
+
+**Example:**
+
+```bash
+docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate" ...
+```
 
 ## Auto-Config
 
@@ -130,6 +146,14 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - Example: `ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node`
 - Version extracted from base image BEFORE tagging (publish.yml pulls base, runs psql --version)
 - Version info generated in final stage with actual PostgreSQL version: `docker run <image> cat /etc/postgresql/version-info.txt`
+
+**Repository Separation**:
+
+- **Production**: `ghcr.io/fluxo-kt/aza-pg` (release tags only: `18.1-...`, `18`, etc.)
+- **Testing/Dev**: `ghcr.io/fluxo-kt/aza-pg-testing` (`testing-*`, `dev-*` tags)
+- ⚠️ **NEVER use aza-pg-testing images in production** (ephemeral, unvalidated artifacts)
+- Promotion flow: Build → Testing repo → Test → Scan → Promote (digest copy) → Production repo
+- Testing tags deleted after successful promotion or workflow failure
 
 See docs/TOOLING.md, docs/BUILD.md for details.
 

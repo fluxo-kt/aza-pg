@@ -37,7 +37,7 @@ interface BuildConfig {
 function parseArgs(): BuildConfig {
   const config: BuildConfig = {
     builderName: "aza-pg-builder",
-    imageName: Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg",
+    imageName: Bun.env.POSTGRES_IMAGE || "aza-pg",
     imageTag: Bun.env.POSTGRES_TAG || "pg18",
     cacheRegistry: "ghcr.io/fluxo-kt/aza-pg",
     cacheTag: "buildcache",

@@ -349,7 +349,7 @@ All images published to `ghcr.io/fluxo-kt/aza-pg` follow the **MM.mm-TS-TYPE** v
 - **TS**: Build timestamp with minute precision (e.g., `202511092330`)
 - **TYPE**: Image type (`single-node`, `primary`, `replica`)
 
-**Example:** `18.0-202511092330-single-node`
+**Example:** `18.1-202511142330-single-node`
 
 ### Available Tags
 
@@ -357,7 +357,7 @@ Each image is published with multiple tags for convenience:
 
 ```bash
 # Full versioned tag (recommended for production - immutable)
-ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
+ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
 
 # Version-specific convenience tags
 ghcr.io/fluxo-kt/aza-pg:18.0-single-node  # Tracks PostgreSQL 18.0 minor
@@ -382,7 +382,7 @@ All published images are:
 cosign verify \
   --certificate-identity-regexp="^https://github.com/fluxo-kt/aza-pg/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
+  ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
 ```
 
 ### Version Selection for Production

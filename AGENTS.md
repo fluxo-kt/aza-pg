@@ -115,7 +115,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - `ci.yml`: ONLY workflow on PRs (fast: lint, manifest, sync checks, ~5min)
 - `build-postgres-image.yml`: Manual dev/QA builds (NO push by default, dev-prefixed tags only)
 - `publish.yml`: Release-only (push to `release` branch, single-node image, versioned tags, Cosign signing)
-- Tags: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`) + convenience (`18-single-node`, `18`)
+- Tags: `MM.mm-TS-TYPE` (e.g., `18.1-202511142330-single-node`) + convenience (`18-single-node`, `18`)
 - NO 'latest' tag from dev builds (publish.yml only)
 
 **Environment Files**:
@@ -127,7 +127,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **Image Versioning**:
 
 - Format: `MM.mm-TS-TYPE` where MM=PG major, mm=PG minor (actual), TS=YYYYMMDDHHmm, TYPE=single-node
-- Example: `ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node`
+- Example: `ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node`
 - Version extracted from base image BEFORE tagging (publish.yml pulls base, runs psql --version)
 - Version info generated in final stage with actual PostgreSQL version: `docker run <image> cat /etc/postgresql/version-info.txt`
 

@@ -8,7 +8,7 @@
  *
  * Arguments:
  *   txt|json|both     Output format (default: txt)
- *   --pg-version      PostgreSQL version (default: 18.0)
+ *   --pg-version      PostgreSQL version (default: 18.1)
  *
  * Human-readable (.txt): Self-documenting image contents for `cat /etc/postgresql/version-info.txt`
  * Machine-readable (.json): Structured metadata for automation and tooling
@@ -44,7 +44,7 @@ interface Manifest {
 const args = Bun.argv.slice(2);
 const outputMode = args.find((arg) => !arg.startsWith("--")) ?? "txt";
 const pgVersionArg = args.find((arg) => arg.startsWith("--pg-version="))?.split("=")[1];
-const pgVersion = pgVersionArg ?? "18.0";
+const pgVersion = pgVersionArg ?? "18.1";
 
 // Support both local dev and Docker build contexts
 // In Docker: manifest copied to /tmp/extensions.manifest.json (same dir as script)

@@ -124,7 +124,7 @@ Automatic on `release` branch:
 - `TS` = build timestamp YYYYMMDDHHmm
 - `TYPE` = image type (single-node)
 
-**Example:** `18.0-202511092330-single-node`
+**Example:** `18.1-202511142330-single-node`
 
 **Convenience Tags:**
 

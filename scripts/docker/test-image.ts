@@ -13,7 +13,7 @@
  * Usage:
  *   bun scripts/docker/test-image.ts [image-tag]
  *   bun scripts/docker/test-image.ts aza-pg:latest
- *   bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18.0-202511092330-single-node
+ *   bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
  *
  * Options:
  *   --no-cleanup       - Keep container running after tests

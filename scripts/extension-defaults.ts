@@ -41,7 +41,7 @@ export interface ExtensionDefaults {
  * Default versions for PostgreSQL and extensions
  */
 export const extensionDefaults: ExtensionDefaults = {
-  pgVersion: "18",
+  pgVersion: "18.1",
   baseImageSha: "sha256:1477c9abe8bb7204b6d8ae3c2aa1a96408a535854fab9a289ca91bfcdc7d414d",
   pgdgVersions: {
     pgcron: "1.6.7-2.pgdg13+1",

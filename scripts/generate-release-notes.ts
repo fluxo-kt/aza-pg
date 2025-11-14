@@ -8,16 +8,16 @@
  *
  * Usage:
  *   bun scripts/generate-release-notes.ts \
- *     --pg-version=18.0 \
- *     --tag=18.0-202511132330-single-node \
+ *     --pg-version=18.1 \
+ *     --tag=18.1-202511132330-single-node \
  *     --digest=sha256:abc123... \
  *     --catalog-enabled=36 \
  *     --catalog-total=38 \
  *     --output=release-notes.md
  *
  * Arguments:
- *   --pg-version       PostgreSQL version (e.g., "18.0")
- *   --tag              Full image tag (e.g., "18.0-202511132330-single-node")
+ *   --pg-version       PostgreSQL version (e.g., "18.1")
+ *   --tag              Full image tag (e.g., "18.1-202511132330-single-node")
  *   --digest           Image digest (e.g., "sha256:abc123...")
  *   --catalog-enabled  Number of enabled extensions
  *   --catalog-total    Total extensions in catalog
@@ -132,8 +132,8 @@ function parseArgs(): Args | null {
     console.error("");
     console.error("Usage:");
     console.error("  bun scripts/generate-release-notes.ts \\");
-    console.error("    --pg-version=18.0 \\");
-    console.error("    --tag=18.0-202511132330-single-node \\");
+    console.error("    --pg-version=18.1 \\");
+    console.error("    --tag=18.1-202511132330-single-node \\");
     console.error("    --digest=sha256:abc123... \\");
     console.error("    --catalog-enabled=36 \\");
     console.error("    --catalog-total=38 \\");

@@ -8,7 +8,7 @@
 
 - `/etc/postgresql/version-info.txt` for self-documenting images (PostgreSQL version, extensions, tools)
 - GitHub Actions workflows: `ci.yml` (fast validation ~5-10min), `publish.yml` (release to ghcr.io, multi-platform)
-- Image versioning: `MM.mm-TS-TYPE` (e.g., `18.0-202511092330-single-node`)
+- Image versioning: `MM.mm-TS-TYPE` (e.g., `18.1-202511142330-single-node`)
 - Development standards documentation (Bun-first, linting, git hooks)
 
 ### Fixed

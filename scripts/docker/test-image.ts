@@ -452,7 +452,12 @@ async function testEnabledExtensions(manifest: Manifest): Promise<TestResult> {
       const isEnabled = entry.enabled !== false;
       const isNotTool = entry.kind !== "tool";
       const isNotPreloadOnly = entry.runtime?.preloadOnly !== true;
-      return isEnabled && isNotTool && isNotPreloadOnly;
+      // Skip extensions that require optional preload (not in default config)
+      // Example: timescaledb requires shared_preload_libraries but is defaultEnable: false
+      const isNotOptionalPreload = !(
+        entry.runtime?.sharedPreload === true && entry.runtime?.defaultEnable === false
+      );
+      return isEnabled && isNotTool && isNotPreloadOnly && isNotOptionalPreload;
     });
 
     const failed: string[] = [];

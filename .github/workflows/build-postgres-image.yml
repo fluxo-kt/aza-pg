@@ -262,7 +262,7 @@ jobs:
           file: ./docker/postgres/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           build-args: |
             PG_VERSION=${{ steps.build-args.outputs.pg_version }}
             PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
@@ -270,6 +270,7 @@ jobs:
             PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+          # Enable OCI media types explicitly for proper multi-arch manifest support
           provenance: mode=max
           sbom: true
 
@@ -423,12 +424,35 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}-${{ github.sha }} \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-          # Get the digest of the manifest list
-          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} \
-            --format '{{json .}}' | jq -r '.manifest.digest')
+          # Inspect manifest once and extract both digest and format
+          INSPECT_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} --format '{{json .}}')
+
+          MANIFEST_DIGEST=$(echo "$INSPECT_JSON" | jq -r '.manifest.digest // empty')
+          if [ -z "$MANIFEST_DIGEST" ]; then
+            echo "❌ ERROR: Failed to extract manifest digest"
+            exit 1
+          fi
 
           echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
           echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
+
+          # Verify manifest format (dev builds - informational only)
+          echo ""
+          echo "=== Manifest Format Check ==="
+          MEDIA_TYPE=$(echo "$INSPECT_JSON" | jq -r '.manifest.mediaType // empty')
+
+          if [ -z "$MEDIA_TYPE" ]; then
+            echo "⚠️  WARNING: Could not determine manifest media type"
+            echo "   Manifest inspection may have failed or returned unexpected format"
+          elif [[ "$MEDIA_TYPE" == "application/vnd.oci.image.index.v1+json" ]]; then
+            echo "✅ OCI Image Index v1 format (annotations supported)"
+          elif [[ "$MEDIA_TYPE" == "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
+            echo "⚠️  Docker manifest list v2 format (annotations NOT supported)"
+            echo "   Note: Dev builds may lack OCI annotations - this is informational only"
+          else
+            echo "⚠️  Unexpected manifest format: ${MEDIA_TYPE}"
+          fi
+          echo ""
 
       - name: Verify image
         run: |

@@ -1129,56 +1129,37 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Setup cleanup tools
-        run: |
-          # Install regclient for proper registry operations
-          # This tool is required because docker/buildx cannot delete tags directly
-          echo "Installing regclient for registry operations..."
-          if ! curl -fsSL https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o regctl; then
-            echo "❌ Failed to download regctl"
-            exit 1
-          fi
-          chmod +x regctl
-          sudo mv regctl /usr/local/bin/
-
-          # Verify installation
-          if ! regctl version; then
-            echo "❌ regctl installation failed"
-            exit 1
-          fi
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Delete testing tag if it exists
+      - name: Delete testing tag using GitHub Packages API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🧹 Cleanup job: Ensuring ALL testing artifacts are removed"
-          TESTING_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          TESTING_TAG="testing-${{ github.sha }}"
+          PACKAGE_NAME="aza-pg-testing"
 
           # This job runs with 'if: always()' to guarantee cleanup regardless of:
           # - Build failures
           # - Partial image pushes
           # - Test/scan failures
           # - Any job being cancelled or timing out
-          # Even if merge only partially completed, we still attempt cleanup.
 
-          # Check if the tag exists
-          echo "Checking for testing tag: testing-${{ github.sha }}"
-          if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
-            echo "Found testing tag: $TESTING_TAG"
+          # Get package version ID by tag name using GitHub Packages API
+          # GHCR doesn't support OCI manifest deletion (HTTP 405), must use Packages API
+          echo "Checking for testing tag: $TESTING_TAG"
+          VERSION_ID=$(gh api "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions" \
+            --jq ".[] | select(.metadata.container.tags[] == \"$TESTING_TAG\") | .id" 2>/dev/null || echo "")
 
-            # Delete the tag with retry logic (3 attempts with exponential backoff)
+          if [ -n "$VERSION_ID" ]; then
+            echo "Found testing tag (version ID: $VERSION_ID)"
+
+            # Delete the version with retry logic (3 attempts with exponential backoff)
             MAX_RETRIES=3
             RETRY_DELAY=5
             SUCCESS=false
 
             for attempt in $(seq 1 $MAX_RETRIES); do
               echo "Deletion attempt $attempt of $MAX_RETRIES..."
-              if regctl tag delete "$TESTING_TAG" 2>&1; then
+              if gh api -X DELETE "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" 2>&1; then
                 echo "✅ Successfully deleted testing tag on attempt $attempt"
                 SUCCESS=true
                 break
@@ -1200,10 +1181,13 @@ jobs:
 
             # Verify deletion
             echo "Verifying deletion..."
-            sleep 3  # Brief pause for registry to update
-            if regctl tag ls "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}" 2>/dev/null | grep -q "^testing-${{ github.sha }}$"; then
+            sleep 3  # Brief pause for API to update
+            VERIFY_ID=$(gh api "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions" \
+              --jq ".[] | select(.metadata.container.tags[] == \"$TESTING_TAG\") | .id" 2>/dev/null || echo "")
+
+            if [ -n "$VERIFY_ID" ]; then
               echo "❌ ERROR: Tag still exists after deletion"
-              echo "Registry may be experiencing delays or deletion failed"
+              echo "API may be experiencing delays or deletion failed"
               exit 1
             else
               echo "✅ Verified: Tag has been removed from registry"

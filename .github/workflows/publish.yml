@@ -49,16 +49,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        id: bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -83,42 +76,11 @@ jobs:
           # Extract major version and SHA from Dockerfile
           PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
           PG_BASE_SHA=$(grep -m1 '^ARG PG_BASE_IMAGE_SHA=' docker/postgres/Dockerfile | cut -d'=' -f2)
+          BASE_IMAGE="postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA}"
 
-          echo "Pulling base image to determine actual PostgreSQL version..."
-          for i in {1..3}; do
-            if docker pull postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA}; then
-              echo "✅ Base image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull base image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
-
-          # Extract actual PostgreSQL version from base image
-          PG_VERSION_OUTPUT=$(docker run --rm postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA} psql --version)
-          echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
-
-          # Parse version (format: "psql (PostgreSQL) 18.1 (Debian 18.1-1.pgdg130+1)")
-          PG_FULL=$(echo "${PG_VERSION_OUTPUT}" | grep -oP '\d+\.\d+' | head -1)
-          PG_MINOR=$(echo "${PG_FULL}" | cut -d'.' -f2)
-
-          # Capture base image digest for provenance
-          BASE_IMAGE="docker.io/library/postgres:${PG_MAJOR}-trixie"
-          BASE_DIGEST=$(docker inspect postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA} \
-            --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
-
-          echo "major=${PG_MAJOR}" >> $GITHUB_OUTPUT
-          echo "minor=${PG_MINOR}" >> $GITHUB_OUTPUT
-          echo "full=${PG_FULL}" >> $GITHUB_OUTPUT
-          echo "base_image_name=${BASE_IMAGE}" >> $GITHUB_OUTPUT
-          echo "base_image_digest=${BASE_DIGEST}" >> $GITHUB_OUTPUT
-          echo "✅ Actual PostgreSQL version from base image: ${PG_FULL}"
-          echo "✅ Base image digest: ${BASE_DIGEST}"
+          bun scripts/build/extract-pg-version.ts \
+            --image "$BASE_IMAGE" \
+            --github-output
 
       - name: Generate build timestamp
         id: timestamp
@@ -243,18 +205,12 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
+        uses: ./.github/actions/setup-buildx
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push by digest
         id: build
@@ -338,6 +294,17 @@ jobs:
       image_digest: ${{ steps.merge.outputs.digest }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
       - name: Download digests
         uses: actions/download-artifact@v6
         with:
@@ -346,18 +313,12 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
+        uses: ./.github/actions/setup-buildx
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push (testing tag)
         id: merge
@@ -381,175 +342,29 @@ jobs:
           echo ""
           echo "=== Creating Multi-Arch Manifest ==="
 
-          # Create testing tag from digests with OCI annotations
-          # Annotations are required for GitHub Container Registry to display package metadata
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
-            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
-            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
-            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
-            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
-            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
-            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
-            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
-            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
-            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
-            --annotation "index:org.opencontainers.image.licenses=MIT" \
-            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
-            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
-            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s ' *)
+          # Build source digest list
+          SOURCES=$(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s,' * | sed 's/,$//')
 
-          echo ""
-          echo "=== Extracting Manifest Digest ==="
-
-          # Get the digest of the manifest list
-          MANIFEST_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
-            --format '{{json .}}' | jq -r '.manifest.digest // empty')
-
-          if [ -z "$MANIFEST_DIGEST" ]; then
-            echo "❌ ERROR: Failed to extract manifest digest"
-            exit 1
-          fi
-
-          echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
-          echo "✅ Multi-platform manifest created with OCI annotations"
-          echo "   Digest: ${MANIFEST_DIGEST}"
+          # Create manifest using TypeScript script
+          bun scripts/docker/create-manifest.ts \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --sources "$SOURCES" \
+            --version "${{ needs.prep.outputs.tag_versioned }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ github.sha }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}" \
+            --github-output
 
       - name: Verify manifest annotations and platforms
         run: |
-          set -euo pipefail  # Exit on error, undefined vars, pipe failures
-
-          echo "=== Verifying Multi-Arch Manifest Structure ==="
-
-          # Get manifest in raw format
-          MANIFEST_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} --raw)
-
-          # Verify manifest format (prefer OCI Image Index for annotation support)
-          MEDIA_TYPE=$(echo "$MANIFEST_JSON" | jq -r '.mediaType // empty')
-
-          if [ -z "$MEDIA_TYPE" ]; then
-            echo "❌ ERROR: Could not determine manifest media type"
-            echo "   Manifest inspection may have failed or returned unexpected format"
-            echo "   Check that imagetools inspect succeeded and returned valid JSON"
-            exit 1
-          fi
-
-          echo "Media Type: ${MEDIA_TYPE}"
-
-          if [[ "$MEDIA_TYPE" == "application/vnd.oci.image.index.v1+json" ]]; then
-            echo "✅ OCI Image Index v1 format (annotation support enabled)"
-
-            # Verify annotations are actually present
-            ANNOTATION_COUNT=$(echo "$MANIFEST_JSON" | jq '.annotations // {} | length')
-            if [ "$ANNOTATION_COUNT" -gt 0 ]; then
-              echo "✅ Found ${ANNOTATION_COUNT} OCI annotations on manifest index"
-            else
-              echo "⚠️  WARNING: OCI format detected but no annotations found"
-              echo "   Annotations may not have been applied during imagetools create"
-            fi
-
-          elif [[ "$MEDIA_TYPE" == "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
-            echo ""
-            echo "⚠️  WARNING: Docker manifest list v2 format detected"
-            echo "================================================================"
-            echo "Expected: application/vnd.oci.image.index.v1+json"
-            echo "Got:      ${MEDIA_TYPE}"
-            echo ""
-            echo "IMPACT: OCI annotations NOT available - GitHub will show"
-            echo "        'No description provided' for this package"
-            echo ""
-            echo "CAUSE: Docker v2 format does not support annotations"
-            echo "       Check: oci-mediatypes=true in build outputs (line 267)"
-            echo "       Verify: BuildKit >= v0.12.0"
-            echo ""
-            echo "STATUS: Continuing with release (valid manifest, lacks metadata)"
-            echo "================================================================"
-            echo ""
-
-          else
-            echo "❌ ERROR: Unknown or invalid manifest format"
-            echo "   Expected: application/vnd.oci.image.index.v1+json"
-            echo "          OR: application/vnd.docker.distribution.manifest.list.v2+json"
-            echo "   Got: ${MEDIA_TYPE}"
-            echo ""
-            echo "   This manifest format is not recognized. Build may have failed."
-            exit 1
-          fi
-
-          echo ""
-          echo "=== Verifying Platforms ==="
-
-          # Verify both platforms are present
-          PLATFORM_COUNT=$(echo "$MANIFEST_JSON" | jq '.manifests | length')
-          echo "Platform count: ${PLATFORM_COUNT}"
-
-          if [ "${PLATFORM_COUNT}" -ne 2 ]; then
-            echo "❌ ERROR: Expected 2 platforms, found ${PLATFORM_COUNT}"
-            exit 1
-          fi
-
-          PLATFORMS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"')
-          echo "Platforms found:"
-          echo "$PLATFORMS" | sed 's/^/  - /'
-
-          if ! echo "$PLATFORMS" | grep -q "linux/amd64"; then
-            echo "❌ ERROR: linux/amd64 platform missing"
-            exit 1
-          fi
-          if ! echo "$PLATFORMS" | grep -q "linux/arm64"; then
-            echo "❌ ERROR: linux/arm64 platform missing"
-            exit 1
-          fi
-          echo "✅ Both linux/amd64 and linux/arm64 platforms confirmed"
-
-          echo ""
-          echo "=== Verifying OCI Annotations ==="
-
-          # Verify annotations are present
-          ANNOTATIONS=$(echo "$MANIFEST_JSON" | jq -r '.annotations // {}')
-          ANNOTATION_COUNT=$(echo "$ANNOTATIONS" | jq 'length')
-          echo "Annotation count: ${ANNOTATION_COUNT}"
-
-          if [ "${ANNOTATION_COUNT}" -eq 0 ]; then
-            echo "❌ ERROR: No annotations found on manifest index"
-            echo "   This will cause GitHub to show 'No description provided'"
-            exit 1
-          fi
-
-          # Verify critical annotations
-          DESCRIPTION=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.description" // empty')
-          VENDOR=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.vendor" // empty')
-          LICENSE=$(echo "$ANNOTATIONS" | jq -r '."org.opencontainers.image.licenses" // empty')
-
-          MISSING_ANNOTATIONS=()
-          [ -z "$DESCRIPTION" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.description")
-          [ -z "$VENDOR" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.vendor")
-          [ -z "$LICENSE" ] && MISSING_ANNOTATIONS+=("org.opencontainers.image.licenses")
-
-          if [ ${#MISSING_ANNOTATIONS[@]} -gt 0 ]; then
-            echo "❌ ERROR: Critical annotations missing:"
-            printf '  - %s\n' "${MISSING_ANNOTATIONS[@]}"
-            echo ""
-            echo "All annotations present:"
-            echo "$ANNOTATIONS" | jq '.'
-            exit 1
-          fi
-
-          echo "✅ Critical annotations verified:"
-          echo "  - Description: ${DESCRIPTION}"
-          echo "  - Vendor: ${VENDOR}"
-          echo "  - License: ${LICENSE}"
-
-          echo ""
-          echo "=== All Annotations ==="
-          echo "$ANNOTATIONS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
-
-          echo ""
-          echo "✅ Manifest validation complete - ready for testing"
+          bun scripts/docker/validate-manifest.ts \
+            --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --platforms "linux/amd64,linux/arm64" \
+            --require-annotations
 
       - name: Verify PostgreSQL version in merged image
         run: |
@@ -596,16 +411,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -618,11 +425,9 @@ jobs:
           platforms: linux/arm64
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test image with unified test suite
         timeout-minutes: 5
@@ -694,11 +499,9 @@ jobs:
           fi
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache Trivy vulnerability database
         uses: actions/cache@v4
@@ -807,19 +610,24 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
+        uses: ./.github/actions/setup-buildx
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -841,68 +649,28 @@ jobs:
 
       - name: Promote testing image to production tags
         run: |
-          echo "✅ All security scans passed. Promoting testing image to production tags..."
-          echo "Source: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          echo "Target: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-
-          # Use docker buildx imagetools to create production tags from testing digest
-          # This promotes by digest reference (immutable, secure)
-          # Annotations must be reapplied when creating new tags to ensure GitHub displays metadata
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }} \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }} \
-            --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
-            --annotation "index:org.opencontainers.image.description=PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} production-ready extensions across multiple categories including AI/ML, time-series, full-text search, security, and operations tools. Multi-arch (amd64/arm64) | Native builds | SHA-pinned | Auto-config. Full catalog: github.com/fluxo-kt/aza-pg" \
-            --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
-            --annotation "index:org.opencontainers.image.version=${{ needs.prep.outputs.tag_versioned }}" \
-            --annotation "index:org.opencontainers.image.created=${{ needs.prep.outputs.timestamp }}" \
-            --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
-            --annotation "index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
-            --annotation "index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}" \
-            --annotation "index:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
-            --annotation "index:org.opencontainers.image.licenses=MIT" \
-            --annotation "index:org.opencontainers.image.base.name=${{ needs.prep.outputs.base_image_name }}" \
-            --annotation "index:org.opencontainers.image.base.digest=${{ needs.prep.outputs.base_image_digest }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.postgres.version=${{ needs.prep.outputs.pg_version_full }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.build.type=single-node" \
-            --annotation "index:io.fluxo-kt.aza-pg.extensions.enabled=${{ needs.prep.outputs.catalog_enabled }}" \
-            --annotation "index:io.fluxo-kt.aza-pg.extensions.total=${{ needs.prep.outputs.catalog_total }}" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
-
-          echo ""
-          echo "=== Verifying Promotion ==="
-          # Verify promoted image has same digest
-          PROMOTED_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} \
-            --format '{{json .}}' | jq -r '.manifest.digest // empty')
-
-          if [ "$PROMOTED_DIGEST" != "${{ needs.merge.outputs.image_digest }}" ]; then
-            echo "❌ ERROR: Digest mismatch after promotion"
-            echo "   Expected: ${{ needs.merge.outputs.image_digest }}"
-            echo "   Got: $PROMOTED_DIGEST"
-            exit 1
-          fi
-
-          echo "✅ Production tags created successfully with OCI annotations"
-          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
-          echo "Digest: ${{ needs.merge.outputs.image_digest }}"
-          echo "✅ Digest verified: Promotion successful"
+          bun scripts/release/promote-image.ts \
+            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --tags "${{ needs.prep.outputs.tag_versioned }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --version "${{ needs.prep.outputs.tag_versioned }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ github.sha }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}" \
+            --expected-digest "${{ needs.merge.outputs.image_digest }}"
 
       - name: Sign all convenience tags
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
-          set -e  # Exit on any error
-          echo "Signing convenience tags..."
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}-single-node"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}-single-node"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_full }}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.pg_version_major }}"
-
-          echo "✅ All convenience tags signed"
+          bun scripts/release/sign-tags.ts \
+            --repository "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --tags "${{ needs.prep.outputs.tag_versioned }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --yes
 
       - name: Generate release summary
         run: |
@@ -1129,72 +897,25 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
       - name: Delete testing tag using GitHub Packages API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🧹 Cleanup job: Ensuring ALL testing artifacts are removed"
-          TESTING_TAG="testing-${{ github.sha }}"
-          PACKAGE_NAME="aza-pg-testing"
-
-          # This job runs with 'if: always()' to guarantee cleanup regardless of:
-          # - Build failures
-          # - Partial image pushes
-          # - Test/scan failures
-          # - Any job being cancelled or timing out
-
-          # Get package version ID by tag name using GitHub Packages API
-          # GHCR doesn't support OCI manifest deletion (HTTP 405), must use Packages API
-          echo "Checking for testing tag: $TESTING_TAG"
-          VERSION_ID=$(gh api "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions" \
-            --jq ".[] | select(.metadata.container.tags[] == \"$TESTING_TAG\") | .id" 2>/dev/null || echo "")
-
-          if [ -n "$VERSION_ID" ]; then
-            echo "Found testing tag (version ID: $VERSION_ID)"
-
-            # Delete the version with retry logic (3 attempts with exponential backoff)
-            MAX_RETRIES=3
-            RETRY_DELAY=5
-            SUCCESS=false
-
-            for attempt in $(seq 1 $MAX_RETRIES); do
-              echo "Deletion attempt $attempt of $MAX_RETRIES..."
-              if gh api -X DELETE "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" 2>&1; then
-                echo "✅ Successfully deleted testing tag on attempt $attempt"
-                SUCCESS=true
-                break
-              else
-                echo "⚠️ Deletion attempt $attempt failed"
-                if [ $attempt -lt $MAX_RETRIES ]; then
-                  WAIT_TIME=$((RETRY_DELAY * attempt))
-                  echo "Waiting ${WAIT_TIME}s before retry..."
-                  sleep $WAIT_TIME
-                fi
-              fi
-            done
-
-            if [ "$SUCCESS" = false ]; then
-              echo "❌ ERROR: Failed to delete testing tag after $MAX_RETRIES attempts"
-              echo "Tag may need manual cleanup or will be garbage collected"
-              exit 1
-            fi
-
-            # Verify deletion
-            echo "Verifying deletion..."
-            sleep 3  # Brief pause for API to update
-            VERIFY_ID=$(gh api "repos/${{ github.repository }}/packages/container/$PACKAGE_NAME/versions" \
-              --jq ".[] | select(.metadata.container.tags[] == \"$TESTING_TAG\") | .id" 2>/dev/null || echo "")
-
-            if [ -n "$VERIFY_ID" ]; then
-              echo "❌ ERROR: Tag still exists after deletion"
-              echo "API may be experiencing delays or deletion failed"
-              exit 1
-            else
-              echo "✅ Verified: Tag has been removed from registry"
-            fi
-          else
-            echo "✅ Testing tag not found (already cleaned or never created)"
-          fi
+          bun scripts/release/cleanup-testing-tags.ts \
+            --repository "${{ github.repository }}" \
+            --package "aza-pg-testing" \
+            --tag "testing-${{ github.sha }}"
 
       - name: Report cleanup status
         if: always()

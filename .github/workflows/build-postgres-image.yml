@@ -147,16 +147,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -196,28 +188,16 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Validate Dockerfile paths
-        run: |
-          echo "Validating Dockerfile COPY paths exist in build context..."
-          # Check that files referenced in Dockerfile exist
-          test -f docker/postgres/extensions.manifest.json || exit 1
-          test -f docker/postgres/build-extensions.ts || exit 1
-          test -f docker/postgres/docker-auto-config-entrypoint.sh || exit 1
-          echo "✅ All Dockerfile COPY paths validated"
+        run: bun scripts/build/validate-dockerfile-paths.ts
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
+        uses: ./.github/actions/setup-buildx
 
       - name: Log in to GitHub Container Registry
         if: github.event.inputs.push_image == 'true'
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -405,14 +385,12 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: ./.github/actions/setup-buildx
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
         id: merge
@@ -502,11 +480,9 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         if: github.event.inputs.push_image == 'true'
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull built image (pushed)
         if: github.event.inputs.push_image == 'true'
@@ -585,40 +561,10 @@ jobs:
       - name: Capture security scan diagnostics on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/scan-diagnostics
-
-          echo "=== Capturing Security Scan Diagnostics ==="
-
-          # Capture full Trivy scan output (all severities)
-          echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
-          docker run --rm \
-            -v .trivy-cache:/root/.cache/ \
-            aquasec/trivy:latest image \
-            --format table \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "aza-pg-testing:scan" \
-            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
-
-          # Capture Trivy scan in JSON format for detailed analysis
-          echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
-          docker run --rm \
-            -v .trivy-cache:/root/.cache/ \
-            aquasec/trivy:latest image \
-            --format json \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "aza-pg-testing:scan" \
-            2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
-
-          # Capture image metadata
-          echo "=== Image Metadata ===" | tee ${{ runner.temp }}/scan-diagnostics/image-metadata.txt
-          docker buildx imagetools inspect "aza-pg-testing:scan" 2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/image-metadata.txt || true
-
-          # Copy SARIF file if it exists
-          if [ -f "trivy-results.sarif" ]; then
-            cp trivy-results.sarif ${{ runner.temp }}/scan-diagnostics/
-          fi
-
-          echo "✅ Security scan diagnostics captured"
+          bun scripts/debug/capture-scan-diagnostics.ts \
+            --image "aza-pg-testing:scan" \
+            --output-dir "${{ runner.temp }}/scan-diagnostics" \
+            --cache-dir .trivy-cache
 
       - name: Upload security scan failure diagnostics
         if: failure()
@@ -657,23 +603,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull built image
         run: |
@@ -895,37 +831,9 @@ jobs:
       - name: Capture PostgreSQL logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/diagnostics
-
-          echo "=== Capturing PostgreSQL Diagnostics ==="
-
-          # Capture container logs from extension test
-          echo "=== PostgreSQL Extension Test Logs ===" | tee ${{ runner.temp }}/diagnostics/pg-ext-test-logs.txt
-          docker logs pg-ext-test 2>&1 | tee -a ${{ runner.temp }}/diagnostics/pg-ext-test-logs.txt || echo "Could not retrieve pg-ext-test logs"
-
-          # Capture PostgreSQL configuration
-          echo "=== PostgreSQL Configuration ===" | tee ${{ runner.temp }}/diagnostics/postgres-config.txt
-          docker exec pg-ext-test psql -U postgres -c "SHOW ALL;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/postgres-config.txt || true
-
-          # Capture shared_preload_libraries specifically
-          echo "=== Shared Preload Libraries ===" | tee ${{ runner.temp }}/diagnostics/shared-preload.txt
-          docker exec pg-ext-test psql -U postgres -c "SHOW shared_preload_libraries;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/shared-preload.txt || true
-
-          # Capture extension list
-          echo "=== Installed Extensions ===" | tee ${{ runner.temp }}/diagnostics/extensions.txt
-          docker exec pg-ext-test psql -U postgres -c "SELECT * FROM pg_available_extensions ORDER BY name;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/extensions.txt || true
-
-          # Capture version info from image
-          echo "=== Image Version Info ===" | tee ${{ runner.temp }}/diagnostics/version-info.txt
-          docker exec pg-ext-test cat /etc/postgresql/version-info.txt 2>&1 | tee -a ${{ runner.temp }}/diagnostics/version-info.txt || echo "version-info.txt not found"
-
-          # Capture primary stack logs if available
-          if [ -d "stacks/primary" ]; then
-            echo "=== Primary Stack Docker Compose Logs ===" | tee ${{ runner.temp }}/diagnostics/primary-stack-logs.txt
-            (cd stacks/primary && docker compose logs --tail=200 2>&1) | tee -a ${{ runner.temp }}/diagnostics/primary-stack-logs.txt || true
-          fi
-
-          echo "✅ Diagnostics captured to ${{ runner.temp }}/diagnostics/"
+          bun scripts/debug/capture-postgres-diagnostics.ts \
+            --container pg-ext-test \
+            --output-dir "${{ runner.temp }}/diagnostics"
 
       - name: Upload test failure diagnostics
         if: failure()
@@ -950,23 +858,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull built image
         run: |
@@ -1038,23 +936,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
+        uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: ./.github/actions/ghcr-login
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull built image
         run: |

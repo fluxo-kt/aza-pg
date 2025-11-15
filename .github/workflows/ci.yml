@@ -32,29 +32,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Parse Bun version from .tool-versions
-        id: bun-version
-        run: |
-          BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}' | head -1)
-          echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun-version.outputs.version }}
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-        env:
-          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
+        uses: ./.github/actions/setup-bun
 
       - name: Run fast validation
         run: bun run validate

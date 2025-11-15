@@ -19,7 +19,7 @@
  *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
-import { getErrorMessage } from "./utils/errors.js";
+import { getErrorMessage } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
 /**

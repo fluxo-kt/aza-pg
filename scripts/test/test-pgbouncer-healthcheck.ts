@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
+import { checkCommand, checkDockerDaemon } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
 

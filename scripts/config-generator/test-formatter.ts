@@ -5,7 +5,7 @@
  * Validates camelCase to snake_case conversion and PostgreSQL GUC formatting
  */
 
-import { success, info } from "../utils/logger.js";
+import { success, info } from "../utils/logger";
 
 // Import the functions (we'll need to export them from generator.ts first)
 // For now, we'll duplicate the core logic for testing

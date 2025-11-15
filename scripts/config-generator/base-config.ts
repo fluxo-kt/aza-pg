@@ -1,4 +1,4 @@
-import type { BaseConfig } from "./types.js";
+import type { BaseConfig } from "./types";
 
 // ============================================================================
 // I/O and Performance Constants

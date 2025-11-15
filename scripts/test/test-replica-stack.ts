@@ -15,7 +15,7 @@
 
 import { $ } from "bun";
 import { resolve } from "path";
-import { checkCommand, checkDockerDaemon } from "../utils/docker.js";
+import { checkCommand, checkDockerDaemon } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 
 /**

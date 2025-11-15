@@ -10,13 +10,8 @@
 
 import { $ } from "bun";
 import { resolve, dirname } from "path";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  waitForPostgres,
-} from "../utils/docker.js";
-import { error } from "../utils/logger.js";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
+import { error } from "../utils/logger";
 
 /**
  * Build test configuration

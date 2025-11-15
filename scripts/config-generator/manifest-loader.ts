@@ -4,7 +4,7 @@
  */
 
 import { join } from "path";
-import type { ManifestEntry } from "../extensions/manifest-data.js";
+import type { ManifestEntry } from "../extensions/manifest-data";
 
 /**
  * Manifest structure as stored in JSON file

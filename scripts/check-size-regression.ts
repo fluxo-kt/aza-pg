@@ -17,7 +17,7 @@
  *   bun scripts/check-size-regression.ts --baseline-only    # Show baselines without checking
  */
 
-import { getErrorMessage } from "./utils/errors.js";
+import { getErrorMessage } from "./utils/errors";
 import { join } from "path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 

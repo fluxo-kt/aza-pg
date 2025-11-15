@@ -2,7 +2,7 @@
  * Shared test utilities for database testing
  * Provides reusable test execution and SQL helpers
  */
-import { getErrorMessage } from "../utils/errors.js";
+import { getErrorMessage } from "../utils/errors";
 
 import { $ } from "bun";
 import * as logger from "../utils/logger";

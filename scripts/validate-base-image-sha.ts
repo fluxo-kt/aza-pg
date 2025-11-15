@@ -25,9 +25,9 @@
  */
 
 import { join } from "path";
-import { getErrorMessage } from "./utils/errors.js";
+import { getErrorMessage } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger.ts";
-import { isDockerDaemonRunning, dockerRun } from "./utils/docker.js";
+import { isDockerDaemonRunning, dockerRun } from "./utils/docker";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const DOCKERFILE_PATH = join(PROJECT_ROOT, "docker/postgres/Dockerfile");

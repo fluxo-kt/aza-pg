@@ -9,7 +9,7 @@
 
 import { $ } from "bun";
 import { join } from "path";
-import { dockerCleanup } from "../utils/docker.js";
+import { dockerCleanup } from "../utils/docker";
 
 // Get script directory
 const scriptDir = import.meta.dir;

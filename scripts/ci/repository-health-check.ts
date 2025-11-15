@@ -24,7 +24,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { error, success, info } from "../utils/logger.js";
+import { error, success, info } from "../utils/logger";
 
 interface Options {
   verbose: boolean;

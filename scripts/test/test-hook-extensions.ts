@@ -14,12 +14,7 @@
  */
 
 import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  waitForPostgres,
-} from "../utils/docker.js";
+import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
 import { error } from "../utils/logger.ts";
 
 // Generate random test password at runtime

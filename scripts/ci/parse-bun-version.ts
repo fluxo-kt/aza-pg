@@ -29,8 +29,8 @@
  */
 
 import { join } from "node:path";
-import { error } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/errors.js";
+import { error } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
 
 interface Options {
   githubOutput: boolean;

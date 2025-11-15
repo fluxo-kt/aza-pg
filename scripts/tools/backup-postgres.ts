@@ -12,7 +12,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, waitForPostgres } from "../utils/docker.js";
+import { checkCommand, waitForPostgres } from "../utils/docker";
 import { info, success, error } from "../utils/logger.ts";
 import { dirname } from "path";
 

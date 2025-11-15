@@ -16,7 +16,7 @@
  * Exit code: 0 only if ALL tests pass
  */
 
-import { getErrorMessage } from "./utils/errors.js";
+import { getErrorMessage } from "./utils/errors";
 import { join } from "path";
 import {
   error,

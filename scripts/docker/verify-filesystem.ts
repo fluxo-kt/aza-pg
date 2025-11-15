@@ -16,10 +16,10 @@
  */
 
 import { join } from "node:path";
-import { getErrorMessage } from "../utils/errors.js";
-import { checkDockerDaemon, dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker.js";
-import { error, info, section, success, testSummary, warning } from "../utils/logger.js";
-import type { TestResult } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/errors";
+import { checkDockerDaemon, dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker";
+import { error, info, section, success, testSummary, warning } from "../utils/logger";
+import type { TestResult } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");

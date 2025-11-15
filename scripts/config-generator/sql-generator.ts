@@ -3,7 +3,7 @@
  * Generates PostgreSQL initialization SQL scripts from manifest data
  */
 
-import type { ManifestEntry } from "../extensions/manifest-data.js";
+import type { ManifestEntry } from "../extensions/manifest-data";
 
 /**
  * Generate 01-extensions.sql initialization script

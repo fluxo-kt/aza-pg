@@ -47,8 +47,8 @@
 import { $ } from "bun";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { error, success, warning, info, section } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/errors.js";
+import { error, success, warning, info, section } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
 
 interface Options {
   image: string;

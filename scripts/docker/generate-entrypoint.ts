@@ -14,7 +14,7 @@
  */
 
 import { join } from "node:path";
-import { error, info, section, success } from "../utils/logger.js";
+import { error, info, section, success } from "../utils/logger";
 
 // Paths
 const REPO_ROOT = join(import.meta.dir, "../..");

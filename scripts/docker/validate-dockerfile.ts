@@ -12,7 +12,7 @@
  */
 
 import { join } from "node:path";
-import { error, info, section, success, warning } from "../utils/logger.js";
+import { error, info, section, success, warning } from "../utils/logger";
 
 // Paths
 const REPO_ROOT = join(import.meta.dir, "../..");

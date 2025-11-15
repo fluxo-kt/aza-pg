@@ -2,7 +2,7 @@
  * Shared logging utilities for scripts and tests
  * Provides consistent colored output formatting across the codebase
  */
-import { RED, GREEN, YELLOW, BLUE, RESET } from "./colors.js";
+import { RED, GREEN, YELLOW, BLUE, RESET } from "./colors";
 /**
  * Test result data structure
  */

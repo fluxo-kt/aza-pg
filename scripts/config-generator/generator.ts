@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 
 import { join } from "path";
-import type { StackType, PostgreSQLSettings } from "./types.js";
-import { BASE_CONFIG } from "./base-config.js";
-import { formatSetting } from "../utils/guc-formatter.js";
-import { loadManifest, getDefaultEnabledExtensions } from "./manifest-loader.js";
-import { generateExtensionsInitScript } from "./sql-generator.js";
-import { writeConfigFile, writeConfigWithDir } from "./config-writer.js";
-import { success, info, error } from "../utils/logger.js";
+import type { StackType, PostgreSQLSettings } from "./types";
+import { BASE_CONFIG } from "./base-config";
+import { formatSetting } from "../utils/guc-formatter";
+import { loadManifest, getDefaultEnabledExtensions } from "./manifest-loader";
+import { generateExtensionsInitScript } from "./sql-generator";
+import { writeConfigFile, writeConfigWithDir } from "./config-writer";
+import { success, info, error } from "../utils/logger";
 
 const SHARED_CATEGORY_FIELDS = {
   io: ["ioMethod", "ioCombineLimit"] as const,

@@ -6,7 +6,7 @@
 
 import { join } from "path";
 import { validateManifest } from "./manifest-schema.ts";
-import * as logger from "../utils/logger.js";
+import * as logger from "../utils/logger";
 
 // Expected counts (from extensions.manifest.json, validated dynamically)
 const EXPECTED_COUNTS = {

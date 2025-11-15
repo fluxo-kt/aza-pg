@@ -11,7 +11,7 @@
  *   bun scripts/test-smoke.ts
  */
 
-import { getErrorMessage } from "./utils/errors.js";
+import { getErrorMessage } from "./utils/errors";
 import { join } from "path";
 import { error, info, section, testSummary } from "./utils/logger.ts";
 import type { TestResult } from "./utils/logger.ts";

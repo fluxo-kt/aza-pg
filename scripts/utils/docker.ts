@@ -6,10 +6,10 @@
  * - Boolean variants: Useful for conditional logic, return true/false
  * - Throwing variants: Useful for prerequisite checks, throw descriptive errors
  */
-import { getErrorMessage } from "./errors.js";
+import { getErrorMessage } from "./errors";
 
 import { spawn } from "bun";
-import { error, info, success } from "./logger.js";
+import { error, info, success } from "./logger";
 
 /**
  * Check if Docker daemon is running

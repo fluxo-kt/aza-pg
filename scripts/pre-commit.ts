@@ -13,7 +13,7 @@
  */
 
 import { $ } from "bun";
-import { error, info, success, warning } from "./utils/logger.js";
+import { error, info, success, warning } from "./utils/logger";
 
 /**
  * Get list of staged files

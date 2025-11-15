@@ -11,7 +11,7 @@
  *   ./wait-for-postgres.ts localhost 5432 postgres 120  # 2 minute timeout
  */
 
-import { checkCommand, waitForPostgres } from "../utils/docker.js";
+import { checkCommand, waitForPostgres } from "../utils/docker";
 
 /**
  * Parse CLI arguments and environment variables

@@ -73,8 +73,8 @@
  *   1 - Validation or I/O failure
  */
 
-import { success, error, info } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/errors.js";
+import { success, error, info } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
 
 interface Options {
   output: string;

@@ -4,7 +4,7 @@
  *
  * MIGRATION GUIDE:
  *   Old: import { ... } from './lib/common.ts'
- *   New: import { ... } from '../utils/docker.js'
+ *   New: import { ... } from '../utils/docker'
  *
  * Functions moved:
  *   - checkDockerDaemon() -> scripts/utils/docker.ts
@@ -26,4 +26,4 @@ export {
   dockerCleanup,
   waitForPostgres,
   type WaitForPostgresOptions,
-} from "../utils/docker.js";
+} from "../utils/docker";

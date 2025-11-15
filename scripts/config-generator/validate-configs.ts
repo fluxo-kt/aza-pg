@@ -6,7 +6,7 @@
  */
 
 import { join } from "path";
-import { success, info, error, warning } from "../utils/logger.js";
+import { success, info, error, warning } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 

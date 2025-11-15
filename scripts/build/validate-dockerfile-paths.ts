@@ -27,8 +27,8 @@
  */
 
 import { join } from "node:path";
-import { error, success, info, warning } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/errors.js";
+import { error, success, info, warning } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
 
 interface Options {
   verbose: boolean;

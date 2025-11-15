@@ -88,8 +88,8 @@ jobs:
       - name: Run unit tests
         run: |
           echo "Running unit tests..."
-          bun test scripts/test/test-auto-config-units.ts
-          bun test scripts/test/test-utils.test.ts
+          bun test ./scripts/test/test-auto-config-units.ts
+          bun test ./scripts/test/test-utils.test.ts
 
       - name: Verify manifest is up to date
         run: |

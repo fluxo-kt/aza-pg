@@ -400,12 +400,20 @@ jobs:
 
           echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
 
-  test:
-    name: Test Multi-Platform Image
+  # ==========================================================================
+  # COMPREHENSIVE TEST GATE - Production Release Validation
+  # ==========================================================================
+  # These tests run BEFORE promotion to production registry to ensure the
+  # multi-arch image is fully validated. Tests run sequentially to maintain
+  # clear error reporting and avoid resource contention.
+  # ==========================================================================
+
+  test-smoke:
+    name: Smoke Tests
     runs-on: ubuntu-latest
     needs: [prep, merge]
     if: needs.merge.result == 'success'
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -419,7 +427,7 @@ jobs:
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
-      - name: Set up QEMU (for arm64 testing only)
+      - name: Set up QEMU (for arm64 testing)
         uses: docker/setup-qemu-action@v3
         with:
           platforms: linux/arm64
@@ -429,65 +437,343 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test image with unified test suite
+      - name: Run basic smoke tests
         timeout-minutes: 5
         run: |
-          # Use the same test infrastructure as local development
-          # This ensures CI and local tests are always in sync
-          bun scripts/docker/test-image.ts \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
-            --fast
+          echo "Running basic smoke tests on multi-arch image..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
 
-      - name: Capture PostgreSQL logs on failure
+      - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/diagnostics
+          mkdir -p ${{ runner.temp }}/smoke-logs
+          docker ps -a
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/smoke-logs/containers.log
+            docker logs $container >> ${{ runner.temp }}/smoke-logs/containers.log 2>&1 || true
+          done
 
-          echo "=== Capturing PostgreSQL Diagnostics ==="
-
-          # Capture container logs
-          echo "=== PostgreSQL Container Logs ===" | tee ${{ runner.temp }}/diagnostics/postgres-logs.txt
-          docker logs test-postgres-container 2>&1 | tee -a ${{ runner.temp }}/diagnostics/postgres-logs.txt || echo "Could not retrieve logs"
-
-          # Capture PostgreSQL configuration
-          echo "=== PostgreSQL Configuration ===" | tee ${{ runner.temp }}/diagnostics/postgres-config.txt
-          docker exec test-postgres-container psql -U postgres -c "SHOW ALL;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/postgres-config.txt || true
-
-          # Capture shared_preload_libraries specifically
-          echo "=== Shared Preload Libraries ===" | tee ${{ runner.temp }}/diagnostics/shared-preload.txt
-          docker exec test-postgres-container psql -U postgres -c "SHOW shared_preload_libraries;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/shared-preload.txt || true
-
-          # Capture extension list
-          echo "=== Installed Extensions ===" | tee ${{ runner.temp }}/diagnostics/extensions.txt
-          docker exec test-postgres-container psql -U postgres -c "SELECT * FROM pg_available_extensions ORDER BY name;" 2>&1 | tee -a ${{ runner.temp }}/diagnostics/extensions.txt || true
-
-          # Capture version info from image
-          echo "=== Image Version Info ===" | tee ${{ runner.temp }}/diagnostics/version-info.txt
-          docker exec test-postgres-container cat /etc/postgresql/version-info.txt 2>&1 | tee -a ${{ runner.temp }}/diagnostics/version-info.txt || echo "version-info.txt not found"
-
-          echo "✅ Diagnostics captured to ${{ runner.temp }}/diagnostics/"
-
-      - name: Upload test failure diagnostics
+      - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: test-failure-diagnostics-${{ github.sha }}
-          path: ${{ runner.temp }}/diagnostics/*
-          if-no-files-found: warn
+          name: smoke-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/smoke-logs/*
           retention-days: 7
 
-      - name: Mark test failure for cleanup
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-extensions:
+    name: Extension Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test core extensions
+        run: |
+          echo "Testing core extension loading..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-extensions.ts
+
+      - name: Run extension smoke tests
+        run: |
+          echo "Running extension functional validation..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/run-extension-smoke.ts
+
+      - name: Test disabled extensions
+        run: |
+          echo "Verifying disabled extensions are not available..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-disabled-extensions.ts
+
+      - name: Test hook extensions
+        run: |
+          echo "Testing hook-based extensions..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-hook-extensions.ts
+
+      - name: Test extension combinations
+        run: |
+          echo "Testing extension combinations..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-integration-extension-combinations.ts
+
+      - name: Capture logs on failure
         if: failure()
         run: |
-          echo "⚠️ Tests failed - marking for cleanup"
-          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
-          # The dedicated cleanup job will handle the actual deletion
-          # This avoids redundant tool installations and ensures consistent cleanup
+          mkdir -p ${{ runner.temp }}/extension-logs
+          docker ps -a
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/extension-logs/containers.log
+            docker logs $container >> ${{ runner.temp }}/extension-logs/containers.log 2>&1 || true
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: extension-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/extension-logs/*
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Extension Tests :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension functional validation" >> $GITHUB_STEP_SUMMARY
+          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
+          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-features:
+    name: Feature Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test auto-config
+        run: |
+          echo "Testing auto-config functionality..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-auto-config.ts
+
+      - name: Test pgflow functional
+        run: |
+          echo "Testing pgflow migration tool..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test
+
+      - name: Test pgflow v0.7.2
+        run: |
+          echo "Testing pgflow v0.7.2 compatibility..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test
+
+      - name: Test PgBouncer healthcheck
+        run: |
+          echo "Testing PgBouncer health check..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-pgbouncer-healthcheck.ts
+
+      - name: Test negative scenarios
+        run: |
+          echo "Testing negative scenarios (error handling)..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-negative-scenarios.ts
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/feature-logs
+          docker ps -a
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/feature-logs/containers.log
+            docker logs $container >> ${{ runner.temp }}/feature-logs/containers.log 2>&1 || true
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: feature-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/feature-logs/*
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Feature Tests :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow migration tool (latest + v0.7.2)" >> $GITHUB_STEP_SUMMARY
+          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
+          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-security:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [prep, merge, test-smoke]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Log in to GitHub Container Registry
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run security tests
+        run: |
+          echo "Running security hardening tests..."
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          bun scripts/test/test-security.ts
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/security-logs
+          docker ps -a
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/security-logs/containers.log
+            docker logs $container >> ${{ runner.temp }}/security-logs/containers.log 2>&1 || true
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: security-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/security-logs/*
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Security Tests :shield:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
+          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
+          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
+          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  test-complete:
+    name: All Tests Complete
+    runs-on: ubuntu-latest
+    needs: [test-smoke, test-extensions, test-features, test-security]
+    timeout-minutes: 1
+    if: always()
+
+    steps:
+      - name: Check all test results
+        run: |
+          echo "Checking comprehensive test results..."
+
+          FAILED=0
+
+          if [ "${{ needs.test-smoke.result }}" != "success" ]; then
+            echo "::error::Smoke tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
+            echo "::error::Extension tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
+            echo "::error::Feature tests failed"
+            FAILED=1
+          fi
+
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
+            echo "::error::Security tests failed"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ One or more test suites failed - blocking production release"
+            exit 1
+          fi
+
+          echo "✅ All comprehensive tests passed - image ready for production"
+
+      - name: Generate test gate summary
+        if: always()
+        run: |
+          echo "# Production Test Gate :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ needs.test-smoke.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extension Tests | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Feature Tests | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Tests | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.test-smoke.result }}" = "success" ] && \
+             [ "${{ needs.test-extensions.result }}" = "success" ] && \
+             [ "${{ needs.test-features.result }}" = "success" ] && \
+             [ "${{ needs.test-security.result }}" = "success" ]; then
+            echo "## ✅ Test Gate: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All comprehensive tests passed. Image approved for production release." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more test suites failed. Production release blocked." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Review test failures above and fix issues before retrying release." >> $GITHUB_STEP_SUMMARY
+          fi
 
   scan:
     name: Security Scanning
     runs-on: ubuntu-latest
-    needs: [prep, merge, test]
+    needs: [prep, merge, test-complete]
     timeout-minutes: 20
 
     steps:
@@ -606,7 +892,7 @@ jobs:
   release:
     name: Sign and Release
     runs-on: ubuntu-latest
-    needs: [prep, merge, scan, test]
+    needs: [prep, merge, scan, test-complete]
     timeout-minutes: 15
 
     steps:
@@ -889,10 +1175,10 @@ jobs:
   cleanup:
     name: Cleanup Testing Artifacts
     runs-on: ubuntu-latest
-    needs: [merge, test, scan]
+    needs: [merge, test-smoke, test-extensions, test-features, test-security, test-complete, scan]
     # ALWAYS run cleanup regardless of any job failures or skips
-    # With 'if: always()', this runs even if test/scan are skipped due to merge failure
-    # Waits for test/scan to complete if they run, preventing race conditions
+    # With 'if: always()', this runs even if tests/scan are skipped due to merge failure
+    # Waits for all test jobs to complete if they run, preventing race conditions
     if: always()
     timeout-minutes: 10
 

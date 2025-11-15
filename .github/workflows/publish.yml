@@ -1199,9 +1199,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           bun scripts/release/cleanup-testing-tags.ts \
-            --repository "${{ github.repository }}" \
-            --package "aza-pg-testing" \
-            --tag "testing-${{ github.sha }}"
+            --repository "fluxo-kt/aza-pg-testing" \
+            --tags "testing-${{ github.sha }}"
 
       - name: Report cleanup status
         if: always()

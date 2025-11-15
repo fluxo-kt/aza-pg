@@ -29,6 +29,7 @@ const ENTRYPOINT_PATH = join(PROJECT_ROOT, "docker/postgres/docker-auto-config-e
 interface RuntimeSpec {
   sharedPreload: boolean;
   defaultEnable: boolean;
+  preloadOnly?: boolean;
   notes?: string[];
 }
 

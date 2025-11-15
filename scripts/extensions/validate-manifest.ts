@@ -164,7 +164,11 @@ async function validateDefaultEnable(manifest: Manifest): Promise<void> {
       // are always available, so we don't require them to be in baseline or preload
       const isAlwaysAvailableBuiltin = entry.kind === "builtin" && entry.name === "plpgsql"; // plpgsql is always available in PostgreSQL
 
-      if (!inBaseline && !inPreload && !isAlwaysAvailableBuiltin) {
+      // SQL-only schemas with preloadOnly=true are enabled via other mechanisms (e.g., initdb scripts)
+      // and don't need to be in baseline or preload
+      const isPreloadOnlySQLSchema = entry.runtime?.preloadOnly === true;
+
+      if (!inBaseline && !inPreload && !isAlwaysAvailableBuiltin && !isPreloadOnlySQLSchema) {
         error(
           `Extension '${entry.name}' has defaultEnable=true but is NOT in 01-extensions.sql baseline ` +
             `(${Array.from(baselineExtensions).join(", ")}) ` +

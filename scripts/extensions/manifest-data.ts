@@ -532,6 +532,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
+      preloadOnly: true, // SQL-only schema, no .control file
       notes: [
         "SQL-only schema (no CREATE EXTENSION required)",
         "Installed via /docker-entrypoint-initdb.d/05-pgflow.sql",

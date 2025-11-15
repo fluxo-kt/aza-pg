@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-15T17:13:06.041Z",
+  "generatedAt": "2025-11-15T18:54:08.975Z",
   "catalog": {
     "total": 39,
     "enabled": 35,
@@ -59,7 +59,6 @@
     "pg_stat_statements",
     "pg_trgm",
     "pgaudit",
-    "pgflow",
     "plpgsql",
     "vector",
     "vectorscale"

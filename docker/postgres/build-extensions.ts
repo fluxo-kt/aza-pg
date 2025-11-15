@@ -573,7 +573,8 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   if (source.type === "git" && source.repository && source.tag) {
     // Resolve tag to commit SHA
     const tempDir = join(BUILD_ROOT, `${name}-temp`);
-    await ensureCleanDir(tempDir);
+    // Remove temp directory if it exists (git clone requires target to not exist)
+    await $`rm -rf ${tempDir}`.nothrow();
 
     validateGitUrl(source.repository);
     await $`git clone --depth 1 --branch ${source.tag} ${source.repository} ${tempDir}`.quiet();
@@ -736,14 +737,17 @@ async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
   const PG_EXT_DIR = `/usr/share/postgresql/${PG_MAJOR}/extension`;
 
   // Validate PostgreSQL directories exist before attempting cleanup
-  if (!(await Bun.file(PG_LIB_DIR).exists())) {
+  // Note: Bun.file().exists() only works for files, use shell test for directories
+  const libDirCheck = await $`test -d ${PG_LIB_DIR}`.nothrow();
+  if (libDirCheck.exitCode !== 0) {
     log(`ERROR: PostgreSQL lib directory not found: ${PG_LIB_DIR}`);
     log(
       `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
     );
     process.exit(1);
   }
-  if (!(await Bun.file(PG_EXT_DIR).exists())) {
+  const extDirCheck = await $`test -d ${PG_EXT_DIR}`.nothrow();
+  if (extDirCheck.exitCode !== 0) {
     log(`ERROR: PostgreSQL extension directory not found: ${PG_EXT_DIR}`);
     log(
       `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`

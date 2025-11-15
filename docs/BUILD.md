@@ -117,6 +117,8 @@ Automatic on `release` branch:
 - Pushes to `ghcr.io/fluxo-kt/aza-pg`
 - Tagged with version and convenience tags
 
+**GitHub Environment Setup:** The publish workflow requires a `production` GitHub Environment with manual approval. See [GITHUB_ENVIRONMENT_SETUP.md](GITHUB_ENVIRONMENT_SETUP.md) for configuration steps.
+
 **Version Format:** `MM.mm-TS-TYPE`
 
 - `MM` = PostgreSQL major (18)

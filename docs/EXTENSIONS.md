@@ -292,6 +292,202 @@ Common dependency chains:
 
 To enable or disable extensions, edit `scripts/extensions/manifest-data.ts` and set the `enabled` field, then run `bun run generate` and rebuild the image.
 
+## Disabled Extensions
+
+The following extensions are currently disabled in the default build for optimization or technical reasons. They can be re-enabled by setting `enabled: true` in `scripts/extensions/manifest-data.ts` and rebuilding the image.
+
+### postgis (Geospatial Extension)
+
+**Status:** Disabled
+**Version:** 3.6.1
+**Category:** gis
+
+**Why disabled:**
+
+Build time and image size optimization. PostGIS adds significant build complexity and size:
+
+- **Build time impact:** +8-10 minutes (compiling GEOS, PROJ, GDAL dependencies)
+- **Image size impact:** +200-300MB (includes 14 APT dependencies: libgeos-dev, libproj-dev, libgdal-dev, etc.)
+- **Use case specificity:** Geospatial features are not needed by most users
+
+**Technical status:**
+
+- ✅ Fully functional on PostgreSQL 18
+- ✅ No compilation issues
+- ✅ Can be enabled without code changes
+
+**How to re-enable:**
+
+```bash
+# Edit scripts/extensions/manifest-data.ts
+# Find postgis entry and set: enabled: true
+
+bun run generate
+bun run build
+```
+
+**Trade-offs:**
+
+- ✅ Enables: Spatial data types, geographic queries, raster processing, topology
+- ✅ Use cases: GIS applications, location-based services, spatial analytics
+- ❌ Cost: +8-10 minutes build time, +200-300MB image size
+- ⚠️ Note: pgrouting depends on PostGIS and must also be enabled
+
+---
+
+### pgrouting (Routing/Network Analysis)
+
+**Status:** Disabled
+**Version:** v4.0.0
+**Category:** gis
+
+**Why disabled:**
+
+Cascading dependency on disabled PostGIS extension. pgrouting requires PostGIS to function.
+
+**Technical status:**
+
+- ✅ Fully functional on PostgreSQL 18 (major release with breaking changes from v3.x)
+- ✅ No compilation issues
+- ⚠️ **Hard dependency:** Requires PostGIS to be enabled first
+
+**How to re-enable:**
+
+```bash
+# MUST enable PostGIS first
+# Edit scripts/extensions/manifest-data.ts
+# 1. Set postgis: enabled: true
+# 2. Set pgrouting: enabled: true
+
+bun run generate
+bun run build
+```
+
+**Trade-offs:**
+
+- ✅ Enables: Graph routing algorithms (Dijkstra, A\*, TSP), network analysis
+- ✅ Use cases: Logistics optimization, route planning, transportation networks
+- ❌ Cost: +4-5 minutes build time (on top of PostGIS), +50-100MB image size
+- ⚠️ Requires: PostGIS must be enabled (adds +200-300MB)
+
+---
+
+### pgq (Queue Extension)
+
+**Status:** Disabled
+**Version:** v3.5.1
+**Category:** queueing
+
+**Why disabled:**
+
+Build optimization - not critical for most users. The project includes pgmq (enabled by default) which provides similar queue functionality with more features and active development.
+
+**Technical status:**
+
+- ✅ Pure PL/pgSQL implementation (PostgreSQL 10-18 compatible)
+- ✅ Fast build (~2-3 minutes)
+- ✅ No external dependencies
+- ℹ️ **Alternative available:** pgmq is enabled by default and recommended
+
+**How to re-enable:**
+
+```bash
+# Edit scripts/extensions/manifest-data.ts
+# Find pgq entry and set: enabled: true
+
+bun run generate
+bun run build
+```
+
+**Trade-offs:**
+
+- ✅ Enables: Generic high-performance queue with SQL function API
+- ✅ Minimal impact: ~2-3 minutes build time, ~10-20MB image size
+- ⚠️ Consider: pgmq (enabled by default) is a more modern alternative with:
+  - Better documentation and community support
+  - More features (visibility timeout, message retention)
+  - Active development and maintenance
+
+**When to enable pgq:**
+
+- Migrating from existing pgq deployments
+- Specific compatibility requirements with pgq API
+- Preference for pure PL/pgSQL implementation
+
+---
+
+### supautils (Supabase Utilities)
+
+**Status:** Disabled
+**Version:** v3.0.2
+**Category:** safety
+
+**Why disabled:**
+
+Build failure due to unreliable sed patching. The extension source code is missing a `static` keyword that causes compilation errors. Current sed-based patching is fragile and may break with upstream changes.
+
+**Technical issue:**
+
+```c
+// Source code has:
+bool log_skipped_evtrigs;  // Missing 'static' keyword - causes compilation error
+
+// Needs to be:
+static bool log_skipped_evtrigs;
+```
+
+**Current workaround (unreliable):**
+
+The Dockerfile attempts to patch this with sed, but the pattern is fragile:
+
+```bash
+s/^bool[[:space:]]\{1,\}log_skipped_evtrigs/static bool log_skipped_evtrigs/
+```
+
+**Fix options:**
+
+1. **Wait for upstream fix** (RECOMMENDED)
+   - File issue with `supabase/supautils` repository
+   - Monitor for official patch in future releases
+   - Timeline: Uncertain (Supabase focus on managed services)
+
+2. **Manual Git patch** (for custom builds)
+   - Replace sed with `git apply` + patch file
+   - More robust than regex substitution
+   - Complexity: Medium
+   - Maintenance: Must update patch if upstream changes
+
+3. **Fork and maintain patch** (for production use)
+   - Fork supautils repository
+   - Apply fix directly to source
+   - Use forked version in manifest
+   - Maintenance: Must sync with upstream releases
+
+**How to attempt re-enable (advanced users only):**
+
+```bash
+# Edit scripts/extensions/manifest-data.ts
+# 1. Set supautils: enabled: true
+# 2. Update sed pattern or switch to git apply patch
+# 3. Test build thoroughly
+
+bun run generate
+bun run build
+```
+
+**Trade-offs:**
+
+- ✅ Enables: Shared superuser guards, hooks for managed PostgreSQL environments
+- ✅ Use cases: Supabase compatibility, multi-tenant security controls
+- ❌ Cost: Maintenance burden, fragile build, upstream dependency
+- ⚠️ Risk: Sed pattern may break with upstream changes
+
+**Recommendation:** Leave disabled until upstream fix or use alternative security extensions (pgaudit, set_user are enabled).
+
+---
+
+**Note:** All 4 disabled extensions can be tracked in the manifest at `scripts/extensions/manifest-data.ts` with `enabled: false` and `disabledReason` field. The total extension catalog includes 38 entries (34 enabled, 4 disabled).
+
 ## Upgrade Workflow
 
 1. Update the desired entry in `scripts/extensions/manifest-data.ts` (new tag or metadata).
@@ -314,4 +510,4 @@ PIGSTY (PostgreSQL extension repository with 420+ extensions) was evaluated as a
 - **Supply chain model:** Current SHA-pinned approach provides immutable source verification; PIGSTY introduces package maintainer as intermediary in trust chain
 - **Maintenance strategy:** Single source approach (PGDG packages + selective source builds) maintains simplicity without added repository dependencies
 
-This decision may be revisited as PIGSTY v4.0 matures and demonstrates stable PostgreSQL 18 support in production environments. See git history (`.archived/docs/analysis/PIGSTY-EVALUATION.md`) for detailed evaluation including security assessment, compatibility matrix, and migration considerations.
+This decision may be revisited as PIGSTY v4.0 matures and demonstrates stable PostgreSQL 18 support in production environments. For detailed evaluation including security assessment, compatibility matrix, and migration considerations, see git history (archived 2025-11).

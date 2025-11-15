@@ -223,3 +223,5 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. NO SUPPORT, NO G
 ## Contributing
 
 Fork → change → `bun run generate` (if manifest changed) → `bun run test:all` → PR
+
+**For GitHub repository setup:** See [docs/GITHUB_ENVIRONMENT_SETUP.md](docs/GITHUB_ENVIRONMENT_SETUP.md) for configuring GitHub Environments, branch protection, and CI/CD workflows.

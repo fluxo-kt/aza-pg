@@ -72,7 +72,7 @@ ORDER BY created_at;
 
 For complete integration guide, API reference, examples, and troubleshooting:
 
-**→ See [docs/pgflow/INTEGRATION.md](../../docs/pgflow/INTEGRATION.md)**
+**→ See [docs/PGFLOW_INTEGRATION_GUIDE.md](../../docs/PGFLOW_INTEGRATION_GUIDE.md)**
 
 Topics covered:
 

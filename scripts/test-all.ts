@@ -3,17 +3,18 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Fast validation checks (parallel)
- * 2. Extended validation checks (parallel where possible)
- * 3. Build tests (Docker image)
- * 4. Functional tests (extensions, auto-tuning, stacks)
+ * 1. Validation checks (parallel) - 12 checks
+ * 2. Build tests (sequential) - 3 checks
+ * 3. Functional tests (sequential) - 10 checks
+ *
+ * Total: 25 checks across validation, build, and functional categories
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite
- *   bun scripts/test-all.ts --fast       # Skip Docker build and functional tests
- *   bun scripts/test-all.ts --skip-build # Run all tests except Docker build
+ *   bun scripts/test-all.ts              # Full test suite (25 checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (12 checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (24 checks)
  *
- * Exit code: 0 only if ALL tests pass
+ * Exit code: 0 only if ALL critical tests pass
  */
 
 import { getErrorMessage } from "./utils/errors";
@@ -386,6 +387,22 @@ const allChecks: Check[] = [
     critical: true,
   },
   {
+    name: "Generated Files Verification",
+    category: "validation",
+    command: ["bun", "scripts/verify-generated.ts"],
+    description: "Verify all generated files are up-to-date",
+    critical: true,
+  },
+  {
+    name: "Base Image SHA Validation",
+    category: "validation",
+    command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
+    description: "Validate PostgreSQL base image SHA",
+    critical: false,
+    requiresDocker: true,
+    envOverride: "ALLOW_STALE_BASE_IMAGE",
+  },
+  {
     name: "Smoke Tests",
     category: "validation",
     command: ["bun", "scripts/test-smoke.ts"],
@@ -576,6 +593,26 @@ const allChecks: Check[] = [
     requiresDocker: true,
     requiresBuild: true,
     timeout: 300000, // 5 minutes
+  },
+  {
+    name: "Filesystem Verification",
+    category: "functional",
+    command: ["bun", "scripts/docker/verify-filesystem.ts", "aza-pg:pg18"],
+    description: "Verify extension files in Docker image filesystem",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 120000, // 2 minutes
+  },
+  {
+    name: "Runtime Verification",
+    category: "functional",
+    command: ["bun", "scripts/docker/verify-runtime.ts", "aza-pg:pg18"],
+    description: "Verify extension runtime behavior in Docker image",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
   },
   {
     name: "Comprehensive Extension Tests",

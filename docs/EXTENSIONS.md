@@ -14,34 +14,39 @@ Key principles:
 
 ## Extension Classification
 
-**This is the canonical reference for extension classification. Other docs reference this section.**
+**Canonical classification; counts derived from `docs/.generated/docs-data.json`.**
 
-The aza-pg PostgreSQL extensions are classified into four categories:
+aza-pg classifies bundled functionality into four buckets:
 
-- **Tools** (5 enabled): CLI utilities that do not require `CREATE EXTENSION`
+- **Tools** (5): CLI / hook utilities that do not require `CREATE EXTENSION`
   - Examples: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate
-  - Installed in `/usr/local/bin/` or configured via PostgreSQL hooks
-  - Note: supautils is a tool but currently disabled
+  - Installed in `/usr/local/bin/` or wired via PostgreSQL hooks
+  - Note: supautils is currently disabled (manifest-controlled)
 
-- **Builtins** (6): Core PostgreSQL extensions from contrib
+- **Builtins** (6): Core PostgreSQL contrib extensions
   - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist
-  - Included in base PostgreSQL, require CREATE EXTENSION (except auto_explain module)
+  - Shipped with PostgreSQL; require `CREATE EXTENSION` (except auto_explain module)
 
-- **Extensions** (25 enabled): Additional extensions requiring `CREATE EXTENSION`
-  - Installed in PostgreSQL extension directory
-  - 6 auto-created by default: pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector
-  - 19 additional available on-demand
-  - Total enabled catalog: 36 (6 builtin + 25 extensions + 5 tools)
+- **Extensions** (23 enabled + 4 disabled entries): Additional catalog entries requiring `CREATE EXTENSION`
+  - Installed in the PostgreSQL extension directory
+  - 8 auto-created by default during cluster bootstrap:
+    - pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector, vectorscale
+  - Remaining enabled entries are available on demand via `CREATE EXTENSION`
 
-- **Preloaded** (4): Extensions/modules loaded by default in `shared_preload_libraries`
+- **Preloaded** (5): Modules/extensions loaded by default via `shared_preload_libraries`
   - auto_explain (module)
   - pg_cron (extension)
+  - pg_stat_monitor (extension)
   - pg_stat_statements (extension)
   - pgaudit (extension)
 
 ## Extension Matrix
 
 The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.
+
+- Default `shared_preload_libraries` (from manifest) is:
+  `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit`
+  (5 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 
 <!-- extensions-table:start -->
 
@@ -168,9 +173,11 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ## Runtime Defaults
 
-- `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pg_cron`, `plpgsql`, and `vector` (pgvector) are created automatically during cluster bootstrap. Note: auto_explain is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
-- Default `shared_preload_libraries` is `pg_stat_statements,auto_explain,pg_cron,pgaudit` (4 extensions preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
-- Optional extensions can be preloaded: `pg_stat_monitor`, `supautils`, `timescaledb`, `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
+- Baseline auto-created extensions during cluster bootstrap:
+  - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `plpgsql`, `vector`, `vectorscale`
+  - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
+- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit` (5 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+- Optional extensions can be preloaded: `supautils`, `timescaledb`, `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category
@@ -231,6 +238,7 @@ The following extensions **cannot be disabled** because they are required by the
 
 - `auto_explain` (preloaded for query diagnostics)
 - `pg_cron` (preloaded for job scheduling)
+- `pg_stat_monitor` (preloaded for advanced query telemetry)
 - `pg_stat_statements` (preloaded for query monitoring)
 - `pgaudit` (preloaded for audit logging)
 

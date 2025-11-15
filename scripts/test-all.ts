@@ -398,7 +398,7 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -exec shellcheck {} +',
+      "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck",
     ],
     description: "Shell script linting",
     critical: true,
@@ -407,8 +407,12 @@ const allChecks: Check[] = [
   {
     name: "Hadolint",
     category: "validation",
-    command: ["sh", "-c", "docker run --rm -i hadolint/hadolint < docker/postgres/Dockerfile"],
-    description: "Dockerfile linting",
+    command: [
+      "sh",
+      "-c",
+      'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile',
+    ],
+    description: "Dockerfile linting (hadolint)",
     critical: true,
     requiresDocker: true,
     envOverride: "ALLOW_MISSING_HADOLINT",
@@ -419,9 +423,9 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work',
+      'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts',
     ],
-    description: "YAML file linting",
+    description: "YAML file linting (yamllint)",
     critical: true,
     requiresDocker: true,
     envOverride: "ALLOW_MISSING_YAMLLINT",

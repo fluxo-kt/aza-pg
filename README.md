@@ -35,7 +35,7 @@ PostgreSQL 18 with auto-configuration, 34 enabled extensions, and deployment sta
 
 ## Extensions
 
-34 enabled extensions across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. 4 preloaded by default. See "Popular Use Cases" below for examples.
+34 enabled extensions across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. 5 preloaded by default (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). See "Popular Use Cases" below for examples.
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
 
@@ -132,13 +132,13 @@ Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at start
 | 4G   | 1G (25%)       | 3G (75%)             | 5M       | 200             |
 | 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 200             |
 
-Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain, pg_cron, pg_stat_statements, pgaudit (add via `POSTGRES_SHARED_PRELOAD_LIBRARIES`, ~100-250MB overhead).
+Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit (add via `POSTGRES_SHARED_PRELOAD_LIBRARIES`, ~100-250MB overhead).
 
 **PgBouncer:** Set `PGBOUNCER_AUTH_PASS` in .env. Escape `:` and `\` only.
 
 ### Extension Customization
 
-Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Cannot disable preloaded (auto_explain, pg_cron, pg_stat_statements, pgaudit). See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Cannot disable preloaded (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
 ## Monitoring
 

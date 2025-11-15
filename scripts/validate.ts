@@ -242,12 +242,12 @@ async function validate(
         ? [
             "sh",
             "-c",
-            'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -print0 | xargs -0 shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; test ! -s shellcheck-results.json',
+            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; test ! -s shellcheck-results.json",
           ]
         : [
             "sh",
             "-c",
-            'find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.archived/*" -exec shellcheck {} +',
+            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck",
           ],
       description: "Shell script linting",
       required: true,

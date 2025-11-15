@@ -267,9 +267,9 @@ High-level overview of the aza-pg PostgreSQL deployment system.
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────┐
-│                     Auditing                               │
+│                     Auditing / Observability               │
 │  - pgAudit: DDL, writes, role changes                      │
-│  - pg_stat_statements: Query performance                   │
+│  - pg_stat_monitor / pg_stat_statements: Query performance │
 │  - auto_explain: Slow query plans                          │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -294,9 +294,9 @@ pgAudit 18.0              shared_preload_libraries Audit
 pg_trgm (contrib)         CREATE EXTENSION         Fuzzy
 (built-in) ────────────► pg_trgm; ──────────────► text search
 
-pg_stat_statements        shared_preload_libraries Query
-(contrib) ─────────────► pg_stat_statements; ──► monitoring
-                          (in postgresql.conf)
+pg_stat_monitor +         shared_preload_libraries Query
+pg_stat_statements  ───► monitor + statements; ─► monitoring
+                          (runtime preload)
 ```
 
 **Load Order:** `shared_preload_libraries` → `01-extensions.sql` → Application CREATE EXTENSION

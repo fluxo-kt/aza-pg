@@ -142,8 +142,8 @@ minimumReleaseAge = 86400  # 1 day delay
 **Configuration**: `git-hooks.config.ts`
 **Hooks Configured**:
 
-- `pre-commit`: Security checks + Oxlint + Prettier
-- `pre-push`: Full validation suite
+- `pre-commit`: Bun script `scripts/pre-commit.ts` (oxlint --fix, Prettier --write, regenerate manifest-driven artifacts when `manifest-data.ts` changes, auto-stage fixes)
+- `pre-push`: Disabled – rely on CI (`ci.yml`) for full validation
 
 ---
 

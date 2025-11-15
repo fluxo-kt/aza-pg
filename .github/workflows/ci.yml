@@ -1,3 +1,45 @@
+# ============================================================================
+# Comprehensive CI Pipeline
+# ============================================================================
+#
+# PURPOSE:
+# --------
+# Comprehensive test suite for all PRs and commits to main/dev branches.
+# Validates code quality, builds Docker image, and runs extensive test suite.
+#
+# PIPELINE STRUCTURE (7 jobs, ~35min total):
+# ------------------------------------------
+# 1. validate       (~2min)  - Fast validation, unit tests, manifest checks
+# 2. build          (~15min) - Build Docker image, export as artifact
+# 3. test-extensions (~15min) - Extension loading, smoke tests, combinations
+# 4. test-stacks    (~10min) - Single stack deployment tests
+# 5. test-security  (~5min)  - Security hardening tests
+# 6. test-features  (~15min) - Auto-config, pgflow, pgbouncer, negative tests
+# 7. ci-complete    (~10s)   - Final gate, summary
+#
+# PARALLELIZATION:
+# ---------------
+# - validate runs first (fast checks)
+# - build depends on validate
+# - test-* jobs run in parallel after build completes
+# - ci-complete waits for all tests
+#
+# DOCKER IMAGE SHARING:
+# --------------------
+# - build job exports image as tarball artifact
+# - test jobs download and load image from artifact
+# - Uses actions/upload-artifact@v4 and actions/download-artifact@v4
+#
+# DIFFERENCES FROM build-postgres-image.yml:
+# -----------------------------------------
+# - Automatic on PR/push (not manual)
+# - Single-platform amd64 only (not multi-arch)
+# - No registry push (artifact-based sharing)
+# - More comprehensive test coverage
+# - Faster feedback (parallel tests)
+#
+# ============================================================================
+
 name: CI
 
 on:
@@ -23,8 +65,11 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    name: Fast CI Checks
+  # ==========================================================================
+  # Job 1: Validate (fast checks + unit tests)
+  # ==========================================================================
+  validate:
+    name: Validate & Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -39,6 +84,12 @@ jobs:
         run: bun run validate
         env:
           CI: "true"
+
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          bun test scripts/test/test-auto-config-units.ts
+          bun test scripts/test/test-utils.test.ts
 
       - name: Verify manifest is up to date
         run: |
@@ -78,16 +129,490 @@ jobs:
       - name: Generate job summary
         if: always()
         run: |
-          echo "### CI Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "### Validation Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Fast validation (oxlint, prettier, tsc)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Unit tests (auto-config, utils)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Manifest sync verification" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Generated files sync (Dockerfile, configs, docs)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Repository health check" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 2: Build (Docker image, export as artifact)
+  # ==========================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          driver-opts: network=host
+
+      - name: Build Docker image
+        run: |
+          echo "Building PostgreSQL image for CI..."
+          export POSTGRES_IMAGE=aza-pg-ci
+          export POSTGRES_TAG=test
+
+          # Build using canonical build script (single-platform amd64)
+          bun scripts/build.ts
+
+      - name: Verify image built successfully
+        run: |
+          echo "Verifying image exists..."
+          docker images | grep aza-pg-ci
+
+          echo "Testing basic functionality..."
+          docker run --rm aza-pg-ci:test psql --version
+
+          echo "Checking extension count..."
+          EXTENSION_COUNT=$(docker run --rm aza-pg-ci:test \
+            ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null | wc -l)
+          echo "Found $EXTENSION_COUNT extension control files"
+
+          if [ "$EXTENSION_COUNT" -lt 30 ]; then
+            echo "::error::Expected at least 30 extensions, found $EXTENSION_COUNT"
+            exit 1
+          fi
+
+          echo "✅ Image verification passed"
+
+      - name: Export image as tarball
+        run: |
+          echo "Exporting image to tarball..."
+          docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
+          ls -lh /tmp/aza-pg-ci-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/aza-pg-ci-image.tar.gz
+          retention-days: 1
+          compression-level: 0 # Already compressed with gzip
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Full Docker builds and comprehensive tests are run via the Build workflow._" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`aza-pg-ci:test\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get image size
+          IMAGE_SIZE=$(docker images aza-pg-ci:test --format "{{.Size}}")
+          echo "**Image Size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
+
+          # Get artifact size
+          ARTIFACT_SIZE=$(ls -lh /tmp/aza-pg-ci-image.tar.gz | awk '{print $5}')
+          echo "**Artifact Size:** $ARTIFACT_SIZE (compressed)" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 3: Test Extensions (parallel extension tests)
+  # ==========================================================================
+  test-extensions:
+    name: Test Extensions
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          echo "Loading Docker image from artifact..."
+          docker load < /tmp/aza-pg-ci-image.tar.gz
+          docker images | grep aza-pg-ci
+          echo "✅ Image loaded successfully"
+
+      - name: Test core extensions
+        run: |
+          echo "Testing core extension loading..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-extensions.ts
+
+      - name: Run extension smoke tests
+        run: |
+          echo "Running extension smoke tests..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/run-extension-smoke.ts
+
+      - name: Test disabled extensions
+        run: |
+          echo "Testing disabled extensions (should not be available)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-disabled-extensions.ts
+
+      - name: Test hook extensions
+        run: |
+          echo "Testing hook-based extensions..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-hook-extensions.ts
+
+      - name: Test extension combinations
+        run: |
+          echo "Testing extension combinations..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-integration-extension-combinations.ts
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/extension-logs
+          docker ps -a
+
+          # Capture logs from any running containers
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/extension-logs/all-containers.log
+            docker logs $container >> ${{ runner.temp }}/extension-logs/all-containers.log 2>&1 || true
+            echo "" >> ${{ runner.temp }}/extension-logs/all-containers.log
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/extension-logs/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Extension Tests Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension smoke tests (functional validation)" >> $GITHUB_STEP_SUMMARY
+          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
+          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 4: Test Stacks (single stack deployment)
+  # ==========================================================================
+  test-stacks:
+    name: Test Stacks
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          echo "Loading Docker image from artifact..."
+          docker load < /tmp/aza-pg-ci-image.tar.gz
+          docker tag aza-pg-ci:test aza-pg-testing:pg18
+          docker images
+          echo "✅ Image loaded and tagged"
+
+      - name: Test single stack
+        run: |
+          echo "Testing single stack deployment..."
+          export POSTGRES_IMAGE=aza-pg-testing:pg18
+          bun scripts/test/test-single-stack.ts
+
+      - name: Capture stack logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/stack-logs
+
+          echo "=== Single Stack Logs ===" >> ${{ runner.temp }}/stack-logs/docker-compose.log
+          cd stacks/single && docker compose logs --tail=200 >> ${{ runner.temp }}/stack-logs/docker-compose.log 2>&1 || true
+
+          echo "=== Docker Container Status ===" >> ${{ runner.temp }}/stack-logs/docker-status.log
+          docker ps -a >> ${{ runner.temp }}/stack-logs/docker-status.log 2>&1 || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/stack-logs/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Stack Tests Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Stacks tested:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Single stack (PostgreSQL + PgBouncer + monitoring)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Note: Primary and replica stacks tested in build-postgres-image.yml_" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 5: Test Security (security hardening)
+  # ==========================================================================
+  test-security:
+    name: Test Security
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          echo "Loading Docker image from artifact..."
+          docker load < /tmp/aza-pg-ci-image.tar.gz
+          docker images | grep aza-pg-ci
+          echo "✅ Image loaded successfully"
+
+      - name: Run security tests
+        run: |
+          echo "Running security hardening tests..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-security.ts
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/security-logs
+          docker ps -a
+
+          # Capture logs from any running containers
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/security-logs/all-containers.log
+            docker logs $container >> ${{ runner.temp }}/security-logs/all-containers.log 2>&1 || true
+            echo "" >> ${{ runner.temp }}/security-logs/all-containers.log
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/security-logs/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Security Tests Summary :shield:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
+          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
+          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
+          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 6: Test Features (auto-config, pgflow, pgbouncer, negative tests)
+  # ==========================================================================
+  test-features:
+    name: Test Features
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          echo "Loading Docker image from artifact..."
+          docker load < /tmp/aza-pg-ci-image.tar.gz
+          docker images | grep aza-pg-ci
+          echo "✅ Image loaded successfully"
+
+      - name: Test auto-config
+        run: |
+          echo "Testing auto-config functionality..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-auto-config.ts
+
+      - name: Test pgflow functional
+        run: |
+          echo "Testing pgflow migration tool..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgflow-functional.ts --container=ci-pgflow-test
+
+      - name: Test pgflow v0.7.2
+        run: |
+          echo "Testing pgflow v0.7.2 compatibility..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgflow-functional-v072.ts --container=ci-pgflow-v072-test
+
+      - name: Test pgbouncer healthcheck
+        run: |
+          echo "Testing PgBouncer health check..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-pgbouncer-healthcheck.ts
+
+      - name: Test negative scenarios
+        run: |
+          echo "Testing negative scenarios (error handling)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-negative-scenarios.ts
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/feature-logs
+          docker ps -a
+
+          # Capture logs from any running containers
+          for container in $(docker ps -aq); do
+            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/feature-logs/all-containers.log
+            docker logs $container >> ${{ runner.temp }}/feature-logs/all-containers.log 2>&1 || true
+            echo "" >> ${{ runner.temp }}/feature-logs/all-containers.log
+          done
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-test-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/feature-logs/*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "### Feature Tests Summary :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow migration tool (latest + v0.7.2)" >> $GITHUB_STEP_SUMMARY
+          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
+          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 7: CI Complete (final gate)
+  # ==========================================================================
+  ci-complete:
+    name: CI Complete
+    runs-on: ubuntu-latest
+    needs: [validate, build, test-extensions, test-stacks, test-security, test-features]
+    timeout-minutes: 1
+    if: always()
+
+    steps:
+      - name: Check all jobs status
+        run: |
+          if [ "${{ needs.validate.result }}" != "success" ]; then
+            echo "::error::Validate job failed"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::Build job failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
+            echo "::error::Extension tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-stacks.result }}" != "success" ]; then
+            echo "::error::Stack tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
+            echo "::error::Security tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
+            echo "::error::Feature tests failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed!"
+
+      - name: Generate final summary
+        if: always()
+        run: |
+          echo "# CI Pipeline Complete :tada:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [ "${{ needs.validate.result }}" = "success" ] && \
+             [ "${{ needs.build.result }}" = "success" ] && \
+             [ "${{ needs.test-extensions.result }}" = "success" ] && \
+             [ "${{ needs.test-stacks.result }}" = "success" ] && \
+             [ "${{ needs.test-security.result }}" = "success" ] && \
+             [ "${{ needs.test-features.result }}" = "success" ]; then
+            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The CI pipeline completed successfully. All validation, build, and test jobs passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Pipeline Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more jobs failed. Check the job logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi

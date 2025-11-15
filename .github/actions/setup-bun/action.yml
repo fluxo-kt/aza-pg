@@ -19,8 +19,12 @@ runs:
       id: bun-version
       shell: bash
       run: |
-        # Use the centralized parse-bun-version.ts script
-        BUN_VERSION=$(bun scripts/ci/parse-bun-version.ts)
+        # Parse .tool-versions directly (bun not installed yet, can't use parse-bun-version.ts)
+        BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}')
+        if [[ -z "${BUN_VERSION}" ]]; then
+          echo "❌ ERROR: Could not parse bun version from .tool-versions"
+          exit 1
+        fi
         echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
         echo "📦 Detected Bun version: ${BUN_VERSION}"
 

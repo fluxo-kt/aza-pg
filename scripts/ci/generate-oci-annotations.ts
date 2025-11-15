@@ -178,7 +178,12 @@ function parseArgs(): Options {
           error("--output requires a file path argument");
           process.exit(1);
         }
-        options.output = args[i + 1];
+        const outputValue = args[i + 1];
+        if (!outputValue) {
+          error("--output requires a file path argument");
+          process.exit(1);
+        }
+        options.output = outputValue;
         i++; // Skip next arg
         break;
 
@@ -187,7 +192,12 @@ function parseArgs(): Options {
           error("--version requires a value argument");
           process.exit(1);
         }
-        options.version = args[i + 1];
+        const versionValue = args[i + 1];
+        if (!versionValue) {
+          error("--version requires a value argument");
+          process.exit(1);
+        }
+        options.version = versionValue;
         i++;
         break;
 
@@ -196,7 +206,12 @@ function parseArgs(): Options {
           error("--revision requires a value argument");
           process.exit(1);
         }
-        options.revision = args[i + 1];
+        const revisionValue = args[i + 1];
+        if (!revisionValue) {
+          error("--revision requires a value argument");
+          process.exit(1);
+        }
+        options.revision = revisionValue;
         i++;
         break;
 
@@ -269,6 +284,10 @@ function parseArgs(): Options {
           process.exit(1);
         }
         const customArg = args[i + 1];
+        if (!customArg) {
+          error("--custom requires a key=value argument");
+          process.exit(1);
+        }
         const customParts = customArg.split("=");
         if (customParts.length < 2 || !customParts[0] || !customParts[1]) {
           error(`Invalid --custom format: "${customArg}". Expected key=value`);
@@ -347,7 +366,10 @@ async function generateAnnotationsFile(
   const sortedAnnotations: Record<string, string> = {};
   const sortedKeys = Object.keys(annotations).sort();
   for (const key of sortedKeys) {
-    sortedAnnotations[key] = annotations[key];
+    const value = annotations[key];
+    if (value !== undefined) {
+      sortedAnnotations[key] = value;
+    }
   }
 
   // Pretty-print JSON with 2-space indent

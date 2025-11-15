@@ -18,7 +18,7 @@
     - https://www.pgflow.dev
 - PG Admin panels (Mathesar, Kottster, NocoDB, Baserow, Directus, pgAdmin, Apache Superset, Metabase) - https://www.perplexity.ai/search/gIhJG0_pS163fBGawdd3Mw
 - PG extensions
-  - [EXTENSIONS.md](EXTENSIONS.md)
+  - [EXTENSIONS.md](docs/EXTENSIONS.md)
   - **https://www.perplexity.ai/search/1Hg1uD3dQM6R0evCT1nIUw**
   - `SELECT * FROM pg_available_extensions ORDER BY name;` - All available + installed
   - **extension sources: https://arc.net/l/quote/ldpklvaq**
@@ -46,7 +46,7 @@
     - Popular Postgres extensions frequently used with Citus include Patroni, HyperLogLog (HLL), PostGIS, TopN, hstore, pg stat statements, dblink, plpgsql, uuid ossp, ltree, pgvector, & more.
   - pg_cron (cron)
     - https://github.com/citusdata/pg_cron
-  - HyperLogLog data type, A probabilistic cardinality estimator (distinct count). Typically 1.2KB estimates billions of distinct values with ±4% error.
+  - HyperLogLog data type, A probabilistic cardinality estimator (distinct count). Typically, 1.2KB estimates billions of distinct values with ±4% error.
     - https://github.com/citusdata/postgresql-hll
     - https://agkn.wordpress.com/2012/10/25/sketch-of-the-day-hyperloglog-cornerstone-of-a-big-data-infrastructure/
     - https://www.perplexity.ai/search/WbkgpqlXTA6xezeIR7hQvA

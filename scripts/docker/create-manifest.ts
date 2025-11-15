@@ -156,7 +156,7 @@ function parseArgs(): Options {
           error("--tag requires an argument");
           process.exit(1);
         }
-        options.tag = args[i + 1];
+        options.tag = args[i + 1]!;
         i++;
         break;
 
@@ -166,8 +166,7 @@ function parseArgs(): Options {
           process.exit(1);
         }
         // Split comma-separated sources and trim whitespace
-        options.sources = args[i + 1]
-          .split(",")
+        options.sources = args[i + 1]!.split(",")
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
         i++;
@@ -178,7 +177,7 @@ function parseArgs(): Options {
           error("--annotations requires a file path");
           process.exit(1);
         }
-        options.annotationsFile = args[i + 1];
+        options.annotationsFile = args[i + 1]!;
         i++;
         break;
 
@@ -187,7 +186,7 @@ function parseArgs(): Options {
           error("--annotation-prefix requires an argument");
           process.exit(1);
         }
-        options.annotationPrefix = args[i + 1];
+        options.annotationPrefix = args[i + 1]!;
         i++;
         break;
 

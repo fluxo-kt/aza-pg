@@ -104,7 +104,12 @@ function parseArgs(): Options {
           error("--repository requires an argument");
           process.exit(1);
         }
-        options.repository = args[i + 1];
+        const repositoryValue = args[i + 1];
+        if (!repositoryValue) {
+          error("--repository requires an argument");
+          process.exit(1);
+        }
+        options.repository = repositoryValue;
         i++;
         break;
 
@@ -113,7 +118,12 @@ function parseArgs(): Options {
           error("--platform requires an argument");
           process.exit(1);
         }
-        options.platform = args[i + 1];
+        const platformValue = args[i + 1];
+        if (!platformValue) {
+          error("--platform requires an argument");
+          process.exit(1);
+        }
+        options.platform = platformValue;
         i++;
         break;
 
@@ -122,7 +132,12 @@ function parseArgs(): Options {
           error("--warning-threshold requires a number");
           process.exit(1);
         }
-        const threshold = parseFloat(args[i + 1]);
+        const thresholdStr = args[i + 1];
+        if (!thresholdStr) {
+          error("--warning-threshold requires a number");
+          process.exit(1);
+        }
+        const threshold = parseFloat(thresholdStr);
         if (isNaN(threshold) || threshold < 0) {
           error("--warning-threshold must be a non-negative number");
           process.exit(1);
@@ -225,7 +240,14 @@ async function main(): Promise<void> {
       const platformLabel = options.platform ? ` (${options.platform})` : "";
       const summaryLine = `### Cache Usage${platformLabel}: ${cacheGB}GB / 10GB\n`;
 
-      await Bun.write(summaryFile, summaryLine, { append: true });
+      // Read existing content if file exists, then append
+      let existingContent = "";
+      try {
+        existingContent = await Bun.file(summaryFile).text();
+      } catch {
+        // File doesn't exist yet, that's okay
+      }
+      await Bun.write(summaryFile, existingContent + summaryLine);
 
       if (!options.quiet) {
         info("Cache usage written to GitHub step summary");

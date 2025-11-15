@@ -183,7 +183,14 @@ function parseArgs(): Options {
           error("--source requires an argument");
           process.exit(1);
         }
-        options.source = args[i + 1];
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--source requires an argument");
+            process.exit(1);
+          }
+          options.source = value;
+        }
         i++;
         break;
 
@@ -192,7 +199,14 @@ function parseArgs(): Options {
           error("--target requires an argument");
           process.exit(1);
         }
-        options.target = args[i + 1];
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--target requires an argument");
+            process.exit(1);
+          }
+          options.target = value;
+        }
         i++;
         break;
 
@@ -201,7 +215,14 @@ function parseArgs(): Options {
           error("--annotations requires a file path");
           process.exit(1);
         }
-        options.annotationsFile = args[i + 1];
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--annotations requires a file path");
+            process.exit(1);
+          }
+          options.annotationsFile = value;
+        }
         i++;
         break;
 
@@ -210,7 +231,14 @@ function parseArgs(): Options {
           error("--annotation-prefix requires an argument");
           process.exit(1);
         }
-        options.annotationPrefix = args[i + 1];
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--annotation-prefix requires an argument");
+            process.exit(1);
+          }
+          options.annotationPrefix = value;
+        }
         i++;
         break;
 

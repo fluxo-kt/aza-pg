@@ -84,7 +84,12 @@ function parseArgs(): Options {
           error("--file requires a path argument");
           process.exit(1);
         }
-        options.toolVersionsFile = args[i + 1];
+        const fileValue = args[i + 1];
+        if (!fileValue) {
+          error("--file requires a path argument");
+          process.exit(1);
+        }
+        options.toolVersionsFile = fileValue;
         i++; // Skip next arg
         break;
 
@@ -148,9 +153,15 @@ async function main(): Promise<void> {
         process.exit(1);
       }
 
-      // Append to GITHUB_OUTPUT file
+      // Read existing content if file exists, then append
+      let existingContent = "";
+      try {
+        existingContent = await Bun.file(githubOutput).text();
+      } catch {
+        // File doesn't exist yet, that's okay
+      }
       const outputLine = `version=${version}\n`;
-      await Bun.write(githubOutput, outputLine, { append: true });
+      await Bun.write(githubOutput, existingContent + outputLine);
 
       console.log(`✅ Bun version ${version} written to GITHUB_OUTPUT`);
     } else {

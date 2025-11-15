@@ -153,7 +153,12 @@ function parseArgs(): Options | null {
           error("--stack-tail requires a number");
           return null;
         }
-        const tail = parseInt(args[i + 1], 10);
+        const tailArg = args[i + 1];
+        if (!tailArg) {
+          error("--stack-tail requires a non-empty number");
+          return null;
+        }
+        const tail = parseInt(tailArg, 10);
         if (isNaN(tail) || tail <= 0) {
           error("--stack-tail must be a positive number");
           return null;

@@ -158,7 +158,14 @@ function parseArgs(): Options {
           error("--repository requires an argument");
           process.exit(1);
         }
-        options.repository = args[i + 1];
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--repository requires an argument");
+            process.exit(1);
+          }
+          options.repository = value;
+        }
         i++;
         break;
 
@@ -167,11 +174,18 @@ function parseArgs(): Options {
           error("--tags requires a comma-separated list");
           process.exit(1);
         }
-        // Parse comma-separated tags and filter out empty strings
-        options.tags = args[i + 1]
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0);
+        {
+          const value = args[i + 1];
+          if (!value) {
+            error("--tags requires a comma-separated list");
+            process.exit(1);
+          }
+          // Parse comma-separated tags and filter out empty strings
+          options.tags = value
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0);
+        }
         i++;
         break;
 

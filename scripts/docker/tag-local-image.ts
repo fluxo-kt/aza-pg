@@ -126,7 +126,7 @@ function parseArgs(): Options {
           error("--source requires an argument");
           process.exit(1);
         }
-        options.source = args[i + 1];
+        options.source = args[i + 1]!;
         i++;
         break;
 
@@ -136,8 +136,7 @@ function parseArgs(): Options {
           process.exit(1);
         }
         // Parse comma-separated tags and filter out empty strings
-        options.tags = args[i + 1]
-          .split(",")
+        options.tags = args[i + 1]!.split(",")
           .map((tag) => tag.trim())
           .filter((tag) => tag.length > 0);
         i++;
@@ -148,7 +147,7 @@ function parseArgs(): Options {
           error("--registry requires an argument");
           process.exit(1);
         }
-        options.registry = args[i + 1];
+        options.registry = args[i + 1]!;
         i++;
         break;
 
@@ -157,7 +156,7 @@ function parseArgs(): Options {
           error("--repository requires an argument");
           process.exit(1);
         }
-        options.repository = args[i + 1];
+        options.repository = args[i + 1]!;
         i++;
         break;
 

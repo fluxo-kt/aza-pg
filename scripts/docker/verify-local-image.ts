@@ -98,7 +98,7 @@ function parseArgs(): Options {
           error("--image requires an argument");
           process.exit(1);
         }
-        options.image = args[i + 1];
+        options.image = args[i + 1]!;
         i++;
         break;
 

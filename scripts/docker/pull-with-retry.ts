@@ -85,7 +85,7 @@ function parseArgs(): Options {
           error("--image requires an argument");
           process.exit(1);
         }
-        options.image = args[i + 1];
+        options.image = args[i + 1]!;
         i++;
         break;
 
@@ -94,7 +94,7 @@ function parseArgs(): Options {
           error("--max-retries requires a number");
           process.exit(1);
         }
-        const maxRetries = parseInt(args[i + 1], 10);
+        const maxRetries = parseInt(args[i + 1]!, 10);
         if (isNaN(maxRetries) || maxRetries < 1) {
           error("--max-retries must be a positive number");
           process.exit(1);
@@ -108,7 +108,7 @@ function parseArgs(): Options {
           error("--initial-delay requires a number");
           process.exit(1);
         }
-        const initialDelay = parseInt(args[i + 1], 10);
+        const initialDelay = parseInt(args[i + 1]!, 10);
         if (isNaN(initialDelay) || initialDelay < 0) {
           error("--initial-delay must be a non-negative number");
           process.exit(1);

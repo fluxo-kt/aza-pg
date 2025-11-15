@@ -175,7 +175,7 @@ function parseArgs(): Options {
           error("--manifest requires an argument");
           process.exit(1);
         }
-        options.manifest = args[i + 1];
+        options.manifest = args[i + 1]!;
         i++;
         break;
 
@@ -185,8 +185,7 @@ function parseArgs(): Options {
           process.exit(1);
         }
         // Split comma-separated platforms and trim whitespace
-        options.platforms = args[i + 1]
-          .split(",")
+        options.platforms = args[i + 1]!.split(",")
           .map((p) => p.trim())
           .filter((p) => p.length > 0);
         i++;
@@ -307,7 +306,7 @@ function formatPlatform(platform: Platform): string {
  * @param manifest - Parsed manifest object
  * @param manifestRef - Manifest reference (for error messages)
  */
-function validateManifestStructure(manifest: OCIImageIndex, manifestRef: string): void {
+function validateManifestStructure(manifest: OCIImageIndex, _manifestRef: string): void {
   // Check schemaVersion
   if (manifest.schemaVersion !== 2) {
     const errorMsg = `Invalid schemaVersion: expected 2, got ${manifest.schemaVersion}`;

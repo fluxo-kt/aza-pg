@@ -167,6 +167,12 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [5492c7d1](https://github.com/supabase/pg_jsonschema/commit/5492c7d1a28c5a2c85b48f89c47f258acc93d241) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
+### workflow
+
+| Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                       | Notes                                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.7.2](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.7.2) | Yes                | No             | [Docs](https://github.com/pgflow-dev/pgflow#readme) | DAG-based workflow orchestration engine with task queuing, dependencies, and retry logic. |
+
 <!-- extensions-table:end -->
 
 > **Tip:** The Markdown table is auto-generated. After modifying the manifest, rerun `bun scripts/extensions/render-markdown.ts` to refresh this section.

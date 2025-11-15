@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2025-11-14T21:58:54.799Z",
+  "generatedAt": "2025-11-15T15:45:28.045Z",
   "catalog": {
-    "total": 38,
-    "enabled": 34,
+    "total": 39,
+    "enabled": 35,
     "disabled": 4
   },
   "byKind": {
     "builtin": 6,
-    "extension": 23,
+    "extension": 24,
     "tool": 5
   },
   "builtins": [
@@ -30,6 +30,7 @@
     "pg_repack",
     "pg_stat_monitor",
     "pgaudit",
+    "pgflow",
     "pgmq",
     "pgroonga",
     "pgsodium",
@@ -58,6 +59,7 @@
     "pg_stat_statements",
     "pg_trgm",
     "pgaudit",
+    "pgflow",
     "plpgsql",
     "vector",
     "vectorscale"
@@ -75,6 +77,7 @@
     "safety": ["pg_plan_filter", "pg_safeupdate"],
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
+    "workflow": ["pgflow"],
     "queueing": ["pgmq"],
     "language": ["plpgsql"],
     "quality": ["plpgsql_check"],

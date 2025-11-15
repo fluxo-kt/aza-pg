@@ -128,6 +128,7 @@ s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/
    - Complexity: Medium
 
 3. **Improved sed pattern**
+
    ```bash
    s/^\s*bool\s+log_skipped_evtrigs/static bool log_skipped_evtrigs/
    ```

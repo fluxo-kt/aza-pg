@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-14T21:58:55.126Z
+# Generated at: 2025-11-15T15:40:38.884Z
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json

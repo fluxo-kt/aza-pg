@@ -518,6 +518,40 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     docsUrl: "https://github.com/pgmq/pgmq#readme",
   },
   {
+    name: "pgflow",
+    displayName: "pgflow",
+    kind: "extension",
+    category: "workflow",
+    description:
+      "DAG-based workflow orchestration engine with task queuing, dependencies, and retry logic.",
+    source: {
+      type: "git",
+      repository: "https://github.com/pgflow-dev/pgflow.git",
+      tag: "pgflow@0.7.2",
+    },
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: true,
+      notes: [
+        "SQL-only schema (no CREATE EXTENSION required)",
+        "Installed via /docker-entrypoint-initdb.d/05-pgflow.sql",
+        "Requires pgmq extension (enabled by default)",
+        "Version 0.7.2 (Phases 1-3 only - missing map steps from Phases 9-11)",
+        "realtime.send() stubbed for standalone PostgreSQL (no Supabase Edge Functions)",
+      ],
+    },
+    dependencies: ["pgmq"],
+    notes: [
+      "NOT a traditional extension - pure SQL schema with tables and functions",
+      "Creates schemas: pgflow, pgmq (if missing), realtime (stub)",
+      "Core features: DAG workflows, task queuing, retry logic, worker tracking",
+      "Advanced features not included: map steps (parallel array processing), opt_start_delay",
+      "NO build step - SQL file manually maintained in docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql",
+    ],
+    sourceUrl: "https://github.com/pgflow-dev/pgflow",
+    docsUrl: "https://github.com/pgflow-dev/pgflow#readme",
+  },
+  {
     name: "pgq",
     displayName: "PgQ",
     kind: "extension",

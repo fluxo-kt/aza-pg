@@ -1,0 +1,46 @@
+name: "Setup Bun"
+description: "Parse Bun version from .tool-versions, install Bun, cache dependencies, and install packages"
+author: "fluxo-kt"
+
+# No inputs required - auto-detects from .tool-versions and bun.lock
+
+outputs:
+  bun-version:
+    description: "The Bun version that was installed"
+    value: ${{ steps.bun-version.outputs.version }}
+  cache-hit:
+    description: "Whether there was a cache hit"
+    value: ${{ steps.cache-deps.outputs.cache-hit }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Parse Bun version from .tool-versions
+      id: bun-version
+      shell: bash
+      run: |
+        # Use the centralized parse-bun-version.ts script
+        BUN_VERSION=$(bun scripts/ci/parse-bun-version.ts)
+        echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+        echo "📦 Detected Bun version: ${BUN_VERSION}"
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ steps.bun-version.outputs.version }}
+
+    - name: Cache Bun dependencies
+      id: cache-deps
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
+      env:
+        # 1-day supply chain security delay (verify packages aren't brand new)
+        BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"

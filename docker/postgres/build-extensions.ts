@@ -115,9 +115,9 @@ function log(message: string): void {
 }
 
 async function ensureCleanDir(dir: string): Promise<void> {
-  if (await Bun.file(dir).exists()) {
-    await $`rm -rf ${dir}`;
-  }
+  // Always remove directory if it exists (nothrow ignores error if it doesn't exist)
+  // NOTE: Bun.file().exists() only works for files, not directories, so we use rm -rf
+  await $`rm -rf ${dir}`.nothrow();
   await Bun.write(`${dir}/.gitkeep`, "");
 }
 

@@ -164,6 +164,26 @@ bun run test:all:fast        # Validation only
 
 See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 
+## Operations
+
+**Database Management:**
+
+```bash
+# Backup database
+bun scripts/tools/backup-postgres.ts mydb backup.sql.gz
+
+# Restore from backup
+bun scripts/tools/restore-postgres.ts mydb backup.sql.gz
+
+# Promote replica to primary (failover)
+bun scripts/tools/promote-replica.ts replica-container
+
+# Generate SSL certificates (development)
+bun scripts/tools/generate-ssl-certs.ts
+```
+
+⚠️ **CRITICAL:** Replica promotion is a one-way operation. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for safety warnings, detailed usage, troubleshooting, and best practices.
+
 ## Troubleshooting
 
 | Issue                | Solution                                           |

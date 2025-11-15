@@ -10,10 +10,10 @@ import * as logger from "../utils/logger.js";
 
 // Expected counts (from extensions.manifest.json, validated dynamically)
 const EXPECTED_COUNTS = {
-  total: 38,
+  total: 39, // 38 original + pgflow
   builtin: 6,
   pgdg: 14,
-  compiled: 18,
+  compiled: 19, // 18 original + pgflow (compiled from source)
 };
 
 // File paths - derive PROJECT_ROOT from import.meta.dir

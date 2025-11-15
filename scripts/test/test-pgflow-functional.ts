@@ -12,13 +12,28 @@
  * - Concurrent workflow execution
  * - Performance metrics
  *
- * Usage: bun run scripts/test/test-pgflow-functional.ts [--container=pgq-research]
+ * Usage:
+ *   bun run scripts/test/test-pgflow-functional.ts [--container=NAME]
+ *   TEST_CONTAINER=my-postgres bun run scripts/test/test-pgflow-functional.ts
+ *   bun run scripts/test/test-pgflow-functional.ts --container=aza-pg-test
+ *
+ * Container Configuration:
+ *   --container=NAME         Override container name (e.g., --container=pgq-research)
+ *   TEST_CONTAINER env var   Fallback if --container not provided
+ *   Default                  aza-pg-test (sensible default for CI)
+ *
+ * CI Usage Example:
+ *   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+ *     myregistry/aza-pg-ci:latest \
+ *     bun run scripts/test/test-pgflow-functional.ts --container=ci-postgres
  */
 
 import { $ } from "bun";
 
-const CONTAINER =
-  Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
+const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
+const CONTAINER = containerArg ?? Bun.env.TEST_CONTAINER ?? "aza-pg-test";
+
+console.log(`Container: ${CONTAINER}\n`);
 
 interface TestResult {
   name: string;
@@ -39,9 +54,18 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
       success: result.exitCode === 0,
     };
   } catch (error) {
+    const errorMsg = String(error);
+    // Provide helpful troubleshooting message
+    if (errorMsg.includes("No such container") || errorMsg.includes("Cannot connect")) {
+      return {
+        stdout: "",
+        stderr: `Container '${CONTAINER}' not found or not running. Use --container=NAME or TEST_CONTAINER env var to specify a different container.`,
+        success: false,
+      };
+    }
     return {
       stdout: "",
-      stderr: String(error),
+      stderr: errorMsg,
       success: false,
     };
   }

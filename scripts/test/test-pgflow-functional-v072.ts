@@ -8,10 +8,28 @@
  * - Two-phase polling: read_with_poll() then start_tasks()
  * - Status: 'created' → 'started' → 'completed'/'failed'
  *
- * Usage: bun run scripts/test/test-pgflow-functional-v072.ts
+ * Usage:
+ *   bun run scripts/test/test-pgflow-functional-v072.ts [--container=NAME]
+ *   TEST_CONTAINER=my-postgres bun run scripts/test/test-pgflow-functional-v072.ts
+ *   bun run scripts/test/test-pgflow-functional-v072.ts --container=primary-postgres-primary
+ *
+ * Container Configuration:
+ *   --container=NAME         Override container name (e.g., --container=primary-postgres-primary)
+ *   TEST_CONTAINER env var   Fallback if --container not provided
+ *   Default                  aza-pg-test (sensible default for CI)
+ *
+ * CI Usage Example:
+ *   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+ *     myregistry/aza-pg-ci:latest \
+ *     bun run scripts/test/test-pgflow-functional-v072.ts --container=ci-postgres
  */
 
 import { randomUUID } from "crypto";
+
+const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
+const CONTAINER = containerArg ?? Bun.env.TEST_CONTAINER ?? "aza-pg-test";
+
+console.log(`Container: ${CONTAINER}\n`);
 
 interface TestResult {
   name: string;
@@ -26,7 +44,7 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
   try {
     // Use stdin to avoid shell escaping hell
     const proc = Bun.spawn(
-      ["docker", "exec", "-i", "primary-postgres-primary", "su", "postgres", "-c", "psql -t -A"],
+      ["docker", "exec", "-i", CONTAINER, "su", "postgres", "-c", "psql -t -A"],
       { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
     );
     proc.stdin.write(sql);
@@ -34,9 +52,30 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
     const exitCode = await proc.exited;
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
+
+    // Provide helpful troubleshooting message
+    if (!proc.stdout || exitCode !== 0) {
+      if (stderr.includes("No such container") || stderr.includes("Cannot connect")) {
+        return {
+          stdout: "",
+          stderr: `Container '${CONTAINER}' not found or not running. Use --container=NAME or TEST_CONTAINER env var to specify a different container.`,
+          success: false,
+        };
+      }
+    }
+
     return { stdout: stdout.trim(), stderr: stderr.trim(), success: exitCode === 0 };
   } catch (error) {
-    return { stdout: "", stderr: String(error), success: false };
+    const errorMsg = String(error);
+    // Provide helpful troubleshooting message
+    if (errorMsg.includes("No such container") || errorMsg.includes("Cannot connect")) {
+      return {
+        stdout: "",
+        stderr: `Container '${CONTAINER}' not found or not running. Use --container=NAME or TEST_CONTAINER env var to specify a different container.`,
+        success: false,
+      };
+    }
+    return { stdout: "", stderr: errorMsg, success: false };
   }
 }
 

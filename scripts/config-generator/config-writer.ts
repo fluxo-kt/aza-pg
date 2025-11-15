@@ -4,7 +4,6 @@
  */
 
 import { join } from "path";
-import { mkdir } from "fs/promises";
 
 /**
  * Write content to a file, creating parent directories if needed
@@ -28,7 +27,7 @@ export async function writeConfigFile(filePath: string, content: string): Promis
  */
 export async function ensureDirectory(dirPath: string): Promise<void> {
   try {
-    await mkdir(dirPath, { recursive: true });
+    await Bun.write(`${dirPath}/.gitkeep`, "");
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to create directory ${dirPath}: ${errorMsg}`, { cause: error });

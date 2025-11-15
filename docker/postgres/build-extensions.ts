@@ -18,7 +18,6 @@
  */
 
 import { $ } from "bun";
-import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -115,11 +114,11 @@ function log(message: string): void {
   console.error(`[ext-build] ${message}`);
 }
 
-function ensureCleanDir(dir: string): void {
-  if (existsSync(dir)) {
-    rmSync(dir, { recursive: true, force: true });
+async function ensureCleanDir(dir: string): Promise<void> {
+  if (await Bun.file(dir).exists()) {
+    await $`rm -rf ${dir}`;
   }
-  mkdirSync(dir, { recursive: true });
+  await Bun.write(`${dir}/.gitkeep`, "");
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -175,7 +174,7 @@ async function cloneRepo(repo: string, commit: string, target: string): Promise<
   await $`git -C ${target} checkout --quiet ${commit}`.quiet();
 
   // Initialize submodules if present
-  if (existsSync(join(target, ".gitmodules"))) {
+  if (await Bun.file(join(target, ".gitmodules")).exists()) {
     await $`git -C ${target} submodule update --init --recursive`.quiet();
   }
 }
@@ -188,7 +187,7 @@ async function ensureCargoPgrx(version: string): Promise<string> {
   const installRoot = `/root/.cargo-pgrx/${version}`;
   const cargoPgrxBin = join(installRoot, "bin", "cargo-pgrx");
 
-  if (!existsSync(cargoPgrxBin)) {
+  if (!(await Bun.file(cargoPgrxBin).exists())) {
     log(`Installing cargo-pgrx ${version}`);
     // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation (Phase 11.1)
     // RUSTFLAGS optimization should only apply to extension builds, not build tools
@@ -222,7 +221,7 @@ async function ensurePgrxInitForVersion(installRoot: string, version: string): P
 
 async function getPgrxVersion(dir: string): Promise<string> {
   const cargoFile = join(dir, "Cargo.toml");
-  if (!existsSync(cargoFile)) {
+  if (!(await Bun.file(cargoFile).exists())) {
     return "";
   }
 
@@ -294,8 +293,8 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
 
   // Remove Cargo.lock to avoid conflicts
   const lockFile = join(dir, "Cargo.lock");
-  if (existsSync(lockFile)) {
-    rmSync(lockFile);
+  if (await Bun.file(lockFile).exists()) {
+    await $`rm -f ${lockFile}`;
   }
 
   const features = entry.build?.features || [];
@@ -334,21 +333,21 @@ async function buildTimescaledb(dir: string): Promise<void> {
   const buildDir = join(dir, "build");
   const ninjaFile = join(buildDir, "build.ninja");
 
-  if (existsSync(ninjaFile)) {
+  if (await Bun.file(ninjaFile).exists()) {
     await $`cd ${buildDir} && ninja -j${NPROC} && ninja install`;
   } else {
     await $`cd ${buildDir} && make -j${NPROC}`;
     await $`cd ${buildDir} && make install`;
   }
 
-  mkdirSync(`/usr/share/postgresql/${PG_MAJOR}/timescaledb`, { recursive: true });
+  await Bun.write(`/usr/share/postgresql/${PG_MAJOR}/timescaledb/.gitkeep`, "");
 }
 
 async function buildAutotools(dir: string, name: string): Promise<void> {
   log(`Running autotools build for ${name} in ${dir}`);
 
   const autogenScript = join(dir, "autogen.sh");
-  if (existsSync(autogenScript)) {
+  if (await Bun.file(autogenScript).exists()) {
     await $`cd ${dir} && ./autogen.sh`;
   }
 
@@ -418,7 +417,7 @@ async function validateDependencies(
     if (!depEntry) {
       // Dependency not in current manifest - check if it's a PGDG package or builtin in full manifest
       const fullManifestPath = "/tmp/extensions.manifest.json";
-      if (existsSync(fullManifestPath)) {
+      if (await Bun.file(fullManifestPath).exists()) {
         const fullManifest = (await Bun.file(fullManifestPath).json()) as Manifest;
         const depEntryFull = fullManifest.entries.find((e) => e.name === depName);
 
@@ -493,7 +492,7 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
 
     // Apply patch to each target file
     for (const targetFile of targetFiles) {
-      if (existsSync(targetFile)) {
+      if (await Bun.file(targetFile).exists()) {
         try {
           await $`sed -i ${patch} ${targetFile}`.quiet();
         } catch {
@@ -568,18 +567,18 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   const dest = join(BUILD_ROOT, name);
-  ensureCleanDir(dest);
+  await ensureCleanDir(dest);
 
   // Clone repository based on source type
   if (source.type === "git" && source.repository && source.tag) {
     // Resolve tag to commit SHA
     const tempDir = join(BUILD_ROOT, `${name}-temp`);
-    ensureCleanDir(tempDir);
+    await ensureCleanDir(tempDir);
 
     validateGitUrl(source.repository);
     await $`git clone --depth 1 --branch ${source.tag} ${source.repository} ${tempDir}`.quiet();
     const commit = await $`git -C ${tempDir} rev-parse HEAD`.text().then((s) => s.trim());
-    rmSync(tempDir, { recursive: true, force: true });
+    await $`rm -rf ${tempDir}`;
 
     await cloneRepo(source.repository, commit, dest);
   } else if (source.type === "git-ref" && source.repository && (source.ref || source.commit)) {
@@ -737,14 +736,14 @@ async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
   const PG_EXT_DIR = `/usr/share/postgresql/${PG_MAJOR}/extension`;
 
   // Validate PostgreSQL directories exist before attempting cleanup
-  if (!existsSync(PG_LIB_DIR)) {
+  if (!(await Bun.file(PG_LIB_DIR).exists())) {
     log(`ERROR: PostgreSQL lib directory not found: ${PG_LIB_DIR}`);
     log(
       `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
     );
     process.exit(1);
   }
-  if (!existsSync(PG_EXT_DIR)) {
+  if (!(await Bun.file(PG_EXT_DIR).exists())) {
     log(`ERROR: PostgreSQL extension directory not found: ${PG_EXT_DIR}`);
     log(
       `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
@@ -758,7 +757,7 @@ async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
     // Verify extension was built (basic smoke test)
     const soFile = join(PG_LIB_DIR, `${extName}.so`);
     const controlFile = join(PG_EXT_DIR, `${extName}.control`);
-    const foundBinary = existsSync(soFile) || existsSync(controlFile);
+    const foundBinary = (await Bun.file(soFile).exists()) || (await Bun.file(controlFile).exists());
 
     if (!foundBinary) {
       log(`    ⚠ WARNING: Extension ${extName} has no binaries - may have failed to build`);
@@ -796,7 +795,7 @@ async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
 
     // Remove bitcode (optional, only extensions compiled with LLVM have this)
     const bitcodeDir = join(PG_LIB_DIR, "bitcode");
-    if (existsSync(bitcodeDir)) {
+    if (await Bun.file(bitcodeDir).exists()) {
       try {
         await $`find ${bitcodeDir} -type d -name "${extName}" -exec rm -rf {} +`.quiet();
       } catch {
@@ -818,7 +817,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!existsSync(MANIFEST_PATH)) {
+  if (!(await Bun.file(MANIFEST_PATH).exists())) {
     log(`ERROR: Manifest file not found: ${MANIFEST_PATH}`);
     process.exit(1);
   }
@@ -827,7 +826,7 @@ async function main(): Promise<void> {
   const manifest = (await Bun.file(MANIFEST_PATH).json()) as Manifest;
 
   // Create build root directory
-  mkdirSync(BUILD_ROOT, { recursive: true });
+  await Bun.write(`${BUILD_ROOT}/.gitkeep`, "");
 
   // Process each entry in the manifest
   for (const entry of manifest.entries) {

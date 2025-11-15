@@ -15,7 +15,6 @@
  *   bun scripts/docker/generate-dockerfile.ts
  */
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { extensionDefaults } from "../extension-defaults.js";
 import { error, info, section, success } from "../utils/logger.js";
@@ -122,7 +121,7 @@ interface Manifest {
  * Read and parse manifest
  */
 async function readManifest(): Promise<Manifest> {
-  if (!existsSync(MANIFEST_PATH)) {
+  if (!(await Bun.file(MANIFEST_PATH).exists())) {
     throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
   }
 
@@ -265,7 +264,7 @@ async function generateDockerfile(): Promise<void> {
 
   // Read template
   info("Reading template...");
-  if (!existsSync(TEMPLATE_PATH)) {
+  if (!(await Bun.file(TEMPLATE_PATH).exists())) {
     throw new Error(`Template not found: ${TEMPLATE_PATH}`);
   }
 

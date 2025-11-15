@@ -11,8 +11,6 @@
  *   bun scripts/docker/validate-dockerfile.ts --fix  # Regenerate if out of date
  */
 
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { error, info, section, success, warning } from "../utils/logger.js";
 
@@ -26,7 +24,7 @@ const GENERATOR_SCRIPT = join(REPO_ROOT, "scripts/docker/generate-dockerfile.ts"
 /**
  * Check if required files exist
  */
-function checkFilesExist(): boolean {
+async function checkFilesExist(): Promise<boolean> {
   const files = [
     { path: TEMPLATE_PATH, name: "Dockerfile.template" },
     { path: MANIFEST_PATH, name: "extensions.manifest.json" },
@@ -35,7 +33,7 @@ function checkFilesExist(): boolean {
 
   let allExist = true;
   for (const file of files) {
-    if (!existsSync(file.path)) {
+    if (!(await Bun.file(file.path).exists())) {
       error(`Missing required file: ${file.name}`);
       allExist = false;
     }
@@ -51,13 +49,13 @@ async function validateDockerfile(): Promise<boolean> {
   section("Dockerfile Validation");
 
   // Check required files
-  if (!checkFilesExist()) {
+  if (!(await checkFilesExist())) {
     error("Required files missing");
     return false;
   }
 
   // Check if Dockerfile exists
-  if (!existsSync(DOCKERFILE_PATH)) {
+  if (!(await Bun.file(DOCKERFILE_PATH).exists())) {
     warning("Dockerfile does not exist - needs to be generated");
     return false;
   }
@@ -74,15 +72,18 @@ async function validateDockerfile(): Promise<boolean> {
   await Bun.write(tempPath, currentDockerfile);
 
   // Run generator
-  const result = spawnSync("bun", [GENERATOR_SCRIPT], {
+  const proc = Bun.spawn(["bun", GENERATOR_SCRIPT], {
     cwd: REPO_ROOT,
-    stdio: "pipe",
-    encoding: "utf-8",
+    stdout: "pipe",
+    stderr: "pipe",
   });
 
-  if (result.status !== 0) {
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
     error("Failed to generate Dockerfile");
-    console.error(result.stderr);
+    const stderr = await new Response(proc.stderr).text();
+    console.error(stderr);
     // Restore original
     await Bun.write(DOCKERFILE_PATH, currentDockerfile);
     return false;
@@ -133,12 +134,16 @@ function normalizeDockerfile(content: string): string {
 async function fixDockerfile(): Promise<boolean> {
   info("Regenerating Dockerfile...");
 
-  const result = spawnSync("bun", [GENERATOR_SCRIPT], {
+  const proc = Bun.spawn(["bun", GENERATOR_SCRIPT], {
     cwd: REPO_ROOT,
-    stdio: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
   });
 
-  if (result.status !== 0) {
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
     error("Failed to regenerate Dockerfile");
     return false;
   }

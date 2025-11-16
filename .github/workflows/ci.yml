@@ -182,7 +182,7 @@ jobs:
 
           echo "Checking extension count..."
           EXTENSION_COUNT=$(docker run --rm aza-pg-ci:test \
-            ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null | wc -l)
+            sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null' | wc -l)
           echo "Found $EXTENSION_COUNT extension control files"
 
           if [ "$EXTENSION_COUNT" -lt 30 ]; then

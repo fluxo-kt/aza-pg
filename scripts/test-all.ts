@@ -3,16 +3,16 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Validation checks (parallel) - 12 checks
+ * 1. Validation checks (parallel) - 14 checks (includes unit tests)
  * 2. Build tests (sequential) - 3 checks
- * 3. Functional tests (sequential) - 10 checks
+ * 3. Functional tests (sequential) - 12 checks (includes disabled/hook extension tests)
  *
- * Total: 25 checks across validation, build, and functional categories
+ * Total: 29 checks across validation, build, and functional categories
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (25 checks)
- *   bun scripts/test-all.ts --fast       # Validation only (12 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (24 checks)
+ *   bun scripts/test-all.ts              # Full test suite (29 checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (14 checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (28 checks)
  *
  * Exit code: 0 only if ALL critical tests pass
  */
@@ -403,6 +403,20 @@ const allChecks: Check[] = [
     envOverride: "ALLOW_STALE_BASE_IMAGE",
   },
   {
+    name: "Unit Tests: Auto-Config",
+    category: "validation",
+    command: ["bun", "test", "./scripts/test/test-auto-config-units.ts"],
+    description: "Unit tests for PostgreSQL auto-configuration",
+    critical: true,
+  },
+  {
+    name: "Unit Tests: Utilities",
+    category: "validation",
+    command: ["bun", "test", "./scripts/test/test-utils.test.ts"],
+    description: "Unit tests for manifest validation and utilities",
+    critical: true,
+  },
+  {
     name: "Smoke Tests",
     category: "validation",
     command: ["bun", "scripts/test-smoke.ts"],
@@ -613,6 +627,26 @@ const allChecks: Check[] = [
     requiresDocker: true,
     requiresBuild: true,
     timeout: 180000, // 3 minutes
+  },
+  {
+    name: "Disabled Extensions Test",
+    category: "functional",
+    command: ["bun", "scripts/test/test-disabled-extensions.ts", "aza-pg:pg18"],
+    description: "Verify disabled extensions are properly excluded",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 120000, // 2 minutes
+  },
+  {
+    name: "Hook Extensions Test",
+    category: "functional",
+    command: ["bun", "scripts/test/test-hook-extensions.ts", "aza-pg:pg18"],
+    description: "Test extensions that use shared_preload_libraries hooks",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 120000, // 2 minutes
   },
   {
     name: "Comprehensive Extension Tests",

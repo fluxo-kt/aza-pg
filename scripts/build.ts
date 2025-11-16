@@ -225,14 +225,24 @@ async function buildImage(config: BuildConfig): Promise<void> {
   ];
 
   // Cache configuration (remote + local fallback)
-  buildArgs.push(
-    "--cache-from",
-    `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`,
-    "--cache-from",
-    "type=local,src=/tmp/.buildx-cache",
-    "--cache-to",
-    "type=local,dest=/tmp/.buildx-cache,mode=max"
-  );
+  // In CI: Use only registry cache to avoid disk space issues
+  // In local dev: Use local cache for faster rebuilds
+  const isCI = Bun.env.CI === "true" || Bun.env.GITHUB_ACTIONS === "true";
+
+  buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
+
+  if (!isCI) {
+    // Local development: Use local cache for faster rebuilds
+    buildArgs.push(
+      "--cache-from",
+      "type=local,src=/tmp/.buildx-cache",
+      "--cache-to",
+      "type=local,dest=/tmp/.buildx-cache,mode=max"
+    );
+  } else {
+    // CI: Skip local cache export to save disk space (~10GB+)
+    console.log("CI environment detected: Skipping local cache export to save disk space");
+  }
 
   // Load or push
   if (config.push) {

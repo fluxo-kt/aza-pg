@@ -425,11 +425,11 @@ async function case12gb4cpu(logs: string, container: string): Promise<void> {
 /**
  * Test 15: 24GB RAM, 12 vCPU
  */
-async function case24gb12cpu(logs: string, container: string): Promise<void> {
+async function case24gb4cpu(logs: string, container: string): Promise<void> {
   assertLogContains(logs, "RAM: 2457[0-9]MB \\(cgroup-v2\\)", "Detected 24GB via cgroup");
-  assertLogContains(logs, "CPU: 12 cores", "CPU detection picked up 12 cores");
+  assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 12 cores");
   assertLogContains(logs, "shared_buffers=4915MB", "shared_buffers tuned to 20% for 24GB");
-  assertLogContains(logs, "io_workers=3", "I/O workers set to 3 (12 cores / 4)");
+  assertLogContains(logs, "io_workers=1", "I/O workers set to 1 (4 cores / 4)");
 
   // Verify actual config (worker processes not shown in log)
   await assertPgConfig(
@@ -442,7 +442,7 @@ async function case24gb12cpu(logs: string, container: string): Promise<void> {
   await assertPgConfig(
     container,
     "max_worker_processes",
-    "18",
+    "5",
     "Config injection: max_worker_processes"
   );
 }
@@ -1077,9 +1077,9 @@ async function main(): Promise<void> {
 
   // Test 15: 24GB RAM, 12 vCPU
   await runCase(
-    "\n📌 Test 15: 24GB RAM, 12 vCPU",
-    case24gb12cpu,
-    ["-m", "24g", "--cpus=12", "-e", `POSTGRES_PASSWORD=${testPassword}`],
+    "\n📌 Test 15: 24GB RAM, 4 vCPU",
+    case24gb4cpu,
+    ["-m", "24g", "--cpus=4", "-e", `POSTGRES_PASSWORD=${testPassword}`],
     imageTag
   );
 

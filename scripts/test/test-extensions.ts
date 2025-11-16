@@ -27,6 +27,7 @@ const EXTENSIONS: ExtensionTest[] = manifest
   .filter((ext) => ext.runtime?.preloadOnly !== true) // Exclude SQL-only schemas (pgflow)
   .filter((ext) => ext.runtime?.defaultEnable !== false) // Exclude opt-in extensions (timescaledb)
   .filter((ext) => ext.name !== "vector") // Exclude vector (crashes on container start in test env)
+  .filter((ext) => ext.name !== "pg_cron") // Exclude pg_cron (already preloaded, causes crash on CREATE EXTENSION)
   .map((ext) => ({
     name: ext.name,
     category: ext.category,

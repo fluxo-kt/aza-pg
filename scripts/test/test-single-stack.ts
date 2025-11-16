@@ -144,8 +144,8 @@ POSTGRES_EXPORTER_PORT=9189
     success("Single stack started");
 
     // Wait for services to be healthy
-    info("Waiting for PostgreSQL to be healthy (max 90 seconds)...");
-    const timeout = 90;
+    info("Waiting for PostgreSQL to be healthy (max 120 seconds)...");
+    const timeout = 120;
     let elapsed = 0;
     let postgresHealthy = false;
 

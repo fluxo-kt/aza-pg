@@ -3,16 +3,16 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Validation checks (parallel) - 14 checks (includes unit tests)
- * 2. Build tests (sequential) - 3 checks
- * 3. Functional tests (sequential) - 12 checks (includes disabled/hook extension tests)
+ * 1. Validation checks (parallel) - 18 checks (unit tests, linting, config validation, manifest sync)
+ * 2. Build tests (sequential) - 4 checks (build, size, extension count, build tests)
+ * 3. Functional tests (sequential) - 23 checks (extension loading, auto-config, stacks, verification, integration, security)
  *
- * Total: 29 checks across validation, build, and functional categories
+ * Total: 45 checks across validation, build, and functional categories
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (29 checks)
- *   bun scripts/test-all.ts --fast       # Validation only (14 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (28 checks)
+ *   bun scripts/test-all.ts              # Full test suite (45 checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (18 checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (44 checks)
  *
  * Exit code: 0 only if ALL critical tests pass
  */
@@ -472,6 +472,34 @@ const allChecks: Check[] = [
     description: "Scan for potential secrets in tracked files",
     critical: false,
   },
+  {
+    name: "Repository Health Check",
+    category: "validation",
+    command: ["bun", "scripts/ci/repository-health-check.ts"],
+    description: "Verify critical repository files and directories exist",
+    critical: true,
+  },
+  {
+    name: "Manifest Sync Verification",
+    category: "validation",
+    command: ["bun", "scripts/ci/verify-manifest-sync.ts"],
+    description: "Verify extensions.manifest.json matches generated version",
+    critical: true,
+  },
+  {
+    name: "Dockerfile Validation",
+    category: "validation",
+    command: ["bun", "scripts/docker/validate-dockerfile.ts"],
+    description: "Verify Dockerfile is up-to-date with template and manifest",
+    critical: true,
+  },
+  {
+    name: "Config Validation",
+    category: "validation",
+    command: ["bun", "scripts/config-generator/validate-configs.ts"],
+    description: "Validate all PostgreSQL config files for correct GUC settings",
+    critical: true,
+  },
 
   // === BUILD TESTS (run sequentially) ===
   {
@@ -504,6 +532,15 @@ const allChecks: Check[] = [
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
+  },
+  {
+    name: "Build Tests",
+    category: "build",
+    command: ["bun", "scripts/test/test-build.ts"],
+    description: "Test Docker image building and extension verification",
+    critical: false,
+    requiresDocker: true,
+    timeout: 900000, // 15 minutes
   },
 
   // === FUNCTIONAL TESTS (run sequentially) ===
@@ -668,6 +705,120 @@ const allChecks: Check[] = [
     requiresDocker: true,
     requiresBuild: true,
     timeout: 600000, // 10 minutes
+  },
+  {
+    name: "Comprehensive Image Test",
+    category: "functional",
+    command: ["bun", "scripts/docker/test-image.ts", "aza-pg:pg18"],
+    description:
+      "Comprehensive test harness: filesystem, runtime, tools, auto-config, ~27 functional tests",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 900000, // 15 minutes
+  },
+  {
+    name: "Auto-Config Tests",
+    category: "functional",
+    command: ["bun", "scripts/test/test-auto-config.ts", "aza-pg:pg18"],
+    description: "Test auto-config RAM/CPU detection and scaling across memory tiers",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 300000, // 5 minutes
+  },
+  {
+    name: "Extension Tests",
+    category: "functional",
+    command: ["bun", "scripts/test/test-extensions.ts", "aza-pg:pg18"],
+    description: "Comprehensive extension tests dynamically generated from manifest",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 600000, // 10 minutes
+  },
+  {
+    name: "Integration Extension Combinations",
+    category: "functional",
+    command: ["bun", "scripts/test/test-integration-extension-combinations.ts", "aza-pg:pg18"],
+    description:
+      "Test critical extension combinations (timescaledb+pgvector, postgis+pgroonga, pgsodium+supabase_vault, pg_partman+timescaledb)",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 300000, // 5 minutes
+  },
+  {
+    name: "PgBouncer Health Check",
+    category: "functional",
+    command: ["bun", "scripts/test/test-pgbouncer-healthcheck.ts"],
+    description: "Test PgBouncer healthcheck and authentication with Docker Compose",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "PgBouncer Failure Scenarios",
+    category: "functional",
+    command: ["bun", "scripts/test/test-pgbouncer-failures.ts"],
+    description:
+      "Test PgBouncer failure scenarios (wrong password, missing .pgpass, invalid listen address, max connections exceeded, permissions)",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 300000, // 5 minutes
+  },
+  {
+    name: "pgflow Functional Tests",
+    category: "functional",
+    command: ["bun", "scripts/test/test-pgflow-functional.ts", "aza-pg:pg18"],
+    description: "Comprehensive pgflow workflow orchestration functional tests",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 300000, // 5 minutes
+  },
+  {
+    name: "pgflow v0.7.2 Compatibility",
+    category: "functional",
+    command: ["bun", "scripts/test/test-pgflow-functional-v072.ts", "aza-pg:pg18"],
+    description:
+      "Test pgflow v0.7.2 API compatibility (flow_slug, retry/timeout handling, two-phase polling)",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "pgq Functional Tests",
+    category: "functional",
+    command: ["bun", "scripts/test/test-pgq-functional.ts", "aza-pg:pg18"],
+    description: "Comprehensive pgq (PostgreSQL queue) functional test suite",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "Security Tests",
+    category: "functional",
+    command: ["bun", "test", "./scripts/test/test-security.ts"],
+    description: "SCRAM-SHA-256 auth, pgAudit, network binding tests (requires image)",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "Negative Scenario Tests",
+    category: "functional",
+    command: ["bun", "test", "./scripts/test/test-negative-scenarios.ts"],
+    description: "Error handling and validation scenario tests (requires image)",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
   },
 ];
 

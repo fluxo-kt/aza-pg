@@ -34,7 +34,6 @@
     "verify:runtime": "bun scripts/docker/verify-runtime.ts",
     "verify:filesystem": "bun scripts/docker/verify-filesystem.ts",
     "verify:generated": "bun scripts/verify-generated.ts",
-    "test:ci": "bun scripts/test-ci-local.ts",
     "test:smoke": "bun scripts/test-smoke.ts",
     "test:all": "bun scripts/test-all.ts",
     "test:all:fast": "bun scripts/test-all.ts --fast",

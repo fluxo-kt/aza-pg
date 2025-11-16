@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     // Create test .env file
     info("Creating test environment configuration...");
     const envContent = `POSTGRES_PASSWORD=${testPostgresPassword}
-POSTGRES_IMAGE=aza-pg:pg18
+POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-single-test
 POSTGRES_NETWORK_NAME=postgres-single-test-net

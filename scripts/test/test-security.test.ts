@@ -44,7 +44,7 @@ async function startContainer() {
     -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
     -e POSTGRES_MEMORY=1024 \
     -e POSTGRES_BIND_IP=127.0.0.1 \
-    -d localhost/aza-pg:latest`.nothrow();
+    -d ${Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest"}`.nothrow();
 
   if (result.exitCode !== 0) {
     throw new Error("Failed to start test container - image may not be built");

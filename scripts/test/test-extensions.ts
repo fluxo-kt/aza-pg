@@ -20,9 +20,10 @@ interface ExtensionTest {
   expectError?: boolean; // Some extensions may not be creatable directly
 }
 
-// Generate test cases from manifest
+// Generate test cases from manifest (only enabled extensions)
 const EXTENSIONS: ExtensionTest[] = manifest
   .filter((ext) => ext.kind === "extension" || ext.kind === "builtin")
+  .filter((ext) => ext.enabled !== false)
   .map((ext) => ({
     name: ext.name,
     category: ext.category,

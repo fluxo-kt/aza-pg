@@ -255,8 +255,7 @@ jobs:
       - name: Test core extensions
         run: |
           echo "Testing core extension loading..."
-          export POSTGRES_IMAGE=aza-pg-ci:test
-          bun scripts/test/test-extensions.ts
+          bun scripts/test/test-extensions.ts --image=aza-pg-ci:test
 
       - name: Run extension smoke tests
         run: |
@@ -346,6 +345,11 @@ jobs:
           docker images
           echo "✅ Image loaded and tagged"
 
+      - name: Create test .env file
+        run: |
+          echo "Creating test environment configuration..."
+          cp stacks/single/.env.example stacks/single/.env
+
       - name: Test single stack
         run: |
           echo "Testing single stack deployment..."
@@ -415,7 +419,7 @@ jobs:
         run: |
           echo "Running security hardening tests..."
           export POSTGRES_IMAGE=aza-pg-ci:test
-          bun scripts/test/test-security.ts
+          bun test scripts/test/test-security.ts
 
       - name: Capture logs on failure
         if: failure()
@@ -482,8 +486,7 @@ jobs:
       - name: Test auto-config
         run: |
           echo "Testing auto-config functionality..."
-          export POSTGRES_IMAGE=aza-pg-ci:test
-          bun scripts/test/test-auto-config.ts
+          bun scripts/test/test-auto-config.ts aza-pg-ci:test
 
       - name: Test pgflow functional
         run: |

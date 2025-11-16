@@ -24,6 +24,8 @@ interface ExtensionTest {
 const EXTENSIONS: ExtensionTest[] = manifest
   .filter((ext) => ext.kind === "extension" || ext.kind === "builtin")
   .filter((ext) => ext.enabled !== false)
+  .filter((ext) => ext.runtime?.preloadOnly !== true) // Exclude SQL-only schemas (pgflow)
+  .filter((ext) => ext.runtime?.defaultEnable !== false) // Exclude opt-in extensions (timescaledb)
   .map((ext) => ({
     name: ext.name,
     category: ext.category,

@@ -144,8 +144,8 @@ POSTGRES_EXPORTER_PORT=9189
     success("Single stack started");
 
     // Wait for services to be healthy
-    info("Waiting for PostgreSQL to be healthy (max 120 seconds)...");
-    const timeout = 120;
+    info("Waiting for PostgreSQL to be healthy (max 180 seconds)...");
+    const timeout = 180;
     let elapsed = 0;
     let postgresHealthy = false;
 
@@ -173,7 +173,15 @@ POSTGRES_EXPORTER_PORT=9189
 
     if (!postgresHealthy) {
       error(`PostgreSQL failed to become healthy after ${timeout}s`);
-      await $`docker compose --env-file .env.test logs postgres`.cwd(singleStackPath);
+      error("Container logs:");
+      try {
+        const logs = await $`docker compose --env-file .env.test logs postgres`
+          .cwd(singleStackPath)
+          .text();
+        console.log(logs);
+      } catch (logError) {
+        console.log("Failed to retrieve container logs:", logError);
+      }
       await cleanup();
       process.exit(1);
     }

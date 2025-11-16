@@ -93,8 +93,15 @@ describe("Security - Authentication", () => {
   });
 
   test("pg_hba.conf should use scram-sha-256 method", async () => {
-    const result =
-      await $`docker exec ${TEST_CONTAINER} cat /var/lib/postgresql/data/pg_hba.conf`.nothrow();
+    // Detect data directory dynamically
+    const dataDirResult = await runSQL("SHOW data_directory");
+    if (!dataDirResult.success) {
+      throw new Error("Failed to detect data_directory");
+    }
+    const dataDir = dataDirResult.stdout.trim();
+    const hbaPath = `${dataDir}/pg_hba.conf`;
+
+    const result = await $`docker exec ${TEST_CONTAINER} cat ${hbaPath}`.nothrow();
     expect(result.exitCode).toBe(0);
 
     const hbaContent = result.stdout.toString();
@@ -122,6 +129,9 @@ describe("Security - Authentication", () => {
 
 describe("Security - PgBouncer auth_query", () => {
   test("auth_query function should exist", async () => {
+    // Create pgbouncer schema first
+    await runSQL("CREATE SCHEMA IF NOT EXISTS pgbouncer");
+
     // Create auth_query function if using PgBouncer
     const createFunction = await runSQL(`
       CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(

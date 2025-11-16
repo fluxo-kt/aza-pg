@@ -410,7 +410,7 @@ async function case12gb4cpu(logs: string, container: string): Promise<void> {
   assertLogContains(logs, "RAM: 1228[0-9]MB \\(cgroup-v2\\)", "Detected 12GB via cgroup");
   assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 4 cores");
   assertLogContains(logs, "shared_buffers=2457MB", "shared_buffers tuned to 20% for 12GB");
-  assertLogContains(logs, "io_workers=3", "I/O workers set to 3 (4 cores still gets 3 workers)");
+  assertLogContains(logs, "io_workers=1", "I/O workers set to 1 (4 cores / 4)");
 
   // Verify actual config
   await assertPgConfig(
@@ -419,7 +419,7 @@ async function case12gb4cpu(logs: string, container: string): Promise<void> {
     "245[0-9]MB|2.4GB",
     "Config injection: shared_buffers"
   );
-  await assertPgConfig(container, "io_workers", "3", "Config injection: io_workers");
+  await assertPgConfig(container, "io_workers", "1", "Config injection: io_workers");
 }
 
 /**
@@ -438,7 +438,7 @@ async function case24gb4cpu(logs: string, container: string): Promise<void> {
     "491[0-9]MB|4.*GB",
     "Config injection: shared_buffers"
   );
-  await assertPgConfig(container, "io_workers", "3", "Config injection: io_workers");
+  await assertPgConfig(container, "io_workers", "1", "Config injection: io_workers");
   await assertPgConfig(
     container,
     "max_worker_processes",

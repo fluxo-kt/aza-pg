@@ -353,7 +353,7 @@ jobs:
       - name: Test single stack
         run: |
           echo "Testing single stack deployment..."
-          export POSTGRES_IMAGE=aza-pg-testing:pg18
+          export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-single-stack.ts
 
       - name: Capture stack logs on failure

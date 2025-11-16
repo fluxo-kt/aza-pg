@@ -93,7 +93,8 @@ describe("Security - Authentication", () => {
   });
 
   test("pg_hba.conf should use scram-sha-256 method", async () => {
-    const result = await $`docker exec ${TEST_CONTAINER} cat /etc/postgresql/pg_hba.conf`.nothrow();
+    const result =
+      await $`docker exec ${TEST_CONTAINER} cat /var/lib/postgresql/data/pg_hba.conf`.nothrow();
     expect(result.exitCode).toBe(0);
 
     const hbaContent = result.stdout.toString();

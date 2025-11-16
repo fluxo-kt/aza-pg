@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-15T18:36:28.808Z
+# Generated at: 2025-11-16T19:51:47.699Z
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -368,15 +368,13 @@ calculate_wal_buffers() {
 }
 
 calculate_io_workers() {
-    # io_workers: max(3, CPU_CORES / 4) for systems with 12+ cores
-    if [ "$CPU_CORES" -lt 12 ]; then
-        echo "3"  # PostgreSQL 18 default
-    else
-        local value=$(( CPU_CORES / 4 ))
-        [ "$value" -lt 3 ] && value=3
-        [ "$value" -gt 64 ] && value=64
-        echo "$value"
-    fi
+    # io_workers: scale with CPU cores, minimum 1 for small systems
+    local value=$(( CPU_CORES / 4 ))
+    
+    # Minimum: 1 (allow small systems), Maximum: 64
+    [ "$value" -lt 1 ] && value=1
+    [ "$value" -gt 64 ] && value=64
+    echo "$value"
 }
 
 SHARED_BUFFERS_MB=$(calculate_shared_buffers)

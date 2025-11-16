@@ -93,7 +93,7 @@ function topologicalSort(extensions: ManifestEntry[]): string[] {
  * Main test function
  */
 async function main(): Promise<void> {
-  const image = Bun.argv[2] ?? "aza-pg:test";
+  const image = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg-ci:test";
   const containerName = `aza-pg-ext-smoke-${process.pid}`;
   const postgresPassword = Bun.env.POSTGRES_PASSWORD ?? "postgres";
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-17T12:08:24.902Z",
+  "generatedAt": "2025-11-17T16:07:12.600Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -253,6 +253,8 @@
       "kind": "tool",
       "category": "safety",
       "description": "Block high-cost plans or disallowed operations using planner hooks.",
+      "enabled": false,
+      "disabledReason": "Not compatible with PostgreSQL 18. Last updated for PG13 (2021). Maintainer inactive. Enable when updated upstream.",
       "source": {
         "type": "git-ref",
         "repository": "https://github.com/pgexperts/pg_plan_filter.git",

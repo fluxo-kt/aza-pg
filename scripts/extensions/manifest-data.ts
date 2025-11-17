@@ -619,6 +619,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "tool",
     category: "safety",
     description: "Block high-cost plans or disallowed operations using planner hooks.",
+    enabled: false,
+    disabledReason:
+      "Not compatible with PostgreSQL 18. Last updated for PG13 (2021). Maintainer inactive. Enable when updated upstream.",
     source: {
       type: "git-ref",
       repository: "https://github.com/pgexperts/pg_plan_filter.git",

@@ -540,7 +540,7 @@ jobs:
         run: |
           echo "Testing negative scenarios (error handling)..."
           export POSTGRES_IMAGE=aza-pg-ci:test
-          bun test scripts/test/test-negative-scenarios.ts
+          bun test ./scripts/test/test-negative-scenarios.ts
 
       - name: Capture logs on failure
         if: failure()

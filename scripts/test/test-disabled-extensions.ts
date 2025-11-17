@@ -42,8 +42,8 @@ const testsTotal = 5;
 const TEST_POSTGRES_PASSWORD =
   Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
 
-// Get image tag from command line args or use default
-const IMAGE_TAG = Bun.argv[2] ?? "aza-pg:pg18";
+// Get image tag from command line args, POSTGRES_IMAGE env var, or use default
+const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
 
 // Paths
 const MANIFEST_PATH = `${import.meta.dir}/../../docker/postgres/extensions.manifest.json`;

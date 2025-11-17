@@ -497,11 +497,16 @@ jobs:
           docker run -d --rm --name ci-pgflow-v072-test -e POSTGRES_PASSWORD=postgres aza-pg-ci:test
 
           # Wait for PostgreSQL to be ready
-          echo "Waiting for ci-pgflow-test..."
+          echo "Waiting for PostgreSQL to be ready..."
           timeout 60 sh -c 'until docker exec ci-pgflow-test pg_isready -U postgres; do sleep 1; done'
-          echo "Waiting for ci-pgflow-v072-test..."
           timeout 60 sh -c 'until docker exec ci-pgflow-v072-test pg_isready -U postgres; do sleep 1; done'
-          echo "✅ Test containers ready"
+
+          # Wait for pgflow schema initialization (initdb scripts run after pg_isready)
+          echo "Waiting for pgflow schema initialization..."
+          timeout 60 sh -c 'until docker exec ci-pgflow-test psql -U postgres -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '\''pgflow'\''" | grep -q 1; do sleep 1; done'
+          timeout 60 sh -c 'until docker exec ci-pgflow-v072-test psql -U postgres -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '\''pgflow'\''" | grep -q 1; do sleep 1; done'
+
+          echo "✅ Test containers ready with pgflow initialized"
 
       - name: Test pgflow functional
         run: |

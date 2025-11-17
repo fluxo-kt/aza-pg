@@ -63,7 +63,6 @@ services:
 
     networks:
       - postgres_net
-      - ${MONITORING_NETWORK:-monitoring}
 
     ports:
       - "${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9189}:9187"
@@ -85,8 +84,6 @@ networks:
   postgres_net:
     name: ${POSTGRES_NETWORK_NAME:-postgres-single-net}
     driver: bridge
-  monitoring:
-    external: true
 
 volumes:
   postgres_data:

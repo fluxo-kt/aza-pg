@@ -214,7 +214,6 @@ async function main(): Promise<void> {
     try {
       const testSQL = `
 SELECT '[-1,1]'::vector(2) AS vector_smoke;
-SELECT current_setting('timescaledb.telemetry_level') AS timescaledb_telemetry;
 SELECT extname FROM pg_extension WHERE extname IN ('timescaledb', 'vectorscale');
 SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries';
 `;

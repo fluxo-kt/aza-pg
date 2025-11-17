@@ -490,6 +490,19 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-auto-config.ts
 
+      - name: Setup pgflow test containers
+        run: |
+          echo "Starting test containers for pgflow tests..."
+          docker run -d --rm --name ci-pgflow-test -e POSTGRES_PASSWORD=postgres aza-pg-ci:test
+          docker run -d --rm --name ci-pgflow-v072-test -e POSTGRES_PASSWORD=postgres aza-pg-ci:test
+
+          # Wait for PostgreSQL to be ready
+          echo "Waiting for ci-pgflow-test..."
+          timeout 60 sh -c 'until docker exec ci-pgflow-test pg_isready -U postgres; do sleep 1; done'
+          echo "Waiting for ci-pgflow-v072-test..."
+          timeout 60 sh -c 'until docker exec ci-pgflow-v072-test pg_isready -U postgres; do sleep 1; done'
+          echo "✅ Test containers ready"
+
       - name: Test pgflow functional
         run: |
           echo "Testing pgflow migration tool..."
@@ -501,6 +514,12 @@ jobs:
           echo "Testing pgflow v0.7.2 compatibility..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-pgflow-functional-v072.ts --container=ci-pgflow-v072-test
+
+      - name: Cleanup pgflow test containers
+        if: always()
+        run: |
+          echo "Cleaning up pgflow test containers..."
+          docker stop ci-pgflow-test ci-pgflow-v072-test || true
 
       - name: Test pgbouncer healthcheck
         run: |

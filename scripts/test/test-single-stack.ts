@@ -164,7 +164,7 @@ POSTGRES_EXPORTER_PORT=9189
         }
 
         console.log(`   PostgreSQL: ${postgresStatus} (${elapsed}s/${timeout}s)`);
-      } catch (err) {
+      } catch {
         console.log(`   PostgreSQL: starting (${elapsed}s/${timeout}s)`);
       }
 

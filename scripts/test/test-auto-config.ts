@@ -86,19 +86,32 @@ async function runCase(
     const otherArgs: string[] = [];
 
     for (let i = 0; i < dockerArgs.length; i++) {
-      if (dockerArgs[i] === "-e" && i + 1 < dockerArgs.length) {
+      const currentArg = dockerArgs[i];
+      if (!currentArg) continue;
+
+      if (currentArg === "-e" && i + 1 < dockerArgs.length) {
         const envPair = dockerArgs[i + 1];
-        const [key, ...valueParts] = envPair.split("=");
-        env[key] = valueParts.join("=");
+        if (envPair) {
+          const [key, ...valueParts] = envPair.split("=");
+          if (key) {
+            env[key] = valueParts.join("=");
+          }
+        }
         i++; // Skip next arg as it's the value
-      } else if (dockerArgs[i] === "-m" || dockerArgs[i] === "--memory") {
-        otherArgs.push(dockerArgs[i], dockerArgs[i + 1]);
+      } else if (currentArg === "-m" || currentArg === "--memory") {
+        const nextArg = dockerArgs[i + 1];
+        if (nextArg) {
+          otherArgs.push(currentArg, nextArg);
+        }
         i++;
-      } else if (dockerArgs[i] === "--cpus") {
-        otherArgs.push(dockerArgs[i], dockerArgs[i + 1]);
+      } else if (currentArg === "--cpus") {
+        const nextArg = dockerArgs[i + 1];
+        if (nextArg) {
+          otherArgs.push(currentArg, nextArg);
+        }
         i++;
-      } else if (dockerArgs[i].startsWith("--memory=") || dockerArgs[i].startsWith("--cpus=")) {
-        otherArgs.push(dockerArgs[i]);
+      } else if (currentArg.startsWith("--memory=") || currentArg.startsWith("--cpus=")) {
+        otherArgs.push(currentArg);
       }
     }
 

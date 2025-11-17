@@ -4,9 +4,10 @@
  * Usage: bun run scripts/test/test-hook-extensions.ts [image-tag]
  *
  * Tests extensions that don't use CREATE EXTENSION:
- *   - pg_plan_filter (hook-based, sharedPreload)
  *   - pg_safeupdate (hook-based, session_preload_libraries)
  *   - supautils (GUC-based, sharedPreload)
+ *
+ * Note: pg_plan_filter removed (incompatible with PostgreSQL 18)
  *
  * Examples:
  *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'aza-pg:pg18'
@@ -167,71 +168,7 @@ async function runCase(
 }
 
 // ==============================================================================
-// Test 1: pg_plan_filter (hook-based, requires shared_preload_libraries)
-// ==============================================================================
-async function testPgPlanFilterNotPreloaded(container: string): Promise<void> {
-  // Verify pg_plan_filter is NOT in default shared_preload_libraries
-  const preloadLibs =
-    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-  const libs = preloadLibs.trim();
-
-  if (libs.includes("pg_plan_filter")) {
-    console.log("⚠️  WARNING: pg_plan_filter found in default preload (unexpected)");
-  } else {
-    console.log("✅ pg_plan_filter NOT in default shared_preload_libraries (expected)");
-  }
-
-  // Verify .so file exists
-  const soPath = "/usr/lib/postgresql/18/lib/pg_plan_filter.so";
-  try {
-    await $`docker exec ${container} test -f ${soPath}`.quiet();
-    console.log(`✅ pg_plan_filter.so exists at ${soPath}`);
-  } catch {
-    console.log(`❌ FAILED: pg_plan_filter.so not found at ${soPath}`);
-    process.exit(1);
-  }
-
-  // Test that it doesn't work without preload (no GUC parameters available)
-  // Note: pg_plan_filter doesn't have a .control file, so CREATE EXTENSION won't work
-  await assertSqlFails(
-    container,
-    "CREATE EXTENSION pg_plan_filter;",
-    "could not open extension control file|does not exist",
-    "pg_plan_filter correctly requires preload (no CREATE EXTENSION)"
-  );
-}
-
-async function testPgPlanFilterPreloaded(container: string): Promise<void> {
-  // Verify pg_plan_filter is in shared_preload_libraries
-  await assertSqlContains(
-    container,
-    "SHOW shared_preload_libraries;",
-    "pg_plan_filter",
-    "pg_plan_filter loaded via shared_preload_libraries"
-  );
-
-  // Check for GUC parameters (pg_plan_filter exposes configuration via GUC)
-  // Note: pg_plan_filter may not expose visible GUC params, but hook should be active
-  // We can verify the hook is loaded by checking the shared library is actually loaded
-  await assertSqlSuccess(
-    container,
-    "SELECT 1;",
-    "PostgreSQL operational with pg_plan_filter preloaded"
-  );
-
-  // Create test table and verify basic query execution with hook active
-  await assertSqlSuccess(
-    container,
-    "CREATE TABLE hook_test (id int); INSERT INTO hook_test VALUES (1);",
-    "Query execution successful with pg_plan_filter hook active"
-  );
-
-  // Cleanup
-  await assertSqlSuccess(container, "DROP TABLE hook_test;", "Cleanup test table");
-}
-
-// ==============================================================================
-// Test 2: pg_safeupdate (hook-based, uses session_preload_libraries)
+// Test 1: pg_safeupdate (hook-based, uses session_preload_libraries)
 // ==============================================================================
 async function testPgSafeupdateSessionPreload(container: string): Promise<void> {
   // Verify pg_safeupdate.so exists
@@ -299,7 +236,7 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
 }
 
 // ==============================================================================
-// Test 3: supautils (GUC-based, optional shared_preload_libraries)
+// Test 2: supautils (GUC-based, optional shared_preload_libraries)
 // ==============================================================================
 async function testSupautilsNotPreloaded(container: string): Promise<void> {
   // Verify supautils is NOT in default shared_preload_libraries
@@ -382,22 +319,15 @@ async function testSupautilsPreloaded(container: string): Promise<void> {
 }
 
 // ==============================================================================
-// Test 4: Combined preload test (all hook extensions)
+// Test 3: Combined preload test (pg_safeupdate + supautils)
 // ==============================================================================
 async function testCombinedPreload(container: string): Promise<void> {
-  // Verify all three extensions are preloaded
+  // Verify supautils is preloaded
   const preloadLibs =
     await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
   const libs = preloadLibs.trim();
 
   console.log(`Loaded shared libraries: ${libs}`);
-
-  if (libs.includes("pg_plan_filter")) {
-    console.log("✅ pg_plan_filter loaded");
-  } else {
-    console.log("❌ FAILED: pg_plan_filter not found in shared_preload_libraries");
-    process.exit(1);
-  }
 
   if (libs.includes("supautils")) {
     console.log("✅ supautils loaded");
@@ -465,31 +395,17 @@ async function main(): Promise<void> {
   console.log();
 
   // Run test cases
-  await runCase("Test 1: pg_plan_filter without preload", testPgPlanFilterNotPreloaded, imageTag, {
+  await runCase("Test 1: pg_safeupdate session preload", testPgSafeupdateSessionPreload, imageTag, {
     memory: "2g",
     env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
   });
 
-  await runCase("Test 2: pg_plan_filter with preload", testPgPlanFilterPreloaded, imageTag, {
-    memory: "2g",
-    env: {
-      POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
-      POSTGRES_SHARED_PRELOAD_LIBRARIES:
-        "pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter",
-    },
-  });
-
-  await runCase("Test 3: pg_safeupdate session preload", testPgSafeupdateSessionPreload, imageTag, {
+  await runCase("Test 2: supautils without preload", testSupautilsNotPreloaded, imageTag, {
     memory: "2g",
     env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
   });
 
-  await runCase("Test 4: supautils without preload", testSupautilsNotPreloaded, imageTag, {
-    memory: "2g",
-    env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
-  });
-
-  await runCase("Test 5: supautils with preload", testSupautilsPreloaded, imageTag, {
+  await runCase("Test 3: supautils with preload", testSupautilsPreloaded, imageTag, {
     memory: "2g",
     env: {
       POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
@@ -499,7 +415,7 @@ async function main(): Promise<void> {
   });
 
   await runCase(
-    "Test 6: Combined preload (pg_plan_filter + supautils)",
+    "Test 4: Combined preload (pg_safeupdate + supautils)",
     testCombinedPreload,
     imageTag,
     {
@@ -507,21 +423,22 @@ async function main(): Promise<void> {
       env: {
         POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
         POSTGRES_SHARED_PRELOAD_LIBRARIES:
-          "pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter,supautils",
+          "pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils",
       },
     }
   );
 
   console.log("========================================");
   console.log("✅ All hook extension tests passed!");
-  console.log("✅ Total: 6 test cases");
+  console.log("✅ Total: 4 test cases");
   console.log("========================================");
   console.log();
   console.log("Summary:");
-  console.log("  - pg_plan_filter: Hook-based, requires shared_preload_libraries");
   console.log("  - pg_safeupdate: Hook-based, uses session_preload_libraries");
   console.log("  - supautils: GUC-based, optional shared_preload_libraries");
   console.log("  - All extensions verified for loading, functionality, and isolation");
+  console.log();
+  console.log("Note: pg_plan_filter excluded (incompatible with PostgreSQL 18)");
 }
 
 // Run main function

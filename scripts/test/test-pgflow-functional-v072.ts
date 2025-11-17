@@ -43,8 +43,9 @@ const results: TestResult[] = [];
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
     // Use stdin to avoid shell escaping hell
+    // Use -u postgres instead of su postgres to avoid authentication issues
     const proc = Bun.spawn(
-      ["docker", "exec", "-i", CONTAINER, "su", "postgres", "-c", "psql -t -A"],
+      ["docker", "exec", "-i", "-u", "postgres", CONTAINER, "psql", "-t", "-A"],
       { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
     );
     proc.stdin.write(sql);

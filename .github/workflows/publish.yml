@@ -515,7 +515,7 @@ jobs:
         run: |
           echo "Testing hook-based extensions..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun scripts/test/test-hook-extensions.ts
+          bun test ./scripts/test/test-hook-extensions.ts
 
       - name: Test extension combinations
         run: |
@@ -594,7 +594,7 @@ jobs:
         run: |
           echo "Testing pgflow v0.7.2 compatibility..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test
+          bun test ./scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test
 
       - name: Test PgBouncer healthcheck
         run: |
@@ -606,7 +606,7 @@ jobs:
         run: |
           echo "Testing negative scenarios (error handling)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun scripts/test/test-negative-scenarios.ts
+          bun test ./scripts/test/test-negative-scenarios.ts
 
       - name: Capture logs on failure
         if: failure()

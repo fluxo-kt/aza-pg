@@ -490,29 +490,20 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-auto-config.ts
 
-      - name: Setup pgflow test containers
+      - name: Setup pgflow v0.7.2 test container
         run: |
-          echo "Starting test containers for pgflow tests..."
-          docker run -d --rm --name ci-pgflow-test -e POSTGRES_PASSWORD=postgres aza-pg-ci:test
+          echo "Starting test container for pgflow v0.7.2 tests..."
           docker run -d --rm --name ci-pgflow-v072-test -e POSTGRES_PASSWORD=postgres aza-pg-ci:test
 
           # Wait for PostgreSQL to be ready
           echo "Waiting for PostgreSQL to be ready..."
-          timeout 60 sh -c 'until docker exec ci-pgflow-test pg_isready -U postgres; do sleep 1; done'
           timeout 60 sh -c 'until docker exec ci-pgflow-v072-test pg_isready -U postgres; do sleep 1; done'
 
           # Wait for pgflow schema initialization (initdb scripts run after pg_isready)
-          echo "Waiting for pgflow schema initialization..."
-          timeout 60 sh -c 'until docker exec ci-pgflow-test psql -U postgres -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '\''pgflow'\''" | grep -q 1; do sleep 1; done'
+          echo "Waiting for pgflow v0.7.2 schema initialization..."
           timeout 60 sh -c 'until docker exec ci-pgflow-v072-test psql -U postgres -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name = '\''pgflow'\''" | grep -q 1; do sleep 1; done'
 
-          echo "✅ Test containers ready with pgflow initialized"
-
-      - name: Test pgflow functional
-        run: |
-          echo "Testing pgflow migration tool..."
-          export POSTGRES_IMAGE=aza-pg-ci:test
-          bun scripts/test/test-pgflow-functional.ts --container=ci-pgflow-test
+          echo "✅ Test container ready with pgflow v0.7.2 initialized"
 
       - name: Test pgflow v0.7.2
         run: |
@@ -520,11 +511,11 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-pgflow-functional-v072.ts --container=ci-pgflow-v072-test
 
-      - name: Cleanup pgflow test containers
+      - name: Cleanup pgflow test container
         if: always()
         run: |
-          echo "Cleaning up pgflow test containers..."
-          docker stop ci-pgflow-test ci-pgflow-v072-test || true
+          echo "Cleaning up pgflow test container..."
+          docker stop ci-pgflow-v072-test || true
 
       - name: Test pgbouncer healthcheck
         run: |

@@ -446,7 +446,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const imageTag = Bun.argv[2] ?? "aza-pg:pg18";
+  const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
 
   // Check if image exists
   try {

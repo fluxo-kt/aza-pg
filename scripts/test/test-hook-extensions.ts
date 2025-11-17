@@ -5,9 +5,9 @@
  *
  * Tests extensions that don't use CREATE EXTENSION:
  *   - pg_safeupdate (hook-based, session_preload_libraries)
- *   - supautils (GUC-based, sharedPreload)
  *
  * Note: pg_plan_filter removed (incompatible with PostgreSQL 18)
+ * Note: supautils removed (disabled - compilation issues)
  *
  * Examples:
  *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'aza-pg:pg18'
@@ -236,126 +236,6 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
 }
 
 // ==============================================================================
-// Test 2: supautils (GUC-based, optional shared_preload_libraries)
-// ==============================================================================
-async function testSupautilsNotPreloaded(container: string): Promise<void> {
-  // Verify supautils is NOT in default shared_preload_libraries
-  const preloadLibs =
-    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-  const libs = preloadLibs.trim();
-
-  if (libs.includes("supautils")) {
-    console.log("⚠️  WARNING: supautils found in default preload (unexpected)");
-  } else {
-    console.log("✅ supautils NOT in default shared_preload_libraries (expected)");
-  }
-
-  // Verify .so file exists
-  const soPath = "/usr/lib/postgresql/18/lib/supautils.so";
-  try {
-    await $`docker exec ${container} test -f ${soPath}`.quiet();
-    console.log(`✅ supautils.so exists at ${soPath}`);
-  } catch {
-    console.log(`❌ FAILED: supautils.so not found at ${soPath}`);
-    process.exit(1);
-  }
-
-  // Without preload, GUC parameters won't be available
-  // Note: SHOW will return error for non-existent GUC params
-  try {
-    const gucCheck =
-      await $`docker exec ${container} psql -U postgres -t -c "SHOW supautils.reserved_roles;"`.text();
-    console.log(`⚠️  WARNING: supautils GUC may be available (unexpected): ${gucCheck.trim()}`);
-  } catch (error: unknown) {
-    const output = error instanceof Error ? error.message : String(error);
-    if (output.toLowerCase().includes("unrecognized configuration parameter")) {
-      console.log("✅ supautils GUC parameters not available without preload (expected)");
-    } else {
-      console.log(`⚠️  WARNING: unexpected error: ${output}`);
-    }
-  }
-}
-
-async function testSupautilsPreloaded(container: string): Promise<void> {
-  // Verify supautils is in shared_preload_libraries
-  await assertSqlContains(
-    container,
-    "SHOW shared_preload_libraries;",
-    "supautils",
-    "supautils loaded via shared_preload_libraries"
-  );
-
-  // Check for supautils GUC parameters
-  // Note: supautils.reserved_roles is a key configuration parameter
-  try {
-    const gucOutput =
-      await $`docker exec ${container} psql -U postgres -t -c "SHOW supautils.reserved_roles;"`.text();
-    console.log(
-      `✅ supautils GUC parameters available (supautils.reserved_roles: ${gucOutput.trim()})`
-    );
-  } catch (error: unknown) {
-    const output = error instanceof Error ? error.message : String(error);
-    if (output.toLowerCase().includes("unrecognized configuration parameter")) {
-      console.log(
-        "⚠️  WARNING: supautils GUC parameters not found (may not expose visible params)"
-      );
-    } else {
-      console.log(
-        "⚠️  WARNING: supautils GUC parameters not found (may not expose visible params)"
-      );
-    }
-  }
-
-  // Verify basic PostgreSQL operation with supautils loaded
-  await assertSqlSuccess(
-    container,
-    "SELECT current_user;",
-    "PostgreSQL operational with supautils preloaded"
-  );
-
-  // Test that supautils hooks are active by checking for managed roles
-  // supautils creates several managed roles on initialization if configured
-  await assertSqlSuccess(container, "SELECT 1;", "Basic queries work with supautils hooks active");
-}
-
-// ==============================================================================
-// Test 3: Combined preload test (pg_safeupdate + supautils)
-// ==============================================================================
-async function testCombinedPreload(container: string): Promise<void> {
-  // Verify supautils is preloaded
-  const preloadLibs =
-    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-  const libs = preloadLibs.trim();
-
-  console.log(`Loaded shared libraries: ${libs}`);
-
-  if (libs.includes("supautils")) {
-    console.log("✅ supautils loaded");
-  } else {
-    console.log("❌ FAILED: supautils not found in shared_preload_libraries");
-    process.exit(1);
-  }
-
-  // Test pg_safeupdate via session preload (not in shared_preload_libraries)
-  await assertSqlFails(
-    container,
-    "SET session_preload_libraries = 'pg_safeupdate'; CREATE TABLE multi_test (id int); UPDATE multi_test SET id = 1;",
-    "UPDATE requires a WHERE clause",
-    "pg_safeupdate works alongside other preloaded extensions"
-  );
-
-  // Verify PostgreSQL stability with multiple hooks active
-  await assertSqlSuccess(
-    container,
-    "SELECT version();",
-    "PostgreSQL stable with multiple hook extensions loaded"
-  );
-
-  // Cleanup
-  await assertSqlSuccess(container, "DROP TABLE IF EXISTS multi_test;", "Cleanup combined test");
-}
-
-// ==============================================================================
 // Main execution
 // ==============================================================================
 async function main(): Promise<void> {
@@ -400,45 +280,18 @@ async function main(): Promise<void> {
     env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
   });
 
-  await runCase("Test 2: supautils without preload", testSupautilsNotPreloaded, imageTag, {
-    memory: "2g",
-    env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
-  });
-
-  await runCase("Test 3: supautils with preload", testSupautilsPreloaded, imageTag, {
-    memory: "2g",
-    env: {
-      POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
-      POSTGRES_SHARED_PRELOAD_LIBRARIES:
-        "pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils",
-    },
-  });
-
-  await runCase(
-    "Test 4: Combined preload (pg_safeupdate + supautils)",
-    testCombinedPreload,
-    imageTag,
-    {
-      memory: "2g",
-      env: {
-        POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
-        POSTGRES_SHARED_PRELOAD_LIBRARIES:
-          "pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils",
-      },
-    }
-  );
-
   console.log("========================================");
   console.log("✅ All hook extension tests passed!");
-  console.log("✅ Total: 4 test cases");
+  console.log("✅ Total: 1 test case");
   console.log("========================================");
   console.log();
   console.log("Summary:");
   console.log("  - pg_safeupdate: Hook-based, uses session_preload_libraries");
-  console.log("  - supautils: GUC-based, optional shared_preload_libraries");
-  console.log("  - All extensions verified for loading, functionality, and isolation");
+  console.log("  - Extension verified for loading, functionality, and isolation");
   console.log();
-  console.log("Note: pg_plan_filter excluded (incompatible with PostgreSQL 18)");
+  console.log("Notes:");
+  console.log("  - pg_plan_filter excluded (incompatible with PostgreSQL 18)");
+  console.log("  - supautils excluded (disabled due to compilation issues)");
 }
 
 // Run main function

@@ -1125,13 +1125,13 @@ async function main(): Promise<void> {
     imageTag
   );
 
-  // Test 16: 32GB RAM, 14 vCPU, DW workload (adjusted for Docker CPU limit)
+  // Test 16: 16GB RAM, 14 vCPU, DW workload (adjusted for Docker resource limits)
   await runCase(
-    "\n📌 Test 16: 32GB RAM, 14 vCPU, DW workload",
+    "\n📌 Test 16: 16GB RAM, 14 vCPU, DW workload",
     case32gb16cpuDw,
     [
-      "-e",
-      "POSTGRES_MEMORY=32768",
+      "-m",
+      "16g",
       "-e",
       "POSTGRES_WORKLOAD_TYPE=dw",
       "--cpus=14",

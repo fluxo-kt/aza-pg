@@ -20,6 +20,10 @@ interface ManifestEntry {
   name: string;
   kind: string;
   dependencies?: string[];
+  runtime?: {
+    sharedPreload?: boolean;
+    defaultEnable?: boolean;
+  };
 }
 
 interface Manifest {
@@ -118,8 +122,19 @@ async function main(): Promise<void> {
     const manifestText = await manifestFile.text();
     const manifest: Manifest = JSON.parse(manifestText);
 
-    // Filter only extensions
-    const extensions = manifest.entries.filter((entry) => entry.kind === "extension");
+    // Filter only extensions, excluding those requiring shared_preload_libraries
+    // (those can't be created via CREATE EXTENSION without preload being set at startup)
+    const extensions = manifest.entries.filter((entry) => {
+      if (entry.kind !== "extension") {
+        return false;
+      }
+      // Skip extensions that require shared_preload_libraries
+      if (entry.runtime?.sharedPreload === true) {
+        console.log(`[info] Skipping ${entry.name} (requires shared_preload_libraries)`);
+        return false;
+      }
+      return true;
+    });
 
     // Sort extensions by dependencies
     let extensionOrder: string[];

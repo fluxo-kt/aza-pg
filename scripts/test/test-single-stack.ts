@@ -119,8 +119,9 @@ async function main(): Promise<void> {
   try {
     // Create test .env file
     info("Creating test environment configuration...");
+    const postgresImage = Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
     const envContent = `POSTGRES_PASSWORD=${testPostgresPassword}
-POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
+POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-single-test
 POSTGRES_NETWORK_NAME=postgres-single-test-net
@@ -154,8 +155,8 @@ POSTGRES_EXPORTER_PORT=9189
         const output = await $`docker compose --env-file .env.test ps postgres --format json`
           .cwd(singleStackPath)
           .text();
-        const services: ComposeService[] = JSON.parse(output);
-        const postgresStatus = services[0]?.Health ?? "starting";
+        const service: ComposeService = JSON.parse(output);
+        const postgresStatus = service?.Health ?? "starting";
 
         if (postgresStatus === "healthy") {
           postgresHealthy = true;
@@ -163,7 +164,7 @@ POSTGRES_EXPORTER_PORT=9189
         }
 
         console.log(`   PostgreSQL: ${postgresStatus} (${elapsed}s/${timeout}s)`);
-      } catch {
+      } catch (err) {
         console.log(`   PostgreSQL: starting (${elapsed}s/${timeout}s)`);
       }
 

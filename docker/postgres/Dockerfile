@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-16T19:51:47.679Z
+# Generated at: 2025-11-17T09:27:57.138Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -308,7 +308,7 @@ RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
 USER postgres
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1
+    CMD pg_isready -U postgres || exit 1
 
 EXPOSE 5432
 

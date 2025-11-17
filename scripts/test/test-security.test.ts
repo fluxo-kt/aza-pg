@@ -17,7 +17,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { $ } from "bun";
 import type { ManifestEntry } from "../extensions/manifest-data";
 
-const TEST_CONTAINER = "aza-pg-security-test-primary-1";
+const TEST_CONTAINER = `aza-pg-security-test-${Date.now()}`;
 const TEST_PASSWORD = "secureTestPass123!";
 
 /**
@@ -106,16 +106,25 @@ describe("Security - Authentication", () => {
 
     const hbaContent = result.stdout.toString();
 
-    // Should use scram-sha-256, not md5 or trust
+    // Should use scram-sha-256 for non-local connections
     expect(hbaContent).toMatch(/scram-sha-256/);
-    expect(hbaContent).not.toMatch(/md5(?!\w)/); // md5 as standalone word, not in scram-sha-256
 
-    // Should not use trust for network connections (except possibly localhost)
-    const lines = hbaContent.split("\n").filter((line) => !line.trim().startsWith("#"));
-    const networkLines = lines.filter((line) => line.includes("0.0.0.0") || line.includes("::0"));
+    // Check that network connections (non-localhost) use scram-sha-256
+    const lines = hbaContent
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#") && line.trim());
+    const networkLines = lines.filter(
+      (line) =>
+        (line.includes("0.0.0.0") ||
+          line.includes("::0") ||
+          (line.includes("all") && line.includes("host"))) &&
+        !line.includes("127.0.0.1") &&
+        !line.includes("::1")
+    );
 
     for (const line of networkLines) {
-      expect(line).not.toMatch(/\s+trust\s*$/);
+      // Network connections should use scram-sha-256, not trust or md5
+      expect(line).toMatch(/scram-sha-256/);
     }
   });
 
@@ -369,16 +378,24 @@ describe("Security - pgAudit Logging", () => {
     // Create extension
     await runSQL("CREATE EXTENSION IF NOT EXISTS pgaudit");
 
-    // Enable DDL logging
-    await runSQL("SET pgaudit.log = 'ddl'");
+    // Enable DDL logging using ALTER SYSTEM for persistence
+    await runSQL("ALTER SYSTEM SET pgaudit.log = 'ddl'");
+    await runSQL("SELECT pg_reload_conf()");
 
-    // Execute a DDL statement
-    await runSQL("CREATE TABLE IF NOT EXISTS audit_test (id serial PRIMARY KEY)");
+    // Wait a moment for config reload
+    await Bun.sleep(500);
 
     // Verify the setting is active
     const result = await runSQL("SHOW pgaudit.log");
     expect(result.success).toBe(true);
     expect(result.stdout).toMatch(/ddl/i);
+
+    // Execute a DDL statement to test logging
+    await runSQL("CREATE TABLE IF NOT EXISTS audit_test (id serial PRIMARY KEY)");
+
+    // Reset to default
+    await runSQL("ALTER SYSTEM RESET pgaudit.log");
+    await runSQL("SELECT pg_reload_conf()");
   });
 
   test("pgAudit should support role-based logging", async () => {

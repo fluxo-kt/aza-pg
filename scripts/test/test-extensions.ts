@@ -8,9 +8,12 @@
 
 import { $ } from "bun";
 import { MANIFEST_ENTRIES as manifest } from "../extensions/manifest-data";
+import { TestHarness } from "./harness";
 
-const IMAGE = Bun.argv.find((arg) => arg.startsWith("--image="))?.split("=")[1] || "aza-pg:pg18";
-const CONTAINER_NAME = `pg-test-${Date.now()}`;
+const harness = new TestHarness();
+const IMAGE =
+  Bun.argv.find((arg) => arg.startsWith("--image="))?.split("=")[1] || harness.getImage();
+const CONTAINER_NAME = harness.getContainerName("extensions");
 
 interface ExtensionTest {
   name: string;
@@ -41,35 +44,20 @@ const EXTENSIONS: ExtensionTest[] = manifest
 
 async function startContainer(): Promise<void> {
   console.log(`Starting container ${CONTAINER_NAME}...`);
-  await $`docker run -d --name ${CONTAINER_NAME} \
-    --platform linux/amd64 \
-    -e POSTGRES_PASSWORD=test \
-    -e POSTGRES_HOST_AUTH_METHOD=trust \
-    ${IMAGE}`.quiet();
+  await harness.startContainer("extensions", {
+    POSTGRES_PASSWORD: "test",
+    POSTGRES_HOST_AUTH_METHOD: "trust",
+  });
 
   // Wait for PostgreSQL to be ready
   console.log("Waiting for PostgreSQL to be ready...");
-  let retries = 30;
-  while (retries > 0) {
-    try {
-      await $`docker exec ${CONTAINER_NAME} pg_isready -U postgres`.quiet();
-      break;
-    } catch {
-      await Bun.sleep(1000);
-      retries--;
-    }
-  }
-
-  if (retries === 0) {
-    throw new Error("PostgreSQL failed to start");
-  }
-
+  await harness.waitForReady(CONTAINER_NAME);
   console.log("PostgreSQL ready!\n");
 }
 
 async function stopContainer(): Promise<void> {
   console.log(`\nStopping and removing container ${CONTAINER_NAME}...`);
-  await $`docker rm -f ${CONTAINER_NAME}`.quiet();
+  await harness.cleanup(CONTAINER_NAME);
 }
 
 async function testExtension(

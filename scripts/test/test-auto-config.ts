@@ -11,6 +11,7 @@
 import { $ } from "bun";
 import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
 import { error, warning } from "../utils/logger.ts";
+import { TestHarness } from "./harness";
 
 /**
  * Assert that logs contain a pattern with a success message
@@ -74,13 +75,39 @@ async function runCase(
   console.log(name);
   console.log("=".repeat(name.length));
 
-  const container = `pg-autoconfig-${Math.floor(Math.random() * 100000)}-${process.pid}`;
+  const harness = new TestHarness();
+  const testSuffix = `autoconfig-${Math.floor(Math.random() * 100000)}`;
+  let container = "";
   let containerStarted = false;
 
   try {
-    // Start container
+    // Parse docker args into env variables and other args
+    const env: Record<string, string> = {};
+    const otherArgs: string[] = [];
+
+    for (let i = 0; i < dockerArgs.length; i++) {
+      if (dockerArgs[i] === "-e" && i + 1 < dockerArgs.length) {
+        const envPair = dockerArgs[i + 1];
+        const [key, ...valueParts] = envPair.split("=");
+        env[key] = valueParts.join("=");
+        i++; // Skip next arg as it's the value
+      } else if (dockerArgs[i] === "-m" || dockerArgs[i] === "--memory") {
+        otherArgs.push(dockerArgs[i], dockerArgs[i + 1]);
+        i++;
+      } else if (dockerArgs[i] === "--cpus") {
+        otherArgs.push(dockerArgs[i], dockerArgs[i + 1]);
+        i++;
+      } else if (dockerArgs[i].startsWith("--memory=") || dockerArgs[i].startsWith("--cpus=")) {
+        otherArgs.push(dockerArgs[i]);
+      }
+    }
+
+    // Start container manually with other args
+    container = harness.getContainerName(testSuffix);
+    const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+
     try {
-      await $`docker run -d --name ${container} ${dockerArgs} ${imageTag}`.quiet();
+      await $`docker run -d --name ${container} ${otherArgs} ${envArgs} ${imageTag}`.quiet();
       containerStarted = true;
     } catch {
       error(`Failed to start container for '${name}'`);
@@ -897,7 +924,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const imageTag = Bun.argv[2] || "aza-pg:pg18";
+  const harness = new TestHarness();
+  const imageTag = Bun.argv[2] || harness.getImage();
 
   // Generate random test password at runtime
   const testPassword =
@@ -962,7 +990,8 @@ async function main(): Promise<void> {
   // Test 6: Below minimum memory - should fail
   console.log("Test 6: Below minimum memory (256MB - should fail)");
   console.log("====================================================");
-  const containerBelowMin = `pg-autoconfig-below-min-${process.pid}`;
+  const harnessTest6 = new TestHarness();
+  const containerBelowMin = harnessTest6.getContainerName("below-min");
   try {
     await $`docker run -d --name ${containerBelowMin} --memory=256m -e POSTGRES_PASSWORD=${testPassword} ${imageTag}`.quiet();
 

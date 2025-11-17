@@ -184,7 +184,7 @@ RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
 USER postgres
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD psql -U postgres -d postgres -tAc 'SELECT 1' -w || exit 1
+    CMD pg_isready -U postgres || exit 1
 
 EXPOSE 5432
 

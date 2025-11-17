@@ -1228,13 +1228,20 @@ async function main(): Promise<void> {
     imageTag
   );
 
-  // Test 26: 14-core I/O workers (adjusted for Docker CPU limit)
-  await runCase(
-    "\n📌 Test 26: 14-core I/O workers",
-    case16coreIoWorkers,
-    ["-m", "16g", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
+  // Test 26: 14-core I/O workers
+  // Skipped in CI environment (requires 14 vCPU allocation)
+  if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
+    await runCase(
+      "\n📌 Test 26: 14-core I/O workers",
+      case16coreIoWorkers,
+      ["-m", "16g", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
+      imageTag
+    );
+  } else {
+    console.log(
+      "\n⏭️  SKIPPED: Test 26 (14-core I/O workers) - requires CI environment with sufficient resources"
+    );
+  }
 
   // Test 27: 4-core threshold
   await runCase(

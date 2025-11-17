@@ -65,33 +65,6 @@ async function assertSqlFails(
 }
 
 /**
- * Assert SQL output contains pattern
- */
-async function assertSqlContains(
-  container: string,
-  sql: string,
-  pattern: string,
-  message: string
-): Promise<void> {
-  try {
-    const result = await $`docker exec ${container} psql -U postgres -t -c ${sql}`.text();
-    const output = result.trim();
-
-    if (output.toLowerCase().includes(pattern.toLowerCase())) {
-      console.log(`✅ ${message} (found: ${output})`);
-    } else {
-      console.log(`❌ FAILED: ${message}`);
-      console.log(`   Expected pattern: ${pattern}`);
-      console.log(`   Actual output: ${output}`);
-      process.exit(1);
-    }
-  } catch {
-    console.log(`❌ FAILED: ${message} (PostgreSQL error)`);
-    process.exit(1);
-  }
-}
-
-/**
  * Test case runner interface
  */
 type TestCallback = (container: string) => Promise<void>;

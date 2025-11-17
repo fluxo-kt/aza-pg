@@ -1148,21 +1148,29 @@ async function main(): Promise<void> {
     );
   }
 
-  // Test 17: 128GB RAM, 14 vCPU (adjusted for Docker CPU limit)
-  await runCase(
-    "\n📌 Test 17: 128GB RAM, 14 vCPU",
-    case128gb32cpu,
-    ["-e", "POSTGRES_MEMORY=131072", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
+  // Test 17 & 18: Extreme memory tests (128GB & 192GB)
+  // Skipped in CI environment (GitHub Actions runners have limited resources)
+  if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
+    // Test 17: 128GB RAM, 14 vCPU
+    await runCase(
+      "\n📌 Test 17: 128GB RAM, 14 vCPU",
+      case128gb32cpu,
+      ["-e", "POSTGRES_MEMORY=131072", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
+      imageTag
+    );
 
-  // Test 18: 192GB RAM, 14 vCPU (adjusted for Docker CPU limit)
-  await runCase(
-    "\n📌 Test 18: 192GB RAM, 14 vCPU",
-    case192gb48cpu,
-    ["-e", "POSTGRES_MEMORY=196608", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
+    // Test 18: 192GB RAM, 14 vCPU
+    await runCase(
+      "\n📌 Test 18: 192GB RAM, 14 vCPU",
+      case192gb48cpu,
+      ["-e", "POSTGRES_MEMORY=196608", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
+      imageTag
+    );
+  } else {
+    console.log(
+      "\n⏭️  SKIPPED: Tests 17-18 (128GB & 192GB RAM, 14 vCPU) - requires CI environment with sufficient resources"
+    );
+  }
 
   // Test 19: Web workload, 8GB RAM
   await runCase(

@@ -42,7 +42,7 @@ async function startContainer() {
   // Start container with security settings
   const result = await $`docker run --name ${TEST_CONTAINER} \
     -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
-    -e POSTGRES_MEMORY=1024 \
+    -e POSTGRES_MEMORY=2048 \
     -e POSTGRES_BIND_IP=127.0.0.1 \
     -d ${Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest"}`.nothrow();
 

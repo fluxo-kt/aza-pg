@@ -20,6 +20,7 @@ interface ManifestEntry {
   name: string;
   kind: string;
   dependencies?: string[];
+  enabled?: boolean;
   runtime?: {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
@@ -123,9 +124,14 @@ async function main(): Promise<void> {
     const manifest: Manifest = JSON.parse(manifestText);
 
     // Filter only extensions, excluding those requiring shared_preload_libraries
-    // (those can't be created via CREATE EXTENSION without preload being set at startup)
+    // and those that are disabled in the manifest
     const extensions = manifest.entries.filter((entry) => {
       if (entry.kind !== "extension") {
+        return false;
+      }
+      // Skip extensions that are disabled
+      if (entry.enabled === false) {
+        console.log(`[info] Skipping ${entry.name} (disabled in manifest)`);
         return false;
       }
       // Skip extensions that require shared_preload_libraries

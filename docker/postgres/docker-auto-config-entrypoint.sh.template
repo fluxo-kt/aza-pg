@@ -375,8 +375,14 @@ EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
 MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
 WORK_MEM_MB=$(calculate_work_mem)
 
-# Leave CPU headroom for other services: CPU × 1.5 (was CPU × 2)
-MAX_WORKER_PROCESSES=$(( CPU_CORES + CPU_CORES / 2 ))
+# Leave CPU headroom for other services
+# For smaller systems (<=4 cores): CPU + 1
+# For larger systems: CPU × 1.5
+if [ "$CPU_CORES" -le 4 ]; then
+    MAX_WORKER_PROCESSES=$(( CPU_CORES + 1 ))
+else
+    MAX_WORKER_PROCESSES=$(( CPU_CORES + CPU_CORES / 2 ))
+fi
 [ "$MAX_WORKER_PROCESSES" -lt 2 ] && MAX_WORKER_PROCESSES=2
 [ "$MAX_WORKER_PROCESSES" -gt 64 ] && MAX_WORKER_PROCESSES=64
 

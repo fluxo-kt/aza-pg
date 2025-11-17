@@ -255,7 +255,8 @@ jobs:
       - name: Test core extensions
         run: |
           echo "Testing core extension loading..."
-          bun scripts/test/test-extensions.ts --image=aza-pg-ci:test
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-extensions.ts
 
       - name: Run extension smoke tests
         run: |
@@ -486,7 +487,8 @@ jobs:
       - name: Test auto-config
         run: |
           echo "Testing auto-config functionality..."
-          bun scripts/test/test-auto-config.ts aza-pg-ci:test
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-auto-config.ts
 
       - name: Test pgflow functional
         run: |

@@ -16,7 +16,13 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  ensureImageAvailable,
+  waitForPostgres,
+} from "../utils/docker";
 import { error, info, success } from "../utils/logger.ts";
 
 interface ManifestEntry {
@@ -499,13 +505,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Check if image exists
+  // Ensure image is available (will auto-pull from registry if needed)
   try {
-    await $`docker image inspect ${IMAGE_TAG}`.quiet();
-  } catch {
-    error(`Docker image not found: ${IMAGE_TAG}`);
-    console.log("   Build image first: bun scripts/build.ts");
-    console.log(`   Or run: bun scripts/test/test-build.ts ${IMAGE_TAG}`);
+    await ensureImageAvailable(IMAGE_TAG);
+  } catch (err) {
+    error(
+      `Failed to ensure image availability: ${err instanceof Error ? err.message : String(err)}`
+    );
     process.exit(1);
   }
 

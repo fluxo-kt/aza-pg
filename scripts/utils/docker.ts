@@ -100,6 +100,65 @@ export async function dockerCleanup(containerName: string): Promise<void> {
 }
 
 /**
+ * Ensure Docker image is available locally
+ * If the image is not found locally and appears to be a registry image,
+ * attempts to pull it automatically.
+ *
+ * @param imageTag - Docker image tag (e.g., "aza-pg:pg18" or "ghcr.io/org/image:tag")
+ * @throws Error if image cannot be found or pulled
+ */
+export async function ensureImageAvailable(imageTag: string): Promise<void> {
+  if (!imageTag || imageTag.trim() === "") {
+    throw new Error("ensureImageAvailable: image tag is required");
+  }
+
+  // Check if image exists locally
+  try {
+    const proc = spawn(["docker", "image", "inspect", imageTag], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode === 0) {
+      return; // Image found locally
+    }
+  } catch {
+    // Image not in local cache, continue to pull logic
+  }
+
+  // Determine if this is a registry image (not a simple tag or localhost)
+  const isRegistryImage = imageTag.includes("/") && !imageTag.startsWith("localhost/");
+
+  if (isRegistryImage) {
+    info(`Image not found locally, pulling from registry: ${imageTag}`);
+    try {
+      const pullProc = spawn(["docker", "pull", imageTag], {
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      const pullExitCode = await pullProc.exited;
+
+      if (pullExitCode === 0) {
+        success(`Successfully pulled image: ${imageTag}`);
+        return;
+      } else {
+        error(`Failed to pull image: ${imageTag}`);
+        throw new Error(`Docker pull failed with exit code ${pullExitCode}`);
+      }
+    } catch (pullError) {
+      error(`Failed to pull image: ${imageTag}`);
+      throw pullError;
+    }
+  }
+
+  // Local image that doesn't exist
+  error(`Docker image not found: ${imageTag}`);
+  console.log("   Build image first: bun scripts/build.ts");
+  console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
+  throw new Error(`Image not available: ${imageTag}`);
+}
+
+/**
  * Options for waiting for PostgreSQL to be ready
  */
 export interface WaitForPostgresOptions {

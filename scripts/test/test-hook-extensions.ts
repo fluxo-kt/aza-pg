@@ -15,7 +15,13 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  ensureImageAvailable,
+  waitForPostgres,
+} from "../utils/docker";
 import { error } from "../utils/logger.ts";
 
 // Generate random test password at runtime
@@ -231,13 +237,13 @@ async function main(): Promise<void> {
 
   const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
 
-  // Check if image exists
+  // Ensure image is available (will auto-pull from registry if needed)
   try {
-    await $`docker image inspect ${imageTag}`.quiet();
-  } catch {
-    error(`Docker image not found: ${imageTag}`);
-    console.log("   Build image first: bun scripts/build.ts");
-    console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
+    await ensureImageAvailable(imageTag);
+  } catch (err) {
+    error(
+      `Failed to ensure image availability: ${err instanceof Error ? err.message : String(err)}`
+    );
     process.exit(1);
   }
 

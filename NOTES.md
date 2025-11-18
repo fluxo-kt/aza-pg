@@ -85,6 +85,7 @@
   - Tier 3: pg_dump + cron (Simple, works everywhere; No PITR without WAL archiving)
 - Monitoring
   - https://github.com/RostislavDugin/postgresus monitoring and backups (with UI and self hosted)
+    - https://postgresus.com
   - https://github.com/percona/pmm Percona Monitoring and Management: an open source database monitoring, observability and management tool
   - https://github.com/percona/grafana-dashboards PMM dashboards for database monitoring
   - https://github.com/postgres-ai/postgres_ai Postgres monitoring tool designed for humans and AI systems

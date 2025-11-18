@@ -149,3 +149,7 @@ Container publication
 - Docker Build with provenance (https://github.com/actions/attest-build-provenance)
   - https://github.com/brendanbank/gpsd-prometheus-exporter/blob/d4e0a24/docker-publish-org.yml#L85
   - https://github.com/pagopa/dx/blob/a8f597a/actions/docker-build-push/action.yaml#L193
+
+### Authorization
+
+- https://www.keycloak.org / https://github.com/keycloak/keycloak

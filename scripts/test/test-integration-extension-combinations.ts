@@ -22,7 +22,7 @@ interface TestResult {
 }
 
 const results: TestResult[] = [];
-const TEST_CONTAINER = "aza-pg-primary";
+const TEST_CONTAINER = `aza-pg-extensions-test-${Date.now()}`;
 const TEST_PASSWORD = "integrationTestPass123!";
 
 /**
@@ -34,19 +34,24 @@ async function startContainer() {
   // Clean up any existing container
   await $`docker rm -f ${TEST_CONTAINER}`.nothrow();
 
+  // Use image from environment or default
+  const testImage = Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest";
+  console.log(`Using test image: ${testImage}`);
+
   // Start container with required extensions (excluding pgsodium and pg_partman which require special setup)
   const result = await $`docker run --name ${TEST_CONTAINER} \
     -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
     -e POSTGRES_MEMORY=2048 \
     -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb" \
-    -d ${Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest"}`.nothrow();
+    -d ${testImage}`.nothrow();
 
   if (result.exitCode !== 0) {
-    throw new Error("Failed to start test container - image may not be built");
+    console.error(`Failed to start container: ${result.stderr.toString()}`);
+    throw new Error(`Failed to start test container from image ${testImage}`);
   }
 
-  // Wait for database to be ready
-  for (let i = 0; i < 60; i++) {
+  // Wait for database to be ready (up to 120 seconds for CI environments)
+  for (let i = 0; i < 120; i++) {
     const check =
       await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
     if (check.exitCode === 0) {

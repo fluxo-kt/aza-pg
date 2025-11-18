@@ -68,6 +68,16 @@ interface Options {
   annotationsFile?: string;
   annotationPrefix: string;
   dryRun: boolean;
+  // Metadata flags from workflow
+  version?: string;
+  pgVersion?: string;
+  catalogEnabled?: string;
+  catalogTotal?: string;
+  baseImageName?: string;
+  baseImageDigest?: string;
+  revision?: string;
+  sourceUrl?: string;
+  githubOutput?: boolean;
 }
 
 function printHelp(): void {
@@ -194,6 +204,82 @@ function parseArgs(): Options {
         options.dryRun = true;
         break;
 
+      case "--version":
+        if (i + 1 >= args.length) {
+          error("--version requires an argument");
+          process.exit(1);
+        }
+        options.version = args[i + 1]!;
+        i++;
+        break;
+
+      case "--pg-version":
+        if (i + 1 >= args.length) {
+          error("--pg-version requires an argument");
+          process.exit(1);
+        }
+        options.pgVersion = args[i + 1]!;
+        i++;
+        break;
+
+      case "--catalog-enabled":
+        if (i + 1 >= args.length) {
+          error("--catalog-enabled requires an argument");
+          process.exit(1);
+        }
+        options.catalogEnabled = args[i + 1]!;
+        i++;
+        break;
+
+      case "--catalog-total":
+        if (i + 1 >= args.length) {
+          error("--catalog-total requires an argument");
+          process.exit(1);
+        }
+        options.catalogTotal = args[i + 1]!;
+        i++;
+        break;
+
+      case "--base-image-name":
+        if (i + 1 >= args.length) {
+          error("--base-image-name requires an argument");
+          process.exit(1);
+        }
+        options.baseImageName = args[i + 1]!;
+        i++;
+        break;
+
+      case "--base-image-digest":
+        if (i + 1 >= args.length) {
+          error("--base-image-digest requires an argument");
+          process.exit(1);
+        }
+        options.baseImageDigest = args[i + 1]!;
+        i++;
+        break;
+
+      case "--revision":
+        if (i + 1 >= args.length) {
+          error("--revision requires an argument");
+          process.exit(1);
+        }
+        options.revision = args[i + 1]!;
+        i++;
+        break;
+
+      case "--source-url":
+        if (i + 1 >= args.length) {
+          error("--source-url requires an argument");
+          process.exit(1);
+        }
+        options.sourceUrl = args[i + 1]!;
+        i++;
+        break;
+
+      case "--github-output":
+        options.githubOutput = true;
+        break;
+
       default:
         error(`Unknown option: ${arg}`);
         printHelp();
@@ -230,6 +316,55 @@ function validateSources(sources: string[]): void {
       process.exit(1);
     }
   }
+}
+
+/**
+ * Build OCI annotations from metadata flags
+ * @param options - Parsed options containing metadata
+ * @returns Object with OCI annotation key-value pairs
+ */
+function buildMetadataAnnotations(options: Options): Record<string, string> {
+  const annotations: Record<string, string> = {};
+
+  // Add timestamp if not provided
+  const created = new Date().toISOString();
+  annotations["org.opencontainers.image.created"] = created;
+
+  // Map metadata flags to OCI annotations
+  if (options.version) {
+    annotations["org.opencontainers.image.version"] = options.version;
+  }
+
+  if (options.revision) {
+    annotations["org.opencontainers.image.revision"] = options.revision;
+  }
+
+  if (options.sourceUrl) {
+    annotations["org.opencontainers.image.source"] = options.sourceUrl;
+  }
+
+  if (options.baseImageName) {
+    annotations["org.opencontainers.image.base.name"] = options.baseImageName;
+  }
+
+  if (options.baseImageDigest) {
+    annotations["org.opencontainers.image.base.digest"] = options.baseImageDigest;
+  }
+
+  // Custom annotations for PostgreSQL-specific metadata
+  if (options.pgVersion) {
+    annotations["com.aza-pg.postgres.version"] = options.pgVersion;
+  }
+
+  if (options.catalogEnabled) {
+    annotations["com.aza-pg.catalog.enabled"] = options.catalogEnabled;
+  }
+
+  if (options.catalogTotal) {
+    annotations["com.aza-pg.catalog.total"] = options.catalogTotal;
+  }
+
+  return annotations;
 }
 
 /**
@@ -321,12 +456,22 @@ function buildCommand(options: Options, annotations?: Record<string, string>): s
  * @param options - Parsed options
  */
 async function createManifest(options: Options): Promise<void> {
-  // Load annotations if file provided
-  let annotations: Record<string, string> | undefined;
+  // Build metadata annotations from flags
+  const metadataAnnotations = buildMetadataAnnotations(options);
+
+  // Load annotations from file if provided
+  let fileAnnotations: Record<string, string> = {};
   if (options.annotationsFile) {
     info(`Loading annotations from: ${options.annotationsFile}`);
-    annotations = await loadAnnotations(options.annotationsFile);
-    info(`Loaded ${Object.keys(annotations).length} annotations`);
+    fileAnnotations = await loadAnnotations(options.annotationsFile);
+    info(`Loaded ${Object.keys(fileAnnotations).length} annotations from file`);
+  }
+
+  // Merge annotations (file takes precedence over metadata)
+  const annotations = { ...metadataAnnotations, ...fileAnnotations };
+
+  if (Object.keys(annotations).length > 0) {
+    info(`Using ${Object.keys(annotations).length} total annotations`);
   }
 
   // Build command
@@ -365,6 +510,13 @@ async function createManifest(options: Options): Promise<void> {
 
     success("Manifest created and pushed successfully");
     info(`Tag: ${options.tag}`);
+
+    // Output for GitHub Actions workflow
+    if (options.githubOutput && Bun.env.GITHUB_OUTPUT) {
+      const outputContent = `manifest-tag=${options.tag}\n`;
+      await Bun.write(Bun.env.GITHUB_OUTPUT, outputContent);
+      info("GitHub output written");
+    }
   } catch (err) {
     // GitHub Actions annotations for CI/CD
     if (Bun.env.GITHUB_ACTIONS === "true") {

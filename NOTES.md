@@ -16,7 +16,9 @@
   - **pgflow** - Postgres-centric workflow engine with optional deep integration with Supabase
     - https://github.com/pgflow-dev/pgflow
     - https://www.pgflow.dev
-- PG Admin panels (Mathesar, Kottster, NocoDB, Baserow, Directus, pgAdmin, Apache Superset, Metabase) - https://www.perplexity.ai/search/gIhJG0_pS163fBGawdd3Mw
+- PG Admin panels (Mathesar, Kottster, NocoDB, Baserow, Directus, pgAdmin, Apache Superset, Metabase)
+  - https://www.perplexity.ai/search/gIhJG0_pS163fBGawdd3Mw
+  - https://gateway.drizzle.team
 - PG extensions
   - [EXTENSIONS.md](docs/EXTENSIONS.md)
   - **https://www.perplexity.ai/search/1Hg1uD3dQM6R0evCT1nIUw**

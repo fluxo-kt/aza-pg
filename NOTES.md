@@ -68,6 +68,17 @@
     - Running on production primary instance risks starving OLTP workloads
     - Best practice: Deploy on dedicated read replicas only
     - Each PG connection spawns its own DuckDB instance (min 125 MB per-connection)
+- Reactivity
+  - https://www.perplexity.ai/search/what-are-the-best-open-source-FB2dPeKCSYW7MGvxyu7SaA
+    1. LISTEN/NOTIFY
+    2. Logical Replication
+    3. SKIP LOCKED Pattern
+    4. wal2json
+    5. decoderbufs
+    6. pgoutput
+    7. pgoutput
+    8. pg_eventserv
+    9. pgsync
 - Backup & Disaster Recovery
   - Tier 1: pgBackRest (Compression, encryption, parallel backup/restore; Block-level incremental backups)
   - Tier 2: WAL-G (Cloud-optimized: S3, GCS, Azure; Used by GitLab.com; Go-based successor to WAL-E)

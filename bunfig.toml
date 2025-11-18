@@ -29,6 +29,8 @@ hot = false
 [test]
 # Test coverage disabled by default (no unit test framework currently)
 coverage = false
+# Global test timeout to prevent hanging on container startup
+timeout = 120000  # 2 minutes per test (in milliseconds)
 
 # Preload files for tests (if needed later)
 # preload = ["./scripts/test/setup.ts"]

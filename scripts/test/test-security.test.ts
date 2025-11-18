@@ -72,11 +72,11 @@ async function stopContainer() {
 
 beforeAll(async () => {
   await startContainer();
-});
+}, 90000); // 90 second timeout for container startup
 
 afterAll(async () => {
   await stopContainer();
-});
+}, 15000); // 15 second timeout for cleanup
 
 describe("Security - Authentication", () => {
   test("SCRAM-SHA-256 should be enforced (no MD5)", async () => {

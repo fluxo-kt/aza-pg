@@ -50,17 +50,19 @@ async function startContainer() {
     throw new Error("Failed to start test container - image may not be built");
   }
 
-  // Wait for database to be ready
-  for (let i = 0; i < 30; i++) {
+  // Wait for database to be ready (increased timeout for CI environments)
+  for (let i = 0; i < 120; i++) {
     const check = await runSQL("SELECT 1");
     if (check.success) {
       console.log("Database is ready");
+      // Give extensions a moment to fully initialize
+      await Bun.sleep(2000);
       return;
     }
     await Bun.sleep(1000);
   }
 
-  throw new Error("Database did not become ready in time");
+  throw new Error("Database did not become ready in time (120s timeout)");
 }
 
 /**

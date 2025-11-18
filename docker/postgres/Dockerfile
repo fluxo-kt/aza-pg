@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-18T09:59:40.596Z
+# Generated at: 2025-11-18T10:28:42.014Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -79,11 +79,14 @@ RUN set -eu && \
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Bun for running TypeScript build scripts
-# Pinned to v1.1.29 - last stable version before ARM64 segfault in v1.1.30
-# See: https://github.com/oven-sh/bun/issues/14442 (SQLite locking on ARM64)
+# Extracts version from project .tool-versions file (single source of truth)
+COPY .tool-versions /tmp/.tool-versions
 RUN set -eu && \
-    curl -fsSL https://bun.sh/install | bash -s -- bun-v1.1.29 && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+    BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
+    echo "Installing Bun v${BUN_VERSION}" && \
+    curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
+    rm /tmp/.tool-versions
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs

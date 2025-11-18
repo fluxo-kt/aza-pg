@@ -322,16 +322,15 @@ jobs:
 
       - name: Create manifest list and push (testing tag)
         id: merge
-        working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
           echo "=== Pre-merge Validation ==="
 
           # Verify we have exactly 2 digest files (amd64 + arm64)
-          DIGEST_COUNT=$(ls -1 | wc -l)
+          DIGEST_COUNT=$(ls -1 ${{ runner.temp }}/digests | wc -l)
           echo "Digest files found: ${DIGEST_COUNT}"
-          ls -1
+          ls -1 ${{ runner.temp }}/digests
 
           if [ "${DIGEST_COUNT}" -ne 2 ]; then
             echo "❌ ERROR: Expected 2 digest files (amd64 + arm64), found ${DIGEST_COUNT}"
@@ -342,10 +341,12 @@ jobs:
           echo ""
           echo "=== Creating Multi-Arch Manifest ==="
 
-          # Build source digest list
+          # Build source digest list (from digests directory)
+          cd ${{ runner.temp }}/digests
           SOURCES=$(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s,' * | sed 's/,$//')
+          cd -  # Return to repository root (needed for script execution)
 
-          # Create manifest using TypeScript script
+          # Create manifest using TypeScript script (now runs from repo root)
           bun scripts/docker/create-manifest.ts \
             --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
             --sources "$SOURCES" \

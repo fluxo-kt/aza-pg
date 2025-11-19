@@ -243,7 +243,8 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
 }
 
 /**
- * Run docker command and return stdout
+ * Run docker command and return stdout + stderr
+ * When command fails, stderr is included in output for error diagnosis
  */
 export async function dockerRun(args: string[]): Promise<{ success: boolean; output: string }> {
   try {
@@ -252,12 +253,19 @@ export async function dockerRun(args: string[]): Promise<{ success: boolean; out
       stderr: "pipe",
     });
 
-    const output = await new Response(proc.stdout).text();
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     const exitCode = await proc.exited;
+
+    // On success, return stdout only
+    // On failure, combine stderr (errors) with stdout (if any)
+    const output = exitCode === 0 ? stdout.trim() : `${stderr.trim()}\n${stdout.trim()}`.trim();
 
     return {
       success: exitCode === 0,
-      output: output.trim(),
+      output,
     };
   } catch (err) {
     return {

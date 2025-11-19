@@ -101,6 +101,7 @@ async function startContainer(image: string): Promise<boolean> {
 
 /**
  * Wait for PostgreSQL to be ready
+ * Waits for Docker healthcheck (healthy status) which ensures init DB phase completes
  */
 async function waitForPostgres(timeoutSeconds: number): Promise<boolean> {
   info(`Waiting for PostgreSQL to be ready (timeout: ${timeoutSeconds}s)...`);
@@ -109,9 +110,16 @@ async function waitForPostgres(timeoutSeconds: number): Promise<boolean> {
   const timeoutMs = timeoutSeconds * 1000;
 
   while (Date.now() - startTime < timeoutMs) {
-    const result = await dockerRun(["exec", CONTAINER_NAME, "pg_isready", "-U", "postgres"]);
+    // Check container health status (not just pg_isready)
+    // The healthcheck waits for init DB completion before reporting healthy
+    const healthResult = await dockerRun([
+      "inspect",
+      "--format",
+      "{{.State.Health.Status}}",
+      CONTAINER_NAME,
+    ]);
 
-    if (result.success) {
+    if (healthResult.success && healthResult.output === "healthy") {
       success(`PostgreSQL ready in ${formatDuration(Date.now() - startTime)}`);
       return true;
     }

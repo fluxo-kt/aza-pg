@@ -320,6 +320,7 @@ async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
 POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
+POSTGRES_CPU_LIMIT=2
 COMPOSE_PROJECT_NAME=aza-pg-replica-test-replica
 POSTGRES_NETWORK_NAME=postgres-replica-test-net
 PRIMARY_HOST=postgres

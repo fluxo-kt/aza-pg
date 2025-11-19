@@ -35,10 +35,16 @@ interface BuildConfig {
 
 // Parse command line arguments
 function parseArgs(): BuildConfig {
+  // Handle POSTGRES_IMAGE which may already include a tag (e.g., "aza-pg-ci:test")
+  const postgresImage = Bun.env.POSTGRES_IMAGE || "aza-pg";
+  const [imageName, existingTag] = postgresImage.includes(":")
+    ? postgresImage.split(":", 2)
+    : [postgresImage, undefined];
+
   const config: BuildConfig = {
     builderName: "aza-pg-builder",
-    imageName: Bun.env.POSTGRES_IMAGE || "aza-pg",
-    imageTag: Bun.env.POSTGRES_TAG || "pg18",
+    imageName,
+    imageTag: existingTag || Bun.env.POSTGRES_TAG || "pg18",
     cacheRegistry: "ghcr.io/fluxo-kt/aza-pg",
     cacheTag: "buildcache",
     multiArch: false,

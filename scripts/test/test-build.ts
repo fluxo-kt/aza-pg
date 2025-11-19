@@ -52,7 +52,7 @@ function generateTestPassword(): string {
  */
 function getProjectRoot(): string {
   const scriptDir = dirname(import.meta.dir);
-  return resolve(scriptDir, "..", "..");
+  return resolve(scriptDir, "..");
 }
 
 /**
@@ -93,10 +93,10 @@ function verifyDockerfile(projectRoot: string): void {
  */
 async function buildDockerImage(config: BuildTestConfig): Promise<void> {
   console.log("📦 Building Docker image with buildx...");
-  const buildDir = resolve(config.projectRoot, "docker/postgres");
+  const dockerfilePath = "docker/postgres/Dockerfile";
 
   try {
-    await $`cd ${buildDir} && docker buildx build --load -t ${config.imageTag} .`;
+    await $`cd ${config.projectRoot} && docker buildx build --load -f ${dockerfilePath} -t ${config.imageTag} .`;
     console.log("✅ Build successful");
     console.log();
   } catch {
@@ -104,7 +104,7 @@ async function buildDockerImage(config: BuildTestConfig): Promise<void> {
     error("Docker buildx build failed");
     console.log("   Check Dockerfile syntax and build context");
     console.log(
-      `   Retry with verbose output: docker buildx build --load --progress=plain -t ${config.imageTag} .`
+      `   Retry with verbose output: docker buildx build --load --progress=plain -f ${dockerfilePath} -t ${config.imageTag} .`
     );
     process.exit(1);
   }

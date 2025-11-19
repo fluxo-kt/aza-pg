@@ -34,7 +34,15 @@ interface TestResult {
   error?: string;
 }
 
+interface CombinationResult {
+  name: string;
+  description: string;
+  tested: boolean;
+  skipReason?: string;
+}
+
 const results: TestResult[] = [];
+const combinationResults: CombinationResult[] = [];
 const TEST_CONTAINER = `aza-pg-extensions-test-${Date.now()}`;
 const TEST_PASSWORD = "integrationTestPass123!";
 
@@ -46,7 +54,14 @@ async function startContainer() {
 
   // Load manifest to determine extensions
   const manifest = loadManifestForTests();
-  const preloadExtensions = getPreloadExtensions(manifest);
+
+  // ⚠️ ONLY load default-enabled preload extensions (not ALL preload extensions)
+  // This prevents loading optional extensions (timescaledb, pg_partman, set_user)
+  // which caused the original test failure.
+  // Default preload extensions: pg_cron, pgaudit, pg_stat_statements, auto_explain, pg_stat_monitor
+  const allPreloadExtensions = getPreloadExtensions(manifest);
+  const preloadExtensions = allPreloadExtensions.filter((e) => e.runtime?.defaultEnable === true);
+
   const testableExtensions = getTestableExtensions(manifest);
 
   // ⭐ CRITICAL VALIDATION: Ensure no tools in extension lists
@@ -57,7 +72,7 @@ async function startContainer() {
 
   // Build shared_preload_libraries string from manifest
   const preloadLibraries = buildPreloadLibraries(preloadExtensions);
-  console.log(`Preload libraries: ${preloadLibraries}`);
+  console.log(`Preload libraries (default-enabled only): ${preloadLibraries}`);
 
   // Collect initialization env vars for enabled extensions
   const initEnv: Record<string, string> = {};
@@ -203,7 +218,18 @@ async function main() {
     console.log(
       "\n⏭️  Skipping Combination 1: TimescaleDB + pgvector (one or more extensions disabled)"
     );
+    combinationResults.push({
+      name: "timescaledb + pgvector",
+      description: "Time-series with vector embeddings",
+      tested: false,
+      skipReason: "one or more extensions disabled",
+    });
   } else {
+    combinationResults.push({
+      name: "timescaledb + pgvector",
+      description: "Time-series with vector embeddings",
+      tested: true,
+    });
     console.log("\n🔗 Combination 1: TimescaleDB + pgvector");
     console.log("-".repeat(80));
 
@@ -288,7 +314,18 @@ async function main() {
     console.log(
       "\n⏭️  Skipping Combination 2: PostGIS + pgroonga (one or more extensions disabled)"
     );
+    combinationResults.push({
+      name: "postgis + pgroonga",
+      description: "Spatial data with full-text search",
+      tested: false,
+      skipReason: "one or more extensions disabled",
+    });
   } else {
+    combinationResults.push({
+      name: "postgis + pgroonga",
+      description: "Spatial data with full-text search",
+      tested: true,
+    });
     console.log("\n🔗 Combination 2: PostGIS + pgroonga");
     console.log("-".repeat(80));
 
@@ -352,7 +389,18 @@ async function main() {
     console.log(
       "\n⏭️  Skipping Combination 3: pgsodium + supabase_vault (one or more extensions disabled)"
     );
+    combinationResults.push({
+      name: "pgsodium + supabase_vault",
+      description: "Encryption stack",
+      tested: false,
+      skipReason: "one or more extensions disabled",
+    });
   } else {
+    combinationResults.push({
+      name: "pgsodium + supabase_vault",
+      description: "Encryption stack",
+      tested: true,
+    });
     console.log("\n🔗 Combination 3: pgsodium + supabase_vault");
     console.log("-".repeat(80));
 
@@ -407,7 +455,18 @@ async function main() {
     console.log(
       "\n⏭️  Skipping Combination 4: pg_partman + timescaledb (one or more extensions disabled)"
     );
+    combinationResults.push({
+      name: "pg_partman + timescaledb",
+      description: "Advanced partitioning",
+      tested: false,
+      skipReason: "one or more extensions disabled",
+    });
   } else {
+    combinationResults.push({
+      name: "pg_partman + timescaledb",
+      description: "Advanced partitioning",
+      tested: true,
+    });
     console.log("\n🔗 Combination 4: pg_partman + timescaledb");
     console.log("-".repeat(80));
 
@@ -489,11 +548,25 @@ async function main() {
       });
   }
 
+  // Show accurate summary of what was actually tested
+  const tested = combinationResults.filter((c) => c.tested);
+  const skipped = combinationResults.filter((c) => !c.tested);
+
   console.log("\nExtension Combinations Tested:");
-  console.log("  ✓ timescaledb + pgvector: Time-series with vector embeddings");
-  console.log("  ✓ postgis + pgroonga: Spatial data with full-text search");
-  console.log("  ✓ pgsodium + supabase_vault: Encryption stack");
-  console.log("  ✓ pg_partman + timescaledb: Advanced partitioning");
+  if (tested.length > 0) {
+    tested.forEach((c) => {
+      console.log(`  ✓ ${c.name}: ${c.description}`);
+    });
+  } else {
+    console.log("  (none - all combinations skipped)");
+  }
+
+  if (skipped.length > 0) {
+    console.log("\nSkipped Combinations:");
+    skipped.forEach((c) => {
+      console.log(`  ⏭️  ${c.name}: ${c.skipReason}`);
+    });
+  }
 
   console.log("\n" + "=".repeat(80));
 

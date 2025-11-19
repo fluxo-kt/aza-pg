@@ -150,13 +150,13 @@ async function runCase(
 // Test 1: pg_safeupdate (hook-based, uses session_preload_libraries)
 // ==============================================================================
 async function testPgSafeupdateSessionPreload(container: string): Promise<void> {
-  // Verify pg_safeupdate.so exists
-  const soPath = "/usr/lib/postgresql/18/lib/pg_safeupdate.so";
+  // Verify safeupdate.so exists (note: library name is "safeupdate", not "pg_safeupdate")
+  const soPath = "/usr/lib/postgresql/18/lib/safeupdate.so";
   try {
     await $`docker exec ${container} test -f ${soPath}`.quiet();
-    console.log(`✅ pg_safeupdate.so exists at ${soPath}`);
+    console.log(`✅ safeupdate.so exists at ${soPath}`);
   } catch {
-    console.log(`❌ FAILED: pg_safeupdate.so not found at ${soPath}`);
+    console.log(`❌ FAILED: safeupdate.so not found at ${soPath}`);
     process.exit(1);
   }
 
@@ -181,9 +181,10 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
   );
 
   // Test 2: With session_preload_libraries, UPDATE without WHERE should FAIL
+  // Note: Library name is "safeupdate", not "pg_safeupdate"
   await assertSqlFails(
     container,
-    "SET session_preload_libraries = 'pg_safeupdate'; UPDATE safeupdate_test SET id = 99;",
+    "SET session_preload_libraries = 'safeupdate'; UPDATE safeupdate_test SET id = 99;",
     "UPDATE requires a WHERE clause|rejected by safeupdate",
     "pg_safeupdate blocks UPDATE without WHERE"
   );
@@ -191,14 +192,14 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
   // Test 3: UPDATE with WHERE should succeed even with pg_safeupdate
   await assertSqlSuccess(
     container,
-    "SET session_preload_libraries = 'pg_safeupdate'; UPDATE safeupdate_test SET id = 99 WHERE id = 1;",
+    "SET session_preload_libraries = 'safeupdate'; UPDATE safeupdate_test SET id = 99 WHERE id = 1;",
     "UPDATE with WHERE succeeds with pg_safeupdate loaded"
   );
 
   // Test 4: DELETE without WHERE should fail with pg_safeupdate
   await assertSqlFails(
     container,
-    "SET session_preload_libraries = 'pg_safeupdate'; DELETE FROM safeupdate_test;",
+    "SET session_preload_libraries = 'safeupdate'; DELETE FROM safeupdate_test;",
     "DELETE requires a WHERE clause|rejected by safeupdate",
     "pg_safeupdate blocks DELETE without WHERE"
   );
@@ -206,7 +207,7 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
   // Test 5: DELETE with WHERE should succeed
   await assertSqlSuccess(
     container,
-    "SET session_preload_libraries = 'pg_safeupdate'; DELETE FROM safeupdate_test WHERE id = 99;",
+    "SET session_preload_libraries = 'safeupdate'; DELETE FROM safeupdate_test WHERE id = 99;",
     "DELETE with WHERE succeeds with pg_safeupdate loaded"
   );
 

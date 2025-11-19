@@ -1131,15 +1131,15 @@ async function main(): Promise<void> {
     imageTag
   );
 
-  // Test 16: 16GB RAM, 14 vCPU, DW workload
+  // Test 16: 32GB RAM, 14 vCPU, DW workload
   // Skipped in CI environment (GitHub Actions runners have limited resources)
   if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
     await runCase(
-      "\n📌 Test 16: 16GB RAM, 14 vCPU, DW workload",
+      "\n📌 Test 16: 32GB RAM, 14 vCPU, DW workload",
       case32gb16cpuDw,
       [
-        "-m",
-        "16g",
+        "-e",
+        "POSTGRES_MEMORY=32768",
         "-e",
         "POSTGRES_WORKLOAD_TYPE=dw",
         "--cpus=14",
@@ -1150,7 +1150,7 @@ async function main(): Promise<void> {
     );
   } else {
     console.log(
-      "\n⏭️  SKIPPED: Test 16 (16GB RAM, 14 vCPU, DW workload) - requires CI environment with sufficient resources"
+      "\n⏭️  SKIPPED: Test 16 (32GB RAM, 14 vCPU, DW workload) - requires CI environment with sufficient resources"
     );
   }
 

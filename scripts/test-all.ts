@@ -526,9 +526,9 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'docker run --rm -e POSTGRES_PASSWORD=test aza-pg:pg18 sh -c "ls -1 /usr/share/postgresql/18/extension/*.control | wc -l | grep -q \\"3[0-9]\\""',
+      'docker run --rm -e POSTGRES_PASSWORD=test ${POSTGRES_IMAGE:-aza-pg:pg18} sh -c "ls -1 /usr/share/postgresql/18/extension/*.control | wc -l | grep -qE \\"(6[0-9]|7[0-9]|[89][0-9])\\""',
     ],
-    description: "Verify extension count in image (30+ extensions)",
+    description: "Verify extension count in image (60+ extensions)",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
@@ -551,7 +551,7 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test aza-pg:pg18)",
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         'docker exec $CONTAINER psql -U postgres -c "CREATE EXTENSION vector;" >/dev/null',
         'docker exec $CONTAINER psql -U postgres -c "CREATE EXTENSION pg_cron;" >/dev/null',
@@ -572,7 +572,7 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=512m aza-pg:pg18)",
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=512m ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         'docker logs $CONTAINER 2>&1 | grep -i "detected ram" >/dev/null',
         'docker exec $CONTAINER psql -U postgres -c "SHOW shared_buffers;" >/dev/null',
@@ -592,7 +592,7 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g aza-pg:pg18)",
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         'docker logs $CONTAINER 2>&1 | grep -i "detected ram" >/dev/null',
         'docker exec $CONTAINER psql -U postgres -c "SHOW shared_buffers;" >/dev/null',
@@ -612,7 +612,7 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g aza-pg:pg18)",
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         'docker logs $CONTAINER 2>&1 | grep -i "detected ram" >/dev/null',
         'docker exec $CONTAINER psql -U postgres -c "SHOW shared_buffers;" >/dev/null',
@@ -692,7 +692,7 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g aza-pg:pg18)",
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "cd scripts/test && bun run test-all-extensions-functional.ts --container=$CONTAINER",
         "RESULT=$?",

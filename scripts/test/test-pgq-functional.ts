@@ -15,9 +15,33 @@
  */
 
 import { $ } from "bun";
+import { join } from "node:path";
 
 const CONTAINER =
   Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
+
+// Check if pgq extension is enabled in manifest
+const REPO_ROOT = join(import.meta.dir, "../..");
+const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+
+try {
+  const manifest = await Bun.file(MANIFEST_PATH).json();
+  const pgqEntry = manifest.entries.find((e: any) => e.name === "pgq");
+
+  if (pgqEntry && pgqEntry.enabled === false) {
+    console.log("\n" + "=".repeat(80));
+    console.log("PGQ FUNCTIONAL TEST SKIPPED");
+    console.log("=".repeat(80));
+    console.log("⏭️  pgq extension is disabled in manifest (enabled: false)");
+    console.log("   Reason: " + (pgqEntry.disabledReason || "Not specified"));
+    console.log("   To enable: Set enabled: true in scripts/extensions/manifest-data.ts");
+    console.log("=".repeat(80));
+    process.exit(0);
+  }
+} catch (error) {
+  console.error("Warning: Could not read manifest file:", error);
+  console.log("Proceeding with tests...\n");
+}
 
 interface TestResult {
   name: string;

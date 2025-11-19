@@ -286,6 +286,8 @@ async function generateDockerfile(): Promise<void> {
 
   // Replace placeholders
   info("Replacing placeholders...");
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_VERSION_ARGS}}", pgdgVersionArgs);
   dockerfile = dockerfile.replace("{{PGDG_VERSION_ARG_REDECLARE}}", pgdgVersionArgRedeclare);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);

@@ -1,12 +1,12 @@
-# PostgreSQL 18.1 with comprehensive extension suite
+# PostgreSQL {{PG_VERSION}} with comprehensive extension suite
 
-ARG PG_VERSION=18.1
-ARG PG_BASE_IMAGE_SHA=sha256:1477c9abe8bb7204b6d8ae3c2aa1a96408a535854fab9a289ca91bfcdc7d414d
+ARG PG_VERSION={{PG_VERSION}}
+ARG PG_BASE_IMAGE_SHA={{PG_BASE_IMAGE_SHA}}
 
 # Build metadata for OCI labels
 ARG BUILD_DATE
 ARG VCS_REF
-ARG VERSION=18.1
+ARG VERSION={{PG_VERSION}}
 
 # PGDG extension versions (14 pre-compiled extensions)
 {{PGDG_VERSION_ARGS}}

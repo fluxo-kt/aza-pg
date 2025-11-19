@@ -42,7 +42,7 @@ export interface ExtensionDefaults {
  */
 export const extensionDefaults: ExtensionDefaults = {
   pgVersion: "18.1",
-  baseImageSha: "sha256:1477c9abe8bb7204b6d8ae3c2aa1a96408a535854fab9a289ca91bfcdc7d414d",
+  baseImageSha: "sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f",
   pgdgVersions: {
     pgcron: "1.6.7-2.pgdg13+1",
     pgaudit: "18.0-2.pgdg13+1",

@@ -43,34 +43,6 @@ async function assertSqlSuccess(container: string, sql: string, message: string)
 }
 
 /**
- * Assert SQL command fails with expected error
- */
-async function assertSqlFails(
-  container: string,
-  sql: string,
-  expectedError: string,
-  message: string
-): Promise<void> {
-  try {
-    await $`docker exec ${container} psql -U postgres -t -c ${sql}`.quiet();
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   Expected failure but command succeeded`);
-    console.log(`   SQL: ${sql}`);
-    process.exit(1);
-  } catch (error: unknown) {
-    const output = error instanceof Error ? error.message : String(error);
-    if (output.toLowerCase().includes(expectedError.toLowerCase())) {
-      console.log(`✅ ${message}`);
-    } else {
-      console.log(`❌ FAILED: ${message}`);
-      console.log(`   Expected error pattern: ${expectedError}`);
-      console.log(`   Actual output: ${output}`);
-      process.exit(1);
-    }
-  }
-}
-
-/**
  * Test case runner interface
  */
 type TestCallback = (container: string) => Promise<void>;
@@ -181,35 +153,110 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
   );
 
   // Test 2: With session_preload_libraries, UPDATE without WHERE should FAIL
-  // Note: Library name is "safeupdate", not "pg_safeupdate"
-  await assertSqlFails(
-    container,
-    "SET session_preload_libraries = 'safeupdate'; UPDATE safeupdate_test SET id = 99;",
-    "UPDATE requires a WHERE clause|rejected by safeupdate",
-    "pg_safeupdate blocks UPDATE without WHERE"
+  // Note: session_preload_libraries must be set BEFORE session starts
+  // We use PGOPTIONS environment variable to set it for a new session
+  const result2 = await Bun.spawn(
+    [
+      "docker",
+      "exec",
+      "-e",
+      "PGOPTIONS=-c session_preload_libraries=safeupdate",
+      container,
+      "psql",
+      "-U",
+      "postgres",
+      "-t",
+      "-c",
+      "UPDATE safeupdate_test SET id = 99;",
+    ],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    }
   );
+
+  const stdout2 = await new Response(result2.stdout).text();
+  const stderr2 = await new Response(result2.stderr).text();
+  const exitCode2 = await result2.exited;
+  const output2 = (stdout2 + stderr2).toLowerCase();
+
+  if (exitCode2 === 0) {
+    console.log(`❌ FAILED: pg_safeupdate blocks UPDATE without WHERE`);
+    console.log(`   Expected failure but command succeeded`);
+    process.exit(1);
+  } else if (
+    output2.includes("update requires a where clause") ||
+    output2.includes("rejected by safeupdate")
+  ) {
+    console.log(`✅ pg_safeupdate blocks UPDATE without WHERE`);
+  } else {
+    console.log(`❌ FAILED: pg_safeupdate blocks UPDATE without WHERE`);
+    console.log(`   Expected error pattern: UPDATE requires a WHERE clause|rejected by safeupdate`);
+    console.log(`   Actual output: ${stdout2}${stderr2}`);
+    process.exit(1);
+  }
 
   // Test 3: UPDATE with WHERE should succeed even with pg_safeupdate
-  await assertSqlSuccess(
-    container,
-    "SET session_preload_libraries = 'safeupdate'; UPDATE safeupdate_test SET id = 99 WHERE id = 1;",
-    "UPDATE with WHERE succeeds with pg_safeupdate loaded"
-  );
+  try {
+    await $`docker exec -e PGOPTIONS="-c session_preload_libraries=safeupdate" ${container} psql -U postgres -t -c "UPDATE safeupdate_test SET id = 99 WHERE id = 1;"`.quiet();
+    console.log(`✅ UPDATE with WHERE succeeds with pg_safeupdate loaded`);
+  } catch {
+    console.log(`❌ FAILED: UPDATE with WHERE succeeds with pg_safeupdate loaded`);
+    console.log(`   SQL: UPDATE safeupdate_test SET id = 99 WHERE id = 1;`);
+    process.exit(1);
+  }
 
   // Test 4: DELETE without WHERE should fail with pg_safeupdate
-  await assertSqlFails(
-    container,
-    "SET session_preload_libraries = 'safeupdate'; DELETE FROM safeupdate_test;",
-    "DELETE requires a WHERE clause|rejected by safeupdate",
-    "pg_safeupdate blocks DELETE without WHERE"
+  const result4 = await Bun.spawn(
+    [
+      "docker",
+      "exec",
+      "-e",
+      "PGOPTIONS=-c session_preload_libraries=safeupdate",
+      container,
+      "psql",
+      "-U",
+      "postgres",
+      "-t",
+      "-c",
+      "DELETE FROM safeupdate_test;",
+    ],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    }
   );
 
+  const stdout4 = await new Response(result4.stdout).text();
+  const stderr4 = await new Response(result4.stderr).text();
+  const exitCode4 = await result4.exited;
+  const output4 = (stdout4 + stderr4).toLowerCase();
+
+  if (exitCode4 === 0) {
+    console.log(`❌ FAILED: pg_safeupdate blocks DELETE without WHERE`);
+    console.log(`   Expected failure but command succeeded`);
+    process.exit(1);
+  } else if (
+    output4.includes("delete requires a where clause") ||
+    output4.includes("rejected by safeupdate")
+  ) {
+    console.log(`✅ pg_safeupdate blocks DELETE without WHERE`);
+  } else {
+    console.log(`❌ FAILED: pg_safeupdate blocks DELETE without WHERE`);
+    console.log(`   Expected error pattern: DELETE requires a WHERE clause|rejected by safeupdate`);
+    console.log(`   Actual output: ${stdout4}${stderr4}`);
+    process.exit(1);
+  }
+
   // Test 5: DELETE with WHERE should succeed
-  await assertSqlSuccess(
-    container,
-    "SET session_preload_libraries = 'safeupdate'; DELETE FROM safeupdate_test WHERE id = 99;",
-    "DELETE with WHERE succeeds with pg_safeupdate loaded"
-  );
+  try {
+    await $`docker exec -e PGOPTIONS="-c session_preload_libraries=safeupdate" ${container} psql -U postgres -t -c "DELETE FROM safeupdate_test WHERE id = 99;"`.quiet();
+    console.log(`✅ DELETE with WHERE succeeds with pg_safeupdate loaded`);
+  } catch {
+    console.log(`❌ FAILED: DELETE with WHERE succeeds with pg_safeupdate loaded`);
+    console.log(`   SQL: DELETE FROM safeupdate_test WHERE id = 99;`);
+    process.exit(1);
+  }
 
   // Cleanup
   await assertSqlSuccess(container, "DROP TABLE safeupdate_test;", "Cleanup safeupdate test table");

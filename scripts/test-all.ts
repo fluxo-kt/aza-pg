@@ -803,7 +803,7 @@ const allChecks: Check[] = [
   {
     name: "Security Tests",
     category: "functional",
-    command: ["bun", "test", "./scripts/test/test-security.ts"],
+    command: ["bun", "test", "./scripts/test/test-security.test.ts"],
     description: "SCRAM-SHA-256 auth, pgAudit, network binding tests (requires image)",
     critical: true,
     requiresDocker: true,

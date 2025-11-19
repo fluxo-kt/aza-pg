@@ -149,12 +149,17 @@ async function testEnabledExtensions(manifest: Manifest): Promise<TestResult> {
   const startTime = Date.now();
 
   try {
-    // Get enabled extensions (excluding tools and preload-only modules)
+    // Get enabled extensions (excluding tools, preload-only modules, and optional preload extensions)
     const enabledExtensions = manifest.entries.filter((entry) => {
       const isEnabled = entry.enabled !== false;
       const isNotTool = entry.kind !== "tool";
       const isNotPreloadOnly = entry.runtime?.preloadOnly !== true;
-      return isEnabled && isNotTool && isNotPreloadOnly;
+      // Exclude optional preload extensions (require preloading but not preloaded by default)
+      // These need POSTGRES_SHARED_PRELOAD_LIBRARIES env var to work
+      const isNotOptionalPreload = !(
+        entry.runtime?.sharedPreload === true && entry.runtime?.defaultEnable === false
+      );
+      return isEnabled && isNotTool && isNotPreloadOnly && isNotOptionalPreload;
     });
 
     info(`Testing ${enabledExtensions.length} enabled extensions...`);

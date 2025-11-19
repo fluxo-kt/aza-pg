@@ -4,6 +4,11 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
 **Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below.
 
+## CRITCICAL RULES
+
+- ALWAYS COMPREHENSIVELY HOLYSTICALLY VERIFY/TEST/CHECK ALL PARTS OF YOUR WORK/CHANGES LOCALLY BEFORE COMMITTING
+- DOUBLE CHECK & CONFIRM ALL TESTS AND VERIFICATIONS ARE COMPLETE AND SUCCESSFUL BEFORE PUSHING
+
 ## Invariants
 
 - Preload (default): auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit

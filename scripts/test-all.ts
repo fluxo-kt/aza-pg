@@ -471,6 +471,8 @@ const allChecks: Check[] = [
     ],
     description: "Scan for potential secrets in tracked files",
     critical: false,
+    // NOTE: Expected to fail in test mode - test files intentionally contain test passwords
+    // (e.g., POSTGRES_PASSWORD=test, secureTestPass123!). This is acceptable for test suites.
   },
   {
     name: "Repository Health Check",
@@ -648,7 +650,7 @@ const allChecks: Check[] = [
   {
     name: "Filesystem Verification",
     category: "functional",
-    command: ["bun", "scripts/docker/verify-filesystem.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/docker/verify-filesystem.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Verify extension files in Docker image filesystem",
     critical: true,
     requiresDocker: true,
@@ -658,7 +660,7 @@ const allChecks: Check[] = [
   {
     name: "Runtime Verification",
     category: "functional",
-    command: ["bun", "scripts/docker/verify-runtime.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/docker/verify-runtime.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Verify extension runtime behavior in Docker image",
     critical: true,
     requiresDocker: true,
@@ -668,7 +670,11 @@ const allChecks: Check[] = [
   {
     name: "Disabled Extensions Test",
     category: "functional",
-    command: ["bun", "scripts/test/test-disabled-extensions.ts", "aza-pg:pg18"],
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-disabled-extensions.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
     description: "Verify disabled extensions are properly excluded",
     critical: true,
     requiresDocker: true,
@@ -678,7 +684,11 @@ const allChecks: Check[] = [
   {
     name: "Hook Extensions Test",
     category: "functional",
-    command: ["bun", "scripts/test/test-hook-extensions.ts", "aza-pg:pg18"],
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-hook-extensions.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
     description: "Test extensions that use shared_preload_libraries hooks",
     critical: true,
     requiresDocker: true,
@@ -692,7 +702,8 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Include optional preload modules for comprehensive testing (timescaledb, pg_safeupdate)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "cd scripts/test && bun run test-all-extensions-functional.ts --container=$CONTAINER",
         "RESULT=$?",
@@ -709,7 +720,7 @@ const allChecks: Check[] = [
   {
     name: "Comprehensive Image Test",
     category: "functional",
-    command: ["bun", "scripts/docker/test-image.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/docker/test-image.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description:
       "Comprehensive test harness: filesystem, runtime, tools, auto-config, ~27 functional tests",
     critical: false,
@@ -720,7 +731,7 @@ const allChecks: Check[] = [
   {
     name: "Auto-Config Tests",
     category: "functional",
-    command: ["bun", "scripts/test/test-auto-config.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/test/test-auto-config.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Test auto-config RAM/CPU detection and scaling across memory tiers",
     critical: false,
     requiresDocker: true,
@@ -730,7 +741,7 @@ const allChecks: Check[] = [
   {
     name: "Extension Tests",
     category: "functional",
-    command: ["bun", "scripts/test/test-extensions.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/test/test-extensions.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Comprehensive extension tests dynamically generated from manifest",
     critical: false,
     requiresDocker: true,
@@ -740,7 +751,11 @@ const allChecks: Check[] = [
   {
     name: "Integration Extension Combinations",
     category: "functional",
-    command: ["bun", "scripts/test/test-integration-extension-combinations.ts", "aza-pg:pg18"],
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-integration-extension-combinations.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
     description:
       "Test critical extension combinations (timescaledb+pgvector, postgis+pgroonga, pgsodium+supabase_vault, pg_partman+timescaledb)",
     critical: true,
@@ -772,7 +787,18 @@ const allChecks: Check[] = [
   {
     name: "pgflow Functional Tests",
     category: "functional",
-    command: ["bun", "scripts/test/test-pgflow-functional.ts", "aza-pg:pg18"],
+    command: [
+      "sh",
+      "-c",
+      [
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "cd scripts/test && bun run test-pgflow-functional.ts --container=$CONTAINER",
+        "RESULT=$?",
+        "docker rm -f $CONTAINER >/dev/null",
+        "exit $RESULT",
+      ].join("; "),
+    ],
     description: "Comprehensive pgflow workflow orchestration functional tests",
     critical: false,
     requiresDocker: true,
@@ -782,7 +808,18 @@ const allChecks: Check[] = [
   {
     name: "pgflow v0.7.2 Compatibility",
     category: "functional",
-    command: ["bun", "scripts/test/test-pgflow-functional-v072.ts", "aza-pg:pg18"],
+    command: [
+      "sh",
+      "-c",
+      [
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "cd scripts/test && bun run test-pgflow-functional-v072.ts --container=$CONTAINER",
+        "RESULT=$?",
+        "docker rm -f $CONTAINER >/dev/null",
+        "exit $RESULT",
+      ].join("; "),
+    ],
     description:
       "Test pgflow v0.7.2 API compatibility (flow_slug, retry/timeout handling, two-phase polling)",
     critical: false,
@@ -793,7 +830,7 @@ const allChecks: Check[] = [
   {
     name: "pgq Functional Tests",
     category: "functional",
-    command: ["bun", "scripts/test/test-pgq-functional.ts", "aza-pg:pg18"],
+    command: ["sh", "-c", "bun scripts/test/test-pgq-functional.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Comprehensive pgq (PostgreSQL queue) functional test suite",
     critical: false,
     requiresDocker: true,

@@ -341,3 +341,102 @@ export function validateNoTools(entries: ManifestEntry[], context: string): void
     );
   }
 }
+
+/**
+ * Get required shared_preload_libraries for testing an extension or tool.
+ *
+ * Returns environment variable string for optional preload modules that require
+ * explicit configuration via POSTGRES_SHARED_PRELOAD_LIBRARIES.
+ *
+ * @param extensionName - Name of the extension/tool to check
+ * @returns Environment variable string to add, or null if no preload needed
+ *
+ * @example
+ * ```typescript
+ * const preloadEnv = getPreloadLibrariesForExtension("timescaledb");
+ * // Returns: "POSTGRES_SHARED_PRELOAD_LIBRARIES=timescaledb"
+ *
+ * const preloadEnv2 = getPreloadLibrariesForExtension("pg_safeupdate");
+ * // Returns: "POSTGRES_SHARED_PRELOAD_LIBRARIES=safeupdate"
+ * ```
+ */
+export function getPreloadLibrariesForExtension(extensionName: string): string | null {
+  const entries = loadManifestForTests();
+  const entry = entries.find((e) => e.name === extensionName);
+
+  if (!entry) return null;
+  if (!entry.runtime?.sharedPreload) return null;
+  if (entry.runtime?.defaultEnable === true) return null; // Already preloaded by default
+
+  // Some extensions use different preload name (e.g., pg_safeupdate → safeupdate)
+  const preloadName = extensionName === "pg_safeupdate" ? "safeupdate" : extensionName;
+
+  return `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preloadName}`;
+}
+
+/**
+ * Get all optional preload modules (extensions + tools) that require explicit configuration.
+ *
+ * Returns list of entries where:
+ * - runtime.sharedPreload === true
+ * - runtime.defaultEnable === false (not preloaded by default)
+ * - enabled !== false (not disabled in manifest)
+ *
+ * These are modules that CAN be preloaded but require explicit POSTGRES_SHARED_PRELOAD_LIBRARIES.
+ *
+ * @returns Array of manifest entries for optional preload modules
+ */
+export function getOptionalPreloadModules(manifest?: ManifestEntry[]): ManifestEntry[] {
+  const entries = manifest ?? loadManifestForTests();
+
+  return entries.filter((entry) => {
+    // Must not be explicitly disabled
+    if (entry.enabled === false) {
+      return false;
+    }
+
+    // Must require shared preload
+    if (entry.runtime?.sharedPreload !== true) {
+      return false;
+    }
+
+    // Must NOT be enabled by default (those are already preloaded)
+    if (entry.runtime?.defaultEnable === true) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Build POSTGRES_SHARED_PRELOAD_LIBRARIES value for optional preload modules.
+ *
+ * Combines default preload libraries with specified optional modules.
+ * Handles special name mappings (e.g., pg_safeupdate → safeupdate).
+ *
+ * @param optionalModules - Array of module names to add to preload (e.g., ["timescaledb", "pg_safeupdate"])
+ * @returns Comma-separated preload libraries string
+ *
+ * @example
+ * ```typescript
+ * const preloadLibs = buildOptionalPreloadLibraries(["timescaledb", "pg_safeupdate"]);
+ * // Returns: "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate"
+ * ```
+ */
+export function buildOptionalPreloadLibraries(optionalModules: string[]): string {
+  // Get default preload libraries (defaultEnable: true)
+  const defaultPreload = getDefaultEnabledExtensions()
+    .filter((e) => e.runtime?.sharedPreload === true)
+    .map((e) => e.name);
+
+  // Map optional module names (handle special cases like pg_safeupdate → safeupdate)
+  const optionalPreload = optionalModules.map((name) =>
+    name === "pg_safeupdate" ? "safeupdate" : name
+  );
+
+  // Combine and deduplicate
+  const allPreload = [...new Set([...defaultPreload, ...optionalPreload])];
+
+  return allPreload.join(",");
+}

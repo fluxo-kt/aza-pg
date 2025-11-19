@@ -132,12 +132,22 @@ async function verifyStackDirectories(config: ReplicaTestConfig): Promise<void> 
  */
 async function createSharedNetwork(): Promise<void> {
   info("Creating shared network for replication...");
+
+  // Clean up any pre-existing network with incorrect labels
+  try {
+    await $`docker network rm postgres-replica-test-net`.quiet();
+  } catch {
+    // Network doesn't exist, ignore error
+  }
+
+  // Create fresh network
   try {
     await $`docker network create postgres-replica-test-net`.quiet();
-  } catch {
-    // Network may already exist, ignore error
+    success("Network created: postgres-replica-test-net");
+  } catch (err) {
+    error(`Failed to create network: ${err}`);
+    throw err;
   }
-  success("Network created: postgres-replica-test-net");
 }
 
 /**

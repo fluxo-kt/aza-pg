@@ -12,6 +12,7 @@ import { $ } from "bun";
 import { checkCommand, checkDockerDaemon } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
+import { existsSync } from "fs";
 
 /**
  * Service health status from Docker Compose
@@ -357,14 +358,14 @@ async function main(): Promise<void> {
   const projectRoot = resolve(scriptDir, "../..");
   const stackPath = join(projectRoot, stackDir);
 
-  if (!(await Bun.file(stackPath).exists())) {
+  if (!existsSync(stackPath)) {
     error(`Stack directory not found: ${stackPath}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composeFile = join(stackPath, "compose.yml");
-  if (!(await Bun.file(composeFile).exists())) {
+  if (!existsSync(composeFile)) {
     error(`compose.yml not found in ${stackPath}`);
     process.exit(1);
   }
@@ -434,7 +435,7 @@ async function main(): Promise<void> {
 }
 
 // Run main and handle errors
-main().catch((error) => {
-  error(error.message);
+main().catch((err) => {
+  error(err.message);
   process.exit(1);
 });

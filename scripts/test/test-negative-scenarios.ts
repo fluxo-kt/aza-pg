@@ -16,6 +16,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { $ } from "bun";
 
 const TEST_CONTAINER_PREFIX = "aza-pg-negative-test";
+const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
 
 /**
  * Cleanup function to remove test containers
@@ -36,7 +37,7 @@ describe("Negative Scenarios - Invalid Memory Settings", () => {
     const result = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=128 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     // Container should fail to start or log an error
     expect(result.exitCode).not.toBe(0);
@@ -49,7 +50,7 @@ describe("Negative Scenarios - Invalid Memory Settings", () => {
     const result = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=invalid \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     // Container should start but entrypoint should log error
     // We check the logs for error message
@@ -67,7 +68,7 @@ describe("Negative Scenarios - Missing Required Environment Variables", () => {
 
     // Try to start without password
     const result = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     // Should fail or container should exit quickly
     if (result.exitCode === 0) {
@@ -117,7 +118,7 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
     const startResult = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");
@@ -144,7 +145,7 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
     const startResult = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");
@@ -173,7 +174,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
     const startResult = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");
@@ -215,7 +216,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
       -e SHARED_PRELOAD_LIBRARIES=invalid_library,another_invalid \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");
@@ -255,7 +256,7 @@ describe("Negative Scenarios - Resource Constraints", () => {
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=256 \
       --memory=256m \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");
@@ -284,7 +285,7 @@ describe("Negative Scenarios - Network Configuration", () => {
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
       -e POSTGRES_BIND_IP=999.999.999.999 \
-      -d localhost/aza-pg:latest`.nothrow();
+      -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
       console.log("Skipping test - container image not available");

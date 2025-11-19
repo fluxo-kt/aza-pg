@@ -49,6 +49,10 @@ psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name
     ALTER ROLE replicator CONNECTION LIMIT 5;
 
     GRANT CONNECT ON DATABASE postgres TO replicator;
+
+    -- Grant pg_monitor to allow replicator to view replication slots
+    -- Required for replica setup script to verify slot exists before pg_basebackup
+    GRANT pg_monitor TO replicator;
 EOSQL
 
 echo "[02-replication] Replication configuration complete (slot: $REPLICATION_SLOT_NAME)"

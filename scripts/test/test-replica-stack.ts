@@ -129,25 +129,22 @@ async function verifyStackDirectories(config: ReplicaTestConfig): Promise<void> 
 
 /**
  * Create shared network for replication
+ * Network is created by primary stack's Docker Compose with proper labels
+ * Replica stack will use it via external: true configuration
  */
 async function createSharedNetwork(): Promise<void> {
-  info("Creating shared network for replication...");
+  info("Preparing network for replication...");
 
-  // Clean up any pre-existing network with incorrect labels
+  // Clean up any pre-existing test network to avoid label conflicts
   try {
     await $`docker network rm postgres-replica-test-net`.quiet();
   } catch {
     // Network doesn't exist, ignore error
   }
 
-  // Create fresh network
-  try {
-    await $`docker network create postgres-replica-test-net`.quiet();
-    success("Network created: postgres-replica-test-net");
-  } catch (err) {
-    error(`Failed to create network: ${err}`);
-    throw err;
-  }
+  // Network will be created by primary stack's docker compose up command
+  // with proper com.docker.compose.network labels
+  success("Ready to create network via Docker Compose");
 }
 
 /**
@@ -160,8 +157,9 @@ async function deployPrimaryStack(config: ReplicaTestConfig): Promise<void> {
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PGBOUNCER_AUTH_PASS=${config.testPgBouncerPassword}
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
-POSTGRES_IMAGE=aza-pg:pg18
+POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
+POSTGRES_BIND_IP=0.0.0.0
 COMPOSE_PROJECT_NAME=aza-pg-replica-test-primary
 POSTGRES_NETWORK_NAME=postgres-replica-test-net
 ENABLE_REPLICATION=true
@@ -170,17 +168,41 @@ REPLICATION_SLOT_NAME=replica_slot_test
 
   await Bun.write(resolve(config.primaryStackPath, ".env.test"), envContent);
 
-  // Start primary stack
-  info("Starting primary stack services...");
+  // Temporarily replace .env with .env.test for test isolation
+  const envPath = resolve(config.primaryStackPath, ".env");
+  const envBackupPath = resolve(config.primaryStackPath, ".env.backup-test");
+  let envBackupNeeded = false;
+
   try {
-    await $`docker compose --env-file .env.test up -d postgres`.cwd(config.primaryStackPath);
+    // Backup original .env if it exists
+    await Bun.write(envBackupPath, await Bun.file(envPath).text());
+    envBackupNeeded = true;
+  } catch {
+    // .env doesn't exist, no backup needed
+  }
+
+  try {
+    // Copy .env.test to .env (Docker Compose requires .env to exist)
+    await $`cp .env.test .env`.cwd(config.primaryStackPath);
+
+    // Start primary stack
+    info("Starting primary stack services...");
+    await $`docker compose up -d postgres`.cwd(config.primaryStackPath);
+    success("Primary stack started");
   } catch (err) {
     error("Failed to start primary stack");
     console.error(err);
     process.exit(1);
+  } finally {
+    // Restore original .env if it was backed up
+    if (envBackupNeeded) {
+      try {
+        await $`mv ${envBackupPath} ${envPath}`.quiet();
+      } catch {
+        // Ignore restore errors
+      }
+    }
   }
-
-  success("Primary stack started");
 }
 
 /**
@@ -254,6 +276,10 @@ async function createReplicationSlot(config: ReplicaTestConfig): Promise<void> {
   const containerId = await getContainerId(config.primaryStackPath, "postgres");
 
   try {
+    // Drop slot if it exists (idempotent operation)
+    await $`docker exec ${containerId} psql -U postgres -tAc "SELECT pg_drop_replication_slot('replica_slot_test') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot_test');"`.nothrow();
+
+    // Create fresh replication slot
     await $`docker exec ${containerId} psql -U postgres -tAc "SELECT pg_create_physical_replication_slot('replica_slot_test');"`;
   } catch (err) {
     error("Failed to create replication slot");
@@ -282,14 +308,21 @@ async function createReplicationSlot(config: ReplicaTestConfig): Promise<void> {
 async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
   info("Step 3: Deploying replica stack...");
 
+  // Clear any existing replica data volume to force fresh pg_basebackup
+  try {
+    await $`docker volume rm postgres-replica-data`.nothrow();
+  } catch {
+    // Volume doesn't exist, ignore
+  }
+
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
-POSTGRES_IMAGE=aza-pg:pg18
+POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-replica-test-replica
 POSTGRES_NETWORK_NAME=postgres-replica-test-net
-PRIMARY_HOST=aza-pg-replica-test-primary-postgres
+PRIMARY_HOST=postgres
 PRIMARY_PORT=5432
 REPLICATION_SLOT_NAME=replica_slot_test
 POSTGRES_PORT=5433
@@ -298,19 +331,42 @@ POSTGRES_EXPORTER_PORT=9188
 
   await Bun.write(resolve(config.replicaStackPath, ".env.test"), envContent);
 
-  // Start replica stack
-  info("Starting replica stack services...");
+  // Temporarily replace .env with .env.test for test isolation
+  const envPath = resolve(config.replicaStackPath, ".env");
+  const envBackupPath = resolve(config.replicaStackPath, ".env.backup-test");
+  let envBackupNeeded = false;
+
   try {
-    await $`docker compose --env-file .env.test up -d postgres-replica`.cwd(
-      config.replicaStackPath
-    );
+    // Backup original .env if it exists
+    await Bun.write(envBackupPath, await Bun.file(envPath).text());
+    envBackupNeeded = true;
   } catch {
-    error("Failed to start replica stack");
-    await $`docker compose --env-file .env.test logs postgres-replica`.cwd(config.replicaStackPath);
-    process.exit(1);
+    // .env doesn't exist, no backup needed
   }
 
-  success("Replica stack started");
+  try {
+    // Copy .env.test to .env (Docker Compose requires .env to exist)
+    await $`cp .env.test .env`.cwd(config.replicaStackPath);
+
+    // Start replica stack (will run fresh pg_basebackup)
+    info("Starting replica stack services...");
+    await $`docker compose up -d postgres-replica`.cwd(config.replicaStackPath);
+    success("Replica stack started");
+  } catch (err) {
+    error("Failed to start replica stack");
+    await $`docker compose logs postgres-replica`.cwd(config.replicaStackPath);
+    console.error(err);
+    process.exit(1);
+  } finally {
+    // Restore original .env if it was backed up
+    if (envBackupNeeded) {
+      try {
+        await $`mv ${envBackupPath} ${envPath}`.quiet();
+      } catch {
+        // Ignore restore errors
+      }
+    }
+  }
 }
 
 /**

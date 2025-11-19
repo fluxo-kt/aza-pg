@@ -277,14 +277,14 @@ jobs:
       #     export POSTGRES_IMAGE=aza-pg-ci:test
       #     bun scripts/test/test-hook-extensions.ts
 
-      # Disabled: Requires specific Docker container infrastructure (aza-pg-primary) not available in CI
-      # This test validates extension compatibility but requires pre-existing container setup
-      # Run locally or in dedicated environment: export POSTGRES_IMAGE=<image> && bun scripts/test/test-integration-extension-combinations.ts
-      # - name: Test extension combinations
-      #   run: |
-      #     echo "Testing extension combinations..."
-      #     export POSTGRES_IMAGE=aza-pg-ci:test
-      #     bun scripts/test/test-integration-extension-combinations.ts
+      # Extension combinations test - validates complex multi-extension scenarios
+      # Previously disabled due to bug in manifest filtering (included tools in preload)
+      # Fixed in manifest-test-utils.ts by excluding kind="tool" from getPreloadExtensions()
+      - name: Test extension combinations
+        run: |
+          echo "Testing extension combinations..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-integration-extension-combinations.ts
 
       - name: Capture logs on failure
         if: failure()

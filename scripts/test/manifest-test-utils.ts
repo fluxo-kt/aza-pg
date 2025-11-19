@@ -62,12 +62,32 @@ export function getTestableExtensions(manifest?: ManifestEntry[]): ManifestEntry
  * Get extensions that require shared_preload_libraries.
  *
  * Returns extensions where runtime.sharedPreload === true.
+ *
+ * CRITICAL: Excludes tools (kind="tool") since they are NOT built into the Docker image
+ * and cannot be loaded via shared_preload_libraries. Tools are binary utilities only.
  */
 export function getPreloadExtensions(manifest?: ManifestEntry[]): ManifestEntry[] {
   const entries = manifest ?? loadManifestForTests();
 
   return entries.filter((entry) => {
-    return entry.enabled !== false && entry.runtime?.sharedPreload === true;
+    // Must be explicitly enabled (or not disabled)
+    if (entry.enabled === false) {
+      return false;
+    }
+
+    // Must require shared preload
+    if (entry.runtime?.sharedPreload !== true) {
+      return false;
+    }
+
+    // ⭐ CRITICAL FIX: Tools cannot be preloaded (not built into image)
+    // Tools are binary utilities (pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate)
+    // that don't have .so files in the PostgreSQL lib directory
+    if (entry.kind === "tool") {
+      return false;
+    }
+
+    return true;
   });
 }
 
@@ -291,6 +311,33 @@ export function validateManifest(manifest?: ManifestEntry[]): void {
   } catch (err) {
     throw new Error(
       `Manifest validation failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/**
+ * Validate that a list of entries contains no tools.
+ *
+ * This is a defensive function to catch manifest filtering bugs that could
+ * cause PostgreSQL container crashes. Tools (kind="tool") are binary utilities
+ * that are NOT built into the Docker image and CANNOT be loaded via
+ * shared_preload_libraries or CREATE EXTENSION.
+ *
+ * Tools include: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate
+ *
+ * @param entries - List of manifest entries to validate
+ * @param context - Description of where this list is being used (for error messages)
+ * @throws Error if any tools found in the list
+ */
+export function validateNoTools(entries: ManifestEntry[], context: string): void {
+  const tools = entries.filter((e) => e.kind === "tool");
+  if (tools.length > 0) {
+    const toolNames = tools.map((t) => t.name).join(", ");
+    throw new Error(
+      `${context}: Found tools in extension list: ${toolNames}. ` +
+        `Tools cannot be loaded via shared_preload_libraries or CREATE EXTENSION. ` +
+        `This indicates a bug in manifest filtering logic. ` +
+        `Check getPreloadExtensions() and getTestableExtensions() filters.`
     );
   }
 }

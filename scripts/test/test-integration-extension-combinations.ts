@@ -24,6 +24,7 @@ import {
   getTestableExtensions,
   loadManifestForTests,
   shouldSkipExtension,
+  validateNoTools,
 } from "./manifest-test-utils";
 
 interface TestResult {
@@ -47,6 +48,12 @@ async function startContainer() {
   const manifest = loadManifestForTests();
   const preloadExtensions = getPreloadExtensions(manifest);
   const testableExtensions = getTestableExtensions(manifest);
+
+  // ⭐ CRITICAL VALIDATION: Ensure no tools in extension lists
+  // Tools (kind="tool") cannot be loaded via shared_preload_libraries or CREATE EXTENSION
+  // This prevents container crashes from missing .so files
+  validateNoTools(preloadExtensions, "Preload extensions");
+  validateNoTools(testableExtensions, "Testable extensions");
 
   // Build shared_preload_libraries string from manifest
   const preloadLibraries = buildPreloadLibraries(preloadExtensions);

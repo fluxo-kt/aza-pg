@@ -585,6 +585,19 @@ jobs:
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-auto-config.ts
 
+      - name: Setup pgflow test container
+        run: |
+          echo "Starting PostgreSQL container for pgflow tests..."
+          docker run -d \
+            --name publish-pgflow-test \
+            -e POSTGRES_PASSWORD=test_pgflow_pass \
+            -e POSTGRES_DB=pgflow_test \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+
+          # Wait for PostgreSQL to be ready
+          timeout 60 bash -c 'until docker exec publish-pgflow-test pg_isready -U postgres; do sleep 2; done'
+          echo "PostgreSQL ready for pgflow tests"
+
       - name: Test pgflow functional
         run: |
           echo "Testing pgflow migration tool..."
@@ -608,6 +621,12 @@ jobs:
           echo "Testing negative scenarios (error handling)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun test ./scripts/test/test-negative-scenarios.ts
+
+      - name: Cleanup pgflow test containers
+        if: always()
+        run: |
+          echo "Cleaning up pgflow test containers..."
+          docker rm -f publish-pgflow-test publish-pgflow-v072-test || true
 
       - name: Capture logs on failure
         if: failure()

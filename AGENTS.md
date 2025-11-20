@@ -191,6 +191,118 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_mo
 
 See docs/TOOLING.md, docs/BUILD.md for details.
 
+## Version Tagging
+
+**Format**: `MM.mm-TS-TYPE` where:
+
+- `MM`: PostgreSQL major version (e.g., `18`)
+- `mm`: PostgreSQL minor version, actual from base image (e.g., `1` from 18.1)
+- `TS`: Timestamp `YYYYMMDDHHmm` (UTC, 12-digit)
+- `TYPE`: Image variant (`single-node` for current builds)
+
+**Examples**:
+
+- Full: `18.1-202511202137-single-node`
+- Convenience: `18-single-node`, `18` (latest for major version)
+
+**Version Extraction**:
+
+- Pull base image BEFORE building (`docker pull postgres:18-trixie@sha256:...`)
+- Extract actual version: `docker run --rm <base-image> psql --version | awk '{print $3}'`
+- Use extracted version in tags (NOT hardcoded guesses)
+- Version info embedded in image: `/etc/postgresql/version-info.{txt,json}`
+
+**Tag Requirements**:
+
+- Production tags: Full version + convenience tags (`18.1-...`, `18-single-node`, `18`)
+- Testing/dev tags: Prefixed (`testing-*`, `dev-*`) + pushed to `aza-pg-testing` repo only
+- NO `latest` tag from dev builds (publish.yml only)
+
+## Dockerfile Generation
+
+**Never edit Dockerfile directly** - it's auto-generated from template + manifest.
+
+**Architecture**:
+
+1. **Manifest as source**: `scripts/extensions/manifest-data.ts` defines all extensions/tools
+2. **TypeScript generation**: `scripts/docker/generate-dockerfile.ts` transforms manifest → Dockerfile
+3. **Pre-filtering**: PGXS and Cargo manifests filtered in TypeScript, NOT runtime jq
+4. **Template expansion**: `Dockerfile.template` uses placeholders filled by generator
+
+**Pre-filtered Manifests**:
+
+- `extensions.pgxs.manifest.json`: 28 entries (pgxs, autotools, cmake, meson, make, timescaledb builds)
+- `extensions.cargo.manifest.json`: 4 entries (cargo-pgrx builds only)
+- Generated at build-time by TypeScript, committed to repo
+- Eliminates jq dependency in Docker builds
+
+**Key Principles**:
+
+- **Logic in TypeScript** (testable): Manifest filtering, version extraction, placeholder replacement
+- **Dockerfile for orchestration** (simple): Multi-stage builds, COPY artifacts, minimal RUN commands
+- **Single source of truth**: Manifest defines what, generator defines how
+- **Always regenerate**: Run `bun run generate` after manifest changes
+
+**Workflow**:
+
+```bash
+# Edit manifest
+vim scripts/extensions/manifest-data.ts
+
+# Regenerate all artifacts (Dockerfile, manifests, docs)
+bun run generate
+
+# Rebuild image
+bun run build
+```
+
+## Common Mistakes
+
+**Forgetting Bun imports**:
+
+- ❌ Using `$` without importing: `await $`docker ps` fails with "Cannot find name '$'"
+- ✅ Always add: `import { $ } from "bun";` at top of file
+- Common in: Scripts using Bun.$ for shell commands
+
+**Hardcoding changeable data**:
+
+- ❌ "PostgreSQL 18 with 34 enabled extensions" (count changes with manifest)
+- ✅ "PostgreSQL 18 with comprehensive extensions" (timeless)
+- ❌ Hardcoded dates, versions, counts anywhere in documentation
+- ✅ Reference generated data: `docs/.generated/docs-data.json`
+
+**Complex inline bash in YAML**:
+
+- ❌ 30+ lines of bash with jq/curl/loops in workflow files
+- ✅ Extract to TypeScript script: `scripts/{ci,docker,debug}/script-name.ts`
+- Benefits: Testable locally, typed, better error handling, `--help` docs
+
+**Using Node.js APIs instead of Bun**:
+
+- ❌ `import { readFile, writeFile } from "fs/promises";`
+- ✅ `await Bun.file(path).text()` and `await Bun.write(path, content)`
+- ❌ `execSync("command")` from child_process
+- ✅ `await $`command`` from Bun.$
+- Exception: `statSync` for directories (Bun.file.exists only works for files)
+
+**Not regenerating after manifest changes**:
+
+- ❌ Edit manifest → commit → build → "extension missing"
+- ✅ Edit manifest → `bun run generate` → verify diffs → commit all → build
+- Pre-commit hook auto-regenerates, but verify manually for safety
+
+**Editing Dockerfile directly**:
+
+- ❌ Modify `docker/postgres/Dockerfile` → changes lost on next generation
+- ✅ Edit `Dockerfile.template` → `bun run generate` → Dockerfile regenerated
+- Remember: Dockerfile is an artifact, not source
+
+**Skipping validation after changes**:
+
+- ❌ Make changes → commit → push → CI fails
+- ✅ Make changes → `bun run validate:full` → fix issues → test → commit
+- Use `bun run validate` for fast checks during development
+
 ## Git Workflow
 
 - Write brief thoughtfull no BS Conventional Commits + "Co-Authored-By: Claude <noreply@anthropic.com>"

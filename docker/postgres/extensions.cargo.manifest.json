@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2025-11-20T21:24:41.023Z",
+  "entries": [
+    {
+      "name": "pg_jsonschema",
+      "kind": "extension",
+      "category": "validation",
+      "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
+      "source": {
+        "type": "git-ref",
+        "repository": "https://github.com/supabase/pg_jsonschema.git",
+        "ref": "5492c7d1a28c5a2c85b48f89c47f258acc93d241",
+        "commit": "5492c7d1a28c5a2c85b48f89c47f258acc93d241"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "features": ["pg18"],
+        "noDefaultFeatures": true,
+        "patches": ["s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"]
+      },
+      "aptPackages": ["clang", "llvm", "pkg-config", "make"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "sourceUrl": "https://github.com/supabase/pg_jsonschema",
+      "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
+    },
+    {
+      "name": "timescaledb_toolkit",
+      "kind": "extension",
+      "category": "timeseries",
+      "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/timescaledb-toolkit.git",
+        "tag": "1.22.0",
+        "commit": "af5519c282fa2716fd87c4d9b8a15b0d857e9f29"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "extension",
+        "features": ["pg18"],
+        "noDefaultFeatures": true
+      },
+      "aptPackages": ["clang", "llvm", "pkg-config", "make"],
+      "dependencies": ["timescaledb"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": [
+        "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility."
+      ],
+      "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
+      "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
+    },
+    {
+      "name": "vectorscale",
+      "displayName": "pgvectorscale",
+      "kind": "extension",
+      "category": "ai",
+      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/pgvectorscale.git",
+        "tag": "0.9.0",
+        "commit": "c66cae4b621664b68546587da9fafd80b791e643"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "pgvectorscale",
+        "features": ["pg18"]
+      },
+      "aptPackages": ["clang", "llvm", "pkg-config", "make"],
+      "dependencies": ["vector"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true
+      },
+      "sourceUrl": "https://github.com/timescale/pgvectorscale",
+      "docsUrl": "https://github.com/timescale/pgvectorscale#readme"
+    },
+    {
+      "name": "wrappers",
+      "displayName": "supabase-wrappers",
+      "kind": "extension",
+      "category": "integration",
+      "description": "Rust FDW framework powering Supabase foreign wrappers.",
+      "source": {
+        "type": "git-ref",
+        "repository": "https://github.com/supabase/wrappers.git",
+        "ref": "303da1dd0e7a94365ecf5d48866739fe9fda4d07",
+        "commit": "303da1dd0e7a94365ecf5d48866739fe9fda4d07"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "features": ["pg18"],
+        "noDefaultFeatures": true,
+        "subdir": "wrappers"
+      },
+      "aptPackages": ["clang", "llvm", "pkg-config", "make"],
+      "dependencies": ["pg_stat_statements"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false
+      },
+      "notes": ["Requires cargo-pgrx 0.16.1 aligned with PG18."],
+      "sourceUrl": "https://github.com/supabase/wrappers",
+      "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"
+    }
+  ]
+}

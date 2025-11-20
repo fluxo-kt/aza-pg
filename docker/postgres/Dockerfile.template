@@ -29,6 +29,8 @@ LABEL org.opencontainers.image.vendor="fluxo-kt"
 ENV DEBIAN_FRONTEND=noninteractive
 
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
+COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
 COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
 RUN chmod +x /usr/local/bin/build-extensions.ts
@@ -42,7 +44,6 @@ RUN set -eu && \
     apt-get install -y \
       build-essential \
       git \
-      jq \
       curl \
       ca-certificates \
       rsync \
@@ -70,7 +71,6 @@ RUN set -eu && \
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs
-RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select((.build.type == "pgxs") or (.build.type == "autotools") or (.build.type == "cmake") or (.build.type == "meson") or (.build.type == "make") or (.build.type == "timescaledb")) ]}' /tmp/extensions.manifest.json > /tmp/extensions.pgxs.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
@@ -106,8 +106,6 @@ FROM builder-base AS builder-cargo
 ENV CARGO_PROFILE_RELEASE_LTO=thin
 ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=s
 ENV CARGO_PROFILE_RELEASE_STRIP=symbols
-
-RUN jq '{generatedAt: .generatedAt, entries: [ .entries[] | select(.build.type == "cargo-pgrx") ]}' /tmp/extensions.manifest.json > /tmp/extensions.cargo.manifest.json
 
 RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build

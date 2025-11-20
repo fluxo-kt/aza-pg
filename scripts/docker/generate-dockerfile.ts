@@ -24,6 +24,8 @@ const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
+const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
 
 /**
  * PGDG extension name mapping
@@ -103,10 +105,20 @@ const PGDG_MAPPINGS: PgdgMapping[] = [
   },
 ];
 
+interface BuildSpec {
+  type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
+  subdir?: string;
+  features?: string[];
+  noDefaultFeatures?: boolean;
+  script?: string;
+  patches?: string[];
+}
+
 interface ManifestEntry {
   name: string;
   install_via?: string;
   enabled?: boolean;
+  build?: BuildSpec;
   runtime?: {
     sharedPreload?: boolean;
   };
@@ -198,6 +210,37 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
 }
 
 /**
+ * Generate filtered manifest for PGXS-style builds
+ * Includes: pgxs, autotools, cmake, meson, make, timescaledb
+ */
+function generatePgxsManifest(manifest: Manifest): Manifest {
+  const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
+  const filteredEntries = manifest.entries.filter(
+    (entry) => entry.build && pgxsBuildTypes.includes(entry.build.type)
+  );
+
+  return {
+    generatedAt: manifest.generatedAt,
+    entries: filteredEntries,
+  };
+}
+
+/**
+ * Generate filtered manifest for Cargo builds
+ * Includes: cargo-pgrx
+ */
+function generateCargoManifest(manifest: Manifest): Manifest {
+  const filteredEntries = manifest.entries.filter(
+    (entry) => entry.build && entry.build.type === "cargo-pgrx"
+  );
+
+  return {
+    generatedAt: manifest.generatedAt,
+    entries: filteredEntries,
+  };
+}
+
+/**
  * Generate version info generation script using TypeScript-style logic
  */
 function generateVersionInfoGeneration(manifest: Manifest): string {
@@ -280,6 +323,28 @@ async function generateDockerfile(): Promise<void> {
   info("Reading manifest...");
   const manifest = await readManifest();
   info(`Manifest loaded: ${manifest.entries.length} total entries`);
+
+  // Generate filtered manifests
+  info("Generating filtered manifests...");
+  const pgxsManifest = generatePgxsManifest(manifest);
+  const cargoManifest = generateCargoManifest(manifest);
+  info(`PGXS manifest: ${pgxsManifest.entries.length} entries`);
+  info(`Cargo manifest: ${cargoManifest.entries.length} entries`);
+
+  // Write filtered manifests (unformatted first)
+  info("Writing filtered manifests...");
+  await Bun.write(PGXS_MANIFEST_PATH, JSON.stringify(pgxsManifest, null, 2));
+  await Bun.write(CARGO_MANIFEST_PATH, JSON.stringify(cargoManifest, null, 2));
+
+  // Format with Prettier for consistency
+  info("Formatting filtered manifests with Prettier...");
+  try {
+    await Bun.$`bunx prettier --write ${PGXS_MANIFEST_PATH} ${CARGO_MANIFEST_PATH}`.quiet();
+    success(`Filtered manifests written and formatted`);
+  } catch {
+    // Non-critical - manifests are valid JSON even if not formatted
+    info("Note: Could not format with Prettier (not critical)");
+  }
 
   // Read template
   info("Reading template...");

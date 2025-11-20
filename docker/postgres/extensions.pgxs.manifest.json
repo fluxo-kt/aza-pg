@@ -2,52 +2,6 @@
   "generatedAt": "2025-11-20T21:24:41.023Z",
   "entries": [
     {
-      "name": "auto_explain",
-      "kind": "builtin",
-      "category": "observability",
-      "description": "Logs plans for slow statements automatically.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true,
-        "preloadOnly": true
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/auto-explain.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/auto-explain.html"
-    },
-    {
-      "name": "btree_gin",
-      "kind": "builtin",
-      "category": "indexing",
-      "description": "Adds B-tree emulation operator classes for GIN indexes.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/btree-gin.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/btree-gin.html"
-    },
-    {
-      "name": "btree_gist",
-      "kind": "builtin",
-      "category": "indexing",
-      "description": "Adds B-tree emulation operator classes for GiST indexes.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/btree-gist.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/btree-gist.html"
-    },
-    {
       "name": "hll",
       "displayName": "postgresql-hll",
       "kind": "extension",
@@ -86,10 +40,7 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libcurl4-openssl-dev",
-        "libjson-c-dev"
-      ],
+      "aptPackages": ["libcurl4-openssl-dev", "libjson-c-dev"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -133,9 +84,7 @@
       "build": {
         "type": "pgxs"
       },
-      "dependencies": [
-        "hypopg"
-      ],
+      "dependencies": ["hypopg"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -192,40 +141,6 @@
       "docsUrl": "https://github.com/iCyberon/pg_hashids#readme"
     },
     {
-      "name": "pg_jsonschema",
-      "kind": "extension",
-      "category": "validation",
-      "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
-      "source": {
-        "type": "git-ref",
-        "repository": "https://github.com/supabase/pg_jsonschema.git",
-        "ref": "5492c7d1a28c5a2c85b48f89c47f258acc93d241",
-        "commit": "5492c7d1a28c5a2c85b48f89c47f258acc93d241"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "features": [
-          "pg18"
-        ],
-        "noDefaultFeatures": true,
-        "patches": [
-          "s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"
-        ]
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "sourceUrl": "https://github.com/supabase/pg_jsonschema",
-      "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
-    },
-    {
       "name": "pg_partman",
       "kind": "extension",
       "install_via": "pgdg",
@@ -243,9 +158,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
-        "notes": [
-          "Set pg_partman_bgw.role and interval to enable background worker."
-        ]
+        "notes": ["Set pg_partman_bgw.role and interval to enable background worker."]
       },
       "sourceUrl": "https://github.com/pgpartman/pg_partman",
       "docsUrl": "https://github.com/pgpartman/pg_partman#readme"
@@ -288,11 +201,7 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libreadline-dev",
-        "libnuma-dev",
-        "libzstd-dev"
-      ],
+      "aptPackages": ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -317,9 +226,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
-        "notes": [
-          "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
-        ]
+        "notes": ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."]
       },
       "sourceUrl": "https://github.com/eradman/pg-safeupdate",
       "docsUrl": "https://github.com/eradman/pg-safeupdate#readme"
@@ -350,36 +257,6 @@
       "docsUrl": "https://docs.percona.com/pg-stat-monitor"
     },
     {
-      "name": "pg_stat_statements",
-      "kind": "builtin",
-      "category": "observability",
-      "description": "Tracks execution statistics for normalized SQL statements.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/pgstatstatements.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/pgstatstatements.html"
-    },
-    {
-      "name": "pg_trgm",
-      "kind": "builtin",
-      "category": "search",
-      "description": "Trigram-based fuzzy matching indexes.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/pgtrgm.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/pgtrgm.html"
-    },
-    {
       "name": "pgaudit",
       "kind": "extension",
       "install_via": "pgdg",
@@ -397,9 +274,7 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
-        "notes": [
-          "Tune pgaudit.log to control verbosity."
-        ]
+        "notes": ["Tune pgaudit.log to control verbosity."]
       },
       "sourceUrl": "https://github.com/pgaudit/pgaudit",
       "docsUrl": "https://www.pgaudit.org"
@@ -431,9 +306,7 @@
         "sharedPreload": false,
         "defaultEnable": false
       },
-      "notes": [
-        "Installs /usr/bin/pgbackrest."
-      ],
+      "notes": ["Installs /usr/bin/pgbackrest."],
       "sourceUrl": "https://github.com/pgbackrest/pgbackrest",
       "docsUrl": "https://pgbackrest.org/user-guide.html"
     },
@@ -451,57 +324,14 @@
       "build": {
         "type": "make"
       },
-      "aptPackages": [
-        "perl",
-        "libtext-csv-xs-perl",
-        "libjson-xs-perl"
-      ],
+      "aptPackages": ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
       },
-      "notes": [
-        "Binary installed to /usr/local/bin/pgbadger."
-      ],
+      "notes": ["Binary installed to /usr/local/bin/pgbadger."],
       "sourceUrl": "https://github.com/darold/pgbadger",
       "docsUrl": "https://pgbadger.darold.net/documentation.html"
-    },
-    {
-      "name": "pgflow",
-      "displayName": "pgflow",
-      "kind": "extension",
-      "category": "workflow",
-      "description": "DAG-based workflow orchestration engine with task queuing, dependencies, and retry logic.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.7.2",
-        "commit": "0f9533eda870f47615303a137e6674f5c948b39b"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true,
-        "preloadOnly": true,
-        "notes": [
-          "SQL-only schema (no CREATE EXTENSION required)",
-          "Installed via /docker-entrypoint-initdb.d/05-pgflow.sql",
-          "Requires pgmq extension (enabled by default)",
-          "Version 0.7.2 (Phases 1-3 only - missing map steps from Phases 9-11)",
-          "realtime.send() stubbed for standalone PostgreSQL (no Supabase Edge Functions)"
-        ]
-      },
-      "dependencies": [
-        "pgmq"
-      ],
-      "notes": [
-        "NOT a traditional extension - pure SQL schema with tables and functions",
-        "Creates schemas: pgflow, pgmq (if missing), realtime (stub)",
-        "Core features: DAG workflows, task queuing, retry logic, worker tracking",
-        "Advanced features not included: map steps (parallel array processing), opt_start_delay",
-        "NO build step - SQL file manually maintained in docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql"
-      ],
-      "sourceUrl": "https://github.com/pgflow-dev/pgflow",
-      "docsUrl": "https://github.com/pgflow-dev/pgflow#readme"
     },
     {
       "name": "pgmq",
@@ -606,13 +436,8 @@
       "build": {
         "type": "cmake"
       },
-      "dependencies": [
-        "postgis"
-      ],
-      "aptPackages": [
-        "cmake",
-        "libboost-graph-dev"
-      ],
+      "dependencies": ["postgis"],
+      "aptPackages": ["cmake", "libboost-graph-dev"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -634,30 +459,13 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libsodium-dev"
-      ],
+      "aptPackages": ["libsodium-dev"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
       "docsUrl": "https://michelp.github.io/pgsodium"
-    },
-    {
-      "name": "plpgsql",
-      "kind": "builtin",
-      "category": "language",
-      "description": "Built-in procedural language for PostgreSQL.",
-      "source": {
-        "type": "builtin"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true
-      },
-      "sourceUrl": "https://www.postgresql.org/docs/18/plpgsql.html",
-      "docsUrl": "https://www.postgresql.org/docs/18/plpgsql.html"
     },
     {
       "name": "plpgsql_check",
@@ -782,9 +590,7 @@
       "build": {
         "type": "pgxs"
       },
-      "dependencies": [
-        "pgsodium"
-      ],
+      "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
@@ -815,9 +621,7 @@
         "sharedPreload": true,
         "preloadOnly": true,
         "defaultEnable": false,
-        "notes": [
-          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
-        ]
+        "notes": ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."]
       },
       "sourceUrl": "https://github.com/supabase/supautils",
       "docsUrl": "https://github.com/supabase/supautils#readme"
@@ -837,14 +641,7 @@
       "build": {
         "type": "timescaledb"
       },
-      "aptPackages": [
-        "cmake",
-        "ninja-build",
-        "llvm",
-        "clang",
-        "perl",
-        "python3"
-      ],
+      "aptPackages": ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
@@ -857,44 +654,6 @@
       },
       "sourceUrl": "https://github.com/timescale/timescaledb",
       "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
-    },
-    {
-      "name": "timescaledb_toolkit",
-      "kind": "extension",
-      "category": "timeseries",
-      "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.22.0",
-        "commit": "af5519c282fa2716fd87c4d9b8a15b0d857e9f29"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "extension",
-        "features": [
-          "pg18"
-        ],
-        "noDefaultFeatures": true
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "dependencies": [
-        "timescaledb"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "notes": [
-        "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility."
-      ],
-      "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
-      "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
     },
     {
       "name": "vector",
@@ -924,41 +683,6 @@
       "docsUrl": "https://github.com/pgvector/pgvector#readme"
     },
     {
-      "name": "vectorscale",
-      "displayName": "pgvectorscale",
-      "kind": "extension",
-      "category": "ai",
-      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/timescale/pgvectorscale.git",
-        "tag": "0.9.0",
-        "commit": "c66cae4b621664b68546587da9fafd80b791e643"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "pgvectorscale",
-        "features": [
-          "pg18"
-        ]
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "dependencies": [
-        "vector"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true
-      },
-      "sourceUrl": "https://github.com/timescale/pgvectorscale",
-      "docsUrl": "https://github.com/timescale/pgvectorscale#readme"
-    },
-    {
       "name": "wal2json",
       "kind": "tool",
       "category": "cdc",
@@ -975,51 +699,10 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
-        "notes": [
-          "Requires wal_level=logical in postgresql.conf for CDC functionality."
-        ]
+        "notes": ["Requires wal_level=logical in postgresql.conf for CDC functionality."]
       },
       "sourceUrl": "https://github.com/eulerto/wal2json",
       "docsUrl": "https://github.com/eulerto/wal2json#readme"
-    },
-    {
-      "name": "wrappers",
-      "displayName": "supabase-wrappers",
-      "kind": "extension",
-      "category": "integration",
-      "description": "Rust FDW framework powering Supabase foreign wrappers.",
-      "source": {
-        "type": "git-ref",
-        "repository": "https://github.com/supabase/wrappers.git",
-        "ref": "303da1dd0e7a94365ecf5d48866739fe9fda4d07",
-        "commit": "303da1dd0e7a94365ecf5d48866739fe9fda4d07"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "features": [
-          "pg18"
-        ],
-        "noDefaultFeatures": true,
-        "subdir": "wrappers"
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
-      "dependencies": [
-        "pg_stat_statements"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
-      },
-      "notes": [
-        "Requires cargo-pgrx 0.16.1 aligned with PG18."
-      ],
-      "sourceUrl": "https://github.com/supabase/wrappers",
-      "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"
     }
   ]
 }

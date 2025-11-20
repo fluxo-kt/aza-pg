@@ -277,7 +277,7 @@ async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
 
   console.log(`  PGDG ARGs in Dockerfile: ${Array.from(dockerfilePgdgArgs).join(", ")}`);
 
-  // The Dockerfile uses dynamic jq-based installation, so we validate against ARG declarations
+  // The Dockerfile uses TypeScript-generated package lists, so we validate against ARG declarations
   // which represent the PGDG packages that will be installed
   for (const entry of pgdgExtensions) {
     // Map extension name to Dockerfile ARG name (e.g., "pg_cron" -> "PGCRON")

@@ -55,3 +55,4 @@ build/
 # Archived documentation and AI logs
 .archived/
 .ai/
+/tmp/fake-config.js

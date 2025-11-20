@@ -296,36 +296,12 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Checking GitHub Actions cache usage..."
-
-          # Get cache usage from GitHub API
-          if CACHE_DATA=$(gh api repos/${{ github.repository }}/actions/cache/usage 2>/dev/null); then
-            CACHE_USAGE=$(echo "$CACHE_DATA" | jq -r '.active_caches_size_in_bytes // 0')
-
-            if command -v bc >/dev/null 2>&1; then
-              CACHE_GB=$(echo "scale=2; $CACHE_USAGE / 1073741824" | bc)
-            else
-              # Fallback if bc not available
-              CACHE_GB=$(awk "BEGIN {printf \"%.2f\", $CACHE_USAGE / 1073741824}")
-            fi
-
-            echo "Current cache usage: ${CACHE_GB}GB"
-
-            # Check if approaching limit
-            if command -v bc >/dev/null 2>&1; then
-              if (( $(echo "$CACHE_GB > 4" | bc -l) )); then
-                echo "⚠️ WARNING: Cache usage approaching GitHub limit (5GB)"
-                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit"
-              fi
-            fi
-
-            # Add to step summary
-            echo "### Cache Usage (${{ matrix.platform }}): ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Unable to fetch cache usage data from GitHub API"
-          fi
+          bun scripts/ci/monitor-cache-usage.ts \
+            --repository ${{ github.repository }} \
+            --platform "${{ matrix.platform }}" \
+            --github-summary
 
       - name: Output build information (amd64 only)
         if: matrix.platform == 'linux/amd64'
@@ -432,24 +408,16 @@ jobs:
           fi
           echo ""
 
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
       - name: Verify image
         run: |
-          echo "🔍 Verifying pushed image..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
-              echo "✅ Image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --max-retries 3
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
-          echo "✅ Image pulled and PostgreSQL version verified"
+          echo "✅ PostgreSQL version verified"
 
       - name: Output manifest digest
         run: |
@@ -484,23 +452,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Bun
+        if: github.event.inputs.push_image == 'true'
+        uses: ./.github/actions/setup-bun
+
       - name: Pull built image (pushed)
         if: github.event.inputs.push_image == 'true'
         run: |
-          echo "🔍 Pulling pushed image from registry for security scan..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
-              echo "✅ Image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --max-retries 3
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan
           echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
 
@@ -613,20 +574,9 @@ jobs:
 
       - name: Pull built image
         run: |
-          echo "📦 Pulling image for testing..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
-              echo "✅ Image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --max-retries 3
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:test
 
       - name: Test extension loading
@@ -868,20 +818,9 @@ jobs:
 
       - name: Pull built image
         run: |
-          echo "📦 Pulling image for replica stack testing..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
-              echo "✅ Image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --max-retries 3
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
 
       - name: Run replica stack tests
@@ -946,20 +885,9 @@ jobs:
 
       - name: Pull built image
         run: |
-          echo "📦 Pulling image for single stack testing..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}; then
-              echo "✅ Image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --max-retries 3
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
 
       - name: Run single stack tests

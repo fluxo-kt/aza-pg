@@ -92,39 +92,13 @@ jobs:
           bun test ./scripts/test/test-utils.test.ts
 
       - name: Verify manifest is up to date
-        run: |
-          # Generate fresh manifest
-          bun scripts/extensions/generate-manifest.ts
-
-          # Compare content excluding generatedAt timestamp (which always changes)
-          if ! diff -u \
-            <(git show HEAD:docker/postgres/extensions.manifest.json | jq 'del(.generatedAt)') \
-            <(jq 'del(.generatedAt)' docker/postgres/extensions.manifest.json); then
-            echo "::error::extensions.manifest.json content is out of date (excluding timestamp)."
-            echo "Run: bun scripts/extensions/generate-manifest.ts"
-            exit 1
-          fi
+        run: bun scripts/ci/verify-manifest-sync.ts
 
       - name: Verify generated files are up to date
         run: bun run verify:generated
 
       - name: Repository health check
-        run: |
-          echo "🔍 Running repository health checks..."
-
-          # Check for required files
-          test -f docker/postgres/Dockerfile || { echo "::error::Missing docker/postgres/Dockerfile"; exit 1; }
-          test -f docker/postgres/extensions.manifest.json || \
-            { echo "::error::Missing extensions.manifest.json"; exit 1; }
-          test -f package.json || { echo "::error::Missing package.json"; exit 1; }
-
-          # Verify key directories exist
-          test -d stacks/primary || { echo "::error::Missing stacks/primary"; exit 1; }
-          test -d stacks/replica || { echo "::error::Missing stacks/replica"; exit 1; }
-          test -d stacks/single || { echo "::error::Missing stacks/single"; exit 1; }
-          test -d scripts || { echo "::error::Missing scripts directory"; exit 1; }
-
-          echo "✅ Repository health check passed"
+        run: bun scripts/ci/repository-health-check.ts
 
       - name: Generate job summary
         if: always()
@@ -289,15 +263,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/extension-logs
-          docker ps -a
-
-          # Capture logs from any running containers
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/extension-logs/all-containers.log
-            docker logs $container >> ${{ runner.temp }}/extension-logs/all-containers.log 2>&1 || true
-            echo "" >> ${{ runner.temp }}/extension-logs/all-containers.log
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type extensions \
+            --output-dir ${{ runner.temp }}/extension-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()
@@ -429,15 +398,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/security-logs
-          docker ps -a
-
-          # Capture logs from any running containers
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/security-logs/all-containers.log
-            docker logs $container >> ${{ runner.temp }}/security-logs/all-containers.log 2>&1 || true
-            echo "" >> ${{ runner.temp }}/security-logs/all-containers.log
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type security \
+            --output-dir ${{ runner.temp }}/security-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()
@@ -545,15 +509,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/feature-logs
-          docker ps -a
-
-          # Capture logs from any running containers
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/feature-logs/all-containers.log
-            docker logs $container >> ${{ runner.temp }}/feature-logs/all-containers.log 2>&1 || true
-            echo "" >> ${{ runner.temp }}/feature-logs/all-containers.log
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type features \
+            --output-dir ${{ runner.temp }}/feature-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()

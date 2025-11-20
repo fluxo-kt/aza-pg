@@ -254,36 +254,12 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Checking GitHub Actions cache usage..."
-
-          # Get cache usage from GitHub API
-          if CACHE_DATA=$(gh api repos/${{ github.repository }}/actions/cache/usage 2>/dev/null); then
-            CACHE_USAGE=$(echo "$CACHE_DATA" | jq -r '.active_caches_size_in_bytes // 0')
-
-            if command -v bc >/dev/null 2>&1; then
-              CACHE_GB=$(echo "scale=2; $CACHE_USAGE / 1073741824" | bc)
-            else
-              # Fallback if bc not available
-              CACHE_GB=$(awk "BEGIN {printf \"%.2f\", $CACHE_USAGE / 1073741824}")
-            fi
-
-            echo "Current cache usage: ${CACHE_GB}GB"
-
-            # Check if approaching limit
-            if command -v bc >/dev/null 2>&1; then
-              if (( $(echo "$CACHE_GB > 4" | bc -l) )); then
-                echo "⚠️ WARNING: Cache usage approaching GitHub limit (5GB)"
-                echo "::warning::Cache usage (${CACHE_GB}GB) approaching GitHub limit"
-              fi
-            fi
-
-            # Add to step summary
-            echo "### Cache Usage (${{ matrix.platform }}): ${CACHE_GB}GB / 5GB" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Unable to fetch cache usage data from GitHub API"
-          fi
+          bun scripts/ci/monitor-cache-usage.ts \
+            --repository ${{ github.repository }} \
+            --platform "${{ matrix.platform }}" \
+            --github-summary
 
   merge:
     name: Create Multi-Platform Manifest
@@ -369,20 +345,9 @@ jobs:
 
       - name: Verify PostgreSQL version in merged image
         run: |
-          echo "Pulling merged image to verify PostgreSQL version..."
-          for i in {1..3}; do
-            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}; then
-              echo "✅ Merged image pulled successfully"
-              break
-            else
-              echo "⚠️ Pull attempt $i failed, retrying in $((i * 5)) seconds..."
-              sleep $((i * 5))
-              if [ $i -eq 3 ]; then
-                echo "❌ Failed to pull merged image after 3 attempts"
-                exit 1
-              fi
-            fi
-          done
+          bun scripts/docker/pull-with-retry.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --max-retries 3
 
           # Extract PostgreSQL version from built image
           PG_VERSION_OUTPUT=$(docker run --rm \

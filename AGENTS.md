@@ -364,7 +364,7 @@ bun run build
 
 - Modules (auto_explain): Preload-only, no CREATE EXTENSION
 - Tools (5 total): No catalog entry, no CREATE EXTENSION
-- Extensions (34 enabled): Standard CREATE EXTENSION flow
+- Extensions: Standard CREATE EXTENSION flow (counts in manifest)
 - License restrictions: pgvector basic ops free, HNSW requires pgvector_rs license
 
 ## Troubleshooting Patterns

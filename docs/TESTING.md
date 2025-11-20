@@ -400,11 +400,11 @@ PostgreSQL builtins that should always work:
 
 **Comprehensive CI Testing Coverage:**
 
-All 36 enabled extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check), totaling 117+ smoke tests.
+All enabled extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check).
 
 **Test Suite:**
 
-- `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all 36 enabled extensions
+- `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all enabled extensions
 - `scripts/test/test-auto-config.ts` - Auto-config detection across 4 memory scenarios
 - `scripts/test/test-pgbouncer-healthcheck.ts` - PgBouncer auth flow validation
 
@@ -479,8 +479,8 @@ See `scripts/test/test-pgbouncer-healthcheck.ts` for end-to-end stack testing.
 
 **Functional Test Coverage:**
 
-- 36 enabled extensions × 3 dimensions = CREATE EXTENSION, functional test, metadata check
-- 117+ smoke tests with assertions
+- All enabled extensions tested across 3 dimensions: CREATE EXTENSION, functional test, metadata check
+- Comprehensive smoke test suite with assertions
 - 100% extension coverage (no deferred testing)
 
 **Auto-Config Test Coverage:**
@@ -568,7 +568,7 @@ bun scripts/test-all.ts --help
    - Auto-tuning tests (512MB, 2GB, 4GB memory limits)
    - Single-node stack deployment
    - Replica/cluster stack deployment
-   - Comprehensive extension tests (all 36 enabled extensions)
+   - Comprehensive extension tests (all enabled extensions)
 
 **Environment Variables:**
 
@@ -725,7 +725,7 @@ bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18-single-node  # Full 
 #   Comprehensive Docker Image Test Harness
 # ============================================================
 # ✅ Docker daemon is running
-# ✅ Manifest loaded: 38 total entries
+# ✅ Manifest loaded
 # ✅ Test container started
 # ✅ PostgreSQL ready in 5.23s
 #
@@ -763,7 +763,7 @@ GitHub Actions workflow runs all tests on:
 
 ```
 scripts/test/
-├── test-all-extensions-functional.ts  (36 enabled extensions, 117+ smoke tests)
+├── test-all-extensions-functional.ts  (all enabled extensions, comprehensive smoke tests)
 ├── test-auto-config.ts                (10 auto-config scenarios: 512MB-64GB)
 ├── test-pgbouncer-healthcheck.ts      (8 PgBouncer auth flow tests)
 ├── test-pgbouncer-failures.ts         (6 failure scenario tests)

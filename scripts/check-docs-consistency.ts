@@ -52,49 +52,12 @@ interface CheckResult {
 /**
  * Check if file contains extension count mentions
  *
- * Accepts both qualified counts:
- * - "38 total" or "38 catalog" = OK (catalog entries)
- * - "37 enabled" = OK (enabled extensions)
- * - Bare "38" or "37" without qualifier = warn
+ * NOTE: Disabled - all hardcoded extension counts have been removed from documentation.
+ * Counts should be referenced from docs/.generated/docs-data.json or dynamically computed.
  */
-function checkExtensionCounts(content: string, _data: DocsData, _file: string): string[] {
-  const errors: string[] = [];
-
-  // Check for unqualified "38 extensions" (should be qualified as "38 total catalog entries" or "37 enabled")
-  const unqualified38Pattern = /(?<!total\s)(?<!catalog\s)38\s+extensions?(?!\s+\()/gi;
-  const unqualified37Pattern = /(?<!enabled\s)37\s+extensions?(?!\s+\()/gi;
-
-  const matches38 = [...content.matchAll(unqualified38Pattern)];
-  const matches37 = [...content.matchAll(unqualified37Pattern)];
-
-  // Only error on truly bare mentions without context
-  for (const match of matches38) {
-    const lineStart = Math.max(0, (match.index || 0) - 50);
-    const context = content.substring(lineStart, (match.index || 0) + 50);
-
-    // Allow if context contains "total", "catalog", or "(37 enabled"
-    if (
-      !context.includes("total") &&
-      !context.includes("catalog") &&
-      !context.includes("(37 enabled")
-    ) {
-      errors.push(
-        `Found unqualified "38 extensions" - should specify "38 total catalog entries (37 enabled)"`
-      );
-    }
-  }
-
-  for (const match of matches37) {
-    const lineStart = Math.max(0, (match.index || 0) - 50);
-    const context = content.substring(lineStart, (match.index || 0) + 50);
-
-    // Allow if context contains "enabled"
-    if (!context.includes("enabled")) {
-      errors.push(`Found unqualified "37 extensions" - should specify "37 enabled extensions"`);
-    }
-  }
-
-  return errors;
+function checkExtensionCounts(_content: string, _data: DocsData, _file: string): string[] {
+  // Hardcoded count checks disabled - documentation now references generated data
+  return [];
 }
 
 /**

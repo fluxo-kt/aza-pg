@@ -1,6 +1,6 @@
 # aza-pg
 
-PostgreSQL 18 with auto-configuration, 34 enabled extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
+PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
 
 > **Open Source Notice:** This is MIT licensed open source software provided AS IS with NO WARRANTY, NO SUPPORT, and NO LIABILITY. Docker images are published for convenience but come with NO GUARANTEES of functionality, security, or maintenance. Use at your own risk.
 
@@ -24,7 +24,7 @@ PostgreSQL 18 with auto-configuration, 34 enabled extensions, and deployment sta
 
 | Feature                | Official postgres:18 | aza-pg:18                              |
 | ---------------------- | -------------------- | -------------------------------------- |
-| **Extensions**         | Contrib only (~10)   | 34 enabled extensions                  |
+| **Extensions**         | Contrib only (~10)   | Comprehensive extension catalog        |
 | **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                   |
 | **Connection Pooling** | Separate setup       | PgBouncer integrated                   |
 | **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter |
@@ -35,7 +35,7 @@ PostgreSQL 18 with auto-configuration, 34 enabled extensions, and deployment sta
 
 ## Extensions
 
-34 enabled extensions across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. 5 preloaded by default (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). See "Popular Use Cases" below for examples.
+Comprehensive extension catalog across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. Multiple extensions preloaded by default (see docs). See "Popular Use Cases" below for examples.
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
 

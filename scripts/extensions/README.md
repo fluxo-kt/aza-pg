@@ -8,11 +8,11 @@ The `validate-manifest.ts` script performs comprehensive validation of `docker/p
 
 ### 1. Count Validation
 
-Ensures the manifest contains exactly:
+Ensures the manifest is well-formed and consistent:
 
-- **Total catalog entries**: 38 (36 enabled by default, 2 disabled: pgq, supautils)
-- **By kind**: 6 builtin + 26 extensions + 5 tools + 1 module (auto_explain)
-- **By install**: 14 PGDG + 12 compiled from source + 6 builtin + 5 tools + 1 module
+- **Catalog structure**: Validates all required fields and categories are present
+- **Classification**: Verifies correct classification by kind (builtin, extension, tool, module)
+- **Installation method**: Validates install source (PGDG, compiled, builtin)
 
 ### 2. defaultEnable Consistency
 
@@ -83,7 +83,7 @@ bun run build  # Validation runs before Docker build
 
 === VALIDATION RESULTS ===
 
-✅ Manifest validation passed (38 total catalog entries, 36 enabled)
+✅ Manifest validation passed
 ```
 
 ## Error Examples

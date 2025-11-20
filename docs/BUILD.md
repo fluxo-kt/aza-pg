@@ -162,7 +162,7 @@ The publish workflow automatically creates GitHub Releases to showcase image con
 
 **Release notes include:**
 
-- 34 enabled extensions across 18 categories
+- Enabled extensions across all categories (see [Extension Catalog](EXTENSIONS.md))
 - Version information for each extension
 - Image digest and multi-platform confirmation
 - Production-ready quick start commands
@@ -457,9 +457,7 @@ All extensions are pinned to specific commit SHAs (not tags):
 
 ### Extension System
 
-**Total Catalog:** 38 entries (34 enabled, 4 disabled: pgq, postgis, pgrouting, supautils)
-
-See [EXTENSIONS.md § Extension Classification](EXTENSIONS.md#extension-classification) for complete classification details (tools vs modules vs extensions, preloaded defaults).
+See [EXTENSIONS.md](EXTENSIONS.md) for the complete extension catalog with enabled/disabled status and classification details (tools vs modules vs extensions, preloaded defaults). The manifest at `scripts/extensions/manifest-data.ts` is the single source of truth for all extension configuration.
 
 **Manifest-Driven:**
 

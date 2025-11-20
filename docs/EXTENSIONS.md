@@ -27,11 +27,11 @@ aza-pg classifies bundled functionality into four buckets:
   - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist
   - Shipped with PostgreSQL; require `CREATE EXTENSION` (except auto_explain module)
 
-- **Extensions** (23 enabled + 4 disabled entries): Additional catalog entries requiring `CREATE EXTENSION`
+- **Extensions**: Additional catalog entries requiring `CREATE EXTENSION`
   - Installed in the PostgreSQL extension directory
-  - 8 auto-created by default during cluster bootstrap:
-    - pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector, vectorscale
+  - Multiple extensions auto-created by default during cluster bootstrap (see `autoCreated` in `docs/.generated/docs-data.json`)
   - Remaining enabled entries are available on demand via `CREATE EXTENSION`
+  - Some extensions are disabled by default (tracked in manifest with `disabledReason`)
 
 - **Preloaded** (5): Modules/extensions loaded by default via `shared_preload_libraries`
   - auto_explain (module)
@@ -486,7 +486,7 @@ bun run build
 
 ---
 
-**Note:** All 4 disabled extensions can be tracked in the manifest at `scripts/extensions/manifest-data.ts` with `enabled: false` and `disabledReason` field. The total extension catalog includes 38 entries (34 enabled, 4 disabled).
+**Note:** All disabled extensions can be tracked in the manifest at `scripts/extensions/manifest-data.ts` with `enabled: false` and `disabledReason` field. See `docs/.generated/docs-data.json` for current catalog statistics.
 
 ## Upgrade Workflow
 

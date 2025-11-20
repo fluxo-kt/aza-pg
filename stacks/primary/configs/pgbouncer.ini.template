@@ -1,15 +1,17 @@
 [databases]
-postgres = host=postgres port=5432 dbname=postgres user=pgbouncer_auth sslmode=PGBOUNCER_SERVER_SSLMODE_PLACEHOLDER
+postgres = host=postgres port=5432 dbname=postgres user=pgbouncer_auth
 
 [pgbouncer]
 listen_addr = PGBOUNCER_LISTEN_ADDR_PLACEHOLDER
 listen_port = 6432
 pool_mode = transaction
 auth_type = scram-sha-256
+auth_file = /tmp/userlist.txt
 auth_dbname = postgres
 auth_user = pgbouncer_auth
 auth_query = SELECT * FROM pgbouncer_lookup($1)
 ignore_startup_parameters = extra_float_digits
+server_tls_sslmode = PGBOUNCER_SERVER_SSLMODE_PLACEHOLDER
 
 stats_users = pgbouncer_auth, postgres
 admin_users = postgres

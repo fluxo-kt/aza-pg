@@ -26,7 +26,7 @@ escape_password() {
 escaped_pass="$(escape_password "$PGBOUNCER_AUTH_PASS")" || exit 1
 
 umask 077
-# Write .pgpass entries for both PostgreSQL and PgBouncer connections
+# Write .pgpass entries for PostgreSQL and PgBouncer connections (used for health checks only)
 # Format: hostname:port:database:username:password
 printf 'postgres:5432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" > "$PGPASSFILE_PATH"
 printf 'localhost:6432:postgres:pgbouncer_auth:%s\n' "$escaped_pass" >> "$PGPASSFILE_PATH"
@@ -90,10 +90,10 @@ case "$PGBOUNCER_LISTEN_ADDR" in
       octet_name="$2"
       # Check if numeric and not empty
       case "$octet_val" in
-        [0-9] | [0-9][0-9] | [0-2][0-5][0-5])
+        [0-9] | [0-9][0-9] | [1][0-9][0-9] | [2][0-4][0-9] | [2][5][0-5])
           ;;
         *)
-          echo "[PGBOUNCER] ERROR: Invalid IP address: $octet_name octet '$octet_val' exceeds 255 or is invalid" >&2
+          echo "[PGBOUNCER] ERROR: Invalid IP address: $octet_name octet '$octet_val' is invalid (must be 0-255)" >&2
           exit 1
           ;;
       esac
@@ -116,6 +116,17 @@ case "$PGBOUNCER_SERVER_SSLMODE" in
     exit 1
     ;;
 esac
+
+# Generate userlist.txt with auth_user credentials
+# PgBouncer needs plaintext password for auth_user to connect to PostgreSQL for auth_query
+# Note: userlist.txt is secured with 600 permissions and only lives in container memory
+USERLIST_PATH="/tmp/userlist.txt"
+
+# For auth_user connecting to PostgreSQL, PgBouncer needs plaintext password
+# (SCRAM hash only works for client->PgBouncer, not PgBouncer->PostgreSQL)
+printf '"pgbouncer_auth" "%s"\n' "$PGBOUNCER_AUTH_PASS" > "$USERLIST_PATH"
+chmod 600 "$USERLIST_PATH"
+echo "[PGBOUNCER] Generated userlist.txt at $USERLIST_PATH"
 
 # Render configuration with all placeholders replaced
 sed -e "s|PGBOUNCER_LISTEN_ADDR_PLACEHOLDER|${PGBOUNCER_LISTEN_ADDR}|g" \

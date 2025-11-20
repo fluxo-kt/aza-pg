@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-20T10:51:03.295Z
+# Generated at: 2025-11-20T20:47:56.245Z
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -21,7 +21,7 @@ readonly DEFAULT_RAM_MB=1024
 #   - timescaledb: Time-series database features (disabled by default)
 #   - safeupdate: UPDATE/DELETE safety guard (disabled by default)
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit"
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048

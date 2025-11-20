@@ -79,11 +79,10 @@ bun scripts/release/promote-image.ts --help
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Key details:** Modules: 1 (auto_explain). Preloaded: 5 (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). Tools (no CREATE EXTENSION): 5. See docs/EXTENSIONS.md for full catalog.
+**Key details:** Modules: 1 (auto_explain). Preloaded: 6 (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb). Tools (no CREATE EXTENSION): 5. See docs/EXTENSIONS.md for full catalog.
 
 **Optional preload modules** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`):
 
-- `timescaledb`: Time-series database features (hypertables, compression)
 - `safeupdate` (pg_safeupdate): Prevents UPDATE/DELETE without WHERE clause
 - `pgsodium`: Encryption library (requires pgsodium_getkey script)
 - `set_user`: Audited SET ROLE for privilege escalation tracking

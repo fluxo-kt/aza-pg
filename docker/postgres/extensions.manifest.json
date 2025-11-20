@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-20T10:51:03.015Z",
+  "generatedAt": "2025-11-20T20:47:55.984Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -161,10 +161,10 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
-        "excludeFromAutoTests": true,
+        "excludeFromAutoTests": false,
         "notes": [
-          "Excluded from auto-tests: already preloaded, CREATE EXTENSION causes crash",
-          "Enable via shared_preload_libraries to activate scheduler workers."
+          "Preloaded by default - background worker scheduling enabled",
+          "Job scheduling tested in functional test suite"
         ]
       },
       "sourceUrl": "https://github.com/citusdata/pg_cron",
@@ -520,7 +520,7 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": true
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
       "docsUrl": "https://github.com/pgmq/pgmq#readme"
@@ -847,10 +847,11 @@
       ],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false,
-        "excludeFromAutoTests": true,
+        "defaultEnable": true,
+        "excludeFromAutoTests": false,
         "notes": [
-          "Excluded from auto-tests: optional extension not required for standard tests",
+          "Enabled by default with comprehensive time-series capabilities",
+          "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
       },
@@ -914,9 +915,9 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true,
-        "excludeFromAutoTests": true,
+        "excludeFromAutoTests": false,
         "notes": [
-          "Excluded from auto-tests: causes container crashes in test environments"
+          "Comprehensive test coverage includes vector columns, HNSW indexing, and similarity search"
         ]
       },
       "sourceUrl": "https://github.com/pgvector/pgvector",

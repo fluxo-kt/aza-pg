@@ -97,8 +97,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
-      excludeFromAutoTests: true,
-      notes: ["Excluded from auto-tests: causes container crashes in test environments"],
+      excludeFromAutoTests: false,
+      notes: [
+        "Comprehensive test coverage includes vector columns, HNSW indexing, and similarity search",
+      ],
     },
     sourceUrl: "https://github.com/pgvector/pgvector",
     docsUrl: "https://github.com/pgvector/pgvector#readme",
@@ -118,10 +120,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      excludeFromAutoTests: true,
+      excludeFromAutoTests: false,
       notes: [
-        "Excluded from auto-tests: already preloaded, CREATE EXTENSION causes crash",
-        "Enable via shared_preload_libraries to activate scheduler workers.",
+        "Preloaded by default - background worker scheduling enabled",
+        "Job scheduling tested in functional test suite",
       ],
     },
     sourceUrl: "https://github.com/citusdata/pg_cron",
@@ -523,7 +525,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v1.7.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
-    runtime: { sharedPreload: false, defaultEnable: false },
+    runtime: { sharedPreload: false, defaultEnable: true },
     sourceUrl: "https://github.com/pgmq/pgmq",
     docsUrl: "https://github.com/pgmq/pgmq#readme",
   },
@@ -657,10 +659,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],
     runtime: {
       sharedPreload: true,
-      defaultEnable: false,
-      excludeFromAutoTests: true,
+      defaultEnable: true,
+      excludeFromAutoTests: false,
       notes: [
-        "Excluded from auto-tests: optional extension not required for standard tests",
+        "Enabled by default with comprehensive time-series capabilities",
+        "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
       ],
     },

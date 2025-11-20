@@ -121,7 +121,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                 | Version                                                        | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
 | ----------------------------------------- | -------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.7.0](https://github.com/tembo-io/pgmq/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.7.0](https://github.com/tembo-io/pgmq/releases/tag/v1.7.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
 | [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)       | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
@@ -152,7 +152,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                          |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.1](https://github.com/timescale/timescaledb/releases/tag/2.23.1)         | No                 | Yes            | [Docs](https://docs.tigerdata.com/use-timescale/latest/)                | Hypertables, compression, and continuous aggregates for time-series workloads. |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.1](https://github.com/timescale/timescaledb/releases/tag/2.23.1)         | Yes                | Yes            | [Docs](https://docs.tigerdata.com/use-timescale/latest/)                | Hypertables, compression, and continuous aggregates for time-series workloads. |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                  |
 
 ### utilities
@@ -180,16 +180,16 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 ## Runtime Defaults
 
 - Baseline auto-created extensions during cluster bootstrap:
-  - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `plpgsql`, `vector`, `vectorscale`
+  - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pgmq`, `plpgsql`, `timescaledb`, `vector`, `vectorscale`
   - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
-- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit` (5 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
-- Optional extensions can be preloaded: `supautils`, `timescaledb`, `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
+- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb` (6 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+- Optional extensions can be preloaded: `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`, `safeupdate`.
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category
 
 - **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
-- **Time-series** – `timescaledb` is installed but not preloaded by default (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES` if needed); use `CREATE EXTENSION timescaledb` to initialize in user databases. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
+- **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
 - **Security** – `pgaudit` runs by default (preloaded) to guard operations. `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `pgsodium` and `vault` remain optional.
 - **Operations** – `pgbackrest` binary lives in `/usr/local/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available for offline log analysis.

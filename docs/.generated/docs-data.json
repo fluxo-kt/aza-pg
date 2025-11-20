@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-20T10:51:03.082Z",
+  "generatedAt": "2025-11-20T20:47:56.022Z",
   "catalog": {
     "total": 39,
     "enabled": 34,
@@ -51,7 +51,7 @@
   },
   "preloaded": {
     "modules": ["auto_explain"],
-    "extensions": ["pg_cron", "pg_stat_monitor", "pg_stat_statements", "pgaudit"]
+    "extensions": ["pg_cron", "pg_stat_monitor", "pg_stat_statements", "pgaudit", "timescaledb"]
   },
   "autoCreated": [
     "pg_cron",
@@ -59,7 +59,9 @@
     "pg_stat_statements",
     "pg_trgm",
     "pgaudit",
+    "pgmq",
     "plpgsql",
+    "timescaledb",
     "vector",
     "vectorscale"
   ],

@@ -246,22 +246,28 @@ async function waitForPrimaryHealthy(
   info(`Waiting for primary to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
+  let lastStatus = { health: "unknown", state: "unknown" };
   while (elapsed < timeout) {
-    const status = await getServiceHealth(config.primaryStackPath, "postgres");
+    lastStatus = await getServiceHealth(config.primaryStackPath, "postgres");
 
-    if (status.health === "healthy") {
+    if (lastStatus.health === "healthy") {
       success("Primary PostgreSQL is healthy");
       return;
     }
 
-    console.log(`   Primary PostgreSQL: ${status.health} (${elapsed}s/${timeout}s)`);
+    console.log(`   Primary PostgreSQL: ${lastStatus.health} (${elapsed}s/${timeout}s)`);
     await Bun.sleep(5000);
     elapsed += 5;
   }
 
   error(`Primary PostgreSQL failed to become healthy after ${timeout}s`);
+  error(`Last known health status: ${lastStatus.health}`);
+  error(`Container state: ${lastStatus.state}`);
+  error(`Container: postgres (service in primary stack)`);
   await $`docker compose --env-file .env.test logs postgres`.cwd(config.primaryStackPath);
-  process.exit(1);
+  throw new Error(
+    `Primary PostgreSQL health check failed - timeout after ${timeout}s with health status: ${lastStatus.health} and state: ${lastStatus.state}`
+  );
 }
 
 /**
@@ -394,22 +400,28 @@ async function waitForReplicaHealthy(
   info(`Waiting for replica to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
+  let lastStatus = { health: "unknown", state: "unknown" };
   while (elapsed < timeout) {
-    const status = await getServiceHealth(config.replicaStackPath, "postgres-replica");
+    lastStatus = await getServiceHealth(config.replicaStackPath, "postgres-replica");
 
-    if (status.health === "healthy") {
+    if (lastStatus.health === "healthy") {
       success("Replica PostgreSQL is healthy");
       return;
     }
 
-    console.log(`   Replica PostgreSQL: ${status.health} (${elapsed}s/${timeout}s)`);
+    console.log(`   Replica PostgreSQL: ${lastStatus.health} (${elapsed}s/${timeout}s)`);
     await Bun.sleep(5000);
     elapsed += 5;
   }
 
   error(`Replica PostgreSQL failed to become healthy after ${timeout}s`);
+  error(`Last known health status: ${lastStatus.health}`);
+  error(`Container state: ${lastStatus.state}`);
+  error(`Container: postgres-replica (service in replica stack)`);
   await $`docker compose --env-file .env.test logs postgres-replica`.cwd(config.replicaStackPath);
-  process.exit(1);
+  throw new Error(
+    `Replica PostgreSQL health check failed - timeout after ${timeout}s with health status: ${lastStatus.health} and state: ${lastStatus.state}`
+  );
 }
 
 /**

@@ -91,16 +91,18 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
   let elapsed = 0;
   let postgresHealthy = false;
   let pgbouncerHealthy = false;
+  let lastPostgresStatus = "unknown";
+  let lastPgbouncerStatus = "unknown";
 
   while (elapsed < timeout) {
-    const postgresStatus = await getServiceHealth(stackPath, "postgres");
-    const pgbouncerStatus = await getServiceHealth(stackPath, "pgbouncer");
+    lastPostgresStatus = await getServiceHealth(stackPath, "postgres");
+    lastPgbouncerStatus = await getServiceHealth(stackPath, "pgbouncer");
 
-    if (postgresStatus === "healthy") {
+    if (lastPostgresStatus === "healthy") {
       postgresHealthy = true;
     }
 
-    if (pgbouncerStatus === "healthy") {
+    if (lastPgbouncerStatus === "healthy") {
       pgbouncerHealthy = true;
     }
 
@@ -109,7 +111,7 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
     }
 
     console.log(
-      `   PostgreSQL: ${postgresStatus}, PgBouncer: ${pgbouncerStatus} (${elapsed}s/${timeout}s)`
+      `   PostgreSQL: ${lastPostgresStatus}, PgBouncer: ${lastPgbouncerStatus} (${elapsed}s/${timeout}s)`
     );
     await Bun.sleep(5000);
     elapsed += 5;
@@ -117,14 +119,22 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
 
   if (!postgresHealthy) {
     error(`PostgreSQL failed to become healthy after ${timeout}s`);
+    error(`Last known status: ${lastPostgresStatus}`);
+    error(`Container: postgres (service in primary stack)`);
     await $`docker compose --env-file .env.test logs postgres`.cwd(stackPath);
-    throw new Error("PostgreSQL health check failed");
+    throw new Error(
+      `PostgreSQL health check failed - timeout after ${timeout}s with status: ${lastPostgresStatus}`
+    );
   }
 
   if (!pgbouncerHealthy) {
     error(`PgBouncer failed to become healthy after ${timeout}s`);
+    error(`Last known status: ${lastPgbouncerStatus}`);
+    error(`Container: pgbouncer (service in primary stack)`);
     await $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
-    throw new Error("PgBouncer health check failed");
+    throw new Error(
+      `PgBouncer health check failed - timeout after ${timeout}s with status: ${lastPgbouncerStatus}`
+    );
   }
 
   success("Both services are healthy");

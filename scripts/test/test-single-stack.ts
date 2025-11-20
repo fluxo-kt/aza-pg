@@ -172,6 +172,7 @@ POSTGRES_EXPORTER_PORT=9189
     const timeout = TIMEOUTS.complex;
     let elapsed = 0;
     let postgresHealthy = false;
+    let lastPostgresStatus = "unknown";
 
     while (elapsed < timeout) {
       try {
@@ -179,14 +180,14 @@ POSTGRES_EXPORTER_PORT=9189
           .cwd(singleStackPath)
           .text();
         const service: ComposeService = JSON.parse(output);
-        const postgresStatus = service?.Health ?? "starting";
+        lastPostgresStatus = service?.Health ?? "starting";
 
-        if (postgresStatus === "healthy") {
+        if (lastPostgresStatus === "healthy") {
           postgresHealthy = true;
           break;
         }
 
-        console.log(`   PostgreSQL: ${postgresStatus} (${elapsed}s/${timeout}s)`);
+        console.log(`   PostgreSQL: ${lastPostgresStatus} (${elapsed}s/${timeout}s)`);
       } catch {
         console.log(`   PostgreSQL: starting (${elapsed}s/${timeout}s)`);
       }
@@ -197,6 +198,8 @@ POSTGRES_EXPORTER_PORT=9189
 
     if (!postgresHealthy) {
       error(`PostgreSQL failed to become healthy after ${timeout}s`);
+      error(`Last known status: ${lastPostgresStatus}`);
+      error(`Container: postgres (service in single stack)`);
       error("Container logs:");
       try {
         const logs = await $`docker compose --env-file .env.test logs postgres`
@@ -207,7 +210,9 @@ POSTGRES_EXPORTER_PORT=9189
         console.log("Failed to retrieve container logs:", logError);
       }
       await cleanup();
-      process.exit(1);
+      throw new Error(
+        `PostgreSQL health check failed - timeout after ${timeout}s with status: ${lastPostgresStatus}`
+      );
     }
 
     success("PostgreSQL is healthy");

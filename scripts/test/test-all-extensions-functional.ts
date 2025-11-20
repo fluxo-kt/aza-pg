@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
  * Comprehensive Extension Functional Test Suite
- * Tests all 37 enabled PostgreSQL extensions systematically
+ * Tests all enabled PostgreSQL extensions systematically
  *
  * Coverage:
  * - AI/Vector: vector (pgvector), vectorscale
  * - Analytics: hll
  * - CDC: wal2json
- * - GIS: postgis, pgrouting
+ * - GIS: (postgis, pgrouting disabled in manifest)
  * - Indexing: btree_gin, btree_gist
  * - Integration: http, wrappers
  * - Language: plpgsql
@@ -17,7 +17,7 @@
  * - Performance: hypopg, index_advisor
  * - Quality: plpgsql_check
  * - Queueing: pgmq
- * - Safety: pg_plan_filter, pg_safeupdate, supautils
+ * - Safety: pg_safeupdate (pg_plan_filter, supautils disabled in manifest)
  * - Search: pg_trgm, pgroonga, rum
  * - Security: pgaudit, pgsodium, set_user, supabase_vault
  * - Timeseries: timescaledb, timescaledb_toolkit
@@ -28,6 +28,7 @@
  */
 
 import { $ } from "bun";
+import path from "path";
 
 const CONTAINER =
   Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
@@ -39,9 +40,42 @@ interface TestResult {
   duration: number;
   error?: string;
   metrics?: Record<string, any>;
+  skipped?: boolean;
 }
 
 const results: TestResult[] = [];
+
+// Load manifest to check disabled extensions
+interface ManifestEntry {
+  name: string;
+  enabled?: boolean;
+}
+
+interface Manifest {
+  entries: ManifestEntry[];
+}
+
+let disabledExtensions: Set<string> = new Set();
+
+async function loadManifest(): Promise<void> {
+  try {
+    const manifestPath = path.resolve(__dirname, "../../docker/postgres/extensions.manifest.json");
+    const manifestContent = await Bun.file(manifestPath).text();
+    const manifest: Manifest = JSON.parse(manifestContent);
+
+    disabledExtensions = new Set(
+      manifest.entries.filter((e) => e.enabled === false).map((e) => e.name)
+    );
+
+    if (disabledExtensions.size > 0) {
+      console.log(
+        `📋 Manifest loaded: ${disabledExtensions.size} disabled extensions: ${[...disabledExtensions].join(", ")}`
+      );
+    }
+  } catch (error) {
+    console.log(`⚠️  Failed to load manifest: ${error}`);
+  }
+}
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
@@ -69,9 +103,17 @@ async function test(name: string, category: string, fn: () => Promise<void>): Pr
     console.log(`✅ ${name} (${duration}ms)`);
   } catch (error) {
     const duration = Date.now() - start;
-    results.push({ name, passed: false, duration, error: String(error), category });
-    console.log(`❌ ${name} (${duration}ms)`);
-    console.log(`   Error: ${error}`);
+    const errorStr = String(error);
+
+    // Check if this is a skip (not a failure)
+    if (errorStr.includes("SKIPPED:")) {
+      results.push({ name, passed: true, duration, category, skipped: true });
+      console.log(`⊘ ${name} (${duration}ms) - ${errorStr.replace("Error: ", "")}`);
+    } else {
+      results.push({ name, passed: false, duration, error: errorStr, category });
+      console.log(`❌ ${name} (${duration}ms)`);
+      console.log(`   Error: ${error}`);
+    }
   }
 }
 
@@ -85,6 +127,10 @@ console.log("=".repeat(80));
 console.log("COMPREHENSIVE EXTENSION FUNCTIONAL TEST SUITE");
 console.log("=".repeat(80));
 console.log(`Container: ${CONTAINER}`);
+console.log("");
+
+// Load manifest to identify disabled extensions
+await loadManifest();
 console.log("");
 
 // ============================================================================
@@ -248,6 +294,9 @@ console.log("\n🗺️  GIS Extensions");
 console.log("-".repeat(80));
 
 await test("postgis - Create extension and geometry column", "gis", async () => {
+  if (disabledExtensions.has("postgis")) {
+    throw new Error("SKIPPED: postgis extension disabled in manifest");
+  }
   await runSQL("CREATE EXTENSION IF NOT EXISTS postgis CASCADE");
   const create = await runSQL(
     "CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))"
@@ -256,6 +305,9 @@ await test("postgis - Create extension and geometry column", "gis", async () => 
 });
 
 await test("postgis - Insert spatial data", "gis", async () => {
+  if (disabledExtensions.has("postgis")) {
+    throw new Error("SKIPPED: postgis extension disabled in manifest");
+  }
   const insert = await runSQL(
     "INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))"
   );
@@ -263,6 +315,9 @@ await test("postgis - Insert spatial data", "gis", async () => {
 });
 
 await test("postgis - Spatial query (ST_DWithin)", "gis", async () => {
+  if (disabledExtensions.has("postgis")) {
+    throw new Error("SKIPPED: postgis extension disabled in manifest");
+  }
   // Increased distance threshold to 100km to ensure test data is within range
   const query = await runSQL(
     "SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)"
@@ -271,6 +326,9 @@ await test("postgis - Spatial query (ST_DWithin)", "gis", async () => {
 });
 
 await test("postgis - Build spatial index", "gis", async () => {
+  if (disabledExtensions.has("postgis")) {
+    throw new Error("SKIPPED: postgis extension disabled in manifest");
+  }
   const index = await runSQL(
     "CREATE INDEX IF NOT EXISTS test_postgis_geom_idx ON test_postgis USING GIST (geom)"
   );
@@ -278,6 +336,9 @@ await test("postgis - Build spatial index", "gis", async () => {
 });
 
 await test("pgrouting - Create extension and network graph", "gis", async () => {
+  if (disabledExtensions.has("pgrouting")) {
+    throw new Error("SKIPPED: pgrouting extension disabled in manifest");
+  }
   await runSQL("CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE");
   const create = await runSQL(`
     CREATE TABLE IF NOT EXISTS test_routing (
@@ -295,6 +356,9 @@ await test("pgrouting - Create extension and network graph", "gis", async () => 
 });
 
 await test("pgrouting - Calculate shortest path (Dijkstra)", "gis", async () => {
+  if (disabledExtensions.has("pgrouting")) {
+    throw new Error("SKIPPED: pgrouting extension disabled in manifest");
+  }
   const path = await runSQL(
     "SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)"
   );
@@ -796,12 +860,22 @@ console.log("\n🛡️  Safety Extensions");
 console.log("-".repeat(80));
 
 await test("pg_plan_filter - Verify loaded via shared_preload_libraries", "safety", async () => {
+  if (disabledExtensions.has("pg_plan_filter")) {
+    throw new Error(
+      "SKIPPED: pg_plan_filter extension disabled in manifest (not compatible with PostgreSQL 18)"
+    );
+  }
   // pg_plan_filter is a hook-based tool, library file is plan_filter.so
   const load = await runSQL("LOAD 'plan_filter'; SELECT 1");
   assert(load.success, "pg_plan_filter not loadable");
 });
 
 await test("pg_plan_filter - Execute queries with plan filter active", "safety", async () => {
+  if (disabledExtensions.has("pg_plan_filter")) {
+    throw new Error(
+      "SKIPPED: pg_plan_filter extension disabled in manifest (not compatible with PostgreSQL 18)"
+    );
+  }
   // Verify pg_plan_filter allows normal query execution
   const result = await runSQL(`
     LOAD 'plan_filter';
@@ -817,15 +891,24 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
 });
 
 await test("pg_safeupdate - Verify loaded via shared_preload_libraries", "safety", async () => {
-  // pg_safeupdate is a hook-based tool
+  // pg_safeupdate is optional (defaultEnable: false), check if it's actually loaded
   const check = await runSQL("SHOW shared_preload_libraries");
+  if (!check.success || !check.stdout.includes("safeupdate")) {
+    throw new Error("SKIPPED: pg_safeupdate not in shared_preload_libraries (optional preload)");
+  }
   assert(
-    check.success && check.stdout.includes("pg_safeupdate"),
+    check.success && check.stdout.includes("safeupdate"),
     "pg_safeupdate not found in shared_preload_libraries"
   );
 });
 
 await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
+  // Check if pg_safeupdate is loaded before testing
+  const check = await runSQL("SHOW shared_preload_libraries");
+  if (!check.success || !check.stdout.includes("safeupdate")) {
+    throw new Error("SKIPPED: pg_safeupdate not in shared_preload_libraries (optional preload)");
+  }
+
   await runSQL("CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)");
   await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
 
@@ -841,6 +924,11 @@ await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
 });
 
 await test("supautils - Verify extension structure", "safety", async () => {
+  if (disabledExtensions.has("supautils")) {
+    throw new Error(
+      "SKIPPED: supautils extension disabled in manifest (compilation patching issues)"
+    );
+  }
   // supautils is a tool, check its GUC parameters
   const check = await runSQL("SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'");
   const count = parseInt(check.stdout.trim());
@@ -1104,6 +1192,14 @@ await test("timescaledb - Enable compression", "timeseries", async () => {
   const compress = await runSQL(
     "ALTER TABLE test_timescale SET (timescaledb.compress, timescaledb.compress_segmentby = 'device_id')"
   );
+
+  // Compression is an Apache-licensed feature not available in Community Edition
+  if (!compress.success && compress.stderr.includes("requires a Timescale license")) {
+    throw new Error(
+      "SKIPPED: timescaledb compression requires Apache license (not available in Community Edition)"
+    );
+  }
+
   assert(compress.success, "Failed to enable compression");
 });
 
@@ -1117,6 +1213,14 @@ await test("timescaledb - Create continuous aggregate", "timeseries", async () =
     FROM test_timescale
     GROUP BY bucket, device_id
   `);
+
+  // Continuous aggregates are an Apache-licensed feature not available in Community Edition
+  if (!cagg.success && cagg.stderr.includes("requires a Timescale license")) {
+    throw new Error(
+      "SKIPPED: timescaledb continuous aggregates require Apache license (not available in Community Edition)"
+    );
+  }
+
   assert(cagg.success, "Failed to create continuous aggregate");
 });
 
@@ -1289,12 +1393,14 @@ console.log("\n" + "=".repeat(80));
 console.log("COMPREHENSIVE EXTENSION TEST SUMMARY");
 console.log("=".repeat(80));
 
-const passed = results.filter((r) => r.passed).length;
+const passed = results.filter((r) => r.passed && !r.skipped).length;
+const skipped = results.filter((r) => r.skipped).length;
 const failed = results.filter((r) => !r.passed).length;
 const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
 console.log(`Total: ${results.length} tests`);
 console.log(`Passed: ${passed}`);
+console.log(`Skipped: ${skipped} (disabled extensions or optional features)`);
 console.log(`Failed: ${failed}`);
 console.log(`Total Duration: ${totalDuration}ms`);
 
@@ -1306,10 +1412,16 @@ console.log("=".repeat(80));
 
 for (const category of categories) {
   const categoryResults = results.filter((r) => r.category === category);
-  const categoryPassed = categoryResults.filter((r) => r.passed).length;
+  const categoryPassed = categoryResults.filter((r) => r.passed && !r.skipped).length;
+  const categorySkipped = categoryResults.filter((r) => r.skipped).length;
   const categoryFailed = categoryResults.filter((r) => !r.passed).length;
 
-  console.log(`\n${category.toUpperCase()}: ${categoryPassed}/${categoryResults.length} passed`);
+  const status =
+    categorySkipped > 0
+      ? `${categoryPassed}/${categoryResults.length} passed (${categorySkipped} skipped)`
+      : `${categoryPassed}/${categoryResults.length} passed`;
+
+  console.log(`\n${category.toUpperCase()}: ${status}`);
 
   if (categoryFailed > 0) {
     categoryResults

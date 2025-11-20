@@ -119,7 +119,7 @@
 Container publication
 
 - https://www.perplexity.ai/search/lhedbwYNQ96GWFPGZilJXA
-- private repo with public GHCR container
+- private repo is possible with public images on GHCR
 
 ### Clusters, Kubernetes
 

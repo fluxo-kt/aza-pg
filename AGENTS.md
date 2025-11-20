@@ -2,8 +2,8 @@
 
 PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
-**Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below.
-**TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally.
+**Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below. **But NO Bun in the final images**
+**TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Dockerfiles are auto-generation-only from manifest, should be as simple as possible — all logic and nuances belong in TypeScript scripts.
 
 ## CRITICAL RULES
 
@@ -12,14 +12,11 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
 ## Invariants
 
-- Preload (default): auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit
-- Extensions: 38 catalog total (34 enabled, 4 disabled: pgq, postgis, pgrouting, supautils)
-- Tools ≠ extensions: 5 tools (no CREATE EXTENSION)
+- Manifest = single source of truth; encodes what's completely disabled (and not available), what's preloaded and/or enabled/created.
+- Tools ≠ extensions (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
 - **Image includes /etc/postgresql/version-info.{txt,json}** (self-documenting)
-- Manifest = single source of truth
 - **Dockerfile is auto-generated** from template + manifest (never edit directly)
-- Private repo | Public images (free, no guarantees)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`)
 
 ## Paths

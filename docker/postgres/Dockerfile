@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-20T10:51:03.280Z
+# Generated at: 2025-11-20T16:36:56.922Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -195,49 +195,17 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
-    apt-get install -y jq && \
-    # Build package list dynamically from manifest (only enabled PGDG extensions)
-    PGDG_PACKAGES="" && \
-    # Helper function to conditionally add package if enabled
-    add_if_enabled() { \
-      local ext_name=$1; \
-      local pkg_name=$2; \
-      local pkg_version=$3; \
-      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))' /tmp/extensions.manifest.json >/dev/null; then \
-        PGDG_PACKAGES="$PGDG_PACKAGES postgresql-${PG_MAJOR}-${pkg_name}=${pkg_version}"; \
-      fi; \
-    } && \
-    add_if_enabled "pg_cron" "cron" "${PGCRON_VERSION}" && \
-    add_if_enabled "pgaudit" "pgaudit" "${PGAUDIT_VERSION}" && \
-    add_if_enabled "vector" "pgvector" "${PGVECTOR_VERSION}" && \
-    add_if_enabled "timescaledb" "timescaledb" "${TIMESCALEDB_VERSION}" && \
-    add_if_enabled "postgis" "postgis-3" "${POSTGIS_VERSION}" && \
-    add_if_enabled "pg_partman" "partman" "${PARTMAN_VERSION}" && \
-    add_if_enabled "pg_repack" "repack" "${REPACK_VERSION}" && \
-    add_if_enabled "plpgsql_check" "plpgsql-check" "${PLPGSQL_CHECK_VERSION}" && \
-    add_if_enabled "hll" "hll" "${HLL_VERSION}" && \
-    add_if_enabled "http" "http" "${HTTP_VERSION}" && \
-    add_if_enabled "hypopg" "hypopg" "${HYPOPG_VERSION}" && \
-    add_if_enabled "pgrouting" "pgrouting" "${PGROUTING_VERSION}" && \
-    add_if_enabled "rum" "rum" "${RUM_VERSION}" && \
-    add_if_enabled "set_user" "set-user" "${SET_USER_VERSION}" && \
-    # Install only enabled packages (skip if none enabled)
-    if [ -n "$PGDG_PACKAGES" ]; then \
-      echo "Installing PGDG packages: $PGDG_PACKAGES" && \
-      apt-get install -y $PGDG_PACKAGES && \
-      # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-      dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
-      INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
-      echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-      # Dynamic verification: count enabled PGDG packages in manifest
-      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))] | length' /tmp/extensions.manifest.json) && \
-      echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \
-      # Allow some variance but ensure we have at least 1 package
-      test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \
-      rm -f /tmp/installed-pgdg-exts.log; \
-    else \
-      echo "No PGDG packages enabled in manifest"; \
-    fi && \
+    # Install enabled PGDG packages (pre-calculated in TS)
+    echo "Installing PGDG packages: postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION}" && \
+    apt-get install -y postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
+    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
+    dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
+    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
+    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
+    echo "Expected 12 enabled PGDG packages from manifest" && \
+    # Allow some variance but ensure we have at least 1 package
+    test "$INSTALLED_COUNT" -ge 12 || (echo "ERROR: Installed count mismatch (expected >= 12, got $INSTALLED_COUNT)" && exit 1) && \
+    rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
@@ -252,49 +220,40 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 
 # Generate version-info files in final stage with actual PostgreSQL version
 RUN set -ex; \
-    apt-get update && apt-get install -y --no-install-recommends jq && \
     \
     # Extract actual PostgreSQL version
     PG_VERSION=$(psql --version | grep -oP '\d+\.\d+' | head -1); \
     BUILD_DATE=$(date -u '+%Y-%m-%d'); \
     BUILD_TS=$(date -u '+%Y%m%d%H%M'); \
-    MANIFEST="/etc/postgresql/extensions.manifest.json"; \
     \
-    # Count extensions
-    TOTAL=$(jq '.entries | length' "$MANIFEST"); \
-    ENABLED=$(jq '[.entries[] | select((.enabled == null) or (.enabled == true))] | length' "$MANIFEST"); \
-    DISABLED=$(jq '[.entries[] | select(.enabled == false)] | length' "$MANIFEST"); \
-    PRELOADED=$(jq '[.entries[] | select(((.enabled == null) or (.enabled == true)) and .runtime.sharedPreload)] | length' "$MANIFEST"); \
-    \
-    # Generate version-info.txt (human-readable)
-    printf '%s\n' \
-      '===============================================================================' \
-      "aza-pg - PostgreSQL ${PG_VERSION%.*} with Extensions" \
-      '===============================================================================' \
-      '' \
-      "Build Date: ${BUILD_DATE}" \
-      "PostgreSQL Version: ${PG_VERSION}" \
-      '' \
-      'SUMMARY' \
-      "  Total Catalog: ${TOTAL}" \
-      "  Enabled: ${ENABLED}" \
-      "  Disabled: ${DISABLED}" \
-      "  Preloaded: ${PRELOADED}" \
-      '' \
-      '===============================================================================' \
-      'Use CREATE EXTENSION <name>; to enable available extensions' \
-      'View manifest: cat /etc/postgresql/extensions.manifest.json' \
-      'Documentation: https://github.com/fluxo-kt/aza-pg' \
-      '===============================================================================' \
-      > /etc/postgresql/version-info.txt && \
+    # Generate version-info.txt (super lean and focused)
+    { \
+      echo "aza-pg ${PG_VERSION} | ${BUILD_TS}"; \
+      echo "=================================================="; \
+      echo "PostgreSQL: ${PG_VERSION}"; \
+      echo "Build: ${BUILD_TS} (${BUILD_DATE})"; \
+      echo ""; \
+      echo "Extensions & Tools:"; \
+      printf "%b\n" "auto_explain builtin\nbtree_gin builtin\nbtree_gist builtin\nhll v2.19\nhttp v1.7.0\nhypopg 1.4.2\nindex_advisor v0.2.0\npg_cron v1.6.7\npg_hashids v1.2.1\npg_jsonschema 5492c7d1a28c5a2c85b48f89c47f258acc93d241\npg_partman v5.3.1\npg_repack ver_1.5.3\npg_safeupdate 1.5\npg_stat_monitor b00caafb684b3bd64f020ccd057303cd8a7af0d8\npg_stat_statements builtin\npg_trgm builtin\npgaudit 18.0\npgbackrest release/2.57.0\npgbadger v13.1\npgflow pgflow@0.7.2\npgmq v1.7.0\npgroonga 4.0.4\npgsodium v3.1.9\nplpgsql builtin\nplpgsql_check v2.8.3\nrum 1.3.15\nset_user REL4_2_0\nsupabase_vault v0.3.1\ntimescaledb 2.23.1\ntimescaledb_toolkit 1.22.0\nvector v0.8.1\nvectorscale 0.9.0\nwal2json wal2json_2_6\nwrappers 303da1dd0e7a94365ecf5d48866739fe9fda4d07"; \
+    } > /etc/postgresql/version-info.txt && \
     \
     # Generate version-info.json (machine-readable)
-    jq -n --arg pg_version "$PG_VERSION" --arg build_ts "$BUILD_TS" --arg build_date "$BUILD_DATE" --argjson total "$TOTAL" --argjson enabled "$ENABLED" --argjson disabled "$DISABLED" --argjson preloaded "$PRELOADED" '{postgres_version: $pg_version, build_timestamp: $build_ts, build_date: $build_date, build_type: "single-node", extensions: {total: $total, enabled: $enabled, disabled: $disabled, preloaded: $preloaded}}' > /etc/postgresql/version-info.json && \
-    \
-    # Remove jq (only needed for generation)
-    apt-get purge -y jq && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+    # Using heredoc with variable substitution for runtime values
+    cat <<EOF > /etc/postgresql/version-info.json
+{
+  "postgres_version": "${PG_VERSION}",
+  "build_timestamp": "${BUILD_TS}",
+  "build_date": "${BUILD_DATE}",
+  "build_type": "single-node",
+  "extensions": {
+    "total": 39,
+    "enabled": 34,
+    "disabled": 5,
+    "preloaded": 9
+  }
+}
+EOF
+
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 

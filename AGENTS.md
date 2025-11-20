@@ -200,7 +200,7 @@ See docs/TOOLING.md, docs/BUILD.md for details.
   - For Codex/OpenAI CLI change the name to "Codex <codex@openai.com>"
   - For Qwen: "Qwen <code@qwen.ai>"
   - For Gemini: "Gemini <gemini@google.com>"
-  - For Copilot: "Gemini <copilot@github.com>"
+  - For Copilot: "Copilot <copilot@github.com>"
 - Don’t bypass pre‑commit hooks!
 - **NEVER use --no-verify or bypass hooks/checks**: Fix the actual root issue instead
 - **If SSH fail, ask user start SSH agent** — NEVER touch git config! NEVER skip commit signing!

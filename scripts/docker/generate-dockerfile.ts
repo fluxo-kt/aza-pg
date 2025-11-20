@@ -110,6 +110,10 @@ interface ManifestEntry {
   runtime?: {
     sharedPreload?: boolean;
   };
+  source: {
+    tag?: string;
+    ref?: string;
+  };
 }
 
 interface Manifest {
@@ -152,103 +156,118 @@ function generatePgdgVersionArgRedeclare(): string {
 /**
  * Generate PGDG package installation script
  */
-function generatePgdgPackagesInstall(_manifest: Manifest): string {
-  // Build shell script dynamically
-  const shellScript = `RUN set -eu && \\
+function generatePgdgPackagesInstall(manifest: Manifest): string {
+  const enabledPgdgPackages: string[] = [];
+
+  for (const mapping of PGDG_MAPPINGS) {
+    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
+    // Check if entry exists, is PGDG, and is enabled (default true)
+    if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
+      // Package is enabled
+      // We use ${PG_MAJOR} and ${ARG_NAME} which are Docker ARGs
+      enabledPgdgPackages.push(
+        `postgresql-\${PG_MAJOR}-${mapping.packageName}=\${${mapping.argName}}`
+      );
+    }
+  }
+
+  if (enabledPgdgPackages.length === 0) {
+    return `RUN echo "No PGDG packages enabled in manifest"`;
+  }
+
+  const packagesList = enabledPgdgPackages.join(" ");
+  const expectedCount = enabledPgdgPackages.length;
+
+  return `RUN set -eu && \\
     rm -rf /var/lib/apt/lists/* && \\
     apt-get update && \\
-    apt-get install -y jq && \\
-    # Build package list dynamically from manifest (only enabled PGDG extensions)
-    PGDG_PACKAGES="" && \\
-    # Helper function to conditionally add package if enabled
-    add_if_enabled() { \\
-      local ext_name=$1; \\
-      local pkg_name=$2; \\
-      local pkg_version=$3; \\
-      if jq -e --arg name "$ext_name" '.entries[] | select(.name == $name and .install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))' /tmp/extensions.manifest.json >/dev/null; then \\
-        PGDG_PACKAGES="$PGDG_PACKAGES postgresql-\${PG_MAJOR}-\${pkg_name}=\${pkg_version}"; \\
-      fi; \\
-    } && \\`;
-
-  // Add all PGDG packages
-  const addCommands = PGDG_MAPPINGS.map((mapping) => {
-    return `    add_if_enabled "${mapping.manifestName}" "${mapping.packageName}" "\${${mapping.argName}}" && \\`;
-  }).join("\n");
-
-  const finalPart = `    # Install only enabled packages (skip if none enabled)
-    if [ -n "$PGDG_PACKAGES" ]; then \\
-      echo "Installing PGDG packages: $PGDG_PACKAGES" && \\
-      apt-get install -y $PGDG_PACKAGES && \\
-      # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-      dpkg -l | grep "^ii.*postgresql-\${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \\
-      INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
-      echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
-      # Dynamic verification: count enabled PGDG packages in manifest
-      ENABLED_PGDG_COUNT=$(jq '[.entries[] | select(.install_via == "pgdg" and ((.enabled == null) or (.enabled == true)))] | length' /tmp/extensions.manifest.json) && \\
-      echo "Expected $ENABLED_PGDG_COUNT enabled PGDG packages from manifest" && \\
-      # Allow some variance but ensure we have at least 1 package
-      test "$INSTALLED_COUNT" -ge 1 || (echo "ERROR: No PGDG packages installed" && exit 1) && \\
-      rm -f /tmp/installed-pgdg-exts.log; \\
-    else \\
-      echo "No PGDG packages enabled in manifest"; \\
-    fi && \\
+    # Install enabled PGDG packages (pre-calculated in TS)
+    echo "Installing PGDG packages: ${packagesList}" && \\
+    apt-get install -y ${packagesList} && \\
+    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
+    dpkg -l | grep "^ii.*postgresql-\${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \\
+    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
+    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
+    echo "Expected ${expectedCount} enabled PGDG packages from manifest" && \\
+    # Allow some variance but ensure we have at least 1 package
+    test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
+    rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
     find /usr/lib/postgresql/\${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
-
-  return [shellScript, addCommands, finalPart].join("\n");
 }
 
 /**
  * Generate version info generation script using TypeScript-style logic
  */
-function generateVersionInfoGeneration(_manifest: Manifest): string {
-  // Note: We use jq to count extensions at build time for accurate results
-  // This ensures version-info reflects the actual manifest at image build time
+function generateVersionInfoGeneration(manifest: Manifest): string {
+  // Pre-calculate extension list and counts in TypeScript
+  // This removes the need for 'jq' in the final image and moves logic to build time
+
+  const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
+  const disabledEntries = manifest.entries.filter((e) => e.enabled === false);
+  const preloadedEntries = enabledEntries.filter((e) => e.runtime?.sharedPreload);
+
+  const totalCount = manifest.entries.length;
+  const enabledCount = enabledEntries.length;
+  const disabledCount = disabledEntries.length;
+  const preloadedCount = preloadedEntries.length;
+
+  // Sort entries for deterministic output
+  enabledEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Generate the formatted list for version-info.txt
+  const extensionList = enabledEntries
+    .map((e) => {
+      let version = "builtin";
+      if (e.source.tag) {
+        version = e.source.tag;
+      } else if (e.source.ref) {
+        version = e.source.ref;
+      }
+      return `${e.name} ${version}`;
+    })
+    .join("\\n");
+
+  // Generate the JSON structure (partially pre-filled)
+  // We use placeholders for runtime values like PG_VERSION
+  const jsonStructure = {
+    postgres_version: "${PG_VERSION}",
+    build_timestamp: "${BUILD_TS}",
+    build_date: "${BUILD_DATE}",
+    build_type: "single-node",
+    extensions: {
+      total: totalCount,
+      enabled: enabledCount,
+      disabled: disabledCount,
+      preloaded: preloadedCount,
+    },
+  };
+
   return `RUN set -ex; \\
-    apt-get update && apt-get install -y --no-install-recommends jq && \\
     \\
     # Extract actual PostgreSQL version
     PG_VERSION=$(psql --version | grep -oP '\\d+\\.\\d+' | head -1); \\
     BUILD_DATE=$(date -u '+%Y-%m-%d'); \\
     BUILD_TS=$(date -u '+%Y%m%d%H%M'); \\
-    MANIFEST="/etc/postgresql/extensions.manifest.json"; \\
     \\
-    # Count extensions
-    TOTAL=$(jq '.entries | length' "$MANIFEST"); \\
-    ENABLED=$(jq '[.entries[] | select((.enabled == null) or (.enabled == true))] | length' "$MANIFEST"); \\
-    DISABLED=$(jq '[.entries[] | select(.enabled == false)] | length' "$MANIFEST"); \\
-    PRELOADED=$(jq '[.entries[] | select(((.enabled == null) or (.enabled == true)) and .runtime.sharedPreload)] | length' "$MANIFEST"); \\
-    \\
-    # Generate version-info.txt (human-readable)
-    printf '%s\\n' \\
-      '===============================================================================' \\
-      "aza-pg - PostgreSQL \${PG_VERSION%.*} with Extensions" \\
-      '===============================================================================' \\
-      '' \\
-      "Build Date: \${BUILD_DATE}" \\
-      "PostgreSQL Version: \${PG_VERSION}" \\
-      '' \\
-      'SUMMARY' \\
-      "  Total Catalog: \${TOTAL}" \\
-      "  Enabled: \${ENABLED}" \\
-      "  Disabled: \${DISABLED}" \\
-      "  Preloaded: \${PRELOADED}" \\
-      '' \\
-      '===============================================================================' \\
-      'Use CREATE EXTENSION <name>; to enable available extensions' \\
-      'View manifest: cat /etc/postgresql/extensions.manifest.json' \\
-      'Documentation: https://github.com/fluxo-kt/aza-pg' \\
-      '===============================================================================' \\
-      > /etc/postgresql/version-info.txt && \\
+    # Generate version-info.txt (super lean and focused)
+    { \\
+      echo "aza-pg \${PG_VERSION} | \${BUILD_TS}"; \\
+      echo "=================================================="; \\
+      echo "PostgreSQL: \${PG_VERSION}"; \\
+      echo "Build: \${BUILD_TS} (\${BUILD_DATE})"; \\
+      echo ""; \\
+      echo "Extensions & Tools:"; \\
+      printf "%b\\n" "${extensionList}"; \\
+    } > /etc/postgresql/version-info.txt && \\
     \\
     # Generate version-info.json (machine-readable)
-    jq -n --arg pg_version "$PG_VERSION" --arg build_ts "$BUILD_TS" --arg build_date "$BUILD_DATE" --argjson total "$TOTAL" --argjson enabled "$ENABLED" --argjson disabled "$DISABLED" --argjson preloaded "$PRELOADED" '{postgres_version: $pg_version, build_timestamp: $build_ts, build_date: $build_date, build_type: "single-node", extensions: {total: $total, enabled: $enabled, disabled: $disabled, preloaded: $preloaded}}' > /etc/postgresql/version-info.json && \\
-    \\
-    # Remove jq (only needed for generation)
-    apt-get purge -y jq && \\
-    apt-get autoremove -y && \\
-    rm -rf /var/lib/apt/lists/*`;
+    # Using heredoc with variable substitution for runtime values
+    cat <<EOF > /etc/postgresql/version-info.json
+${JSON.stringify(jsonStructure, null, 2)}
+EOF
+`;
 }
 
 /**

@@ -5,7 +5,7 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 **Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below.
 **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally.
 
-## CRITCICAL RULES
+## CRITICAL RULES
 
 - ALWAYS COMPREHENSIVELY HOLYSTICALLY VERIFY/TEST/CHECK ALL PARTS OF YOUR WORK/CHANGES LOCALLY BEFORE COMMITTING
 - DOUBLE CHECK & CONFIRM ALL TESTS AND VERIFICATIONS ARE COMPLETE AND SUCCESSFUL BEFORE PUSHING
@@ -170,3 +170,75 @@ See docs/TOOLING.md, docs/BUILD.md for details.
 - PRODUCTION.md - Deployment, security
 - docs/BUILD.md - Build instructions, CI/CD workflows
 - docs/TOOLING.md - Tech choices, locked decisions
+
+## Key Technical Learnings
+
+**Docker Compose Environment Variables**:
+
+- `env_file:` loads vars for container process, NOT child services
+- Dependent services need explicit `environment:` declarations
+- Use `environment:` for inter-service communication vars
+
+**PostgreSQL Replication**:
+
+- Slot verification requires pg_monitor role or superuser
+- CPU/memory limits must match between primary and replica
+- Use `pg_replication_slots` catalog to verify slot creation
+
+**PgBouncer Authentication**:
+
+- auth_query is SQL executed against target database
+- Connection parameters (sslmode, host, port) go in DSN only
+- auth_user must exist in BOTH userlist.txt AND .pgpass
+- .pgpass escape rules: ONLY ":" and "\\" (NOT "@", "&", or other special chars)
+
+**PostgreSQL 18 Changes**:
+
+- Error message wording updated (test assertions must adapt)
+- Extension availability via pg_available_extensions catalog
+- No breaking changes in core functionality
+
+**Docker Exit Codes**:
+
+- 0: Success
+- 1: Application error (inside container)
+- 125: Docker daemon error (before container starts)
+- 126: Command invoked cannot execute
+- 127: Command not found
+
+**Extension Architecture**:
+
+- Modules (auto_explain): Preload-only, no CREATE EXTENSION
+- Tools (5 total): No catalog entry, no CREATE EXTENSION
+- Extensions (34 enabled): Standard CREATE EXTENSION flow
+- License restrictions: pgvector basic ops free, HNSW requires pgvector_rs license
+
+## Troubleshooting Patterns
+
+**Replication Issues**:
+
+1. Verify slot creation: `SELECT * FROM pg_replication_slots;`
+2. Check permissions: User needs pg_monitor or superuser role
+3. Validate environment vars: Use `docker compose config` to verify interpolation
+4. Match resource limits: Primary and replica must have symmetric CPU/memory
+
+**PgBouncer Connection Failures**:
+
+1. Check auth_user setup: Must exist in userlist.txt with password
+2. Verify .pgpass format: `hostname:port:database:username:password` (escape ":" and "\\")
+3. Test auth_query manually: Connect as auth_user and run query
+4. Validate database list: pgbouncer.ini [databases] section must match target DB
+
+**Extension Test Failures**:
+
+1. Query pg_available_extensions before CREATE EXTENSION
+2. Check manifest enabled flag: `scripts/extensions/manifest-data.ts`
+3. Verify preload modules: `SHOW shared_preload_libraries;`
+4. License requirements: Some extensions (pgvector HNSW) need activation keys
+
+**Container Startup Failures**:
+
+1. Exit code 125: Docker daemon issue (check compose syntax, volume mounts)
+2. Exit code 1: Application error (check PostgreSQL logs)
+3. Health check timeouts: Verify port, credentials, and database name
+4. Resource constraints: Ensure sufficient memory/CPU allocated

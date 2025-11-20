@@ -286,3 +286,64 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 
   return await proc.exited;
 }
+
+/**
+ * Generate unique container name for test isolation
+ * Format: {prefix}-{timestamp}-{pid}
+ * @param prefix - Prefix for the container name (default: "aza-pg-test")
+ * @returns Unique container name
+ */
+export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {
+  return `${prefix}-${Date.now()}-${process.pid}`;
+}
+
+/**
+ * Generate unique project name for Docker Compose test isolation
+ * Format: {prefix}-{timestamp}-{pid}
+ * @param prefix - Prefix for the project name (default: "aza-pg-test")
+ * @returns Unique project name
+ */
+export function generateUniqueProjectName(prefix: string = "aza-pg-test"): string {
+  return `${prefix}-${Date.now()}-${process.pid}`;
+}
+
+/**
+ * Cleanup Docker container with verification
+ * @param containerName - Name of the container to cleanup
+ * @returns true if cleanup succeeded or container doesn't exist, false if container still exists
+ */
+export async function cleanupContainer(containerName: string): Promise<boolean> {
+  if (!containerName || containerName.trim() === "") {
+    throw new Error("cleanupContainer: container name is required");
+  }
+
+  try {
+    // Stop and remove container
+    const rmProc = spawn(["docker", "rm", "-f", containerName], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await rmProc.exited;
+
+    // Verify removal
+    const checkProc = spawn(
+      ["docker", "ps", "-a", "--filter", `name=${containerName}`, "--format", "{{.Names}}"],
+      {
+        stdout: "pipe",
+        stderr: "ignore",
+      }
+    );
+    const stdout = await new Response(checkProc.stdout).text();
+    await checkProc.exited;
+
+    const exists = stdout.trim().length > 0;
+    if (exists) {
+      error(`Warning: Container ${containerName} still exists after cleanup`);
+      return false;
+    }
+    return true;
+  } catch {
+    // If docker commands fail, assume container doesn't exist
+    return true;
+  }
+}

@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon } from "../utils/docker";
+import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
@@ -48,14 +48,18 @@ function generateTestCredentials(): TestCredentials {
 /**
  * Create test .env file for Docker Compose
  */
-async function createTestEnv(stackPath: string, credentials: TestCredentials): Promise<void> {
+async function createTestEnv(
+  stackPath: string,
+  credentials: TestCredentials,
+  projectName: string
+): Promise<void> {
   const postgresImage = Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
   const envContent = `POSTGRES_PASSWORD=${credentials.postgresPassword}
 PGBOUNCER_AUTH_PASS=${credentials.pgbouncerPassword}
 PG_REPLICATION_PASSWORD=${credentials.replicationPassword}
 POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g
-COMPOSE_PROJECT_NAME=aza-pg-healthcheck-test
+COMPOSE_PROJECT_NAME=${projectName}
 `;
 
   const envFile = Bun.file(join(stackPath, ".env.test"));
@@ -298,11 +302,28 @@ async function testHostConnection(pgbouncerPassword: string): Promise<void> {
 /**
  * Cleanup function to stop services and remove test environment
  */
-async function cleanup(stackPath: string): Promise<void> {
+async function cleanup(stackPath: string, projectName: string): Promise<void> {
   info("Cleaning up test environment...");
 
   try {
-    await $`docker compose --env-file .env.test down -v`.cwd(stackPath).quiet();
+    await $`docker compose --env-file .env.test down -v`
+      .cwd(stackPath)
+      .env({ COMPOSE_PROJECT_NAME: projectName })
+      .quiet();
+
+    // Verify containers are removed
+    const checkResult = await $`docker ps -a --filter name=${projectName} --format "{{.Names}}"`
+      .nothrow()
+      .quiet();
+    const remainingContainers = checkResult.text().trim();
+    if (remainingContainers) {
+      warning(`Warning: Some containers still exist: ${remainingContainers}`);
+      // Force remove any remaining containers
+      const containerList = remainingContainers.split("\n").filter((n) => n.trim());
+      for (const container of containerList) {
+        await $`docker rm -f ${container}`.nothrow().quiet();
+      }
+    }
   } catch {
     // Ignore cleanup errors
   }
@@ -382,23 +403,50 @@ async function main(): Promise<void> {
   console.log(`Stack: ${stackDir}`);
   console.log();
 
+  // Generate unique project name for test isolation
+  const projectName = generateUniqueProjectName("aza-pg-healthcheck-test");
+  info(`Using unique project name: ${projectName}`);
+
   // Generate test credentials
   const credentials = generateTestCredentials();
+
+  // Setup signal handlers for cleanup
+  let cleanupCalled = false;
+  const performCleanup = async () => {
+    if (!cleanupCalled) {
+      cleanupCalled = true;
+      await cleanup(stackPath, projectName);
+    }
+  };
+
+  process.on("SIGINT", async () => {
+    console.log("\n\nCaught interrupt signal, cleaning up...");
+    await performCleanup();
+    process.exit(130);
+  });
+
+  process.on("SIGTERM", async () => {
+    console.log("\n\nCaught termination signal, cleaning up...");
+    await performCleanup();
+    process.exit(143);
+  });
 
   try {
     // Create test environment
     info("Creating test environment configuration...");
-    await createTestEnv(stackPath, credentials);
+    await createTestEnv(stackPath, credentials, projectName);
     success("Test environment created");
 
     // Start services
     info("Starting primary stack (postgres + pgbouncer)...");
     try {
-      await $`docker compose --env-file .env.test up -d postgres pgbouncer`.cwd(stackPath);
+      await $`docker compose --env-file .env.test up -d postgres pgbouncer`
+        .cwd(stackPath)
+        .env({ COMPOSE_PROJECT_NAME: projectName });
       success("Services started");
     } catch {
       error("Failed to start services");
-      await cleanup(stackPath);
+      await performCleanup();
       process.exit(1);
     }
 
@@ -436,7 +484,7 @@ async function main(): Promise<void> {
     console.log();
   } finally {
     // Always cleanup
-    await cleanup(stackPath);
+    await performCleanup();
   }
 }
 

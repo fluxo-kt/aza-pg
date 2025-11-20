@@ -15,7 +15,7 @@
 
 import { $ } from "bun";
 import { resolve } from "path";
-import { checkCommand, checkDockerDaemon } from "../utils/docker";
+import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 
 /**
@@ -153,6 +153,10 @@ async function createSharedNetwork(): Promise<void> {
 async function deployPrimaryStack(config: ReplicaTestConfig): Promise<void> {
   info("Step 1: Deploying primary stack...");
 
+  // Generate unique project name for primary
+  const primaryProjectName = generateUniqueProjectName("aza-pg-replica-test-primary");
+  const networkName = `postgres-replica-test-net-${Date.now()}-${process.pid}`;
+
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PGBOUNCER_AUTH_PASS=${config.testPgBouncerPassword}
@@ -160,8 +164,8 @@ PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
 POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 POSTGRES_BIND_IP=0.0.0.0
-COMPOSE_PROJECT_NAME=aza-pg-replica-test-primary
-POSTGRES_NETWORK_NAME=postgres-replica-test-net
+COMPOSE_PROJECT_NAME=${primaryProjectName}
+POSTGRES_NETWORK_NAME=${networkName}
 ENABLE_REPLICATION=true
 REPLICATION_SLOT_NAME=replica_slot_test
 `;
@@ -315,14 +319,23 @@ async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
     // Volume doesn't exist, ignore
   }
 
+  // Generate unique project name for replica (must match network name from primary)
+  const replicaProjectName = generateUniqueProjectName("aza-pg-replica-test-replica");
+
+  // Read primary's env to get network name
+  const primaryEnvContent = await Bun.file(resolve(config.primaryStackPath, ".env.test")).text();
+  const networkNameMatch = primaryEnvContent.match(/POSTGRES_NETWORK_NAME=(.+)/);
+  const networkName =
+    networkNameMatch?.[1]?.trim() ?? `postgres-replica-test-net-${Date.now()}-${process.pid}`;
+
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
 POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 POSTGRES_CPU_LIMIT=2
-COMPOSE_PROJECT_NAME=aza-pg-replica-test-replica
-POSTGRES_NETWORK_NAME=postgres-replica-test-net
+COMPOSE_PROJECT_NAME=${replicaProjectName}
+POSTGRES_NETWORK_NAME=${networkName}
 PRIMARY_HOST=postgres
 PRIMARY_PORT=5432
 REPLICATION_SLOT_NAME=replica_slot_test
@@ -576,11 +589,49 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
 async function cleanup(config: ReplicaTestConfig): Promise<void> {
   info("Cleaning up test environment...");
 
+  // Read env files to get project names and network name
+  let replicaProjectName = "";
+  let primaryProjectName = "";
+  let networkName = "";
+
+  try {
+    const replicaEnv = await Bun.file(resolve(config.replicaStackPath, ".env.test")).text();
+    const replicaMatch = replicaEnv.match(/COMPOSE_PROJECT_NAME=(.+)/);
+    replicaProjectName = replicaMatch?.[1]?.trim() ?? "";
+    const networkMatch = replicaEnv.match(/POSTGRES_NETWORK_NAME=(.+)/);
+    networkName = networkMatch?.[1]?.trim() ?? "";
+  } catch {
+    // Ignore if file doesn't exist
+  }
+
+  try {
+    const primaryEnv = await Bun.file(resolve(config.primaryStackPath, ".env.test")).text();
+    const primaryMatch = primaryEnv.match(/COMPOSE_PROJECT_NAME=(.+)/);
+    primaryProjectName = primaryMatch?.[1]?.trim() ?? "";
+  } catch {
+    // Ignore if file doesn't exist
+  }
+
   // Stop replica first
   try {
     await $`docker compose --env-file .env.test down -v`.cwd(config.replicaStackPath).quiet();
-    await Bun.write(resolve(config.replicaStackPath, ".env.test"), "");
     await $`rm -f ${resolve(config.replicaStackPath, ".env.test")}`.quiet();
+
+    // Verify replica containers are removed
+    if (replicaProjectName) {
+      const checkResult =
+        await $`docker ps -a --filter name=${replicaProjectName} --format "{{.Names}}"`
+          .nothrow()
+          .quiet();
+      const remainingContainers = checkResult.text().trim();
+      if (remainingContainers) {
+        warning(`Warning: Replica containers still exist: ${remainingContainers}`);
+        const containerList = remainingContainers.split("\n").filter((n) => n.trim());
+        for (const container of containerList) {
+          await $`docker rm -f ${container}`.nothrow().quiet();
+        }
+      }
+    }
   } catch {
     // Ignore cleanup errors
   }
@@ -588,17 +639,34 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
   // Stop primary second
   try {
     await $`docker compose --env-file .env.test down -v`.cwd(config.primaryStackPath).quiet();
-    await Bun.write(resolve(config.primaryStackPath, ".env.test"), "");
     await $`rm -f ${resolve(config.primaryStackPath, ".env.test")}`.quiet();
+
+    // Verify primary containers are removed
+    if (primaryProjectName) {
+      const checkResult =
+        await $`docker ps -a --filter name=${primaryProjectName} --format "{{.Names}}"`
+          .nothrow()
+          .quiet();
+      const remainingContainers = checkResult.text().trim();
+      if (remainingContainers) {
+        warning(`Warning: Primary containers still exist: ${remainingContainers}`);
+        const containerList = remainingContainers.split("\n").filter((n) => n.trim());
+        for (const container of containerList) {
+          await $`docker rm -f ${container}`.nothrow().quiet();
+        }
+      }
+    }
   } catch {
     // Ignore cleanup errors
   }
 
   // Clean up network
-  try {
-    await $`docker network rm postgres-replica-test-net`.quiet();
-  } catch {
-    // Ignore if network doesn't exist
+  if (networkName) {
+    try {
+      await $`docker network rm ${networkName}`.quiet();
+    } catch {
+      // Ignore if network doesn't exist
+    }
   }
 
   success("Cleanup completed");
@@ -646,11 +714,17 @@ async function main(): Promise<void> {
     ...passwords,
   };
 
-  // Setup cleanup handler
+  // Setup cleanup handlers
   process.on("SIGINT", async () => {
     console.log("\n\nCaught interrupt signal, cleaning up...");
     await cleanup(config);
     process.exit(130);
+  });
+
+  process.on("SIGTERM", async () => {
+    console.log("\n\nCaught termination signal, cleaning up...");
+    await cleanup(config);
+    process.exit(143);
   });
 
   try {

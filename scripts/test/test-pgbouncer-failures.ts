@@ -19,7 +19,7 @@
 import { $ } from "bun";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
-import { checkCommand, checkDockerDaemon } from "../utils/docker";
+import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 
 // =====================================================
@@ -73,6 +73,21 @@ async function cleanup(): Promise<void> {
       await $`docker compose -f ${STACK_PATH}/compose.yml down -v --remove-orphans`
         .env({ COMPOSE_PROJECT_NAME: cleanupProject })
         .quiet();
+
+      // Verify containers are removed
+      const checkResult =
+        await $`docker ps -a --filter name=${cleanupProject} --format "{{.Names}}"`
+          .nothrow()
+          .quiet();
+      const remainingContainers = checkResult.text().trim();
+      if (remainingContainers) {
+        warning(`Warning: Some containers still exist: ${remainingContainers}`);
+        // Force remove any remaining containers
+        const containerList = remainingContainers.split("\n").filter((n) => n.trim());
+        for (const container of containerList) {
+          await $`docker rm -f ${container}`.nothrow().quiet();
+        }
+      }
     } catch {
       // Suppress cleanup errors
     }
@@ -199,7 +214,7 @@ async function testWrongPassword(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-wrong-pass";
+  const projectName = generateUniqueProjectName("pgbouncer-test-wrong-pass");
   cleanupProject = projectName;
 
   await createTestEnv(
@@ -291,7 +306,7 @@ async function testMissingPgpass(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-no-pgpass";
+  const projectName = generateUniqueProjectName("pgbouncer-test-no-pgpass");
   cleanupProject = projectName;
 
   await createTestEnv(
@@ -363,7 +378,7 @@ async function testInvalidListenAddress(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-invalid-addr";
+  const projectName = generateUniqueProjectName("pgbouncer-test-invalid-addr");
   cleanupProject = projectName;
 
   await createTestEnv(
@@ -446,7 +461,7 @@ async function testPostgresUnavailable(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-no-postgres";
+  const projectName = generateUniqueProjectName("pgbouncer-test-no-postgres");
   cleanupProject = projectName;
 
   await createTestEnv(
@@ -507,7 +522,7 @@ async function testMaxConnections(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-max-conn";
+  const projectName = generateUniqueProjectName("pgbouncer-test-max-conn");
   cleanupProject = projectName;
 
   await createTestEnv(
@@ -598,7 +613,7 @@ async function testPgpassPermissions(): Promise<void> {
   console.log("----------------------------------------");
   testResult.testsRun++;
 
-  const projectName = "pgbouncer-test-pgpass-perms";
+  const projectName = generateUniqueProjectName("pgbouncer-test-pgpass-perms");
   cleanupProject = projectName;
 
   await createTestEnv(

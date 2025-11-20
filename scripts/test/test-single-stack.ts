@@ -14,7 +14,7 @@
  */
 
 import { $ } from "bun";
-import { checkCommand, checkDockerDaemon } from "../utils/docker";
+import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { join } from "path";
 
@@ -85,6 +85,10 @@ async function main(): Promise<void> {
   console.log("Stack: stacks/single");
   console.log();
 
+  // Generate unique project name for test isolation
+  const projectName = generateUniqueProjectName("aza-pg-single-test");
+  info(`Using unique project name: ${projectName}`);
+
   // Generate random test password
   const testPostgresPassword =
     Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
@@ -94,7 +98,23 @@ async function main(): Promise<void> {
   const cleanup = async (): Promise<void> => {
     info("Cleaning up test environment...");
     try {
-      await $`docker compose --env-file ${envTestPath} down -v`.cwd(singleStackPath).quiet();
+      await $`docker compose --env-file ${envTestPath} down -v`
+        .cwd(singleStackPath)
+        .env({ COMPOSE_PROJECT_NAME: projectName })
+        .quiet();
+
+      // Verify containers are removed
+      const checkResult = await $`docker ps -a --filter name=${projectName} --format "{{.Names}}"`
+        .nothrow()
+        .quiet();
+      const remainingContainers = checkResult.text().trim();
+      if (remainingContainers) {
+        warning(`Warning: Some containers still exist: ${remainingContainers}`);
+        const containerList = remainingContainers.split("\n").filter((n) => n.trim());
+        for (const container of containerList) {
+          await $`docker rm -f ${container}`.nothrow().quiet();
+        }
+      }
     } catch {
       // Ignore errors
     }
@@ -123,8 +143,8 @@ async function main(): Promise<void> {
     const envContent = `POSTGRES_PASSWORD=${testPostgresPassword}
 POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g
-COMPOSE_PROJECT_NAME=aza-pg-single-test
-POSTGRES_NETWORK_NAME=postgres-single-test-net
+COMPOSE_PROJECT_NAME=${projectName}
+POSTGRES_NETWORK_NAME=postgres-single-test-net-${Date.now()}-${process.pid}
 POSTGRES_PORT=5432
 POSTGRES_EXPORTER_PORT=9189
 `;
@@ -136,7 +156,9 @@ POSTGRES_EXPORTER_PORT=9189
     // ============================================================
     info("Step 1: Starting single stack (postgres + postgres_exporter)...");
     try {
-      await $`docker compose --env-file .env.test up -d postgres`.cwd(singleStackPath);
+      await $`docker compose --env-file .env.test up -d postgres`
+        .cwd(singleStackPath)
+        .env({ COMPOSE_PROJECT_NAME: projectName });
     } catch {
       error("Failed to start single stack");
       await cleanup();
@@ -377,7 +399,9 @@ POSTGRES_EXPORTER_PORT=9189
     info("Step 6: Starting postgres_exporter...");
 
     try {
-      await $`docker compose --env-file .env.test up -d postgres_exporter`.cwd(singleStackPath);
+      await $`docker compose --env-file .env.test up -d postgres_exporter`
+        .cwd(singleStackPath)
+        .env({ COMPOSE_PROJECT_NAME: projectName });
     } catch {
       error("Failed to start postgres_exporter");
       await cleanup();

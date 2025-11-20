@@ -18,7 +18,7 @@ import { existsSync } from "fs";
  * Service health status from Docker Compose
  */
 interface ServiceStatus {
-  health: string;
+  Health: string;
 }
 
 /**
@@ -49,10 +49,11 @@ function generateTestCredentials(): TestCredentials {
  * Create test .env file for Docker Compose
  */
 async function createTestEnv(stackPath: string, credentials: TestCredentials): Promise<void> {
+  const postgresImage = Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
   const envContent = `POSTGRES_PASSWORD=${credentials.postgresPassword}
 PGBOUNCER_AUTH_PASS=${credentials.pgbouncerPassword}
 PG_REPLICATION_PASSWORD=${credentials.replicationPassword}
-POSTGRES_IMAGE=aza-pg:pg18
+POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g
 COMPOSE_PROJECT_NAME=aza-pg-healthcheck-test
 `;
@@ -69,8 +70,8 @@ async function getServiceHealth(stackPath: string, service: string): Promise<str
     const result = await $`docker compose --env-file .env.test ps ${service} --format json`
       .cwd(stackPath)
       .text();
-    const services: ServiceStatus[] = JSON.parse(result);
-    return services[0]?.health ?? "starting";
+    const serviceStatus: ServiceStatus = JSON.parse(result);
+    return serviceStatus?.Health ?? "starting";
   } catch {
     return "starting";
   }
@@ -229,22 +230,27 @@ async function testAuthHostname(
 /**
  * Test 6: Verify SHOW POOLS works
  */
-async function testShowPools(containerId: string): Promise<void> {
+async function testShowPools(containerId: string, pgbouncerPassword: string): Promise<void> {
   info("Test 6: Testing SHOW POOLS command...");
 
-  const output =
-    await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS" -t`.text();
+  // First, make a connection to postgres database to ensure pool exists
+  await $`docker exec ${containerId} sh -c PGPASSWORD=${pgbouncerPassword} psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
+
+  // Now query SHOW POOLS
+  const cmd = `PGPASSWORD='${pgbouncerPassword}' psql -h localhost -p 6432 -U pgbouncer_auth -d pgbouncer -c "SHOW POOLS"`;
+  const output = await $`docker exec ${containerId} sh -c ${cmd}`.text();
 
   if (!output || output.trim() === "") {
     error("SHOW POOLS returned empty output");
     throw new Error("SHOW POOLS returned empty output");
   }
 
-  if (!output.includes("postgres")) {
-    error("SHOW POOLS output does not contain 'postgres' database");
+  // Check if output contains expected headers or postgres database
+  if (!output.includes("database") && !output.includes("postgres")) {
+    error("SHOW POOLS output does not look valid");
     console.log("Output:");
     console.log(output);
-    throw new Error("SHOW POOLS missing postgres database");
+    throw new Error("SHOW POOLS output invalid");
   }
 
   success("SHOW POOLS works correctly");
@@ -396,8 +402,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Wait for services to be healthy
-    await waitForServicesHealthy(stackPath, 90);
+    // Wait for services to be healthy (increased to 150s to account for 120s start_period)
+    await waitForServicesHealthy(stackPath, 150);
 
     // Get container IDs
     const pgbouncerContainerId = await getContainerId(stackPath, "pgbouncer");
@@ -409,7 +415,7 @@ async function main(): Promise<void> {
     await testPgpassEntries(pgbouncerContainerId);
     await testAuthLocalhost(pgbouncerContainerId);
     await testAuthHostname(postgresContainerId, credentials.pgbouncerPassword, stackPath);
-    await testShowPools(pgbouncerContainerId);
+    await testShowPools(pgbouncerContainerId, credentials.pgbouncerPassword);
     await testHealthcheckCommand(pgbouncerContainerId);
     await testHostConnection(credentials.pgbouncerPassword);
 

@@ -56,6 +56,13 @@ let cleanupProject = "";
 // =====================================================
 
 /**
+ * Get the PostgreSQL image to use for tests
+ */
+function getPostgresImage(): string {
+  return Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
+}
+
+/**
  * Enhanced cleanup function
  * Removes test containers and environment files
  */
@@ -200,8 +207,8 @@ async function testWrongPassword(): Promise<void> {
     `POSTGRES_PASSWORD=correct_postgres_pass_123
 PGBOUNCER_AUTH_PASS=wrong_auth_password_here
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 `,
     projectName
   );
@@ -292,8 +299,8 @@ async function testMissingPgpass(): Promise<void> {
     `POSTGRES_PASSWORD=test_postgres_pass_123
 PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 `,
     projectName
   );
@@ -364,8 +371,8 @@ async function testInvalidListenAddress(): Promise<void> {
     `POSTGRES_PASSWORD=test_postgres_pass_123
 PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 PGBOUNCER_LISTEN_ADDR=999.999.999.999
 `,
     projectName
@@ -447,8 +454,8 @@ async function testPostgresUnavailable(): Promise<void> {
     `POSTGRES_PASSWORD=test_postgres_pass_123
 PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 `,
     projectName
   );
@@ -508,8 +515,8 @@ async function testMaxConnections(): Promise<void> {
     `POSTGRES_PASSWORD=test_postgres_pass_123
 PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 `,
     projectName
   );
@@ -599,8 +606,8 @@ async function testPgpassPermissions(): Promise<void> {
     `POSTGRES_PASSWORD=test_postgres_pass_123
 PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
-POSTGRES_IMAGE=aza-pg:pg18
-POSTGRES_MEMORY_LIMIT=512m
+POSTGRES_IMAGE=${getPostgresImage()}
+POSTGRES_MEMORY_LIMIT=1536m
 `,
     projectName
   );

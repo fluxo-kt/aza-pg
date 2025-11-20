@@ -1,8 +1,9 @@
-# aza-pg Agent Guide
+# aza-pg Agent Guide (NO LOGS HERE, NO BS, ONLY FUTURE-PROOF VALUE)
 
 PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
 **Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below.
+**TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally.
 
 ## Test Suite Fix Session (100% Pass Rate Achieved)
 

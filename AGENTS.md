@@ -193,6 +193,80 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 3. Health check timeouts: Verify port, credentials, and database name
 4. Resource constraints: Ensure sufficient memory/CPU allocated
 
+## Test Suite Improvements (Phase 1: Critical Fixes)
+
+**Outcome**: Enhanced test reliability, maintainability, and debuggability through systematic refactoring.
+
+### Phase 1.1: Container Isolation (commit: 2c0224b)
+
+**Problem**: Tests could conflict when running in parallel; orphaned containers from failed cleanup
+
+**Solution**: Implemented unique naming and robust cleanup
+
+- Added `generateUniqueContainerName()` and `generateUniqueProjectName()` helpers
+- Pattern: `{prefix}-{timestamp}-{pid}` ensures uniqueness across parallel runs
+- Signal handlers (SIGINT/SIGTERM) ensure cleanup on interruption
+- Cleanup verification: checks containers actually removed, force-removes stragglers
+
+**Files**: 6 test files + `scripts/utils/docker.ts`
+
+**Benefits**: Parallel test execution, no orphaned containers, reliable cleanup
+
+### Phase 1.2: Manifest-Based Extension Filtering (commit: b6a4827)
+
+**Problem**: Hardcoded extension exclusions in test file (anti-pattern)
+
+**Solution**: Centralized exclusion logic in manifest
+
+- Added `excludeFromAutoTests` field to `RuntimeSpecSchema`
+- Replaced 3 hardcoded `.filter()` calls with single manifest-based filter
+- Extensions excluded: vector (crashes), pg_cron (preloaded), timescaledb (optional)
+- Each exclusion has explanatory notes in manifest
+
+**Files**: `manifest-schema.ts`, `manifest-data.ts`, `test-extensions.ts`
+
+**Benefits**: Single source of truth, self-documenting, maintainable
+
+### Phase 1.3: Centralized Timeout Configuration (commit: c0c35c3)
+
+**Problem**: Timeout values scattered across test files; no CI vs local differentiation
+
+**Solution**: Environment-aware timeout configuration
+
+- Created `scripts/config/test-timeouts.ts` with 5 timeout categories
+- Auto-detects CI (2x multiplier) vs local (1x multiplier)
+- Manual override via `TEST_TIMEOUT_MULTIPLIER` env var
+- Categories: health (30s), startup (60s), initialization (90s), replication (120s), complex (180s)
+
+**Files**: 4 test files + new config file
+
+**Benefits**: Single source of truth, CI-aware, easy global adjustment
+
+### Phase 1.4: Improved Error Context (commit: b28ff46)
+
+**Problem**: Generic error messages lacked diagnostic context
+
+**Solution**: Enhanced error messages with context
+
+- Last known status/health state when timeout occurs
+- Container/service name (postgres, pgbouncer, postgres-replica)
+- Stack context (primary, replica, single)
+- No secrets exposed in error messages
+
+**Example**:
+
+```
+BEFORE: PostgreSQL health check failed
+AFTER:  PostgreSQL failed to become healthy after 180s
+        Last known status: unhealthy
+        Container: postgres (service in single stack)
+        Error: PostgreSQL health check failed - timeout after 180s with status: unhealthy
+```
+
+**Files**: 3 test files (healthcheck, replica-stack, single-stack)
+
+**Benefits**: Faster debugging, better diagnostics, consistent error pattern
+
 ## CRITCICAL RULES
 
 - ALWAYS COMPREHENSIVELY HOLYSTICALLY VERIFY/TEST/CHECK ALL PARTS OF YOUR WORK/CHANGES LOCALLY BEFORE COMMITTING

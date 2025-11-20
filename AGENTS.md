@@ -29,6 +29,28 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 - `stacks/{primary,replica,single}` - Compose deployments
 - `docs/.generated/docs-data.json` - Auto-generated reference
 
+## CI/CD Scripts (TypeScript-First Architecture)
+
+**Purpose**: All CI/CD logic in testable TypeScript scripts. YAML workflows = thin orchestration only.
+
+**Core Scripts**:
+
+- `scripts/ci/load-image-artifact.ts` - Load Docker tarball from artifacts, retag with 3 fallback methods
+- `scripts/docker/setup-pgflow-container.ts` - Multi-stage pgflow container setup (5 stages: start → running → PostgreSQL → schema → verify)
+  - Verifies pgflow schema: 7 tables + 13+ functions (fixes pg_isready race condition)
+  - Modes: setup (default), --cleanup-only, --verify-only
+  - Exit codes: 0=success, 1=setup failed, 2=schema timeout, 3=cleanup failed
+- `scripts/debug/capture-test-failure-logs.ts` - Unified diagnostic capture for test failures
+  - Modes: --containers "name1,name2" OR --all-containers
+  - Captures: logs (stdout+stderr), state, config, health per container
+  - Generates: README.txt summary with file list
+- `scripts/release/promote-image.ts` - Digest-based image promotion with OCI metadata annotations
+  - Supports multi-tag promotion (--tags comma-separated)
+  - Metadata: version, pg-version, catalog stats, base image info, revision, source URL
+  - Cryptographic verification via digest reference (not tag)
+
+**Pattern**: `bun scripts/{category}/{script}.ts --help` shows usage. All scripts testable locally before CI.
+
 ## Fast Paths
 
 ```bash
@@ -37,6 +59,12 @@ bun run validate                      # Fast checks
 bun run validate:full                 # Full suite
 bun run generate                      # Generate configs
 cd stacks/primary && docker compose up
+
+# Test CI/CD scripts locally
+bun scripts/docker/setup-pgflow-container.ts --help
+bun scripts/debug/capture-test-failure-logs.ts --help
+bun scripts/ci/load-image-artifact.ts --help
+bun scripts/release/promote-image.ts --help
 ```
 
 ## Gotchas
@@ -137,6 +165,9 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_mo
 - `ci.yml`: ONLY workflow on PRs (fast: lint, manifest, sync checks, ~5min)
 - `build-postgres-image.yml`: Manual dev/QA builds (NO push by default, dev-prefixed tags only)
 - `publish.yml`: Release-only (push to `release` branch, single-node image, versioned tags, Cosign signing)
+  - TypeScript-first: All complex logic in testable scripts (`scripts/{ci,docker,debug,release}/`)
+  - YAML = orchestration only (thin layer calling TypeScript scripts)
+  - All scripts testable locally: `bun scripts/...`
 - Tags: `MM.mm-TS-TYPE` (e.g., `18.1-202511142330-single-node`) + convenience (`18-single-node`, `18`)
 - NO 'latest' tag from dev builds (publish.yml only)
 
@@ -256,3 +287,14 @@ See docs/TOOLING.md, docs/BUILD.md for details.
 2. Exit code 1: Application error (check PostgreSQL logs)
 3. Health check timeouts: Verify port, credentials, and database name
 4. Resource constraints: Ensure sufficient memory/CPU allocated
+
+**pgflow Container Setup Failures**:
+
+1. Exit code 2 (schema timeout): pgflow schema not initialized after timeout
+   - Check container logs: `docker logs <container>`
+   - Verify pgmq extension enabled in manifest
+   - Increase --timeout if needed (default: 120s)
+2. Schema verification: Must have 7 tables + 13+ functions in pgflow schema
+3. Race condition: pg_isready returns success 300-500ms BEFORE schema ready
+   - Solution: Use setup-pgflow-container.ts (multi-stage verification)
+4. Diagnostic capture: Use --diagnostic-dir for setup failure diagnostics

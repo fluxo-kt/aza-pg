@@ -12,12 +12,14 @@
  * Total: 6 tests
  *
  * Usage:
- *   bun scripts/docker/test-image-functional-3.ts [image-tag] [--no-cleanup]
+ *   bun scripts/docker/test-image-functional-3.ts [image-tag] [--no-cleanup] [--output-json <path>] [--output-junit <path>]
  *   bun scripts/docker/test-image-functional-3.ts aza-pg:latest
  *   bun scripts/docker/test-image-functional-3.ts ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
  *
  * Options:
- *   --no-cleanup  - Keep container running after tests
+ *   --no-cleanup     - Keep container running after tests
+ *   --output-json    - Export results in JSON Lines format
+ *   --output-junit   - Export results in JUnit XML format
  */
 
 import { getErrorMessage } from "../utils/errors";
@@ -30,6 +32,8 @@ import {
   success,
   testSummary,
   warning,
+  exportJsonLines,
+  exportJunitXml,
 } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
 import {
@@ -49,6 +53,14 @@ import {
 const args = Bun.argv.slice(2);
 const imageTag = args.find((arg) => !arg.startsWith("--")) || "aza-pg-testing:latest";
 const noCleanup = args.includes("--no-cleanup");
+
+// Export flags
+const outputJsonIdx = args.indexOf("--output-json");
+const outputJson = outputJsonIdx !== -1 && args[outputJsonIdx + 1] ? args[outputJsonIdx + 1] : null;
+
+const outputJunitIdx = args.indexOf("--output-junit");
+const outputJunit =
+  outputJunitIdx !== -1 && args[outputJunitIdx + 1] ? args[outputJunitIdx + 1] : null;
 
 // Generate unique container name
 const timestamp = Date.now();
@@ -159,6 +171,19 @@ async function main(): Promise<void> {
     // Print summary
     section("Test Summary");
     testSummary(results);
+
+    // Export results if requested
+    if (outputJson) {
+      info(`Exporting JSON Lines to: ${outputJson}`);
+      await exportJsonLines(results, outputJson, "image-functional-3");
+      success(`JSON Lines exported to ${outputJson}`);
+    }
+
+    if (outputJunit) {
+      info(`Exporting JUnit XML to: ${outputJunit}`);
+      await exportJunitXml(results, outputJunit, "image-functional-3");
+      success(`JUnit XML exported to ${outputJunit}`);
+    }
 
     const totalDuration = Date.now() - totalStartTime;
     console.log("");

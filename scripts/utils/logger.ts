@@ -155,3 +155,100 @@ export function formatThroughput(count: number, duration: number): string {
     return `${opsPerSec.toFixed(2)} ops/sec`;
   }
 }
+
+/**
+ * Escape XML special characters
+ * @param str - String to escape
+ * @returns XML-safe string
+ */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Export test results in JSON Lines format (NDJSON)
+ * Each line is a complete JSON object for easy streaming and parsing
+ *
+ * @param results - Array of test results
+ * @param outputPath - File path to write JSON Lines output
+ * @param suiteName - Name of the test suite (e.g., "image-core", "image-functional-1")
+ */
+export async function exportJsonLines(
+  results: TestResult[],
+  outputPath: string,
+  suiteName: string
+): Promise<void> {
+  try {
+    const lines = results.map((result) => {
+      const record = {
+        suite: suiteName,
+        name: result.name,
+        passed: result.passed,
+        duration: result.duration ?? 0,
+        timestamp: new Date().toISOString(),
+        ...(result.error ? { error: result.error } : {}),
+      };
+      return JSON.stringify(record);
+    });
+
+    const content = lines.join("\n") + "\n";
+    await Bun.write(outputPath, content);
+  } catch (err) {
+    throw new Error(
+      `Failed to export JSON Lines: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/**
+ * Export test results in JUnit XML format
+ * Standard format for CI/CD integration (GitHub Actions, Jenkins, etc.)
+ *
+ * @param results - Array of test results
+ * @param outputPath - File path to write JUnit XML output
+ * @param suiteName - Name of the test suite
+ */
+export async function exportJunitXml(
+  results: TestResult[],
+  outputPath: string,
+  suiteName: string
+): Promise<void> {
+  try {
+    const totalTests = results.length;
+    const failures = results.filter((r) => !r.passed).length;
+    const totalTime = results.reduce((sum, r) => sum + (r.duration ?? 0), 0) / 1000; // Convert to seconds
+    const timestamp = new Date().toISOString();
+
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += "<testsuites>\n";
+    xml += `  <testsuite name="${escapeXml(suiteName)}" tests="${totalTests}" failures="${failures}" time="${totalTime.toFixed(3)}" timestamp="${timestamp}">\n`;
+
+    for (const result of results) {
+      const testTime = ((result.duration ?? 0) / 1000).toFixed(3);
+      xml += `    <testcase name="${escapeXml(result.name)}" time="${testTime}"`;
+
+      if (result.passed) {
+        xml += "/>\n";
+      } else {
+        xml += ">\n";
+        const errorMsg = result.error ?? "Test failed";
+        xml += `      <failure message="${escapeXml(errorMsg)}"/>\n`;
+        xml += "    </testcase>\n";
+      }
+    }
+
+    xml += "  </testsuite>\n";
+    xml += "</testsuites>\n";
+
+    await Bun.write(outputPath, xml);
+  } catch (err) {
+    throw new Error(
+      `Failed to export JUnit XML: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}

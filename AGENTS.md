@@ -163,6 +163,20 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_mo
 
 See docs/TOOLING.md, docs/BUILD.md for details.
 
+## Git Workflow
+
+- Write brief thoughtfull no BS Conventional Commits + "Co-Authored-By: Claude <noreply@anthropic.com>"
+  - For Codex/OpenAI CLI change the name to "Codex <codex@openai.com>"
+  - For Qwen: "Qwen <code@qwen.ai>"
+  - For Gemini: "Gemini <gemini@google.com>"
+  - For Copilot: "Gemini <copilot@github.com>"
+- Don’t bypass pre‑commit hooks!
+- **NEVER use --no-verify or bypass hooks/checks**: Fix the actual root issue instead
+- **If SSH fail, ask user start SSH agent** — NEVER touch git config! NEVER skip commit signing!
+- Commit granularly, after every finished/verified phase or work part
+- Should NEVER lose anything, be super careful with git reset/revert/rebase!
+- Verify what do you commit
+
 ## References
 
 - ARCHITECTURE.md - System design, flows

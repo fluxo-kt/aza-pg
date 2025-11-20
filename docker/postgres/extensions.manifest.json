@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-19T18:51:05.119Z",
+  "generatedAt": "2025-11-20T10:51:03.015Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -161,7 +161,9 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
+        "excludeFromAutoTests": true,
         "notes": [
+          "Excluded from auto-tests: already preloaded, CREATE EXTENSION causes crash",
           "Enable via shared_preload_libraries to activate scheduler workers."
         ]
       },
@@ -846,7 +848,9 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
+        "excludeFromAutoTests": true,
         "notes": [
+          "Excluded from auto-tests: optional extension not required for standard tests",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
       },
@@ -909,7 +913,11 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": true
+        "defaultEnable": true,
+        "excludeFromAutoTests": true,
+        "notes": [
+          "Excluded from auto-tests: causes container crashes in test environments"
+        ]
       },
       "sourceUrl": "https://github.com/pgvector/pgvector",
       "docsUrl": "https://github.com/pgvector/pgvector#readme"

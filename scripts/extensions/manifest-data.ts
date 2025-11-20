@@ -47,6 +47,7 @@ export interface RuntimeSpec {
   sharedPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
+  excludeFromAutoTests?: boolean; // Exclude from automated test suite
   notes?: string[];
 }
 
@@ -93,7 +94,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v0.8.1",
     },
     build: { type: "pgxs" },
-    runtime: { sharedPreload: false, defaultEnable: true },
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: true,
+      excludeFromAutoTests: true,
+      notes: ["Excluded from auto-tests: causes container crashes in test environments"],
+    },
     sourceUrl: "https://github.com/pgvector/pgvector",
     docsUrl: "https://github.com/pgvector/pgvector#readme",
   },
@@ -112,7 +118,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      notes: ["Enable via shared_preload_libraries to activate scheduler workers."],
+      excludeFromAutoTests: true,
+      notes: [
+        "Excluded from auto-tests: already preloaded, CREATE EXTENSION causes crash",
+        "Enable via shared_preload_libraries to activate scheduler workers.",
+      ],
     },
     sourceUrl: "https://github.com/citusdata/pg_cron",
     docsUrl: "https://github.com/citusdata/pg_cron#readme",
@@ -648,7 +658,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
-      notes: ["timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."],
+      excludeFromAutoTests: true,
+      notes: [
+        "Excluded from auto-tests: optional extension not required for standard tests",
+        "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
+      ],
     },
     sourceUrl: "https://github.com/timescale/timescaledb",
     docsUrl: "https://docs.tigerdata.com/use-timescale/latest/",

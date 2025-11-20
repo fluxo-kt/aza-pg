@@ -64,12 +64,14 @@ export const BuildSpecSchema = type({
  * - sharedPreload: Whether extension requires shared_preload_libraries
  * - defaultEnable: Whether extension should be enabled by default
  * - preloadOnly: Whether extension is SQL-only schema (no CREATE EXTENSION support)
+ * - excludeFromAutoTests: Exclude from automated test suite (with reasons in notes)
  * - notes: Optional runtime configuration notes for users
  */
 export const RuntimeSpecSchema = type({
   "sharedPreload?": "boolean",
   "defaultEnable?": "boolean",
   "preloadOnly?": "boolean",
+  "excludeFromAutoTests?": "boolean",
   "notes?": "string[]",
 });
 

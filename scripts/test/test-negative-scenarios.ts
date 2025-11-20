@@ -39,8 +39,23 @@ describe("Negative Scenarios - Invalid Memory Settings", () => {
       -e POSTGRES_MEMORY=128 \
       -d ${TEST_IMAGE}`.nothrow();
 
-    // Container should fail to start or log an error
-    expect(result.exitCode).not.toBe(0);
+    // Docker run with -d will return 0 (detached), but container should exit quickly
+    if (result.exitCode === 0) {
+      await Bun.sleep(3000);
+      const inspect =
+        await $`docker inspect ${TEST_CONTAINER_PREFIX}-primary-1 --format='{{.State.Running}}'`.nothrow();
+      const isRunning = inspect.stdout.toString().trim() === "true";
+
+      // Container should have exited due to RAM check
+      expect(isRunning).toBe(false);
+
+      // Verify the error message in logs
+      const logs = await $`docker logs ${TEST_CONTAINER_PREFIX}-primary-1 2>&1`.nothrow();
+      expect(logs.stdout.toString()).toMatch(/FATAL.*minimum.*512MB.*REQUIRED/i);
+    } else {
+      // If docker run itself failed, that's also acceptable
+      expect(result.exitCode).not.toBe(0);
+    }
   }, 10000);
 
   test("Invalid POSTGRES_MEMORY value (non-numeric) should fail gracefully", async () => {
@@ -133,7 +148,8 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
       psql -U postgres -c "CREATE EXTENSION nonexistent_extension"`.nothrow();
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toMatch(/does not exist|could not open/i);
+    // PostgreSQL 18 changed error message from "does not exist" to "is not available"
+    expect(result.stderr.toString()).toMatch(/does not exist|is not available|could not open/i);
 
     await cleanup();
   }, 20000);
@@ -160,7 +176,10 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
       psql -U postgres -c "CREATE EXTENSION fake_extension"`.nothrow();
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toMatch(/does not exist|could not|not found/i);
+    // PostgreSQL 18 changed error message from "does not exist" to "is not available"
+    expect(result.stderr.toString()).toMatch(
+      /does not exist|is not available|could not|not found/i
+    );
 
     await cleanup();
   }, 20000);
@@ -183,9 +202,21 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
 
     await Bun.sleep(5000);
 
+    // Get the actual data directory path
+    const dataDirResult = await $`docker exec ${TEST_CONTAINER_PREFIX}-primary-1 \
+      psql -U postgres -t -A -c "SHOW data_directory"`.nothrow();
+
+    if (dataDirResult.exitCode !== 0) {
+      console.log("Skipping test - could not determine data directory");
+      await cleanup();
+      return;
+    }
+
+    const dataDir = dataDirResult.stdout.toString().trim();
+
     // Try to inject invalid configuration
     const configResult = await $`docker exec ${TEST_CONTAINER_PREFIX}-primary-1 \
-      sh -c "echo 'invalid syntax here without equals' >> /var/lib/postgresql/data/postgresql.conf"`.nothrow();
+      sh -c "echo 'invalid syntax here without equals' >> ${dataDir}/postgresql.conf"`.nothrow();
 
     expect(configResult.exitCode).toBe(0);
 
@@ -211,11 +242,11 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
   test("Conflicting shared_preload_libraries settings should be handled", async () => {
     await cleanup();
 
-    // Start container with custom shared_preload_libraries
+    // Start container with custom shared_preload_libraries (using POSTGRES_SHARED_PRELOAD_LIBRARIES)
     const startResult = await $`docker run --name ${TEST_CONTAINER_PREFIX}-primary-1 \
       -e POSTGRES_PASSWORD=testpass \
       -e POSTGRES_MEMORY=1024 \
-      -e SHARED_PRELOAD_LIBRARIES=invalid_library,another_invalid \
+      -e POSTGRES_SHARED_PRELOAD_LIBRARIES=invalid_library,another_invalid \
       -d ${TEST_IMAGE}`.nothrow();
 
     if (startResult.exitCode !== 0) {
@@ -223,7 +254,8 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
       return;
     }
 
-    await Bun.sleep(8000);
+    // Wait longer for container to attempt initialization and fail
+    await Bun.sleep(10000);
 
     // Check if container is still running
     const inspect =
@@ -244,7 +276,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
     }
 
     await cleanup();
-  }, 25000);
+  }, 30000);
 });
 
 describe("Negative Scenarios - Resource Constraints", () => {

@@ -2,7 +2,7 @@
 
 PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
 
-**Bun-First**: All scripts use Bun TypeScript. No Node.js compat. See Development Standards below. **But NO Bun in the final images**
+• **Bun-First**: All scripts use Bun TypeScript. Prefer Bun APIs to usuals from Node.js when possible and reasonable. See Development Standards below. **But NO Bun in the final images**
 **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Dockerfiles are auto-generation-only from manifest, should be as simple as possible — all logic and nuances belong in TypeScript scripts.
 
 ## CRITICAL RULES
@@ -138,6 +138,7 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_mo
 - File I/O: Use `Bun.file()`, `Bun.write()` instead of `fs`/`fs/promises`
 - Process execution: Use `Bun.spawn()` or `Bun.$` instead of `child_process.exec/execSync`
 - Environment: Use `Bun.env` instead of `process.env`
+- Use TypeScript Bun or Node.js APIs instead of bash calls when possible and reasonable
 - Node stdlib ONLY when Bun lacks equivalent: `path` module acceptable (no Bun alternative yet)
 - TypeScript strict mode enabled (tsconfig.json), ES2024, bundler resolution
 - Run via: `bun run <script>.ts` (never node/tsx)

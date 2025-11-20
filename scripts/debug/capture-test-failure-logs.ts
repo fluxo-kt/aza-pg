@@ -24,8 +24,6 @@
  */
 
 import { $ } from "bun";
-import { mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { info, section, success, warning, error } from "../utils/logger";
 
@@ -91,7 +89,7 @@ async function captureContainerDiagnostics(container: string, outputDir: string)
  * Capture test results file
  */
 async function captureTestResults(testResults: string, outputDir: string): Promise<void> {
-  if (!existsSync(testResults)) {
+  if (!(await Bun.file(testResults).exists())) {
     warning(`Test results file not found: ${testResults}`);
     return;
   }
@@ -149,7 +147,7 @@ async function captureTestFailureLogs(options: CaptureOptions): Promise<number> 
 
   try {
     // Create output directory
-    await mkdir(options.outputDir, { recursive: true });
+    await $`mkdir -p ${options.outputDir}`;
 
     // Determine which containers to capture
     let containersToCapture: string[] = [];

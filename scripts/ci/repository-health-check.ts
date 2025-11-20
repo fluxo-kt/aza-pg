@@ -22,8 +22,8 @@
  *   1 - One or more required items are missing
  */
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { statSync } from "node:fs";
 import { error, success, info } from "../utils/logger";
 
 interface Options {
@@ -152,9 +152,21 @@ function parseArgs(): Options {
   return options;
 }
 
-function checkItem(repoRoot: string, item: CheckItem, verbose: boolean): boolean {
+async function checkItem(repoRoot: string, item: CheckItem, verbose: boolean): Promise<boolean> {
   const fullPath = join(repoRoot, item.path);
-  const exists = existsSync(fullPath);
+
+  // Check existence based on type
+  let exists = false;
+  try {
+    const stat = statSync(fullPath);
+    if (item.type === "file") {
+      exists = stat.isFile();
+    } else {
+      exists = stat.isDirectory();
+    }
+  } catch {
+    exists = false;
+  }
 
   if (verbose) {
     const status = exists ? "✅" : "❌";
@@ -172,7 +184,7 @@ function checkItem(repoRoot: string, item: CheckItem, verbose: boolean): boolean
   return exists;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const options = parseArgs();
 
   // Determine repository root (script is in scripts/ci/)
@@ -185,7 +197,9 @@ function main(): void {
     info("🔍 Running repository health checks...");
   }
 
-  const results = REQUIRED_ITEMS.map((item) => checkItem(repoRoot, item, options.verbose));
+  const results = await Promise.all(
+    REQUIRED_ITEMS.map((item) => checkItem(repoRoot, item, options.verbose))
+  );
 
   const allPassed = results.every((r) => r === true);
   const failedCount = results.filter((r) => !r).length;

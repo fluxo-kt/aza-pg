@@ -38,7 +38,6 @@
 
 import { $ } from "bun";
 import { parseArgs } from "node:util";
-import { mkdir } from "node:fs/promises";
 import { dockerCleanup } from "../utils/docker";
 import { error, info, success, warning, section } from "../utils/logger";
 
@@ -117,7 +116,7 @@ async function waitForPgflowSchema(container: string, timeout: number): Promise<
  */
 async function captureDiagnostics(container: string, dir: string): Promise<void> {
   try {
-    await mkdir(dir, { recursive: true });
+    await $`mkdir -p ${dir}`;
 
     // Container logs
     info("Capturing container logs...");

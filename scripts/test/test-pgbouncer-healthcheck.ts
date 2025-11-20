@@ -12,7 +12,7 @@ import { $ } from "bun";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
-import { existsSync } from "fs";
+import { statSync } from "fs";
 import { TIMEOUTS } from "../config/test-timeouts";
 
 /**
@@ -396,14 +396,20 @@ async function main(): Promise<void> {
   const projectRoot = resolve(scriptDir, "../..");
   const stackPath = join(projectRoot, stackDir);
 
-  if (!existsSync(stackPath)) {
+  try {
+    const stat = statSync(stackPath);
+    if (!stat.isDirectory()) {
+      error(`Stack path is not a directory: ${stackPath}`);
+      process.exit(1);
+    }
+  } catch {
     error(`Stack directory not found: ${stackPath}`);
     console.log("   Available stacks: primary, replica, single");
     process.exit(1);
   }
 
   const composeFile = join(stackPath, "compose.yml");
-  if (!existsSync(composeFile)) {
+  if (!(await Bun.file(composeFile).exists())) {
     error(`compose.yml not found in ${stackPath}`);
     process.exit(1);
   }

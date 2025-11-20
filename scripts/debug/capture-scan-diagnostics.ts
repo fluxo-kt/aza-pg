@@ -45,8 +45,8 @@
  */
 
 import { $ } from "bun";
-import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { statSync } from "node:fs";
 import { error, success, warning, info, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 
@@ -160,15 +160,21 @@ function parseArgs(): Options | null {
 /**
  * Ensure output directory exists
  */
-function ensureOutputDir(outputDir: string): void {
+async function ensureOutputDir(outputDir: string): Promise<void> {
   const absPath = resolve(outputDir);
 
-  if (!existsSync(absPath)) {
-    info(`Creating output directory: ${absPath}`);
-    mkdirSync(absPath, { recursive: true });
-  } else {
-    info(`Using existing output directory: ${absPath}`);
+  try {
+    const stat = statSync(absPath);
+    if (stat.isDirectory()) {
+      info(`Using existing output directory: ${absPath}`);
+      return;
+    }
+  } catch {
+    // Directory doesn't exist, create it
   }
+
+  info(`Creating output directory: ${absPath}`);
+  await $`mkdir -p ${absPath}`;
 }
 
 /**
@@ -289,7 +295,7 @@ async function captureImageMetadata(image: string, outputFile: string): Promise<
 async function copySarifFile(outputDir: string): Promise<void> {
   const sarifPath = "trivy-results.sarif";
 
-  if (existsSync(sarifPath)) {
+  if (await Bun.file(sarifPath).exists()) {
     info("Copying existing SARIF file...");
     try {
       const outputPath = join(outputDir, "trivy-results.sarif");
@@ -360,9 +366,15 @@ async function main(): Promise<void> {
 
   // Ensure cache directory exists
   const absCacheDir = resolve(options.cacheDir);
-  if (!existsSync(absCacheDir)) {
+  try {
+    const stat = statSync(absCacheDir);
+    if (!stat.isDirectory()) {
+      info(`Cache path exists but is not a directory, creating: ${absCacheDir}`);
+      await $`mkdir -p ${absCacheDir}`;
+    }
+  } catch {
     info(`Creating cache directory: ${absCacheDir}`);
-    mkdirSync(absCacheDir, { recursive: true });
+    await $`mkdir -p ${absCacheDir}`;
   }
 
   console.log();

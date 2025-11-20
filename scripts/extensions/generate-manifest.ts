@@ -4,7 +4,6 @@
  * Resolves git commits for tagged sources to guarantee reproducible builds.
  */
 
-import { mkdir } from "fs/promises";
 import { dirname, join } from "path";
 import { spawn } from "bun";
 import { MANIFEST_ENTRIES, ManifestEntry, SourceSpec } from "./manifest-data";
@@ -74,7 +73,7 @@ async function main() {
   };
 
   const outputPath = join("docker", "postgres", "extensions.manifest.json");
-  await mkdir(dirname(outputPath), { recursive: true });
+  await Bun.$`mkdir -p ${dirname(outputPath)}`;
   await Bun.write(outputPath, JSON.stringify(manifest, null, 2) + "\n");
 
   const packages = Array.from(

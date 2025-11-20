@@ -50,7 +50,7 @@
  *   1 - Failure (missing requirements, container not running, etc.)
  */
 
-import { mkdir } from "node:fs/promises";
+import { $ } from "bun";
 import { join } from "node:path";
 import { error, success, info, warning, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
@@ -305,7 +305,7 @@ async function main(): Promise<void> {
 
   // Create output directory
   try {
-    await mkdir(options.outputDir, { recursive: true });
+    await $`mkdir -p ${options.outputDir}`;
     success(`Created output directory: ${options.outputDir}`);
   } catch (err) {
     error(`Failed to create output directory: ${getErrorMessage(err)}`);

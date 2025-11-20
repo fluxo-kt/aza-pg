@@ -22,7 +22,6 @@
  */
 
 import { $ } from "bun";
-import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { info, success, error, section } from "../utils/logger";
 
@@ -41,7 +40,7 @@ async function loadImageArtifact(options: LoadOptions): Promise<number> {
   info(`Target tag: ${options.tag}`);
 
   // Verify artifact exists
-  if (!existsSync(options.artifact)) {
+  if (!(await Bun.file(options.artifact).exists())) {
     error(`Artifact not found: ${options.artifact}`);
     return 1;
   }

@@ -3,7 +3,6 @@
  * Render Markdown tables for docs/EXTENSIONS.md from the generated manifest.
  */
 
-import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { info, success, error } from "../utils/logger.ts";
 
@@ -28,7 +27,7 @@ type Manifest = {
   }>;
 };
 
-const manifest: Manifest = JSON.parse(await readFile(MANIFEST_PATH, "utf8"));
+const manifest: Manifest = JSON.parse(await Bun.file(MANIFEST_PATH).text());
 
 const groups = new Map<string, Manifest["entries"]>();
 for (const entry of manifest.entries) {
@@ -114,7 +113,7 @@ for (const category of sortedCategories) {
 
 const replacement = [START_MARK, "", ...tableBlocks, END_MARK].join("\n");
 
-const docContent = await readFile(DOC_PATH, "utf8");
+const docContent = await Bun.file(DOC_PATH).text();
 const startIdx = docContent.indexOf(START_MARK);
 const endIdx = docContent.indexOf(END_MARK);
 if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
@@ -125,7 +124,7 @@ const before = docContent.slice(0, startIdx);
 const after = docContent.slice(endIdx + END_MARK.length);
 const next = `${before}${replacement}${after}`;
 
-await writeFile(DOC_PATH, next, "utf8");
+await Bun.write(DOC_PATH, next);
 info("Updated docs/EXTENSIONS.md tables.");
 
 // Format with Prettier for consistent output across platforms

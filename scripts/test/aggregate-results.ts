@@ -23,7 +23,7 @@
  */
 
 import { join } from "node:path";
-import { readdirSync, existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { error, info, success, section, exportJsonLines, exportJunitXml } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
 
@@ -67,17 +67,20 @@ function parseArgs(): { outputDir: string; format: "json" | "junit" } {
  * Read and parse all JSON Lines files from a directory
  */
 async function readJsonLinesFiles(dir: string): Promise<ExtendedTestResult[]> {
-  if (!existsSync(dir)) {
+  try {
+    const stat = statSync(dir);
+    if (!stat.isDirectory()) {
+      error(`Not a directory: ${dir}`);
+      process.exit(1);
+    }
+  } catch {
     error(`Directory does not exist: ${dir}`);
     process.exit(1);
   }
 
-  if (!statSync(dir).isDirectory()) {
-    error(`Not a directory: ${dir}`);
-    process.exit(1);
-  }
-
-  const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  // Use Bun.Glob to find .jsonl files
+  const glob = new Bun.Glob("*.jsonl");
+  const files = await Array.fromAsync(glob.scan({ cwd: dir, onlyFiles: true }));
 
   if (files.length === 0) {
     error(`No .jsonl files found in directory: ${dir}`);

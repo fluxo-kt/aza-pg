@@ -448,12 +448,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/smoke-logs
-          docker ps -a
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/smoke-logs/containers.log
-            docker logs $container >> ${{ runner.temp }}/smoke-logs/containers.log 2>&1 || true
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type smoke \
+            --output-dir ${{ runner.temp }}/smoke-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()
@@ -527,12 +525,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/extension-logs
-          docker ps -a
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/extension-logs/containers.log
-            docker logs $container >> ${{ runner.temp }}/extension-logs/containers.log 2>&1 || true
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type extensions \
+            --output-dir ${{ runner.temp }}/extension-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()
@@ -585,18 +581,27 @@ jobs:
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-auto-config.ts
 
-      - name: Setup pgflow test container
+      - name: Setup pgflow test containers
         run: |
-          echo "Starting PostgreSQL container for pgflow tests..."
-          docker run -d \
+          # Setup primary pgflow test container
+          bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-test \
-            -e POSTGRES_PASSWORD=test_pgflow_pass \
-            -e POSTGRES_DB=pgflow_test \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --password test_pgflow_pass \
+            --database pgflow_test \
+            --memory 2048 \
+            --timeout 120 \
+            --diagnostic-dir ${{ runner.temp }}/pgflow-setup-logs
 
-          # Wait for PostgreSQL to be ready
-          timeout 60 bash -c 'until docker exec publish-pgflow-test pg_isready -U postgres; do sleep 2; done'
-          echo "PostgreSQL ready for pgflow tests"
+          # Setup v0.7.2 compatibility test container
+          bun scripts/docker/setup-pgflow-container.ts \
+            --name publish-pgflow-v072-test \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --password test_pgflow_pass \
+            --database pgflow_test \
+            --memory 2048 \
+            --timeout 120 \
+            --diagnostic-dir ${{ runner.temp }}/pgflow-v072-setup-logs
 
       - name: Test pgflow functional
         run: |
@@ -625,18 +630,16 @@ jobs:
       - name: Cleanup pgflow test containers
         if: always()
         run: |
-          echo "Cleaning up pgflow test containers..."
-          docker rm -f publish-pgflow-test publish-pgflow-v072-test || true
+          bun scripts/docker/setup-pgflow-container.ts --name publish-pgflow-test --cleanup-only
+          bun scripts/docker/setup-pgflow-container.ts --name publish-pgflow-v072-test --cleanup-only
 
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/feature-logs
-          docker ps -a
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/feature-logs/containers.log
-            docker logs $container >> ${{ runner.temp }}/feature-logs/containers.log 2>&1 || true
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type features \
+            --output-dir ${{ runner.temp }}/feature-logs \
+            --containers "publish-pgflow-test,publish-pgflow-v072-test"
 
       - name: Upload failure diagnostics
         if: failure()
@@ -691,12 +694,10 @@ jobs:
       - name: Capture logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/security-logs
-          docker ps -a
-          for container in $(docker ps -aq); do
-            echo "=== Logs for container $container ===" >> ${{ runner.temp }}/security-logs/containers.log
-            docker logs $container >> ${{ runner.temp }}/security-logs/containers.log 2>&1 || true
-          done
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type security \
+            --output-dir ${{ runner.temp }}/security-logs \
+            --all-containers
 
       - name: Upload failure diagnostics
         if: failure()
@@ -956,7 +957,7 @@ jobs:
       - name: Promote testing image to production tags
         run: |
           bun scripts/release/promote-image.ts \
-            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.tag_versioned }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --version "${{ needs.prep.outputs.tag_versioned }}" \
@@ -966,8 +967,7 @@ jobs:
             --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
             --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
             --revision "${{ github.sha }}" \
-            --source-url "${{ github.server_url }}/${{ github.repository }}" \
-            --expected-digest "${{ needs.merge.outputs.image_digest }}"
+            --source-url "${{ github.server_url }}/${{ github.repository }}"
 
       - name: Sign all convenience tags
         env:

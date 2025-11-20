@@ -17,6 +17,7 @@ import { $ } from "bun";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { join } from "path";
+import { TIMEOUTS } from "../config/test-timeouts";
 
 // Get script directory
 const scriptDir = import.meta.dir;
@@ -168,7 +169,7 @@ POSTGRES_EXPORTER_PORT=9189
 
     // Wait for services to be healthy
     info("Waiting for PostgreSQL to be healthy (max 180 seconds)...");
-    const timeout = 180;
+    const timeout = TIMEOUTS.complex;
     let elapsed = 0;
     let postgresHealthy = false;
 
@@ -412,7 +413,7 @@ POSTGRES_EXPORTER_PORT=9189
 
     // Wait for exporter to be healthy
     info("Waiting for postgres_exporter to be healthy (max 60 seconds)...");
-    const exporterTimeout = 60;
+    const exporterTimeout = TIMEOUTS.startup;
     let exporterElapsed = 0;
     let exporterHealthy = false;
 

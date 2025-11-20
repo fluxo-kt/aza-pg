@@ -21,6 +21,7 @@ import { join, resolve } from "path";
 import { existsSync } from "fs";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
+import { TIMEOUTS } from "../config/test-timeouts";
 
 // =====================================================
 // Interfaces
@@ -113,7 +114,7 @@ async function waitForContainerStatus(
   project: string,
   service: string,
   expectedStatus: string,
-  timeout = 30
+  timeout = TIMEOUTS.health
 ): Promise<boolean> {
   let elapsed = 0;
   while (elapsed < timeout) {

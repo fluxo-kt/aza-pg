@@ -13,6 +13,7 @@ import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../u
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
+import { TIMEOUTS } from "../config/test-timeouts";
 
 /**
  * Service health status from Docker Compose
@@ -451,7 +452,7 @@ async function main(): Promise<void> {
     }
 
     // Wait for services to be healthy (increased to 150s to account for 120s start_period)
-    await waitForServicesHealthy(stackPath, 150);
+    await waitForServicesHealthy(stackPath, TIMEOUTS.replication);
 
     // Get container IDs
     const pgbouncerContainerId = await getContainerId(stackPath, "pgbouncer");

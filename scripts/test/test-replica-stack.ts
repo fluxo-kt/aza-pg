@@ -17,6 +17,7 @@ import { $ } from "bun";
 import { resolve } from "path";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
+import { TIMEOUTS } from "../config/test-timeouts";
 
 /**
  * Replica test configuration
@@ -240,7 +241,7 @@ async function getServiceHealth(stackPath: string, serviceName: string): Promise
  */
 async function waitForPrimaryHealthy(
   config: ReplicaTestConfig,
-  timeout: number = 90
+  timeout: number = TIMEOUTS.initialization
 ): Promise<void> {
   info(`Waiting for primary to be healthy (max ${timeout} seconds)...`);
 
@@ -388,7 +389,7 @@ POSTGRES_EXPORTER_PORT=9188
  */
 async function waitForReplicaHealthy(
   config: ReplicaTestConfig,
-  timeout: number = 120
+  timeout: number = TIMEOUTS.replication
 ): Promise<void> {
   info(`Waiting for replica to be healthy (max ${timeout} seconds)...`);
 

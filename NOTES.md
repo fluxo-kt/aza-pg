@@ -99,22 +99,28 @@
   - GUI
     - **pgadmin4**  
       Full-featured GUI for PostgreSQL: object browser, query tool, debugger, schema diff, ER diagrams, backup/restore, index management. Browser-based.  
-      [source](https://github.com/pgadmin-org/pgadmin4)
+      https://github.com/pgadmin-org/pgadmin4
 - Balancing
   - **pgbouncer**  
     Connection pooler—maintains reusable server connections. Session/transaction/statement pooling modes. Essential for high-concurrency or microservice-heavy workloads.  
-    [source](https://github.com/pgbouncer/pgbouncer)
+    https://github.com/pgbouncer/pgbouncer
   - **pgpool2**  
     Full-featured middleware: connection pooling, replication, load balancing, automatic failover, online recovery, watchdog (HA for pgpool itself). More complex than pgbouncer; use when all-in-one HA+replication needed.  
-    [source](https://github.com/pgpool/pgpool2)
+    https://github.com/pgpool/pgpool2
+  - pgMux - PostgreSQL routing proxy for dev/testing envs
+    https://github.com/boringSQL/pgmux
 - Configuration
   - limit `maintenance_work_mem` and `work_mem`
     - https://vondra.me/posts/dont-give-postgres-too-much-memory/
   - https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
+- Testing
+  - RegreSQL: Regression Testing for PostgreSQL Queries
+    - https://boringsql.com/posts/regresql-testing-queries/
+    - https://github.com/dimitri/regresql
 - Compliance
   - **pg_sbom**  
     Software Bill of Materials generator for PostgreSQL packaging (CycloneDX/SPDX format). Supply chain transparency for regulatory/compliance scanning.  
-    [source](https://github.com/percona/postgres-packaging)
+    https://github.com/percona/postgres-packaging
 
 Container publication
 

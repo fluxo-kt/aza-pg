@@ -572,13 +572,13 @@ jobs:
         run: |
           echo "Testing pgflow migration tool..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test
+          bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test --database=pgflow_test
 
       - name: Test pgflow v0.7.2
         run: |
           echo "Testing pgflow v0.7.2 compatibility..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun run scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test
+          bun run scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test --database=pgflow_test
 
       - name: Test PgBouncer healthcheck
         run: |

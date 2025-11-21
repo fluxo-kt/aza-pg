@@ -9,14 +9,16 @@
  * - Status: 'created' → 'started' → 'completed'/'failed'
  *
  * Usage:
- *   bun run scripts/test/test-pgflow-functional-v072.ts [--container=NAME]
- *   TEST_CONTAINER=my-postgres bun run scripts/test/test-pgflow-functional-v072.ts
- *   bun run scripts/test/test-pgflow-functional-v072.ts --container=primary-postgres-primary
+ *   bun run scripts/test/test-pgflow-functional-v072.ts [--container=NAME] [--database=NAME]
+ *   TEST_CONTAINER=my-postgres TEST_DATABASE=mydb bun run scripts/test/test-pgflow-functional-v072.ts
+ *   bun run scripts/test/test-pgflow-functional-v072.ts --container=primary-postgres-primary --database=pgflow_test
  *
  * Container Configuration:
  *   --container=NAME         Override container name (e.g., --container=primary-postgres-primary)
+ *   --database=NAME          Override database name (e.g., --database=pgflow_test)
  *   TEST_CONTAINER env var   Fallback if --container not provided
- *   Default                  aza-pg-test (sensible default for CI)
+ *   TEST_DATABASE env var    Fallback if --database not provided
+ *   Default                  aza-pg-test (container), postgres (database)
  *
  * CI Usage Example:
  *   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
@@ -27,9 +29,12 @@
 import { randomUUID } from "crypto";
 
 const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
+const databaseArg = Bun.argv.find((arg) => arg.startsWith("--database="))?.split("=")[1];
 const CONTAINER = containerArg ?? Bun.env.TEST_CONTAINER ?? "aza-pg-test";
+const DATABASE = databaseArg ?? Bun.env.TEST_DATABASE ?? "postgres";
 
-console.log(`Container: ${CONTAINER}\n`);
+console.log(`Container: ${CONTAINER}`);
+console.log(`Database: ${DATABASE}\n`);
 
 interface TestResult {
   name: string;
@@ -45,7 +50,7 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
     // Use stdin to avoid shell escaping hell
     // Use -u postgres instead of su postgres to avoid authentication issues
     const proc = Bun.spawn(
-      ["docker", "exec", "-i", "-u", "postgres", CONTAINER, "psql", "-t", "-A"],
+      ["docker", "exec", "-i", "-u", "postgres", CONTAINER, "psql", "-d", DATABASE, "-t", "-A"],
       { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
     );
     proc.stdin.write(sql);

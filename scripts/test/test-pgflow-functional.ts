@@ -13,14 +13,16 @@
  * - Performance metrics
  *
  * Usage:
- *   bun run scripts/test/test-pgflow-functional.ts [--container=NAME]
- *   TEST_CONTAINER=my-postgres bun run scripts/test/test-pgflow-functional.ts
- *   bun run scripts/test/test-pgflow-functional.ts --container=aza-pg-test
+ *   bun run scripts/test/test-pgflow-functional.ts [--container=NAME] [--database=NAME]
+ *   TEST_CONTAINER=my-postgres TEST_DATABASE=mydb bun run scripts/test/test-pgflow-functional.ts
+ *   bun run scripts/test/test-pgflow-functional.ts --container=aza-pg-test --database=pgflow_test
  *
  * Container Configuration:
  *   --container=NAME         Override container name (e.g., --container=pgq-research)
+ *   --database=NAME          Override database name (e.g., --database=pgflow_test)
  *   TEST_CONTAINER env var   Fallback if --container not provided
- *   Default                  aza-pg-test (sensible default for CI)
+ *   TEST_DATABASE env var    Fallback if --database not provided
+ *   Default                  aza-pg-test (container), postgres (database)
  *
  * CI Usage Example:
  *   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
@@ -31,9 +33,12 @@
 import { $ } from "bun";
 
 const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
+const databaseArg = Bun.argv.find((arg) => arg.startsWith("--database="))?.split("=")[1];
 const CONTAINER = containerArg ?? Bun.env.TEST_CONTAINER ?? "aza-pg-test";
+const DATABASE = databaseArg ?? Bun.env.TEST_DATABASE ?? "postgres";
 
-console.log(`Container: ${CONTAINER}\n`);
+console.log(`Container: ${CONTAINER}`);
+console.log(`Database: ${DATABASE}\n`);
 
 interface TestResult {
   name: string;
@@ -47,7 +52,8 @@ const results: TestResult[] = [];
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
-    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+    const result =
+      await $`docker exec ${CONTAINER} psql -U postgres -d ${DATABASE} -t -A -c ${sql}`.nothrow();
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),

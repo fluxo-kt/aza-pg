@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-20T21:24:41.283Z
+# Generated at: 2025-11-21T08:52:53.393Z
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -477,6 +477,7 @@ set -- "$@" \
     -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
     -c "wal_level=${WAL_LEVEL}" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
+    -c "cron.database_name=${POSTGRES_DB:-postgres}" \
     -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \
     -c "wal_buffers=${WAL_BUFFERS_MB}MB" \
     -c "min_wal_size=${MIN_WAL_SIZE_MB}MB" \

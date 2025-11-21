@@ -80,7 +80,11 @@ async function waitForPostgres(container: string, timeout: number): Promise<bool
  * Wait for pgflow schema to be fully initialized
  * Verifies: 1 schema + 7 tables + 13+ functions
  */
-async function waitForPgflowSchema(container: string, timeout: number): Promise<boolean> {
+async function waitForPgflowSchema(
+  container: string,
+  database: string,
+  timeout: number
+): Promise<boolean> {
   const verifyQuery = `
     SELECT
       CASE
@@ -98,7 +102,7 @@ async function waitForPgflowSchema(container: string, timeout: number): Promise<
   while (Date.now() - start < timeoutMs) {
     try {
       const result =
-        await $`docker exec ${container} psql -U postgres -tAc ${verifyQuery}`.nothrow();
+        await $`docker exec ${container} psql -U postgres -d ${database} -tAc ${verifyQuery}`.nothrow();
       if (result.exitCode === 0 && result.stdout.toString().trim() === "1") {
         return true;
       }
@@ -208,7 +212,7 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
   // Stage 4: Wait for pgflow schema initialization
   info(`Stage 4: Waiting for pgflow schema (timeout: ${options.timeout}s)...`);
-  if (!(await waitForPgflowSchema(options.name, options.timeout))) {
+  if (!(await waitForPgflowSchema(options.name, options.database, options.timeout))) {
     error(`pgflow schema not initialized after ${options.timeout}s`);
 
     if (options.diagnosticDir) {
@@ -220,7 +224,8 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
   // Stage 5: Final verification
   info("Stage 5: Final verification...");
-  const statsResult = await $`docker exec ${options.name} psql -U postgres -tAc "
+  const statsResult =
+    await $`docker exec ${options.name} psql -U postgres -d ${options.database} -tAc "
     SELECT
       (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow') || ',' ||
       (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'pgflow')
@@ -287,7 +292,7 @@ async function cleanupPgflowContainer(name: string): Promise<number> {
 /**
  * Verify pgflow container is ready (no setup, just check)
  */
-async function verifyPgflowContainer(name: string): Promise<number> {
+async function verifyPgflowContainer(name: string, database: string): Promise<number> {
   info(`Verifying container: ${name}`);
 
   // Check if running
@@ -301,7 +306,7 @@ async function verifyPgflowContainer(name: string): Promise<number> {
   }
 
   // Check pgflow schema
-  const ready = await waitForPgflowSchema(name, 10);
+  const ready = await waitForPgflowSchema(name, database, 10);
   if (!ready) {
     error("pgflow schema not ready");
     return 2;
@@ -402,7 +407,7 @@ Exit Codes:
     if (options.cleanupOnly) {
       process.exit(await cleanupPgflowContainer(options.name));
     } else if (options.verifyOnly) {
-      process.exit(await verifyPgflowContainer(options.name));
+      process.exit(await verifyPgflowContainer(options.name, options.database));
     } else {
       process.exit(await setupPgflowContainer(options));
     }

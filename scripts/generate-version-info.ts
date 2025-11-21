@@ -187,7 +187,9 @@ try {
   const totalExtensions = enabledEntries.filter((e) => e.kind === "extension").length;
 
   lines.push("SUMMARY");
-  lines.push(`  Total Enabled: ${totalEnabled}`);
+  lines.push(`  Total Catalog: ${allEntries.length}`);
+  lines.push(`  Enabled: ${totalEnabled}`);
+  lines.push(`  Disabled: ${disabledEntries.length}`);
   lines.push(`  Extensions: ${totalExtensions}`);
   lines.push(`  Tools: ${tools.length}`);
   lines.push(`  Preloaded: ${preloaded.length}`);

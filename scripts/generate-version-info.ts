@@ -97,6 +97,7 @@ try {
       total: allEntries.length,
       enabled: enabledEntries.length,
       disabled: disabledEntries.length,
+      preloaded: preloaded.length, // Required by validation (verify-runtime.ts)
     },
     categories: {
       preloaded: preloaded.length,

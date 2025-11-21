@@ -65,6 +65,11 @@ COMPOSE_PROJECT_NAME=${projectName}
 
   const envFile = Bun.file(join(stackPath, ".env.test"));
   await Bun.write(envFile, envContent);
+
+  // Docker Compose v2 always loads .env from cwd before --env-file
+  // Create .env copy for CI compatibility (where .env is gitignored and doesn't exist)
+  const envFileCopy = Bun.file(join(stackPath, ".env"));
+  await Bun.write(envFileCopy, envContent);
 }
 
 /**
@@ -342,6 +347,12 @@ async function cleanup(stackPath: string, projectName: string): Promise<void> {
   const envFile = join(stackPath, ".env.test");
   if (await Bun.file(envFile).exists()) {
     await $`rm -f ${envFile}`.quiet();
+  }
+
+  // Also remove .env copy created for Docker Compose v2 compatibility
+  const envFileCopy = join(stackPath, ".env");
+  if (await Bun.file(envFileCopy).exists()) {
+    await $`rm -f ${envFileCopy}`.quiet();
   }
 
   success("Cleanup completed");

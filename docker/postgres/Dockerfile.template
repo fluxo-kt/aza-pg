@@ -119,8 +119,25 @@ RUN set -eu && \
     rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
-# Version info will be generated in final stage where PostgreSQL is available
+# Stage for version info generation using standalone TypeScript script
+# This ensures consistency between local testing and Docker builds
+FROM builder-base AS builder-version-info
 
+ARG PG_VERSION
+
+# Copy the standalone version info generation script
+COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
+
+# Generate version-info files with actual PostgreSQL version from ARG
+# Extract major.minor version (e.g., "18.1" from "18.1-trixie")
+RUN set -ex && \
+    PG_VER=$(echo "${PG_VERSION}" | awk -F'-' '{print $1}') && \
+    echo "Generating version info for PostgreSQL ${PG_VER}..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="${PG_VER}" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="${PG_VER}" > /tmp/version-info.json && \
+    echo "Version info files generated successfully"
+
+# Final runtime stage
 ARG PG_VERSION
 ARG PG_BASE_IMAGE_SHA
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
@@ -167,8 +184,10 @@ RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
-# Generate version-info files in final stage with actual PostgreSQL version
-{{VERSION_INFO_GENERATION}}
+# Copy pre-generated version-info files from builder-version-info stage
+# These were generated using the standalone TypeScript script for consistency
+COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 

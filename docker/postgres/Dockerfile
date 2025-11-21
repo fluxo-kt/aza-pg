@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-20T21:27:04.677Z
+# Generated at: 2025-11-21T08:52:53.375Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -139,8 +139,25 @@ RUN set -eu && \
     rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
-# Version info will be generated in final stage where PostgreSQL is available
+# Stage for version info generation using standalone TypeScript script
+# This ensures consistency between local testing and Docker builds
+FROM builder-base AS builder-version-info
 
+ARG PG_VERSION
+
+# Copy the standalone version info generation script
+COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
+
+# Generate version-info files with actual PostgreSQL version from ARG
+# Extract major.minor version (e.g., "18.1" from "18.1-trixie")
+RUN set -ex && \
+    PG_VER=$(echo "${PG_VERSION}" | awk -F'-' '{print $1}') && \
+    echo "Generating version info for PostgreSQL ${PG_VER}..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="${PG_VER}" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="${PG_VER}" > /tmp/version-info.json && \
+    echo "Version info files generated successfully"
+
+# Final runtime stage
 ARG PG_VERSION
 ARG PG_BASE_IMAGE_SHA
 FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
@@ -216,42 +233,10 @@ RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
-# Generate version-info files in final stage with actual PostgreSQL version
-RUN set -ex; \
-    \
-    # Extract actual PostgreSQL version
-    PG_VERSION=$(psql --version | grep -oP '\d+\.\d+' | head -1); \
-    BUILD_DATE=$(date -u '+%Y-%m-%d'); \
-    BUILD_TS=$(date -u '+%Y%m%d%H%M'); \
-    \
-    # Generate version-info.txt (super lean and focused)
-    { \
-      echo "aza-pg ${PG_VERSION} | ${BUILD_TS}"; \
-      echo "=================================================="; \
-      echo "PostgreSQL: ${PG_VERSION}"; \
-      echo "Build: ${BUILD_TS} (${BUILD_DATE})"; \
-      echo ""; \
-      echo "Extensions & Tools:"; \
-      printf "%b\n" "auto_explain builtin\nbtree_gin builtin\nbtree_gist builtin\nhll v2.19\nhttp v1.7.0\nhypopg 1.4.2\nindex_advisor v0.2.0\npg_cron v1.6.7\npg_hashids v1.2.1\npg_jsonschema 5492c7d1a28c5a2c85b48f89c47f258acc93d241\npg_partman v5.3.1\npg_repack ver_1.5.3\npg_safeupdate 1.5\npg_stat_monitor b00caafb684b3bd64f020ccd057303cd8a7af0d8\npg_stat_statements builtin\npg_trgm builtin\npgaudit 18.0\npgbackrest release/2.57.0\npgbadger v13.1\npgflow pgflow@0.7.2\npgmq v1.7.0\npgroonga 4.0.4\npgsodium v3.1.9\nplpgsql builtin\nplpgsql_check v2.8.3\nrum 1.3.15\nset_user REL4_2_0\nsupabase_vault v0.3.1\ntimescaledb 2.23.1\ntimescaledb_toolkit 1.22.0\nvector v0.8.1\nvectorscale 0.9.0\nwal2json wal2json_2_6\nwrappers 303da1dd0e7a94365ecf5d48866739fe9fda4d07"; \
-    } > /etc/postgresql/version-info.txt && \
-    \
-    # Generate version-info.json (machine-readable)
-    # Using heredoc with variable substitution for runtime values
-    cat <<EOF > /etc/postgresql/version-info.json
-{
-  "postgres_version": "${PG_VERSION}",
-  "build_timestamp": "${BUILD_TS}",
-  "build_date": "${BUILD_DATE}",
-  "build_type": "single-node",
-  "extensions": {
-    "total": 39,
-    "enabled": 34,
-    "disabled": 5,
-    "preloaded": 9
-  }
-}
-EOF
-
+# Copy pre-generated version-info files from builder-version-info stage
+# These were generated using the standalone TypeScript script for consistency
+COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
 
 RUN mkdir -p /backup && chown postgres:postgres /backup
 

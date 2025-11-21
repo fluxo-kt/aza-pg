@@ -241,76 +241,28 @@ function generateCargoManifest(manifest: Manifest): Manifest {
 }
 
 /**
- * Generate version info generation script using TypeScript-style logic
+ * Generate version info generation instructions
+ * Uses a separate builder stage with Bun to generate version files
+ * This ensures consistency between local testing and Docker builds
  */
-function generateVersionInfoGeneration(manifest: Manifest): string {
-  // Pre-calculate extension list and counts in TypeScript
-  // This removes the need for 'jq' in the final image and moves logic to build time
+function generateVersionInfoGeneration(_manifest: Manifest): string {
+  // The version-info files are generated in a separate builder stage (builder-version-info)
+  // This stage is defined in the Dockerfile template and has Bun available
+  // The generated files are then copied to the final stage
+  //
+  // Template must include:
+  // FROM builder-base AS builder-version-info
+  // ARG PG_VERSION
+  // COPY scripts/generate-version-info.ts /tmp/
+  // RUN PG_VER=$(echo ${PG_VERSION} | awk -F'-' '{print $1}') && \
+  //     bun /tmp/generate-version-info.ts txt --pg-version=${PG_VER} > /tmp/version-info.txt && \
+  //     bun /tmp/generate-version-info.ts json --pg-version=${PG_VER} > /tmp/version-info.json
+  //
+  // Then in final stage:
+  // COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/
+  // COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/
 
-  const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
-  const disabledEntries = manifest.entries.filter((e) => e.enabled === false);
-  const preloadedEntries = enabledEntries.filter((e) => e.runtime?.sharedPreload);
-
-  const totalCount = manifest.entries.length;
-  const enabledCount = enabledEntries.length;
-  const disabledCount = disabledEntries.length;
-  const preloadedCount = preloadedEntries.length;
-
-  // Sort entries for deterministic output
-  enabledEntries.sort((a, b) => a.name.localeCompare(b.name));
-
-  // Generate the formatted list for version-info.txt
-  const extensionList = enabledEntries
-    .map((e) => {
-      let version = "builtin";
-      if (e.source.tag) {
-        version = e.source.tag;
-      } else if (e.source.ref) {
-        version = e.source.ref;
-      }
-      return `${e.name} ${version}`;
-    })
-    .join("\\n");
-
-  // Generate the JSON structure (partially pre-filled)
-  // We use placeholders for runtime values like PG_VERSION
-  const jsonStructure = {
-    postgres_version: "${PG_VERSION}",
-    build_timestamp: "${BUILD_TS}",
-    build_date: "${BUILD_DATE}",
-    build_type: "single-node",
-    extensions: {
-      total: totalCount,
-      enabled: enabledCount,
-      disabled: disabledCount,
-      preloaded: preloadedCount,
-    },
-  };
-
-  return `RUN set -ex; \\
-    \\
-    # Extract actual PostgreSQL version
-    PG_VERSION=$(psql --version | grep -oP '\\d+\\.\\d+' | head -1); \\
-    BUILD_DATE=$(date -u '+%Y-%m-%d'); \\
-    BUILD_TS=$(date -u '+%Y%m%d%H%M'); \\
-    \\
-    # Generate version-info.txt (super lean and focused)
-    { \\
-      echo "aza-pg \${PG_VERSION} | \${BUILD_TS}"; \\
-      echo "=================================================="; \\
-      echo "PostgreSQL: \${PG_VERSION}"; \\
-      echo "Build: \${BUILD_TS} (\${BUILD_DATE})"; \\
-      echo ""; \\
-      echo "Extensions & Tools:"; \\
-      printf "%b\\n" "${extensionList}"; \\
-    } > /etc/postgresql/version-info.txt && \\
-    \\
-    # Generate version-info.json (machine-readable)
-    # Using heredoc with variable substitution for runtime values
-    cat <<EOF > /etc/postgresql/version-info.json
-${JSON.stringify(jsonStructure, null, 2)}
-EOF
-`;
+  return `# Version info files copied from builder-version-info stage (defined earlier in template)`;
 }
 
 /**

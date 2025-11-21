@@ -574,6 +574,7 @@ jobs:
           bun run scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test --database=pgflow_test
 
       - name: Test PgBouncer healthcheck
+        continue-on-error: true # Non-critical test (critical: false in test-all.ts)
         run: |
           echo "Testing PgBouncer health check..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"

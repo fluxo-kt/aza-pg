@@ -492,10 +492,10 @@ async function createManifest(options: Options): Promise<void> {
 
   try {
     // Execute the docker buildx imagetools create command
-    // Capture stdout to parse the digest
+    // Capture both stdout and stderr to parse the digest (buildx outputs digest to stderr)
     const result = await Bun.spawn(cmdArray, {
       stdout: "pipe",
-      stderr: "inherit",
+      stderr: "pipe",
     });
 
     const exitCode = await result.exited;
@@ -509,21 +509,19 @@ async function createManifest(options: Options): Promise<void> {
       process.exit(1);
     }
 
-    // Capture and parse output for digest
-    const output = await new Response(result.stdout).text();
+    // Capture stderr (buildx outputs digest and progress there)
+    const stderrText = await new Response(result.stderr).text();
 
-    // Parse digest from output (format: "sha256:abcdef...")
-    // The command outputs the manifest digest on the last non-empty line
-    const digest =
-      output
-        .trim()
-        .split("\n")
-        .filter((line) => line.trim())
-        .pop() || "";
+    // Display stderr for visibility (buildx progress logs)
+    if (stderrText.trim()) {
+      console.log(stderrText.trim());
+    }
 
-    // Display output for visibility
-    if (output.trim()) {
-      console.log(output.trim());
+    // Parse digest from stderr (buildx outputs: "pushing sha256:DIGEST to TAG")
+    let digest = "";
+    const digestMatch = stderrText.match(/pushing (sha256:[a-f0-9]{64})/);
+    if (digestMatch && digestMatch[1]) {
+      digest = digestMatch[1];
     }
 
     success("Manifest created and pushed successfully");

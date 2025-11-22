@@ -492,8 +492,9 @@ async function createManifest(options: Options): Promise<void> {
 
   try {
     // Execute the docker buildx imagetools create command
+    // Capture stdout to parse the digest
     const result = await Bun.spawn(cmdArray, {
-      stdout: "inherit",
+      stdout: "pipe",
       stderr: "inherit",
     });
 
@@ -508,12 +509,36 @@ async function createManifest(options: Options): Promise<void> {
       process.exit(1);
     }
 
+    // Capture and parse output for digest
+    const output = await new Response(result.stdout).text();
+
+    // Parse digest from output (format: "sha256:abcdef...")
+    // The command outputs the manifest digest on the last non-empty line
+    const digest =
+      output
+        .trim()
+        .split("\n")
+        .filter((line) => line.trim())
+        .pop() || "";
+
+    // Display output for visibility
+    if (output.trim()) {
+      console.log(output.trim());
+    }
+
     success("Manifest created and pushed successfully");
     info(`Tag: ${options.tag}`);
 
+    if (digest) {
+      info(`Digest: ${digest}`);
+    }
+
     // Output for GitHub Actions workflow
     if (options.githubOutput && Bun.env.GITHUB_OUTPUT) {
-      const outputContent = `manifest-tag=${options.tag}\n`;
+      let outputContent = `manifest-tag=${options.tag}\n`;
+      if (digest) {
+        outputContent += `digest=${digest}\n`;
+      }
       await Bun.write(Bun.env.GITHUB_OUTPUT, outputContent);
       info("GitHub output written");
     }

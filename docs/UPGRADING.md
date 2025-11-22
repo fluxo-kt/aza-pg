@@ -9,6 +9,23 @@ Guide for upgrading PostgreSQL major versions, extensions, and handling breaking
 - [Breaking Changes](#breaking-changes)
 - [Rollback Procedures](#rollback-procedures)
 
+## Important: Codebase vs Runtime
+
+This guide covers **runtime upgrade procedures** (upgrading a running production database).
+
+**Before upgrading production**, ensure the codebase declares the target version:
+
+```bash
+# Check current PostgreSQL version in codebase
+grep pgVersion scripts/extension-defaults.ts
+```
+
+**If version needs updating**: See [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md#procedure-1-update-postgresql-base-version) to update version declarations in the codebase, regenerate Dockerfile, and rebuild the image.
+
+**Then return here** to upgrade the running database.
+
+---
+
 ## PostgreSQL Major Version Upgrades
 
 ### Prerequisites
@@ -135,6 +152,13 @@ SELECT * FROM pg_stat_replication;
 ```
 
 ## Extension Updates
+
+> **Note:** This section covers upgrading extensions in a **running database**.
+>
+> To update the extension **version declared in the codebase** (before building a new image), see:
+>
+> - [VERSION-MANAGEMENT.md - Procedure 2](VERSION-MANAGEMENT.md#procedure-2-update-pgdg-extension-version) for PGDG extensions
+> - [VERSION-MANAGEMENT.md - Procedure 3](VERSION-MANAGEMENT.md#procedure-3-update-source-built-extension-git-tag) for source-built extensions
 
 ### Minor Version Updates (e.g., pgvector 0.8.1 → 0.8.2)
 

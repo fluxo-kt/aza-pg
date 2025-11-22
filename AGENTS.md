@@ -324,6 +324,8 @@ bun run build
 - PRODUCTION.md - Deployment, security
 - docs/BUILD.md - Build instructions, CI/CD workflows
 - docs/TOOLING.md - Tech choices, locked decisions
+- docs/VERSION-MANAGEMENT.md - Version declarations, extension manifests, update procedures
+- docs/UPGRADING.md - Runtime PostgreSQL and extension upgrades
 
 ## Key Technical Learnings
 

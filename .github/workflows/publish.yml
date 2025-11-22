@@ -756,6 +756,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Validate merge digest
         run: |
           if [ -z "${{ needs.merge.outputs.image_digest }}" ]; then
@@ -821,7 +824,7 @@ jobs:
           # Capture full Trivy scan output (all severities)
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
           docker run --rm \
-            -v .trivy-cache:/root/.cache/ \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
             aquasec/trivy:latest image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
@@ -831,7 +834,7 @@ jobs:
           # Capture Trivy scan in JSON format for detailed analysis
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
           docker run --rm \
-            -v .trivy-cache:/root/.cache/ \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
             aquasec/trivy:latest image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \

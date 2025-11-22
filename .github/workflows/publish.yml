@@ -1156,10 +1156,20 @@ jobs:
   cleanup:
     name: Cleanup Testing Artifacts
     runs-on: ubuntu-latest
-    needs: [merge, test-smoke, test-extensions, test-features, test-security, test-complete, scan]
+    needs:
+      [
+        merge,
+        test-smoke,
+        test-extensions,
+        test-features,
+        test-security,
+        test-complete,
+        scan,
+        release,
+      ]
     # ALWAYS run cleanup regardless of any job failures or skips
     # With 'if: always()', this runs even if tests/scan are skipped due to merge failure
-    # Waits for all test jobs to complete if they run, preventing race conditions
+    # Waits for all jobs including release to complete before deleting testing artifacts
     if: always()
     timeout-minutes: 10
 

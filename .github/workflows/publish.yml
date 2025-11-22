@@ -1171,6 +1171,19 @@ jobs:
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
+      - name: Get GHCR package version ID
+        id: package_version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Query GitHub Packages API to get numeric version ID for GHCR package link
+          VERSION_ID=$(bun scripts/release/get-package-version-id.ts \
+            --repository "${{ github.repository }}" \
+            --tag "${{ needs.prep.outputs.image_tag }}" | tail -n 1)
+
+          echo "package_version_id=${VERSION_ID}" >> $GITHUB_OUTPUT
+          echo "✅ Found package version ID: ${VERSION_ID}"
+
       - name: Generate release notes
         run: |
           bun scripts/generate-release-notes.ts \
@@ -1179,6 +1192,7 @@ jobs:
             --digest="${{ needs.merge.outputs.image_digest }}" \
             --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total="${{ needs.prep.outputs.catalog_total }}" \
+            --package-version-id="${{ steps.package_version.outputs.package_version_id }}" \
             --output=release-notes.md
 
           echo "✅ Release notes generated"

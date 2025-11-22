@@ -48,6 +48,7 @@ interface Args {
   catalogEnabled: number;
   catalogTotal: number;
   output: string;
+  packageVersionId?: number; // Optional for backward compatibility
 }
 
 interface CategoryGroup {
@@ -64,6 +65,9 @@ interface ExtensionInfo {
   isPreloaded: boolean;
   isAutoCreated: boolean;
   isPreloadOnly: boolean;
+  sourceUrl?: string;
+  docsUrl?: string;
+  source: ManifestEntry["source"];
 }
 
 // Category display names mapping (ordered by importance)
@@ -129,6 +133,7 @@ function parseArgs(): Args | null {
   const catalogEnabled = getArg("catalog-enabled");
   const catalogTotal = getArg("catalog-total");
   const output = getArg("output");
+  const packageVersionId = getArg("package-version-id"); // Optional
 
   // Validate required args
   if (!pgVersion || !tag || !digest || !catalogEnabled || !catalogTotal || !output) {
@@ -141,7 +146,8 @@ function parseArgs(): Args | null {
     console.error("    --digest=sha256:abc123... \\");
     console.error("    --catalog-enabled=36 \\");
     console.error("    --catalog-total=38 \\");
-    console.error("    --output=release-notes.md");
+    console.error("    --output=release-notes.md \\");
+    console.error("    [--package-version-id=585941799]  # Optional: GHCR package version ID");
     return null;
   }
 
@@ -152,6 +158,7 @@ function parseArgs(): Args | null {
     catalogEnabled: parseInt(catalogEnabled, 10),
     catalogTotal: parseInt(catalogTotal, 10),
     output,
+    packageVersionId: packageVersionId ? parseInt(packageVersionId, 10) : undefined,
   };
 }
 
@@ -190,6 +197,79 @@ function getVersion(entry: ManifestEntry): string {
 }
 
 /**
+ * Generate version link for an extension based on its source type
+ */
+function getVersionLink(ext: ExtensionInfo): string | null {
+  const { source, sourceUrl } = ext;
+
+  // Built-in extensions - no version link
+  if (source.type === "builtin") {
+    return null;
+  }
+
+  // No source URL - can't generate link
+  if (!sourceUrl) {
+    return null;
+  }
+
+  // Extract repository base URL (remove .git suffix if present)
+  const repoBase = sourceUrl.replace(/\.git$/, "");
+
+  // Git source with tag - link to release or tag
+  if (source.type === "git" && source.tag) {
+    // Try releases first (most common on GitHub)
+    // Fall back to tree view if releases aren't available
+    return `${repoBase}/releases/tag/${source.tag}`;
+  }
+
+  // Git ref source (commit SHA) - link to specific commit
+  if (source.type === "git-ref" && source.ref) {
+    return `${repoBase}/commit/${source.ref}`;
+  }
+
+  return null;
+}
+
+/**
+ * Format extension markdown with links
+ * Format: **[name](source)** [`version`](release) 📖 — Description
+ */
+function formatExtensionMarkdown(ext: ExtensionInfo): string {
+  const { displayName, version, sourceUrl, docsUrl, description } = ext;
+
+  // Format name (with link if sourceUrl available)
+  const nameMarkdown = sourceUrl ? `**[${displayName}](${sourceUrl})**` : `**${displayName}**`;
+
+  // Format version (with link if version link available)
+  let versionMarkdown = "";
+  if (version !== "builtin") {
+    const versionLink = getVersionLink(ext);
+    versionMarkdown = versionLink ? ` [\`${version}\`](${versionLink})` : ` \`${version}\``;
+  }
+
+  // Format status badges
+  const badges: string[] = [];
+  if (ext.isPreloadOnly) {
+    badges.push("🔧 preload-only");
+  } else if (ext.isPreloaded && ext.isAutoCreated) {
+    badges.push("⚡ preloaded+auto-created");
+  } else if (ext.isPreloaded) {
+    badges.push("⚡ preloaded");
+  } else if (ext.isAutoCreated) {
+    badges.push("✨ auto-created");
+  }
+  const badgeText = badges.length > 0 ? ` _${badges.join(", ")}_` : "";
+
+  // Add docs link icon if docsUrl is different from sourceUrl
+  const docsLinkMarkdown =
+    docsUrl && docsUrl !== sourceUrl && !docsUrl.includes(sourceUrl || "N/A")
+      ? ` [📖](${docsUrl})`
+      : "";
+
+  return `- ${nameMarkdown}${versionMarkdown}${badgeText}${docsLinkMarkdown} — ${description}`;
+}
+
+/**
  * Group enabled extensions by category
  */
 function groupByCategory(manifest: Manifest): CategoryGroup[] {
@@ -212,6 +292,9 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       isPreloaded: entry.runtime?.sharedPreload === true,
       isAutoCreated: entry.runtime?.defaultEnable === true,
       isPreloadOnly: entry.runtime?.preloadOnly === true,
+      sourceUrl: entry.sourceUrl,
+      docsUrl: entry.docsUrl,
+      source: entry.source,
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -255,7 +338,7 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
  */
 function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
   // Extract PostgreSQL major version
-  const pgMajor = pgVersion.split(".")[0] ?? pgVersion;
+  const pgMajor: string = pgVersion.split(".")[0] ?? pgVersion;
 
   // Parse tag format: {pg_version}-{timestamp}-{type}
   // Timestamp is exactly 12 digits (YYYYMMDDHHmm)
@@ -267,9 +350,18 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
     return []; // Return empty array if parsing fails
   }
 
-  const [, , , typePart] = match;
+  const [, pgVersionPart, , typePart] = match;
 
-  return [`${pgMajor}-${typePart}`, pgMajor];
+  // Ensure extracted parts are defined (regex already validated)
+  const versionPart: string = pgVersionPart!;
+  const type: string = typePart!;
+
+  // Return all 4 convenience tags in order:
+  // 1. {pg_version}-{type} (e.g., 18.1-single-node)
+  // 2. {pg_major}-{type} (e.g., 18-single-node)
+  // 3. {pg_version} (e.g., 18.1)
+  // 4. {pg_major} (e.g., 18)
+  return [`${versionPart}-${type}`, `${pgMajor}-${type}`, versionPart, pgMajor];
 }
 
 /**
@@ -296,11 +388,13 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("");
 
   // GHCR Package Link (prominent)
-  const digestShort = args.digest.replace("sha256:", "").substring(0, 12);
+  // Use package version ID if provided, otherwise fall back to digest short (legacy)
+  const packageId =
+    args.packageVersionId?.toString() ?? args.digest.replace("sha256:", "").substring(0, 12);
   lines.push("## 📦 Package");
   lines.push("");
   lines.push(
-    `**[View on GitHub Container Registry →](https://github.com/${REPO_OWNER}/${REPO_NAME}/pkgs/container/${REPO_NAME}/${digestShort}?tag=${args.tag})**`
+    `**[View on GitHub Container Registry →](https://github.com/${REPO_OWNER}/${REPO_NAME}/pkgs/container/${REPO_NAME}/${packageId}?tag=${args.tag})**`
   );
   lines.push("");
   lines.push(`- **Registry**: \`${REGISTRY}\``);
@@ -361,21 +455,7 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
     lines.push("");
 
     for (const ext of group.extensions) {
-      const versionText = ext.version !== "builtin" ? ` \`${ext.version}\`` : "";
-      const badges: string[] = [];
-
-      if (ext.isPreloadOnly) {
-        badges.push("🔧 preload-only");
-      } else if (ext.isPreloaded && ext.isAutoCreated) {
-        badges.push("⚡ preloaded+auto-created");
-      } else if (ext.isPreloaded) {
-        badges.push("⚡ preloaded");
-      } else if (ext.isAutoCreated) {
-        badges.push("✨ auto-created");
-      }
-
-      const badgeText = badges.length > 0 ? ` _${badges.join(", ")}_` : "";
-      lines.push(`- **${ext.displayName}**${versionText}${badgeText} — ${ext.description}`);
+      lines.push(formatExtensionMarkdown(ext));
     }
 
     lines.push("");

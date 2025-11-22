@@ -61,22 +61,18 @@
 import { $ } from "bun";
 import { error, success, info } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import {
+  type OCIMetadataOptions,
+  parseOCIMetadataArg,
+  buildOCIAnnotations,
+} from "../utils/oci-metadata";
 
-interface Options {
+interface Options extends OCIMetadataOptions {
   tag: string;
   sources: string[];
   annotationsFile?: string;
   annotationPrefix: string;
   dryRun: boolean;
-  // Metadata flags from workflow
-  version?: string;
-  pgVersion?: string;
-  catalogEnabled?: string;
-  catalogTotal?: string;
-  baseImageName?: string;
-  baseImageDigest?: string;
-  revision?: string;
-  sourceUrl?: string;
   githubOutput?: boolean;
 }
 
@@ -154,6 +150,13 @@ function parseArgs(): Options {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
+    // Try parsing OCI metadata arguments first
+    const iObj = { value: i };
+    if (parseOCIMetadataArg(args, iObj, options)) {
+      i = iObj.value;
+      continue;
+    }
+
     switch (arg) {
       case "--help":
       case "-h":
@@ -204,77 +207,10 @@ function parseArgs(): Options {
         options.dryRun = true;
         break;
 
-      case "--version":
-        if (i + 1 >= args.length) {
-          error("--version requires an argument");
-          process.exit(1);
-        }
-        options.version = args[i + 1]!;
-        i++;
-        break;
-
-      case "--pg-version":
-        if (i + 1 >= args.length) {
-          error("--pg-version requires an argument");
-          process.exit(1);
-        }
-        options.pgVersion = args[i + 1]!;
-        i++;
-        break;
-
-      case "--catalog-enabled":
-        if (i + 1 >= args.length) {
-          error("--catalog-enabled requires an argument");
-          process.exit(1);
-        }
-        options.catalogEnabled = args[i + 1]!;
-        i++;
-        break;
-
-      case "--catalog-total":
-        if (i + 1 >= args.length) {
-          error("--catalog-total requires an argument");
-          process.exit(1);
-        }
-        options.catalogTotal = args[i + 1]!;
-        i++;
-        break;
-
-      case "--base-image-name":
-        if (i + 1 >= args.length) {
-          error("--base-image-name requires an argument");
-          process.exit(1);
-        }
-        options.baseImageName = args[i + 1]!;
-        i++;
-        break;
-
-      case "--base-image-digest":
-        if (i + 1 >= args.length) {
-          error("--base-image-digest requires an argument");
-          process.exit(1);
-        }
-        options.baseImageDigest = args[i + 1]!;
-        i++;
-        break;
-
-      case "--revision":
-        if (i + 1 >= args.length) {
-          error("--revision requires an argument");
-          process.exit(1);
-        }
-        options.revision = args[i + 1]!;
-        i++;
-        break;
-
-      case "--source-url":
-        if (i + 1 >= args.length) {
-          error("--source-url requires an argument");
-          process.exit(1);
-        }
-        options.sourceUrl = args[i + 1]!;
-        i++;
-        break;
+      // OCI metadata flags (--version, --revision, --source-url, --title, --description,
+      // --created, --authors, --url, --documentation, --licenses, --base-image-name,
+      // --base-image-digest, --pg-version, --catalog-enabled, --catalog-total)
+      // are handled by parseOCIMetadataArg() above
 
       case "--github-output":
         options.githubOutput = true;
@@ -324,47 +260,7 @@ function validateSources(sources: string[]): void {
  * @returns Object with OCI annotation key-value pairs
  */
 function buildMetadataAnnotations(options: Options): Record<string, string> {
-  const annotations: Record<string, string> = {};
-
-  // Add timestamp if not provided
-  const created = new Date().toISOString();
-  annotations["org.opencontainers.image.created"] = created;
-
-  // Map metadata flags to OCI annotations
-  if (options.version) {
-    annotations["org.opencontainers.image.version"] = options.version;
-  }
-
-  if (options.revision) {
-    annotations["org.opencontainers.image.revision"] = options.revision;
-  }
-
-  if (options.sourceUrl) {
-    annotations["org.opencontainers.image.source"] = options.sourceUrl;
-  }
-
-  if (options.baseImageName) {
-    annotations["org.opencontainers.image.base.name"] = options.baseImageName;
-  }
-
-  if (options.baseImageDigest) {
-    annotations["org.opencontainers.image.base.digest"] = options.baseImageDigest;
-  }
-
-  // Custom annotations for PostgreSQL-specific metadata
-  if (options.pgVersion) {
-    annotations["com.aza-pg.postgres.version"] = options.pgVersion;
-  }
-
-  if (options.catalogEnabled) {
-    annotations["com.aza-pg.catalog.enabled"] = options.catalogEnabled;
-  }
-
-  if (options.catalogTotal) {
-    annotations["com.aza-pg.catalog.total"] = options.catalogTotal;
-  }
-
-  return annotations;
+  return buildOCIAnnotations(options, true);
 }
 
 /**

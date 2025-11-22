@@ -73,8 +73,13 @@
 import { $ } from "bun";
 import { error, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import {
+  type OCIMetadataOptions,
+  parseOCIMetadataArg,
+  buildOCIAnnotations,
+} from "../utils/oci-metadata";
 
-interface Options {
+interface Options extends OCIMetadataOptions {
   source: string;
   target: string;
   tags: string[]; // Multiple target tags (comma-separated)
@@ -83,15 +88,6 @@ interface Options {
   verifySource: boolean;
   dryRun: boolean;
   expectedDigest?: string; // Expected digest for verification
-  // Metadata for OCI annotations
-  version?: string;
-  pgVersion?: string;
-  catalogEnabled?: string;
-  catalogTotal?: string;
-  baseImageName?: string;
-  baseImageDigest?: string;
-  revision?: string;
-  sourceUrl?: string;
 }
 
 function printHelp(): void {
@@ -179,18 +175,18 @@ function parseArgs(): Options {
     verifySource: false,
     dryRun: false,
     expectedDigest: undefined,
-    version: undefined,
-    pgVersion: undefined,
-    catalogEnabled: undefined,
-    catalogTotal: undefined,
-    baseImageName: undefined,
-    baseImageDigest: undefined,
-    revision: undefined,
-    sourceUrl: undefined,
+    // OCIMetadataOptions fields inherited (no need to initialize)
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+
+    // Try parsing OCI metadata arguments first
+    const iObj = { value: i };
+    if (parseOCIMetadataArg(args, iObj, options)) {
+      i = iObj.value; // Update i if argument was consumed
+      continue;
+    }
 
     switch (arg) {
       case "--help":
@@ -308,134 +304,7 @@ function parseArgs(): Options {
         i++;
         break;
 
-      // Metadata arguments (converted to OCI annotations)
-      case "--version":
-        if (i + 1 >= args.length) {
-          error("--version requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--version requires an argument");
-            process.exit(1);
-          }
-          options.version = value;
-        }
-        i++;
-        break;
-
-      case "--pg-version":
-        if (i + 1 >= args.length) {
-          error("--pg-version requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--pg-version requires an argument");
-            process.exit(1);
-          }
-          options.pgVersion = value;
-        }
-        i++;
-        break;
-
-      case "--catalog-enabled":
-        if (i + 1 >= args.length) {
-          error("--catalog-enabled requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--catalog-enabled requires an argument");
-            process.exit(1);
-          }
-          options.catalogEnabled = value;
-        }
-        i++;
-        break;
-
-      case "--catalog-total":
-        if (i + 1 >= args.length) {
-          error("--catalog-total requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--catalog-total requires an argument");
-            process.exit(1);
-          }
-          options.catalogTotal = value;
-        }
-        i++;
-        break;
-
-      case "--base-image-name":
-        if (i + 1 >= args.length) {
-          error("--base-image-name requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--base-image-name requires an argument");
-            process.exit(1);
-          }
-          options.baseImageName = value;
-        }
-        i++;
-        break;
-
-      case "--base-image-digest":
-        if (i + 1 >= args.length) {
-          error("--base-image-digest requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--base-image-digest requires an argument");
-            process.exit(1);
-          }
-          options.baseImageDigest = value;
-        }
-        i++;
-        break;
-
-      case "--revision":
-        if (i + 1 >= args.length) {
-          error("--revision requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--revision requires an argument");
-            process.exit(1);
-          }
-          options.revision = value;
-        }
-        i++;
-        break;
-
-      case "--source-url":
-        if (i + 1 >= args.length) {
-          error("--source-url requires an argument");
-          process.exit(1);
-        }
-        {
-          const value = args[i + 1];
-          if (!value) {
-            error("--source-url requires an argument");
-            process.exit(1);
-          }
-          options.sourceUrl = value;
-        }
-        i++;
-        break;
+      // OCI metadata arguments now handled by parseOCIMetadataArg above
 
       default:
         error(`Unknown option: ${arg}`);
@@ -575,43 +444,7 @@ async function loadAnnotations(filePath: string): Promise<Record<string, string>
  * @returns Object with OCI annotation key-value pairs
  */
 function buildMetadataAnnotations(options: Options): Record<string, string> {
-  const annotations: Record<string, string> = {};
-
-  // Map metadata options to OCI annotation keys
-  if (options.version) {
-    annotations["org.opencontainers.image.version"] = options.version;
-  }
-
-  if (options.revision) {
-    annotations["org.opencontainers.image.revision"] = options.revision;
-  }
-
-  if (options.sourceUrl) {
-    annotations["org.opencontainers.image.source"] = options.sourceUrl;
-  }
-
-  // Custom annotations for PostgreSQL metadata
-  if (options.pgVersion) {
-    annotations["io.fluxo.aza-pg.postgresql.version"] = options.pgVersion;
-  }
-
-  if (options.catalogEnabled) {
-    annotations["io.fluxo.aza-pg.catalog.enabled"] = options.catalogEnabled;
-  }
-
-  if (options.catalogTotal) {
-    annotations["io.fluxo.aza-pg.catalog.total"] = options.catalogTotal;
-  }
-
-  if (options.baseImageName) {
-    annotations["io.fluxo.aza-pg.base.image.name"] = options.baseImageName;
-  }
-
-  if (options.baseImageDigest) {
-    annotations["io.fluxo.aza-pg.base.image.digest"] = options.baseImageDigest;
-  }
-
-  return annotations;
+  return buildOCIAnnotations(options);
 }
 
 /**
@@ -733,14 +566,14 @@ async function verifyExpectedDigest(imageRef: string, expectedDigest: string): P
 /**
  * Execute docker buildx imagetools create with retry logic for rate limiting
  * @param cmdArray - Command array to execute
- * @param maxRetries - Maximum number of retries (default: 5)
- * @param initialDelayMs - Initial retry delay in milliseconds (default: 1000)
+ * @param maxRetries - Maximum number of retries (default: 7)
+ * @param initialDelayMs - Initial retry delay in milliseconds (default: 2000)
  * @returns Exit code
  */
 async function executeWithRetry(
   cmdArray: string[],
-  maxRetries: number = 5,
-  initialDelayMs: number = 1000
+  maxRetries: number = 7,
+  initialDelayMs: number = 2000
 ): Promise<number> {
   let attempt = 0;
   let delayMs = initialDelayMs;

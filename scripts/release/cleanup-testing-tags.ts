@@ -471,6 +471,20 @@ async function cleanupTestingTags(options: Options): Promise<void> {
       // Delete the version
       await deletePackageVersion(org, packageName, versionId, tag, dryRun);
       successCount++;
+
+      // Also check for and delete associated signature artifact (.sig)
+      const sigTag = `${tag}.sig`;
+      const sigVersionId = findVersionIdByTag(versions, sigTag);
+
+      if (sigVersionId !== null) {
+        try {
+          await deletePackageVersion(org, packageName, sigVersionId, sigTag, dryRun);
+          successCount++;
+        } catch (sigErr) {
+          warning(`Failed to delete signature artifact ${sigTag}: ${getErrorMessage(sigErr)}`);
+          // Don't fail the whole operation if signature deletion fails
+        }
+      }
     } catch (err) {
       const errMessage = getErrorMessage(err);
       error(`Failed to delete tag ${tag}: ${errMessage}`);

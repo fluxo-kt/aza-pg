@@ -1,0 +1,101 @@
+name: Cleanup Old Testing Images
+
+on:
+  schedule:
+    # Weekly on Sundays at 00:00 UTC
+    - cron: "0 0 * * 0"
+
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Delete testing tags older than N days (leave empty for default: 14)"
+        required: false
+        default: "14"
+        type: string
+      keep_last:
+        description: "Alternative: Keep only last N tags (overrides days if set)"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry-run mode (preview only, no deletions)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cleanup Old Testing Tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
+
+      - name: Cleanup old testing images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Determine retention policy
+          DAYS="${{ inputs.days }}"
+          KEEP_LAST="${{ inputs.keep_last }}"
+          DRY_RUN=""
+
+          # Set dry-run flag
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+
+          # Build command based on retention policy
+          if [ -n "$KEEP_LAST" ]; then
+            # Count-based retention (overrides days)
+            echo "Using count-based retention: keep last $KEEP_LAST tags"
+            bun scripts/release/cleanup-old-testing-tags.ts \
+              --repository fluxo-kt/aza-pg-testing \
+              --keep-last "$KEEP_LAST" \
+              --continue-on-error \
+              $DRY_RUN
+          else
+            # Time-based retention (default: 14 days)
+            DAYS="${DAYS:-14}"
+            echo "Using time-based retention: delete tags older than $DAYS days"
+            bun scripts/release/cleanup-old-testing-tags.ts \
+              --repository fluxo-kt/aza-pg-testing \
+              --days "$DAYS" \
+              --continue-on-error \
+              $DRY_RUN
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: \`fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
+
+          # Determine which policy was used
+          KEEP_LAST="${{ inputs.keep_last }}"
+          if [ -n "$KEEP_LAST" ]; then
+            echo "- **Retention Policy**: Count-based (keep last $KEEP_LAST tags)" >> $GITHUB_STEP_SUMMARY
+          else
+            DAYS="${{ inputs.days || '14' }}"
+            echo "- **Retention Policy**: Time-based (delete tags older than $DAYS days)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "- **Dry Run**: \`${{ inputs.dry_run || 'false' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pattern**: \`testing-*\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note**: This is an automated cleanup workflow to reduce storage costs." >> $GITHUB_STEP_SUMMARY
+          echo "Testing tags are ephemeral and only used during the build-test-promote cycle." >> $GITHUB_STEP_SUMMARY

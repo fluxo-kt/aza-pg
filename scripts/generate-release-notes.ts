@@ -300,6 +300,9 @@ function generateMarkdown(
   lines.push("## Image Details");
   lines.push("");
   lines.push(`- **Registry**: ${REGISTRY}`);
+  lines.push(
+    `- **Package Page**: [ghcr.io/fluxo-kt/aza-pg](https://github.com/fluxo-kt/aza-pg/pkgs/container/aza-pg)`
+  );
   lines.push(`- **Tags**: \`${args.tag}\`, \`${convenienceTags.join("`, `")}\``);
   lines.push(`- **Digest**: \`${args.digest}\``);
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");

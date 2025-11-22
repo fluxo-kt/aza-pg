@@ -34,7 +34,8 @@ jobs:
       base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
       base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
       timestamp: ${{ steps.timestamp.outputs.value }}
-      tag_versioned: ${{ steps.tags.outputs.versioned }}
+      version_tag: ${{ steps.tags.outputs.version_tag }}
+      image_tag: ${{ steps.tags.outputs.image_tag }}
       tag_convenience: ${{ steps.tags.outputs.convenience }}
       catalog_total: ${{ steps.catalog.outputs.total }}
       catalog_enabled: ${{ steps.catalog.outputs.enabled }}
@@ -57,6 +58,37 @@ jobs:
         run: bun install --frozen-lockfile
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
+
+      # Pre-flight cleanup: Remove orphaned testing tags from cancelled workflows.
+      # This protects against the GitHub Actions limitation where `if: always()`
+      # cleanup jobs don't run for cancelled workflows (cancel-in-progress: true).
+      # Deletes any testing-* tags older than 6 hours (current workflow's tag
+      # won't exist yet, so can't accidentally delete it).
+      - name: Cleanup orphaned testing tags from previous runs
+        id: cleanup-orphans
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "::group::Cleanup Orphaned Tags"
+          echo "Cleaning up testing-* tags from cancelled or failed workflows..."
+
+          # Delete testing-* tags older than 6 hours (catches cancelled workflows)
+          bun scripts/release/cleanup-old-testing-tags.ts \
+            --repository "fluxo-kt/aza-pg-testing" \
+            --pattern "testing-*" \
+            --days 0.25 \
+            --continue-on-error \
+            || echo "::warning::Orphan cleanup failed - continuing anyway"
+
+          echo "::endgroup::"
+
+      - name: Report orphan cleanup
+        if: steps.cleanup-orphans.outcome == 'failure'
+        run: |
+          echo "::warning::Pre-flight cleanup encountered errors"
+          echo "This is non-critical - workflow will continue"
+          echo "Orphaned tags may require manual cleanup"
 
       - name: Validate manifest
         run: bun run validate
@@ -96,16 +128,19 @@ jobs:
           PG_MAJOR="${{ steps.pg-version.outputs.major }}"
           BUILD_TS="${{ steps.timestamp.outputs.value }}"
 
-          # Primary versioned tag: MM.mm-TS-TYPE
-          VERSIONED_TAG="${PG_FULL}-${BUILD_TS}-single-node"
+          # Separate version (for releases) from image tag (for containers)
+          VERSION_TAG="${PG_FULL}-${BUILD_TS}"                # 18.1-202511221455 (no type for releases)
+          IMAGE_TAG="${PG_FULL}-${BUILD_TS}-single-node"     # 18.1-202511221455-single-node (with type for images)
 
           # Convenience tags
           CONVENIENCE_TAGS="${PG_FULL}-single-node,${PG_MAJOR}-single-node,${PG_FULL},${PG_MAJOR}"
 
-          echo "versioned=${VERSIONED_TAG}" >> $GITHUB_OUTPUT
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "convenience=${CONVENIENCE_TAGS}" >> $GITHUB_OUTPUT
 
-          echo "Primary tag: ${VERSIONED_TAG}"
+          echo "Version tag (for releases): ${VERSION_TAG}"
+          echo "Image tag (for containers): ${IMAGE_TAG}"
           echo "Convenience tags: ${CONVENIENCE_TAGS}"
 
       - name: Extract metadata for Docker
@@ -114,7 +149,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.tags.outputs.versioned }},priority=1000
+            type=raw,value=${{ steps.tags.outputs.image_tag }},priority=1000
             type=raw,value=${{ steps.pg-version.outputs.full }}-single-node,priority=900
             type=raw,value=${{ steps.pg-version.outputs.major }}-single-node,priority=800
             type=raw,value=${{ steps.pg-version.outputs.full }},priority=700
@@ -124,7 +159,7 @@ jobs:
             org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} \
               with ${{ steps.catalog.outputs.total }} extensions - Single-Node
             org.opencontainers.image.vendor=fluxo-kt
-            org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
             org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -139,7 +174,7 @@ jobs:
             index,manifest:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
             index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
             index,manifest:org.opencontainers.image.vendor=fluxo-kt
-            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.versioned }}
+            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
             index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
             index,manifest:org.opencontainers.image.revision=${{ github.sha }}
             index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -226,7 +261,7 @@ jobs:
             PG_VERSION=${{ needs.prep.outputs.pg_version_major }}
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
-            VERSION=${{ needs.prep.outputs.tag_versioned }}
+            VERSION=${{ needs.prep.outputs.image_tag }}
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           # Disable buildx attestations to prevent "unknown/unknown" architecture entries
@@ -326,7 +361,14 @@ jobs:
           bun scripts/docker/create-manifest.ts \
             --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
             --sources "$SOURCES" \
-            --version "${{ needs.prep.outputs.tag_versioned }}" \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
@@ -920,8 +962,15 @@ jobs:
           bun scripts/release/promote-image.ts \
             --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
-            --tags "${{ needs.prep.outputs.tag_versioned }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
-            --version "${{ needs.prep.outputs.tag_versioned }}" \
+            --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
@@ -936,7 +985,7 @@ jobs:
         run: |
           bun scripts/release/sign-tags.ts \
             --repository "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
-            --tags "${{ needs.prep.outputs.tag_versioned }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
+            --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --yes
 
       - name: Generate release summary
@@ -955,7 +1004,7 @@ jobs:
 
           ## Tags Published
 
-          - `${{ needs.prep.outputs.tag_versioned }}` (primary)
+          - `${{ needs.prep.outputs.image_tag }}` (primary)
           - `${{ needs.prep.outputs.pg_version_full }}-single-node`
           - `${{ needs.prep.outputs.pg_version_major }}-single-node`
           - `${{ needs.prep.outputs.pg_version_full }}`
@@ -965,7 +1014,7 @@ jobs:
 
           ```bash
           # Full versioned tag (recommended for production)
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
 
           # By digest (immutable)
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
@@ -994,12 +1043,12 @@ jobs:
 
           ```bash
           # Verify PostgreSQL version
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }} psql --version
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }} psql --version
 
           # Test basic functionality
           docker run -d --name pg-test \
             -e POSTGRES_PASSWORD=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
 
           # Wait for startup
           sleep 10
@@ -1019,7 +1068,7 @@ jobs:
           # Docker Compose
           services:
             postgres:
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
               # ... other config
           ```
 
@@ -1028,7 +1077,7 @@ jobs:
           spec:
             containers:
             - name: postgres
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
               # ... other config
           ```
 
@@ -1046,7 +1095,7 @@ jobs:
           cosign verify \
             --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
 
           # Verify specific tag
           cosign verify \
@@ -1067,7 +1116,7 @@ jobs:
 
           ```bash
           # Search Rekor for this image
-          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
           ```
 
           ## Supply Chain Verification
@@ -1076,19 +1125,19 @@ jobs:
 
           ```bash
           # View SBOM
-          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+          cosign download sbom ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
 
           # View provenance
           cosign download attestation \
             --predicate-type=https://slsa.dev/provenance/v0.2 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.tag_versioned }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
           ```
           EOF
 
       - name: Publish release notes
         run: |
           echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          echo "Primary tag: ${{ needs.prep.outputs.tag_versioned }}"
+          echo "Primary tag: ${{ needs.prep.outputs.image_tag }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
           echo "Platforms: linux/amd64, linux/arm64 (native builds)"
 
@@ -1117,7 +1166,7 @@ jobs:
         run: |
           bun scripts/generate-release-notes.ts \
             --pg-version="${{ needs.prep.outputs.pg_version_full }}" \
-            --tag="${{ needs.prep.outputs.tag_versioned }}" \
+            --tag="${{ needs.prep.outputs.image_tag }}" \
             --digest="${{ needs.merge.outputs.image_digest }}" \
             --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total="${{ needs.prep.outputs.catalog_total }}" \
@@ -1133,25 +1182,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Create release with generated notes
-          gh release create "v${{ needs.prep.outputs.tag_versioned }}" \
+          gh release create "v${{ needs.prep.outputs.version_tag }}" \
             --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
             --notes-file release-notes.md \
             --latest \
             --verify-tag || {
-              echo "⚠️ Tag v${{ needs.prep.outputs.tag_versioned }} does not exist yet"
+              echo "⚠️ Tag v${{ needs.prep.outputs.version_tag }} does not exist yet"
               echo "Creating lightweight tag for release..."
-              git tag "v${{ needs.prep.outputs.tag_versioned }}"
-              git push origin "v${{ needs.prep.outputs.tag_versioned }}"
+              git tag "v${{ needs.prep.outputs.version_tag }}"
+              git push origin "v${{ needs.prep.outputs.version_tag }}"
 
               # Retry release creation
-              gh release create "v${{ needs.prep.outputs.tag_versioned }}" \
+              gh release create "v${{ needs.prep.outputs.version_tag }}" \
                 --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
                 --notes-file release-notes.md \
                 --latest
             }
 
-          echo "✅ GitHub Release created: v${{ needs.prep.outputs.tag_versioned }}"
-          echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.tag_versioned }}"
+          echo "✅ GitHub Release created: v${{ needs.prep.outputs.version_tag }}"
+          echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.version_tag }}"
 
   cleanup:
     name: Cleanup Testing Artifacts
@@ -1186,12 +1235,29 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Delete testing tag using GitHub Packages API
+        id: cleanup-step
+        continue-on-error: true # Don't fail workflow if cleanup fails
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           bun scripts/release/cleanup-testing-tags.ts \
             --repository "fluxo-kt/aza-pg-testing" \
-            --tags "testing-${{ github.sha }}"
+            --tags "testing-${{ github.sha }}" \
+            --continue-on-error # Script continues on individual tag failures
+
+      - name: Validate cleanup outcome
+        if: always()
+        run: |
+          if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
+            echo "✅ Testing tag deleted successfully"
+          elif [ "${{ steps.cleanup-step.outcome }}" = "failure" ]; then
+            echo "::warning::Cleanup failed - tag may remain in registry"
+            echo "Tag: testing-${{ github.sha }}"
+            echo "Repository: ghcr.io/fluxo-kt/aza-pg-testing"
+            echo "Weekly cleanup will remove orphaned tags"
+          else
+            echo "::warning::Cleanup skipped or cancelled"
+          fi
 
       - name: Report cleanup status
         if: always()
@@ -1199,10 +1265,18 @@ jobs:
           echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
+            echo "✅ **Cleanup completed successfully**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Testing tag \`testing-${{ github.sha }}\` was deleted from registry." >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Cleanup attempted but may have encountered issues" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Cleanup encountered issues**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Repository**: \`ghcr.io/fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Action**: Weekly scheduled cleanup will remove orphaned tags" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This does not affect the release. All images are published to production." >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY

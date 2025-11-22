@@ -63,6 +63,37 @@ import { $ } from "bun";
 import { error, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 
+/**
+ * Execute command with exponential backoff retry
+ * @param fn - Async function to execute
+ * @param maxRetries - Maximum retry attempts (default: 3)
+ * @param initialDelay - Initial delay in ms (default: 1000)
+ * @returns Function result
+ */
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isLastAttempt = attempt === maxRetries;
+
+      if (isLastAttempt) {
+        throw err;
+      }
+
+      const backoff = initialDelay * Math.pow(2, attempt - 1);
+      warning(`Retry ${attempt}/${maxRetries} after ${backoff}ms: ${getErrorMessage(err)}`);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
+  }
+
+  throw new Error("Retry loop completed without success"); // Should never reach
+}
+
 interface Options {
   repository: string;
   tags: string[];
@@ -268,33 +299,39 @@ async function checkGhAuthentication(): Promise<void> {
 }
 
 async function fetchPackageVersions(org: string, packageName: string): Promise<PackageVersion[]> {
-  try {
-    const apiPath = `/orgs/${org}/packages/container/${packageName}/versions`;
-    const result = await $`gh api -H "Accept: application/vnd.github+json" ${apiPath}`
-      .nothrow()
-      .quiet();
+  return executeWithRetry(
+    async () => {
+      try {
+        const apiPath = `/orgs/${org}/packages/container/${packageName}/versions`;
+        const result = await $`gh api -H "Accept: application/vnd.github+json" ${apiPath}`
+          .nothrow()
+          .quiet();
 
-    if (result.exitCode !== 0) {
-      const stderr = result.stderr.toString().trim();
+        if (result.exitCode !== 0) {
+          const stderr = result.stderr.toString().trim();
 
-      // Handle rate limiting (HTTP 429)
-      if (stderr.includes("429") || stderr.includes("rate limit")) {
-        throw new Error("GitHub API rate limit exceeded. Try again later.");
+          // Handle rate limiting (HTTP 429)
+          if (stderr.includes("429") || stderr.includes("rate limit")) {
+            throw new Error("GitHub API rate limit exceeded. Try again later.");
+          }
+
+          // Handle not found (HTTP 404)
+          if (stderr.includes("404") || stderr.includes("Not Found")) {
+            throw new Error(`Package not found: ${org}/${packageName}`);
+          }
+
+          throw new Error(`GitHub API request failed: ${stderr}`);
+        }
+
+        const versions = JSON.parse(result.stdout.toString()) as PackageVersion[];
+        return versions;
+      } catch (err) {
+        throw new Error(`Failed to fetch package versions: ${getErrorMessage(err)}`);
       }
-
-      // Handle not found (HTTP 404)
-      if (stderr.includes("404") || stderr.includes("Not Found")) {
-        throw new Error(`Package not found: ${org}/${packageName}`);
-      }
-
-      throw new Error(`GitHub API request failed: ${stderr}`);
-    }
-
-    const versions = JSON.parse(result.stdout.toString()) as PackageVersion[];
-    return versions;
-  } catch (err) {
-    throw new Error(`Failed to fetch package versions: ${getErrorMessage(err)}`);
-  }
+    },
+    3,
+    2000
+  ); // 3 retries, 2s initial delay
 }
 
 function findVersionIdByTag(versions: PackageVersion[], tag: string): number | null {
@@ -318,30 +355,36 @@ async function deletePackageVersion(
     return;
   }
 
-  try {
-    const apiPath = `/orgs/${org}/packages/container/${packageName}/versions/${versionId}`;
-    const result = await $`gh api --method DELETE ${apiPath}`.nothrow().quiet();
+  return executeWithRetry(
+    async () => {
+      try {
+        const apiPath = `/orgs/${org}/packages/container/${packageName}/versions/${versionId}`;
+        const result = await $`gh api --method DELETE ${apiPath}`.nothrow().quiet();
 
-    if (result.exitCode !== 0) {
-      const stderr = result.stderr.toString().trim();
+        if (result.exitCode !== 0) {
+          const stderr = result.stderr.toString().trim();
 
-      // Handle rate limiting
-      if (stderr.includes("429") || stderr.includes("rate limit")) {
-        throw new Error("GitHub API rate limit exceeded");
+          // Handle rate limiting
+          if (stderr.includes("429") || stderr.includes("rate limit")) {
+            throw new Error("GitHub API rate limit exceeded");
+          }
+
+          throw new Error(`Failed to delete version: ${stderr}`);
+        }
+
+        success(`Deleted tag: ${tag} (version ID: ${versionId})`);
+
+        // GitHub Actions annotation
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          console.log(`::notice::Deleted testing tag ${tag} from ${org}/${packageName}`);
+        }
+      } catch (err) {
+        throw new Error(`Failed to delete tag ${tag}: ${getErrorMessage(err)}`);
       }
-
-      throw new Error(`Failed to delete version: ${stderr}`);
-    }
-
-    success(`Deleted tag: ${tag} (version ID: ${versionId})`);
-
-    // GitHub Actions annotation
-    if (Bun.env.GITHUB_ACTIONS === "true") {
-      console.log(`::notice::Deleted testing tag ${tag} from ${org}/${packageName}`);
-    }
-  } catch (err) {
-    throw new Error(`Failed to delete tag ${tag}: ${getErrorMessage(err)}`);
-  }
+    },
+    3,
+    2000
+  ); // 3 retries, 2s initial delay
 }
 
 async function cleanupTestingTags(options: Options): Promise<void> {

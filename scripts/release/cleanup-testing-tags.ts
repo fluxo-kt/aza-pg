@@ -64,6 +64,41 @@ import { error, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 
 /**
+ * Validate that GITHUB_TOKEN has required permissions
+ * @returns true if permissions are sufficient, false otherwise
+ */
+async function validatePermissions(): Promise<boolean> {
+  try {
+    info("Validating GitHub token permissions...");
+
+    // Check if gh CLI is authenticated
+    const authResult = await $`gh auth status`.nothrow().quiet();
+    if (authResult.exitCode !== 0) {
+      error("GitHub CLI not authenticated");
+      error("Ensure GITHUB_TOKEN is set and valid");
+      return false;
+    }
+
+    // Try to list packages (requires packages:read at minimum)
+    const listResult = await $`gh api /user/packages?package_type=container --jq 'length'`
+      .nothrow()
+      .quiet();
+    if (listResult.exitCode !== 0) {
+      warning("Could not validate package permissions");
+      warning("Continuing anyway - cleanup may fail if permissions insufficient");
+      return true; // Don't block on permission check failure
+    }
+
+    info("✓ GitHub token has package access");
+    return true;
+  } catch (err) {
+    warning(`Permission validation failed: ${getErrorMessage(err)}`);
+    warning("Continuing anyway - cleanup will fail explicitly if permissions insufficient");
+    return true; // Don't block on validation errors
+  }
+}
+
+/**
  * Execute command with exponential backoff retry
  * @param fn - Async function to execute
  * @param maxRetries - Maximum retry attempts (default: 3)
@@ -478,6 +513,14 @@ async function cleanupTestingTags(options: Options): Promise<void> {
 
 async function main(): Promise<void> {
   const options = parseArgs();
+
+  // Validate permissions before attempting cleanup
+  const hasPermissions = await validatePermissions();
+  if (!hasPermissions && !options.dryRun) {
+    error("Insufficient permissions for cleanup operation");
+    error("Add 'packages: write' to workflow permissions");
+    process.exit(1);
+  }
 
   try {
     await cleanupTestingTags(options);

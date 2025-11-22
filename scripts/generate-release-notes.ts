@@ -26,6 +26,7 @@
 
 import { join } from "path";
 import type { ManifestEntry } from "./extensions/manifest-data.ts";
+import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
@@ -250,8 +251,17 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
   // Extract PostgreSQL major version
   const pgMajor = pgVersion.split(".")[0] ?? pgVersion;
 
-  // Extract type (e.g., "single-node")
-  const typePart = fullTag.split("-").slice(2).join("-");
+  // Parse tag format: {pg_version}-{timestamp}-{type}
+  // Timestamp can be YYYYMMDDHHmm or RFC3339 compact format
+  // Type can contain hyphens (e.g., "single-node")
+  const match = fullTag.match(/^([\d.]+)-([\w:T-]+)-(.+)$/);
+
+  if (!match) {
+    warning(`Could not parse tag format: ${fullTag}`);
+    return []; // Return empty array if parsing fails
+  }
+
+  const [, , , typePart] = match;
 
   return [`${pgMajor}-${typePart}`, pgMajor];
 }

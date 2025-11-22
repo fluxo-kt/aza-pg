@@ -33,7 +33,7 @@ jobs:
       pg_version_full: ${{ steps.pg-version.outputs.full }}
       base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
       base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
-      timestamp: ${{ steps.timestamp.outputs.value }}
+      timestamp: ${{ steps.timestamp.outputs.timestamp }}
       version_tag: ${{ steps.tags.outputs.version_tag }}
       image_tag: ${{ steps.tags.outputs.image_tag }}
       tag_convenience: ${{ steps.tags.outputs.convenience }}
@@ -117,16 +117,25 @@ jobs:
       - name: Generate build timestamp
         id: timestamp
         run: |
+          # Human-readable timestamp for container tags (no special chars)
           BUILD_TS=$(date -u '+%Y%m%d%H%M')
+
+          # RFC 3339 compliant timestamp for OCI metadata
+          BUILD_TS_RFC3339=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+          # Output both formats
           echo "value=${BUILD_TS}" >> $GITHUB_OUTPUT
-          echo "Build timestamp: ${BUILD_TS}"
+          echo "timestamp=${BUILD_TS_RFC3339}" >> $GITHUB_OUTPUT
+
+          echo "Build timestamp (human): ${BUILD_TS}"
+          echo "Build timestamp (RFC 3339): ${BUILD_TS_RFC3339}"
 
       - name: Generate version tags
         id: tags
         run: |
           PG_FULL="${{ steps.pg-version.outputs.full }}"
           PG_MAJOR="${{ steps.pg-version.outputs.major }}"
-          BUILD_TS="${{ steps.timestamp.outputs.value }}"
+          BUILD_TS="${{ steps.timestamp.outputs.value }}"  # Use human-readable format for tags
 
           # Separate version (for releases) from image tag (for containers)
           VERSION_TAG="${PG_FULL}-${BUILD_TS}"                # 18.1-202511221455 (no type for releases)
@@ -160,7 +169,7 @@ jobs:
               with ${{ steps.catalog.outputs.total }} extensions - Single-Node
             org.opencontainers.image.vendor=fluxo-kt
             org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
-            org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
+            org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
@@ -175,7 +184,7 @@ jobs:
             index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
             index,manifest:org.opencontainers.image.vendor=fluxo-kt
             index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
-            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.value }}
+            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
             index,manifest:org.opencontainers.image.revision=${{ github.sha }}
             index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}

@@ -352,7 +352,7 @@ bun scripts/build.ts --help        # Show help
 
 **Requirements:**
 
-- Bun runtime (>=1.3.2)
+- Bun runtime
 - Docker Buildx (bundled with Docker Desktop / Docker 19.03+)
 - Network access to ghcr.io for cache pull
 - ghcr.io write access for `--push` (requires `docker login ghcr.io`)
@@ -480,7 +480,7 @@ docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  
 
 **Required for all scripts:**
 
-- `bun` 1.3.2+ (install via `curl -fsSL https://bun.sh/install | bash`)
+- `bun` (install via `curl -fsSL https://bun.sh/install | bash`)
 - `docker` (Docker Engine or Docker Desktop)
 
 **Test scripts:**

@@ -167,6 +167,9 @@ jobs:
       - name: Verify manifest sync
         run: bun run verify:generated
 
+      - name: Validate workflow defaults
+        run: bun scripts/ci/validate-workflow-defaults.ts
+
   build:
     name: Build PostgreSQL Image (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}

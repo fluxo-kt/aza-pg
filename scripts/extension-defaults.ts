@@ -55,7 +55,7 @@ export const extensionDefaults: ExtensionDefaults = {
     hll: "2.19-1.pgdg13+1",
     http: "1.7.0-3.pgdg13+1",
     hypopg: "1.4.2-2.pgdg13+1",
-    pgrouting: "3.8.0-2.pgdg13+1",
+    pgrouting: "4.0.0-1.pgdg12+1",
     rum: "1.3.15-1.pgdg13+1",
     setUser: "4.2.0-1.pgdg13+1",
   },

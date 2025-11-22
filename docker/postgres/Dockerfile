@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-22T18:03:45.524Z
+# Generated at: 2025-11-22T18:20:07.176Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -27,7 +27,7 @@ ARG PLPGSQL_CHECK_VERSION=2.8.3-1.pgdg13+1
 ARG HLL_VERSION=2.19-1.pgdg13+1
 ARG HTTP_VERSION=1.7.0-3.pgdg13+1
 ARG HYPOPG_VERSION=1.4.2-2.pgdg13+1
-ARG PGROUTING_VERSION=3.8.0-2.pgdg13+1
+ARG PGROUTING_VERSION=4.0.0-1.pgdg12+1
 ARG RUM_VERSION=1.3.15-1.pgdg13+1
 ARG SET_USER_VERSION=4.2.0-1.pgdg13+1
 

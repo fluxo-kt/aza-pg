@@ -731,6 +731,95 @@ async function verifyExpectedDigest(imageRef: string, expectedDigest: string): P
 }
 
 /**
+ * Execute docker buildx imagetools create with retry logic for rate limiting
+ * @param cmdArray - Command array to execute
+ * @param maxRetries - Maximum number of retries (default: 5)
+ * @param initialDelayMs - Initial retry delay in milliseconds (default: 1000)
+ * @returns Exit code
+ */
+async function executeWithRetry(
+  cmdArray: string[],
+  maxRetries: number = 5,
+  initialDelayMs: number = 1000
+): Promise<number> {
+  let attempt = 0;
+  let delayMs = initialDelayMs;
+
+  while (attempt <= maxRetries) {
+    attempt++;
+
+    if (attempt > 1) {
+      info(`Retry attempt ${attempt - 1}/${maxRetries} after ${delayMs}ms delay...`);
+      await Bun.sleep(delayMs);
+    }
+
+    try {
+      // Capture stderr to detect rate limiting errors
+      const result = await Bun.spawn(cmdArray, {
+        stdout: "inherit",
+        stderr: "pipe",
+      });
+
+      // Capture stderr for error detection
+      const stderrText = await new Response(result.stderr).text();
+
+      // Display stderr (buildx progress and errors)
+      if (stderrText.trim()) {
+        console.error(stderrText.trim());
+      }
+
+      const exitCode = await result.exited;
+
+      // Success
+      if (exitCode === 0) {
+        return 0;
+      }
+
+      // Check if error is due to rate limiting (429)
+      const is429Error =
+        stderrText.includes("429 Too Many Requests") || stderrText.includes("toomanyrequests");
+
+      if (is429Error && attempt <= maxRetries) {
+        warning(`Rate limit hit (429 Too Many Requests), retrying in ${delayMs}ms...`);
+
+        // Parse retry-after from error message if available
+        const retryAfterMatch = stderrText.match(/retry-after:\s*([0-9.]+)(ms|s)?/i);
+        if (retryAfterMatch) {
+          const value = parseFloat(retryAfterMatch[1]!);
+          const unit = retryAfterMatch[2]?.toLowerCase();
+
+          // Convert to milliseconds
+          let suggestedDelayMs = value;
+          if (unit === "s") {
+            suggestedDelayMs = value * 1000;
+          }
+
+          // Use suggested delay if it's reasonable (between 100ms and 60s)
+          if (suggestedDelayMs >= 100 && suggestedDelayMs <= 60000) {
+            delayMs = Math.ceil(suggestedDelayMs);
+            info(`Using retry-after hint: ${delayMs}ms`);
+          }
+        }
+
+        // Exponential backoff for next retry
+        delayMs = delayMs * 2;
+        continue;
+      }
+
+      // Non-429 error or max retries exceeded
+      return exitCode;
+    } catch (err) {
+      error(`Command execution failed: ${getErrorMessage(err)}`);
+      return 1;
+    }
+  }
+
+  // Should never reach here, but just in case
+  error("Max retries exceeded");
+  return 1;
+}
+
+/**
  * Execute the image promotion
  * @param options - Parsed options
  */
@@ -796,13 +885,8 @@ async function promoteImage(options: Options): Promise<void> {
   console.log();
 
   try {
-    // Execute the docker buildx imagetools create command
-    const result = await Bun.spawn(cmdArray, {
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-
-    const exitCode = await result.exited;
+    // Execute the docker buildx imagetools create command with retry logic
+    const exitCode = await executeWithRetry(cmdArray);
 
     if (exitCode !== 0) {
       // GitHub Actions annotations for CI/CD

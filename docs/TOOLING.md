@@ -406,4 +406,4 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ---
 
-**Remember**: These tooling choices are intentional and performance-critical. Do not change without explicit justification and approval.
+## **Remember**: These tooling choices are intentional and performance-critical. Do not change without explicit justification and approval.

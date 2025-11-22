@@ -48,7 +48,7 @@ export const extensionDefaults: ExtensionDefaults = {
     pgaudit: "18.0-2.pgdg13+1",
     pgvector: "0.8.1-2.pgdg13+1",
     timescaledb: "2.23.1+dfsg-1.pgdg13+1",
-    postgis: "3.6.0+dfsg-3.pgdg13+1",
+    postgis: "3.6.1+dfsg-1.pgdg13+1",
     partman: "5.3.1-2.pgdg13+1",
     repack: "1.5.3-1.pgdg13+1",
     plpgsqlCheck: "2.8.3-1.pgdg13+1",

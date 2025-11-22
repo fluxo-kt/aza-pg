@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-21T12:04:43.756Z
+# Generated at: 2025-11-22T18:03:45.524Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -20,7 +20,7 @@ ARG PGCRON_VERSION=1.6.7-2.pgdg13+1
 ARG PGAUDIT_VERSION=18.0-2.pgdg13+1
 ARG PGVECTOR_VERSION=0.8.1-2.pgdg13+1
 ARG TIMESCALEDB_VERSION=2.23.1+dfsg-1.pgdg13+1
-ARG POSTGIS_VERSION=3.6.0+dfsg-3.pgdg13+1
+ARG POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1
 ARG PARTMAN_VERSION=5.3.1-2.pgdg13+1
 ARG REPACK_VERSION=1.5.3-1.pgdg13+1
 ARG PLPGSQL_CHECK_VERSION=2.8.3-1.pgdg13+1

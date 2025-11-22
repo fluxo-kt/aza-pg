@@ -371,7 +371,7 @@ jobs:
             --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
             --sources "$SOURCES" \
             --title "aza-pg Single-Node PostgreSQL" \
-            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
             --created "${{ needs.prep.outputs.timestamp }}" \
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
@@ -973,7 +973,7 @@ jobs:
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --title "aza-pg Single-Node PostgreSQL" \
-            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_total }} extensions" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
             --created "${{ needs.prep.outputs.timestamp }}" \
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
@@ -1192,7 +1192,7 @@ jobs:
         run: |
           # Create release with generated notes
           gh release create "v${{ needs.prep.outputs.version_tag }}" \
-            --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
+            --title "aza-pg ${{ needs.prep.outputs.version_tag }}" \
             --notes-file release-notes.md \
             --latest \
             --verify-tag || {
@@ -1203,7 +1203,7 @@ jobs:
 
               # Retry release creation
               gh release create "v${{ needs.prep.outputs.version_tag }}" \
-                --title "aza-pg PostgreSQL ${{ needs.prep.outputs.pg_version_full }}" \
+                --title "aza-pg ${{ needs.prep.outputs.version_tag }}" \
                 --notes-file release-notes.md \
                 --latest
             }

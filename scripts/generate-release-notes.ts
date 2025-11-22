@@ -61,6 +61,9 @@ interface ExtensionInfo {
   displayName: string;
   version: string;
   description: string;
+  isPreloaded: boolean;
+  isAutoCreated: boolean;
+  isPreloadOnly: boolean;
 }
 
 // Category display names mapping (ordered by importance)
@@ -206,6 +209,9 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       displayName: entry.displayName ?? entry.name,
       version: getVersion(entry),
       description: entry.description,
+      isPreloaded: entry.runtime?.sharedPreload === true,
+      isAutoCreated: entry.runtime?.defaultEnable === true,
+      isPreloadOnly: entry.runtime?.preloadOnly === true,
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -252,9 +258,9 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
   const pgMajor = pgVersion.split(".")[0] ?? pgVersion;
 
   // Parse tag format: {pg_version}-{timestamp}-{type}
-  // Timestamp can be YYYYMMDDHHmm or RFC3339 compact format
+  // Timestamp is exactly 12 digits (YYYYMMDDHHmm)
   // Type can contain hyphens (e.g., "single-node")
-  const match = fullTag.match(/^([\d.]+)-([\w:T-]+)-(.+)$/);
+  const match = fullTag.match(/^([\d.]+)-(\d{12})-(.+)$/);
 
   if (!match) {
     warning(`Could not parse tag format: ${fullTag}`);
@@ -269,27 +275,83 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
 /**
  * Generate markdown release notes
  */
-function generateMarkdown(
-  args: Args,
-  _manifest: Manifest,
-  categoryGroups: CategoryGroup[]
-): string {
+function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: CategoryGroup[]): string {
   const lines: string[] = [];
 
   // Extract version components
   const convenienceTags = getConvenienceTags(args.tag, args.pgVersion);
-  const simpleTag = convenienceTags[0]; // e.g., "18-single-node"
 
-  // Header
+  // Count special extensions
+  const preloadedCount = manifest.entries.filter((e) => e.runtime?.sharedPreload).length;
+  const autoCreatedCount = manifest.entries.filter((e) => e.runtime?.defaultEnable).length;
+
+  // Header with improved summary
   lines.push(`# aza-pg PostgreSQL ${args.pgVersion}`);
   lines.push("");
   lines.push(
-    `Production-ready PostgreSQL with **${args.catalogEnabled} enabled extensions** across ${categoryGroups.length} categories.`
+    `Production-ready PostgreSQL ${args.pgVersion} with **${args.catalogEnabled} extensions** ` +
+      `(${preloadedCount} preloaded, ${autoCreatedCount} auto-created) across ${categoryGroups.length} categories. ` +
+      `Auto-tuned for web, OLTP, analytics, and mixed workloads.`
   );
   lines.push("");
 
-  // What's Inside section
-  lines.push("## What's Inside");
+  // GHCR Package Link (prominent)
+  const digestShort = args.digest.replace("sha256:", "").substring(0, 12);
+  lines.push("## 📦 Package");
+  lines.push("");
+  lines.push(
+    `**[View on GitHub Container Registry →](https://github.com/${REPO_OWNER}/${REPO_NAME}/pkgs/container/${REPO_NAME}/${digestShort}?tag=${args.tag})**`
+  );
+  lines.push("");
+  lines.push(`- **Registry**: \`${REGISTRY}\``);
+  lines.push(`- **Digest**: \`${args.digest}\``);
+  lines.push(`- **Tags**: \`${args.tag}\`, \`${convenienceTags.join("`, `")}\``);
+  lines.push("");
+
+  // Quick Start section (moved to top)
+  lines.push("## 🚀 Quick Start");
+  lines.push("");
+  lines.push("```bash");
+  lines.push("# Pull and run");
+  lines.push(`docker pull ${REGISTRY}:${args.tag}`);
+  lines.push("");
+  lines.push("docker run -d \\");
+  lines.push("  --name postgres \\");
+  lines.push("  -e POSTGRES_PASSWORD=secure \\");
+  lines.push("  -e POSTGRES_WORKLOAD_TYPE=web \\");
+  lines.push("  -p 5432:5432 \\");
+  lines.push(`  ${REGISTRY}:${args.tag}`);
+  lines.push("```");
+  lines.push("");
+  lines.push("```sql");
+  lines.push("-- Extensions are auto-created by default:");
+  lines.push("-- pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector");
+  lines.push("");
+  lines.push("-- Enable additional extensions on-demand:");
+  lines.push("CREATE EXTENSION timescaledb;");
+  lines.push("CREATE EXTENSION postgis;");
+  lines.push("");
+  lines.push("-- List all available:");
+  lines.push("SELECT name, default_version, comment ");
+  lines.push("FROM pg_available_extensions ");
+  lines.push("ORDER BY name;");
+  lines.push("```");
+  lines.push("");
+
+  // Image Details section
+  lines.push("## 🐳 Image Details");
+  lines.push("");
+  lines.push(`- **PostgreSQL Version**: ${args.pgVersion}`);
+  lines.push(`- **Base Image**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
+  lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
+  lines.push(`- **Total Extensions**: ${args.catalogEnabled} enabled, ${args.catalogTotal} total`);
+  lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
+  lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
+  lines.push(`- **Build**: Single-node optimized`);
+  lines.push("");
+
+  // What's Inside section with status markers
+  lines.push("## 📚 Extensions Catalog");
   lines.push("");
 
   for (const group of categoryGroups) {
@@ -299,86 +361,92 @@ function generateMarkdown(
     lines.push("");
 
     for (const ext of group.extensions) {
-      const versionText = ext.version !== "builtin" ? ` ${ext.version}` : "";
-      lines.push(`- **${ext.displayName}**${versionText} - ${ext.description}`);
+      const versionText = ext.version !== "builtin" ? ` \`${ext.version}\`` : "";
+      const badges: string[] = [];
+
+      if (ext.isPreloadOnly) {
+        badges.push("🔧 preload-only");
+      } else if (ext.isPreloaded && ext.isAutoCreated) {
+        badges.push("⚡ preloaded+auto-created");
+      } else if (ext.isPreloaded) {
+        badges.push("⚡ preloaded");
+      } else if (ext.isAutoCreated) {
+        badges.push("✨ auto-created");
+      }
+
+      const badgeText = badges.length > 0 ? ` _${badges.join(", ")}_` : "";
+      lines.push(`- **${ext.displayName}**${versionText}${badgeText} — ${ext.description}`);
     }
 
     lines.push("");
   }
 
-  // Image Details section
-  lines.push("## Image Details");
+  lines.push("<details>");
+  lines.push("<summary><b>Legend</b></summary>");
   lines.push("");
-  lines.push(`- **Registry**: ${REGISTRY}`);
-  lines.push(
-    `- **Package Page**: [ghcr.io/fluxo-kt/aza-pg](https://github.com/fluxo-kt/aza-pg/pkgs/container/aza-pg)`
-  );
-  lines.push(`- **Tags**: \`${args.tag}\`, \`${convenienceTags.join("`, `")}\``);
-  lines.push(`- **Digest**: \`${args.digest}\``);
-  lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
-  lines.push(`- **Base**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
+  lines.push("- **⚡ preloaded**: Loaded via `shared_preload_libraries` on startup");
+  lines.push("- **✨ auto-created**: Automatically created in new databases");
+  lines.push("- **🔧 preload-only**: Module only (no `CREATE EXTENSION` needed)");
+  lines.push("- _No badge_: Available on-demand via `CREATE EXTENSION`");
   lines.push("");
-
-  // Quick Start section
-  lines.push("## Quick Start");
-  lines.push("");
-  lines.push("```bash");
-  lines.push("docker run -d \\");
-  lines.push("  -e POSTGRES_PASSWORD=secure \\");
-  lines.push("  -e POSTGRES_WORKLOAD_TYPE=web \\");
-  lines.push("  -p 5432:5432 \\");
-  lines.push(`  ${REGISTRY}:${simpleTag}`);
-  lines.push("```");
-  lines.push("");
-  lines.push("```sql");
-  lines.push("-- Enable extensions on-demand");
-  lines.push("CREATE EXTENSION vector;");
-  lines.push("CREATE EXTENSION timescaledb;");
-  lines.push("");
-  lines.push("-- List all available");
-  lines.push("SELECT name, default_version, comment ");
-  lines.push("FROM pg_available_extensions ");
-  lines.push("ORDER BY name;");
-  lines.push("```");
+  lines.push("</details>");
   lines.push("");
 
   // Auto-Configuration section
-  lines.push("## Auto-Configuration");
+  lines.push("## ⚙️ Auto-Configuration");
   lines.push("");
-  lines.push("Automatically detects and tunes based on:");
-  lines.push("- **RAM**: Optimizes shared_buffers, work_mem (caps: 32GB, 32MB)");
-  lines.push("- **CPU**: Parallel workers, maintenance workers");
-  lines.push("- **Workload**: web (default), oltp, dw, mixed");
-  lines.push("- **Storage**: ssd (default), hdd, san");
+  lines.push("Automatically detects and optimizes PostgreSQL settings:");
+  lines.push("");
+  lines.push("**Resource Detection:**");
+  lines.push("- RAM: Optimizes `shared_buffers` (up to 32GB), `work_mem` (up to 32MB)");
+  lines.push("- CPU: Tunes `max_parallel_workers`, `max_worker_processes`");
+  lines.push("");
+  lines.push("**Workload Profiles** (`POSTGRES_WORKLOAD_TYPE`):");
+  lines.push("- `web` (default): max_connections=200, balanced OLTP + read-heavy");
+  lines.push("- `oltp`: max_connections=300, high-concurrency transactions");
+  lines.push("- `dw`: max_connections=100, analytics/data warehouse (high statistics_target=500)");
+  lines.push("- `mixed`: max_connections=120, general-purpose balanced");
+  lines.push("");
+  lines.push("**Storage Tuning** (`POSTGRES_STORAGE_TYPE`):");
+  lines.push("- `ssd` (default): random_page_cost=1.1, effective_io_concurrency=200");
+  lines.push("- `hdd`: random_page_cost=4.0, effective_io_concurrency=2");
+  lines.push("- `san`: random_page_cost=1.1, effective_io_concurrency=1");
   lines.push("");
 
   // Verification section
-  lines.push("## Verification");
+  lines.push("## ✅ Verification");
   lines.push("");
   lines.push("```bash");
-  lines.push("# Verify Cosign signature");
-  lines.push(`cosign verify ${REGISTRY}:${simpleTag}`);
+  lines.push("# Verify Cosign signature (keyless OIDC)");
+  lines.push("cosign verify \\");
+  lines.push(
+    `  --certificate-identity-regexp="^https://github.com/${REPO_OWNER}/${REPO_NAME}/" \\`
+  );
+  lines.push('  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \\');
+  lines.push(`  ${REGISTRY}:${args.tag}`);
   lines.push("");
-  lines.push("# View version info");
-  lines.push(`docker run --rm ${REGISTRY}:${simpleTag} \\`);
-  lines.push("  cat /etc/postgresql/version-info.txt");
+  lines.push("# View embedded version info");
+  lines.push(`docker run --rm ${REGISTRY}:${args.tag} cat /etc/postgresql/version-info.txt`);
   lines.push("");
   lines.push("# Download SBOM");
-  lines.push(`cosign download sbom ${REGISTRY}:${simpleTag}`);
+  lines.push(`cosign download sbom ${REGISTRY}:${args.tag}`);
   lines.push("```");
   lines.push("");
 
   // Documentation section
-  lines.push("## Documentation");
+  lines.push("## 📖 Documentation");
   lines.push("");
   lines.push(
-    `- [Extension Catalog](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/EXTENSIONS.md) - Complete list with versions`
+    `- [Extension Catalog](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/EXTENSIONS.md) — Complete list with detailed info`
   );
   lines.push(
-    `- [Architecture](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/ARCHITECTURE.md) - Design decisions`
+    `- [Production Guide](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PRODUCTION.md) — Deployment best practices`
   );
   lines.push(
-    `- [Production Guide](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PRODUCTION.md) - Deployment best practices`
+    `- [Architecture](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/ARCHITECTURE.md) — Design decisions`
+  );
+  lines.push(
+    `- [Testing](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/TESTING.md) — Validation & test suite`
   );
 
   return lines.join("\n");

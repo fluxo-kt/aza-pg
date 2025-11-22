@@ -458,6 +458,11 @@ function parseArgs(): Options {
     process.exit(1);
   }
 
+  // Track original parsing state before modifications (for validation)
+  const hadTargetOnly = options.target && options.tags.length === 0;
+  const hadCombined = options.target && options.tags.length > 0;
+  const hadTagsOnly = !options.target && options.tags.length > 0;
+
   // If --target-repo was provided but no --tags, populate tags from target
   if (options.target && options.tags.length === 0) {
     // --target becomes the single tag
@@ -481,6 +486,15 @@ function parseArgs(): Options {
     // Only --tags provided, use first tag as primary target
     options.target = options.tags[0]!;
   }
+
+  // Store original parsing mode for validation
+  (options as any).usageMode = hadTargetOnly
+    ? "target-only"
+    : hadCombined
+      ? "combined"
+      : hadTagsOnly
+        ? "tags-only"
+        : "unknown";
 
   return options;
 }
@@ -844,7 +858,28 @@ async function main(): Promise<void> {
   try {
     // Validate source and target formats
     validateSourceDigest(options.source);
-    validateTargetTag(options.target);
+
+    // Conditional validation based on original usage mode (before parseArgs modifications):
+    // - Target-only mode: --target "ghcr.io/org/aza-pg:18.1" (validate full tag)
+    // - Combined mode: --target-repo "ghcr.io/org/aza-pg" + --tags "18.1,18" (skip : validation)
+    // - Tags-only mode: --tags "ghcr.io/org/aza-pg:18.1,..." (validate first tag)
+    const usageMode = (options as any).usageMode;
+
+    if (usageMode === "target-only") {
+      // Target-only mode: validate full tag reference (must contain :)
+      validateTargetTag(options.target);
+    } else if (usageMode === "combined") {
+      // Combined mode: target is repo base, tags will be appended
+      // Validate target has repo structure (for combining)
+      if (!options.target.includes("/")) {
+        error(`Target repository must include registry and org: ${options.target}`);
+        console.error("  Example: ghcr.io/fluxo-kt/aza-pg");
+        process.exit(1);
+      }
+    } else if (usageMode === "tags-only") {
+      // Tags-only mode: first tag becomes primary target, validate it
+      validateTargetTag(options.tags[0]!);
+    }
 
     // Check Docker Buildx availability
     await checkBuildxAvailable();

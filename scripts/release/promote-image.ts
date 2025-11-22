@@ -77,6 +77,7 @@ import {
   type OCIMetadataOptions,
   parseOCIMetadataArg,
   buildOCIAnnotations,
+  validateOCIMetadata,
 } from "../utils/oci-metadata";
 
 interface Options extends OCIMetadataOptions {
@@ -444,6 +445,13 @@ async function loadAnnotations(filePath: string): Promise<Record<string, string>
  * @returns Object with OCI annotation key-value pairs
  */
 function buildMetadataAnnotations(options: Options): Record<string, string> {
+  // Validate metadata before building annotations
+  const errors = validateOCIMetadata(options);
+  if (errors.length > 0) {
+    errors.forEach((err) => error(err));
+    process.exit(1);
+  }
+
   return buildOCIAnnotations(options);
 }
 

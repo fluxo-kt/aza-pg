@@ -46,6 +46,16 @@ PostgreSQL 18 | Compose-only | Bun-first | SHA-pinned | Auto-config
   - Metadata: version, pg-version, catalog stats, base image info, revision, source URL
   - Cryptographic verification via digest reference (not tag)
 
+**Build Provenance Attestation** (`actions/attest-build-provenance@v3.0.0`):
+
+- Scope: Production images only (publish.yml release job)
+- Placement: After promotion + signing (attests fully-signed production image)
+- Storage: OCI registry (Cosign Bundle Spec) + GitHub attestation store
+- Verification methods:
+  - GitHub CLI: `gh attestation verify oci://ghcr.io/fluxo-kt/aza-pg@sha256:... --owner fluxo-kt`
+  - Cosign: `cosign verify-attestation ghcr.io/fluxo-kt/aza-pg@sha256:...`
+- SLSA provenance: Binds image digest to build parameters, runner, workflow
+
 **Pattern**: `bun scripts/{category}/{script}.ts --help` shows usage. All scripts testable locally before CI.
 
 ## Fast Paths

@@ -12,7 +12,8 @@ concurrency:
 permissions:
   contents: write # Required for creating GitHub Releases
   packages: write
-  id-token: write
+  id-token: write # Required for Sigstore certificate (Cosign + attestations)
+  attestations: write # Required for v3 attestation persistence
   security-events: write
 
 env:
@@ -999,11 +1000,16 @@ jobs:
 
       - name: Attest container image provenance
         if: success()
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
+          # Fully-qualified production image name (no tags per README requirement)
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Multi-platform manifest digest (immutable reference)
           subject-digest: ${{ needs.merge.outputs.image_digest }}
+          # Push attestation to OCI registry (enables cosign verification)
           push-to-registry: true
+          # Display attestation summary in workflow run (default: true, explicit for clarity)
+          show-summary: true
 
       - name: Generate release summary
         run: |

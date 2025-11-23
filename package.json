@@ -11,6 +11,8 @@
     "lint:fix": "oxlint --fix .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:sql": "bun scripts/format-sql.ts --write",
+    "format:sql:check": "bun scripts/format-sql.ts",
     "type-check": "tsc --noEmit",
     "validate": "bun scripts/validate.ts --fast",
     "validate:full": "bun scripts/validate.ts --all",
@@ -31,7 +33,7 @@
     "check:shell": "find ./docker/postgres ./stacks -name '*.sh' -type f -print0 | xargs -0 shellcheck",
     "check:yaml": "docker run --rm -v \"$(pwd):/work:ro\" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts",
     "check:docker": "hadolint --config .hadolint.yaml docker/postgres/Dockerfile",
-    "check:sql": "echo 'SQL linting: No SQL linter configured - SQL files exist but are auto-generated or example files'",
+    "check:sql": "bun scripts/check-sql.ts",
     "verify:runtime": "bun scripts/docker/verify-runtime.ts",
     "verify:filesystem": "bun scripts/docker/verify-filesystem.ts",
     "verify:generated": "bun scripts/verify-generated.ts",
@@ -50,6 +52,7 @@
     "bun-git-hooks": "^0.3.1",
     "oxlint": "^1.29.0",
     "prettier": "^3.6.2",
+    "sql-formatter": "^15.6.10",
     "typescript": "^5.9.3"
   },
   "engines": {

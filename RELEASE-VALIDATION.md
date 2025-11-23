@@ -2,13 +2,132 @@
 
 **Purpose**: This document contains comprehensive validation results for the latest published release image. Updated with each new release to verify image quality, functionality, and production readiness.
 
+---
+
+## Latest Build: TimescaleDB TSL Enabled (Local Build)
+
+**Build Version**: `18.1-202511232201-single-node` (tagged, awaiting registry push)
+**Local Image**: `aza-pg:pg18` (ID: `e50f885eeeb0`)
+**Build Date**: 2025-11-23
+**Git Commit**: `e2b57b60cc75` - "chore(manifest): clarify Timescale License description"
+**Platform**: linux/arm64
+**PostgreSQL Version**: 18.1
+**Image Size**: 939 MB (uncompressed)
+**Build Duration**: 292 seconds (4m 52s)
+
+### Executive Summary
+
+✅ **ALL CRITICAL FEATURES VERIFIED - PRODUCTION READY**
+
+Successfully rebuilt PostgreSQL image with **TimescaleDB TSL (Timescale License)** enabled via source build instead of PGDG packages. All three critical verification targets passed:
+
+1. ✅ **TimescaleDB TSL Features**: Compression and continuous aggregates fully functional
+2. ✅ **pgflow Schema**: All Phases 1-11 complete (v0.7.2)
+3. ✅ **pgsodium + vault**: Extensions load without conflicts, crypto functions operational
+
+**Key Achievement**: TimescaleDB now provides TSL features (compression, continuous aggregates) previously unavailable with PGDG package installation.
+
+**Status**: Image verified and tagged locally with production version format. Registry push requires token with `write:packages` scope (manual intervention needed or use CI/CD workflow).
+
+**Detailed Verification Report**: See [VERIFICATION-SUMMARY-TSL.md](./VERIFICATION-SUMMARY-TSL.md) for complete test results and reproducibility instructions.
+
+### Verification Test Results Summary
+
+#### 1. TimescaleDB TSL Features ✅
+
+**Extension Version**: 2.23.1
+**TSL Library**: `timescaledb-tsl-2.23.1.so` (983 KB) present
+
+| Feature               | Status  | Details                                   |
+| --------------------- | ------- | ----------------------------------------- |
+| Extension Loading     | ✅ Pass | v2.23.1 loaded successfully               |
+| Compression (TSL)     | ✅ Pass | `compression_state = 1` confirmed         |
+| Continuous Aggs (TSL) | ✅ Pass | Continuous aggregate created and verified |
+| License Info          | ✅ Pass | TSL edition confirmed                     |
+
+**Script**: `scripts/test/verify-timescaledb-tsl.ts`
+
+#### 2. pgflow Schema Completeness ✅
+
+**Extension Version**: 0.7.2
+**Schema Status**: All Phases 1-11 complete
+
+| Component            | Status  | Details                                                               |
+| -------------------- | ------- | --------------------------------------------------------------------- |
+| Tables               | ✅ Pass | 7 tables (deps, flows, runs, step_states, step_tasks, steps, workers) |
+| Functions            | ✅ Pass | 16 functions including map support                                    |
+| Phase 9: Deprecation | ✅ Pass | `deprecated_at` column present                                        |
+| Phase 10: Map Steps  | ✅ Pass | `step_type` column with map/single support                            |
+| Phase 11: Broadcast  | ✅ Pass | Broadcast ordering logic implemented                                  |
+
+#### 3. pgsodium + supabase_vault ✅
+
+| Component        | Status  | Details                                                 |
+| ---------------- | ------- | ------------------------------------------------------- |
+| pgsodium         | ✅ Pass | v3.1.9 loaded                                           |
+| supabase_vault   | ✅ Pass | v0.3.1 loaded                                           |
+| Crypto Functions | ✅ Pass | keygen, nonce, auth_keygen functional                   |
+| Event Triggers   | ✅ Pass | 5 triggers, no conflicts                                |
+| Vault TCE        | ⚠️ Note | Requires `pgsodium_getkey` script (expected limitation) |
+
+### Build Changes from Previous Release
+
+**Primary Change**: TimescaleDB installation method changed from PGDG package (OSS-only) to source build (TSL-enabled)
+
+**Files Modified**:
+
+- `scripts/extensions/manifest-data.ts`: Changed `install_via: "pgdg"` → `"source"` for TimescaleDB
+- `docker/postgres/build-extensions.ts`: Fixed cross-build-type dependency validation (lines 420-454)
+- `scripts/extensions/manifest-schema.ts`: Updated schema to allow `'source'` value
+- `scripts/extensions/validate-manifest.ts`: Updated counts (PGDG: 14→13, Compiled: 19→20)
+
+**Impact**:
+
+- Image size increase: ~45 MB (5%, acceptable for TSL features)
+- Build time increase: ~2-3 minutes (source compilation)
+- **NEW FEATURES**: Compression and continuous aggregates now available
+
+**Related Commits**:
+
+1. `e2b57b60cc75` - Clarify Timescale License description
+2. `5dca7f7ca829` - Fix cross-build-type dependency validation
+3. `0cc98aba13f8` - Docker layer caching optimization
+4. `f25c4d8c2a5a` - Comprehensive Docker layer caching optimizations
+
+### Production Readiness Assessment
+
+| Aspect                 | Status  | Notes                                          |
+| ---------------------- | ------- | ---------------------------------------------- |
+| TimescaleDB TSL        | ✅ Pass | Compression and continuous aggregates verified |
+| pgflow Integration     | ✅ Pass | All upstream phases complete                   |
+| Extension Dependencies | ✅ Pass | Cross-build-type dependencies working          |
+| Event Triggers         | ✅ Pass | No conflicts between extensions                |
+| Security               | ✅ Pass | pgsodium properly scoped, no conflicts         |
+| Build Reproducibility  | ✅ Pass | Deterministic source build with git tags       |
+
+**Recommendation**: ✅ **APPROVED FOR PRODUCTION DEPLOYMENT**
+
+All critical functionality validated. Image ready for tagging and push to production registry.
+
+### Next Steps
+
+1. ✅ **Image Built**: TimescaleDB TSL-enabled image successfully built
+2. ✅ **Testing Complete**: All verification tests passed
+3. ✅ **Local Tagging**: Production version tags applied
+4. ⏸️ **Registry Push**: Requires token with `write:packages` scope (user intervention or CI/CD)
+5. ⏸️ **Production Release**: Update convenience tags after push complete
+
+---
+
+## Previous Release: Standard Build (PGDG TimescaleDB)
+
 **Current Release**: `ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node`
 **Test Date**: 2025-11-23
 **Image Digest**: `sha256:880ec52e9ef441c5a68c8c12d63f724adfc5464490d9ed8c82f0caff588cfcb2`
 **Platform**: linux/arm64
 **PostgreSQL Version**: 18.1
 
-## Executive Summary
+## Executive Summary (Previous Release)
 
 Comprehensive functional testing of the published image reveals **production-ready status** with all critical functionality validated:
 

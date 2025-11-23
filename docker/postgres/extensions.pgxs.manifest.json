@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-23T21:33:05.925Z",
+  "generatedAt": "2025-11-23T21:58:25.674Z",
   "entries": [
     {
       "name": "hll",
@@ -637,7 +637,7 @@
       "kind": "extension",
       "install_via": "source",
       "category": "timeseries",
-      "description": "Hypertables, compression, and continuous aggregates for time-series workloads.",
+      "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",

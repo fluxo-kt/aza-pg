@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T04:16:12.434Z
+# Generated at: 2025-11-23T04:41:05.381Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -12,6 +12,9 @@ ARG BUILD_DATE
 ARG VCS_REF
 
 FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
+
+# Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG BUILD_DATE
@@ -38,7 +41,7 @@ RUN chmod +x /usr/local/bin/build-extensions.ts
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 # hadolint ignore=DL3008
-RUN set -eu && \
+RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -53,7 +56,7 @@ RUN set -eu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN set -eu && \
+RUN set -euo pipefail && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
 # Add Rust/Cargo to PATH
@@ -62,7 +65,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Install Bun for running TypeScript build scripts
 # Extracts version from project .tool-versions file (single source of truth)
 COPY .tool-versions /tmp/.tool-versions
-RUN set -eu && \
+RUN set -euo pipefail && \
     BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
     echo "Installing Bun v${BUN_VERSION}" && \
     curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
@@ -72,10 +75,13 @@ RUN set -eu && \
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs
 
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-c"]
+
 RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
-RUN set -eu && \
+RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
@@ -98,6 +104,9 @@ RUN set -eu && \
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
 
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-c"]
+
 # Rust optimization flags for smaller binaries (Phase 11.1)
 # Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
 # opt-level=s: Optimize for size (less aggressive than 'z', more compatible)
@@ -110,7 +119,7 @@ ENV CARGO_PROFILE_RELEASE_STRIP=symbols
 RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
-RUN set -eu && \
+RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
@@ -122,6 +131,9 @@ RUN set -eu && \
 # Stage for version info generation using standalone TypeScript script
 # This ensures consistency between local testing and Docker builds
 FROM builder-base AS builder-version-info
+
+# Use bash for RUN commands (inherited stages must re-declare SHELL)
+SHELL ["/bin/bash", "-c"]
 
 # Copy the standalone version info generation script
 COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
@@ -135,6 +147,9 @@ RUN set -ex && \
 
 # Final runtime stage
 FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
+
+# Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -150,7 +165,7 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
 # hadolint ignore=DL3008
-RUN set -eu && \
+RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
@@ -167,7 +182,7 @@ RUN set -eu && \
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-RUN set -eu && \
+RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)

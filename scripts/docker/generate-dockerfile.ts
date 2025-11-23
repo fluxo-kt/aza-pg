@@ -140,6 +140,24 @@ interface Manifest {
 }
 
 /**
+ * Validate package names to ensure they only contain safe characters
+ * This prevents shell injection via SC2046/SC2086 word-splitting patterns
+ */
+function validatePackageName(packageName: string, context: string): void {
+  // Safe characters: alphanumeric, hyphen, underscore, equals, dot, plus, colon
+  // This regex matches the intentional word-splitting pattern in Dockerfile
+  const SAFE_PACKAGE_REGEX = /^[a-zA-Z0-9\-_=.+:]*$/;
+
+  if (!SAFE_PACKAGE_REGEX.test(packageName)) {
+    throw new Error(
+      `SECURITY: Unsafe characters in ${context}: "${packageName}"\n` +
+        `Only alphanumeric and [-_=.+:] are allowed.\n` +
+        `This validation protects against shell injection in Dockerfile word-splitting patterns.`
+    );
+  }
+}
+
+/**
  * Read and parse manifest
  */
 async function readManifest(): Promise<Manifest> {
@@ -164,6 +182,11 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
       // Package is enabled - use hardcoded version from extensionDefaults
       const version = extensionDefaults.pgdgVersions[mapping.versionKey];
+
+      // Validate package name and version for shell safety (SC2046/SC2086 protection)
+      validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
+      validatePackageName(version, `PGDG version (${mapping.manifestName})`);
+
       enabledPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
     }
   }
@@ -175,7 +198,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
   const packagesList = enabledPgdgPackages.join(" ");
   const expectedCount = enabledPgdgPackages.length;
 
-  return `RUN set -eu && \\
+  return `RUN set -euo pipefail && \\
     rm -rf /var/lib/apt/lists/* && \\
     apt-get update && \\
     # Install enabled PGDG packages (pre-calculated in TS)

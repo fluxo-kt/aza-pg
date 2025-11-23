@@ -2,29 +2,19 @@
 # Evidence-based exception list - all ignores require documented justification
 
 ignored:
-  # DL3003: Use WORKDIR to switch to a directory
-  # Rationale: Single transient `cd` in Rust installation RUN command (extract, cd, install,
-  # cd back, cleanup). Using WORKDIR would require additional state management for a
-  # one-time operation. The `cd` is safe and immediately followed by cleanup.
-  - DL3003
-
-  # DL4006: Set SHELL option -o pipefail before RUN with a pipe
-  # Rationale: We use `set -eu` consistently across all RUN commands, which provides
-  # adequate error handling. Our pipes have explicit error handling patterns.
-  # Verified: No silent pipe failures in codebase.
-  - DL4006
-
   # SC2046: Quote to prevent word splitting
   # Rationale: Intentional command substitution expansion for apt-get package lists.
   # Pattern: $(tr '\n' ' ' < packages.txt) deliberately converts newlines to spaces
   # for argument expansion. Quoting would break functionality.
-  # Context: Trusted internal manifest files only.
+  # Safety: Package names validated in generate-dockerfile.ts (alphanumeric + [-_=.+:] only).
+  # Context: Trusted internal manifest files only (TypeScript-generated).
   - SC2046
 
   # SC2086: Double quote to prevent globbing and word splitting
   # Rationale: Intentional word splitting for dynamic package list expansion.
   # Pattern: ${RUNTIME_PKGS} expands to multiple apt-get arguments by design.
-  # Context: Variables populated from trusted internal manifests.
+  # Safety: Package names validated in generate-dockerfile.ts (alphanumeric + [-_=.+:] only).
+  # Context: Variables populated from trusted internal manifests (TypeScript-generated).
   - SC2086
 
   # DL3059: Multiple consecutive RUN instructions
@@ -34,6 +24,8 @@ ignored:
   # Verified: Structure is already optimized.
   - DL3059
 # Rules now ENABLED (removed from ignore list):
+# - DL3003: Use WORKDIR (removed: no 'cd' commands in current Dockerfile)
+# - DL4006: Set pipefail (removed: now using 'set -euo pipefail' everywhere)
 # - DL3008: Pin versions - Use inline ignores with justification for exceptions
 # - DL3015: Use --no-install-recommends - Applied globally, inline ignores if needed
 

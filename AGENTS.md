@@ -78,6 +78,7 @@ bun scripts/release/promote-image.ts --help
 
 - **auto_explain**: Module (preload-only), NOT extension. NO CREATE EXTENSION needed (PostgreSQL design)
 - **Dockerfile editing**: NEVER edit Dockerfile directly - edit Dockerfile.template and run `bun run generate`
+- **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`) for defensive pipeline failure handling
 - **Version changes**: Update `extension-defaults.ts` → regenerate → rebuild (no workflow input overrides)
 - **Dockerfile ARGs**: Only 2 required ARGs (BUILD_DATE, VCS_REF) without defaults; must be passed at build time
 - **All versions hardcoded**: PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions all hardcoded at generation time (not ARGs)

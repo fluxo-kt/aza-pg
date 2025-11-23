@@ -1,0 +1,49 @@
+name: Capture Test Diagnostics
+description: Capture test failure logs and upload as artifacts
+
+inputs:
+  test-type:
+    description: Type of test (for naming and filtering)
+    required: true
+  containers:
+    description: Container names to capture logs from (comma-separated, or 'all' for --all-containers)
+    required: false
+    default: "all"
+  artifact-prefix:
+    description: "Prefix for artifact name (default: test-type)"
+    required: false
+  retention-days:
+    description: How many days to retain artifacts
+    required: false
+    default: "7"
+
+runs:
+  using: composite
+  steps:
+    - name: Capture failure logs
+      if: failure()
+      shell: bash
+      run: |
+        echo "Capturing ${{ inputs.test-type }} test failure logs..."
+        OUTPUT_DIR="${{ runner.temp }}/${{ inputs.test-type }}-logs"
+
+        if [ "${{ inputs.containers }}" = "all" ]; then
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type "${{ inputs.test-type }}" \
+            --output-dir "${OUTPUT_DIR}" \
+            --all-containers
+        else
+          bun scripts/debug/capture-test-failure-logs.ts \
+            --test-type "${{ inputs.test-type }}" \
+            --output-dir "${OUTPUT_DIR}" \
+            --containers "${{ inputs.containers }}"
+        fi
+
+    - name: Upload failure diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-prefix || inputs.test-type }}-test-failures-${{ github.sha }}
+        path: ${{ runner.temp }}/${{ inputs.test-type }}-logs/*
+        if-no-files-found: warn
+        retention-days: ${{ inputs.retention-days }}

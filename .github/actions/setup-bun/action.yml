@@ -28,7 +28,7 @@ runs:
         echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
         echo "📦 Detected Bun version: ${BUN_VERSION}"
 
-    - name: Set up Bun
+    - name: Set up Bun and dependencies
       uses: oven-sh/setup-bun@v2
       with:
         bun-version: ${{ steps.bun-version.outputs.version }}

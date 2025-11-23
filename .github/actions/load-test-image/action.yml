@@ -1,0 +1,69 @@
+name: Load Test Image
+description: Load Docker image from artifact or registry
+
+inputs:
+  source:
+    description: Image source (artifact or registry)
+    required: true
+  image-name:
+    description: Docker image name/tag to use
+    required: true
+  artifact-name:
+    description: Artifact name (required if source=artifact)
+    required: false
+    default: docker-image
+  artifact-path:
+    description: Artifact download path (required if source=artifact)
+    required: false
+    default: /tmp
+  registry-image:
+    description: Full registry image reference (required if source=registry)
+    required: false
+  max-retries:
+    description: "Max retries for registry pull (default: 3)"
+    required: false
+    default: "3"
+
+runs:
+  using: composite
+  steps:
+    - name: Download image artifact
+      if: inputs.source == 'artifact'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.artifact-path }}
+
+    - name: Load Docker image from artifact
+      if: inputs.source == 'artifact'
+      shell: bash
+      run: |
+        echo "Loading Docker image from artifact..."
+        docker load < ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz
+
+        # Tag with requested name if different from loaded image
+        LOADED_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep aza-pg-ci | head -1)
+        if [ "$LOADED_IMAGE" != "${{ inputs.image-name }}" ]; then
+          docker tag "$LOADED_IMAGE" "${{ inputs.image-name }}"
+          echo "Tagged $LOADED_IMAGE as ${{ inputs.image-name }}"
+        fi
+
+        docker images | grep aza-pg-ci || docker images
+        echo "✅ Image loaded successfully"
+
+    - name: Set up Bun and dependencies (for registry pull)
+      if: inputs.source == 'registry'
+      uses: ./.github/actions/setup-bun
+
+    - name: Pull image from registry
+      if: inputs.source == 'registry'
+      shell: bash
+      run: |
+        echo "Pulling Docker image from registry..."
+        bun scripts/docker/pull-with-retry.ts \
+          --image "${{ inputs.registry-image }}" \
+          --max-retries ${{ inputs.max-retries }}
+
+        # Tag with local name for consistency
+        docker tag "${{ inputs.registry-image }}" "${{ inputs.image-name }}"
+        echo "✅ Image pulled and tagged: ${{ inputs.image-name }}"

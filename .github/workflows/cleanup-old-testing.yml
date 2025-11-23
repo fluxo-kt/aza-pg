@@ -34,9 +34,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies

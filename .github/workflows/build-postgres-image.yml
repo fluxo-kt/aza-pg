@@ -145,15 +145,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-        env:
-          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400" # 1 day delay for supply chain security
 
       - name: Run full validation
         run: bun run validate:full
@@ -188,7 +183,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Validate Dockerfile paths
         run: bun scripts/build/validate-dockerfile-paths.ts
@@ -215,7 +210,7 @@ jobs:
             org.opencontainers.image.description=PostgreSQL 18 with extensions (dev build)
             org.opencontainers.image.vendor=fluxo-kt
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Extract workflow defaults
@@ -420,7 +415,7 @@ jobs:
           fi
           echo ""
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Verify image
@@ -456,7 +451,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Log in to GitHub Container Registry
         if: github.event.inputs.push_image == 'true'
@@ -464,7 +459,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/setup-bun
 
@@ -574,9 +569,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry
@@ -818,9 +813,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry
@@ -885,9 +880,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Log in to GitHub Container Registry

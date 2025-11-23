@@ -48,9 +48,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         id: bun-version
         uses: ./.github/actions/setup-bun
 
@@ -246,7 +246,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: ./.github/actions/setup-buildx
@@ -315,9 +315,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -434,9 +434,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -493,9 +493,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -576,9 +576,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -679,9 +679,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -808,7 +808,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Validate merge digest
         run: |
@@ -930,9 +930,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
@@ -1167,7 +1167,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -1255,9 +1255,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Install dependencies

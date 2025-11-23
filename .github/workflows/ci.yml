@@ -75,9 +75,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Run fast validation
@@ -126,9 +126,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Set up Docker Buildx
@@ -208,23 +208,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
+      - name: Load test image
+        uses: ./.github/actions/load-test-image
         with:
-          name: docker-image
-          path: /tmp
-
-      - name: Load Docker image
-        run: |
-          echo "Loading Docker image from artifact..."
-          docker load < /tmp/aza-pg-ci-image.tar.gz
-          docker images | grep aza-pg-ci
-          echo "✅ Image loaded successfully"
+          source: artifact
+          image-name: aza-pg-ci:test
 
       - name: Test core extensions
         run: |
@@ -260,22 +253,11 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-integration-extension-combinations.ts
 
-      - name: Capture logs on failure
-        if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type extensions \
-            --output-dir ${{ runner.temp }}/extension-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: extension-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/extension-logs/*
-          if-no-files-found: warn
-          retention-days: 7
+          test-type: extensions
+          artifact-prefix: extension
 
       - name: Generate test summary
         if: always()
@@ -300,24 +282,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
+      - name: Load test image
+        uses: ./.github/actions/load-test-image
         with:
-          name: docker-image
-          path: /tmp
-
-      - name: Load Docker image
-        run: |
-          echo "Loading Docker image from artifact..."
-          docker load < /tmp/aza-pg-ci-image.tar.gz
-          docker tag aza-pg-ci:test aza-pg-testing:pg18
-          docker images
-          echo "✅ Image loaded and tagged"
+          source: artifact
+          image-name: aza-pg-testing:pg18
 
       - name: Create test .env file
         run: |
@@ -330,25 +304,11 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-single-stack.ts
 
-      - name: Capture stack logs on failure
-        if: failure()
-        run: |
-          mkdir -p ${{ runner.temp }}/stack-logs
-
-          echo "=== Single Stack Logs ===" >> ${{ runner.temp }}/stack-logs/docker-compose.log
-          cd stacks/single && docker compose logs --tail=200 >> ${{ runner.temp }}/stack-logs/docker-compose.log 2>&1 || true
-
-          echo "=== Docker Container Status ===" >> ${{ runner.temp }}/stack-logs/docker-status.log
-          docker ps -a >> ${{ runner.temp }}/stack-logs/docker-status.log 2>&1 || true
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: stack-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/stack-logs/*
-          if-no-files-found: warn
-          retention-days: 7
+          test-type: stacks
+          artifact-prefix: stack
 
       - name: Generate test summary
         if: always()
@@ -371,23 +331,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
+      - name: Load test image
+        uses: ./.github/actions/load-test-image
         with:
-          name: docker-image
-          path: /tmp
-
-      - name: Load Docker image
-        run: |
-          echo "Loading Docker image from artifact..."
-          docker load < /tmp/aza-pg-ci-image.tar.gz
-          docker images | grep aza-pg-ci
-          echo "✅ Image loaded successfully"
+          source: artifact
+          image-name: aza-pg-ci:test
 
       - name: Run security tests
         run: |
@@ -395,22 +348,11 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun test scripts/test/test-security.test.ts
 
-      - name: Capture logs on failure
-        if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type security \
-            --output-dir ${{ runner.temp }}/security-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: security-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/security-logs/*
-          if-no-files-found: warn
-          retention-days: 7
+          test-type: security
+          artifact-prefix: security
 
       - name: Generate test summary
         if: always()
@@ -434,23 +376,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Set up Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
+      - name: Load test image
+        uses: ./.github/actions/load-test-image
         with:
-          name: docker-image
-          path: /tmp
-
-      - name: Load Docker image
-        run: |
-          echo "Loading Docker image from artifact..."
-          docker load < /tmp/aza-pg-ci-image.tar.gz
-          docker images | grep aza-pg-ci
-          echo "✅ Image loaded successfully"
+          source: artifact
+          image-name: aza-pg-ci:test
 
       - name: Test auto-config
         run: |
@@ -506,22 +441,11 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun test ./scripts/test/test-negative-scenarios.ts
 
-      - name: Capture logs on failure
-        if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type features \
-            --output-dir ${{ runner.temp }}/feature-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Capture test diagnostics
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: feature-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/feature-logs/*
-          if-no-files-found: warn
-          retention-days: 7
+          test-type: features
+          artifact-prefix: feature
 
       - name: Generate test summary
         if: always()

@@ -112,7 +112,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
 **Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
-**Usage**: `bun run check:sql`, `bun run lint:sql`, `bun run format:sql`
+**Usage**: `bun run lint:sql` (check all), `bun run format:sql:fix` (auto-fix formatting)
 
 **Decision Rationale**:
 

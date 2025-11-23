@@ -34,30 +34,7 @@ import { $ } from "bun";
 import { resolveImageWithSource } from "../test/image-resolver";
 import { success, error, warning, info, section, separator } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
-
-interface ImageConfig {
-  ExposedPorts?: Record<string, object>;
-  User?: string;
-  WorkingDir?: string;
-  Entrypoint?: string[];
-  Cmd?: string[];
-  Labels?: Record<string, string>;
-}
-
-interface ImageData {
-  Id: string;
-  RepoTags?: string[];
-  RepoDigests?: string[];
-  Created: string;
-  Size: number;
-  Architecture: string;
-  Os: string;
-  Config: ImageConfig;
-  RootFS?: {
-    Type: string;
-    Layers: string[];
-  };
-}
+import { type ImageData, formatSize, inspectImage, getCompressedSize } from "./image-metrics";
 
 interface ValidationResult {
   name: string;
@@ -111,16 +88,6 @@ Exit Codes:
   console.log(helpText.trim());
 }
 
-function formatSize(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1024) {
-    return `${mb.toFixed(2)} MB`;
-  } else {
-    const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
-  }
-}
-
 function formatTimestamp(timestamp: string): string {
   try {
     const date = new Date(timestamp);
@@ -140,21 +107,6 @@ async function checkDockerAvailable(): Promise<void> {
   } catch (err) {
     error(`Failed to check Docker availability: ${getErrorMessage(err)}`);
     process.exit(1);
-  }
-}
-
-async function inspectImage(imageTag: string): Promise<ImageData | null> {
-  try {
-    const result = await $`docker image inspect ${imageTag}`.nothrow().json();
-
-    if (!result || !Array.isArray(result) || result.length === 0) {
-      return null;
-    }
-
-    return result[0] as ImageData;
-  } catch (err) {
-    error(`Failed to inspect image: ${getErrorMessage(err)}`);
-    return null;
   }
 }
 
@@ -231,10 +183,9 @@ async function validateCompressedSize(
   imageData: ImageData
 ): Promise<ValidationResult> {
   try {
-    // Get the digest from the inspected image data
-    const digest = imageData.RepoDigests?.[0]?.split("@")[1];
+    const compressedSize = await getCompressedSize(imageTag, imageData);
 
-    if (!digest) {
+    if (compressedSize === null) {
       return {
         name: "Image Size (Compressed)",
         passed: true,
@@ -243,83 +194,11 @@ async function validateCompressedSize(
       };
     }
 
-    // Extract repository from image tag
-    const repo = imageTag.includes("/") ? imageTag.split(":")[0] : imageTag;
-    const manifestUrl = `${repo}@${digest}`;
-
-    // Get manifest to calculate compressed size
-    const manifestResult = await $`docker manifest inspect ${manifestUrl}`.nothrow().json();
-
-    if (!manifestResult || typeof manifestResult !== "object") {
-      return {
-        name: "Image Size (Compressed)",
-        passed: true,
-        critical: false,
-        message: "Unable to fetch manifest",
-      };
-    }
-
-    // Check if this is a manifest index (multi-arch)
-    const manifest = manifestResult as any;
-    if (manifest.manifests && Array.isArray(manifest.manifests)) {
-      // Multi-arch image - find the current platform's manifest
-      const platformArch = imageData.Architecture;
-      const platformManifest = manifest.manifests.find(
-        (m: any) => m.platform?.architecture === platformArch
-      );
-
-      if (!platformManifest) {
-        return {
-          name: "Image Size (Compressed)",
-          passed: true,
-          critical: false,
-          message: `Platform ${platformArch} not found in manifest`,
-        };
-      }
-
-      // Fetch platform-specific manifest
-      const platformResult = await $`docker manifest inspect ${repo}@${platformManifest.digest}`
-        .nothrow()
-        .json();
-
-      if (!platformResult || typeof platformResult !== "object") {
-        return {
-          name: "Image Size (Compressed)",
-          passed: true,
-          critical: false,
-          message: "Unable to fetch platform manifest",
-        };
-      }
-
-      const platformData = platformResult as any;
-      const configSize = platformData.config?.size || 0;
-      const layersSize = (platformData.layers || []).reduce(
-        (sum: number, layer: any) => sum + (layer.size || 0),
-        0
-      );
-      const totalSize = configSize + layersSize;
-
-      return {
-        name: "Image Size (Compressed)",
-        passed: true,
-        critical: false,
-        message: `${formatSize(totalSize)} (wire size)`,
-      };
-    }
-
-    // Single-arch manifest
-    const configSize = manifest.config?.size || 0;
-    const layersSize = (manifest.layers || []).reduce(
-      (sum: number, layer: any) => sum + (layer.size || 0),
-      0
-    );
-    const totalSize = configSize + layersSize;
-
     return {
       name: "Image Size (Compressed)",
       passed: true,
       critical: false,
-      message: `${formatSize(totalSize)} (wire size)`,
+      message: `${formatSize(compressedSize)} (wire size)`,
     };
   } catch (err) {
     return {
@@ -562,7 +441,12 @@ async function validateImage(imageTag: string): Promise<number> {
 
   // Inspect image
   info("Inspecting image...");
-  const imageData = await inspectImage(imageTag);
+  let imageData: ImageData | null = null;
+  try {
+    imageData = await inspectImage(imageTag);
+  } catch (err) {
+    error(`Failed to inspect image: ${getErrorMessage(err)}`);
+  }
 
   // Collect all validation results
   const results: ValidationResult[] = [];

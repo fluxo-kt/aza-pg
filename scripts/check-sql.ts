@@ -182,13 +182,17 @@ async function validateSqlFile(
     }
 
     // Check 13: Long transaction blocks (potential lock issues)
-    const doBlocks = content.match(/DO\s+\$\$[\s\S]*?\$\$/gi) || [];
-    for (const block of doBlocks) {
-      const statementCount = (block.match(/;/g) || []).length;
-      if (statementCount > 50) {
-        warnings.push(
-          `DO block with ${statementCount} statements - consider splitting to avoid long locks`
-        );
+    // Skip for initialization scripts - they run on empty databases with no lock contention
+    const isInitScript = filePath.includes("docker-entrypoint-initdb.d");
+    if (!isInitScript) {
+      const doBlocks = content.match(/DO\s+\$\$[\s\S]*?\$\$/gi) || [];
+      for (const block of doBlocks) {
+        const statementCount = (block.match(/;/g) || []).length;
+        if (statementCount > 50) {
+          warnings.push(
+            `DO block with ${statementCount} statements - consider splitting to avoid long locks`
+          );
+        }
       }
     }
 

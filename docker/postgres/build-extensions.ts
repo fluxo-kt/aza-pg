@@ -452,6 +452,72 @@ async function validateDependencies(
 // Patch Application
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Convert sed substitution pattern to JavaScript regex and replacement
+ * Handles common sed patterns: s/pattern/replacement/flags
+ */
+function parseSedPattern(sedPattern: string): { pattern: RegExp; replacement: string } | null {
+  // Match sed substitution format: s/pattern/replacement/flags
+  const match = sedPattern.match(/^s\/(.+?)\/(.+?)\/?([gimsu]*)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, pattern, replacement, flags] = match;
+
+  // Convert sed regex to JavaScript regex
+  let jsPattern = pattern
+    // Convert POSIX character classes to JS equivalents
+    .replace(/\[:space:\]/g, "\\s")
+    .replace(/\[:alnum:\]/g, "[A-Za-z0-9]")
+    .replace(/\[:alpha:\]/g, "[A-Za-z]")
+    .replace(/\[:digit:\]/g, "\\d")
+    // Convert sed quantifiers {n,m} to JS
+    .replace(/\\{(\d+),?(\d*)\\}/g, "{$1,$2}")
+    // Handle start of line anchor
+    .replace(/^\^/, "^\\s*") // Allow optional leading whitespace
+    // Unescape dots
+    .replace(/\\\./g, ".");
+
+  // For multiline matching, add 'm' flag if pattern has ^ or $
+  const jsFlags = (flags || "") + (pattern.includes("^") || pattern.includes("$") ? "m" : "");
+
+  try {
+    const regex = new RegExp(jsPattern, jsFlags);
+    return { pattern: regex, replacement };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply a sed-style patch to file content using Bun native operations
+ */
+async function applySedPatch(filePath: string, sedPattern: string): Promise<boolean> {
+  const parsed = parseSedPattern(sedPattern);
+  if (!parsed) {
+    log(`    Warning: Could not parse sed pattern: ${sedPattern}`);
+    return false;
+  }
+
+  const { pattern, replacement } = parsed;
+
+  // Read file content
+  const originalContent = await Bun.file(filePath).text();
+
+  // Apply substitution
+  const modifiedContent = originalContent.replace(pattern, replacement);
+
+  // Check if any changes were made
+  if (originalContent === modifiedContent) {
+    return false;
+  }
+
+  // Write modified content back
+  await Bun.write(filePath, modifiedContent);
+  return true;
+}
+
 async function applyPatches(entry: ManifestEntry, dest: string, name: string): Promise<void> {
   const patches = entry.build?.patches || [];
   if (patches.length === 0) {
@@ -460,8 +526,8 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
 
   log(`Applying ${patches.length} patch(es) for ${name}`);
 
-  // Create timestamp marker for tracking modified files (Phase 4.3)
-  await $`touch /tmp/patch-marker`;
+  // Track modification timestamps for each file before patching
+  const modificationTimes = new Map<string, number>();
 
   for (let i = 0; i < patches.length; i++) {
     const patch = patches[i];
@@ -477,7 +543,7 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
     } else if (patch.includes(".c")) {
       // For C projects, find specific C files mentioned in patch or all .c files
       if (patch.includes("log_skipped_evtrigs")) {
-        // Anchor to specific file for supautils patch (Phase 4.3 safety improvement)
+        // Anchor to specific file for supautils patch
         const result = await $`find ${dest} -name "supautils.c" -type f`.text();
         targetFiles = result.trim().split("\n").filter(Boolean);
       } else {
@@ -489,35 +555,40 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
       targetFiles = [dest];
     }
 
-    // Apply patch to each target file
+    // Apply patch to each target file using Bun native operations
     for (const targetFile of targetFiles) {
       if (await Bun.file(targetFile).exists()) {
-        try {
-          await $`sed -i ${patch} ${targetFile}`.quiet();
-        } catch {
-          log(`    Warning: patch may not have matched in ${targetFile}`);
+        // Record pre-patch modification time
+        const stat = await Bun.file(targetFile).stat();
+        modificationTimes.set(targetFile, stat.mtime.getTime());
+
+        const patched = await applySedPatch(targetFile, patch);
+        if (!patched) {
+          log(`    Warning: patch did not match in ${targetFile}`);
         }
       }
     }
   }
 
-  // Log patched files (Phase 4.3 improvement)
+  // Log patched files by comparing modification times
   log("Patched files:");
-  try {
-    const result =
-      await $`find ${dest} \\( -name "*.c" -o -name "*.h" -o -name "Cargo.toml" \\) -newer /tmp/patch-marker -type f`.text();
-    const patchedFiles = result.trim().split("\n").filter(Boolean);
+  const patchedFiles: string[] = [];
 
-    if (patchedFiles.length > 0) {
-      for (const pf of patchedFiles) {
-        // Show relative path for readability
-        const relativePath = pf.replace(dest + "/", "");
-        log(`  - ${relativePath}`);
+  for (const [filePath, oldMtime] of modificationTimes) {
+    if (await Bun.file(filePath).exists()) {
+      const stat = await Bun.file(filePath).stat();
+      if (stat.mtime.getTime() > oldMtime) {
+        const relativePath = filePath.replace(dest + "/", "");
+        patchedFiles.push(relativePath);
       }
-    } else {
-      log("  (no files modified - patches may not have matched)");
     }
-  } catch {
+  }
+
+  if (patchedFiles.length > 0) {
+    for (const pf of patchedFiles) {
+      log(`  - ${pf}`);
+    }
+  } else {
     log("  (no files modified - patches may not have matched)");
   }
 }

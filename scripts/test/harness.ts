@@ -11,7 +11,7 @@ export class TestHarness {
   private containers: string[] = [];
 
   constructor() {
-    this.image = Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
+    this.image = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
     this.prefix = `test-${Date.now()}-${process.pid}`;
 
     // Ensure cleanup on exit

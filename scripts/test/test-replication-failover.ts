@@ -45,7 +45,7 @@ interface TestConfig {
  * Parse command line arguments
  */
 function parseArgs(): Pick<TestConfig, "imageTag" | "noCleanup"> {
-  const imageTag = Bun.argv[2] || Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
+  const imageTag = Bun.argv[2] || Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
   const noCleanup = Bun.argv.includes("--no-cleanup");
 
   return { imageTag, noCleanup };

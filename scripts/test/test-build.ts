@@ -4,7 +4,7 @@
  * Usage: bun run scripts/test/test-build.ts [image-tag]
  *
  * Examples:
- *   bun run scripts/test/test-build.ts                    # Use default tag 'aza-pg:pg18'
+ *   bun run scripts/test/test-build.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
  *   bun run scripts/test/test-build.ts my-custom:tag      # Use custom tag
  */
 
@@ -339,7 +339,7 @@ async function listInstalledExtensions(config: BuildTestConfig): Promise<void> {
  */
 async function main(): Promise<void> {
   // Parse arguments
-  const imageTag = Bun.argv[2] ?? "aza-pg:pg18";
+  const imageTag = Bun.argv[2] ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
   const projectRoot = getProjectRoot();
   const testPassword = generateTestPassword();
   const containerName = `pg-test-${process.pid}`;

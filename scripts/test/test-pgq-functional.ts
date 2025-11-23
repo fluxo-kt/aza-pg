@@ -11,14 +11,40 @@
  * - Monitoring (queue info, consumer info, batch info)
  * - Performance metrics (throughput, latency)
  *
- * Usage: bun run scripts/test/test-pgq-functional.ts [--container=pgq-research]
+ * Usage:
+ *   bun run scripts/test/test-pgq-functional.ts --image=aza-pg:local
+ *   bun run scripts/test/test-pgq-functional.ts --container=existing-container
  */
 
 import { $ } from "bun";
 import { join } from "node:path";
+import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
-const CONTAINER =
-  Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
+// Parse CLI arguments
+const containerName = parseContainerName();
+const imageTag = containerName ? null : resolveImageTag();
+
+// Validate if using image mode
+if (imageTag) {
+  validateImageTag(imageTag);
+}
+
+// Container name (either user-provided or auto-generated)
+let CONTAINER: string;
+let isOwnContainer = false;
+
+if (containerName) {
+  CONTAINER = containerName;
+  console.log(`Using existing container: ${CONTAINER}\n`);
+} else if (imageTag) {
+  CONTAINER = `test-pgq-${Date.now()}-${process.pid}`;
+  isOwnContainer = true;
+  console.log(`Starting new container: ${CONTAINER}`);
+  console.log(`Using image: ${imageTag}\n`);
+} else {
+  console.error("Error: Either --image or --container must be specified");
+  process.exit(1);
+}
 
 // Check if pgq extension is enabled in manifest
 const REPO_ROOT = join(import.meta.dir, "../..");
@@ -88,6 +114,80 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
 function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
+  }
+}
+
+// Container cleanup function
+async function cleanupContainer(): Promise<void> {
+  if (!isOwnContainer) return;
+
+  console.log(`\n🧹 Cleaning up container: ${CONTAINER}`);
+  try {
+    await $`docker rm -f ${CONTAINER}`.nothrow();
+    console.log("✅ Container cleanup complete");
+  } catch (error) {
+    console.error(`⚠️  Failed to cleanup container: ${error}`);
+  }
+}
+
+// Register cleanup handlers
+if (isOwnContainer) {
+  process.on("exit", () => {
+    // Synchronous cleanup on normal exit
+    try {
+      Bun.spawnSync(["docker", "rm", "-f", CONTAINER]);
+    } catch {
+      // Ignore errors during cleanup
+    }
+  });
+
+  process.on("SIGINT", async () => {
+    console.log("\n\n⚠️  Interrupted by user (SIGINT)");
+    await cleanupContainer();
+    process.exit(130);
+  });
+
+  process.on("SIGTERM", async () => {
+    console.log("\n\n⚠️  Terminated (SIGTERM)");
+    await cleanupContainer();
+    process.exit(143);
+  });
+}
+
+// Start container if using --image mode
+if (isOwnContainer && imageTag) {
+  console.log(`🚀 Starting container from image: ${imageTag}`);
+
+  try {
+    // Start PostgreSQL container
+    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`;
+    console.log(`✅ Container started: ${CONTAINER}`);
+
+    // Wait for PostgreSQL to be ready
+    console.log("⏳ Waiting for PostgreSQL to be ready...");
+    let ready = false;
+    const maxAttempts = 60; // 60 seconds timeout
+    let attempt = 0;
+
+    while (!ready && attempt < maxAttempts) {
+      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
+      if (result.exitCode === 0) {
+        ready = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      attempt++;
+    }
+
+    if (!ready) {
+      throw new Error("PostgreSQL failed to start within 60 seconds");
+    }
+
+    console.log("✅ PostgreSQL is ready\n");
+  } catch (error) {
+    console.error(`❌ Failed to start container: ${error}`);
+    await cleanupContainer();
+    process.exit(1);
   }
 }
 
@@ -464,5 +564,8 @@ if (perfResults.length > 0) {
 }
 
 console.log("\n" + "=".repeat(80));
+
+// Cleanup container if we own it
+await cleanupContainer();
 
 process.exit(failed > 0 ? 1 : 0);

@@ -60,7 +60,7 @@ let cleanupProject = "";
  * Get the PostgreSQL image to use for tests
  */
 function getPostgresImage(): string {
-  return Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
+  return Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 }
 
 /**

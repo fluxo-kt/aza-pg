@@ -162,7 +162,7 @@ async function deployPrimaryStack(config: ReplicaTestConfig): Promise<void> {
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PGBOUNCER_AUTH_PASS=${config.testPgBouncerPassword}
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
-POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
+POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 POSTGRES_BIND_IP=0.0.0.0
 COMPOSE_PROJECT_NAME=${primaryProjectName}
@@ -338,7 +338,7 @@ async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
   // Create .env.test file
   const envContent = `POSTGRES_PASSWORD=${config.testPostgresPassword}
 PG_REPLICATION_PASSWORD=${config.testReplicationPassword}
-POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "aza-pg:pg18"}
+POSTGRES_IMAGE=${Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18"}
 POSTGRES_MEMORY_LIMIT=2g
 POSTGRES_CPU_LIMIT=2
 COMPOSE_PROJECT_NAME=${replicaProjectName}

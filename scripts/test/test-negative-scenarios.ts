@@ -16,7 +16,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { $ } from "bun";
 import { generateUniqueContainerName } from "../utils/docker";
 
-const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
+const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
 
 // Store unique container names for cleanup
 const containersCreated: Set<string> = new Set();

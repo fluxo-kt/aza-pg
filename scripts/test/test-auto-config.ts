@@ -4,7 +4,7 @@
  * Usage: bun run scripts/test/test-auto-config.ts [image-tag]
  *
  * Examples:
- *   bun run scripts/test/test-auto-config.ts                    # Use default tag 'aza-pg:pg18'
+ *   bun run scripts/test/test-auto-config.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
  *   bun run scripts/test/test-auto-config.ts my-custom:tag      # Use custom tag
  */
 

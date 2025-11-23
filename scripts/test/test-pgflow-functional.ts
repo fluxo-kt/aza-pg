@@ -13,32 +13,160 @@
  * - Performance metrics
  *
  * Usage:
- *   bun run scripts/test/test-pgflow-functional.ts [--container=NAME] [--database=NAME]
- *   TEST_CONTAINER=my-postgres TEST_DATABASE=mydb bun run scripts/test/test-pgflow-functional.ts
- *   bun run scripts/test/test-pgflow-functional.ts --container=aza-pg-test --database=pgflow_test
+ *   bun scripts/test/test-pgflow-functional.ts --image=TAG [--database=NAME]
+ *   bun scripts/test/test-pgflow-functional.ts --container=NAME [--database=NAME]
+ *   POSTGRES_IMAGE=tag bun scripts/test/test-pgflow-functional.ts
  *
- * Container Configuration:
- *   --container=NAME         Override container name (e.g., --container=pgq-research)
- *   --database=NAME          Override database name (e.g., --database=pgflow_test)
- *   TEST_CONTAINER env var   Fallback if --container not provided
- *   TEST_DATABASE env var    Fallback if --database not provided
- *   Default                  aza-pg-test (container), postgres (database)
+ * Options:
+ *   --image=TAG              Start new container from image (e.g., --image=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node)
+ *   --container=NAME         Use existing running container (e.g., --container=aza-pg-test)
+ *   --database=NAME          Database name (default: postgres)
+ *   --help                   Show this help message
  *
- * CI Usage Example:
- *   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
- *     myregistry/aza-pg-ci:latest \
- *     bun run scripts/test/test-pgflow-functional.ts --container=ci-postgres
+ * Environment Variables:
+ *   POSTGRES_IMAGE           Fallback image if --image not provided
+ *   TEST_DATABASE            Fallback database name
+ *
+ * Examples:
+ *   bun scripts/test/test-pgflow-functional.ts --image=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node
+ *   bun scripts/test/test-pgflow-functional.ts --container=my-running-postgres
+ *   POSTGRES_IMAGE=aza-pg:local bun scripts/test/test-pgflow-functional.ts --database=testdb
+ *
+ * Notes:
+ *   - If --image is provided, a new container is started and automatically cleaned up
+ *   - If --container is provided, the existing container is used (no cleanup)
+ *   - Either --image or --container must be provided
  */
 
 import { $ } from "bun";
+import { resolveImageTag, parseContainerName } from "./image-resolver";
 
-const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
+// Check for help flag
+if (Bun.argv.includes("--help") || Bun.argv.includes("-h")) {
+  console.log(`
+Comprehensive pgflow functional test suite
+
+Usage:
+  bun scripts/test/test-pgflow-functional.ts --image=TAG [--database=NAME]
+  bun scripts/test/test-pgflow-functional.ts --container=NAME [--database=NAME]
+  POSTGRES_IMAGE=tag bun scripts/test/test-pgflow-functional.ts
+
+Options:
+  --image=TAG              Start new container from image
+  --container=NAME         Use existing running container
+  --database=NAME          Database name (default: postgres)
+  --help                   Show this help message
+
+Examples:
+  bun scripts/test/test-pgflow-functional.ts --image=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node
+  bun scripts/test/test-pgflow-functional.ts --container=my-running-postgres
+  POSTGRES_IMAGE=aza-pg:local bun scripts/test/test-pgflow-functional.ts --database=testdb
+`);
+  process.exit(0);
+}
+
+// Parse arguments
+const imageTag = resolveImageTag({ defaultImage: "" }); // Empty default to detect if no image provided
+const containerName = parseContainerName();
 const databaseArg = Bun.argv.find((arg) => arg.startsWith("--database="))?.split("=")[1];
-const CONTAINER = containerArg ?? Bun.env.TEST_CONTAINER ?? "aza-pg-test";
 const DATABASE = databaseArg ?? Bun.env.TEST_DATABASE ?? "postgres";
 
-console.log(`Container: ${CONTAINER}`);
+// Validate that either --image or --container is provided
+if (!imageTag && !containerName) {
+  console.error(`Error: Must provide either --image=TAG or --container=NAME
+
+Usage:
+  bun scripts/test/test-pgflow-functional.ts --image=TAG [--database=NAME]
+  bun scripts/test/test-pgflow-functional.ts --container=NAME [--database=NAME]
+
+Examples:
+  bun scripts/test/test-pgflow-functional.ts --image=ghcr.io/fluxo-kt/aza-pg:18
+  bun scripts/test/test-pgflow-functional.ts --container=aza-pg-test
+
+Run --help for more information.
+`);
+  process.exit(1);
+}
+
+// Container lifecycle management
+let CONTAINER: string;
+let containerStarted = false;
+
+if (imageTag && !containerName) {
+  // Start new container from image
+  CONTAINER = `test-pgflow-${Date.now()}-${process.pid}`;
+  console.log(`Starting container ${CONTAINER} from image ${imageTag}...`);
+
+  try {
+    await $`docker run -d --rm --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres ${imageTag}`.quiet();
+    containerStarted = true;
+
+    // Wait for PostgreSQL to be ready
+    console.log("Waiting for PostgreSQL to be ready...");
+    let attempt = 0;
+    const maxAttempts = 60; // 2 minutes timeout (60 * 2 seconds)
+
+    while (attempt < maxAttempts) {
+      try {
+        await $`docker exec ${CONTAINER} pg_isready -U postgres`.quiet();
+        console.log(`PostgreSQL ready after ${(attempt + 1) * 2} seconds\n`);
+        break;
+      } catch {
+        // Not ready yet
+      }
+      await Bun.sleep(2000);
+      attempt++;
+    }
+
+    if (attempt === maxAttempts) {
+      console.error("PostgreSQL failed to start within timeout period");
+      await $`docker rm -f ${CONTAINER}`.quiet();
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`Failed to start container: ${error}`);
+    if (containerStarted) {
+      await $`docker rm -f ${CONTAINER}`.quiet();
+    }
+    process.exit(1);
+  }
+} else if (containerName) {
+  // Use existing container
+  CONTAINER = containerName;
+  console.log(`Using existing container: ${CONTAINER}`);
+} else {
+  // Both provided - prefer container (backward compatibility)
+  CONTAINER = containerName!;
+  console.log(`Using existing container: ${CONTAINER} (ignoring --image flag)`);
+}
+
 console.log(`Database: ${DATABASE}\n`);
+
+// Cleanup function
+async function cleanup() {
+  if (containerStarted) {
+    console.log(`\nCleaning up container ${CONTAINER}...`);
+    try {
+      await $`docker rm -f ${CONTAINER}`.quiet();
+      console.log("Container removed successfully");
+    } catch (error) {
+      console.error(`Failed to cleanup container: ${error}`);
+    }
+  }
+}
+
+// Signal handlers for cleanup
+process.on("SIGINT", async () => {
+  console.log("\nReceived SIGINT, cleaning up...");
+  await cleanup();
+  process.exit(130);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\nReceived SIGTERM, cleaning up...");
+  await cleanup();
+  process.exit(143);
+});
 
 interface TestResult {
   name: string;
@@ -620,5 +748,8 @@ if (perfResults.length > 0) {
 }
 
 console.log("\n" + "=".repeat(80));
+
+// Cleanup container if we started it
+await cleanup();
 
 process.exit(failed > 0 ? 1 : 0);

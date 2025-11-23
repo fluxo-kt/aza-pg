@@ -54,7 +54,7 @@ async function createTestEnv(
   credentials: TestCredentials,
   projectName: string
 ): Promise<void> {
-  const postgresImage = Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
+  const postgresImage = Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
   const envContent = `POSTGRES_PASSWORD=${credentials.postgresPassword}
 PGBOUNCER_AUTH_PASS=${credentials.pgbouncerPassword}
 PG_REPLICATION_PASSWORD=${credentials.replicationPassword}

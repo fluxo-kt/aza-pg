@@ -11,7 +11,7 @@
  * 5. Manual CREATE EXTENSION fails for disabled extensions
  *
  * Examples:
- *   bun run scripts/test/test-disabled-extensions.ts                    # Use default tag 'aza-pg:pg18'
+ *   bun run scripts/test/test-disabled-extensions.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
  *   bun run scripts/test/test-disabled-extensions.ts my-custom:tag      # Use custom tag
  */
 
@@ -49,7 +49,7 @@ const TEST_POSTGRES_PASSWORD =
   Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
 
 // Get image tag from command line args, POSTGRES_IMAGE env var, or use default
-const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
+const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 
 // Paths
 const MANIFEST_PATH = `${import.meta.dir}/../../docker/postgres/extensions.manifest.json`;

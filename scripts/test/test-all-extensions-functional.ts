@@ -24,14 +24,78 @@
  * - Utilities: pg_hashids
  * - Validation: pg_jsonschema
  *
- * Usage: bun run scripts/test/test-all-extensions-functional.ts [--container=pgq-research]
+ * Usage:
+ *   bun run scripts/test/test-all-extensions-functional.ts --image=aza-pg:local
+ *   bun run scripts/test/test-all-extensions-functional.ts --container=existing-container
  */
 
 import { $ } from "bun";
 import { resolve } from "node:path";
+import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
-const CONTAINER =
-  Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
+// Show help if requested
+if (Bun.argv.includes("--help") || Bun.argv.includes("-h")) {
+  console.log(`
+Comprehensive Extension Functional Test Suite
+
+Tests all enabled PostgreSQL extensions systematically across all categories:
+AI/Vector, Analytics, CDC, GIS, Indexing, Integration, Language, Maintenance,
+Observability, Operations, Performance, Quality, Queueing, Safety, Search,
+Security, Timeseries, Utilities, Validation
+
+Usage:
+  bun run scripts/test/test-all-extensions-functional.ts --image=<image-tag>
+  bun run scripts/test/test-all-extensions-functional.ts --container=<container-name>
+
+Options:
+  --image=<tag>        Start new container from image and run tests (auto-cleanup)
+  --container=<name>   Use existing running container (no cleanup)
+  -h, --help          Show this help message
+
+Examples:
+  # Test using local build
+  bun run scripts/test/test-all-extensions-functional.ts --image=aza-pg:local
+
+  # Test using existing container
+  bun run scripts/test/test-all-extensions-functional.ts --container=pgq-research
+
+Environment Variables:
+  POSTGRES_IMAGE      Default image when --image not specified
+
+Notes:
+  - Exactly one of --image or --container must be specified
+  - When using --image, container is automatically cleaned up on exit
+  - Tests are comprehensive and may take 2-5 minutes to complete
+  - Skipped tests indicate disabled extensions or unavailable features
+`);
+  process.exit(0);
+}
+
+// Parse CLI arguments
+const containerName = parseContainerName();
+const imageTag = containerName ? null : resolveImageTag();
+
+// Validate if using image mode
+if (imageTag) {
+  validateImageTag(imageTag);
+}
+
+// Container name (either user-provided or auto-generated)
+let CONTAINER: string;
+let isOwnContainer = false;
+
+if (containerName) {
+  CONTAINER = containerName;
+  console.log(`Using existing container: ${CONTAINER}\n`);
+} else if (imageTag) {
+  CONTAINER = `test-extensions-${Date.now()}-${process.pid}`;
+  isOwnContainer = true;
+  console.log(`Starting new container: ${CONTAINER}`);
+  console.log(`Using image: ${imageTag}\n`);
+} else {
+  console.error("Error: Either --image or --container must be specified");
+  process.exit(1);
+}
 
 interface TestResult {
   name: string;
@@ -120,6 +184,80 @@ async function test(name: string, category: string, fn: () => Promise<void>): Pr
 function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
+  }
+}
+
+// Container cleanup function
+async function cleanupContainer(): Promise<void> {
+  if (!isOwnContainer) return;
+
+  console.log(`\n🧹 Cleaning up container: ${CONTAINER}`);
+  try {
+    await $`docker rm -f ${CONTAINER}`.nothrow();
+    console.log("✅ Container cleanup complete");
+  } catch (error) {
+    console.error(`⚠️  Failed to cleanup container: ${error}`);
+  }
+}
+
+// Register cleanup handlers
+if (isOwnContainer) {
+  process.on("exit", () => {
+    // Synchronous cleanup on normal exit
+    try {
+      Bun.spawnSync(["docker", "rm", "-f", CONTAINER]);
+    } catch {
+      // Ignore errors during cleanup
+    }
+  });
+
+  process.on("SIGINT", async () => {
+    console.log("\n\n⚠️  Interrupted by user (SIGINT)");
+    await cleanupContainer();
+    process.exit(130);
+  });
+
+  process.on("SIGTERM", async () => {
+    console.log("\n\n⚠️  Terminated (SIGTERM)");
+    await cleanupContainer();
+    process.exit(143);
+  });
+}
+
+// Start container if using --image mode
+if (isOwnContainer && imageTag) {
+  console.log(`🚀 Starting container from image: ${imageTag}`);
+
+  try {
+    // Start PostgreSQL container
+    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`;
+    console.log(`✅ Container started: ${CONTAINER}`);
+
+    // Wait for PostgreSQL to be ready
+    console.log("⏳ Waiting for PostgreSQL to be ready...");
+    let ready = false;
+    const maxAttempts = 60; // 60 seconds timeout
+    let attempt = 0;
+
+    while (!ready && attempt < maxAttempts) {
+      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
+      if (result.exitCode === 0) {
+        ready = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      attempt++;
+    }
+
+    if (!ready) {
+      throw new Error("PostgreSQL failed to start within 60 seconds");
+    }
+
+    console.log("✅ PostgreSQL is ready\n");
+  } catch (error) {
+    console.error(`❌ Failed to start container: ${error}`);
+    await cleanupContainer();
+    process.exit(1);
   }
 }
 
@@ -1503,5 +1641,10 @@ console.log(`Total extensions: ${extensions.length}`);
 console.log(`Extensions with tests: ${testedExtensions.size}`);
 
 console.log("\n" + "=".repeat(80));
+
+// Cleanup container if we own it
+if (isOwnContainer) {
+  await cleanupContainer();
+}
 
 process.exit(failed > 0 ? 1 : 0);

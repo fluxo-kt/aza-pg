@@ -10,7 +10,7 @@
  * Note: supautils removed (disabled - compilation issues)
  *
  * Examples:
- *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'aza-pg:pg18'
+ *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
  *   bun run scripts/test/test-hook-extensions.ts my-custom:tag      # Use custom tag
  */
 
@@ -283,7 +283,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg:pg18";
+  const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 
   // Ensure image is available (will auto-pull from registry if needed)
   try {

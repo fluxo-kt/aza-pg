@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   try {
     // Create test .env file
     info("Creating test environment configuration...");
-    const postgresImage = Bun.env.POSTGRES_IMAGE || "aza-pg:pg18";
+    const postgresImage = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
     const envContent = `POSTGRES_PASSWORD=${testPostgresPassword}
 POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g

@@ -3,11 +3,12 @@
  * Pre-commit hook: Auto-fix issues and stage fixes
  *
  * This hook AUTO-FIXES issues instead of failing:
- * 1. Auto-fix linting issues (oxlint --fix)
- * 2. Auto-format code (prettier --write)
- * 3. Auto-regenerate if manifest-data.ts changed
- * 4. Auto-stage all fixes
- * 5. Only fail if there are REAL errors that can't be auto-fixed
+ * 1. Auto-regenerate if manifest-data.ts changed
+ * 2. Auto-fix linting issues (oxlint --fix)
+ * 3. Auto-format code (prettier --write)
+ * 4. Auto-format SQL files (sql-formatter)
+ * 5. Auto-stage all fixes
+ * 6. Only fail if there are REAL errors that can't be auto-fixed
  *
  * Philosophy: Hooks should HELP, not BLOCK development
  */
@@ -115,6 +116,20 @@ async function preCommit(): Promise<void> {
     } catch (err) {
       error("❌ Failed to format code", err);
       throw err;
+    }
+  }
+
+  // 3.5. Auto-format SQL files
+  const sqlFiles = stagedFiles.filter((f) => f.endsWith(".sql"));
+
+  if (sqlFiles.length > 0) {
+    info("🗄️  Auto-formatting SQL files...");
+    try {
+      await $`bun scripts/format-sql.ts --write`.quiet();
+      success("✅ Auto-formatted SQL files");
+      filesToRestage.push(...sqlFiles);
+    } catch (err) {
+      warning("⚠️  Some SQL files couldn't be auto-formatted", err);
     }
   }
 

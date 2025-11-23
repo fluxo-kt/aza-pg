@@ -212,6 +212,12 @@ async function validate(
       description: "Type checking (requires full project context)",
       required: true,
     },
+    {
+      name: "SQL Validation",
+      command: ["bun", "scripts/check-sql.ts"],
+      description: "SQL formatting and syntax validation",
+      required: true,
+    },
   ];
 
   // Extended checks (only in --all mode)

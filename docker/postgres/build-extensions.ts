@@ -418,20 +418,34 @@ async function validateDependencies(
     const depEntry = manifest.entries.find((e) => e.name === depName);
 
     if (!depEntry) {
-      // Dependency not in current manifest - check if it's a PGDG package or builtin in full manifest
+      // Dependency not in current manifest - check full manifest (cross-build-type dependencies)
       const fullManifestPath = "/tmp/extensions.manifest.json";
       if (await Bun.file(fullManifestPath).exists()) {
         const fullManifest = (await Bun.file(fullManifestPath).json()) as Manifest;
         const depEntryFull = fullManifest.entries.find((e) => e.name === depName);
 
         if (depEntryFull) {
+          // Check if dependency is enabled in full manifest
+          const depEnabledInFull = depEntryFull.enabled !== false;
+          if (!depEnabledInFull) {
+            const depReason = depEntryFull.disabledReason || "No reason specified";
+            log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
+            log(`       Dependency disabled reason: ${depReason}`);
+            log(`       Either enable '${depName}' or disable '${name}'`);
+            process.exit(1);
+          }
+
+          // Dependency exists and is enabled - accept regardless of how it's built
           if (depEntryFull.install_via === "pgdg") {
             log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
-            continue;
+          } else if (depEntryFull.install_via === "source") {
+            log(`  ✓ Dependency '${depName}' will be built from source (different build phase)`);
           } else if (depEntryFull.kind === "builtin") {
             log(`  ✓ Dependency '${depName}' is builtin (included in PostgreSQL)`);
-            continue;
+          } else {
+            log(`  ✓ Dependency '${depName}' will be built from source`);
           }
+          continue;
         }
       }
 

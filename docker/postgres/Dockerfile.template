@@ -53,21 +53,77 @@ RUN set -eu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Rust toolchain with GPG signature verification
+ARG RUST_VERSION=1.83.0
+ARG RUST_TARGET=x86_64-unknown-linux-gnu
+
 RUN set -eu && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+    # Import Rust GPG signing key (from https://www.rust-lang.org/static/keys.html)
+    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \
+      "108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE" || \
+    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \
+      "108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE" && \
+    \
+    # Download Rust toolchain tarball and GPG signature
+    curl -fsSL --retry 5 \
+      "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RUST_TARGET}.tar.xz" \
+      -o rust.tar.xz && \
+    curl -fsSL --retry 5 \
+      "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RUST_TARGET}.tar.xz.asc" \
+      -o rust.tar.xz.asc && \
+    \
+    # Verify GPG signature
+    gpg --batch --verify rust.tar.xz.asc rust.tar.xz || \
+      (echo "ERROR: Rust GPG signature verification failed" && exit 1) && \
+    \
+    # Extract and install
+    tar -xf rust.tar.xz && \
+    cd "rust-${RUST_VERSION}-${RUST_TARGET}" && \
+    ./install.sh --prefix=/usr/local --components=rustc,cargo,rust-std-${RUST_TARGET} && \
+    cd .. && \
+    rm -rf "rust-${RUST_VERSION}-${RUST_TARGET}" rust.tar.xz rust.tar.xz.asc
 
 # Add Rust/Cargo to PATH
-ENV PATH="/root/.cargo/bin:${PATH}"
+ENV PATH="/root/.cargo/bin:/usr/local/bin:${PATH}"
 
-# Install Bun for running TypeScript build scripts
+# Install Bun for running TypeScript build scripts with GPG checksum verification
 # Extracts version from project .tool-versions file (single source of truth)
 COPY .tool-versions /tmp/.tool-versions
 RUN set -eu && \
     BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
     echo "Installing Bun v${BUN_VERSION}" && \
-    curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
-    rm /tmp/.tool-versions
+    \
+    # Import Bun's official GPG signing key
+    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \
+      "F3DCC08A8572C0749B3E18888EAB4D40A7B22B59" || \
+    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \
+      "F3DCC08A8572C0749B3E18888EAB4D40A7B22B59" && \
+    \
+    # Download GPG-signed checksums file
+    curl -fsSL --retry 5 \
+      "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/SHASUMS256.txt.asc" \
+      -o SHASUMS256.txt.asc && \
+    \
+    # Verify GPG signature and extract checksums
+    gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc || \
+      (echo "ERROR: Bun checksum GPG signature verification failed" && exit 1) && \
+    \
+    # Download Bun binary
+    curl -fsSL --retry 5 \
+      "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+      -o bun-linux-x64.zip && \
+    \
+    # Verify SHA256 checksum
+    grep " bun-linux-x64.zip\$" SHASUMS256.txt | sha256sum -c - || \
+      (echo "ERROR: Bun binary checksum verification failed" && exit 1) && \
+    \
+    # Extract and install
+    unzip -q bun-linux-x64.zip && \
+    mv bun-linux-x64/bun /usr/local/bin/bun && \
+    chmod +x /usr/local/bin/bun && \
+    \
+    # Cleanup
+    rm -rf bun-linux-x64* SHASUMS256.txt* /tmp/.tool-versions
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs

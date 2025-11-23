@@ -210,13 +210,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Load test image
-        uses: ./.github/actions/load-test-image
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
         with:
-          source: artifact
+          ghcr-login: "false"
+          image-source: artifact
           image-name: aza-pg-ci:test
 
       - name: Test core extensions
@@ -284,13 +282,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Load test image
-        uses: ./.github/actions/load-test-image
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
         with:
-          source: artifact
+          ghcr-login: "false"
+          image-source: artifact
           image-name: aza-pg-testing:pg18
 
       - name: Create test .env file
@@ -333,13 +329,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Load test image
-        uses: ./.github/actions/load-test-image
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
         with:
-          source: artifact
+          ghcr-login: "false"
+          image-source: artifact
           image-name: aza-pg-ci:test
 
       - name: Run security tests
@@ -378,13 +372,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Load test image
-        uses: ./.github/actions/load-test-image
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
         with:
-          source: artifact
+          ghcr-login: "false"
+          image-source: artifact
           image-name: aza-pg-ci:test
 
       - name: Test auto-config

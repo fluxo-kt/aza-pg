@@ -532,20 +532,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
+      - name: Set up test environment
+        if: github.event.inputs.push_image == 'true'
+        uses: ./.github/actions/test-job-setup
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull built image
-        run: |
-          bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
-            --max-retries 3
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:test
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: aza-pg-testing:test
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
 
       - name: Test extension loading
         run: |
@@ -776,20 +771,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
+      - name: Set up test environment
+        if: github.event.inputs.push_image == 'true'
+        uses: ./.github/actions/test-job-setup
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull built image
-        run: |
-          bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
-            --max-retries 3
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: aza-pg-testing:pg18
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
 
       - name: Run replica stack tests
         run: |
@@ -832,20 +822,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
+      - name: Set up test environment
+        if: github.event.inputs.push_image == 'true'
+        uses: ./.github/actions/test-job-setup
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull built image
-        run: |
-          bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
-            --max-retries 3
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:pg18
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: aza-pg-testing:pg18
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
 
       - name: Run single stack tests
         run: |

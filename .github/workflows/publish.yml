@@ -441,8 +441,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -453,11 +459,6 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: linux/arm64
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run basic smoke tests
         timeout-minutes: 5
@@ -493,18 +494,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test core extensions
         run: |
@@ -569,18 +571,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test auto-config
         run: |
@@ -665,18 +668,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
-
-      - name: Log in to GitHub Container Registry
-        uses: ./.github/actions/ghcr-login
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run security tests
         run: |

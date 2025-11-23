@@ -79,8 +79,8 @@ bun scripts/release/promote-image.ts --help
 - **auto_explain**: Module (preload-only), NOT extension. NO CREATE EXTENSION needed (PostgreSQL design)
 - **Dockerfile editing**: NEVER edit Dockerfile directly - edit Dockerfile.template and run `bun run generate`
 - **Version changes**: Update `extension-defaults.ts` → regenerate → rebuild (no workflow input overrides)
-- **Dockerfile ARGs**: Only 3 ARGs (BUILD_DATE, VCS_REF, VERSION) with hardcoded defaults; publish.yml overrides them at runtime
-- **No --build-arg in dev**: Local and build-postgres-image.yml builds use generated defaults (no version override capability)
+- **Dockerfile ARGs**: Only 2 required ARGs (BUILD_DATE, VCS_REF) without defaults; must be passed at build time
+- **All versions hardcoded**: PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions all hardcoded at generation time (not ARGs)
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
@@ -271,15 +271,22 @@ bun run build
 
 **ARG Strategy (Hardcoded Versions)**:
 
-Version dependencies (PG_VERSION, PG_BASE_IMAGE_SHA, all PGDG versions) are hardcoded directly in the generated Dockerfile. Only metadata ARGs (BUILD_DATE, VCS_REF, VERSION) exist as ARGs with generated defaults:
+All version dependencies (PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions) are hardcoded directly in the generated Dockerfile at generation time. Only 2 metadata ARGs (BUILD_DATE, VCS_REF) exist without defaults:
 
-- **Template**: `ARG BUILD_DATE="{{BUILD_DATE_DEFAULT}}"` (placeholder)
-- **Generated**: `ARG BUILD_DATE="2025-11-23T03:48:25.116Z"` (hardcoded)
-- **Local/dev builds**: Use hardcoded defaults (no --build-arg needed)
-- **Production builds** (publish.yml): Override with runtime values via --build-arg
+- **Template**: `ARG BUILD_DATE` and `ARG VCS_REF` (no defaults)
+- **Generated**: `ARG BUILD_DATE` and `ARG VCS_REF` (no defaults - must be passed via --build-arg)
+- **Local/dev builds** (scripts/build.ts): Passes current timestamp and git SHA as --build-arg
+- **Production builds** (publish.yml): Passes workflow timestamp and commit SHA as --build-arg
+
+All versions hardcoded at generation time from extension-defaults.ts:
+
+- PG_VERSION (e.g., "18.1")
+- PG_MAJOR (extracted from PG_VERSION, e.g., "18")
+- PG_BASE_IMAGE_SHA (pinned SHA256 digest)
+- PGDG packages (pinned versions, e.g., "postgresql-18-pgvector=0.8.1-2.pgdg13+1")
 
 To change versions: Edit `extension-defaults.ts` → `bun run generate` → rebuild image.
-No version override via workflow inputs (removed for simplicity).
+No version override via --build-arg or workflow inputs (use extension-defaults.ts as single source of truth).
 
 ## Common Mistakes
 

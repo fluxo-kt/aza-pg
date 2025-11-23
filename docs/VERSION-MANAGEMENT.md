@@ -525,12 +525,14 @@ bun 1.3.3
 
 **Generation:** `bun scripts/docker/generate-dockerfile.ts`
 
-**Contains:**
+**Contains (hardcoded at generation time):**
 
-- `ARG PG_VERSION=18.1` (from extension-defaults.ts)
-- `ARG PG_BASE_IMAGE_SHA=sha256:...` (from extension-defaults.ts)
-- `ARG PGVECTOR_VERSION=0.8.0-2.pgdg13+1` (from extension-defaults.ts)
-- ... 13 more PGDG version ARGs
+- PG_VERSION (e.g., `18.1`) - hardcoded from extension-defaults.ts
+- PG_BASE_IMAGE_SHA (e.g., `sha256:...`) - hardcoded from extension-defaults.ts
+- PGDG package versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`) - hardcoded from extension-defaults.ts
+- Metadata ARGs: `BUILD_DATE` and `VCS_REF` (no defaults - passed at build time)
+
+**Note:** Version dependencies are NOT ARGs (cannot be overridden at build time). They are hardcoded in the FROM statement and package installation commands during Dockerfile generation.
 
 ---
 

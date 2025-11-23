@@ -21,6 +21,17 @@
 
 import { $ } from "bun";
 
+// Get current git commit SHA for image labels
+async function getGitCommitSha(): Promise<string> {
+  try {
+    const result = await $`git rev-parse HEAD`.text();
+    return result.trim();
+  } catch {
+    // Fallback if git not available
+    return "unknown";
+  }
+}
+
 // Configuration interface
 interface BuildConfig {
   builderName: string;
@@ -265,6 +276,13 @@ async function buildImage(config: BuildConfig): Promise<void> {
     // Multi-arch without push (dry-run)
     console.log("Multi-arch build (will not load to local daemon)");
   }
+
+  // Build arguments for OCI image labels
+  // Pass current timestamp and git commit for image metadata
+  const buildDate = new Date().toISOString();
+  const vcsRef = await getGitCommitSha();
+  buildArgs.push("--build-arg", `BUILD_DATE=${buildDate}`);
+  buildArgs.push("--build-arg", `VCS_REF=${vcsRef}`);
 
   // Build metadata
   buildArgs.push(

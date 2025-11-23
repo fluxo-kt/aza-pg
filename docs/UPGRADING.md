@@ -37,11 +37,21 @@ grep pgVersion scripts/extension-defaults.ts
 
 ### Upgrade Path: PostgreSQL 18 → 19 (Example)
 
-#### Step 1: Update Dockerfile
+#### Step 1: Update Version in Extension Defaults
 
-```dockerfile
-# Update ARG in docker/postgres/Dockerfile
-ARG PG_VERSION=19  # Change from 18 to 19
+Edit `scripts/extension-defaults.ts` and update versions:
+
+```typescript
+export const extensionDefaults: ExtensionDefaults = {
+  pgVersion: "19.0", // Changed from 18.1
+  baseImageSha: "sha256:...", // Updated SHA for postgres:19.0-trixie
+  pgdgVersions: {
+    // Update extension versions for PostgreSQL 19 compatibility
+    pgvector: "...",
+    pgcron: "...",
+    // ... update other PGDG versions as needed
+  },
+};
 ```
 
 #### Step 2: Verify Extension Compatibility
@@ -52,19 +62,22 @@ Check each extension supports PostgreSQL 19:
 - pg_cron: https://github.com/citusdata/pg_cron/releases
 - pgAudit: https://github.com/pgaudit/pgaudit/releases
 
-Update extension versions and SHAs if needed.
+Update `extension-defaults.ts` with compatible versions.
 
-#### Step 3: Build New Image
+#### Step 3: Regenerate Dockerfile and Build
 
 ```bash
-# Build with buildx (uses intelligent caching)
+# Regenerate Dockerfile from template with new versions
+bun run generate
+
+# Build image with hardcoded versions
 bun run build
 
-# Verify build
+# Verify PostgreSQL version
 docker run --rm aza-pg:pg18 postgres --version
 ```
 
-**Note**: PG_VERSION is defined in `docker/postgres/Dockerfile`. After updating it, the build script automatically uses the new version.
+**Note**: All versions are hardcoded in the generated Dockerfile from `extension-defaults.ts`. The Dockerfile is auto-generated - never edit it directly.
 
 #### Step 4: Test Locally
 
@@ -170,11 +183,24 @@ SELECT * FROM pg_stat_replication;
 # Find commit SHA from tag (usually in URL or commit list)
 ```
 
-#### Step 2: Update Dockerfile
+#### Step 2: Update Extension Defaults
 
-```dockerfile
-ARG PGVECTOR_VERSION=0.8.2
-ARG PGVECTOR_COMMIT_SHA=<new-commit-sha>
+Edit `scripts/extension-defaults.ts`:
+
+```typescript
+// For PGDG extensions (like pgvector), update the version:
+pgdgVersions: {
+  pgvector: "0.8.2-2.pgdg13+1",  // Changed from 0.8.1-2.pgdg13+1
+  // ... other versions
+},
+
+// For source-built extensions, update the git tag/ref in manifest-data.ts
+```
+
+Then regenerate:
+
+```bash
+bun run generate
 ```
 
 #### Step 3: Rebuild and Test

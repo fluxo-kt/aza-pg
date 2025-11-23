@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T04:41:05.381Z
+# Generated at: 2025-11-23T12:21:59.226Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -76,10 +76,10 @@ RUN set -euo pipefail && \
 FROM builder-base AS builder-pgxs
 
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN --mount=type=cache,target=/root/.cache \
-    /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
+    bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
@@ -105,7 +105,7 @@ RUN set -euo pipefail && \
 FROM builder-base AS builder-cargo
 
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Rust optimization flags for smaller binaries (Phase 11.1)
 # Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
@@ -117,7 +117,7 @@ ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=s
 ENV CARGO_PROFILE_RELEASE_STRIP=symbols
 
 RUN --mount=type=cache,target=/root/.cache \
-    /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
+    bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
@@ -133,13 +133,13 @@ RUN set -euo pipefail && \
 FROM builder-base AS builder-version-info
 
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy the standalone version info generation script
 COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
 
 # Generate version-info files with hardcoded PostgreSQL version
-RUN set -ex && \
+RUN set -euo pipefail && \
     echo "Generating version info for PostgreSQL 18.1..." && \
     bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
     bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \

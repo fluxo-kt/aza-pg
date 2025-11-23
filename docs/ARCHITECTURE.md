@@ -29,7 +29,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 │           │                     │                                   │
 │           ▼                     │                                   │
 │     aza-pg:pg18 Image           │                                   │
-│     (~450MB)                    │                                   │
+│     (~900MB)                    │                                   │
 │     + SBOM/Provenance           │                                   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -109,7 +109,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 - Stage 2 (final): Copies only `.so` files and control files to slim image
 - Embeds auto-config entrypoint script
 
-**Output:** Single multi-arch image (~450MB) with SBOM/provenance
+**Output:** Single multi-arch image (~900MB uncompressed, ~250MB compressed wire) with SBOM/provenance
 
 **Security:** SHA pinning prevents tag mutation attacks (immutable commits)
 

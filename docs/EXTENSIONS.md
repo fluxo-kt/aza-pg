@@ -269,7 +269,7 @@ The manifest validation will fail if you attempt to disable these extensions.
 { name: "pgrouting", enabled: false, disabledReason: "AI workload - no geospatial data" },
 ```
 
-**Result:** Smaller image (~900MB vs ~1.14GB), faster build (~7 min vs ~12 min).
+**Result:** Smaller customized image (reduction proportional to disabled extensions), faster build (~7 min vs ~12 min).
 
 ### Dependency Validation
 

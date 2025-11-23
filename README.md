@@ -22,16 +22,16 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 
 ## Why aza-pg?
 
-| Feature                | Official postgres:18 | aza-pg:18                              |
-| ---------------------- | -------------------- | -------------------------------------- |
-| **Extensions**         | Contrib only (~10)   | Comprehensive extension catalog        |
-| **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                   |
-| **Connection Pooling** | Separate setup       | PgBouncer integrated                   |
-| **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter |
-| **ARM64**              | QEMU emulation       | Native builds                          |
-| **Reproducibility**    | Latest tags          | SHA-pinned base + extensions           |
-| **Image Size**         | ~150MB               | ~450MB (with extensions)               |
-| **Use Case**           | Minimal baseline     | Production-ready batteries included    |
+| Feature                | Official postgres:18 | aza-pg:18                                                 |
+| ---------------------- | -------------------- | --------------------------------------------------------- |
+| **Extensions**         | Contrib only (~10)   | Comprehensive extension catalog                           |
+| **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                                      |
+| **Connection Pooling** | Separate setup       | PgBouncer integrated                                      |
+| **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter                    |
+| **ARM64**              | QEMU emulation       | Native builds                                             |
+| **Reproducibility**    | Latest tags          | SHA-pinned base + extensions                              |
+| **Image Size**         | ~150MB               | ~250MB compressed / ~900MB uncompressed (with extensions) |
+| **Use Case**           | Minimal baseline     | Production-ready batteries included                       |
 
 ## Extensions
 
@@ -83,7 +83,7 @@ See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.
 
 ## Image Details
 
-~450MB compressed (amd64 + arm64). Multi-stage build with parallel compilation. Runtime: ca-certificates, zstd, lz4.
+~250MB compressed / ~900MB uncompressed (amd64 + arm64). Multi-stage build with parallel compilation. Runtime: ca-certificates, zstd, lz4.
 
 ## Quick Start
 
@@ -160,7 +160,10 @@ scrape_configs:
 bun run build                # 2min with remote cache
 bun run test:all             # Full suite
 bun run test:all:fast        # Validation only
+bun run validate:artifacts   # Validate published image artifacts
 ```
+
+**Release Validation:** [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md) contains comprehensive validation results for the latest published release image (updated with each release).
 
 See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 

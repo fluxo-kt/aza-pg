@@ -322,6 +322,13 @@ async function validate(
       required: true,
       requiresDocker: true,
     });
+    dockerVerificationChecks.push({
+      name: "Image Artifacts Validation",
+      command: ["bun", "scripts/docker/validate-published-image-artifacts.ts", imageTag],
+      description: `Docker image artifacts validation (${imageTag})`,
+      required: true,
+      requiresDocker: true,
+    });
   }
 
   // Validate image tag requirement

@@ -22,7 +22,7 @@
 ### Changed
 
 - Multi-stage build with Bun (build-time only, not in final image)
-- Final image: 1.19GB, 36/38 extensions enabled
+- Final image: ~900MB uncompressed (~250MB compressed wire)
 
 ### Security
 
@@ -79,5 +79,5 @@
 
 ## [2025-11 - Earlier]
 
-- PGDG hybrid strategy (14 extensions), image optimization (1.41GB→1.14GB), enable/disable architecture
+- PGDG hybrid strategy (14 extensions), image optimization (progressive size reduction to current ~900MB), enable/disable architecture
 - Security hardening (SHA-pinned, TLS support), configuration improvements

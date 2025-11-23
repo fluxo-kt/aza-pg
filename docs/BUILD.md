@@ -431,7 +431,7 @@ Custom annotations for aza-pg metadata:
 - Copies only `.so` files and control files from builder
 - Minimal runtime dependencies (ca-certificates, zstd, lz4)
 - No build tools in final image
-- Final size: ~450MB (multi-platform manifest: ~900MB total)
+- Final size: ~900MB uncompressed per platform (~250MB compressed wire, ~1.8GB combined multi-arch)
 
 ### Supply Chain Security
 

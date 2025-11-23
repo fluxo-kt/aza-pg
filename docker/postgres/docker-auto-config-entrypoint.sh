@@ -370,7 +370,7 @@ calculate_wal_buffers() {
 calculate_io_workers() {
     # io_workers: scale with CPU cores, minimum 1 for small systems
     local value=$(( CPU_CORES / 4 ))
-    
+
     # Minimum: 1 (allow small systems), Maximum: 64
     [ "$value" -lt 1 ] && value=1
     [ "$value" -gt 64 ] && value=64

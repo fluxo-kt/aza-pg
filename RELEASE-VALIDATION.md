@@ -1,5 +1,8 @@
-# Test Results: ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node
+# Release Validation Results
 
+**Purpose**: This document contains comprehensive validation results for the latest published release image. Updated with each new release to verify image quality, functionality, and production readiness.
+
+**Current Release**: `ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node`
 **Test Date**: 2025-11-23
 **Image Digest**: `sha256:c2ef7611199b503d151577ba4379f972693b617cb0a13c9cd66036c26b9efc3e`
 **Platform**: linux/arm64
@@ -73,10 +76,13 @@ ghcr.io/fluxo-kt/aza-pg   18.1-202511230033-single-node  b15e05e8bd8a   4 days a
 
 ### Compressed Size (Transfer/Storage)
 
-**Command**: `docker save ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node | wc -c`
-**Result**: **903.94 MB** (0.88 GB)
+**Command**: `docker manifest inspect ghcr.io/fluxo-kt/aza-pg@sha256:c2ef7611199b503d151577ba4379f972693b617cb0a13c9cd66036c26b9efc3e | grep -E '"size"' | awk -F ':' '{sum+=$2} END {print sum}'`
 
-**Analysis**: Compressed size slightly larger than uncompressed due to layer metadata overhead. This is expected behavior for Docker image tarballs.
+**Result**: **247.93 MB** (0.24 GB)
+
+**Calculation Method**: Sum of all layer sizes + config size from manifest (actual wire size for registry transfers)
+
+**Note**: This is significantly smaller than the uncompressed size (894.44 MB) due to gzip compression of layers. This is the actual network transfer size when pulling the image from a registry.
 
 ---
 
@@ -464,7 +470,7 @@ error: Cannot use afterAll() outside of the test runner. Run "bun test" to run t
 The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node`** has been comprehensively tested and validated across multiple dimensions:
 
 1. **Image Artifacts**: All OCI metadata, configuration, and structure validated
-2. **Size Verification**: Both compressed (903.94 MB) and uncompressed (894.44 MB) sizes confirmed
+2. **Size Verification**: Both compressed (247.93 MB wire size) and uncompressed (894.44 MB) sizes confirmed
 3. **Extension Functionality**: 18 extensions tested and operational
 4. **Auto-Configuration**: 36 test scenarios covering memory, CPU, workload, storage tuning
 5. **Deployment Modes**: Single-node and primary-replica configurations validated

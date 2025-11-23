@@ -9,7 +9,7 @@
  * - Image configuration (ports, user, workdir, entrypoint)
  * - Layer structure and count
  * - Architecture and platform
- * - Image size
+ * - Image size (both uncompressed and compressed/wire size)
  *
  * Usage:
  *   bun scripts/docker/validate-published-image-artifacts.ts [IMAGE_TAG]
@@ -211,7 +211,7 @@ function validateImageSize(imageData: ImageData): ValidationResult {
 
   if (sizeGB > 2) {
     return {
-      name: "Image Size",
+      name: "Image Size (Uncompressed)",
       passed: true,
       critical: false,
       message: `${formatSize(size)} (warning: exceeds 2GB)`,
@@ -219,11 +219,116 @@ function validateImageSize(imageData: ImageData): ValidationResult {
   }
 
   return {
-    name: "Image Size",
+    name: "Image Size (Uncompressed)",
     passed: true,
     critical: false,
     message: formatSize(size),
   };
+}
+
+async function validateCompressedSize(
+  imageTag: string,
+  imageData: ImageData
+): Promise<ValidationResult> {
+  try {
+    // Get the digest from the inspected image data
+    const digest = imageData.RepoDigests?.[0]?.split("@")[1];
+
+    if (!digest) {
+      return {
+        name: "Image Size (Compressed)",
+        passed: true,
+        critical: false,
+        message: "Not available (local image without digest)",
+      };
+    }
+
+    // Extract repository from image tag
+    const repo = imageTag.includes("/") ? imageTag.split(":")[0] : imageTag;
+    const manifestUrl = `${repo}@${digest}`;
+
+    // Get manifest to calculate compressed size
+    const manifestResult = await $`docker manifest inspect ${manifestUrl}`.nothrow().json();
+
+    if (!manifestResult || typeof manifestResult !== "object") {
+      return {
+        name: "Image Size (Compressed)",
+        passed: true,
+        critical: false,
+        message: "Unable to fetch manifest",
+      };
+    }
+
+    // Check if this is a manifest index (multi-arch)
+    const manifest = manifestResult as any;
+    if (manifest.manifests && Array.isArray(manifest.manifests)) {
+      // Multi-arch image - find the current platform's manifest
+      const platformArch = imageData.Architecture;
+      const platformManifest = manifest.manifests.find(
+        (m: any) => m.platform?.architecture === platformArch
+      );
+
+      if (!platformManifest) {
+        return {
+          name: "Image Size (Compressed)",
+          passed: true,
+          critical: false,
+          message: `Platform ${platformArch} not found in manifest`,
+        };
+      }
+
+      // Fetch platform-specific manifest
+      const platformResult = await $`docker manifest inspect ${repo}@${platformManifest.digest}`
+        .nothrow()
+        .json();
+
+      if (!platformResult || typeof platformResult !== "object") {
+        return {
+          name: "Image Size (Compressed)",
+          passed: true,
+          critical: false,
+          message: "Unable to fetch platform manifest",
+        };
+      }
+
+      const platformData = platformResult as any;
+      const configSize = platformData.config?.size || 0;
+      const layersSize = (platformData.layers || []).reduce(
+        (sum: number, layer: any) => sum + (layer.size || 0),
+        0
+      );
+      const totalSize = configSize + layersSize;
+
+      return {
+        name: "Image Size (Compressed)",
+        passed: true,
+        critical: false,
+        message: `${formatSize(totalSize)} (wire size)`,
+      };
+    }
+
+    // Single-arch manifest
+    const configSize = manifest.config?.size || 0;
+    const layersSize = (manifest.layers || []).reduce(
+      (sum: number, layer: any) => sum + (layer.size || 0),
+      0
+    );
+    const totalSize = configSize + layersSize;
+
+    return {
+      name: "Image Size (Compressed)",
+      passed: true,
+      critical: false,
+      message: `${formatSize(totalSize)} (wire size)`,
+    };
+  } catch (err) {
+    return {
+      name: "Image Size (Compressed)",
+      passed: true,
+      critical: false,
+      message: `Error calculating: ${getErrorMessage(err)}`,
+    };
+  }
 }
 
 function validateOciLabels(imageData: ImageData): ValidationResult[] {
@@ -484,6 +589,7 @@ async function validateImage(imageTag: string): Promise<number> {
   // Run all validations
   results.push(validateDigest(imageData));
   results.push(validateImageSize(imageData));
+  results.push(await validateCompressedSize(imageTag, imageData));
   results.push(...validateOciLabels(imageData));
   results.push(validateExposedPorts(imageData));
   results.push(validateUser(imageData));

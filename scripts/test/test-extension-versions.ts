@@ -196,7 +196,7 @@ async function testPostgisData(config: TestConfig): Promise<TestResult> {
     info("Creating postgis extension...");
     try {
       await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS postgis;"`;
-    } catch (err) {
+    } catch {
       warning("PostGIS extension not available (might be disabled in manifest)");
       return { name: "Create Test Data with PostGIS", passed: true, duration: Date.now() - start };
     }

@@ -385,6 +385,26 @@ cosign verify \
   ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
 ```
 
+**Verify SLSA build provenance attestation:**
+
+```bash
+# Using GitHub CLI (recommended)
+gh attestation verify oci://ghcr.io/fluxo-kt/aza-pg@sha256:<digest> --owner fluxo-kt
+
+# Using Cosign
+cosign verify-attestation \
+  --type slsaprovenance \
+  --certificate-identity-regexp="^https://github.com/fluxo-kt/aza-pg/.*$" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/fluxo-kt/aza-pg@sha256:<digest>
+```
+
+**View SBOM:**
+
+```bash
+cosign download sbom ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
+```
+
 ### Version Selection for Production
 
 **Recommended**: Use full versioned tags for production:

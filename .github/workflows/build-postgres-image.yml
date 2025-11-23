@@ -257,8 +257,9 @@ jobs:
             PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
-          # Enable OCI media types explicitly for proper multi-arch manifest support
-          provenance: mode=max
+          # BuildKit provenance disabled to prevent potential secret leakage via build args
+          # Dev builds don't use GitHub attestation action (publish.yml only)
+          provenance: false
           sbom: true
 
       - name: Build and load (local only)

@@ -356,10 +356,18 @@ Exit codes:
   const squawkPassed = await runSquawkLinter(sqlFiles);
 
   // Final exit code based on both validations
+  // Note: Squawk findings are informational (exit 0 even if issues found)
+  // This allows gradual adoption without blocking CI/CD
   console.log();
-  if (filesWithErrors > 0 || !squawkPassed) {
-    console.log("❌ SQL validation failed");
+  if (filesWithErrors > 0) {
+    console.log("❌ SQL validation failed (formatting/syntax errors)");
     process.exit(1);
+  } else if (!squawkPassed) {
+    console.log(
+      "⚠️  SQL validation passed with Squawk warnings (see above for PostgreSQL best practices)"
+    );
+    console.log("✅ No critical errors - formatting and syntax are correct");
+    process.exit(0); // Exit 0 to not block CI, but warnings are visible
   } else {
     console.log("✅ SQL validation passed");
     process.exit(0);

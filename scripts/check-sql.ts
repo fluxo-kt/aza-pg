@@ -2,6 +2,7 @@
 /**
  * SQL Validation Script
  * Validates SQL files for formatting and basic syntax issues
+ * Runs dual-layer linting: Custom rules + Squawk PostgreSQL linter
  *
  * Usage:
  *   bun scripts/check-sql.ts           # Check all SQL files
@@ -12,6 +13,7 @@
  *   1: Some checks failed
  */
 
+import { $ } from "bun";
 import { format } from "sql-formatter";
 
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
@@ -225,32 +227,71 @@ async function findSqlFiles(): Promise<string[]> {
   return files;
 }
 
+/**
+ * Run Squawk PostgreSQL linter
+ * Returns true if passed, false if failed
+ */
+async function runSquawkLinter(sqlFiles: string[]): Promise<boolean> {
+  // Only lint SQL files that are not auto-generated (or lint all - Squawk handles generated code well)
+  const filesToLint = sqlFiles.map((f) => f.replace(REPO_ROOT, ""));
+
+  if (filesToLint.length === 0) {
+    return true;
+  }
+
+  console.log(`\n🐘 Running Squawk PostgreSQL linter on ${filesToLint.length} file(s)...\n`);
+
+  try {
+    const result = await $`bunx squawk ${filesToLint}`.nothrow();
+
+    if (result.exitCode === 0) {
+      console.log("✅ Squawk: No PostgreSQL-specific issues found");
+      return true;
+    } else {
+      console.log("⚠️  Squawk found PostgreSQL-specific issues (see above)");
+      console.log("📖 For details: https://squawkhq.com/docs/rules");
+      return false;
+    }
+  } catch (error) {
+    console.error("❌ Squawk linter error:", error);
+    return false;
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const showHelp = args.includes("--help") || args.includes("-h");
 
   if (showHelp) {
     console.log(`
-SQL Validation
+SQL Validation (Dual-Layer Linting)
 
 Usage:
   bun scripts/check-sql.ts           # Check all SQL files
   bun scripts/check-sql.ts --help    # Show this help
 
-Formatting checks:
-  - SQL formatting validation (sql-formatter with PostgreSQL dialect)
-  - Parenthesis matching
-  - Trailing whitespace detection
-  - Mixed line endings detection
+Layer 1 - Custom Bun-Native Checks:
 
-PostgreSQL-specific linting:
-  - DELETE/UPDATE without WHERE clause (dangerous operations)
-  - TRUNCATE usage (data loss warnings)
-  - Missing transaction control for DDL
-  - Potential SQL injection in dynamic SQL (EXECUTE without format())
-  - Missing indexes on foreign keys
-  - SELECT * anti-pattern
-  - Long transaction blocks (lock concerns)
+  Formatting:
+    - SQL formatting validation (sql-formatter with PostgreSQL dialect)
+    - Parenthesis matching
+    - Trailing whitespace detection
+    - Mixed line endings detection
+
+  PostgreSQL-specific linting:
+    - DELETE/UPDATE without WHERE clause (dangerous operations)
+    - TRUNCATE usage (data loss warnings)
+    - Missing transaction control for DDL
+    - Potential SQL injection in dynamic SQL (EXECUTE without format())
+    - Missing indexes on foreign keys
+    - SELECT * anti-pattern
+    - Long transaction blocks (lock concerns)
+
+Layer 2 - Squawk PostgreSQL Linter (Rust-based):
+    - Migration safety (CONCURRENT indexes, timeouts, table rewrites)
+    - Type safety (prefer BIGINT, IDENTITY over SERIAL)
+    - Performance (missing indexes, blocking operations)
+    - Security (privilege escalations, dangerous permissions)
 
 Exit codes:
   0: All checks passed
@@ -288,7 +329,7 @@ Exit codes:
     }
   }
 
-  // Summary
+  // Summary of custom validation
   const filesWithErrors = results.filter((r) => r.errors.length > 0).length;
   const filesWithWarnings = results.filter(
     (r) => r.warnings.length > 0 && r.errors.length === 0
@@ -299,16 +340,28 @@ Exit codes:
   console.log();
   if (filesWithErrors > 0) {
     console.log(
-      `❌ ${filesWithErrors} file(s) with ${totalErrors} error(s), ${totalWarnings} warning(s)`
+      `❌ Custom validation: ${filesWithErrors} file(s) with ${totalErrors} error(s), ${totalWarnings} warning(s)`
     );
     console.log(`\nRun 'bun scripts/format-sql.ts --write' to fix formatting issues.`);
-    process.exit(1);
   } else if (filesWithWarnings > 0) {
-    console.log(`⚠️  ${filesWithWarnings} file(s) with ${totalWarnings} warning(s)`);
-    console.log(`✅ No errors found`);
-    process.exit(0);
+    console.log(
+      `⚠️  Custom validation: ${filesWithWarnings} file(s) with ${totalWarnings} warning(s)`
+    );
+    console.log(`✅ Custom validation: No errors found`);
   } else {
-    console.log(`✅ All ${sqlFiles.length} file(s) passed validation`);
+    console.log(`✅ Custom validation: All ${sqlFiles.length} file(s) passed`);
+  }
+
+  // Run Squawk PostgreSQL linter (Layer 2)
+  const squawkPassed = await runSquawkLinter(sqlFiles);
+
+  // Final exit code based on both validations
+  console.log();
+  if (filesWithErrors > 0 || !squawkPassed) {
+    console.log("❌ SQL validation failed");
+    process.exit(1);
+  } else {
+    console.log("✅ SQL validation passed");
     process.exit(0);
   }
 }

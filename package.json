@@ -9,6 +9,7 @@
     "build": "bun scripts/build.ts",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
+    "lint:sql": "bun scripts/lint-sql-squawk.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:sql": "bun scripts/format-sql.ts --write",
@@ -53,6 +54,7 @@
     "oxlint": "^1.29.0",
     "prettier": "^3.6.2",
     "sql-formatter": "^15.6.10",
+    "squawk-cli": "^2.30.0",
     "typescript": "^5.9.3"
   },
   "engines": {

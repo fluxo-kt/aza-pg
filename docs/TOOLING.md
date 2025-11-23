@@ -106,21 +106,22 @@ minimumReleaseAge = 86400  # 1 day delay
 7. ✅ Update git hooks to use `oxfmt`
 8. ✅ Document migration in CHANGELOG.md
 
-### sql-formatter + Custom PostgreSQL Linting
+### sql-formatter + Squawk + Custom PostgreSQL Linting
 
-**Version**: 15.6.10+ (sql-formatter) + Bun-native linting
-**Why**: Comprehensive SQL quality - formatting AND PostgreSQL-specific linting
+**Version**: 15.6.10+ (sql-formatter) + 2.30.0+ (Squawk) + Bun-native linting
+**Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
-**Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts`
-**Usage**: `bun run check:sql`, `bun run format:sql`, `bun run format:sql:check`
+**Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
+**Usage**: `bun run check:sql`, `bun run lint:sql`, `bun run format:sql`
 
 **Decision Rationale**:
 
 - **Formatting**: sql-formatter for PostgreSQL dialect (keywords, functions, indentation)
-- **Linting**: Custom Bun-native rules for PostgreSQL-specific issues (security, performance, correctness)
-- No external linter dependencies (SQLFluff requires Python, Squawk migration-focused)
+- **Linting Layer 1 (Squawk)**: Rust-based PostgreSQL migration/SQL linter - production-grade best practices
+- **Linting Layer 2 (Custom)**: Bun-native rules for additional security/performance checks
+- Fast execution: ~50ms (formatting) + ~200ms (Squawk) + ~50ms (custom) = ~300ms total
+- Zero Python/Ruby dependencies (Bun + Rust only)
 - Integrated into generation pipeline, pre-commit hooks, and CI/CD validation
-- Fast execution (~50ms for all 3 SQL files with comprehensive checks)
 
 **Formatting Rules** (`.sql-formatter.json`):
 
@@ -131,13 +132,32 @@ minimumReleaseAge = 86400  # 1 day delay
 - Expression width: 80 chars (optimized for readability)
 - Lines between queries: 2 (better visual separation)
 
-**PostgreSQL-Specific Linting Rules** (`scripts/check-sql.ts`):
+**Squawk Linting Rules** (`scripts/lint-sql-squawk.ts` - PostgreSQL Production Best Practices):
+
+1. **Migration Safety**:
+   - Require CONCURRENT for index creation (avoid blocking writes)
+   - Require timeout settings for slow operations (lock_timeout, statement_timeout)
+   - Detect adding columns with DEFAULT (table rewrites)
+   - Warn on renaming/dropping columns (data loss risks)
+2. **Type Safety**:
+   - Prefer BIGINT over INT (avoid 32-bit limit)
+   - Prefer IDENTITY over SERIAL (better schema management)
+   - Detect problematic type changes
+3. **Performance**:
+   - Detect missing indexes on foreign keys
+   - Warn on full table scans
+   - Identify blocking operations
+4. **Security**:
+   - Detect privilege escalations
+   - Warn on dangerous permissions
+
+**Custom Bun-Native Linting Rules** (`scripts/check-sql.ts` - Complementary Checks):
 
 1. **Security**:
    - DELETE/UPDATE without WHERE clause (dangerous)
    - Potential SQL injection in EXECUTE without format() interpolation
 2. **Performance**:
-   - Missing indexes on foreign keys
+   - Missing indexes on foreign keys (heuristic)
    - SELECT \* anti-pattern (suggest explicit columns)
    - Long transaction blocks (>50 statements, lock concerns)
 3. **Correctness**:
@@ -153,7 +173,10 @@ minimumReleaseAge = 86400  # 1 day delay
 1. **Generation**: `generateExtensionsInitScript()` auto-formats SQL at build time
 2. **Pre-commit**: Auto-formats staged `.sql` files via `scripts/pre-commit.ts`
 3. **Validation**: Required check in `scripts/validate.ts` (fast mode)
-4. **Scripts**: `scripts/format-sql.ts` (formatter), `scripts/check-sql.ts` (validator + linter)
+4. **Scripts**:
+   - `scripts/format-sql.ts` - PostgreSQL formatter
+   - `scripts/check-sql.ts` - Custom validator + linter
+   - `scripts/lint-sql-squawk.ts` - Squawk PostgreSQL linter wrapper
 
 **Scope**:
 

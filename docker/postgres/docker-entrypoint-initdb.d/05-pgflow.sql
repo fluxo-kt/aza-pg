@@ -121,7 +121,7 @@ COMMENT ON FUNCTION realtime.send IS 'Stub function replacing Supabase realtime.
 -- INITIAL SCHEMA (20250429164909_pgflow_initial.sql)
 -- ----------------------------------------------------------------------------
 -- Create "read_with_poll" function
-CREATE FUNCTION "pgflow"."read_with_poll" (
+CREATE OR REPLACE FUNCTION "pgflow"."read_with_poll" (
   "queue_name" TEXT,
   "vt" INTEGER,
   "qty" INTEGER,
@@ -182,7 +182,7 @@ $$;
 
 
 -- Create composite type "step_task_record"
-CREATE TYPE "pgflow"."step_task_record" AS (
+CREATE TYPE IF NOT EXISTS "pgflow"."step_task_record" AS (
   "flow_slug" TEXT,
   "run_id" UUID,
   "step_slug" TEXT,
@@ -192,7 +192,7 @@ CREATE TYPE "pgflow"."step_task_record" AS (
 
 
 -- Create "is_valid_slug" function
-CREATE FUNCTION "pgflow"."is_valid_slug" ("slug" TEXT) RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION "pgflow"."is_valid_slug" ("slug" TEXT) RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
     RETURN
       slug IS NOT NULL
@@ -205,7 +205,7 @@ $$;
 
 
 -- Create "flows" table
-CREATE TABLE "pgflow"."flows" (
+CREATE TABLE IF NOT EXISTS "pgflow"."flows" (
   "flow_slug" TEXT NOT NULL,
   "opt_max_attempts" INTEGER NOT NULL DEFAULT 3,
   "opt_base_delay" INTEGER NOT NULL DEFAULT 1,
@@ -220,7 +220,7 @@ CREATE TABLE "pgflow"."flows" (
 
 
 -- Create "steps" table
-CREATE TABLE "pgflow"."steps" (
+CREATE TABLE IF NOT EXISTS "pgflow"."steps" (
   "flow_slug" TEXT NOT NULL,
   "step_slug" TEXT NOT NULL,
   "step_type" TEXT NOT NULL DEFAULT 'single',
@@ -252,7 +252,7 @@ CREATE TABLE "pgflow"."steps" (
 
 
 -- Create "deps" table
-CREATE TABLE "pgflow"."deps" (
+CREATE TABLE IF NOT EXISTS "pgflow"."deps" (
   "flow_slug" TEXT NOT NULL,
   "dep_slug" TEXT NOT NULL,
   "step_slug" TEXT NOT NULL,
@@ -265,14 +265,14 @@ CREATE TABLE "pgflow"."deps" (
 );
 
 
-CREATE INDEX "idx_deps_by_flow_dep" ON "pgflow"."deps" ("flow_slug", "dep_slug");
+CREATE INDEX IF NOT EXISTS "idx_deps_by_flow_dep" ON "pgflow"."deps" ("flow_slug", "dep_slug");
 
 
-CREATE INDEX "idx_deps_by_flow_step" ON "pgflow"."deps" ("flow_slug", "step_slug");
+CREATE INDEX IF NOT EXISTS "idx_deps_by_flow_step" ON "pgflow"."deps" ("flow_slug", "step_slug");
 
 
 -- Create "runs" table
-CREATE TABLE "pgflow"."runs" (
+CREATE TABLE IF NOT EXISTS "pgflow"."runs" (
   "run_id" UUID NOT NULL DEFAULT gen_random_uuid(),
   "flow_slug" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'started',
@@ -303,14 +303,14 @@ CREATE TABLE "pgflow"."runs" (
 );
 
 
-CREATE INDEX "idx_runs_flow_slug" ON "pgflow"."runs" ("flow_slug");
+CREATE INDEX IF NOT EXISTS "idx_runs_flow_slug" ON "pgflow"."runs" ("flow_slug");
 
 
-CREATE INDEX "idx_runs_status" ON "pgflow"."runs" ("status");
+CREATE INDEX IF NOT EXISTS "idx_runs_status" ON "pgflow"."runs" ("status");
 
 
 -- Create "step_states" table
-CREATE TABLE "pgflow"."step_states" (
+CREATE TABLE IF NOT EXISTS "pgflow"."step_states" (
   "flow_slug" TEXT NOT NULL,
   "run_id" UUID NOT NULL,
   "step_slug" TEXT NOT NULL,
@@ -355,15 +355,15 @@ CREATE TABLE "pgflow"."step_states" (
 );
 
 
-CREATE INDEX "idx_step_states_failed" ON "pgflow"."step_states" ("run_id", "step_slug")
+CREATE INDEX IF NOT EXISTS "idx_step_states_failed" ON "pgflow"."step_states" ("run_id", "step_slug")
 WHERE
   (status = 'failed'::TEXT);
 
 
-CREATE INDEX "idx_step_states_flow_slug" ON "pgflow"."step_states" ("flow_slug");
+CREATE INDEX IF NOT EXISTS "idx_step_states_flow_slug" ON "pgflow"."step_states" ("flow_slug");
 
 
-CREATE INDEX "idx_step_states_ready" ON "pgflow"."step_states" ("run_id", "status", "remaining_deps")
+CREATE INDEX IF NOT EXISTS "idx_step_states_ready" ON "pgflow"."step_states" ("run_id", "status", "remaining_deps")
 WHERE
   (
     (status = 'created'::TEXT)
@@ -372,7 +372,7 @@ WHERE
 
 
 -- Create "step_tasks" table
-CREATE TABLE "pgflow"."step_tasks" (
+CREATE TABLE IF NOT EXISTS "pgflow"."step_tasks" (
   "flow_slug" TEXT NOT NULL,
   "run_id" UUID NOT NULL,
   "step_slug" TEXT NOT NULL,
@@ -413,29 +413,29 @@ CREATE TABLE "pgflow"."step_tasks" (
 );
 
 
-CREATE INDEX "idx_step_tasks_completed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_completed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'completed'::TEXT);
 
 
-CREATE INDEX "idx_step_tasks_failed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_failed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'failed'::TEXT);
 
 
-CREATE INDEX "idx_step_tasks_flow_run_step" ON "pgflow"."step_tasks" ("flow_slug", "run_id", "step_slug");
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_flow_run_step" ON "pgflow"."step_tasks" ("flow_slug", "run_id", "step_slug");
 
 
-CREATE INDEX "idx_step_tasks_message_id" ON "pgflow"."step_tasks" ("message_id");
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_message_id" ON "pgflow"."step_tasks" ("message_id");
 
 
-CREATE INDEX "idx_step_tasks_queued" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_queued" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'queued'::TEXT);
 
 
 -- Create "poll_for_tasks" function (will be deprecated later)
-CREATE FUNCTION "pgflow"."poll_for_tasks" (
+CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks" (
   "queue_name" TEXT,
   "vt" INTEGER,
   "qty" INTEGER,
@@ -531,7 +531,7 @@ $$;
 
 
 -- Create "add_step" function (multiple overloads)
-CREATE FUNCTION "pgflow"."add_step" (
+CREATE OR REPLACE FUNCTION "pgflow"."add_step" (
   "flow_slug" TEXT,
   "step_slug" TEXT,
   "deps_slugs" TEXT[],
@@ -566,7 +566,7 @@ SELECT * FROM create_step;
 $$;
 
 
-CREATE FUNCTION "pgflow"."add_step" (
+CREATE OR REPLACE FUNCTION "pgflow"."add_step" (
   "flow_slug" TEXT,
   "step_slug" TEXT,
   "max_attempts" INTEGER DEFAULT NULL::INTEGER,
@@ -580,13 +580,13 @@ $$;
 
 
 -- Create "calculate_retry_delay" function
-CREATE FUNCTION "pgflow"."calculate_retry_delay" ("base_delay" NUMERIC, "attempts_count" INTEGER) RETURNS INTEGER LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+CREATE OR REPLACE FUNCTION "pgflow"."calculate_retry_delay" ("base_delay" NUMERIC, "attempts_count" INTEGER) RETURNS INTEGER LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT floor(base_delay * power(2, attempts_count))::int
 $$;
 
 
 -- Create "maybe_complete_run" function
-CREATE FUNCTION "pgflow"."maybe_complete_run" ("run_id" UUID) RETURNS void LANGUAGE sql
+CREATE OR REPLACE FUNCTION "pgflow"."maybe_complete_run" ("run_id" UUID) RETURNS void LANGUAGE sql
 SET
   "search_path" = '' AS $$
 UPDATE pgflow.runs
@@ -614,7 +614,7 @@ $$;
 
 
 -- Create "start_ready_steps" function
-CREATE FUNCTION "pgflow"."start_ready_steps" ("run_id" UUID) RETURNS void LANGUAGE sql
+CREATE OR REPLACE FUNCTION "pgflow"."start_ready_steps" ("run_id" UUID) RETURNS void LANGUAGE sql
 SET
   "search_path" = '' AS $$
 WITH ready_steps AS (
@@ -659,7 +659,7 @@ $$;
 
 
 -- Create "complete_task" function
-CREATE FUNCTION "pgflow"."complete_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "output" JSONB) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION "pgflow"."complete_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "output" JSONB) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -752,7 +752,7 @@ $$;
 
 
 -- Create "create_flow" function
-CREATE FUNCTION "pgflow"."create_flow" (
+CREATE OR REPLACE FUNCTION "pgflow"."create_flow" (
   "flow_slug" TEXT,
   "max_attempts" INTEGER DEFAULT 3,
   "base_delay" INTEGER DEFAULT 5,
@@ -781,7 +781,7 @@ $$;
 
 
 -- Create "fail_task" function
-CREATE FUNCTION "pgflow"."fail_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "error_message" TEXT) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION "pgflow"."fail_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "error_message" TEXT) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -912,7 +912,7 @@ $$;
 
 
 -- Create "start_flow" function (initial version, will be replaced)
-CREATE FUNCTION "pgflow"."start_flow" ("flow_slug" TEXT, "input" JSONB) RETURNS SETOF "pgflow"."runs" LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION "pgflow"."start_flow" ("flow_slug" TEXT, "input" JSONB) RETURNS SETOF "pgflow"."runs" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 DECLARE
@@ -954,7 +954,7 @@ $$;
 
 
 -- Create "workers" table
-CREATE TABLE "pgflow"."workers" (
+CREATE TABLE IF NOT EXISTS "pgflow"."workers" (
   "worker_id" UUID NOT NULL,
   "queue_name" TEXT NOT NULL,
   "function_name" TEXT NOT NULL,
@@ -965,7 +965,7 @@ CREATE TABLE "pgflow"."workers" (
 );
 
 
-CREATE INDEX "idx_workers_queue_name" ON "pgflow"."workers" ("queue_name");
+CREATE INDEX IF NOT EXISTS "idx_workers_queue_name" ON "pgflow"."workers" ("queue_name");
 
 
 -- ----------------------------------------------------------------------------
@@ -1080,7 +1080,7 @@ $$;
 -- (20250610080624_20250609105135_pgflow_add_start_tasks_and_started_status.sql)
 -- ----------------------------------------------------------------------------
 -- Add heartbeat index to workers
-CREATE INDEX "idx_workers_heartbeat" ON "pgflow"."workers" ("last_heartbeat_at");
+CREATE INDEX IF NOT EXISTS "idx_workers_heartbeat" ON "pgflow"."workers" ("last_heartbeat_at");
 
 
 -- Modify "step_tasks" table to add started status and worker tracking
@@ -1108,17 +1108,17 @@ ADD COLUMN "last_worker_id" UUID NULL,
 ADD CONSTRAINT "step_tasks_last_worker_id_fkey" FOREIGN KEY ("last_worker_id") REFERENCES "pgflow"."workers" ("worker_id") ON UPDATE NO ACTION ON DELETE SET NULL;
 
 
-CREATE INDEX "idx_step_tasks_last_worker" ON "pgflow"."step_tasks" ("last_worker_id")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_last_worker" ON "pgflow"."step_tasks" ("last_worker_id")
 WHERE
   (status = 'started'::TEXT);
 
 
-CREATE INDEX "idx_step_tasks_queued_msg" ON "pgflow"."step_tasks" ("message_id")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_queued_msg" ON "pgflow"."step_tasks" ("message_id")
 WHERE
   (status = 'queued'::TEXT);
 
 
-CREATE INDEX "idx_step_tasks_started" ON "pgflow"."step_tasks" ("started_at")
+CREATE INDEX IF NOT EXISTS "idx_step_tasks_started" ON "pgflow"."step_tasks" ("started_at")
 WHERE
   (status = 'started'::TEXT);
 
@@ -1376,7 +1376,7 @@ $$;
 
 
 -- Create "start_tasks" function (new two-phase polling approach)
-CREATE FUNCTION "pgflow"."start_tasks" ("flow_slug" TEXT, "msg_ids" BIGINT[], "worker_id" UUID) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
+CREATE OR REPLACE FUNCTION "pgflow"."start_tasks" ("flow_slug" TEXT, "msg_ids" BIGINT[], "worker_id" UUID) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
 SET
   "search_path" = '' AS $$
 WITH tasks AS (

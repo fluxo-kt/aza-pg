@@ -273,7 +273,6 @@ jobs:
           build-args: |
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
-            VERSION=${{ needs.prep.outputs.image_tag }}
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           # BuildKit provenance disabled - using GitHub attestation (SLSA v1.0) instead

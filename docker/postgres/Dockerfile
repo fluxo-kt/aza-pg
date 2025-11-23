@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T03:57:40.133Z
+# Generated at: 2025-11-23T04:16:12.434Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -7,24 +7,22 @@
 
 # PostgreSQL 18.1 with comprehensive extension suite
 
-# Build metadata for OCI labels (defaults generated at Dockerfile generation time)
-ARG BUILD_DATE="2025-11-23T03:57:40.128Z"
-ARG VCS_REF="3b11a146443c62db894ed6cb51339b92819bc616"
-ARG VERSION="18.1"
+# Build metadata for OCI labels (required, no defaults - must be passed by CI/CD)
+ARG BUILD_DATE
+ARG VCS_REF
 
 FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG BUILD_DATE
 ARG VCS_REF
-ARG VERSION
 
 # OCI image labels
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.version="18.1"
 LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with comprehensive extension catalog"
+LABEL org.opencontainers.image.description="PostgreSQL 18 with comprehensive extension catalog"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,7 +48,7 @@ RUN set -eu && \
       ca-certificates \
       rsync \
       unzip \
-      postgresql-server-dev-${PG_MAJOR} \
+      postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -78,23 +76,23 @@ RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
     mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb && \
-    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/contrib/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib/ && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/timescaledb && \
+    rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
+    rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
+    rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
     rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
-    if [ -d /usr/share/postgresql/${PG_MAJOR}/timescaledb ]; then \
-      rsync -a /usr/share/postgresql/${PG_MAJOR}/timescaledb/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb/; \
+    if [ -d /usr/share/postgresql/18/timescaledb ]; then \
+      rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
     fi && \
-    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -exec strip --strip-debug {} \; && \
     find /opt/ext-out/usr/local/lib -name '*.so' -exec strip --strip-debug {} \; 2>/dev/null || true && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for cargo-pgrx builds
@@ -113,12 +111,12 @@ RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
-    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
-    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
+    rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
+    rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for version info generation using standalone TypeScript script
@@ -159,7 +157,7 @@ RUN set -eu && \
     apt-get install -y --no-install-recommends \
       # postgresql-client provides psql CLI tool (base postgres image only has server)
       # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
-      postgresql-client-${PG_MAJOR} \
+      postgresql-client-18 \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
@@ -173,10 +171,10 @@ RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 postgresql-${PG_MAJOR}-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-${PG_MAJOR}-partman=5.3.1-2.pgdg13+1 postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 postgresql-${PG_MAJOR}-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-${PG_MAJOR}-partman=5.3.1-2.pgdg13+1 postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
+    dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
     echo "Expected 12 enabled PGDG packages from manifest" && \
@@ -185,13 +183,13 @@ RUN set -eu && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
-    find /usr/lib/postgresql/${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
+RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 

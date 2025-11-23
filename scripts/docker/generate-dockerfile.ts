@@ -5,15 +5,15 @@
  * This script reads the Dockerfile.template and replaces placeholders with
  * actual values from the extensions manifest and extension-defaults.
  *
- * Version dependencies are hardcoded at generation time (PG_VERSION, PG_BASE_IMAGE_SHA, PGDG versions).
- * Build metadata (BUILD_DATE, VCS_REF, VERSION) remain as ARGs with generated defaults.
+ * ARG Strategy:
+ * - All version dependencies are HARDCODED at generation time (PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions)
+ * - Only BUILD_DATE and VCS_REF remain as ARGs WITHOUT defaults (required at build time)
+ * - To test different versions: update extension-defaults.ts and regenerate
  *
  * Placeholders:
- * - {{PG_VERSION}} - PostgreSQL version (hardcoded)
+ * - {{PG_VERSION}} - PostgreSQL version (hardcoded, e.g., "18.1")
+ * - {{PG_MAJOR}} - PostgreSQL major version (hardcoded, extracted from PG_VERSION, e.g., "18")
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
- * - {{BUILD_DATE_DEFAULT}} - ISO timestamp at generation time (ARG default)
- * - {{VCS_REF_DEFAULT}} - Git commit SHA at generation time (ARG default)
- * - {{VERSION_DEFAULT}} - Image version at generation time (ARG default)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
  * - {{VERSION_INFO_GENERATION}} - Version info generation script
  *
@@ -22,7 +22,6 @@
  */
 
 import { join } from "node:path";
-import { $ } from "bun";
 import { extensionDefaults } from "../extension-defaults";
 import { error, info, section, success } from "../utils/logger";
 
@@ -153,37 +152,10 @@ async function readManifest(): Promise<Manifest> {
 }
 
 /**
- * Generate BUILD_DATE (ISO timestamp at generation time)
- */
-function generateBuildDate(): string {
-  return new Date().toISOString();
-}
-
-/**
- * Generate VCS_REF (current git commit SHA)
- */
-async function generateVcsRef(): Promise<string> {
-  try {
-    const result = await $`git rev-parse HEAD`.text();
-    return result.trim();
-  } catch {
-    // Fallback if git not available or not in repo
-    return "unknown";
-  }
-}
-
-/**
- * Generate VERSION (use PG version as image version)
- */
-function generateVersion(): string {
-  return extensionDefaults.pgVersion;
-}
-
-/**
  * Generate PGDG package installation script
- * Versions are hardcoded directly (no ARG references)
+ * Versions and PG_MAJOR are hardcoded directly
  */
-function generatePgdgPackagesInstall(manifest: Manifest): string {
+function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): string {
   const enabledPgdgPackages: string[] = [];
 
   for (const mapping of PGDG_MAPPINGS) {
@@ -192,7 +164,7 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
     if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
       // Package is enabled - use hardcoded version from extensionDefaults
       const version = extensionDefaults.pgdgVersions[mapping.versionKey];
-      enabledPgdgPackages.push(`postgresql-\${PG_MAJOR}-${mapping.packageName}=${version}`);
+      enabledPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
     }
   }
 
@@ -210,7 +182,7 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
     echo "Installing PGDG packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-\${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \\
+    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log && \\
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
     echo "Expected ${expectedCount} enabled PGDG packages from manifest" && \\
@@ -219,7 +191,7 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
-    find /usr/lib/postgresql/\${PG_MAJOR}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
 /**
@@ -251,6 +223,18 @@ function generateCargoManifest(manifest: Manifest): Manifest {
     generatedAt: manifest.generatedAt,
     entries: filteredEntries,
   };
+}
+
+/**
+ * Extract PG_MAJOR from PG_VERSION (e.g., "18.1" -> "18")
+ */
+function extractPgMajor(): string {
+  const pgVersion = extensionDefaults.pgVersion;
+  const majorVersion = pgVersion.split(".")[0];
+  if (!majorVersion) {
+    throw new Error(`Could not extract major version from PG_VERSION: ${pgVersion}`);
+  }
+  return majorVersion;
 }
 
 /**
@@ -320,18 +304,12 @@ async function generateDockerfile(): Promise<void> {
   const templateFile = Bun.file(TEMPLATE_PATH);
   let dockerfile = await templateFile.text();
 
-  // Generate runtime values
-  info("Generating BUILD_DATE...");
-  const buildDate = generateBuildDate();
-
-  info("Generating VCS_REF...");
-  const vcsRef = await generateVcsRef();
-
-  info("Generating VERSION...");
-  const version = generateVersion();
+  // Extract PG_MAJOR and generate dynamic content
+  info("Extracting PG_MAJOR...");
+  const pgMajor = extractPgMajor();
 
   info("Generating PGDG package installation script...");
-  const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest);
+  const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
 
   info("Generating version info generation script...");
   const versionInfoGeneration = generateVersionInfoGeneration(manifest);
@@ -339,10 +317,8 @@ async function generateDockerfile(): Promise<void> {
   // Replace placeholders
   info("Replacing placeholders...");
   dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
-  dockerfile = dockerfile.replace(/\{\{BUILD_DATE_DEFAULT\}\}/g, buildDate);
-  dockerfile = dockerfile.replace(/\{\{VCS_REF_DEFAULT\}\}/g, vcsRef);
-  dockerfile = dockerfile.replace(/\{\{VERSION_DEFAULT\}\}/g, version);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 

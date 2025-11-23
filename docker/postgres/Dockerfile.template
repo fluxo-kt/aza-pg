@@ -1,23 +1,21 @@
 # PostgreSQL {{PG_VERSION}} with comprehensive extension suite
 
-# Build metadata for OCI labels (defaults generated at Dockerfile generation time)
-ARG BUILD_DATE="{{BUILD_DATE_DEFAULT}}"
-ARG VCS_REF="{{VCS_REF_DEFAULT}}"
-ARG VERSION="{{VERSION_DEFAULT}}"
+# Build metadata for OCI labels (required, no defaults - must be passed by CI/CD)
+ARG BUILD_DATE
+ARG VCS_REF
 
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG BUILD_DATE
 ARG VCS_REF
-ARG VERSION
 
 # OCI image labels
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}"
 LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with comprehensive extension catalog"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_MAJOR}} with comprehensive extension catalog"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -43,7 +41,7 @@ RUN set -eu && \
       ca-certificates \
       rsync \
       unzip \
-      postgresql-server-dev-${PG_MAJOR} \
+      postgresql-server-dev-{{PG_MAJOR}} \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -71,23 +69,23 @@ RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib && \
     mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb && \
-    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/contrib/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/contrib/ && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb && \
+    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/contrib/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib/ && \
     rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
-    if [ -d /usr/share/postgresql/${PG_MAJOR}/timescaledb ]; then \
-      rsync -a /usr/share/postgresql/${PG_MAJOR}/timescaledb/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/timescaledb/; \
+    if [ -d /usr/share/postgresql/{{PG_MAJOR}}/timescaledb ]; then \
+      rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
     fi && \
-    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -exec strip --strip-debug {} \; && \
     find /opt/ext-out/usr/local/lib -name '*.so' -exec strip --strip-debug {} \; 2>/dev/null || true && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for cargo-pgrx builds
@@ -106,12 +104,12 @@ RUN --mount=type=cache,target=/root/.cache \
     /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -eu && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension && \
-    rsync -a /usr/lib/postgresql/${PG_MAJOR}/lib/ /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/ && \
-    rsync -a /usr/share/postgresql/${PG_MAJOR}/extension/ /opt/ext-out/usr/share/postgresql/${PG_MAJOR}/extension/ && \
-    find /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib -name '*.so' -exec strip --strip-debug {} \; && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/${PG_MAJOR}/lib/bitcode && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
+    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
+    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for version info generation using standalone TypeScript script
@@ -152,7 +150,7 @@ RUN set -eu && \
     apt-get install -y --no-install-recommends \
       # postgresql-client provides psql CLI tool (base postgres image only has server)
       # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
-      postgresql-client-${PG_MAJOR} \
+      postgresql-client-{{PG_MAJOR}} \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
@@ -168,7 +166,7 @@ COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-RUN rm -rf /usr/lib/postgresql/${PG_MAJOR}/lib/bitcode
+RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 

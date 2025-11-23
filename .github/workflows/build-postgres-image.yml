@@ -270,6 +270,10 @@ jobs:
       - name: Output build information (amd64 only)
         if: matrix.platform == 'linux/amd64'
         run: |
+          # Extract PostgreSQL version from Dockerfile (hardcoded at generation time)
+          BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | awk '{print $2}' | head -1)
+          PG_VERSION=$(echo "${BASE_IMAGE}" | grep -oP '\d+\.\d+' | head -1)
+
           echo "### PostgreSQL Image Built Successfully :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
@@ -279,7 +283,7 @@ jobs:
             echo "**Build Type:** Local single-platform (amd64)" >> $GITHUB_STEP_SUMMARY
             echo "**Image Digest:** \`${{ steps.build-local.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "**PostgreSQL Version:** ${{ steps.build-args.outputs.pg_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**PostgreSQL Version:** ${PG_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
           echo "- 38 total catalog entries (36 enabled, 2 disabled: pgq, supautils)" >> $GITHUB_STEP_SUMMARY

@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T12:21:59.240Z
+# Generated at: 2025-11-23T15:08:24.927Z
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -370,7 +370,7 @@ calculate_wal_buffers() {
 calculate_io_workers() {
     # io_workers: scale with CPU cores, minimum 1 for small systems
     local value=$(( CPU_CORES / 4 ))
-
+    
     # Minimum: 1 (allow small systems), Maximum: 64
     [ "$value" -lt 1 ] && value=1
     [ "$value" -gt 64 ] && value=64

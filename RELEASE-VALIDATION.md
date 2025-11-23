@@ -2,9 +2,9 @@
 
 **Purpose**: This document contains comprehensive validation results for the latest published release image. Updated with each new release to verify image quality, functionality, and production readiness.
 
-**Current Release**: `ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node`
+**Current Release**: `ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node`
 **Test Date**: 2025-11-23
-**Image Digest**: `sha256:c2ef7611199b503d151577ba4379f972693b617cb0a13c9cd66036c26b9efc3e`
+**Image Digest**: `sha256:880ec52e9ef441c5a68c8c12d63f724adfc5464490d9ed8c82f0caff588cfcb2`
 **Platform**: linux/arm64
 **PostgreSQL Version**: 18.1
 
@@ -12,7 +12,7 @@
 
 Comprehensive functional testing of the published image reveals **production-ready status** with all critical functionality validated:
 
-- ✅ **Image Artifacts**: All 15 validation checks passed
+- ✅ **Image Artifacts**: All 16 validation checks passed
 - ✅ **Image Size**: Verified both compressed and uncompressed sizes
 - ✅ **Extension Functionality**: 18 extensions tested and functional
 - ✅ **Auto-Configuration**: 36/36 test scenarios passed
@@ -27,16 +27,16 @@ Comprehensive functional testing of the published image reveals **production-rea
 ## Image Artifact Validation
 
 **Script**: `scripts/docker/validate-published-image-artifacts.ts`
-**Result**: ✅ **15/15 checks passed**
+**Result**: ✅ **16/16 checks passed**
 
 ### Validation Results
 
 | Check                  | Status  | Details                                                                   |
 | ---------------------- | ------- | ------------------------------------------------------------------------- |
 | Image Exists           | ✅ Pass | Image successfully pulled and inspected                                   |
-| Image Digest           | ✅ Pass | `sha256:c2ef7611199b503d151577ba4379f972693b617cb0a13c9cd66036c26b9efc3e` |
-| Image Size             | ✅ Pass | 894.44 MB (0.87 GB)                                                       |
-| OCI Label: version     | ✅ Pass | `18.1-202511230033-single-node`                                           |
+| Image Digest           | ✅ Pass | `sha256:880ec52e9ef441c5a68c8c12d63f724adfc5464490d9ed8c82f0caff588cfcb2` |
+| Image Size             | ✅ Pass | 894.07 MB (0.87 GB)                                                       |
+| OCI Label: version     | ✅ Pass | `18.1-202511231356-single-node`                                           |
 | OCI Label: created     | ✅ Pass | Timestamp present                                                         |
 | OCI Label: revision    | ✅ Pass | Git commit SHA present                                                    |
 | OCI Label: source      | ✅ Pass | Repository URL present                                                    |
@@ -66,23 +66,23 @@ All required OCI annotations present:
 
 ### Uncompressed Size
 
-**Command**: `docker images ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node`
-**Result**: **894.44 MB** (0.87 GB)
+**Command**: `docker images ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node`
+**Result**: **894.07 MB** (0.87 GB)
 
 ```
-REPOSITORY                 TAG                          IMAGE ID       CREATED      SIZE
-ghcr.io/fluxo-kt/aza-pg   18.1-202511230033-single-node  b15e05e8bd8a   4 days ago   894MB
+REPOSITORY                 TAG                            IMAGE ID       CREATED         SIZE
+ghcr.io/fluxo-kt/aza-pg   18.1-202511231356-single-node  6521c4426efb   43 minutes ago  938MB
 ```
 
 ### Compressed Size (Transfer/Storage)
 
-**Command**: `docker manifest inspect ghcr.io/fluxo-kt/aza-pg@sha256:c2ef7611199b503d151577ba4379f972693b617cb0a13c9cd66036c26b9efc3e | grep -E '"size"' | awk -F ':' '{sum+=$2} END {print sum}'`
+**Command**: `docker manifest inspect ghcr.io/fluxo-kt/aza-pg@sha256:880ec52e9ef441c5a68c8c12d63f724adfc5464490d9ed8c82f0caff588cfcb2 | grep -E '"size"' | awk -F ':' '{sum+=$2} END {print sum}'`
 
-**Result**: **247.93 MB** (0.24 GB)
+**Result**: **247.79 MB** (0.24 GB)
 
 **Calculation Method**: Sum of all layer sizes + config size from manifest (actual wire size for registry transfers)
 
-**Note**: This is significantly smaller than the uncompressed size (894.44 MB) due to gzip compression of layers. This is the actual network transfer size when pulling the image from a registry.
+**Note**: This is significantly smaller than the uncompressed size (894.07 MB) due to gzip compression of layers. This is the actual network transfer size when pulling the image from a registry.
 
 ---
 
@@ -467,10 +467,10 @@ error: Cannot use afterAll() outside of the test runner. Run "bun test" to run t
 
 ### Summary
 
-The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node`** has been comprehensively tested and validated across multiple dimensions:
+The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node`** has been comprehensively tested and validated across multiple dimensions:
 
 1. **Image Artifacts**: All OCI metadata, configuration, and structure validated
-2. **Size Verification**: Both compressed (247.93 MB wire size) and uncompressed (894.44 MB) sizes confirmed
+2. **Size Verification**: Both compressed (247.79 MB wire size) and uncompressed (894.07 MB) sizes confirmed
 3. **Extension Functionality**: 18 extensions tested and operational
 4. **Auto-Configuration**: 36 test scenarios covering memory, CPU, workload, storage tuning
 5. **Deployment Modes**: Single-node and primary-replica configurations validated
@@ -521,37 +521,37 @@ All identified issues are **test infrastructure bugs**, not image defects:
 ### Reproduce Image Artifact Validation
 
 ```bash
-bun scripts/docker/validate-published-image-artifacts.ts ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node
+bun scripts/docker/validate-published-image-artifacts.ts ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node
 ```
 
 ### Reproduce Size Verification
 
 ```bash
 # Uncompressed
-docker images ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node
+docker images ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node
 
 # Compressed
-docker save ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node | wc -c
+docker manifest inspect ghcr.io/fluxo-kt/aza-pg@sha256:880ec52e9ef441c5a68c8c12d63f724adfc5464490d9ed8c82f0caff588cfcb2 | grep -E '"size"' | awk -F ':' '{sum+=$2} END {print sum}'
 ```
 
 ### Reproduce Extension Smoke Test
 
 ```bash
-POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node bun scripts/test/run-extension-smoke.ts
+POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node bun scripts/test/run-extension-smoke.ts
 ```
 
 ### Reproduce Auto-Configuration Tests
 
 ```bash
-POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node bun test scripts/test/test-auto-config.ts
+POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node bun test scripts/test/test-auto-config.ts
 ```
 
 ### Reproduce Deployment Tests
 
 ```bash
 # Single-stack
-POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node bun test scripts/test/test-single-stack.ts
+POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node bun test scripts/test/test-single-stack.ts
 
 # Replica-stack
-POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511230033-single-node bun test scripts/test/test-replica-stack.ts
+POSTGRES_IMAGE=ghcr.io/fluxo-kt/aza-pg:18.1-202511231356-single-node bun test scripts/test/test-replica-stack.ts
 ```

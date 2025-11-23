@@ -48,6 +48,10 @@
     - Popular Postgres extensions frequently used with Citus include Patroni, HyperLogLog (HLL), PostGIS, TopN, hstore, pg stat statements, dblink, plpgsql, uuid ossp, ltree, pgvector, & more.
   - pg_cron (cron)
     - https://github.com/citusdata/pg_cron
+  - pg_crdt (CRDT support in Postgres)
+    - https://github.com/supabase/pg_crdt
+    - https://supabase.github.io/pg_crdt/
+    - https://supabase.github.io/pg_crdt/automerge/
   - HyperLogLog data type, A probabilistic cardinality estimator (distinct count). Typically, 1.2KB estimates billions of distinct values with ±4% error.
     - https://github.com/citusdata/postgresql-hll
     - https://agkn.wordpress.com/2012/10/25/sketch-of-the-day-hyperloglog-cornerstone-of-a-big-data-infrastructure/

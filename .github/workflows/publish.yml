@@ -91,6 +91,9 @@ jobs:
           echo "This is non-critical - workflow will continue"
           echo "Orphaned tags may require manual cleanup"
 
+      - name: Verify Dockerfile generation is current
+        run: bun run verify:generated
+
       - name: Validate manifest
         run: bun run validate
 
@@ -106,10 +109,10 @@ jobs:
       - name: Extract PostgreSQL version from base image
         id: pg-version
         run: |
-          # Extract major version and SHA from Dockerfile
-          PG_MAJOR=$(grep -m1 '^ARG PG_VERSION=' docker/postgres/Dockerfile | cut -d'=' -f2)
-          PG_BASE_SHA=$(grep -m1 '^ARG PG_BASE_IMAGE_SHA=' docker/postgres/Dockerfile | cut -d'=' -f2)
-          BASE_IMAGE="postgres:${PG_MAJOR}-trixie@${PG_BASE_SHA}"
+          # Extract base image directly from Dockerfile FROM statement
+          # Pattern: FROM postgres:18.1-trixie@sha256:...
+          BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | \
+            awk '{print $2}' | head -1)
 
           bun scripts/build/extract-pg-version.ts \
             --image "$BASE_IMAGE" \
@@ -268,7 +271,6 @@ jobs:
           annotations: ${{ needs.prep.outputs.meta_annotations }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           build-args: |
-            PG_VERSION=${{ needs.prep.outputs.pg_version_major }}
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
             VERSION=${{ needs.prep.outputs.image_tag }}

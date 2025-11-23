@@ -95,26 +95,9 @@ if (import.meta.main) {
     console.log(`PGROUTING_VERSION="${extensionDefaults.pgdgVersions.pgrouting}"`);
     console.log(`RUM_VERSION="${extensionDefaults.pgdgVersions.rum}"`);
     console.log(`SET_USER_VERSION="${extensionDefaults.pgdgVersions.setUser}"`);
-  } else if (format === "dockerfile") {
-    console.log(`ARG PG_VERSION=${extensionDefaults.pgVersion}`);
-    console.log(`ARG PG_BASE_IMAGE_SHA=${extensionDefaults.baseImageSha}`);
-    console.log(`ARG PGCRON_VERSION=${extensionDefaults.pgdgVersions.pgcron}`);
-    console.log(`ARG PGAUDIT_VERSION=${extensionDefaults.pgdgVersions.pgaudit}`);
-    console.log(`ARG PGVECTOR_VERSION=${extensionDefaults.pgdgVersions.pgvector}`);
-    console.log(`ARG TIMESCALEDB_VERSION=${extensionDefaults.pgdgVersions.timescaledb}`);
-    console.log(`ARG POSTGIS_VERSION=${extensionDefaults.pgdgVersions.postgis}`);
-    console.log(`ARG PARTMAN_VERSION=${extensionDefaults.pgdgVersions.partman}`);
-    console.log(`ARG REPACK_VERSION=${extensionDefaults.pgdgVersions.repack}`);
-    console.log(`ARG PLPGSQL_CHECK_VERSION=${extensionDefaults.pgdgVersions.plpgsqlCheck}`);
-    console.log(`ARG HLL_VERSION=${extensionDefaults.pgdgVersions.hll}`);
-    console.log(`ARG HTTP_VERSION=${extensionDefaults.pgdgVersions.http}`);
-    console.log(`ARG HYPOPG_VERSION=${extensionDefaults.pgdgVersions.hypopg}`);
-    console.log(`ARG PGROUTING_VERSION=${extensionDefaults.pgdgVersions.pgrouting}`);
-    console.log(`ARG RUM_VERSION=${extensionDefaults.pgdgVersions.rum}`);
-    console.log(`ARG SET_USER_VERSION=${extensionDefaults.pgdgVersions.setUser}`);
   } else {
     console.error(`Unknown format: ${format}`);
-    console.error("Usage: bun scripts/extension-defaults.ts [json|shell|dockerfile]");
+    console.error("Usage: bun scripts/extension-defaults.ts [json|shell]");
     process.exit(1);
   }
 }

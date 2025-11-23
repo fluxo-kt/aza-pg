@@ -103,22 +103,6 @@ name: Build PostgreSQL Image
 on:
   workflow_dispatch:
     inputs:
-      pg_version:
-        description: "PostgreSQL version"
-        required: false
-        default: "18"
-      pgvector_version:
-        description: "pgvector version"
-        required: false
-        default: "0.8.1"
-      pg_cron_version:
-        description: "pg_cron version"
-        required: false
-        default: "1.6.7"
-      pgaudit_version:
-        description: "pgAudit version"
-        required: false
-        default: "18.0"
       push_image:
         description: "Push image to registry (for QA/testing only)"
         required: false
@@ -213,24 +197,6 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Extract workflow defaults
-        id: extract-defaults
-        run: |
-          PGVECTOR_DEFAULT=$(bun scripts/ci/get-workflow-defaults.ts)
-          echo "pgvector_default=${PGVECTOR_DEFAULT}" >> $GITHUB_OUTPUT
-
-      - name: Determine build args
-        id: build-args
-        run: |
-          PG_VERSION="${{ github.event.inputs.pg_version || '18' }}"
-          PGVECTOR_VERSION="${{ github.event.inputs.pgvector_version || steps.extract-defaults.outputs.pgvector_default }}"
-          PG_CRON_VERSION="${{ github.event.inputs.pg_cron_version || '1.6.7' }}"
-          PGAUDIT_VERSION="${{ github.event.inputs.pgaudit_version || '18.0' }}"
-          echo "pg_version=${PG_VERSION}" >> $GITHUB_OUTPUT
-          echo "pgvector_version=${PGVECTOR_VERSION}" >> $GITHUB_OUTPUT
-          echo "pg_cron_version=${PG_CRON_VERSION}" >> $GITHUB_OUTPUT
-          echo "pgaudit_version=${PGAUDIT_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Generate cache key
         id: cache-key
         run: |
@@ -250,11 +216,6 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
-          build-args: |
-            PG_VERSION=${{ steps.build-args.outputs.pg_version }}
-            PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
-            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}-2.pgdg13+1
-            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           # BuildKit provenance disabled to prevent potential secret leakage via build args
@@ -273,11 +234,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           load: true
-          build-args: |
-            PG_VERSION=${{ steps.build-args.outputs.pg_version }}
-            PGCRON_VERSION=${{ steps.build-args.outputs.pg_cron_version }}-2.pgdg13+1
-            PGAUDIT_VERSION=${{ steps.build-args.outputs.pgaudit_version }}-2.pgdg13+1
-            PGVECTOR_VERSION=${{ steps.build-args.outputs.pgvector_version }}-2.pgdg13+1
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           provenance: false

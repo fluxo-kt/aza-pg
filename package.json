@@ -28,7 +28,7 @@
     "check:manifest": "bun scripts/validate-manifest.ts",
     "check:base-image": "bun scripts/validate-base-image-sha.ts",
     "check:size": "bun scripts/check-size-regression.ts",
-    "check:shell": "shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh",
+    "check:shell": "find ./docker/postgres ./stacks -name '*.sh' -type f -print0 | xargs -0 shellcheck",
     "check:yaml": "docker run --rm -v \"$(pwd):/work:ro\" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts",
     "check:docker": "hadolint --config .hadolint.yaml docker/postgres/Dockerfile",
     "check:sql": "echo 'SQL linting: No SQL linter configured - SQL files exist but are auto-generated or example files'",

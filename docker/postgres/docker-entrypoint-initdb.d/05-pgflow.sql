@@ -182,7 +182,7 @@ $$;
 
 
 -- Create composite type "step_task_record"
-CREATE TYPE IF NOT EXISTS "pgflow"."step_task_record" AS (
+CREATE TYPE "pgflow"."step_task_record" AS (
   "flow_slug" TEXT,
   "run_id" UUID,
   "step_slug" TEXT,
@@ -970,8 +970,16 @@ CREATE INDEX IF NOT EXISTS "idx_workers_queue_name" ON "pgflow"."workers" ("queu
 
 -- ----------------------------------------------------------------------------
 -- PHASE 2: Fix poll_for_tasks to use separate statement for polling
+-- ============================================================================
+-- MIGRATION SECTION: Schema Upgrade from v0.7.1 → v0.7.2
+-- ============================================================================
+-- This section is ONLY for upgrading existing pgflow installations.
+-- Fresh installations skip this - tables are created correctly from the start.
+-- 
 -- (20250517125006_20250517072017_pgflow_fix_poll_for_tasks_to_use_separate_statement_for_polling.sql)
 -- ----------------------------------------------------------------------------
+-- NOTE: The following ALTER statements have Squawk warnings that are false positives
+-- for init scripts. They apply to live database migrations, not fresh installs.
 -- Modify "poll_for_tasks" function
 CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks" (
   "queue_name" TEXT,
@@ -1077,8 +1085,16 @@ $$;
 
 -- ----------------------------------------------------------------------------
 -- PHASE 3: Add start_tasks and started status
+-- ============================================================================
+-- MIGRATION SECTION: Schema Upgrade for Started Status
+-- ============================================================================
+-- This section is ONLY for upgrading existing pgflow installations.
+-- Fresh installations skip this - tables are created correctly from the start.
+-- 
 -- (20250610080624_20250609105135_pgflow_add_start_tasks_and_started_status.sql)
 -- ----------------------------------------------------------------------------
+-- NOTE: The following ALTER statements have Squawk warnings that are false positives
+-- for init scripts. They apply to live database migrations, not fresh installs.
 -- Add heartbeat index to workers
 CREATE INDEX IF NOT EXISTS "idx_workers_heartbeat" ON "pgflow"."workers" ("last_heartbeat_at");
 

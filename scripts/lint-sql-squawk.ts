@@ -13,13 +13,32 @@
  */
 
 import { $ } from "bun";
+import path from "node:path";
 
-// SQL files to lint
-const SQL_FILES = [
-  "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
-  "docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql",
-  "examples/pgflow/10-pgflow.sql",
-];
+const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const EXCLUDE_PATTERNS = ["**/node_modules/**", "**/.git/**"];
+
+/**
+ * Find all SQL files in the repository
+ */
+async function findSqlFiles(): Promise<string[]> {
+  const glob = new Bun.Glob("**/*.sql");
+  const files: string[] = [];
+
+  for await (const file of glob.scan({ cwd: REPO_ROOT, absolute: false })) {
+    // Skip excluded patterns
+    const shouldExclude = EXCLUDE_PATTERNS.some((pattern) => {
+      const regex = new RegExp(pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*"));
+      return regex.test(file);
+    });
+
+    if (!shouldExclude) {
+      files.push(file);
+    }
+  }
+
+  return files.sort();
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -50,11 +69,18 @@ Documentation: https://squawkhq.com/docs/rules
     process.exit(0);
   }
 
-  console.log("🐘 Running Squawk PostgreSQL linter...\n");
+  const sqlFiles = await findSqlFiles();
+
+  if (sqlFiles.length === 0) {
+    console.log("No SQL files found.");
+    process.exit(0);
+  }
+
+  console.log(`🐘 Running Squawk PostgreSQL linter on ${sqlFiles.length} file(s)...\n`);
 
   try {
     // Run Squawk on all SQL files
-    const result = await $`bunx squawk ${SQL_FILES}`.nothrow();
+    const result = await $`bunx squawk ${sqlFiles}`.nothrow();
 
     if (result.exitCode === 0) {
       console.log("\n✅ No PostgreSQL-specific issues found");

@@ -195,7 +195,7 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
     apt-get update && \\
     # Install enabled PGDG packages (pre-calculated in TS)
     echo "Installing PGDG packages: ${packagesList}" && \\
-    apt-get install -y ${packagesList} && \\
+    apt-get install -y --no-install-recommends ${packagesList} && \\
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-\${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \\
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\

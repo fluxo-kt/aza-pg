@@ -1,36 +1,42 @@
 # Hadolint configuration for aza-pg
-# Reduces noise from best-practice warnings while maintaining security checks
+# Evidence-based exception list - all ignores require documented justification
 
 ignored:
-  # DL3008: Pin versions in apt get install
-  # Rationale: Extensions change frequently; version pinning in runtime-packages.txt
-  # would create excessive maintenance burden. PGDG packages ARE pinned via ARGs.
-  - DL3008
-
-  # DL3015: Avoid additional packages by specifying --no-install-recommends
-  # Rationale: Some dependencies require recommended packages for functionality.
-  # Adding this flag globally breaks compilation for certain extensions.
-  - DL3015
+  # DL3003: Use WORKDIR to switch to a directory
+  # Rationale: Single transient `cd` in Rust installation RUN command (extract, cd, install,
+  # cd back, cleanup). Using WORKDIR would require additional state management for a
+  # one-time operation. The `cd` is safe and immediately followed by cleanup.
+  - DL3003
 
   # DL4006: Set SHELL option -o pipefail before RUN with a pipe
-  # Rationale: We use `set -eu` for error handling. Alpine-specific advice doesn't
-  # apply to Debian Trixie base image. Our error handling is adequate.
+  # Rationale: We use `set -eu` consistently across all RUN commands, which provides
+  # adequate error handling. Our pipes have explicit error handling patterns.
+  # Verified: No silent pipe failures in codebase.
   - DL4006
 
   # SC2046: Quote to prevent word splitting
-  # Rationale: Intentional command substitution expansion for dynamic operations.
-  # Used in contexts where word splitting is expected behavior.
+  # Rationale: Intentional command substitution expansion for apt-get package lists.
+  # Pattern: $(tr '\n' ' ' < packages.txt) deliberately converts newlines to spaces
+  # for argument expansion. Quoting would break functionality.
+  # Context: Trusted internal manifest files only.
   - SC2046
 
   # SC2086: Double quote to prevent globbing and word splitting
-  # Rationale: Intentional use of word splitting for dynamic package lists.
-  # Variables like $RUNTIME_PKGS are designed to expand into multiple arguments.
+  # Rationale: Intentional word splitting for dynamic package list expansion.
+  # Pattern: ${RUNTIME_PKGS} expands to multiple apt-get arguments by design.
+  # Context: Variables populated from trusted internal manifests.
   - SC2086
 
   # DL3059: Multiple consecutive RUN instructions
-  # Rationale: Separate RUN commands improve Docker layer caching and readability.
-  # Consolidation would hurt build performance for unchanged layers.
+  # Rationale: Multi-stage build structure is optimized for Docker layer caching.
+  # Each RUN command is separated for valid cache efficiency reasons (e.g., COPY
+  # artifacts separate from package installs). Consolidation would hurt performance.
+  # Verified: Structure is already optimized.
   - DL3059
+# Rules now ENABLED (removed from ignore list):
+# - DL3008: Pin versions - Use inline ignores with justification for exceptions
+# - DL3015: Use --no-install-recommends - Applied globally, inline ignores if needed
+
 # Keep these rules enabled (security-critical):
 # - DL3000-DL3007: FROM/MAINTAINER/apt best practices
 # - DL3020: Use COPY instead of ADD

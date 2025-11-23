@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T01:23:57.884Z
+# Generated at: 2025-11-23T03:16:43.508Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -58,10 +58,11 @@ RUN chmod +x /usr/local/bin/build-extensions.ts
 # Install build dependencies for builder-base stage
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
+# hadolint ignore=DL3008
 RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       build-essential \
       git \
       curl \
@@ -231,11 +232,12 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
+# hadolint ignore=DL3008
 RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       # postgresql-client provides psql CLI tool (base postgres image only has server)
       # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
       postgresql-client-${PG_MAJOR} \
@@ -268,7 +270,7 @@ RUN set -eu && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
     echo "Installing PGDG packages: postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION}" && \
-    apt-get install -y postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
+    apt-get install -y --no-install-recommends postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \

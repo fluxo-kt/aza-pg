@@ -38,10 +38,11 @@ RUN chmod +x /usr/local/bin/build-extensions.ts
 # Install build dependencies for builder-base stage
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
+# hadolint ignore=DL3008
 RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       build-essential \
       git \
       curl \
@@ -211,11 +212,12 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
+# hadolint ignore=DL3008
 RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       # postgresql-client provides psql CLI tool (base postgres image only has server)
       # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
       postgresql-client-${PG_MAJOR} \

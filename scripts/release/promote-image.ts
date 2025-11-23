@@ -740,6 +740,60 @@ async function promoteImage(options: Options): Promise<void> {
 
     success("Image promoted successfully!");
 
+    // Extract image metrics for release notes
+    console.log();
+    info("Extracting image metrics from promoted image...");
+
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getImageMetrics } = await import("../docker/image-metrics");
+
+      // Pull first tag to enable local inspection
+      const firstTag = options.tags[0]!;
+      info(`Pulling image for metrics extraction: ${firstTag}`);
+      const pullResult = await $`docker pull ${firstTag}`.nothrow();
+
+      if (pullResult.exitCode !== 0) {
+        warning("Failed to pull image for metrics extraction");
+        warning("Metrics will not be available in release notes");
+      } else {
+        // Extract metrics
+        const metrics = await getImageMetrics(firstTag);
+
+        success("Metrics extracted successfully");
+
+        // Output for GitHub Actions
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          const githubOutput = Bun.env.GITHUB_OUTPUT;
+          if (githubOutput) {
+            // Use modern $GITHUB_OUTPUT file approach (::set-output is deprecated)
+            const outputs = [
+              `compressed_size=${metrics.compressedFormatted}`,
+              `uncompressed_size=${metrics.uncompressedFormatted}`,
+              `layer_count=${metrics.layerCount}`,
+              `base_image_name=${metrics.baseImage?.name || ""}`,
+              `base_image_digest=${metrics.baseImage?.digest || ""}`,
+            ].join("\n");
+
+            // Append to GITHUB_OUTPUT file
+            const file = Bun.file(githubOutput);
+            const existingContent = (await file.exists()) ? await file.text() : "";
+            await Bun.write(githubOutput, existingContent + outputs + "\n");
+
+            info("Metrics set as GitHub Actions outputs");
+          } else {
+            warning("GITHUB_OUTPUT not set, metrics will not be available");
+          }
+        }
+      }
+    } catch (err) {
+      warning(`Failed to extract metrics: ${getErrorMessage(err)}`);
+      warning("Metrics will not be available in release notes");
+      // Don't fail the promotion
+    }
+
+    console.log();
+
     // Verify expected digest if provided
     if (options.expectedDigest) {
       console.log();

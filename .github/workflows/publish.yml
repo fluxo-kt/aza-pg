@@ -931,7 +931,13 @@ jobs:
     name: Sign and Release
     runs-on: ubuntu-latest
     needs: [prep, merge, scan, test-complete]
-    timeout-minutes: 15
+    timeout-minutes: 20
+    outputs:
+      compressed_size: ${{ steps.promote.outputs.compressed_size }}
+      uncompressed_size: ${{ steps.promote.outputs.uncompressed_size }}
+      layer_count: ${{ steps.promote.outputs.layer_count }}
+      base_image_name: ${{ steps.promote.outputs.base_image_name }}
+      base_image_digest: ${{ steps.promote.outputs.base_image_digest }}
 
     steps:
       - name: Checkout repository
@@ -972,6 +978,7 @@ jobs:
           echo "📝 Signature uploaded to Rekor transparency log"
 
       - name: Promote testing image to production tags
+        id: promote
         run: |
           bun scripts/release/promote-image.ts \
             --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
@@ -1234,34 +1241,22 @@ jobs:
           echo "package_version_id=${VERSION_ID}" >> $GITHUB_OUTPUT
           echo "✅ Found package version ID: ${VERSION_ID}"
 
-      - name: Extract image metrics
+      - name: Use metrics from promotion
         id: metrics
         run: |
-          # Extract image size and layer metrics from Docker
-          echo "Extracting metrics for ghcr.io/${{ github.repository }}@${{ needs.merge.outputs.image_digest }}..."
+          # Metrics were extracted during promotion in release job
+          echo "compressed_size=${{ needs.release.outputs.compressed_size }}" >> $GITHUB_OUTPUT
+          echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}" >> $GITHUB_OUTPUT
+          echo "layer_count=${{ needs.release.outputs.layer_count }}" >> $GITHUB_OUTPUT
+          echo "base_image_name=${{ needs.release.outputs.base_image_name }}" >> $GITHUB_OUTPUT
+          echo "base_image_digest=${{ needs.release.outputs.base_image_digest }}" >> $GITHUB_OUTPUT
 
-          METRICS_JSON=$(bun scripts/release/get-image-metrics.ts \
-            --image="ghcr.io/${{ github.repository }}@${{ needs.merge.outputs.image_digest }}")
-
-          # Parse JSON and set outputs
-          COMPRESSED=$(echo "$METRICS_JSON" | jq -r '.compressedFormatted')
-          UNCOMPRESSED=$(echo "$METRICS_JSON" | jq -r '.uncompressedFormatted')
-          LAYERS=$(echo "$METRICS_JSON" | jq -r '.layerCount')
-          BASE_IMAGE_NAME=$(echo "$METRICS_JSON" | jq -r '.baseImage.name // empty')
-          BASE_IMAGE_DIGEST=$(echo "$METRICS_JSON" | jq -r '.baseImage.digest // empty')
-
-          echo "compressed_size=${COMPRESSED}" >> $GITHUB_OUTPUT
-          echo "uncompressed_size=${UNCOMPRESSED}" >> $GITHUB_OUTPUT
-          echo "layer_count=${LAYERS}" >> $GITHUB_OUTPUT
-          echo "base_image_name=${BASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "base_image_digest=${BASE_IMAGE_DIGEST}" >> $GITHUB_OUTPUT
-
-          echo "✅ Metrics extracted:"
-          echo "   Compressed: ${COMPRESSED}"
-          echo "   Uncompressed: ${UNCOMPRESSED}"
-          echo "   Layers: ${LAYERS}"
-          echo "   Base Image: ${BASE_IMAGE_NAME}"
-          echo "   Base Digest: ${BASE_IMAGE_DIGEST}"
+          echo "✅ Using metrics from release job:"
+          echo "   Compressed: ${{ needs.release.outputs.compressed_size }}"
+          echo "   Uncompressed: ${{ needs.release.outputs.uncompressed_size }}"
+          echo "   Layers: ${{ needs.release.outputs.layer_count }}"
+          echo "   Base Image: ${{ needs.release.outputs.base_image_name }}"
+          echo "   Base Digest: ${{ needs.release.outputs.base_image_digest }}"
 
       - name: Generate release notes
         run: |

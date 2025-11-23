@@ -812,24 +812,13 @@ jobs:
             exit 1
           fi
 
-      - name: Capture replica stack logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          mkdir -p ${{ runner.temp }}/replica-diagnostics
-
-          echo "=== Capturing Replica Stack Diagnostics ==="
-          echo "=== Replica Stack Docker Compose Logs ===" | tee ${{ runner.temp }}/replica-diagnostics/docker-logs.txt
-          (cd stacks/replica && docker compose logs --tail=200 2>&1) | tee -a ${{ runner.temp }}/replica-diagnostics/docker-logs.txt || true
-
-          echo "✅ Replica stack diagnostics captured"
-
-      - name: Upload replica test failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: replica-test-failure-diagnostics-${{ github.sha }}
-          path: ${{ runner.temp }}/replica-diagnostics/*
-          if-no-files-found: warn
+          test-type: replica-stack
+          containers: all
+          artifact-prefix: replica-test
           retention-days: 7
 
   test-single-stack:
@@ -879,22 +868,11 @@ jobs:
             exit 1
           fi
 
-      - name: Capture single stack logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          mkdir -p ${{ runner.temp }}/single-diagnostics
-
-          echo "=== Capturing Single Stack Diagnostics ==="
-          echo "=== Single Stack Docker Compose Logs ===" | tee ${{ runner.temp }}/single-diagnostics/docker-logs.txt
-          (cd stacks/single && docker compose logs --tail=200 2>&1) | tee -a ${{ runner.temp }}/single-diagnostics/docker-logs.txt || true
-
-          echo "✅ Single stack diagnostics captured"
-
-      - name: Upload single stack test failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: single-test-failure-diagnostics-${{ github.sha }}
-          path: ${{ runner.temp }}/single-diagnostics/*
-          if-no-files-found: warn
+          test-type: single-stack
+          containers: all
+          artifact-prefix: single-test
           retention-days: 7

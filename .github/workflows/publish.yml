@@ -466,20 +466,13 @@ jobs:
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
 
-      - name: Capture logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type smoke \
-            --output-dir ${{ runner.temp }}/smoke-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: smoke-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/smoke-logs/*
+          test-type: smoke
+          containers: all
+          artifact-prefix: smoke-test
           retention-days: 7
 
       - name: Generate test summary
@@ -543,20 +536,13 @@ jobs:
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-integration-extension-combinations.ts
 
-      - name: Capture logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type extensions \
-            --output-dir ${{ runner.temp }}/extension-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: extension-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/extension-logs/*
+          test-type: extensions
+          containers: all
+          artifact-prefix: extension-test
           retention-days: 7
 
       - name: Generate test summary
@@ -647,20 +633,13 @@ jobs:
         run: |
           bun scripts/docker/setup-pgflow-container.ts --name publish-pgflow-v072-test --cleanup-only
 
-      - name: Capture logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type features \
-            --output-dir ${{ runner.temp }}/feature-logs \
-            --containers "publish-pgflow-v072-test"
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: feature-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/feature-logs/*
+          test-type: features
+          containers: publish-pgflow-v072-test
+          artifact-prefix: feature-test
           retention-days: 7
 
       - name: Generate test summary
@@ -705,20 +684,13 @@ jobs:
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun test scripts/test/test-security.test.ts
 
-      - name: Capture logs on failure
+      - name: Capture test diagnostics
         if: failure()
-        run: |
-          bun scripts/debug/capture-test-failure-logs.ts \
-            --test-type security \
-            --output-dir ${{ runner.temp }}/security-logs \
-            --all-containers
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v5
+        uses: ./.github/actions/capture-test-diagnostics
         with:
-          name: security-test-failures-${{ github.sha }}
-          path: ${{ runner.temp }}/security-logs/*
+          test-type: security
+          containers: all
+          artifact-prefix: security-test
           retention-days: 7
 
       - name: Generate test summary

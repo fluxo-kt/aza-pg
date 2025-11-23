@@ -658,7 +658,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "source",
     category: "timeseries",
-    description: "Hypertables, compression, and continuous aggregates for time-series workloads.",
+    description:
+      "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",

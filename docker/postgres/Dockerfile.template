@@ -7,11 +7,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Copy build script and manifests (stable files, rarely change)
-# Ordered by stability: build script (most stable) → manifests (moderate) → package lists (occasional)
-COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
-COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
-COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
+# Copy build package list first (stable, needed for apt-get)
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
 
 # Install build dependencies
@@ -34,7 +30,7 @@ RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Rust toolchain (separate layer for better caching, ~60s install time)
-# Stable tool, rarely updates
+# Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
 RUN set -euo pipefail && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
@@ -43,6 +39,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Bun for running TypeScript build scripts (separate layer)
 # Extracts version from project .tool-versions file (single source of truth)
+# Placed BEFORE manifests to maximize cache hits (~30s install)
 COPY .tool-versions /tmp/.tool-versions
 RUN set -euo pipefail && \
     BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
@@ -51,8 +48,14 @@ RUN set -euo pipefail && \
     ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
     rm /tmp/.tool-versions
 
-# Make build script executable (separate layer after all tools installed)
-# Late placement avoids invalidating Rust/Bun installation caches
+# Copy build script and manifests AFTER expensive tool installations
+# Manifests change frequently (~20% of builds), tools rarely change
+# This ordering maximizes cache hits for Rust/Bun layers when manifests update
+COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
+COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
+
+# Make build script executable (after COPY to ensure file exists)
 RUN chmod +x /usr/local/bin/build-extensions.ts
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
@@ -82,8 +85,8 @@ RUN set -euo pipefail && \
     if [ -d /usr/share/postgresql/{{PG_MAJOR}}/timescaledb ]; then \
       rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
     fi && \
-    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -exec strip --strip-debug {} \; && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -exec strip --strip-debug {} \; 2>/dev/null || true && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
+    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
     rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
@@ -96,16 +99,13 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Copy full manifest for cross-stage dependency validation
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-# Rust optimization flags for smaller binaries (Phase 11.1)
-# Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
-# opt-level=s: Optimize for size (less aggressive than 'z', more compatible)
-# lto=thin: Enable thin link-time optimization
-# strip=symbols: Strip debug symbols from binaries
-ENV CARGO_PROFILE_RELEASE_LTO=thin
-ENV CARGO_PROFILE_RELEASE_OPT_LEVEL=s
-ENV CARGO_PROFILE_RELEASE_STRIP=symbols
-
+# OPT#3+4: Inline Rust optimization flags and add cargo registry cache mount
+# Reduces 3 ENV layers and accelerates dependency downloads
 RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=cache,target=/root/.cargo/registry \
+    CARGO_PROFILE_RELEASE_LTO=thin \
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
+    CARGO_PROFILE_RELEASE_STRIP=symbols \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
@@ -113,7 +113,7 @@ RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
     rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
     rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
-    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -exec strip --strip-debug {} \; && \
+    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
     rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
@@ -199,10 +199,14 @@ RUN set -euo pipefail && \
 # Create backup directory with proper ownership
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-# Copy all config files together (rarely change, grouped for better caching)
+# OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
+# Base PostgreSQL config (most stable - rarely modified)
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
-COPY docker/postgres/healthcheck.sh /usr/local/bin/
-COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
+
+# Runtime scripts (stable but change more often than base config)
+COPY docker/postgres/healthcheck.sh \
+     docker/postgres/docker-auto-config-entrypoint.sh \
+     /usr/local/bin/
 COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # Consolidate all chmod operations into single RUN (better layer caching)

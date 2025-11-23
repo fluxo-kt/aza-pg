@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T21:04:38.920Z
+# Generated at: 2025-11-23T21:18:35.880Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -14,7 +14,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+# Copy only files needed by builder stages (extensions.manifest.json is only used in final stage)
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt

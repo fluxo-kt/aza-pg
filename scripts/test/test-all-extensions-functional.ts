@@ -254,6 +254,29 @@ if (isOwnContainer && imageTag) {
     }
 
     console.log("✅ PostgreSQL is ready\n");
+
+    // Additional wait for initialization scripts to complete
+    // pg_isready returns success when connections are accepted, but
+    // docker-entrypoint-initdb.d scripts may still be running
+    console.log("⏳ Waiting for initialization to complete...");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // Verify database is truly ready with actual query
+    let dbReady = false;
+    for (let i = 0; i < 10; i++) {
+      const testQuery = await runSQL("SELECT 1 AS test");
+      if (testQuery.success && testQuery.stdout.trim() === "1") {
+        dbReady = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    if (!dbReady) {
+      throw new Error("Database failed to respond to queries after pg_isready");
+    }
+
+    console.log("✅ Database initialization complete\n");
   } catch (error) {
     console.error(`❌ Failed to start container: ${error}`);
     await cleanupContainer();

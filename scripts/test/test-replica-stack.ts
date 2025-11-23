@@ -627,7 +627,10 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
 
   // Stop replica first
   try {
-    await $`docker compose --env-file .env.test down -v`.cwd(config.replicaStackPath).quiet();
+    await $`docker compose --env-file .env.test down -v --remove-orphans`
+      .cwd(config.replicaStackPath)
+      .quiet();
+    await Bun.sleep(2000); // Wait for port release
     await $`rm -f ${resolve(config.replicaStackPath, ".env.test")}`.quiet();
 
     // Verify replica containers are removed
@@ -643,15 +646,26 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
         for (const container of containerList) {
           await $`docker rm -f ${container}`.nothrow().quiet();
         }
+        await Bun.sleep(1000);
       }
     }
-  } catch {
-    // Ignore cleanup errors
+
+    // Clean up replica volumes
+    if (replicaProjectName) {
+      await $`docker volume prune -f --filter label=com.docker.compose.project=${replicaProjectName}`
+        .nothrow()
+        .quiet();
+    }
+  } catch (err) {
+    warning(`Replica cleanup warning: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Stop primary second
   try {
-    await $`docker compose --env-file .env.test down -v`.cwd(config.primaryStackPath).quiet();
+    await $`docker compose --env-file .env.test down -v --remove-orphans`
+      .cwd(config.primaryStackPath)
+      .quiet();
+    await Bun.sleep(3000); // Wait longer for primary port release
     await $`rm -f ${resolve(config.primaryStackPath, ".env.test")}`.quiet();
 
     // Verify primary containers are removed
@@ -667,10 +681,18 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
         for (const container of containerList) {
           await $`docker rm -f ${container}`.nothrow().quiet();
         }
+        await Bun.sleep(2000);
       }
     }
-  } catch {
-    // Ignore cleanup errors
+
+    // Clean up primary volumes
+    if (primaryProjectName) {
+      await $`docker volume prune -f --filter label=com.docker.compose.project=${primaryProjectName}`
+        .nothrow()
+        .quiet();
+    }
+  } catch (err) {
+    warning(`Primary cleanup warning: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Clean up network
@@ -741,6 +763,51 @@ async function main(): Promise<void> {
   });
 
   try {
+    // ============================================================
+    // PRE-TEST CLEANUP: Free port 5432 and clean up volumes
+    // ============================================================
+    info("Pre-test cleanup: ensuring port 5432 is free and cleaning up volumes...");
+    try {
+      // Kill any containers using port 5432
+      const containersOnPort = await $`docker ps --filter "publish=5432" -q`.nothrow().quiet();
+      const containerIds = containersOnPort.text().trim();
+      if (containerIds) {
+        info(`Stopping containers using port 5432: ${containerIds.split("\n").join(", ")}`);
+        await $`docker kill ${containerIds.split("\n").join(" ")}`.nothrow().quiet();
+        await Bun.sleep(2000); // Wait for port release
+      }
+
+      // Stop all test project containers (single and replica)
+      info("Stopping all test project containers...");
+      const singleTestContainers = await $`docker ps -a --filter "name=aza-pg-single-test" -q`
+        .nothrow()
+        .quiet();
+      const replicaTestContainers = await $`docker ps -a --filter "name=aza-pg-replica-test" -q`
+        .nothrow()
+        .quiet();
+      const allTestContainers = [
+        ...singleTestContainers.text().trim().split("\n"),
+        ...replicaTestContainers.text().trim().split("\n"),
+      ].filter((id) => id.trim());
+
+      if (allTestContainers.length > 0) {
+        info(`Removing ${allTestContainers.length} test containers`);
+        await $`docker rm -f ${allTestContainers.join(" ")}`.nothrow().quiet();
+        await Bun.sleep(2000);
+      }
+
+      // Clean up ALL orphaned volumes from test runs (more aggressive)
+      info("Cleaning up orphaned volumes from previous test runs...");
+      await $`docker volume prune -f --filter label=com.docker.compose.project`.nothrow().quiet();
+
+      // Also remove specific volume names that might conflict (now that containers are stopped)
+      await $`docker volume rm postgres_data postgres-replica-data`.nothrow().quiet();
+
+      success("Pre-test cleanup completed");
+    } catch (err) {
+      warning(`Pre-test cleanup warning: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // Prerequisites
     await checkPrerequisites();
     await verifyStackDirectories(config);

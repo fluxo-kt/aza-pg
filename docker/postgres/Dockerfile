@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T01:04:38.675Z
+# Generated at: 2025-11-23T01:07:57.804Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -303,6 +303,9 @@ COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
+COPY docker/postgres/healthcheck.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/healthcheck.sh
+
 # Verify Bun is not present in final image (build-time tool should not leak)
 RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
 
@@ -311,7 +314,7 @@ RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
 USER postgres
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD pg_isready -U postgres || exit 1
+    CMD /usr/local/bin/healthcheck.sh
 
 EXPOSE 5432
 

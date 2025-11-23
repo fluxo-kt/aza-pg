@@ -1332,7 +1332,10 @@ await test("timescaledb - Enable compression", "timeseries", async () => {
   );
 
   // Compression is an Apache-licensed feature not available in Community Edition
-  if (!compress.success && compress.stderr.includes("requires a Timescale license")) {
+  if (
+    !compress.success &&
+    (compress.stderr.includes("apache") || compress.stderr.includes("license"))
+  ) {
     throw new Error(
       "SKIPPED: timescaledb compression requires Apache license (not available in Community Edition)"
     );
@@ -1353,7 +1356,7 @@ await test("timescaledb - Create continuous aggregate", "timeseries", async () =
   `);
 
   // Continuous aggregates are an Apache-licensed feature not available in Community Edition
-  if (!cagg.success && cagg.stderr.includes("requires a Timescale license")) {
+  if (!cagg.success && (cagg.stderr.includes("apache") || cagg.stderr.includes("license"))) {
     throw new Error(
       "SKIPPED: timescaledb continuous aggregates require Apache license (not available in Community Edition)"
     );

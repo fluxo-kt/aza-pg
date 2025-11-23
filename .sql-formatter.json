@@ -8,8 +8,8 @@
   "identifierCase": "preserve",
   "indentStyle": "standard",
   "logicalOperatorNewline": "before",
-  "expressionWidth": 50,
-  "linesBetweenQueries": 1,
+  "expressionWidth": 80,
+  "linesBetweenQueries": 2,
   "denseOperators": false,
   "newlineBeforeSemicolon": false
 }

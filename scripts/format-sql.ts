@@ -31,7 +31,7 @@ async function loadFormatterConfig(): Promise<Record<string, unknown>> {
     const configPath = new URL("../.sql-formatter.json", import.meta.url);
     const configFile = Bun.file(configPath);
     return await configFile.json();
-  } catch (error) {
+  } catch {
     console.warn("Warning: Could not load .sql-formatter.json, using defaults");
     return {
       language: "postgresql",

@@ -31,7 +31,7 @@ async function loadFormatterConfig(): Promise<Record<string, unknown>> {
     const configPath = new URL("../.sql-formatter.json", import.meta.url);
     const configFile = Bun.file(configPath);
     return await configFile.json();
-  } catch (error) {
+  } catch {
     console.warn("Warning: Could not load .sql-formatter.json, using defaults");
     return {
       language: "postgresql",
@@ -116,6 +116,80 @@ async function validateSqlFile(
       warnings.push("File is empty");
     }
 
+    // PostgreSQL-specific linting rules
+
+    // Check 6: DELETE without WHERE (dangerous)
+    const deleteWithoutWhere = /\bDELETE\s+FROM\s+\w+(?:\.\w+)?(?:\s*;|\s+(?!WHERE))/gi;
+    if (deleteWithoutWhere.test(content)) {
+      errors.push("DELETE without WHERE clause detected (dangerous operation)");
+    }
+
+    // Check 7: UPDATE without WHERE (dangerous)
+    const updateWithoutWhere = /\bUPDATE\s+\w+(?:\.\w+)?\s+SET\s+.*?(?:;|$)(?!.*WHERE)/gis;
+    const updateMatches = content.match(updateWithoutWhere) || [];
+    for (const match of updateMatches) {
+      if (!/WHERE/i.test(match) && !/RETURNING/i.test(match)) {
+        // Skip if it's part of a constraint or function
+        if (!/ON\s+UPDATE/i.test(match) && !/DO\s+UPDATE/i.test(match)) {
+          warnings.push("UPDATE without WHERE clause - verify this is intentional");
+        }
+      }
+    }
+
+    // Check 8: TRUNCATE usage (warn about data loss)
+    if (/\bTRUNCATE\s+TABLE/i.test(content)) {
+      warnings.push("TRUNCATE TABLE found - permanent data deletion");
+    }
+
+    // Check 9: Missing transaction control for DDL
+    const hasDDL = /\b(CREATE|ALTER|DROP)\s+(TABLE|INDEX|CONSTRAINT)/i.test(content);
+    const hasTransaction =
+      /\b(BEGIN|START\s+TRANSACTION)\b/i.test(content) && /\b(COMMIT|ROLLBACK)\b/i.test(content);
+    if (hasDDL && !hasTransaction && !content.includes("DO $$")) {
+      // Skip if using DO block (has implicit transaction)
+      warnings.push(
+        "DDL operations without explicit transaction control - consider wrapping in BEGIN/COMMIT"
+      );
+    }
+
+    // Check 10: Potential SQL injection in dynamic SQL
+    if (/EXECUTE\s+(['"]|\$\$|format\()/i.test(content)) {
+      const hasFormatI = /%I/i.test(content); // Safe identifier interpolation
+      const hasFormatL = /%L/i.test(content); // Safe literal interpolation
+      if (!hasFormatI && !hasFormatL) {
+        warnings.push(
+          "Dynamic SQL (EXECUTE) without format() interpolation - potential SQL injection risk"
+        );
+      }
+    }
+
+    // Check 11: Missing indexes on foreign keys (basic heuristic)
+    const foreignKeyPattern = /FOREIGN\s+KEY\s*\([^)]+\)/gi;
+    const foreignKeys = content.match(foreignKeyPattern) || [];
+    const indexPattern = /CREATE\s+INDEX/gi;
+    const indexes = content.match(indexPattern) || [];
+    if (foreignKeys.length > indexes.length) {
+      warnings.push(
+        `Found ${foreignKeys.length} foreign keys but only ${indexes.length} indexes - consider indexing foreign key columns`
+      );
+    }
+
+    // Check 12: Using SELECT * (performance anti-pattern)
+    if (/SELECT\s+\*/i.test(content) && !/COUNT\(\*\)/i.test(content)) {
+      warnings.push("SELECT * usage detected - consider specifying explicit column names");
+    }
+
+    // Check 13: Long transaction blocks (potential lock issues)
+    const doBlocks = content.match(/DO\s+\$\$[\s\S]*?\$\$/gi) || [];
+    for (const block of doBlocks) {
+      const statementCount = (block.match(/;/g) || []).length;
+      if (statementCount > 50) {
+        warnings.push(
+          `DO block with ${statementCount} statements - consider splitting to avoid long locks`
+        );
+      }
+    }
+
     return {
       file: filePath,
       formatted,
@@ -163,12 +237,20 @@ Usage:
   bun scripts/check-sql.ts           # Check all SQL files
   bun scripts/check-sql.ts --help    # Show this help
 
-Checks performed:
-  - Formatting validation (sql-formatter)
+Formatting checks:
+  - SQL formatting validation (sql-formatter with PostgreSQL dialect)
   - Parenthesis matching
   - Trailing whitespace detection
   - Mixed line endings detection
-  - Empty file detection
+
+PostgreSQL-specific linting:
+  - DELETE/UPDATE without WHERE clause (dangerous operations)
+  - TRUNCATE usage (data loss warnings)
+  - Missing transaction control for DDL
+  - Potential SQL injection in dynamic SQL (EXECUTE without format())
+  - Missing indexes on foreign keys
+  - SELECT * anti-pattern
+  - Long transaction blocks (lock concerns)
 
 Exit codes:
   0: All checks passed

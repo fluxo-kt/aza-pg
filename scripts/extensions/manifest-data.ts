@@ -48,6 +48,11 @@ export interface RuntimeSpec {
   defaultEnable?: boolean;
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
   excludeFromAutoTests?: boolean; // Exclude from automated test suite
+  /**
+   * If true, enable this shared preload library in comprehensive test mode.
+   * Only applicable when sharedPreload: true and defaultEnable: false.
+   */
+  preloadInComprehensiveTest?: boolean;
   notes?: string[];
 }
 
@@ -66,6 +71,12 @@ export interface ManifestEntry {
   notes?: string[];
   install_via?: "pgdg" | "source";
   enabled?: boolean;
+  /**
+   * Enable this extension in comprehensive test mode even if disabled in production.
+   * Useful for extensions disabled to reduce build time/size but still valuable to test.
+   * Default: false (use `enabled` value in comprehensive mode).
+   */
+  enabledInComprehensiveTest?: boolean;
   disabledReason?: string;
   /**
    * Direct URL to source code repository (e.g., GitHub, GitLab).
@@ -271,6 +282,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
+      preloadInComprehensiveTest: true,
       notes: ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."],
     },
     sourceUrl: "https://github.com/eradman/pg-safeupdate",
@@ -395,6 +407,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
+    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled to reduce build time and image size. GIS functionality not currently required. Enable when spatial data support is needed.",
     source: {
@@ -431,6 +444,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
+    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled to reduce build time and image size. Depends on PostGIS which is also disabled. Enable when routing functionality is needed.",
     source: {
@@ -460,6 +474,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
+      preloadInComprehensiveTest: true,
       notes: [
         "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
         "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
@@ -581,6 +596,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description:
       "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
     enabled: false,
+    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
     source: {
@@ -734,6 +750,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
+      preloadInComprehensiveTest: true,
       notes: ["Set pg_partman_bgw.role and interval to enable background worker."],
     },
     sourceUrl: "https://github.com/pgpartman/pg_partman",
@@ -829,7 +846,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "REL4_2_0",
     },
     build: { type: "pgxs" },
-    runtime: { sharedPreload: true, defaultEnable: false },
+    runtime: {
+      sharedPreload: true,
+      defaultEnable: false,
+      preloadInComprehensiveTest: true,
+    },
     sourceUrl: "https://github.com/pgaudit/set_user",
     docsUrl: "https://github.com/pgaudit/set_user#readme",
   },

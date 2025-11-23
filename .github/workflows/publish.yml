@@ -273,11 +273,11 @@ jobs:
             VERSION=${{ needs.prep.outputs.image_tag }}
           cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
-          # Disable buildx attestations to prevent "unknown/unknown" architecture entries
-          # We use Cosign for supply chain security instead (see release job)
+          # Enable build provenance and SBOM for supply chain security
+          # Combined with Cosign signatures for comprehensive attestation
           # Enable OCI media types to support annotations on multi-arch manifest index
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
 
       - name: Export digest
         run: |
@@ -996,6 +996,14 @@ jobs:
             --repository "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --yes
+
+      - name: Attest container image provenance
+        if: success()
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.merge.outputs.image_digest }}
+          push-to-registry: true
 
       - name: Generate release summary
         run: |

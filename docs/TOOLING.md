@@ -2,7 +2,7 @@
 
 **Purpose**: This document records all intentional tooling and library decisions for the aza-pg project. These choices must not be changed accidentally or without explicit approval.
 
-**Last Updated**: 2025-11-09
+**Last Updated**: 2025-11-23
 
 ---
 
@@ -105,6 +105,61 @@ minimumReleaseAge = 86400  # 1 day delay
 6. ✅ Update scripts: `oxfmt` instead of `prettier`
 7. ✅ Update git hooks to use `oxfmt`
 8. ✅ Document migration in CHANGELOG.md
+
+### sql-formatter + Custom PostgreSQL Linting
+
+**Version**: 15.6.10+ (sql-formatter) + Bun-native linting
+**Why**: Comprehensive SQL quality - formatting AND PostgreSQL-specific linting
+**Status**: ✅ LOCKED
+**Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts`
+**Usage**: `bun run check:sql`, `bun run format:sql`, `bun run format:sql:check`
+
+**Decision Rationale**:
+
+- **Formatting**: sql-formatter for PostgreSQL dialect (keywords, functions, indentation)
+- **Linting**: Custom Bun-native rules for PostgreSQL-specific issues (security, performance, correctness)
+- No external linter dependencies (SQLFluff requires Python, Squawk migration-focused)
+- Integrated into generation pipeline, pre-commit hooks, and CI/CD validation
+- Fast execution (~50ms for all 3 SQL files with comprehensive checks)
+
+**Formatting Rules** (`.sql-formatter.json`):
+
+- Dialect: `postgresql`
+- Keywords: `UPPER` (CREATE, SELECT, etc.)
+- Functions: `lower` (now, array_append, etc.)
+- Indentation: 2 spaces, no tabs
+- Expression width: 80 chars (optimized for readability)
+- Lines between queries: 2 (better visual separation)
+
+**PostgreSQL-Specific Linting Rules** (`scripts/check-sql.ts`):
+
+1. **Security**:
+   - DELETE/UPDATE without WHERE clause (dangerous)
+   - Potential SQL injection in EXECUTE without format() interpolation
+2. **Performance**:
+   - Missing indexes on foreign keys
+   - SELECT \* anti-pattern (suggest explicit columns)
+   - Long transaction blocks (>50 statements, lock concerns)
+3. **Correctness**:
+   - Unmatched parentheses
+   - TRUNCATE warnings (permanent data loss)
+   - Missing transaction control for DDL
+4. **Code Quality**:
+   - Trailing whitespace
+   - Mixed line endings (CRLF/LF)
+
+**Integration Points**:
+
+1. **Generation**: `generateExtensionsInitScript()` auto-formats SQL at build time
+2. **Pre-commit**: Auto-formats staged `.sql` files via `scripts/pre-commit.ts`
+3. **Validation**: Required check in `scripts/validate.ts` (fast mode)
+4. **Scripts**: `scripts/format-sql.ts` (formatter), `scripts/check-sql.ts` (validator + linter)
+
+**Scope**:
+
+- `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (auto-generated)
+- `docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql` (pgflow schema)
+- `examples/pgflow/10-pgflow.sql` (pgflow example)
 
 ---
 

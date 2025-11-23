@@ -132,7 +132,7 @@ Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at start
 | 4G   | 1G (25%)       | 3G (75%)             | 5M       | 200             |
 | 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 200             |
 
-Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit (add via `POSTGRES_SHARED_PRELOAD_LIBRARIES`, ~100-250MB overhead).
+Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 
 **PgBouncer:** Set `PGBOUNCER_AUTH_PASS` in .env. Escape `:` and `\` only.
 

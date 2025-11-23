@@ -33,20 +33,21 @@ aza-pg classifies bundled functionality into four buckets:
   - Remaining enabled entries are available on demand via `CREATE EXTENSION`
   - Some extensions are disabled by default (tracked in manifest with `disabledReason`)
 
-- **Preloaded** (5): Modules/extensions loaded by default via `shared_preload_libraries`
+- **Preloaded** (6): Modules/extensions loaded by default via `shared_preload_libraries`
   - auto_explain (module)
   - pg_cron (extension)
   - pg_stat_monitor (extension)
   - pg_stat_statements (extension)
   - pgaudit (extension)
+  - timescaledb (extension)
 
 ## Extension Matrix
 
 The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.
 
 - Default `shared_preload_libraries` (from manifest) is:
-  `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit`
-  (5 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+  `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb`
+  (6 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 
 <!-- extensions-table:start -->
 

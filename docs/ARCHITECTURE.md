@@ -139,7 +139,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 **Process:**
 
 1. Shared scripts (all stacks): `docker/postgres/docker-entrypoint-initdb.d/`
-   - `01-extensions.sql` → Creates 6 baseline extensions (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector). Note: auto_explain is a preload-only module, not created via CREATE EXTENSION.
+   - `01-extensions.sql` → Creates 10 baseline extensions (pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, plpgsql, timescaledb, vector, vectorscale). Note: auto_explain is a preload-only module, not created via CREATE EXTENSION.
    - `02-replication.sh` → Creates replicator user (if enabled)
 
 2. Stack-specific scripts: `stacks/*/configs/initdb/`

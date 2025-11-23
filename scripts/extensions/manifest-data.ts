@@ -64,7 +64,7 @@ export interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
-  install_via?: "pgdg";
+  install_via?: "pgdg" | "source";
   enabled?: boolean;
   disabledReason?: string;
   /**

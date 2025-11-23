@@ -354,7 +354,7 @@ async function generateConfigs() {
     info("Generating extension init script...");
     const manifest = await loadManifest(REPO_ROOT);
     const extensionsToEnable = getDefaultEnabledExtensions(manifest);
-    const extensionsInitScript = generateExtensionsInitScript(extensionsToEnable);
+    const extensionsInitScript = await generateExtensionsInitScript(extensionsToEnable);
     const extensionsInitPath = join(
       REPO_ROOT,
       "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"

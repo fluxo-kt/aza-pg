@@ -3,6 +3,7 @@
  * Generates PostgreSQL initialization SQL scripts from manifest data
  */
 
+import { format } from "sql-formatter";
 import type { ManifestEntry } from "../extensions/manifest-data";
 
 /**
@@ -19,7 +20,9 @@ import type { ManifestEntry } from "../extensions/manifest-data";
  * @param extensionsToEnable - Array of manifest entries for extensions to enable
  * @returns SQL script content as string
  */
-export function generateExtensionsInitScript(extensionsToEnable: ManifestEntry[]): string {
+export async function generateExtensionsInitScript(
+  extensionsToEnable: ManifestEntry[]
+): Promise<string> {
   const lines: string[] = [];
 
   lines.push("-- PostgreSQL initialization: enable baseline extensions with state tracking");
@@ -152,5 +155,17 @@ export function generateExtensionsInitScript(extensionsToEnable: ManifestEntry[]
   lines.push("$$;");
   lines.push("");
 
-  return lines.join("\n");
+  const rawSql = lines.join("\n");
+
+  // Format the generated SQL using sql-formatter
+  try {
+    const configPath = new URL("../../.sql-formatter.json", import.meta.url);
+    const configFile = Bun.file(configPath);
+    const config = await configFile.json();
+    return format(rawSql, config);
+  } catch (error) {
+    // If formatting fails, return unformatted SQL (graceful degradation)
+    console.warn("SQL formatting failed, returning unformatted SQL:", error);
+    return rawSql;
+  }
 }

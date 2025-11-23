@@ -22,7 +22,11 @@
  *     "uncompressedBytes": 937508864,
  *     "layerCount": 36,
  *     "compressedFormatted": "247.79 MB",
- *     "uncompressedFormatted": "894.07 MB"
+ *     "uncompressedFormatted": "894.07 MB",
+ *     "baseImage": {
+ *       "name": "postgres:18.1-trixie",
+ *       "digest": "sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f"
+ *     }
  *   }
  *
  * Exit Codes:
@@ -59,7 +63,11 @@ Output (JSON):
     "uncompressedBytes": 937508864,
     "layerCount": 36,
     "compressedFormatted": "247.79 MB",
-    "uncompressedFormatted": "894.07 MB"
+    "uncompressedFormatted": "894.07 MB",
+    "baseImage": {
+      "name": "postgres:18.1-trixie",
+      "digest": "sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f"
+    }
   }
 
 Exit Codes:

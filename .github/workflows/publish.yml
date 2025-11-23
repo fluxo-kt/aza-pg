@@ -1247,15 +1247,21 @@ jobs:
           COMPRESSED=$(echo "$METRICS_JSON" | jq -r '.compressedFormatted')
           UNCOMPRESSED=$(echo "$METRICS_JSON" | jq -r '.uncompressedFormatted')
           LAYERS=$(echo "$METRICS_JSON" | jq -r '.layerCount')
+          BASE_IMAGE_NAME=$(echo "$METRICS_JSON" | jq -r '.baseImage.name // empty')
+          BASE_IMAGE_DIGEST=$(echo "$METRICS_JSON" | jq -r '.baseImage.digest // empty')
 
           echo "compressed_size=${COMPRESSED}" >> $GITHUB_OUTPUT
           echo "uncompressed_size=${UNCOMPRESSED}" >> $GITHUB_OUTPUT
           echo "layer_count=${LAYERS}" >> $GITHUB_OUTPUT
+          echo "base_image_name=${BASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "base_image_digest=${BASE_IMAGE_DIGEST}" >> $GITHUB_OUTPUT
 
           echo "✅ Metrics extracted:"
           echo "   Compressed: ${COMPRESSED}"
           echo "   Uncompressed: ${UNCOMPRESSED}"
           echo "   Layers: ${LAYERS}"
+          echo "   Base Image: ${BASE_IMAGE_NAME}"
+          echo "   Base Digest: ${BASE_IMAGE_DIGEST}"
 
       - name: Generate release notes
         run: |
@@ -1269,6 +1275,8 @@ jobs:
             --compressed-size="${{ steps.metrics.outputs.compressed_size }}" \
             --uncompressed-size="${{ steps.metrics.outputs.uncompressed_size }}" \
             --layer-count="${{ steps.metrics.outputs.layer_count }}" \
+            --base-image-name="${{ steps.metrics.outputs.base_image_name }}" \
+            --base-image-digest="${{ steps.metrics.outputs.base_image_digest }}" \
             --output=release-notes.md
 
           echo "✅ Release notes generated"

@@ -241,24 +241,36 @@ async function buildImage(config: BuildConfig): Promise<void> {
     `${config.imageName}:${config.imageTag}`,
   ];
 
-  // Cache configuration (remote + local fallback)
-  // In CI: Use only registry cache to avoid disk space issues
-  // In local dev: Use local cache for faster rebuilds
+  // Cache configuration (GHA cache in CI, local cache in dev)
+  // In CI: Use GitHub Actions cache (type=gha) for fast cross-run caching
+  // In local dev: Use local filesystem cache for faster rebuilds
   const isCI = Bun.env.CI === "true" || Bun.env.GITHUB_ACTIONS === "true";
 
-  buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
-
   if (!isCI) {
-    // Local development: Use local cache for faster rebuilds
+    // Local development: Use local filesystem cache for faster rebuilds
+    console.log("Local development: Using local filesystem cache");
     buildArgs.push(
       "--cache-from",
       "type=local,src=/tmp/.buildx-cache",
       "--cache-to",
       "type=local,dest=/tmp/.buildx-cache,mode=max"
     );
+    // Also try registry cache as fallback
+    buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
   } else {
-    // CI: Skip local cache export to save disk space (~10GB+)
-    console.log("CI environment detected: Skipping local cache export to save disk space");
+    // CI: Use GitHub Actions cache with unified scope for cross-branch sharing
+    // Scope pattern: aza-pg-{platform} (matches build-postgres-image.yml and publish.yml)
+    const platform = platforms.replace("linux/", "").replace(",", "-");
+    const cacheScope = `aza-pg-${platform}`;
+    console.log(`CI environment: Using GitHub Actions cache (scope=${cacheScope})`);
+    buildArgs.push(
+      "--cache-from",
+      `type=gha,scope=${cacheScope}`,
+      "--cache-to",
+      `type=gha,mode=max,scope=${cacheScope}`
+    );
+    // Also try registry cache as fallback
+    buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
   }
 
   // Load or push

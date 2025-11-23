@@ -215,11 +215,20 @@ jobs:
             org.opencontainers.image.description=PostgreSQL 18 with extensions (dev build)
             org.opencontainers.image.vendor=fluxo-kt
 
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Extract workflow defaults
+        id: extract-defaults
+        run: |
+          PGVECTOR_DEFAULT=$(bun scripts/ci/get-workflow-defaults.ts)
+          echo "pgvector_default=${PGVECTOR_DEFAULT}" >> $GITHUB_OUTPUT
+
       - name: Determine build args
         id: build-args
         run: |
           PG_VERSION="${{ github.event.inputs.pg_version || '18' }}"
-          PGVECTOR_VERSION="${{ github.event.inputs.pgvector_version || '0.8.1' }}"
+          PGVECTOR_VERSION="${{ github.event.inputs.pgvector_version || steps.extract-defaults.outputs.pgvector_default }}"
           PG_CRON_VERSION="${{ github.event.inputs.pg_cron_version || '1.6.7' }}"
           PGAUDIT_VERSION="${{ github.event.inputs.pgaudit_version || '18.0' }}"
           echo "pg_version=${PG_VERSION}" >> $GITHUB_OUTPUT

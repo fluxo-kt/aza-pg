@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-22T18:20:07.176Z
+# Generated at: 2025-11-23T00:43:35.069Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -43,7 +43,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL 18 with comprehensive extension catalog"
+LABEL org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with comprehensive extension catalog"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive

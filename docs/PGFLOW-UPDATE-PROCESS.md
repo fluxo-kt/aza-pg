@@ -19,8 +19,16 @@ These files must pass our SQL linting (sql-formatter + Squawk) without warnings.
 # Check latest version
 npm view @pgflow/core version
 
-# Download SQL files from new version
-curl -O https://raw.githubusercontent.com/pgflow-dev/pgflow/main/packages/core/sql/schema.sql
+# pgflow uses multiple schema files in pkgs/core/schemas/ directory
+# Download all schema files from the version tag or commit
+# Example for v0.7.2:
+curl -O https://raw.githubusercontent.com/pgflow-dev/pgflow/main/pkgs/core/schemas/0050_tables_definitions.sql
+curl -O https://raw.githubusercontent.com/pgflow-dev/pgflow/main/pkgs/core/schemas/0060_tables_runtime.sql
+# (continue for all numbered schema files in the schemas/ directory)
+
+# Or clone the repository and extract schema files:
+git clone --depth 1 --branch v0.7.2 https://github.com/pgflow-dev/pgflow.git
+cat pgflow/pkgs/core/schemas/*.sql > combined-schema.sql
 ```
 
 ### 2. Apply Our Modifications
@@ -149,5 +157,15 @@ Do NOT exclude rules globally without documenting why in this file.
 ## Sources
 
 - [pgflow Repository](https://github.com/pgflow-dev/pgflow)
+- [pgflow Core Schemas](https://github.com/pgflow-dev/pgflow/tree/main/pkgs/core/schemas) (SQL schema files location)
 - [Squawk Documentation](https://squawkhq.com/docs/rules)
 - [PostgreSQL IF NOT EXISTS Support](https://www.postgresql.org/docs/current/sql-commands.html)
+
+## Repository Structure Notes
+
+**Important**: pgflow repository structure (as of v0.7.2+):
+
+- **Correct path**: `pkgs/core/schemas/*.sql` (multiple numbered schema files)
+- **NOT**: `packages/core/sql/schema.sql` (outdated structure)
+- Schema files are numbered (0050_tables_definitions.sql, 0060_tables_runtime.sql, etc.)
+- Must be combined in order to create complete schema

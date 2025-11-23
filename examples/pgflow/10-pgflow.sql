@@ -953,7 +953,7 @@ CREATE INDEX IF NOT EXISTS "idx_workers_queue_name" ON "pgflow"."workers" ("queu
 -- ============================================================================
 -- This section is ONLY for upgrading existing pgflow installations.
 -- Fresh installations skip this - tables are created correctly from the start.
--- 
+--
 -- (20250517125006_20250517072017_pgflow_fix_poll_for_tasks_to_use_separate_statement_for_polling.sql)
 -- ----------------------------------------------------------------------------
 -- NOTE: The following ALTER statements have Squawk warnings that are false positives
@@ -1068,7 +1068,7 @@ $$;
 -- ============================================================================
 -- This section is ONLY for upgrading existing pgflow installations.
 -- Fresh installations skip this - tables are created correctly from the start.
--- 
+--
 -- (20250610080624_20250609105135_pgflow_add_start_tasks_and_started_status.sql)
 -- ----------------------------------------------------------------------------
 -- NOTE: The following ALTER statements have Squawk warnings that are false positives

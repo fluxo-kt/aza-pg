@@ -330,7 +330,8 @@ async function buildTimescaledb(dir: string): Promise<void> {
   // Build with TSL (Timescale License) enabled for compression and continuous aggregates
   // APACHE_ONLY=OFF (default) includes TSL features
   // TSL is free for self-hosted use (including SaaS)
-  await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
+  // Note: Downgrade scripts disabled - not needed for Docker builds (shallow git clone)
+  await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF`;
 
   const buildDir = join(dir, "build");
   const ninjaFile = join(buildDir, "build.ninja");

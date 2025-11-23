@@ -93,7 +93,6 @@ interface Manifest {
 // ────────────────────────────────────────────────────────────────────────────
 
 const CARGO_PGRX_INIT = new Map<string, boolean>();
-const DISABLED_EXTENSIONS: string[] = [];
 
 // Environment configuration
 const MANIFEST_PATH = Bun.argv[2];
@@ -552,7 +551,6 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   if (enabled === false) {
     const disabledReason = entry.disabledReason || "No reason specified";
     log(`Extension ${name} disabled (reason: ${disabledReason}) - skipping build`);
-    DISABLED_EXTENSIONS.push(name);
     return;
   }
 
@@ -657,161 +655,6 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// GATE 2: BINARY CLEANUP FOR DISABLED EXTENSIONS
-// ────────────────────────────────────────────────────────────────────────────
-// CRITICAL: This runs AFTER all extensions (enabled + disabled) have been built.
-//
-// At this point:
-// - All extensions compiled successfully (SHA commits verified as working)
-// - Disabled extensions tracked in DISABLED_EXTENSIONS array
-//
-// Now: Remove disabled extension binaries from final image
-// - Verifies each extension was actually built (smoke test)
-// - Warns if binaries missing (indicates build failure)
-// - Deletes .so, .control, .sql files for disabled extensions only
-//
-// Result: Final image contains only enabled extensions, but we've verified
-// that ALL extensions (including disabled ones) still compile and work.
-
-async function cleanupDisabledExtensions(manifest: Manifest): Promise<void> {
-  if (DISABLED_EXTENSIONS.length === 0) {
-    log("No disabled extensions to clean up");
-    return;
-  }
-
-  log(`Validating ${DISABLED_EXTENSIONS.length} disabled extension(s)`);
-
-  // CRITICAL: Validate no core preloaded extensions are disabled
-  // Auto-config hardcodes: pg_stat_statements,auto_explain,pg_cron,pgaudit
-  // If user disables these, Postgres crashes at runtime with "library not found"
-  // Must fail at build time with actionable error message
-  for (const extName of DISABLED_EXTENSIONS) {
-    const extEntry = manifest.entries.find((e) => e.name === extName);
-
-    if (!extEntry) {
-      log(`ERROR: Extension '${extName}' not found in manifest`);
-      log(`       DISABLED_EXTENSIONS contains an extension not in manifest`);
-      log(`       This indicates manifest corruption or stale build state`);
-      process.exit(1);
-    }
-
-    const sharedPreload = extEntry.runtime?.sharedPreload || false;
-    const defaultEnable = extEntry.runtime?.defaultEnable || false;
-
-    // Critical: Core preloaded extensions (sharedPreload=true AND defaultEnable=true)
-    if (sharedPreload && defaultEnable) {
-      log(`ERROR: Cannot disable extension '${extName}'`);
-      log(`       This extension is required in shared_preload_libraries (auto-config default)`);
-      log(`       Core preloaded extensions: auto_explain, pg_cron, pg_stat_statements, pgaudit`);
-      log(``);
-      log(`       Disabling would cause runtime crash: "could not load library '${extName}.so'"`);
-      log(``);
-      log(`       To disable this extension, you must ALSO set environment variable:`);
-      log(`       POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements,auto_explain'`);
-      log(`       (exclude '${extName}' from the list)`);
-      log(``);
-      log(`       See AGENTS.md section 'Auto-Config Logic' for details`);
-      process.exit(1);
-    }
-
-    // Warning: Optional preloaded extensions (sharedPreload=true BUT defaultEnable=false)
-    if (sharedPreload && !defaultEnable) {
-      log(`⚠ WARNING: Extension '${extName}' has sharedPreload=true but defaultEnable=false`);
-      log(`           This extension is NOT in default shared_preload_libraries`);
-      log(
-        `           However, if you manually add it to POSTGRES_SHARED_PRELOAD_LIBRARIES at runtime,`
-      );
-      log(`           PostgreSQL will crash because the library was removed from the image`);
-      log(``);
-      log(
-        `           Examples: pg_partman, pg_plan_filter, pg_stat_monitor, set_user, supautils, timescaledb`
-      );
-      log(`           Safe to disable IF you never add them to shared_preload_libraries`);
-      log(``);
-    }
-  }
-
-  log(`Removing ${DISABLED_EXTENSIONS.length} disabled extension(s) from image`);
-
-  const PG_LIB_DIR = `/usr/lib/postgresql/${PG_MAJOR}/lib`;
-  const PG_EXT_DIR = `/usr/share/postgresql/${PG_MAJOR}/extension`;
-
-  // Validate PostgreSQL directories exist before attempting cleanup
-  // Note: Bun.file().exists() only works for files, use shell test for directories
-  const libDirCheck = await $`test -d ${PG_LIB_DIR}`.nothrow();
-  if (libDirCheck.exitCode !== 0) {
-    log(`ERROR: PostgreSQL lib directory not found: ${PG_LIB_DIR}`);
-    log(
-      `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
-    );
-    process.exit(1);
-  }
-  const extDirCheck = await $`test -d ${PG_EXT_DIR}`.nothrow();
-  if (extDirCheck.exitCode !== 0) {
-    log(`ERROR: PostgreSQL extension directory not found: ${PG_EXT_DIR}`);
-    log(
-      `       Expected directory does not exist (possible PG_MAJOR mismatch or installation failure)`
-    );
-    process.exit(1);
-  }
-
-  for (const extName of DISABLED_EXTENSIONS) {
-    log(`  Cleaning up: ${extName}`);
-
-    // Verify extension was built (basic smoke test)
-    const soFile = join(PG_LIB_DIR, `${extName}.so`);
-    const controlFile = join(PG_EXT_DIR, `${extName}.control`);
-    const foundBinary = (await Bun.file(soFile).exists()) || (await Bun.file(controlFile).exists());
-
-    if (!foundBinary) {
-      log(`    ⚠ WARNING: Extension ${extName} has no binaries - may have failed to build`);
-    }
-
-    // Remove binaries (.so files)
-    try {
-      await $`find ${PG_LIB_DIR} -name "${extName}.so" -delete`.quiet();
-      log(`    ✓ Removed ${extName}.so (if present)`);
-    } catch {
-      // File not found is OK for tools
-    }
-
-    // Remove versioned binaries (optional, many extensions don't have these)
-    try {
-      await $`find ${PG_LIB_DIR} -name "${extName}-*.so" -delete`.quiet();
-    } catch {
-      // Ignore errors
-    }
-
-    // Remove SQL/control files
-    try {
-      await $`find ${PG_EXT_DIR} -name "${extName}.control" -delete`.quiet();
-      log(`    ✓ Removed ${extName}.control (if present)`);
-    } catch {
-      // File not found is OK for tools
-    }
-
-    // Remove SQL upgrade scripts (optional, many extensions don't have these)
-    try {
-      await $`find ${PG_EXT_DIR} -name "${extName}--*.sql" -delete`.quiet();
-    } catch {
-      // Ignore errors
-    }
-
-    // Remove bitcode (optional, only extensions compiled with LLVM have this)
-    const bitcodeDir = join(PG_LIB_DIR, "bitcode");
-    if (await Bun.file(bitcodeDir).exists()) {
-      try {
-        await $`find ${bitcodeDir} -type d -name "${extName}" -exec rm -rf {} +`.quiet();
-      } catch {
-        // Ignore errors
-      }
-    }
-  }
-
-  log("Disabled extensions built and tested, then removed from image");
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Main Execution
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -836,9 +679,6 @@ async function main(): Promise<void> {
   for (const entry of manifest.entries) {
     await processEntry(entry, manifest);
   }
-
-  // Clean up disabled extensions
-  await cleanupDisabledExtensions(manifest);
 
   log("Extension build complete");
 }

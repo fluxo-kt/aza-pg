@@ -34,7 +34,7 @@ async function execSQL(query: string): Promise<string> {
  */
 async function testExtensionLoads(): Promise<VerificationResult> {
   try {
-    const result = await execSQL("CREATE EXTENSION IF NOT EXISTS timescaledb;");
+    await execSQL("CREATE EXTENSION IF NOT EXISTS timescaledb;");
     const version = await execSQL(
       "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
     );

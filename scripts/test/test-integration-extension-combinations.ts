@@ -71,6 +71,18 @@ async function startContainer() {
     console.log("⚠️  Adding timescaledb to preload libraries (required for hypertable functions)");
   }
 
+  // ⭐ Add pgsodium to preload libraries to fix event trigger bug
+  // pgsodium v3.1.9 event triggers call current_setting('pgsodium.enable_event_trigger')
+  // without missing_ok=true. The GUC parameter is only registered when pgsodium is preloaded
+  // via _PG_init(). Without preload, event triggers fail during DDL operations (like pgflow
+  // initialization). Solution: Always preload pgsodium when testing vault functionality.
+  const pgsodium = findExtension("pgsodium", manifest);
+
+  if (pgsodium && !shouldSkipExtension(pgsodium) && pgsodium.runtime?.sharedPreload) {
+    preloadExtensions.push(pgsodium);
+    console.log("⚠️  Adding pgsodium to preload libraries (fixes event trigger bug)");
+  }
+
   // Note: pg_partman background worker (pg_partman_bgw) is NOT required for basic partman tests
   // The extension functions work without preloading. Background worker is only for automatic
   // partition maintenance. We skip preloading to avoid complexity with library name mismatch
@@ -87,27 +99,8 @@ async function startContainer() {
   console.log(`Preload libraries: ${preloadLibraries}`);
 
   // Collect initialization env vars for enabled extensions
-  // ⚠️ SKIP pgsodium initialization: pgsodium event triggers have a bug in v3.1.9
-  // that causes "unrecognized configuration parameter 'pgsodium.enable_event_trigger'"
-  // errors during table alterations when pgsodium is NOT in shared_preload_libraries.
-  // The trigger function calls current_setting('pgsodium.enable_event_trigger') without
-  // missing_ok=true, which throws an error instead of returning NULL/default.
-  // This affects pgflow initialization (05-pgflow.sql) which alters tables.
-  //
-  // Two workarounds:
-  // 1. Add pgsodium to shared_preload_libraries → Requires pgsodium_getkey script (TCE)
-  // 2. Skip pgsodium initialization → Simplest, pgsodium+vault tests will skip
-  //
-  // We choose option 2 since pgsodium is optional (defaultEnable: false) and the vault
-  // tests can gracefully skip when pgsodium isn't fully initialized.
   const initEnv: Record<string, string> = {};
   for (const ext of testableExtensions) {
-    if (ext.name === "pgsodium") {
-      console.log(
-        "⚠️  Skipping pgsodium initialization (event trigger incompatibility with pgflow)"
-      );
-      continue; // Skip ENABLE_PGSODIUM_INIT to avoid event trigger errors
-    }
     Object.assign(initEnv, getInitializationEnv(ext));
   }
 

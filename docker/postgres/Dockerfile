@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T15:08:24.910Z
+# Generated at: 2025-11-23T19:44:26.910Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -202,6 +202,20 @@ RUN set -euo pipefail && \
 
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
+
+# Create stub pgsodium_getkey script (required when pgsodium is preloaded)
+# pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
+# This stub script returns a test key in hex format (64 hex characters = 32 bytes).
+# Production deployments using Transparent Column Encryption (TCE) should replace this
+# with a proper key management script that fetches the server secret securely from vault/KMS.
+# See: https://github.com/michelp/pgsodium/tree/main/getkey_scripts for examples
+RUN set -euo pipefail && \
+    echo '#!/bin/sh' > /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 RUN rm -rf /usr/lib/postgresql/18/lib/bitcode

@@ -39,10 +39,18 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         -- Create pgsodium extension if it doesn't exist
         CREATE EXTENSION IF NOT EXISTS pgsodium;
 
-        -- IMPORTANT: Transparent Column Encryption (TCE) requires pgsodium in shared_preload_libraries
-        -- By default, pgsodium is NOT preloaded (minimal default for safety).
-        -- To enable TCE: Set POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,pgsodium"
-        -- TCE also requires pgsodium_getkey script configured via pgsodium.getkey_script GUC parameter.
+        -- IMPORTANT: pgsodium event triggers require preloading to avoid GUC parameter errors
+        -- pgsodium v3.1.9 event triggers call current_setting('pgsodium.enable_event_trigger')
+        -- without missing_ok=true. The parameter is only registered when pgsodium is preloaded.
+        -- Without preload, event triggers fail during DDL operations with:
+        -- "unrecognized configuration parameter 'pgsodium.enable_event_trigger'"
+        --
+        -- By default, pgsodium is NOT preloaded (optional module, defaultEnable: false).
+        -- To enable pgsodium + vault: Add to POSTGRES_SHARED_PRELOAD_LIBRARIES:
+        --   POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pgsodium"
+        --
+        -- Full Transparent Column Encryption (TCE) additionally requires:
+        --   - pgsodium_getkey script configured via pgsodium.getkey_script GUC parameter
 
         -- Create server secret key if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pgsodium.key WHERE name = 'pgsodium_root') THEN

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-23T15:08:24.531Z",
+  "generatedAt": "2025-11-23T19:44:26.550Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -638,8 +638,14 @@
         "libsodium-dev"
       ],
       "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "notes": [
+          "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+          "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
+          "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
+          "Basic cryptography functions work without preload or getkey script"
+        ]
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
       "docsUrl": "https://michelp.github.io/pgsodium"

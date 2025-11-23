@@ -98,7 +98,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **Optional preload modules** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`):
 
 - `safeupdate` (pg_safeupdate): Prevents UPDATE/DELETE without WHERE clause
-- `pgsodium`: Encryption library (requires pgsodium_getkey script)
+- `pgsodium`: Encryption library (REQUIRED for event triggers to work; full TCE requires pgsodium_getkey script)
 - `set_user`: Audited SET ROLE for privilege escalation tracking
 - `pg_partman`: Automated partition management background worker
 - `pg_plan_filter`: Query plan safety filter

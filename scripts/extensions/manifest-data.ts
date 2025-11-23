@@ -457,7 +457,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: { type: "pgxs" },
     aptPackages: ["libsodium-dev"],
-    runtime: { sharedPreload: false, defaultEnable: false },
+    runtime: {
+      sharedPreload: true,
+      defaultEnable: false,
+      notes: [
+        "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+        "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
+        "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
+        "Basic cryptography functions work without preload or getkey script",
+      ],
+    },
     sourceUrl: "https://github.com/michelp/pgsodium",
     docsUrl: "https://michelp.github.io/pgsodium",
   },

@@ -4,8 +4,13 @@ import { join } from "node:path";
 import type { StackType, PostgreSQLSettings } from "./types";
 import { BASE_CONFIG } from "./base-config";
 import { formatSetting } from "../utils/guc-formatter";
-import { loadManifest, getDefaultEnabledExtensions } from "./manifest-loader";
+import {
+  loadManifest,
+  getDefaultEnabledExtensions,
+  getDefaultSharedPreloadLibraries,
+} from "./manifest-loader";
 import { generateExtensionsInitScript } from "./sql-generator";
+import { generateHealthcheckScript } from "./healthcheck-generator";
 import { writeConfigFile, writeConfigWithDir } from "./config-writer";
 import { success, info, error } from "../utils/logger";
 
@@ -356,6 +361,16 @@ async function generateConfigs() {
     );
     await writeConfigFile(extensionsInitPath, extensionsInitScript);
     console.log(`   ✓ ${extensionsInitPath}`);
+
+    // Generate healthcheck.sh script (synchronized with init script)
+    info("Generating healthcheck script...");
+    const preloadLibraries = getDefaultSharedPreloadLibraries(manifest);
+    const healthcheckScript = generateHealthcheckScript(extensionsToEnable, preloadLibraries);
+    const healthcheckPath = join(REPO_ROOT, "docker/postgres/healthcheck.sh");
+    await writeConfigFile(healthcheckPath, healthcheckScript);
+    // Make healthcheck executable
+    await Bun.write(healthcheckPath, healthcheckScript, { mode: 0o755 });
+    console.log(`   ✓ ${healthcheckPath}`);
   } catch (err) {
     const err_error = err as Error;
     error(`Configuration generation failed: ${err_error.message}`);
@@ -372,6 +387,7 @@ async function generateConfigs() {
   console.log("   - stacks/single/configs/postgresql.conf");
   console.log("   - stacks/single/configs/pg_hba.conf");
   console.log("   - docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql");
+  console.log("   - docker/postgres/healthcheck.sh");
   console.log("");
 }
 

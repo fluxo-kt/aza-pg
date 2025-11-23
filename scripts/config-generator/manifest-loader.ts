@@ -57,3 +57,31 @@ export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[]
     return enabled && defaultEnable && kind !== "tool" && !preloadOnly;
   });
 }
+
+/**
+ * Get comma-separated list of extensions/modules that should be preloaded at server start
+ * Filters for entries with shared_preload and defaultEnable = true
+ * @param manifest - Parsed manifest object
+ * @returns Comma-separated list of preload libraries (e.g., "auto_explain,pg_cron,timescaledb")
+ */
+export function getDefaultSharedPreloadLibraries(manifest: Manifest): string {
+  // Filter extensions where:
+  // 1. runtime.sharedPreload == true (must be loaded at server start)
+  // 2. runtime.defaultEnable == true (enabled by default)
+  // 3. enabled != false (not explicitly disabled in manifest)
+  const preloadExtensions = manifest.entries.filter((entry) => {
+    const runtime = entry.runtime;
+    if (!runtime) return false;
+
+    const isSharedPreload = runtime.sharedPreload === true;
+    const isDefaultEnable = runtime.defaultEnable === true;
+    const isEnabled = entry.enabled !== false; // null or true
+
+    return isSharedPreload && isDefaultEnable && isEnabled;
+  });
+
+  // Sort alphabetically for consistency across regenerations
+  const extensionNames = preloadExtensions.map((e) => e.name).sort();
+
+  return extensionNames.join(",");
+}

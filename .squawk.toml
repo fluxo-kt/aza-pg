@@ -7,6 +7,13 @@
 # PostgreSQL version target
 pg_version = "18.0"
 
+# Exclude external/vendored SQL files (pgflow from @pgflow/core@0.7.2)
+excluded_paths = [
+  "**/05-pgflow.sql",
+  "**/10-pgflow.sql",
+  "examples/**/*.sql",
+]
+
 # Rules excluded because they don't apply to initialization scripts:
 excluded_rules = [
   # CONCURRENT index creation is for live databases with traffic.

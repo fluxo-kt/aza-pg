@@ -1075,38 +1075,50 @@ await test("pg_plan_filter - Execute queries with plan filter active", "safety",
   assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
 });
 
-await test("pg_safeupdate - Verify loaded via shared_preload_libraries", "safety", async () => {
-  // pg_safeupdate is optional (defaultEnable: false), check if it's actually loaded
+await test("pg_safeupdate - Verify correct default state (not preloaded)", "safety", async () => {
+  // pg_safeupdate is optional (defaultEnable: false) - verify it's NOT preloaded by default
   const check = await runSQL("SHOW shared_preload_libraries");
-  if (!check.success || !check.stdout.includes("safeupdate")) {
-    throw new Error("SKIPPED: pg_safeupdate not in shared_preload_libraries (optional preload)");
-  }
+  assert(check.success, "Failed to query shared_preload_libraries");
+
+  // Correct behavior: NOT in preload by default (security tool must be explicitly enabled)
+  const isPreloaded = check.stdout.includes("safeupdate");
   assert(
-    check.success && check.stdout.includes("safeupdate"),
-    "pg_safeupdate not found in shared_preload_libraries"
+    !isPreloaded,
+    "pg_safeupdate should NOT be preloaded by default (optional security module)"
   );
 });
 
-await test("pg_safeupdate - Block UPDATE without WHERE", "safety", async () => {
-  // Check if pg_safeupdate is loaded before testing
-  const check = await runSQL("SHOW shared_preload_libraries");
-  if (!check.success || !check.stdout.includes("safeupdate")) {
-    throw new Error("SKIPPED: pg_safeupdate not in shared_preload_libraries (optional preload)");
+await test(
+  "pg_safeupdate - Verify default behavior allows unsafe operations",
+  "safety",
+  async () => {
+    // Check if pg_safeupdate is loaded
+    const check = await runSQL("SHOW shared_preload_libraries");
+    assert(check.success, "Failed to query shared_preload_libraries");
+
+    const isPreloaded = check.stdout.includes("safeupdate");
+
+    await runSQL("CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)");
+    await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
+
+    // Attempt UPDATE without WHERE
+    const updateResult = await runSQL("UPDATE test_safeupdate SET val = 99");
+
+    if (isPreloaded) {
+      // If preloaded: verify it BLOCKS unsafe updates (protection enabled)
+      assert(
+        !updateResult.success,
+        "pg_safeupdate should block UPDATE without WHERE when preloaded"
+      );
+    } else {
+      // If NOT preloaded: verify unsafe updates ARE allowed (default PostgreSQL behavior)
+      assert(
+        updateResult.success,
+        "UPDATE without WHERE should succeed when pg_safeupdate not preloaded (default behavior)"
+      );
+    }
   }
-
-  await runSQL("CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)");
-  await runSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)");
-
-  // Attempt UPDATE without WHERE (should be BLOCKED by pg_safeupdate)
-  const updateResult = await runSQL("UPDATE test_safeupdate SET val = 99");
-
-  // Verify the UPDATE was blocked (not successful)
-  assert(!updateResult.success, "pg_safeupdate should block UPDATE without WHERE clause");
-
-  // Verify UPDATE with WHERE clause still works
-  const safeUpdate = await runSQL("UPDATE test_safeupdate SET val = 99 WHERE id = 1");
-  assert(safeUpdate.success, "UPDATE with WHERE should succeed");
-});
+);
 
 await test("supautils - Verify extension structure", "safety", async () => {
   if (disabledExtensions.has("supautils")) {

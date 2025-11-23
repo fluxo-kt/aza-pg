@@ -13,15 +13,23 @@
  *     --digest=sha256:abc123... \
  *     --catalog-enabled=36 \
  *     --catalog-total=38 \
- *     --output=release-notes.md
+ *     --output=release-notes.md \
+ *     [--package-version-id=585941799] \
+ *     [--compressed-size="247.79 MB"] \
+ *     [--uncompressed-size="894.07 MB"] \
+ *     [--layer-count=36]
  *
  * Arguments:
- *   --pg-version       PostgreSQL version (e.g., "18.1")
- *   --tag              Full image tag (e.g., "18.1-202511132330-single-node")
- *   --digest           Image digest (e.g., "sha256:abc123...")
- *   --catalog-enabled  Number of enabled extensions
- *   --catalog-total    Total extensions in catalog
- *   --output           Output markdown file path
+ *   --pg-version          PostgreSQL version (e.g., "18.1")
+ *   --tag                 Full image tag (e.g., "18.1-202511132330-single-node")
+ *   --digest              Image digest (e.g., "sha256:abc123...")
+ *   --catalog-enabled     Number of enabled extensions
+ *   --catalog-total       Total extensions in catalog
+ *   --output              Output markdown file path
+ *   --package-version-id  (Optional) GHCR package version ID for package link
+ *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
+ *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MB")
+ *   --layer-count         (Optional) Number of image layers
  */
 
 import { join } from "node:path";
@@ -49,6 +57,9 @@ interface Args {
   catalogTotal: number;
   output: string;
   packageVersionId?: number; // Optional for backward compatibility
+  compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
+  uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MB")
+  layerCount?: number; // Optional: number of layers
 }
 
 interface CategoryGroup {
@@ -134,6 +145,9 @@ function parseArgs(): Args | null {
   const catalogTotal = getArg("catalog-total");
   const output = getArg("output");
   const packageVersionId = getArg("package-version-id"); // Optional
+  const compressedSize = getArg("compressed-size"); // Optional
+  const uncompressedSize = getArg("uncompressed-size"); // Optional
+  const layerCount = getArg("layer-count"); // Optional
 
   // Validate required args
   if (!pgVersion || !tag || !digest || !catalogEnabled || !catalogTotal || !output) {
@@ -148,6 +162,9 @@ function parseArgs(): Args | null {
     console.error("    --catalog-total=38 \\");
     console.error("    --output=release-notes.md \\");
     console.error("    [--package-version-id=585941799]  # Optional: GHCR package version ID");
+    console.error("    [--compressed-size='247.79 MB']   # Optional: Compressed image size");
+    console.error("    [--uncompressed-size='894.07 MB'] # Optional: Uncompressed image size");
+    console.error("    [--layer-count=36]                # Optional: Number of layers");
     return null;
   }
 
@@ -159,6 +176,9 @@ function parseArgs(): Args | null {
     catalogTotal: parseInt(catalogTotal, 10),
     output,
     packageVersionId: packageVersionId ? parseInt(packageVersionId, 10) : undefined,
+    compressedSize,
+    uncompressedSize,
+    layerCount: layerCount ? parseInt(layerCount, 10) : undefined,
   };
 }
 
@@ -442,6 +462,20 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
   lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
   lines.push(`- **Build**: Single-node optimized`);
+
+  // Add size metrics if provided
+  if (args.compressedSize || args.uncompressedSize || args.layerCount !== undefined) {
+    if (args.compressedSize) {
+      lines.push(`- **Compressed Size**: ${args.compressedSize} (wire transfer)`);
+    }
+    if (args.uncompressedSize) {
+      lines.push(`- **Uncompressed Size**: ${args.uncompressedSize} (disk usage)`);
+    }
+    if (args.layerCount !== undefined) {
+      lines.push(`- **Layers**: ${args.layerCount}`);
+    }
+  }
+
   lines.push("");
 
   // What's Inside section with status markers

@@ -1234,6 +1234,29 @@ jobs:
           echo "package_version_id=${VERSION_ID}" >> $GITHUB_OUTPUT
           echo "✅ Found package version ID: ${VERSION_ID}"
 
+      - name: Extract image metrics
+        id: metrics
+        run: |
+          # Extract image size and layer metrics from Docker
+          echo "Extracting metrics for ghcr.io/${{ github.repository }}@${{ needs.merge.outputs.image_digest }}..."
+
+          METRICS_JSON=$(bun scripts/release/get-image-metrics.ts \
+            --image="ghcr.io/${{ github.repository }}@${{ needs.merge.outputs.image_digest }}")
+
+          # Parse JSON and set outputs
+          COMPRESSED=$(echo "$METRICS_JSON" | jq -r '.compressedFormatted')
+          UNCOMPRESSED=$(echo "$METRICS_JSON" | jq -r '.uncompressedFormatted')
+          LAYERS=$(echo "$METRICS_JSON" | jq -r '.layerCount')
+
+          echo "compressed_size=${COMPRESSED}" >> $GITHUB_OUTPUT
+          echo "uncompressed_size=${UNCOMPRESSED}" >> $GITHUB_OUTPUT
+          echo "layer_count=${LAYERS}" >> $GITHUB_OUTPUT
+
+          echo "✅ Metrics extracted:"
+          echo "   Compressed: ${COMPRESSED}"
+          echo "   Uncompressed: ${UNCOMPRESSED}"
+          echo "   Layers: ${LAYERS}"
+
       - name: Generate release notes
         run: |
           bun scripts/generate-release-notes.ts \
@@ -1243,6 +1266,9 @@ jobs:
             --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total="${{ needs.prep.outputs.catalog_total }}" \
             --package-version-id="${{ steps.package_version.outputs.package_version_id }}" \
+            --compressed-size="${{ steps.metrics.outputs.compressed_size }}" \
+            --uncompressed-size="${{ steps.metrics.outputs.uncompressed_size }}" \
+            --layer-count="${{ steps.metrics.outputs.layer_count }}" \
             --output=release-notes.md
 
           echo "✅ Release notes generated"

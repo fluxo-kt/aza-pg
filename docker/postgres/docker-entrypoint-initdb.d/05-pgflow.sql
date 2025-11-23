@@ -42,11 +42,9 @@
 --   See /docs/pgflow/INTEGRATION.md for comprehensive usage guide
 --
 -- ============================================================================
-
 -- ============================================================================
 -- SCHEMA CREATION
 -- ============================================================================
-
 -- Ensure pgflow schema exists
 DO $$
 BEGIN
@@ -83,7 +81,6 @@ $$;
 -- pgflow uses Supabase's realtime.send() for event broadcasting.
 -- For standalone PostgreSQL, we create a no-op stub function.
 -- You can replace this with your own event notification system (pg_notify, etc.)
-
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'realtime') THEN
@@ -92,11 +89,11 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION realtime.send(
-  payload jsonb,
-  event text,
-  topic text,
-  private boolean DEFAULT false
+CREATE OR REPLACE FUNCTION realtime.send (
+  payload JSONB,
+  event TEXT,
+  topic TEXT,
+  private BOOLEAN DEFAULT FALSE
 ) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   -- Stub function for standalone PostgreSQL
@@ -114,25 +111,22 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION realtime.send IS
-  'Stub function replacing Supabase realtime.send(). Replace with your own event notification system.';
+COMMENT ON FUNCTION realtime.send IS 'Stub function replacing Supabase realtime.send(). Replace with your own event notification system.';
 
 -- ============================================================================
 -- PGFLOW CORE SCHEMA (v0.7.2)
 -- ============================================================================
-
 -- ----------------------------------------------------------------------------
 -- INITIAL SCHEMA (20250429164909_pgflow_initial.sql)
 -- ----------------------------------------------------------------------------
-
 -- Create "read_with_poll" function
-CREATE FUNCTION "pgflow"."read_with_poll"(
-  "queue_name" text,
-  "vt" integer,
-  "qty" integer,
-  "max_poll_seconds" integer DEFAULT 5,
-  "poll_interval_ms" integer DEFAULT 100,
-  "conditional" jsonb DEFAULT '{}'
+CREATE FUNCTION "pgflow"."read_with_poll" (
+  "queue_name" TEXT,
+  "vt" INTEGER,
+  "qty" INTEGER,
+  "max_poll_seconds" INTEGER DEFAULT 5,
+  "poll_interval_ms" INTEGER DEFAULT 100,
+  "conditional" JSONB DEFAULT '{}'
 ) RETURNS SETOF pgmq.message_record LANGUAGE plpgsql AS $$
 DECLARE
     r pgmq.message_record;
@@ -187,11 +181,15 @@ $$;
 
 -- Create composite type "step_task_record"
 CREATE TYPE "pgflow"."step_task_record" AS (
-  "flow_slug" text, "run_id" uuid, "step_slug" text, "input" jsonb, "msg_id" bigint
+  "flow_slug" TEXT,
+  "run_id" UUID,
+  "step_slug" TEXT,
+  "input" JSONB,
+  "msg_id" BIGINT
 );
 
 -- Create "is_valid_slug" function
-CREATE FUNCTION "pgflow"."is_valid_slug"("slug" text) RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
+CREATE FUNCTION "pgflow"."is_valid_slug" ("slug" TEXT) RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
     RETURN
       slug IS NOT NULL
@@ -204,178 +202,245 @@ $$;
 
 -- Create "flows" table
 CREATE TABLE "pgflow"."flows" (
-  "flow_slug" text NOT NULL,
-  "opt_max_attempts" integer NOT NULL DEFAULT 3,
-  "opt_base_delay" integer NOT NULL DEFAULT 1,
-  "opt_timeout" integer NOT NULL DEFAULT 60,
-  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "flow_slug" TEXT NOT NULL,
+  "opt_max_attempts" INTEGER NOT NULL DEFAULT 3,
+  "opt_base_delay" INTEGER NOT NULL DEFAULT 1,
+  "opt_timeout" INTEGER NOT NULL DEFAULT 60,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("flow_slug"),
   CONSTRAINT "opt_base_delay_is_nonnegative" CHECK (opt_base_delay >= 0),
   CONSTRAINT "opt_max_attempts_is_nonnegative" CHECK (opt_max_attempts >= 0),
   CONSTRAINT "opt_timeout_is_positive" CHECK (opt_timeout > 0),
-  CONSTRAINT "slug_is_valid" CHECK (pgflow.is_valid_slug(flow_slug))
+  CONSTRAINT "slug_is_valid" CHECK (pgflow.is_valid_slug (flow_slug))
 );
 
 -- Create "steps" table
 CREATE TABLE "pgflow"."steps" (
-  "flow_slug" text NOT NULL,
-  "step_slug" text NOT NULL,
-  "step_type" text NOT NULL DEFAULT 'single',
-  "step_index" integer NOT NULL DEFAULT 0,
-  "deps_count" integer NOT NULL DEFAULT 0,
-  "opt_max_attempts" integer NULL,
-  "opt_base_delay" integer NULL,
-  "opt_timeout" integer NULL,
-  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "flow_slug" TEXT NOT NULL,
+  "step_slug" TEXT NOT NULL,
+  "step_type" TEXT NOT NULL DEFAULT 'single',
+  "step_index" INTEGER NOT NULL DEFAULT 0,
+  "deps_count" INTEGER NOT NULL DEFAULT 0,
+  "opt_max_attempts" INTEGER NULL,
+  "opt_base_delay" INTEGER NULL,
+  "opt_timeout" INTEGER NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("flow_slug", "step_slug"),
   CONSTRAINT "steps_flow_slug_step_index_key" UNIQUE ("flow_slug", "step_index"),
-  CONSTRAINT "steps_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" (
-    "flow_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "opt_base_delay_is_nonnegative" CHECK ((opt_base_delay IS NULL) OR (opt_base_delay >= 0)),
-  CONSTRAINT "opt_max_attempts_is_nonnegative" CHECK ((opt_max_attempts IS NULL) OR (opt_max_attempts >= 0)),
-  CONSTRAINT "opt_timeout_is_positive" CHECK ((opt_timeout IS NULL) OR (opt_timeout > 0)),
+  CONSTRAINT "steps_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" ("flow_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "opt_base_delay_is_nonnegative" CHECK (
+    (opt_base_delay IS NULL)
+    OR (opt_base_delay >= 0)
+  ),
+  CONSTRAINT "opt_max_attempts_is_nonnegative" CHECK (
+    (opt_max_attempts IS NULL)
+    OR (opt_max_attempts >= 0)
+  ),
+  CONSTRAINT "opt_timeout_is_positive" CHECK (
+    (opt_timeout IS NULL)
+    OR (opt_timeout > 0)
+  ),
   CONSTRAINT "steps_deps_count_check" CHECK (deps_count >= 0),
-  CONSTRAINT "steps_step_slug_check" CHECK (pgflow.is_valid_slug(step_slug)),
-  CONSTRAINT "steps_step_type_check" CHECK (step_type = 'single'::text)
+  CONSTRAINT "steps_step_slug_check" CHECK (pgflow.is_valid_slug (step_slug)),
+  CONSTRAINT "steps_step_type_check" CHECK (step_type = 'single'::TEXT)
 );
 
 -- Create "deps" table
 CREATE TABLE "pgflow"."deps" (
-  "flow_slug" text NOT NULL,
-  "dep_slug" text NOT NULL,
-  "step_slug" text NOT NULL,
-  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "flow_slug" TEXT NOT NULL,
+  "dep_slug" TEXT NOT NULL,
+  "step_slug" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("flow_slug", "dep_slug", "step_slug"),
-  CONSTRAINT "deps_flow_slug_dep_slug_fkey" FOREIGN KEY ("flow_slug", "dep_slug") REFERENCES "pgflow"."steps" (
-    "flow_slug", "step_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "deps_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" (
-    "flow_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "deps_flow_slug_step_slug_fkey" FOREIGN KEY ("flow_slug", "step_slug") REFERENCES "pgflow"."steps" (
-    "flow_slug", "step_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "deps_flow_slug_dep_slug_fkey" FOREIGN KEY ("flow_slug", "dep_slug") REFERENCES "pgflow"."steps" ("flow_slug", "step_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "deps_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" ("flow_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "deps_flow_slug_step_slug_fkey" FOREIGN KEY ("flow_slug", "step_slug") REFERENCES "pgflow"."steps" ("flow_slug", "step_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
   CONSTRAINT "deps_check" CHECK (dep_slug <> step_slug)
 );
 
 CREATE INDEX "idx_deps_by_flow_dep" ON "pgflow"."deps" ("flow_slug", "dep_slug");
+
 CREATE INDEX "idx_deps_by_flow_step" ON "pgflow"."deps" ("flow_slug", "step_slug");
 
 -- Create "runs" table
 CREATE TABLE "pgflow"."runs" (
-  "run_id" uuid NOT NULL DEFAULT gen_random_uuid(),
-  "flow_slug" text NOT NULL,
-  "status" text NOT NULL DEFAULT 'started',
-  "input" jsonb NOT NULL,
-  "output" jsonb NULL,
-  "remaining_steps" integer NOT NULL DEFAULT 0,
-  "started_at" timestamptz NOT NULL DEFAULT now(),
-  "completed_at" timestamptz NULL,
-  "failed_at" timestamptz NULL,
+  "run_id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "flow_slug" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'started',
+  "input" JSONB NOT NULL,
+  "output" JSONB NULL,
+  "remaining_steps" INTEGER NOT NULL DEFAULT 0,
+  "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "completed_at" TIMESTAMPTZ NULL,
+  "failed_at" TIMESTAMPTZ NULL,
   PRIMARY KEY ("run_id"),
-  CONSTRAINT "runs_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" (
-    "flow_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "completed_at_is_after_started_at" CHECK ((completed_at IS NULL) OR (completed_at >= started_at)),
-  CONSTRAINT "completed_at_or_failed_at" CHECK (NOT ((completed_at IS NOT NULL) AND (failed_at IS NOT NULL))),
-  CONSTRAINT "failed_at_is_after_started_at" CHECK ((failed_at IS NULL) OR (failed_at >= started_at)),
+  CONSTRAINT "runs_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" ("flow_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "completed_at_is_after_started_at" CHECK (
+    (completed_at IS NULL)
+    OR (completed_at >= started_at)
+  ),
+  CONSTRAINT "completed_at_or_failed_at" CHECK (
+    NOT (
+      (completed_at IS NOT NULL)
+      AND (failed_at IS NOT NULL)
+    )
+  ),
+  CONSTRAINT "failed_at_is_after_started_at" CHECK (
+    (failed_at IS NULL)
+    OR (failed_at >= started_at)
+  ),
   CONSTRAINT "runs_remaining_steps_check" CHECK (remaining_steps >= 0),
-  CONSTRAINT "status_is_valid" CHECK (status = ANY(ARRAY['started'::text, 'failed'::text, 'completed'::text]))
+  CONSTRAINT "status_is_valid" CHECK (
+    status = ANY (
+      ARRAY[
+        'started'::TEXT,
+        'failed'::TEXT,
+        'completed'::TEXT
+      ]
+    )
+  )
 );
 
 CREATE INDEX "idx_runs_flow_slug" ON "pgflow"."runs" ("flow_slug");
+
 CREATE INDEX "idx_runs_status" ON "pgflow"."runs" ("status");
 
 -- Create "step_states" table
 CREATE TABLE "pgflow"."step_states" (
-  "flow_slug" text NOT NULL,
-  "run_id" uuid NOT NULL,
-  "step_slug" text NOT NULL,
-  "status" text NOT NULL DEFAULT 'created',
-  "remaining_tasks" integer NOT NULL DEFAULT 1,
-  "remaining_deps" integer NOT NULL DEFAULT 0,
-  "created_at" timestamptz NOT NULL DEFAULT now(),
-  "started_at" timestamptz NULL,
-  "completed_at" timestamptz NULL,
-  "failed_at" timestamptz NULL,
+  "flow_slug" TEXT NOT NULL,
+  "run_id" UUID NOT NULL,
+  "step_slug" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'created',
+  "remaining_tasks" INTEGER NOT NULL DEFAULT 1,
+  "remaining_deps" INTEGER NOT NULL DEFAULT 0,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "started_at" TIMESTAMPTZ NULL,
+  "completed_at" TIMESTAMPTZ NULL,
+  "failed_at" TIMESTAMPTZ NULL,
   PRIMARY KEY ("run_id", "step_slug"),
-  CONSTRAINT "step_states_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" (
-    "flow_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "step_states_flow_slug_step_slug_fkey" FOREIGN KEY (
-    "flow_slug", "step_slug"
-  ) REFERENCES "pgflow"."steps" ("flow_slug", "step_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "step_states_run_id_fkey" FOREIGN KEY ("run_id") REFERENCES "pgflow"."runs" (
-    "run_id"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "completed_at_is_after_started_at" CHECK ((completed_at IS NULL) OR (completed_at >= started_at)),
-  CONSTRAINT "completed_at_or_failed_at" CHECK (NOT ((completed_at IS NOT NULL) AND (failed_at IS NOT NULL))),
-  CONSTRAINT "failed_at_is_after_started_at" CHECK ((failed_at IS NULL) OR (failed_at >= started_at)),
-  CONSTRAINT "started_at_is_after_created_at" CHECK ((started_at IS NULL) OR (started_at >= created_at)),
-  CONSTRAINT "status_and_remaining_tasks_match" CHECK ((status <> 'completed'::text) OR (remaining_tasks = 0)),
+  CONSTRAINT "step_states_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" ("flow_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "step_states_flow_slug_step_slug_fkey" FOREIGN KEY ("flow_slug", "step_slug") REFERENCES "pgflow"."steps" ("flow_slug", "step_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "step_states_run_id_fkey" FOREIGN KEY ("run_id") REFERENCES "pgflow"."runs" ("run_id") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "completed_at_is_after_started_at" CHECK (
+    (completed_at IS NULL)
+    OR (completed_at >= started_at)
+  ),
+  CONSTRAINT "completed_at_or_failed_at" CHECK (
+    NOT (
+      (completed_at IS NOT NULL)
+      AND (failed_at IS NOT NULL)
+    )
+  ),
+  CONSTRAINT "failed_at_is_after_started_at" CHECK (
+    (failed_at IS NULL)
+    OR (failed_at >= started_at)
+  ),
+  CONSTRAINT "started_at_is_after_created_at" CHECK (
+    (started_at IS NULL)
+    OR (started_at >= created_at)
+  ),
+  CONSTRAINT "status_and_remaining_tasks_match" CHECK (
+    (status <> 'completed'::TEXT)
+    OR (remaining_tasks = 0)
+  ),
   CONSTRAINT "status_is_valid" CHECK (
-    status = ANY(ARRAY['created'::text, 'started'::text, 'completed'::text, 'failed'::text])
+    status = ANY (
+      ARRAY[
+        'created'::TEXT,
+        'started'::TEXT,
+        'completed'::TEXT,
+        'failed'::TEXT
+      ]
+    )
   ),
   CONSTRAINT "step_states_remaining_deps_check" CHECK (remaining_deps >= 0),
   CONSTRAINT "step_states_remaining_tasks_check" CHECK (remaining_tasks >= 0)
 );
 
-CREATE INDEX "idx_step_states_failed" ON "pgflow"."step_states" ("run_id", "step_slug") WHERE (status = 'failed'::text);
+CREATE INDEX "idx_step_states_failed" ON "pgflow"."step_states" ("run_id", "step_slug")
+WHERE
+  (status = 'failed'::TEXT);
+
 CREATE INDEX "idx_step_states_flow_slug" ON "pgflow"."step_states" ("flow_slug");
-CREATE INDEX "idx_step_states_ready" ON "pgflow"."step_states" ("run_id", "status", "remaining_deps") WHERE (
-  (status = 'created'::text) AND (remaining_deps = 0)
-);
+
+CREATE INDEX "idx_step_states_ready" ON "pgflow"."step_states" ("run_id", "status", "remaining_deps")
+WHERE
+  (
+    (status = 'created'::TEXT)
+    AND (remaining_deps = 0)
+  );
 
 -- Create "step_tasks" table
 CREATE TABLE "pgflow"."step_tasks" (
-  "flow_slug" text NOT NULL,
-  "run_id" uuid NOT NULL,
-  "step_slug" text NOT NULL,
-  "message_id" bigint NULL,
-  "task_index" integer NOT NULL DEFAULT 0,
-  "status" text NOT NULL DEFAULT 'queued',
-  "attempts_count" integer NOT NULL DEFAULT 0,
-  "error_message" text NULL,
-  "output" jsonb NULL,
-  "queued_at" timestamptz NOT NULL DEFAULT now(),
-  "completed_at" timestamptz NULL,
-  "failed_at" timestamptz NULL,
+  "flow_slug" TEXT NOT NULL,
+  "run_id" UUID NOT NULL,
+  "step_slug" TEXT NOT NULL,
+  "message_id" BIGINT NULL,
+  "task_index" INTEGER NOT NULL DEFAULT 0,
+  "status" TEXT NOT NULL DEFAULT 'queued',
+  "attempts_count" INTEGER NOT NULL DEFAULT 0,
+  "error_message" TEXT NULL,
+  "output" JSONB NULL,
+  "queued_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "completed_at" TIMESTAMPTZ NULL,
+  "failed_at" TIMESTAMPTZ NULL,
   PRIMARY KEY ("run_id", "step_slug", "task_index"),
-  CONSTRAINT "step_tasks_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" (
-    "flow_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "step_tasks_run_id_fkey" FOREIGN KEY ("run_id") REFERENCES "pgflow"."runs" (
-    "run_id"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT "step_tasks_run_id_step_slug_fkey" FOREIGN KEY ("run_id", "step_slug") REFERENCES "pgflow"."step_states" (
-    "run_id", "step_slug"
-  ) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "step_tasks_flow_slug_fkey" FOREIGN KEY ("flow_slug") REFERENCES "pgflow"."flows" ("flow_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "step_tasks_run_id_fkey" FOREIGN KEY ("run_id") REFERENCES "pgflow"."runs" ("run_id") ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CONSTRAINT "step_tasks_run_id_step_slug_fkey" FOREIGN KEY ("run_id", "step_slug") REFERENCES "pgflow"."step_states" ("run_id", "step_slug") ON UPDATE NO ACTION ON DELETE NO ACTION,
   CONSTRAINT "attempts_count_nonnegative" CHECK (attempts_count >= 0),
-  CONSTRAINT "completed_at_is_after_queued_at" CHECK ((completed_at IS NULL) OR (completed_at >= queued_at)),
-  CONSTRAINT "completed_at_or_failed_at" CHECK (NOT ((completed_at IS NOT NULL) AND (failed_at IS NOT NULL))),
-  CONSTRAINT "failed_at_is_after_queued_at" CHECK ((failed_at IS NULL) OR (failed_at >= queued_at)),
+  CONSTRAINT "completed_at_is_after_queued_at" CHECK (
+    (completed_at IS NULL)
+    OR (completed_at >= queued_at)
+  ),
+  CONSTRAINT "completed_at_or_failed_at" CHECK (
+    NOT (
+      (completed_at IS NOT NULL)
+      AND (failed_at IS NOT NULL)
+    )
+  ),
+  CONSTRAINT "failed_at_is_after_queued_at" CHECK (
+    (failed_at IS NULL)
+    OR (failed_at >= queued_at)
+  ),
   CONSTRAINT "only_single_task_per_step" CHECK (task_index = 0),
-  CONSTRAINT "output_valid_only_for_completed" CHECK ((output IS NULL) OR (status = 'completed'::text)),
-  CONSTRAINT "valid_status" CHECK (status = ANY(ARRAY['queued'::text, 'completed'::text, 'failed'::text]))
+  CONSTRAINT "output_valid_only_for_completed" CHECK (
+    (output IS NULL)
+    OR (status = 'completed'::TEXT)
+  ),
+  CONSTRAINT "valid_status" CHECK (
+    status = ANY (
+      ARRAY['queued'::TEXT, 'completed'::TEXT, 'failed'::TEXT]
+    )
+  )
 );
 
-CREATE INDEX "idx_step_tasks_completed" ON "pgflow"."step_tasks" ("run_id", "step_slug") WHERE (
-  status = 'completed'::text
-);
-CREATE INDEX "idx_step_tasks_failed" ON "pgflow"."step_tasks" ("run_id", "step_slug") WHERE (status = 'failed'::text);
+CREATE INDEX "idx_step_tasks_completed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+WHERE
+  (status = 'completed'::TEXT);
+
+CREATE INDEX "idx_step_tasks_failed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+WHERE
+  (status = 'failed'::TEXT);
+
 CREATE INDEX "idx_step_tasks_flow_run_step" ON "pgflow"."step_tasks" ("flow_slug", "run_id", "step_slug");
+
 CREATE INDEX "idx_step_tasks_message_id" ON "pgflow"."step_tasks" ("message_id");
-CREATE INDEX "idx_step_tasks_queued" ON "pgflow"."step_tasks" ("run_id", "step_slug") WHERE (status = 'queued'::text);
+
+CREATE INDEX "idx_step_tasks_queued" ON "pgflow"."step_tasks" ("run_id", "step_slug")
+WHERE
+  (status = 'queued'::TEXT);
 
 -- Create "poll_for_tasks" function (will be deprecated later)
-CREATE FUNCTION "pgflow"."poll_for_tasks"(
-  "queue_name" text,
-  "vt" integer,
-  "qty" integer,
-  "max_poll_seconds" integer DEFAULT 5,
-  "poll_interval_ms" integer DEFAULT 100
-) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."poll_for_tasks" (
+  "queue_name" TEXT,
+  "vt" INTEGER,
+  "qty" INTEGER,
+  "max_poll_seconds" INTEGER DEFAULT 5,
+  "poll_interval_ms" INTEGER DEFAULT 100
+) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 WITH read_messages AS (
   SELECT *
   FROM pgflow.read_with_poll(
@@ -462,14 +527,16 @@ CROSS JOIN LATERAL (
 $$;
 
 -- Create "add_step" function (multiple overloads)
-CREATE FUNCTION "pgflow"."add_step"(
-  "flow_slug" text,
-  "step_slug" text,
-  "deps_slugs" text [],
-  "max_attempts" integer DEFAULT NULL::integer,
-  "base_delay" integer DEFAULT NULL::integer,
-  "timeout" integer DEFAULT NULL::integer
-) RETURNS "pgflow"."steps" LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."add_step" (
+  "flow_slug" TEXT,
+  "step_slug" TEXT,
+  "deps_slugs" TEXT[],
+  "max_attempts" INTEGER DEFAULT NULL::INTEGER,
+  "base_delay" INTEGER DEFAULT NULL::INTEGER,
+  "timeout" INTEGER DEFAULT NULL::INTEGER
+) RETURNS "pgflow"."steps" LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 WITH
   next_index AS (
     SELECT COALESCE(MAX(step_index) + 1, 0) AS idx
@@ -494,25 +561,27 @@ WITH
 SELECT * FROM create_step;
 $$;
 
-CREATE FUNCTION "pgflow"."add_step"(
-  "flow_slug" text,
-  "step_slug" text,
-  "max_attempts" integer DEFAULT NULL::integer,
-  "base_delay" integer DEFAULT NULL::integer,
-  "timeout" integer DEFAULT NULL::integer
-) RETURNS "pgflow"."steps" LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."add_step" (
+  "flow_slug" TEXT,
+  "step_slug" TEXT,
+  "max_attempts" INTEGER DEFAULT NULL::INTEGER,
+  "base_delay" INTEGER DEFAULT NULL::INTEGER,
+  "timeout" INTEGER DEFAULT NULL::INTEGER
+) RETURNS "pgflow"."steps" LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 SELECT * FROM pgflow.add_step(flow_slug, step_slug, ARRAY[]::text[], max_attempts, base_delay, timeout);
 $$;
 
 -- Create "calculate_retry_delay" function
-CREATE FUNCTION "pgflow"."calculate_retry_delay"(
-  "base_delay" numeric, "attempts_count" integer
-) RETURNS integer LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+CREATE FUNCTION "pgflow"."calculate_retry_delay" ("base_delay" NUMERIC, "attempts_count" INTEGER) RETURNS INTEGER LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT floor(base_delay * power(2, attempts_count))::int
 $$;
 
 -- Create "maybe_complete_run" function
-CREATE FUNCTION "pgflow"."maybe_complete_run"("run_id" uuid) RETURNS void LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."maybe_complete_run" ("run_id" UUID) RETURNS void LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 UPDATE pgflow.runs
 SET
   status = 'completed',
@@ -537,7 +606,9 @@ WHERE pgflow.runs.run_id = maybe_complete_run.run_id
 $$;
 
 -- Create "start_ready_steps" function
-CREATE FUNCTION "pgflow"."start_ready_steps"("run_id" uuid) RETURNS void LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."start_ready_steps" ("run_id" UUID) RETURNS void LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 WITH ready_steps AS (
   SELECT *
   FROM pgflow.step_states AS step_state
@@ -579,9 +650,14 @@ FROM sent_messages;
 $$;
 
 -- Create "complete_task" function
-CREATE FUNCTION "pgflow"."complete_task"(
-  "run_id" uuid, "step_slug" text, "task_index" integer, "output" jsonb
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."complete_task" (
+  "run_id" UUID,
+  "step_slug" TEXT,
+  "task_index" INTEGER,
+  "output" JSONB
+) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 BEGIN
 
 WITH run_lock AS (
@@ -671,9 +747,14 @@ END;
 $$;
 
 -- Create "create_flow" function
-CREATE FUNCTION "pgflow"."create_flow"(
-  "flow_slug" text, "max_attempts" integer DEFAULT 3, "base_delay" integer DEFAULT 5, "timeout" integer DEFAULT 60
-) RETURNS "pgflow"."flows" LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."create_flow" (
+  "flow_slug" TEXT,
+  "max_attempts" INTEGER DEFAULT 3,
+  "base_delay" INTEGER DEFAULT 5,
+  "timeout" INTEGER DEFAULT 60
+) RETURNS "pgflow"."flows" LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 WITH
   flow_upsert AS (
     INSERT INTO pgflow.flows (flow_slug, opt_max_attempts, opt_base_delay, opt_timeout)
@@ -694,9 +775,14 @@ LEFT JOIN (SELECT 1 FROM ensure_queue) _dummy ON true;
 $$;
 
 -- Create "fail_task" function
-CREATE FUNCTION "pgflow"."fail_task"(
-  "run_id" uuid, "step_slug" text, "task_index" integer, "error_message" text
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."fail_task" (
+  "run_id" UUID,
+  "step_slug" TEXT,
+  "task_index" INTEGER,
+  "error_message" TEXT
+) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 BEGIN
 
 WITH run_lock AS (
@@ -824,9 +910,9 @@ END;
 $$;
 
 -- Create "start_flow" function (initial version, will be replaced)
-CREATE FUNCTION "pgflow"."start_flow"(
-  "flow_slug" text, "input" jsonb
-) RETURNS SETOF "pgflow"."runs" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."start_flow" ("flow_slug" TEXT, "input" JSONB) RETURNS SETOF "pgflow"."runs" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 DECLARE
   v_created_run pgflow.runs%ROWTYPE;
 BEGIN
@@ -866,12 +952,12 @@ $$;
 
 -- Create "workers" table
 CREATE TABLE "pgflow"."workers" (
-  "worker_id" uuid NOT NULL,
-  "queue_name" text NOT NULL,
-  "function_name" text NOT NULL,
-  "started_at" timestamptz NOT NULL DEFAULT now(),
-  "stopped_at" timestamptz NULL,
-  "last_heartbeat_at" timestamptz NOT NULL DEFAULT now(),
+  "worker_id" UUID NOT NULL,
+  "queue_name" TEXT NOT NULL,
+  "function_name" TEXT NOT NULL,
+  "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "stopped_at" TIMESTAMPTZ NULL,
+  "last_heartbeat_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("worker_id")
 );
 
@@ -881,12 +967,16 @@ CREATE INDEX "idx_workers_queue_name" ON "pgflow"."workers" ("queue_name");
 -- PHASE 2: Fix poll_for_tasks to use separate statement for polling
 -- (20250517125006_20250517072017_pgflow_fix_poll_for_tasks_to_use_separate_statement_for_polling.sql)
 -- ----------------------------------------------------------------------------
-
 -- Modify "poll_for_tasks" function
 CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks" (
-  "queue_name" text, "vt" integer, "qty" integer,
-  "max_poll_seconds" integer DEFAULT 5, "poll_interval_ms" integer DEFAULT 100
-) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE plpgsql SET "search_path" = '' AS $$
+  "queue_name" TEXT,
+  "vt" INTEGER,
+  "qty" INTEGER,
+  "max_poll_seconds" INTEGER DEFAULT 5,
+  "poll_interval_ms" INTEGER DEFAULT 100
+) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 DECLARE
   msg_ids bigint[];
 BEGIN
@@ -983,37 +1073,61 @@ $$;
 -- PHASE 3: Add start_tasks and started status
 -- (20250610080624_20250609105135_pgflow_add_start_tasks_and_started_status.sql)
 -- ----------------------------------------------------------------------------
-
 -- Add heartbeat index to workers
 CREATE INDEX "idx_workers_heartbeat" ON "pgflow"."workers" ("last_heartbeat_at");
 
 -- Modify "step_tasks" table to add started status and worker tracking
 ALTER TABLE "pgflow"."step_tasks"
-  DROP CONSTRAINT "valid_status",
-  ADD CONSTRAINT "valid_status" CHECK (
-    status = ANY(ARRAY['queued'::text, 'started'::text, 'completed'::text, 'failed'::text])
-  ),
-  ADD CONSTRAINT "completed_at_is_after_started_at" CHECK (
-    (completed_at IS NULL) OR (started_at IS NULL) OR (completed_at >= started_at)
-  ),
-  ADD CONSTRAINT "failed_at_is_after_started_at" CHECK (
-    (failed_at IS NULL) OR (started_at IS NULL) OR (failed_at >= started_at)
-  ),
-  ADD CONSTRAINT "started_at_is_after_queued_at" CHECK ((started_at IS NULL) OR (started_at >= queued_at)),
-  ADD COLUMN "started_at" timestamptz NULL,
-  ADD COLUMN "last_worker_id" uuid NULL,
-  ADD CONSTRAINT "step_tasks_last_worker_id_fkey" FOREIGN KEY ("last_worker_id") REFERENCES "pgflow"."workers" (
-    "worker_id"
-  ) ON UPDATE NO ACTION ON DELETE SET NULL;
+DROP CONSTRAINT "valid_status",
+ADD CONSTRAINT "valid_status" CHECK (
+  status = ANY (
+    ARRAY[
+      'queued'::TEXT,
+      'started'::TEXT,
+      'completed'::TEXT,
+      'failed'::TEXT
+    ]
+  )
+),
+ADD CONSTRAINT "completed_at_is_after_started_at" CHECK (
+  (completed_at IS NULL)
+  OR (started_at IS NULL)
+  OR (completed_at >= started_at)
+),
+ADD CONSTRAINT "failed_at_is_after_started_at" CHECK (
+  (failed_at IS NULL)
+  OR (started_at IS NULL)
+  OR (failed_at >= started_at)
+),
+ADD CONSTRAINT "started_at_is_after_queued_at" CHECK (
+  (started_at IS NULL)
+  OR (started_at >= queued_at)
+),
+ADD COLUMN "started_at" TIMESTAMPTZ NULL,
+ADD COLUMN "last_worker_id" UUID NULL,
+ADD CONSTRAINT "step_tasks_last_worker_id_fkey" FOREIGN KEY ("last_worker_id") REFERENCES "pgflow"."workers" ("worker_id") ON UPDATE NO ACTION ON DELETE SET NULL;
 
-CREATE INDEX "idx_step_tasks_last_worker" ON "pgflow"."step_tasks" ("last_worker_id") WHERE (status = 'started'::text);
-CREATE INDEX "idx_step_tasks_queued_msg" ON "pgflow"."step_tasks" ("message_id") WHERE (status = 'queued'::text);
-CREATE INDEX "idx_step_tasks_started" ON "pgflow"."step_tasks" ("started_at") WHERE (status = 'started'::text);
+CREATE INDEX "idx_step_tasks_last_worker" ON "pgflow"."step_tasks" ("last_worker_id")
+WHERE
+  (status = 'started'::TEXT);
+
+CREATE INDEX "idx_step_tasks_queued_msg" ON "pgflow"."step_tasks" ("message_id")
+WHERE
+  (status = 'queued'::TEXT);
+
+CREATE INDEX "idx_step_tasks_started" ON "pgflow"."step_tasks" ("started_at")
+WHERE
+  (status = 'started'::TEXT);
 
 -- Update complete_task to handle 'started' status
-CREATE OR REPLACE FUNCTION "pgflow"."complete_task"(
-  "run_id" uuid, "step_slug" text, "task_index" integer, "output" jsonb
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE OR REPLACE FUNCTION "pgflow"."complete_task" (
+  "run_id" UUID,
+  "step_slug" TEXT,
+  "task_index" INTEGER,
+  "output" JSONB
+) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 BEGIN
 
 WITH run_lock AS (
@@ -1111,9 +1225,14 @@ END;
 $$;
 
 -- Update fail_task to handle 'started' status
-CREATE OR REPLACE FUNCTION "pgflow"."fail_task"(
-  "run_id" uuid, "step_slug" text, "task_index" integer, "error_message" text
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE OR REPLACE FUNCTION "pgflow"."fail_task" (
+  "run_id" UUID,
+  "step_slug" TEXT,
+  "task_index" INTEGER,
+  "error_message" TEXT
+) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 BEGIN
 
 WITH run_lock AS (
@@ -1244,13 +1363,15 @@ END;
 $$;
 
 -- Deprecate poll_for_tasks (replaced by two-phase polling)
-CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks"(
-  "queue_name" text,
-  "vt" integer,
-  "qty" integer,
-  "max_poll_seconds" integer DEFAULT 5,
-  "poll_interval_ms" integer DEFAULT 100
-) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE plpgsql SET "search_path" = '' AS $$
+CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks" (
+  "queue_name" TEXT,
+  "vt" INTEGER,
+  "qty" INTEGER,
+  "max_poll_seconds" INTEGER DEFAULT 5,
+  "poll_interval_ms" INTEGER DEFAULT 100
+) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE plpgsql
+SET
+  "search_path" = '' AS $$
 BEGIN
   RAISE NOTICE 'DEPRECATED: poll_for_tasks is deprecated and will be removed. Please update pgflow via "npx pgflow install".';
   RETURN;
@@ -1258,9 +1379,13 @@ END;
 $$;
 
 -- Create "start_tasks" function (new two-phase polling approach)
-CREATE FUNCTION "pgflow"."start_tasks"(
-  "flow_slug" text, "msg_ids" bigint [], "worker_id" uuid
-) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql SET "search_path" = '' AS $$
+CREATE FUNCTION "pgflow"."start_tasks" (
+  "flow_slug" TEXT,
+  "msg_ids" BIGINT[],
+  "worker_id" UUID
+) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
+SET
+  "search_path" = '' AS $$
 WITH tasks AS (
     SELECT
       task.flow_slug,

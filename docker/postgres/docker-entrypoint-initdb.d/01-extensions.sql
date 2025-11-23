@@ -4,24 +4,25 @@
 --
 -- DO NOT EDIT MANUALLY - Changes will be overwritten
 -- Edit docker/postgres/extensions.manifest.json and regenerate
-
 -- Create initialization status tracking table
 -- This table serves as the contract between initialization and healthcheck
 -- Healthcheck queries this table instead of hardcoding extension lists
 CREATE TABLE IF NOT EXISTS pg_aza_status (
-    id SERIAL PRIMARY KEY,
-    init_timestamp TIMESTAMPTZ DEFAULT NOW(),
-    script_version TEXT NOT NULL,
-    expected_extensions TEXT[] NOT NULL,
-    created_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
-    failed_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
-    status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed', 'failed', 'partial')),
-    error_details TEXT,
-    notes TEXT
+  id SERIAL PRIMARY KEY,
+  init_timestamp TIMESTAMPTZ DEFAULT now(),
+  script_version TEXT NOT NULL,
+  expected_extensions TEXT[] NOT NULL,
+  created_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
+  failed_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
+  status TEXT NOT NULL CHECK (
+    status IN ('in_progress', 'completed', 'failed', 'partial')
+  ),
+  error_details TEXT,
+  notes TEXT
 );
 
 -- Index for efficient healthcheck queries (latest status)
-CREATE INDEX IF NOT EXISTS idx_pg_aza_status_timestamp ON pg_aza_status(init_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_pg_aza_status_timestamp ON pg_aza_status (init_timestamp DESC);
 
 DO $$
 DECLARE

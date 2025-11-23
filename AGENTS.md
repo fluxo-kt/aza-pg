@@ -110,15 +110,17 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_st
 
 **CI/CD**:
 
-- `ci.yml`: PRs only (lint, manifest sync, ~5min)
+Core Principle: All CI/CD logic in testable TypeScript scripts. YAML workflows = thin orchestration only.
+
+- `ci.yml`: PRs/push only (lint, manifest sync, checks and validation)
 - `build-postgres-image.yml`: Manual dev builds (dev-\* tags, no push default)
-- `publish.yml`: Release branch only (versioned tags, Cosign sign, SLSA provenance)
+- `publish.yml`: `release` branch only (versioned tags, Cosign sign, SLSA provenance)
 
 **Tags**: `MM.mm-YYYYMMDDHHmm-TYPE` (e.g., `18.1-202511142330-single-node`) + convenience (`18-single-node`, `18`)
 
 ## Dockerfile Generation
 
-**NEVER edit Dockerfile directly** - auto-generated from template + manifest
+**NEVER edit Dockerfile directly** — auto-generated from template + manifest
 
 **Architecture**: `manifest-data.ts` → TypeScript generator → pre-filtered manifests (pgxs/cargo JSONs) → template expansion → Dockerfile
 

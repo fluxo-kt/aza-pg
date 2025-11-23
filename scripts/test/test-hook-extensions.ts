@@ -33,11 +33,12 @@ const TEST_POSTGRES_PASSWORD =
  */
 async function assertSqlSuccess(container: string, sql: string, message: string): Promise<void> {
   try {
-    await $`docker exec ${container} psql -U postgres -t -c ${sql}`.quiet();
+    await $`docker exec ${container} psql -U postgres -t -c ${sql}`;
     console.log(`✅ ${message}`);
-  } catch {
+  } catch (err) {
     console.log(`❌ FAILED: ${message}`);
     console.log(`   SQL: ${sql}`);
+    console.log(`   Error: ${err}`);
     process.exit(1);
   }
 }
@@ -135,8 +136,14 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
   // Test 1: Without preload, UPDATE without WHERE should succeed
   await assertSqlSuccess(
     container,
-    "CREATE TABLE safeupdate_test (id int); INSERT INTO safeupdate_test VALUES (1), (2);",
+    "CREATE TABLE IF NOT EXISTS safeupdate_test (id int)",
     "Create test table for pg_safeupdate"
+  );
+
+  await assertSqlSuccess(
+    container,
+    "INSERT INTO safeupdate_test VALUES (1), (2)",
+    "Insert test data for pg_safeupdate"
   );
 
   await assertSqlSuccess(

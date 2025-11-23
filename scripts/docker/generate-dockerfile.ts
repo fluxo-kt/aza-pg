@@ -5,10 +5,16 @@
  * This script reads the Dockerfile.template and replaces placeholders with
  * actual values from the extensions manifest and extension-defaults.
  *
+ * Version dependencies are hardcoded at generation time (PG_VERSION, PG_BASE_IMAGE_SHA, PGDG versions).
+ * Build metadata (BUILD_DATE, VCS_REF, VERSION) remain as ARGs with generated defaults.
+ *
  * Placeholders:
- * - {{PGDG_VERSION_ARGS}} - ARG declarations for PGDG package versions
- * - {{PGDG_VERSION_ARG_REDECLARE}} - ARG redeclarations in final stage
- * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation
+ * - {{PG_VERSION}} - PostgreSQL version (hardcoded)
+ * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
+ * - {{BUILD_DATE_DEFAULT}} - ISO timestamp at generation time (ARG default)
+ * - {{VCS_REF_DEFAULT}} - Git commit SHA at generation time (ARG default)
+ * - {{VERSION_DEFAULT}} - Image version at generation time (ARG default)
+ * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
  * - {{VERSION_INFO_GENERATION}} - Version info generation script
  *
  * Usage:
@@ -16,6 +22,7 @@
  */
 
 import { join } from "node:path";
+import { $ } from "bun";
 import { extensionDefaults } from "../extension-defaults";
 import { error, info, section, success } from "../utils/logger";
 
@@ -146,27 +153,35 @@ async function readManifest(): Promise<Manifest> {
 }
 
 /**
- * Generate ARG declarations for PGDG versions
+ * Generate BUILD_DATE (ISO timestamp at generation time)
  */
-function generatePgdgVersionArgs(): string {
-  const lines = PGDG_MAPPINGS.map((mapping) => {
-    const version = extensionDefaults.pgdgVersions[mapping.versionKey];
-    return `ARG ${mapping.argName}=${version}`;
-  });
-
-  return lines.join("\n");
+function generateBuildDate(): string {
+  return new Date().toISOString();
 }
 
 /**
- * Generate ARG redeclarations for final stage
+ * Generate VCS_REF (current git commit SHA)
  */
-function generatePgdgVersionArgRedeclare(): string {
-  const lines = PGDG_MAPPINGS.map((mapping) => `ARG ${mapping.argName}`);
-  return lines.join("\n");
+async function generateVcsRef(): Promise<string> {
+  try {
+    const result = await $`git rev-parse HEAD`.text();
+    return result.trim();
+  } catch {
+    // Fallback if git not available or not in repo
+    return "unknown";
+  }
+}
+
+/**
+ * Generate VERSION (use PG version as image version)
+ */
+function generateVersion(): string {
+  return extensionDefaults.pgVersion;
 }
 
 /**
  * Generate PGDG package installation script
+ * Versions are hardcoded directly (no ARG references)
  */
 function generatePgdgPackagesInstall(manifest: Manifest): string {
   const enabledPgdgPackages: string[] = [];
@@ -175,11 +190,9 @@ function generatePgdgPackagesInstall(manifest: Manifest): string {
     const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
     // Check if entry exists, is PGDG, and is enabled (default true)
     if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
-      // Package is enabled
-      // We use ${PG_MAJOR} and ${ARG_NAME} which are Docker ARGs
-      enabledPgdgPackages.push(
-        `postgresql-\${PG_MAJOR}-${mapping.packageName}=\${${mapping.argName}}`
-      );
+      // Package is enabled - use hardcoded version from extensionDefaults
+      const version = extensionDefaults.pgdgVersions[mapping.versionKey];
+      enabledPgdgPackages.push(`postgresql-\${PG_MAJOR}-${mapping.packageName}=${version}`);
     }
   }
 
@@ -307,12 +320,15 @@ async function generateDockerfile(): Promise<void> {
   const templateFile = Bun.file(TEMPLATE_PATH);
   let dockerfile = await templateFile.text();
 
-  // Generate replacements
-  info("Generating PGDG version ARGs...");
-  const pgdgVersionArgs = generatePgdgVersionArgs();
+  // Generate runtime values
+  info("Generating BUILD_DATE...");
+  const buildDate = generateBuildDate();
 
-  info("Generating PGDG version ARG redeclarations...");
-  const pgdgVersionArgRedeclare = generatePgdgVersionArgRedeclare();
+  info("Generating VCS_REF...");
+  const vcsRef = await generateVcsRef();
+
+  info("Generating VERSION...");
+  const version = generateVersion();
 
   info("Generating PGDG package installation script...");
   const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest);
@@ -324,8 +340,9 @@ async function generateDockerfile(): Promise<void> {
   info("Replacing placeholders...");
   dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
-  dockerfile = dockerfile.replace("{{PGDG_VERSION_ARGS}}", pgdgVersionArgs);
-  dockerfile = dockerfile.replace("{{PGDG_VERSION_ARG_REDECLARE}}", pgdgVersionArgRedeclare);
+  dockerfile = dockerfile.replace(/\{\{BUILD_DATE_DEFAULT\}\}/g, buildDate);
+  dockerfile = dockerfile.replace(/\{\{VCS_REF_DEFAULT\}\}/g, vcsRef);
+  dockerfile = dockerfile.replace(/\{\{VERSION_DEFAULT\}\}/g, version);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 

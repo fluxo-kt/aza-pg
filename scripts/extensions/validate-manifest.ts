@@ -262,59 +262,60 @@ async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
   const dockerfile = await readFile(DOCKERFILE_PATH);
   const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
 
-  // Extract PGDG package names from Dockerfile ARG declarations
-  // Pattern: ARG NAME_VERSION=x.y.z (e.g., ARG PGCRON_VERSION=1.6.7)
-  const argRegex = /ARG\s+([A-Z_]+)_VERSION=/g;
-  const dockerfilePgdgArgs = new Set<string>();
+  // Extract PGDG package names from apt-get install commands
+  // Pattern: postgresql-${PG_MAJOR}-<package>=<version>
+  // Example: postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1
+  const packageRegex = /postgresql-\$\{PG_MAJOR\}-([a-z0-9-]+)=[0-9.+a-z-]+/g;
+  const dockerfilePgdgPackages = new Set<string>();
 
   let match;
-  while ((match = argRegex.exec(dockerfile)) !== null) {
-    const argName = match[1];
-    if (argName) {
-      dockerfilePgdgArgs.add(argName.toLowerCase());
+  while ((match = packageRegex.exec(dockerfile)) !== null) {
+    const packageName = match[1];
+    if (packageName) {
+      dockerfilePgdgPackages.add(packageName);
     }
   }
 
-  console.log(`  PGDG ARGs in Dockerfile: ${Array.from(dockerfilePgdgArgs).join(", ")}`);
+  console.log(`  PGDG packages in Dockerfile: ${Array.from(dockerfilePgdgPackages).join(", ")}`);
 
-  // The Dockerfile uses TypeScript-generated package lists, so we validate against ARG declarations
-  // which represent the PGDG packages that will be installed
+  // The Dockerfile uses TypeScript-generated package lists with hardcoded versions
+  // Validate that enabled PGDG extensions have corresponding package installations
   for (const entry of pgdgExtensions) {
-    // Map extension name to Dockerfile ARG name (e.g., "pg_cron" -> "PGCRON")
-    const argName = getDockerfileArgName(entry.name);
+    // Map extension name to Dockerfile package name (e.g., "pg_cron" -> "cron")
+    const packageName = getDockerfilePackageName(entry.name);
 
-    if (!dockerfilePgdgArgs.has(argName.toLowerCase())) {
+    if (!dockerfilePgdgPackages.has(packageName)) {
       // This is expected for enabled=false entries, so only warn
       if (entry.enabled !== false) {
         warn(
-          `Extension '${entry.name}' has install_via="pgdg" but no corresponding ARG in Dockerfile ` +
-            `(expected: ARG ${argName}_VERSION). This may be intentional for dynamic installation.`
+          `Extension '${entry.name}' has install_via="pgdg" but no corresponding package in Dockerfile ` +
+            `(expected: postgresql-\${PG_MAJOR}-${packageName}=...). This may be intentional for dynamic installation.`
         );
       }
     }
   }
 }
 
-// Map manifest extension name to Dockerfile ARG name
-function getDockerfileArgName(extensionName: string): string {
+// Map manifest extension name to Dockerfile package name (as used in apt-get install)
+function getDockerfilePackageName(extensionName: string): string {
   const mapping: Record<string, string> = {
-    vector: "PGVECTOR",
-    pg_cron: "PGCRON",
-    pgaudit: "PGAUDIT",
-    timescaledb: "TIMESCALEDB",
-    postgis: "POSTGIS",
-    pg_partman: "PARTMAN",
-    pg_repack: "REPACK",
-    plpgsql_check: "PLPGSQL_CHECK",
-    hll: "HLL",
-    http: "HTTP",
-    hypopg: "HYPOPG",
-    pgrouting: "PGROUTING",
-    rum: "RUM",
-    set_user: "SET_USER",
+    vector: "pgvector",
+    pg_cron: "cron",
+    pgaudit: "pgaudit",
+    timescaledb: "timescaledb",
+    postgis: "postgis-3",
+    pg_partman: "partman",
+    pg_repack: "repack",
+    plpgsql_check: "plpgsql-check",
+    hll: "hll",
+    http: "http",
+    hypopg: "hypopg",
+    pgrouting: "pgrouting",
+    rum: "rum",
+    set_user: "set-user",
   };
 
-  return mapping[extensionName] || extensionName.toUpperCase();
+  return mapping[extensionName] || extensionName;
 }
 
 // 5. Runtime spec completeness

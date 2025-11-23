@@ -117,15 +117,22 @@ async function validateDockerfile(): Promise<boolean> {
 
 /**
  * Normalize Dockerfile content for comparison
- * Removes generation timestamp to avoid false positives
+ * Removes generation timestamp and BUILD_DATE default to avoid false positives
  */
 function normalizeDockerfile(content: string): string {
   // Remove AUTO-GENERATED header (first 6 lines)
   const lines = content.split("\n");
   const withoutHeader = lines.slice(6).join("\n");
 
+  // Normalize BUILD_DATE ARG default (timestamp varies with each generation)
+  // Pattern: ARG BUILD_DATE="2025-11-23T03:48:29.604Z" -> ARG BUILD_DATE="<normalized>"
+  const normalized = withoutHeader.replace(
+    /ARG BUILD_DATE="[^"]+"/g,
+    'ARG BUILD_DATE="<normalized>"'
+  );
+
   // Normalize whitespace
-  return withoutHeader.trim();
+  return normalized.trim();
 }
 
 /**

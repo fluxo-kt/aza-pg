@@ -1,17 +1,11 @@
 # PostgreSQL {{PG_VERSION}} with comprehensive extension suite
 
-ARG PG_VERSION={{PG_VERSION}}
-ARG PG_BASE_IMAGE_SHA={{PG_BASE_IMAGE_SHA}}
+# Build metadata for OCI labels (defaults generated at Dockerfile generation time)
+ARG BUILD_DATE="{{BUILD_DATE_DEFAULT}}"
+ARG VCS_REF="{{VCS_REF_DEFAULT}}"
+ARG VERSION="{{VERSION_DEFAULT}}"
 
-# Build metadata for OCI labels
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION={{PG_VERSION}}
-
-# PGDG extension versions (14 pre-compiled extensions)
-{{PGDG_VERSION_ARGS}}
-
-FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
+FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG BUILD_DATE
@@ -124,30 +118,24 @@ RUN set -eu && \
 # This ensures consistency between local testing and Docker builds
 FROM builder-base AS builder-version-info
 
-ARG PG_VERSION
-
 # Copy the standalone version info generation script
 COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
 
-# Generate version-info files with actual PostgreSQL version from ARG
-# Extract major.minor version (e.g., "18.1" from "18.1-trixie")
+# Generate version-info files with hardcoded PostgreSQL version
 RUN set -ex && \
-    PG_VER=$(echo "${PG_VERSION}" | awk -F'-' '{print $1}') && \
-    echo "Generating version info for PostgreSQL ${PG_VER}..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="${PG_VER}" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="${PG_VER}" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL {{PG_VERSION}}..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="{{PG_VERSION}}" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="{{PG_VERSION}}" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-ARG PG_VERSION
-ARG PG_BASE_IMAGE_SHA
-FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
+FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
-LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="${PG_VERSION}"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
@@ -169,9 +157,7 @@ RUN set -eu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
-# Pre-compiled extensions from PGDG repository
-{{PGDG_VERSION_ARG_REDECLARE}}
-
+# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
 # Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json

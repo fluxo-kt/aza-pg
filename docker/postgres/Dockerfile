@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T03:38:59.146Z
+# Generated at: 2025-11-23T03:48:25.121Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -7,31 +7,12 @@
 
 # PostgreSQL 18.1 with comprehensive extension suite
 
-ARG PG_VERSION=18.1
-ARG PG_BASE_IMAGE_SHA=sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
+# Build metadata for OCI labels (defaults generated at Dockerfile generation time)
+ARG BUILD_DATE="2025-11-23T03:48:25.116Z"
+ARG VCS_REF="fa5a7724eedebc138f150d231d6f9bf3ded75869"
+ARG VERSION="18.1"
 
-# Build metadata for OCI labels
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION=18.1
-
-# PGDG extension versions (14 pre-compiled extensions)
-ARG PGCRON_VERSION=1.6.7-2.pgdg13+1
-ARG PGAUDIT_VERSION=18.0-2.pgdg13+1
-ARG PGVECTOR_VERSION=0.8.1-2.pgdg13+1
-ARG TIMESCALEDB_VERSION=2.23.1+dfsg-1.pgdg13+1
-ARG POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1
-ARG PARTMAN_VERSION=5.3.1-2.pgdg13+1
-ARG REPACK_VERSION=1.5.3-1.pgdg13+1
-ARG PLPGSQL_CHECK_VERSION=2.8.3-1.pgdg13+1
-ARG HLL_VERSION=2.19-1.pgdg13+1
-ARG HTTP_VERSION=1.7.0-3.pgdg13+1
-ARG HYPOPG_VERSION=1.4.2-2.pgdg13+1
-ARG PGROUTING_VERSION=4.0.0-1.pgdg12+1
-ARG RUM_VERSION=1.3.15-1.pgdg13+1
-ARG SET_USER_VERSION=4.2.0-1.pgdg13+1
-
-FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA} AS builder-base
+FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG BUILD_DATE
@@ -144,30 +125,24 @@ RUN set -eu && \
 # This ensures consistency between local testing and Docker builds
 FROM builder-base AS builder-version-info
 
-ARG PG_VERSION
-
 # Copy the standalone version info generation script
 COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
 
-# Generate version-info files with actual PostgreSQL version from ARG
-# Extract major.minor version (e.g., "18.1" from "18.1-trixie")
+# Generate version-info files with hardcoded PostgreSQL version
 RUN set -ex && \
-    PG_VER=$(echo "${PG_VERSION}" | awk -F'-' '{print $1}') && \
-    echo "Generating version info for PostgreSQL ${PG_VER}..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="${PG_VER}" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="${PG_VER}" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.1..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-ARG PG_VERSION
-ARG PG_BASE_IMAGE_SHA
-FROM postgres:${PG_VERSION}-trixie@${PG_BASE_IMAGE_SHA}
+FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL ${PG_VERSION}"
-LABEL org.opencontainers.image.description="PostgreSQL ${PG_VERSION} with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="${PG_VERSION}"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1"
+LABEL org.opencontainers.image.description="PostgreSQL 18.1 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.1"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
@@ -189,22 +164,7 @@ RUN set -eu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
-# Pre-compiled extensions from PGDG repository
-ARG PGCRON_VERSION
-ARG PGAUDIT_VERSION
-ARG PGVECTOR_VERSION
-ARG TIMESCALEDB_VERSION
-ARG POSTGIS_VERSION
-ARG PARTMAN_VERSION
-ARG REPACK_VERSION
-ARG PLPGSQL_CHECK_VERSION
-ARG HLL_VERSION
-ARG HTTP_VERSION
-ARG HYPOPG_VERSION
-ARG PGROUTING_VERSION
-ARG RUM_VERSION
-ARG SET_USER_VERSION
-
+# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
 # Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
@@ -213,8 +173,8 @@ RUN set -eu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION}" && \
-    apt-get install -y --no-install-recommends postgresql-${PG_MAJOR}-cron=${PGCRON_VERSION} postgresql-${PG_MAJOR}-pgaudit=${PGAUDIT_VERSION} postgresql-${PG_MAJOR}-pgvector=${PGVECTOR_VERSION} postgresql-${PG_MAJOR}-timescaledb=${TIMESCALEDB_VERSION} postgresql-${PG_MAJOR}-partman=${PARTMAN_VERSION} postgresql-${PG_MAJOR}-repack=${REPACK_VERSION} postgresql-${PG_MAJOR}-plpgsql-check=${PLPGSQL_CHECK_VERSION} postgresql-${PG_MAJOR}-hll=${HLL_VERSION} postgresql-${PG_MAJOR}-http=${HTTP_VERSION} postgresql-${PG_MAJOR}-hypopg=${HYPOPG_VERSION} postgresql-${PG_MAJOR}-rum=${RUM_VERSION} postgresql-${PG_MAJOR}-set-user=${SET_USER_VERSION} && \
+    echo "Installing PGDG packages: postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 postgresql-${PG_MAJOR}-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-${PG_MAJOR}-partman=5.3.1-2.pgdg13+1 postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1 postgresql-${PG_MAJOR}-pgaudit=18.0-2.pgdg13+1 postgresql-${PG_MAJOR}-pgvector=0.8.1-2.pgdg13+1 postgresql-${PG_MAJOR}-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-${PG_MAJOR}-partman=5.3.1-2.pgdg13+1 postgresql-${PG_MAJOR}-repack=1.5.3-1.pgdg13+1 postgresql-${PG_MAJOR}-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-${PG_MAJOR}-hll=2.19-1.pgdg13+1 postgresql-${PG_MAJOR}-http=1.7.0-3.pgdg13+1 postgresql-${PG_MAJOR}-hypopg=1.4.2-2.pgdg13+1 postgresql-${PG_MAJOR}-rum=1.3.15-1.pgdg13+1 postgresql-${PG_MAJOR}-set-user=4.2.0-1.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-${PG_MAJOR}-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \

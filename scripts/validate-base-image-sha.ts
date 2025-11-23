@@ -40,23 +40,22 @@ interface BaseImageInfo {
 
 /**
  * Extract PG_VERSION and PG_BASE_IMAGE_SHA from Dockerfile
+ * Now parses hardcoded FROM statements instead of ARG declarations
  */
 async function extractDockerfileInfo(): Promise<BaseImageInfo> {
   const dockerfileContent = await Bun.file(DOCKERFILE_PATH).text();
 
-  // Extract PG_VERSION
-  const versionMatch = dockerfileContent.match(/^ARG PG_VERSION=(\d+)/m);
-  if (!versionMatch || !versionMatch[1]) {
-    throw new Error("Could not find PG_VERSION in Dockerfile");
+  // Extract version and SHA from FROM statement
+  // Pattern: FROM postgres:18.1-trixie@sha256:...
+  const fromMatch = dockerfileContent.match(
+    /^FROM postgres:(\d+\.\d+)-trixie@(sha256:[a-f0-9]{64})/m
+  );
+  if (!fromMatch || !fromMatch[1] || !fromMatch[2]) {
+    throw new Error("Could not find PostgreSQL version and SHA in FROM statement");
   }
-  const version = versionMatch[1];
 
-  // Extract PG_BASE_IMAGE_SHA
-  const shaMatch = dockerfileContent.match(/^ARG PG_BASE_IMAGE_SHA=(sha256:[a-f0-9]{64})/m);
-  if (!shaMatch || !shaMatch[1]) {
-    throw new Error("Could not find PG_BASE_IMAGE_SHA in Dockerfile");
-  }
-  const sha = shaMatch[1];
+  const version = fromMatch[1];
+  const sha = fromMatch[2];
 
   // Construct base image name
   const image = `postgres:${version}-trixie`;

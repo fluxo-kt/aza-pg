@@ -23,7 +23,9 @@ function removeTimestamps(content: string): string {
       .replace(/"generatedAt":\s*"[^"]+"/g, '"generatedAt": "TIMESTAMP"')
       // Remove Generated at comments in Dockerfile
       .replace(/^#\s+Generated at:\s+.+$/gm, "# Generated at: TIMESTAMP")
-      // Remove any ISO date strings that might be in comments
+      // Remove BUILD_DATE ARG defaults (timestamp in ARG declaration)
+      .replace(/ARG BUILD_DATE="[^"]+"/g, 'ARG BUILD_DATE="TIMESTAMP"')
+      // Remove any ISO date strings that might be in comments or elsewhere
       .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, "TIMESTAMP")
   );
 }

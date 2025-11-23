@@ -54,6 +54,7 @@ BEGIN
 END
 $$;
 
+
 -- Ensure pgmq schema exists
 DO $$
 BEGIN
@@ -62,6 +63,7 @@ BEGIN
   END IF;
 END
 $$;
+
 
 -- Ensure pgmq extension exists
 DO $$
@@ -74,6 +76,7 @@ BEGIN
   END IF;
 END
 $$;
+
 
 -- ============================================================================
 -- REALTIME STUB (Supabase Compatibility Layer)
@@ -89,12 +92,8 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION realtime.send (
-  payload JSONB,
-  event TEXT,
-  topic TEXT,
-  private BOOLEAN DEFAULT FALSE
-) RETURNS void LANGUAGE plpgsql AS $$
+
+CREATE OR REPLACE FUNCTION realtime.send (payload JSONB, event TEXT, topic TEXT, private BOOLEAN DEFAULT FALSE) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   -- Stub function for standalone PostgreSQL
   -- Original Supabase function broadcasts real-time events to clients
@@ -111,7 +110,9 @@ BEGIN
 END;
 $$;
 
+
 COMMENT ON FUNCTION realtime.send IS 'Stub function replacing Supabase realtime.send(). Replace with your own event notification system.';
+
 
 -- ============================================================================
 -- PGFLOW CORE SCHEMA (v0.7.2)
@@ -179,6 +180,7 @@ BEGIN
 END;
 $$;
 
+
 -- Create composite type "step_task_record"
 CREATE TYPE "pgflow"."step_task_record" AS (
   "flow_slug" TEXT,
@@ -187,6 +189,7 @@ CREATE TYPE "pgflow"."step_task_record" AS (
   "input" JSONB,
   "msg_id" BIGINT
 );
+
 
 -- Create "is_valid_slug" function
 CREATE FUNCTION "pgflow"."is_valid_slug" ("slug" TEXT) RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $$
@@ -199,6 +202,7 @@ BEGIN
       AND slug NOT IN ('run'); -- reserved words
 END;
 $$;
+
 
 -- Create "flows" table
 CREATE TABLE "pgflow"."flows" (
@@ -213,6 +217,7 @@ CREATE TABLE "pgflow"."flows" (
   CONSTRAINT "opt_timeout_is_positive" CHECK (opt_timeout > 0),
   CONSTRAINT "slug_is_valid" CHECK (pgflow.is_valid_slug (flow_slug))
 );
+
 
 -- Create "steps" table
 CREATE TABLE "pgflow"."steps" (
@@ -245,6 +250,7 @@ CREATE TABLE "pgflow"."steps" (
   CONSTRAINT "steps_step_type_check" CHECK (step_type = 'single'::TEXT)
 );
 
+
 -- Create "deps" table
 CREATE TABLE "pgflow"."deps" (
   "flow_slug" TEXT NOT NULL,
@@ -258,9 +264,12 @@ CREATE TABLE "pgflow"."deps" (
   CONSTRAINT "deps_check" CHECK (dep_slug <> step_slug)
 );
 
+
 CREATE INDEX "idx_deps_by_flow_dep" ON "pgflow"."deps" ("flow_slug", "dep_slug");
 
+
 CREATE INDEX "idx_deps_by_flow_step" ON "pgflow"."deps" ("flow_slug", "step_slug");
+
 
 -- Create "runs" table
 CREATE TABLE "pgflow"."runs" (
@@ -290,20 +299,15 @@ CREATE TABLE "pgflow"."runs" (
     OR (failed_at >= started_at)
   ),
   CONSTRAINT "runs_remaining_steps_check" CHECK (remaining_steps >= 0),
-  CONSTRAINT "status_is_valid" CHECK (
-    status = ANY (
-      ARRAY[
-        'started'::TEXT,
-        'failed'::TEXT,
-        'completed'::TEXT
-      ]
-    )
-  )
+  CONSTRAINT "status_is_valid" CHECK (status = ANY (ARRAY['started'::TEXT, 'failed'::TEXT, 'completed'::TEXT]))
 );
+
 
 CREATE INDEX "idx_runs_flow_slug" ON "pgflow"."runs" ("flow_slug");
 
+
 CREATE INDEX "idx_runs_status" ON "pgflow"."runs" ("status");
+
 
 -- Create "step_states" table
 CREATE TABLE "pgflow"."step_states" (
@@ -344,24 +348,20 @@ CREATE TABLE "pgflow"."step_states" (
     OR (remaining_tasks = 0)
   ),
   CONSTRAINT "status_is_valid" CHECK (
-    status = ANY (
-      ARRAY[
-        'created'::TEXT,
-        'started'::TEXT,
-        'completed'::TEXT,
-        'failed'::TEXT
-      ]
-    )
+    status = ANY (ARRAY['created'::TEXT, 'started'::TEXT, 'completed'::TEXT, 'failed'::TEXT])
   ),
   CONSTRAINT "step_states_remaining_deps_check" CHECK (remaining_deps >= 0),
   CONSTRAINT "step_states_remaining_tasks_check" CHECK (remaining_tasks >= 0)
 );
 
+
 CREATE INDEX "idx_step_states_failed" ON "pgflow"."step_states" ("run_id", "step_slug")
 WHERE
   (status = 'failed'::TEXT);
 
+
 CREATE INDEX "idx_step_states_flow_slug" ON "pgflow"."step_states" ("flow_slug");
+
 
 CREATE INDEX "idx_step_states_ready" ON "pgflow"."step_states" ("run_id", "status", "remaining_deps")
 WHERE
@@ -369,6 +369,7 @@ WHERE
     (status = 'created'::TEXT)
     AND (remaining_deps = 0)
   );
+
 
 -- Create "step_tasks" table
 CREATE TABLE "pgflow"."step_tasks" (
@@ -408,28 +409,30 @@ CREATE TABLE "pgflow"."step_tasks" (
     (output IS NULL)
     OR (status = 'completed'::TEXT)
   ),
-  CONSTRAINT "valid_status" CHECK (
-    status = ANY (
-      ARRAY['queued'::TEXT, 'completed'::TEXT, 'failed'::TEXT]
-    )
-  )
+  CONSTRAINT "valid_status" CHECK (status = ANY (ARRAY['queued'::TEXT, 'completed'::TEXT, 'failed'::TEXT]))
 );
+
 
 CREATE INDEX "idx_step_tasks_completed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'completed'::TEXT);
 
+
 CREATE INDEX "idx_step_tasks_failed" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'failed'::TEXT);
 
+
 CREATE INDEX "idx_step_tasks_flow_run_step" ON "pgflow"."step_tasks" ("flow_slug", "run_id", "step_slug");
 
+
 CREATE INDEX "idx_step_tasks_message_id" ON "pgflow"."step_tasks" ("message_id");
+
 
 CREATE INDEX "idx_step_tasks_queued" ON "pgflow"."step_tasks" ("run_id", "step_slug")
 WHERE
   (status = 'queued'::TEXT);
+
 
 -- Create "poll_for_tasks" function (will be deprecated later)
 CREATE FUNCTION "pgflow"."poll_for_tasks" (
@@ -526,6 +529,7 @@ CROSS JOIN LATERAL (
 ) set_vt;
 $$;
 
+
 -- Create "add_step" function (multiple overloads)
 CREATE FUNCTION "pgflow"."add_step" (
   "flow_slug" TEXT,
@@ -561,6 +565,7 @@ WITH
 SELECT * FROM create_step;
 $$;
 
+
 CREATE FUNCTION "pgflow"."add_step" (
   "flow_slug" TEXT,
   "step_slug" TEXT,
@@ -573,10 +578,12 @@ SET
 SELECT * FROM pgflow.add_step(flow_slug, step_slug, ARRAY[]::text[], max_attempts, base_delay, timeout);
 $$;
 
+
 -- Create "calculate_retry_delay" function
 CREATE FUNCTION "pgflow"."calculate_retry_delay" ("base_delay" NUMERIC, "attempts_count" INTEGER) RETURNS INTEGER LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT floor(base_delay * power(2, attempts_count))::int
 $$;
+
 
 -- Create "maybe_complete_run" function
 CREATE FUNCTION "pgflow"."maybe_complete_run" ("run_id" UUID) RETURNS void LANGUAGE sql
@@ -604,6 +611,7 @@ WHERE pgflow.runs.run_id = maybe_complete_run.run_id
   AND pgflow.runs.remaining_steps = 0
   AND pgflow.runs.status != 'completed';
 $$;
+
 
 -- Create "start_ready_steps" function
 CREATE FUNCTION "pgflow"."start_ready_steps" ("run_id" UUID) RETURNS void LANGUAGE sql
@@ -649,13 +657,9 @@ SELECT
 FROM sent_messages;
 $$;
 
+
 -- Create "complete_task" function
-CREATE FUNCTION "pgflow"."complete_task" (
-  "run_id" UUID,
-  "step_slug" TEXT,
-  "task_index" INTEGER,
-  "output" JSONB
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE FUNCTION "pgflow"."complete_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "output" JSONB) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -746,6 +750,7 @@ WHERE step_task.run_id = complete_task.run_id
 END;
 $$;
 
+
 -- Create "create_flow" function
 CREATE FUNCTION "pgflow"."create_flow" (
   "flow_slug" TEXT,
@@ -774,13 +779,9 @@ FROM flow_upsert f
 LEFT JOIN (SELECT 1 FROM ensure_queue) _dummy ON true;
 $$;
 
+
 -- Create "fail_task" function
-CREATE FUNCTION "pgflow"."fail_task" (
-  "run_id" UUID,
-  "step_slug" TEXT,
-  "task_index" INTEGER,
-  "error_message" TEXT
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE FUNCTION "pgflow"."fail_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "error_message" TEXT) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -909,6 +910,7 @@ WHERE st.run_id = fail_task.run_id
 END;
 $$;
 
+
 -- Create "start_flow" function (initial version, will be replaced)
 CREATE FUNCTION "pgflow"."start_flow" ("flow_slug" TEXT, "input" JSONB) RETURNS SETOF "pgflow"."runs" LANGUAGE plpgsql
 SET
@@ -950,6 +952,7 @@ RETURN QUERY SELECT * FROM pgflow.runs WHERE run_id = v_created_run.run_id;
 END;
 $$;
 
+
 -- Create "workers" table
 CREATE TABLE "pgflow"."workers" (
   "worker_id" UUID NOT NULL,
@@ -961,7 +964,9 @@ CREATE TABLE "pgflow"."workers" (
   PRIMARY KEY ("worker_id")
 );
 
+
 CREATE INDEX "idx_workers_queue_name" ON "pgflow"."workers" ("queue_name");
+
 
 -- ----------------------------------------------------------------------------
 -- PHASE 2: Fix poll_for_tasks to use separate statement for polling
@@ -1069,6 +1074,7 @@ BEGIN
 END;
 $$;
 
+
 -- ----------------------------------------------------------------------------
 -- PHASE 3: Add start_tasks and started status
 -- (20250610080624_20250609105135_pgflow_add_start_tasks_and_started_status.sql)
@@ -1076,18 +1082,12 @@ $$;
 -- Add heartbeat index to workers
 CREATE INDEX "idx_workers_heartbeat" ON "pgflow"."workers" ("last_heartbeat_at");
 
+
 -- Modify "step_tasks" table to add started status and worker tracking
 ALTER TABLE "pgflow"."step_tasks"
 DROP CONSTRAINT "valid_status",
 ADD CONSTRAINT "valid_status" CHECK (
-  status = ANY (
-    ARRAY[
-      'queued'::TEXT,
-      'started'::TEXT,
-      'completed'::TEXT,
-      'failed'::TEXT
-    ]
-  )
+  status = ANY (ARRAY['queued'::TEXT, 'started'::TEXT, 'completed'::TEXT, 'failed'::TEXT])
 ),
 ADD CONSTRAINT "completed_at_is_after_started_at" CHECK (
   (completed_at IS NULL)
@@ -1107,25 +1107,24 @@ ADD COLUMN "started_at" TIMESTAMPTZ NULL,
 ADD COLUMN "last_worker_id" UUID NULL,
 ADD CONSTRAINT "step_tasks_last_worker_id_fkey" FOREIGN KEY ("last_worker_id") REFERENCES "pgflow"."workers" ("worker_id") ON UPDATE NO ACTION ON DELETE SET NULL;
 
+
 CREATE INDEX "idx_step_tasks_last_worker" ON "pgflow"."step_tasks" ("last_worker_id")
 WHERE
   (status = 'started'::TEXT);
+
 
 CREATE INDEX "idx_step_tasks_queued_msg" ON "pgflow"."step_tasks" ("message_id")
 WHERE
   (status = 'queued'::TEXT);
 
+
 CREATE INDEX "idx_step_tasks_started" ON "pgflow"."step_tasks" ("started_at")
 WHERE
   (status = 'started'::TEXT);
 
+
 -- Update complete_task to handle 'started' status
-CREATE OR REPLACE FUNCTION "pgflow"."complete_task" (
-  "run_id" UUID,
-  "step_slug" TEXT,
-  "task_index" INTEGER,
-  "output" JSONB
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION "pgflow"."complete_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "output" JSONB) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -1224,13 +1223,9 @@ WHERE step_task.run_id = complete_task.run_id
 END;
 $$;
 
+
 -- Update fail_task to handle 'started' status
-CREATE OR REPLACE FUNCTION "pgflow"."fail_task" (
-  "run_id" UUID,
-  "step_slug" TEXT,
-  "task_index" INTEGER,
-  "error_message" TEXT
-) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION "pgflow"."fail_task" ("run_id" UUID, "step_slug" TEXT, "task_index" INTEGER, "error_message" TEXT) RETURNS SETOF "pgflow"."step_tasks" LANGUAGE plpgsql
 SET
   "search_path" = '' AS $$
 BEGIN
@@ -1362,6 +1357,7 @@ WHERE st.run_id = fail_task.run_id
 END;
 $$;
 
+
 -- Deprecate poll_for_tasks (replaced by two-phase polling)
 CREATE OR REPLACE FUNCTION "pgflow"."poll_for_tasks" (
   "queue_name" TEXT,
@@ -1378,12 +1374,9 @@ BEGIN
 END;
 $$;
 
+
 -- Create "start_tasks" function (new two-phase polling approach)
-CREATE FUNCTION "pgflow"."start_tasks" (
-  "flow_slug" TEXT,
-  "msg_ids" BIGINT[],
-  "worker_id" UUID
-) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
+CREATE FUNCTION "pgflow"."start_tasks" ("flow_slug" TEXT, "msg_ids" BIGINT[], "worker_id" UUID) RETURNS SETOF "pgflow"."step_task_record" LANGUAGE sql
 SET
   "search_path" = '' AS $$
 WITH tasks AS (
@@ -1466,6 +1459,7 @@ WITH tasks AS (
       AND t.flow_slug = st.flow_slug
   ) set_vt
 $$;
+
 
 -- ============================================================================
 -- KNOWN LIMITATION: PHASE 4-11 migrations are truncated

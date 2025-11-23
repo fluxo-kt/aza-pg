@@ -14,15 +14,15 @@ CREATE TABLE IF NOT EXISTS pg_aza_status (
   expected_extensions TEXT[] NOT NULL,
   created_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
   failed_extensions TEXT[] DEFAULT ARRAY[]::TEXT[],
-  status TEXT NOT NULL CHECK (
-    status IN ('in_progress', 'completed', 'failed', 'partial')
-  ),
+  status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed', 'failed', 'partial')),
   error_details TEXT,
   notes TEXT
 );
 
+
 -- Index for efficient healthcheck queries (latest status)
 CREATE INDEX IF NOT EXISTS idx_pg_aza_status_timestamp ON pg_aza_status (init_timestamp DESC);
+
 
 DO $$
 DECLARE

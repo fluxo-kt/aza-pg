@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T20:33:33.984Z
+# Generated at: 2025-11-23T21:04:38.920Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -7,26 +7,10 @@
 
 # PostgreSQL 18.1 with comprehensive extension suite
 
-# Build metadata for OCI labels (required, no defaults - must be passed by CI/CD)
-ARG BUILD_DATE
-ARG VCS_REF
-
 FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Re-declare ARGs after FROM to make them available in this stage
-ARG BUILD_DATE
-ARG VCS_REF
-
-# OCI image labels
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
-LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.version="18.1"
-LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL 18 with comprehensive extension catalog"
-LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -151,11 +135,19 @@ FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
+# Declared ONLY in final stage to prevent builder stage cache invalidation
+ARG BUILD_DATE
+ARG VCS_REF
+
 ENV DEBIAN_FRONTEND=noninteractive
 
+# OCI image labels with build metadata
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.version="18.1"
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1"
 LABEL org.opencontainers.image.description="PostgreSQL 18.1 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.1"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt

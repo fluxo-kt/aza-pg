@@ -1,25 +1,9 @@
 # PostgreSQL {{PG_VERSION}} with comprehensive extension suite
 
-# Build metadata for OCI labels (required, no defaults - must be passed by CI/CD)
-ARG BUILD_DATE
-ARG VCS_REF
-
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Re-declare ARGs after FROM to make them available in this stage
-ARG BUILD_DATE
-ARG VCS_REF
-
-# OCI image labels
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
-LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.version="{{PG_VERSION}}"
-LABEL org.opencontainers.image.title="aza-pg"
-LABEL org.opencontainers.image.description="PostgreSQL {{PG_MAJOR}} with comprehensive extension catalog"
-LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -144,11 +128,19 @@ FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
+# Declared ONLY in final stage to prevent builder stage cache invalidation
+ARG BUILD_DATE
+ARG VCS_REF
+
 ENV DEBIAN_FRONTEND=noninteractive
 
+# OCI image labels with build metadata
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}"
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
 LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="{{PG_VERSION}}"
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt

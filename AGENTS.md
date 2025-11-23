@@ -78,6 +78,9 @@ bun scripts/release/promote-image.ts --help
 
 - **auto_explain**: Module (preload-only), NOT extension. NO CREATE EXTENSION needed (PostgreSQL design)
 - **Dockerfile editing**: NEVER edit Dockerfile directly - edit Dockerfile.template and run `bun run generate`
+- **Version changes**: Update `extension-defaults.ts` → regenerate → rebuild (no workflow input overrides)
+- **Dockerfile ARGs**: Only 3 ARGs (BUILD_DATE, VCS_REF, VERSION) with hardcoded defaults; publish.yml overrides them at runtime
+- **No --build-arg in dev**: Local and build-postgres-image.yml builds use generated defaults (no version override capability)
 - PgBouncer .pgpass: escape only ":" and "\\" (NOT "@" or "&")
 - Health check: 6432/postgres (not admin console)
 - Cgroup missing → use POSTGRES_MEMORY or mem_limit
@@ -265,6 +268,18 @@ bun run generate
 # Rebuild image
 bun run build
 ```
+
+**ARG Strategy (Hardcoded Versions)**:
+
+Version dependencies (PG_VERSION, PG_BASE_IMAGE_SHA, all PGDG versions) are hardcoded directly in the generated Dockerfile. Only metadata ARGs (BUILD_DATE, VCS_REF, VERSION) exist as ARGs with generated defaults:
+
+- **Template**: `ARG BUILD_DATE="{{BUILD_DATE_DEFAULT}}"` (placeholder)
+- **Generated**: `ARG BUILD_DATE="2025-11-23T03:48:25.116Z"` (hardcoded)
+- **Local/dev builds**: Use hardcoded defaults (no --build-arg needed)
+- **Production builds** (publish.yml): Override with runtime values via --build-arg
+
+To change versions: Edit `extension-defaults.ts` → `bun run generate` → rebuild image.
+No version override via workflow inputs (removed for simplicity).
 
 ## Common Mistakes
 

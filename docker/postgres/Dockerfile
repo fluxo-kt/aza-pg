@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T03:48:25.121Z
+# Generated at: 2025-11-23T03:57:40.133Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -8,8 +8,8 @@
 # PostgreSQL 18.1 with comprehensive extension suite
 
 # Build metadata for OCI labels (defaults generated at Dockerfile generation time)
-ARG BUILD_DATE="2025-11-23T03:48:25.116Z"
-ARG VCS_REF="fa5a7724eedebc138f150d231d6f9bf3ded75869"
+ARG BUILD_DATE="2025-11-23T03:57:40.128Z"
+ARG VCS_REF="3b11a146443c62db894ed6cb51339b92819bc616"
 ARG VERSION="18.1"
 
 FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base

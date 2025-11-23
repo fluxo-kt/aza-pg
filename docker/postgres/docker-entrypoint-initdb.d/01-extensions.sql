@@ -167,11 +167,12 @@ BEGIN
         END
     WHERE id = v_status_id;
 
-    -- Log final status
+    -- Log final status and fail if any enabled extensions are missing
     IF array_length(v_failed_exts, 1) IS NULL THEN
         RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, plpgsql, timescaledb, vector, vectorscale). Additional extensions are available but disabled by default.';
     ELSE
-        RAISE WARNING 'Initialization completed with failures. Created: %, Failed: %', v_created_exts, v_failed_exts;
+        RAISE EXCEPTION 'Extension initialization FAILED. Required extensions not available: %. Successfully created: %', v_failed_exts, v_created_exts
+            USING HINT = 'Check that all required extensions are compiled into the Docker image. See docker/postgres/extensions.manifest.json for enabled extensions.';
     END IF;
 END;
 $$;

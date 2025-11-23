@@ -126,15 +126,18 @@ export async function generateExtensionsInitScript(
     lines.push("    WHERE id = v_status_id;");
     lines.push("");
 
-    // Final notice
-    lines.push("    -- Log final status");
+    // Final notice - FAIL container if any enabled extensions are missing
+    lines.push("    -- Log final status and fail if any enabled extensions are missing");
     lines.push("    IF array_length(v_failed_exts, 1) IS NULL THEN");
     lines.push(
       `        RAISE NOTICE 'Baseline extensions enabled (${extensionNames.join(", ")}). Additional extensions are available but disabled by default.';`
     );
     lines.push("    ELSE");
     lines.push(
-      "        RAISE WARNING 'Initialization completed with failures. Created: %, Failed: %', v_created_exts, v_failed_exts;"
+      "        RAISE EXCEPTION 'Extension initialization FAILED. Required extensions not available: %. Successfully created: %', v_failed_exts, v_created_exts"
+    );
+    lines.push(
+      "            USING HINT = 'Check that all required extensions are compiled into the Docker image. See docker/postgres/extensions.manifest.json for enabled extensions.';"
     );
     lines.push("    END IF;");
   } else {

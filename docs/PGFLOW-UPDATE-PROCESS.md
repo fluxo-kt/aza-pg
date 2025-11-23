@@ -53,10 +53,10 @@ The script applies:
 ### 3. Verify SQL Quality
 
 ```bash
-# Format SQL
-bun run format:sql --write
+# Format SQL (auto-fix)
+bun run format:sql:fix
 
-# Check for warnings
+# Lint SQL (custom checks + Squawk)
 bun run lint:sql
 # Should show: "Found 0 issues in 3 files 🎉"
 

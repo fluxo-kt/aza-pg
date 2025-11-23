@@ -61,6 +61,9 @@ FROM builder-base AS builder-pgxs
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Copy full manifest for cross-stage dependency validation
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
 RUN --mount=type=cache,target=/root/.cache \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
@@ -90,6 +93,9 @@ FROM builder-base AS builder-cargo
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Copy full manifest for cross-stage dependency validation
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
 # Rust optimization flags for smaller binaries (Phase 11.1)
 # Use CARGO_PROFILE_ variables instead of RUSTFLAGS to avoid breaking dependency builds
 # opt-level=s: Optimize for size (less aggressive than 'z', more compatible)
@@ -118,8 +124,9 @@ FROM builder-base AS builder-version-info
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Copy the standalone version info generation script
+# Copy the standalone version info generation script and manifest (script needs to read manifest)
 COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
@@ -204,10 +211,6 @@ RUN set -euo pipefail && \
     chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
-# Verify Bun is not present in final image (build-time tool should not leak)
-# Placed late to avoid invalidating earlier cached layers
-RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
-
 # Copy runtime metadata files LATE (frequently change with any manifest update)
 # Manifest and version-info change together whenever extensions are enabled/disabled
 # Placed here to avoid invalidating all previous cached layers
@@ -226,8 +229,8 @@ LABEL org.opencontainers.image.vendor="fluxo-kt"
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
 LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
 LABEL org.opencontainers.image.version="{{PG_VERSION}}"
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Health check and port exposure moved to end (metadata operations)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \

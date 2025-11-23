@@ -535,16 +535,8 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // GATE 0: ENABLED CHECK (Phase 9 - skip disabled extensions entirely)
+  // GATE 0: ENABLED CHECK
   // ────────────────────────────────────────────────────────────────────────────
-  // Changed in Phase 9: Previously built disabled extensions "for testing" to verify
-  // SHA-pinned commits, but this caused build failures for extensions with compilation
-  // issues (e.g., supautils requiring unreliable sed patches).
-  //
-  // New behavior: Skip disabled extensions entirely. Trade-off:
-  // - Pro: Builds succeed, disabled extensions don't block development
-  // - Con: Re-enabling requires verifying the extension still compiles
-  //
   // Behavior:
   // - Disabled extensions: Skipped entirely (not built, not included in final image)
   // - Enabled extensions: Built, tested, included in final image

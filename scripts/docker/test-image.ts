@@ -920,7 +920,7 @@ async function testToolsPresent(manifest: Manifest): Promise<TestResult> {
       pgbackrest: "/usr/local/bin/pgbackrest",
       pgbadger: "/usr/local/bin/pgbadger",
       wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
-      plan_filter: "/usr/lib/postgresql/18/lib/plan_filter.so",
+      pg_plan_filter: "/usr/lib/postgresql/18/lib/plan_filter.so",
       safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
     };
 

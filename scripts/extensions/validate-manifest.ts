@@ -12,8 +12,8 @@ import * as logger from "../utils/logger";
 const EXPECTED_COUNTS = {
   total: 39, // 38 original + pgflow
   builtin: 6,
-  pgdg: 14,
-  compiled: 19, // 18 original + pgflow (compiled from source)
+  pgdg: 13, // 14 - 1 (timescaledb moved to source for TSL)
+  compiled: 20, // 19 + 1 (timescaledb now compiled from source)
 };
 
 // File paths - derive PROJECT_ROOT from import.meta.dir

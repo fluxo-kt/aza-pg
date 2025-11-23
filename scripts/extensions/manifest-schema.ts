@@ -98,7 +98,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - provides: List of features/extensions provided
  * - aptPackages: System packages required for building
  * - notes: General notes about the extension
- * - install_via: Installation method override (currently only "pgdg")
+ * - install_via: Installation method override ("pgdg" for package, "source" to build from source)
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -114,7 +114,7 @@ export const ManifestEntrySchema = type({
   "provides?": "string[]",
   "aptPackages?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'",
+  "install_via?": "'pgdg'|'source'",
   "enabled?": "boolean",
 });
 

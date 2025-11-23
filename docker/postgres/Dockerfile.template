@@ -7,14 +7,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Copy only files needed by builder stages (extensions.manifest.json is only used in final stage)
+# Copy build script and manifests (stable files, rarely change)
+# Ordered by stability: build script (most stable) → manifests (moderate) → package lists (occasional)
+COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
-COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
-RUN chmod +x /usr/local/bin/build-extensions.ts
 
-# Install build dependencies for builder-base stage
+# Install build dependencies
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 # hadolint ignore=DL3008
@@ -33,13 +33,15 @@ RUN set -euo pipefail && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Rust toolchain (separate layer for better caching, ~60s install time)
+# Stable tool, rarely updates
 RUN set -euo pipefail && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
 # Add Rust/Cargo to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Bun for running TypeScript build scripts
+# Install Bun for running TypeScript build scripts (separate layer)
 # Extracts version from project .tool-versions file (single source of truth)
 COPY .tool-versions /tmp/.tool-versions
 RUN set -euo pipefail && \
@@ -48,6 +50,10 @@ RUN set -euo pipefail && \
     curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
     ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
     rm /tmp/.tool-versions
+
+# Make build script executable (separate layer after all tools installed)
+# Late placement avoids invalidating Rust/Bun installation caches
+RUN chmod +x /usr/local/bin/build-extensions.ts
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs
@@ -135,14 +141,7 @@ ARG VCS_REF
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# OCI image labels with build metadata
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
-LABEL org.opencontainers.image.revision="${VCS_REF}"
-LABEL org.opencontainers.image.version="{{PG_VERSION}}"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
-LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.vendor="fluxo-kt"
-
+# Install runtime libraries for compiled extensions (final stage)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
 # Install runtime libraries for compiled extensions (final stage)
@@ -172,6 +171,10 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
+# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
+# Moved here (right after builder COPYs) to clean up before remaining operations
+RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
 # This stub script returns a test key in hex format (64 hex characters = 32 bytes).
@@ -186,35 +189,47 @@ RUN set -euo pipefail && \
     echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
     chmod +x /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey
 
-# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
-
-COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
-
-# Copy pre-generated version-info files from builder-version-info stage
-# These were generated using the standalone TypeScript script for consistency
-COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
-COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
-
+# Create backup directory with proper ownership
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
-RUN chmod +x /docker-entrypoint-initdb.d/*.sh
-
-COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh
+# Copy all config files together (rarely change, grouped for better caching)
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
-
 COPY docker/postgres/healthcheck.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/healthcheck.sh
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+
+# Consolidate all chmod operations into single RUN (better layer caching)
+RUN set -euo pipefail && \
+    chmod +x /usr/local/bin/healthcheck.sh && \
+    chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
+    chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Verify Bun is not present in final image (build-time tool should not leak)
+# Placed late to avoid invalidating earlier cached layers
 RUN ! command -v bun || (echo "ERROR: Bun leaked into final image" && exit 1)
+
+# Copy runtime metadata files LATE (frequently change with any manifest update)
+# Manifest and version-info change together whenever extensions are enabled/disabled
+# Placed here to avoid invalidating all previous cached layers
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user
 USER postgres
 
+# OCI image labels with build metadata
+# Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
+# Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
+LABEL org.opencontainers.image.vendor="fluxo-kt"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+
+# Health check and port exposure moved to end (metadata operations)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
     CMD /usr/local/bin/healthcheck.sh
 

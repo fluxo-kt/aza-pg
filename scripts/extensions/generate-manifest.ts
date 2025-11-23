@@ -4,7 +4,7 @@
  * Resolves git commits for tagged sources to guarantee reproducible builds.
  */
 
-import { dirname, join } from "path";
+import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import { MANIFEST_ENTRIES, ManifestEntry, SourceSpec } from "./manifest-data";
 

@@ -12,7 +12,7 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
-import { join } from "path";
+import { join } from "node:path";
 import { error, info, section, testSummary } from "./utils/logger.ts";
 import type { TestResult } from "./utils/logger.ts";
 import { Glob } from "bun";

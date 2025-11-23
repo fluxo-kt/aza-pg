@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { join } from "path";
+import { join } from "node:path";
 import type { StackType, PostgreSQLSettings } from "./types";
 import { BASE_CONFIG } from "./base-config";
 import { formatSetting } from "../utils/guc-formatter";

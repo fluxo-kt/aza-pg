@@ -4,7 +4,7 @@
  * Validates extensions.manifest.json against expected counts, consistency rules, and cross-references
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { validateManifest } from "./manifest-schema.ts";
 import * as logger from "../utils/logger";
 

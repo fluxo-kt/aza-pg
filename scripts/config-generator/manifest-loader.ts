@@ -3,7 +3,7 @@
  * Handles loading and parsing of extension manifest files
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import type { ManifestEntry } from "../extensions/manifest-data";
 
 /**

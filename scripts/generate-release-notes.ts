@@ -24,7 +24,7 @@
  *   --output           Output markdown file path
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import type { ManifestEntry } from "./extensions/manifest-data.ts";
 import { warning } from "./utils/logger";
 

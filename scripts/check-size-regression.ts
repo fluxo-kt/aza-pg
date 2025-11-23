@@ -18,7 +18,7 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
-import { join } from "path";
+import { join } from "node:path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 
 // Derive project root from current file location (scripts/check-size-regression.ts)

@@ -13,7 +13,7 @@
  *   json:  JSON object for programmatic use
  */
 
-import { join } from "path";
+import { join } from "node:path";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");

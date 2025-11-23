@@ -3,7 +3,7 @@
  * Handles writing generated configuration files to disk
  */
 
-import { join } from "path";
+import { join } from "node:path";
 
 /**
  * Write content to a file, creating parent directories if needed

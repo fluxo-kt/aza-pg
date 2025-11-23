@@ -3,7 +3,7 @@
  * Render Markdown tables for docs/EXTENSIONS.md from the generated manifest.
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { info, success, error } from "../utils/logger.ts";
 
 // Derive project root from current file location (scripts/extensions/render-markdown.ts)

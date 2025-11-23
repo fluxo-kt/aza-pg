@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { resolve, dirname } from "path";
+import { resolve, dirname } from "node:path";
 import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
 import { error } from "../utils/logger";
 

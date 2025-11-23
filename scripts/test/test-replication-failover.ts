@@ -19,7 +19,7 @@
  */
 
 import { $ } from "bun";
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { generateUniqueProjectName } from "../utils/docker";
 import { error, info, section, success, testSummary, warning } from "../utils/logger";
 import type { TestResult } from "../utils/logger";

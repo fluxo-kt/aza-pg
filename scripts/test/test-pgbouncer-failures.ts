@@ -17,8 +17,8 @@
  */
 
 import { $ } from "bun";
-import { join, resolve } from "path";
-import { statSync } from "fs";
+import { join, resolve } from "node:path";
+import { statSync } from "node:fs";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { TIMEOUTS } from "../config/test-timeouts";

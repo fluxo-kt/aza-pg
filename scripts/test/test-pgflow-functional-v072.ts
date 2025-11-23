@@ -26,7 +26,7 @@
  *     bun run scripts/test/test-pgflow-functional-v072.ts --container=ci-postgres
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 
 const containerArg = Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1];
 const databaseArg = Bun.argv.find((arg) => arg.startsWith("--database="))?.split("=")[1];

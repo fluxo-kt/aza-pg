@@ -28,7 +28,7 @@
  */
 
 import { $ } from "bun";
-import path from "path";
+import { resolve } from "node:path";
 
 const CONTAINER =
   Bun.argv.find((arg) => arg.startsWith("--container="))?.split("=")[1] || "pgq-research";
@@ -59,7 +59,7 @@ let disabledExtensions: Set<string> = new Set();
 
 async function loadManifest(): Promise<void> {
   try {
-    const manifestPath = path.resolve(__dirname, "../../docker/postgres/extensions.manifest.json");
+    const manifestPath = resolve(__dirname, "../../docker/postgres/extensions.manifest.json");
     const manifestContent = await Bun.file(manifestPath).text();
     const manifest: Manifest = JSON.parse(manifestContent);
 

@@ -14,7 +14,7 @@
  * Machine-readable (.json): Structured metadata for automation and tooling
  */
 
-import { join } from "path";
+import { join } from "node:path";
 
 interface Manifest {
   generatedAt: string;

@@ -8,7 +8,7 @@
  */
 
 import { $ } from "bun";
-import { join } from "path";
+import { join } from "node:path";
 import { dockerCleanup } from "../utils/docker";
 
 // Get script directory

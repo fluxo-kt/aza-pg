@@ -15,7 +15,7 @@
  * Output: docs/.generated/docs-data.json
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { info, success, error } from "./utils/logger.ts";
 
 // Derive project root from current file location (scripts/generate-docs-data.ts)

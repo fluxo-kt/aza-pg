@@ -18,7 +18,7 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
-import { join } from "path";
+import { join } from "node:path";
 import {
   error,
   formatDuration,

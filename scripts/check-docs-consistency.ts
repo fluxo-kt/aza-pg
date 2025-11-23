@@ -10,7 +10,7 @@
  * Exits with error if mismatches found.
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { info, success, error, warning, section } from "./utils/logger.ts";
 import { Glob } from "bun";
 

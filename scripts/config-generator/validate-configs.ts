@@ -5,7 +5,7 @@
  * Checks that all GUC names are valid and all expected settings are present
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { success, info, error, warning } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");

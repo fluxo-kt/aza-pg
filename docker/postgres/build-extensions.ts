@@ -18,7 +18,7 @@
  */
 
 import { $ } from "bun";
-import { join } from "path";
+import { join } from "node:path";
 
 // ────────────────────────────────────────────────────────────────────────────
 // CRITICAL: PGDG EXTENSION BEHAVIOR

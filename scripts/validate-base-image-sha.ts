@@ -24,7 +24,7 @@
  *   ALLOW_STALE_BASE_IMAGE=1  # Treat stale image as warning instead of error
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import { getErrorMessage } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger.ts";
 import { isDockerDaemonRunning, dockerRun } from "./utils/docker";

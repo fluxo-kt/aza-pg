@@ -656,7 +656,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "timescaledb",
     kind: "extension",
-    install_via: "pgdg",
+    install_via: "source",
     category: "timeseries",
     description: "Hypertables, compression, and continuous aggregates for time-series workloads.",
     source: {

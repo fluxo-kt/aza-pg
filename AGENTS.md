@@ -164,18 +164,28 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_st
 - Docker exits: 0=success | 1=app error | 125=daemon error | 126=can't exec | 127=not found
 - Extension types: Modules (preload-only) | Tools (no catalog) | Extensions (standard CREATE EXTENSION)
 
+## Git Workflow
+
+- Write brief thoughtfull no BS Conventional Commits + "Co-Authored-By: Claude <noreply@anthropic.com>"
+  - For Codex/OpenAI CLI change the name to "Codex <codex@openai.com>"
+  - For Qwen: "Qwen <code@qwen.ai>"
+  - For Gemini: "Gemini <gemini@google.com>"
+  - For Copilot: "Copilot <copilot@github.com>"
+- Don’t bypass pre‑commit hooks!
+- **NEVER use --no-verify or bypass hooks/checks**: Fix the actual root issue instead
+- **If SSH fail, ask user start SSH agent** — NEVER touch git config! NEVER skip commit signing!
+- Commit granularly, after every finished/verified phase or work part
+- Should NEVER lose anything, be super careful with git reset/revert/rebase!
+- Verify what do you commit
+
 ## References
 
-- @ARCHITECTURE.md - System design
-- @TESTING.md - Test patterns
-- @PRODUCTION.md - Deployment
-- @RELEASE-VALIDATION.md - Latest validation results
-- @docs/BUILD.md - Build/CI details
-- @docs/TOOLING.md - Tech choices
-- @docs/VERSION-MANAGEMENT.md - Version declarations
-- @docs/UPGRADING.md - Runtime upgrades
-- @docs/EXTENSIONS.md - Full extension catalog
-
-## Git
-
-Conventional Commits + `Co-Authored-By: Claude <noreply@anthropic.com>` (or Codex/Qwen/Gemini/Copilot) | NEVER `--no-verify` | Commit granularly after each verified phase
+- ARCHITECTURE.md - System design
+- TESTING.md - Test patterns
+- PRODUCTION.md - Deployment
+- RELEASE-VALIDATION.md - Latest validation results
+- docs/BUILD.md - Build/CI details
+- docs/TOOLING.md - Tech choices
+- docs/VERSION-MANAGEMENT.md - Version declarations
+- docs/UPGRADING.md - Runtime upgrades
+- docs/EXTENSIONS.md - Full extension catalog

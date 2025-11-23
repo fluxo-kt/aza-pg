@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-23T19:44:26.550Z",
+  "generatedAt": "2025-11-23T20:13:52.701Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -831,7 +831,7 @@
     {
       "name": "timescaledb",
       "kind": "extension",
-      "install_via": "pgdg",
+      "install_via": "source",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads.",
       "source": {

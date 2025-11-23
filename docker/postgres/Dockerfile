@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-23T19:44:26.910Z
+# Generated at: 2025-11-23T20:13:53.057Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -186,15 +186,15 @@ RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-timescaledb=2.23.1+dfsg-1.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-partman=5.3.1-2.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 postgresql-18-hll=2.19-1.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-    echo "Expected 12 enabled PGDG packages from manifest" && \
+    echo "Expected 11 enabled PGDG packages from manifest" && \
     # Allow some variance but ensure we have at least 1 package
-    test "$INSTALLED_COUNT" -ge 12 || (echo "ERROR: Installed count mismatch (expected >= 12, got $INSTALLED_COUNT)" && exit 1) && \
+    test "$INSTALLED_COUNT" -ge 11 || (echo "ERROR: Installed count mismatch (expected >= 11, got $INSTALLED_COUNT)" && exit 1) && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \

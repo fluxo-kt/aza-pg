@@ -906,7 +906,9 @@ async function testToolsPresent(manifest: Manifest): Promise<TestResult> {
   const startTime = Date.now();
 
   try {
-    const tools = manifest.entries.filter((entry) => entry.kind === "tool");
+    const tools = manifest.entries.filter(
+      (entry) => entry.kind === "tool" && entry.enabled !== false
+    );
 
     if (tools.length === 0) {
       return {

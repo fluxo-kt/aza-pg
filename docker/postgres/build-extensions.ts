@@ -327,7 +327,10 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
 async function buildTimescaledb(dir: string): Promise<void> {
   log(`Building TimescaleDB via bootstrap in ${dir}`);
 
-  await $`cd ${dir} && ./bootstrap -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
+  // Build with TSL (Timescale License) enabled for compression and continuous aggregates
+  // APACHE_ONLY=OFF (default) includes TSL features
+  // TSL is free for self-hosted use (including SaaS)
+  await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
 
   const buildDir = join(dir, "build");
   const ninjaFile = join(buildDir, "build.ninja");

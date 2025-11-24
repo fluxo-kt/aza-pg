@@ -41,6 +41,14 @@ jobs:
       catalog_total: ${{ steps.catalog.outputs.total }}
       catalog_enabled: ${{ steps.catalog.outputs.enabled }}
       catalog_disabled: ${{ steps.catalog.outputs.disabled }}
+      catalog_extensions: ${{ steps.catalog.outputs.extensions }}
+      catalog_tools: ${{ steps.catalog.outputs.tools }}
+      catalog_builtins: ${{ steps.catalog.outputs.builtins }}
+      catalog_modules: ${{ steps.catalog.outputs.modules }}
+      catalog_enabled_extensions: ${{ steps.catalog.outputs.enabled_extensions }}
+      catalog_enabled_tools: ${{ steps.catalog.outputs.enabled_tools }}
+      catalog_enabled_builtins: ${{ steps.catalog.outputs.enabled_builtins }}
+      catalog_enabled_modules: ${{ steps.catalog.outputs.enabled_modules }}
       cache_key: ${{ steps.cache-key.outputs.key }}
       content_hash: ${{ steps.cache-key.outputs.content_hash }}
       meta_labels: ${{ steps.meta.outputs.labels }}

@@ -139,7 +139,12 @@ async function runTier1(config: Config): Promise<boolean> {
   const args = ["scripts/test/test-postgres-core-regression.ts", `--mode=${config.mode}`];
 
   if (config.fast) {
-    args.push("--tests=boolean,int2,int4,select");
+    // Fast tests: self-contained tests without external dependencies
+    // boolean: Boolean data type tests
+    // int2: smallint data type tests
+    // int4: integer data type tests
+    // strings: String operations (replaces select which depends on onek2 table)
+    args.push("--tests=boolean,int2,int4,strings");
   }
   if (config.noCleanup) {
     args.push("--no-cleanup");

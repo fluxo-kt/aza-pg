@@ -19,7 +19,13 @@ import { format } from "sql-formatter";
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
 
 // Files to exclude from validation
-const EXCLUDE_PATTERNS = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"];
+const EXCLUDE_PATTERNS = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/.git/**",
+  "**/tests/regression/**", // Official PostgreSQL test fixtures - must not be modified
+];
 
 interface ValidationResult {
   file: string;

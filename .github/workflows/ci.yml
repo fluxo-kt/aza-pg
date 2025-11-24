@@ -87,6 +87,7 @@ jobs:
 
       - name: Run unit tests
         run: |
+          set -euo pipefail
           echo "Running unit tests..."
           bun test ./scripts/test/test-auto-config-units.ts
           bun test ./scripts/test/test-utils.test.ts
@@ -103,6 +104,7 @@ jobs:
       - name: Generate job summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Validation Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
@@ -152,6 +154,7 @@ jobs:
 
       - name: Verify image built successfully
         run: |
+          set -euo pipefail
           echo "Verifying image exists..."
           docker images | grep aza-pg-ci
 
@@ -172,6 +175,7 @@ jobs:
 
       - name: Export image as tarball
         run: |
+          set -euo pipefail
           echo "Exporting image to tarball..."
           docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
           ls -lh /tmp/aza-pg-ci-image.tar.gz
@@ -187,6 +191,7 @@ jobs:
       - name: Generate build summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`aza-pg-ci:test\`" >> $GITHUB_STEP_SUMMARY
@@ -223,18 +228,21 @@ jobs:
 
       - name: Test core extensions
         run: |
+          set -euo pipefail
           echo "Testing core extension loading..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-extensions.ts
 
       - name: Run extension smoke tests
         run: |
+          set -euo pipefail
           echo "Running extension smoke tests..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/run-extension-smoke.ts
 
       - name: Test disabled extensions
         run: |
+          set -euo pipefail
           echo "Testing disabled extensions (should not be available)..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-disabled-extensions.ts
@@ -251,6 +259,7 @@ jobs:
       # Fixed in manifest-test-utils.ts by excluding kind="tool" from getPreloadExtensions()
       - name: Test extension combinations
         run: |
+          set -euo pipefail
           echo "Testing extension combinations..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-integration-extension-combinations.ts
@@ -264,6 +273,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Extension Tests Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -295,11 +305,13 @@ jobs:
 
       - name: Create test .env file
         run: |
+          set -euo pipefail
           echo "Creating test environment configuration..."
           cp stacks/single/.env.example stacks/single/.env
 
       - name: Test single stack
         run: |
+          set -euo pipefail
           echo "Testing single stack deployment..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-single-stack.ts
@@ -313,6 +325,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Stack Tests Summary :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Stacks tested:**" >> $GITHUB_STEP_SUMMARY
@@ -342,6 +355,7 @@ jobs:
 
       - name: Run security tests
         run: |
+          set -euo pipefail
           echo "Running security hardening tests..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun test scripts/test/test-security.test.ts
@@ -355,6 +369,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Security Tests Summary :shield:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -385,6 +400,7 @@ jobs:
 
       - name: Test auto-config
         run: |
+          set -euo pipefail
           echo "Testing auto-config functionality..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-auto-config.ts
@@ -433,6 +449,7 @@ jobs:
 
       - name: Test negative scenarios
         run: |
+          set -euo pipefail
           echo "Testing negative scenarios (error handling)..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun test ./scripts/test/test-negative-scenarios.ts
@@ -446,6 +463,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Feature Tests Summary :gear:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -467,6 +485,7 @@ jobs:
     steps:
       - name: Check all jobs status
         run: |
+          set -euo pipefail
           if [ "${{ needs.validate.result }}" != "success" ]; then
             echo "::error::Validate job failed"
             exit 1
@@ -496,6 +515,7 @@ jobs:
       - name: Generate final summary
         if: always()
         run: |
+          set -euo pipefail
           echo "# CI Pipeline Complete :tada:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Job Status" >> $GITHUB_STEP_SUMMARY

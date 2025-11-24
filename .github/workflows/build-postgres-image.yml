@@ -200,6 +200,7 @@ jobs:
       - name: Generate cache key
         id: cache-key
         run: |
+          set -euo pipefail
           CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
           CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}-${{ matrix.artifact }}"
           echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
@@ -246,6 +247,7 @@ jobs:
       - name: Export digest (multi-platform)
         if: github.event.inputs.push_image == 'true'
         run: |
+          set -euo pipefail
           mkdir -p ${{ runner.temp }}/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
@@ -266,6 +268,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           bun scripts/ci/monitor-cache-usage.ts \
             --repository ${{ github.repository }} \
             --platform "${{ matrix.platform }}" \
@@ -274,6 +277,7 @@ jobs:
       - name: Output build information (amd64 only)
         if: matrix.platform == 'linux/amd64'
         run: |
+          set -euo pipefail
           # Extract PostgreSQL version from Dockerfile (hardcoded at generation time)
           BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | awk '{print $2}' | head -1)
           PG_VERSION=$(echo "${BASE_IMAGE}" | grep -oP '\d+\.\d+' | head -1)
@@ -304,6 +308,7 @@ jobs:
       - name: Verify local image
         if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'
         run: |
+          set -euo pipefail
           # When loaded locally, image may not include registry prefix
           # Try with registry prefix first, fallback to local tag
           if docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version 2>/dev/null; then
@@ -344,6 +349,7 @@ jobs:
         id: merge
         working-directory: ${{ runner.temp }}/digests
         run: |
+          set -euo pipefail
           # Create dev tags from digests
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} \
@@ -385,6 +391,7 @@ jobs:
 
       - name: Verify image
         run: |
+          set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
             --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
             --max-retries 3
@@ -393,6 +400,7 @@ jobs:
 
       - name: Output manifest digest
         run: |
+          set -euo pipefail
           echo "### Multi-Platform Manifest Created :package:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
@@ -431,6 +439,7 @@ jobs:
       - name: Pull built image (pushed)
         if: github.event.inputs.push_image == 'true'
         run: |
+          set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
             --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
             --max-retries 3
@@ -440,6 +449,7 @@ jobs:
       - name: Use local image (not pushed)
         if: github.event.inputs.push_image != 'true'
         run: |
+          set -euo pipefail
           echo "🔍 Using locally built image for security scan..."
           # When loaded locally, image name may not include registry prefix
           # Try with registry prefix first, fallback to finding local tag
@@ -494,6 +504,7 @@ jobs:
       - name: Capture security scan diagnostics on failure
         if: failure()
         run: |
+          set -euo pipefail
           bun scripts/debug/capture-scan-diagnostics.ts \
             --image "aza-pg-testing:scan" \
             --output-dir "${{ runner.temp }}/scan-diagnostics" \
@@ -511,6 +522,7 @@ jobs:
       - name: Generate vulnerability summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Security Scan Results :shield:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
@@ -548,6 +560,7 @@ jobs:
 
       - name: Test extension loading
         run: |
+          set -euo pipefail
           echo "🧪 Testing extension loading..."
           docker run -d --name pg-test \
             -e POSTGRES_PASSWORD=test \
@@ -594,6 +607,7 @@ jobs:
 
       - name: Test auto-config with different memory limits
         run: |
+          set -euo pipefail
           echo "🧪 Testing auto-config with 2GB memory limit..."
           docker run -d --name pg-test-2gb \
             -e POSTGRES_PASSWORD=test \
@@ -643,6 +657,7 @@ jobs:
 
       - name: Test all extensions (comprehensive)
         run: |
+          set -euo pipefail
           echo "🧪 Testing all 36 enabled extensions comprehensively..."
           docker run -d --name pg-ext-test \
             -e POSTGRES_PASSWORD=test \
@@ -740,6 +755,7 @@ jobs:
       - name: Check test results
         if: always()
         run: |
+          set -euo pipefail
           if [ -f /tmp/test-failed ]; then
             echo "::error::Primary stack tests failed"
             exit 1
@@ -748,6 +764,7 @@ jobs:
       - name: Capture PostgreSQL logs on failure
         if: failure()
         run: |
+          set -euo pipefail
           bun scripts/debug/capture-postgres-diagnostics.ts \
             --container pg-ext-test \
             --output-dir "${{ runner.temp }}/diagnostics"
@@ -801,6 +818,7 @@ jobs:
       - name: Check test results
         if: always()
         run: |
+          set -euo pipefail
           if [ -f /tmp/test-failed ]; then
             echo "::error::Replica stack tests failed"
             exit 1
@@ -852,6 +870,7 @@ jobs:
       - name: Check test results
         if: always()
         run: |
+          set -euo pipefail
           if [ -f /tmp/test-failed ]; then
             echo "::error::Single stack tests failed"
             exit 1

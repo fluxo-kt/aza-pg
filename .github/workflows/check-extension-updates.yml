@@ -26,6 +26,7 @@ jobs:
         id: check
         continue-on-error: true
         run: |
+          set -euo pipefail
           bun scripts/extensions/check-updates.ts --format=json > updates.json
           UPDATE_COUNT=$(cat updates.json | jq '[.[] | select(.updateAvailable and .enabled)] | length')
           echo "count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
@@ -85,4 +86,5 @@ jobs:
       - name: No updates found
         if: steps.check.outputs.count == 0
         run: |
+          set -euo pipefail
           echo "✅ All extensions are up to date!"

@@ -71,6 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           echo "::group::Cleanup Orphaned Tags"
           echo "Cleaning up testing-* tags from cancelled or failed workflows..."
 
@@ -87,6 +88,7 @@ jobs:
       - name: Report orphan cleanup
         if: steps.cleanup-orphans.outcome == 'failure'
         run: |
+          set -euo pipefail
           echo "::warning::Pre-flight cleanup encountered errors"
           echo "This is non-critical - workflow will continue"
           echo "Orphaned tags may require manual cleanup"
@@ -100,6 +102,7 @@ jobs:
       - name: Derive catalog statistics
         id: catalog
         run: |
+          set -euo pipefail
           eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
           echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
           echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
@@ -109,6 +112,7 @@ jobs:
       - name: Extract PostgreSQL version from base image
         id: pg-version
         run: |
+          set -euo pipefail
           # Extract base image directly from Dockerfile FROM statement
           # Pattern: FROM postgres:18.1-trixie@sha256:...
           BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | \
@@ -121,6 +125,7 @@ jobs:
       - name: Generate build timestamp
         id: timestamp
         run: |
+          set -euo pipefail
           # Human-readable timestamp for container tags (no special chars)
           BUILD_TS=$(date -u '+%Y%m%d%H%M')
 
@@ -137,6 +142,7 @@ jobs:
       - name: Generate version tags
         id: tags
         run: |
+          set -euo pipefail
           PG_FULL="${{ steps.pg-version.outputs.full }}"
           PG_MAJOR="${{ steps.pg-version.outputs.major }}"
           BUILD_TS="${{ steps.timestamp.outputs.value }}"  # Use human-readable format for tags
@@ -203,6 +209,7 @@ jobs:
       - name: Generate cache key
         id: cache-key
         run: |
+          set -euo pipefail
           CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
           CACHE_KEY="publish-cache-${{ github.ref_name }}-${CONTENT_HASH}"
           echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
@@ -212,6 +219,7 @@ jobs:
       - name: Document existing tags (for rollback reference)
         continue-on-error: true
         run: |
+          set -euo pipefail
           echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
@@ -288,6 +296,7 @@ jobs:
 
       - name: Export digest
         run: |
+          set -euo pipefail
           mkdir -p ${{ runner.temp }}/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
@@ -307,6 +316,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           bun scripts/ci/monitor-cache-usage.ts \
             --repository ${{ github.repository }} \
             --platform "${{ matrix.platform }}" \
@@ -396,6 +406,7 @@ jobs:
 
       - name: Verify manifest annotations and platforms
         run: |
+          set -euo pipefail
           bun scripts/docker/validate-manifest.ts \
             --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
             --platforms "linux/amd64,linux/arm64" \
@@ -403,6 +414,7 @@ jobs:
 
       - name: Verify PostgreSQL version in merged image
         run: |
+          set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
             --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
             --max-retries 3
@@ -465,6 +477,7 @@ jobs:
       - name: Run basic smoke tests
         timeout-minutes: 5
         run: |
+          set -euo pipefail
           echo "Running basic smoke tests on multi-arch image..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
@@ -481,6 +494,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
@@ -512,30 +526,35 @@ jobs:
 
       - name: Test core extensions
         run: |
+          set -euo pipefail
           echo "Testing core extension loading..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
 
       - name: Run extension smoke tests
         run: |
+          set -euo pipefail
           echo "Running extension functional validation..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/run-extension-smoke.ts
 
       - name: Test disabled extensions
         run: |
+          set -euo pipefail
           echo "Verifying disabled extensions are not available..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-disabled-extensions.ts
 
       - name: Test hook extensions
         run: |
+          set -euo pipefail
           echo "Testing hook-based extensions..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun test ./scripts/test/test-hook-extensions.ts
 
       - name: Test extension combinations
         run: |
+          set -euo pipefail
           echo "Testing extension combinations..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-integration-extension-combinations.ts
@@ -552,6 +571,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Extension Tests :jigsaw:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -589,12 +609,14 @@ jobs:
 
       - name: Test auto-config
         run: |
+          set -euo pipefail
           echo "Testing auto-config functionality..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-auto-config.ts
 
       - name: Setup pgflow test containers
         run: |
+          set -euo pipefail
           # Setup v0.7.2 compatibility test container only (NEW API test disabled due to version mismatch)
           bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-v072-test \
@@ -616,6 +638,7 @@ jobs:
 
       - name: Test pgflow v0.7.2
         run: |
+          set -euo pipefail
           echo "Testing pgflow v0.7.2 compatibility..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun run scripts/test/test-pgflow-functional-v072.ts --container=publish-pgflow-v072-test --database=pgflow_test
@@ -623,12 +646,14 @@ jobs:
       - name: Test PgBouncer healthcheck
         continue-on-error: true # Non-critical test (critical: false in test-all.ts)
         run: |
+          set -euo pipefail
           echo "Testing PgBouncer health check..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun scripts/test/test-pgbouncer-healthcheck.ts
 
       - name: Test negative scenarios
         run: |
+          set -euo pipefail
           echo "Testing negative scenarios (error handling)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun test ./scripts/test/test-negative-scenarios.ts
@@ -636,6 +661,7 @@ jobs:
       - name: Cleanup pgflow test containers
         if: always()
         run: |
+          set -euo pipefail
           bun scripts/docker/setup-pgflow-container.ts --name publish-pgflow-v072-test --cleanup-only
 
       - name: Capture test diagnostics
@@ -650,6 +676,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Feature Tests :gear:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -686,6 +713,7 @@ jobs:
 
       - name: Run security tests
         run: |
+          set -euo pipefail
           echo "Running security hardening tests..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
           bun test scripts/test/test-security.test.ts
@@ -702,6 +730,7 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Security Tests :shield:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
@@ -722,6 +751,7 @@ jobs:
     steps:
       - name: Check all test results
         run: |
+          set -euo pipefail
           echo "Checking comprehensive test results..."
 
           FAILED=0
@@ -756,6 +786,7 @@ jobs:
       - name: Generate test gate summary
         if: always()
         run: |
+          set -euo pipefail
           echo "# Production Test Gate :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Test Results" >> $GITHUB_STEP_SUMMARY
@@ -795,6 +826,7 @@ jobs:
 
       - name: Validate merge digest
         run: |
+          set -euo pipefail
           if [ -z "${{ needs.merge.outputs.image_digest }}" ]; then
             echo "ERROR: Merge job did not provide valid digest"
             exit 1
@@ -851,6 +883,7 @@ jobs:
       - name: Capture security scan diagnostics on failure
         if: failure()
         run: |
+          set -euo pipefail
           mkdir -p ${{ runner.temp }}/scan-diagnostics
 
           echo "=== Capturing Security Scan Diagnostics ==="
@@ -900,6 +933,7 @@ jobs:
       - name: Mark scan failure for cleanup
         if: failure()
         run: |
+          set -euo pipefail
           echo "⚠️ Security scan failed - marking for cleanup"
           echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
           # The dedicated cleanup job will handle the actual deletion
@@ -947,7 +981,7 @@ jobs:
           DIGEST: ${{ needs.merge.outputs.image_digest }}
           COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
         run: |
-          set -e  # Exit on any error
+          set -euo pipefail  # Exit on any error
           # Sign by digest using testing repository reference (immutable reference)
           echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
           cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
@@ -958,6 +992,7 @@ jobs:
       - name: Promote testing image to production tags
         id: promote
         run: |
+          set -euo pipefail
           bun scripts/release/promote-image.ts \
             --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
@@ -982,6 +1017,7 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
+          set -euo pipefail
           bun scripts/release/sign-tags.ts \
             --repository "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
@@ -1180,6 +1216,7 @@ jobs:
 
       - name: Publish release notes
         run: |
+          set -euo pipefail
           echo "Published single-node PostgreSQL image to ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           echo "Primary tag: ${{ needs.prep.outputs.image_tag }}"
           echo "Digest: ${{ needs.merge.outputs.image_digest }}"
@@ -1211,6 +1248,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           # Query GitHub Packages API to get numeric version ID for GHCR package link
           VERSION_ID=$(bun scripts/release/get-package-version-id.ts \
             --repository "${{ github.repository }}" \
@@ -1222,6 +1260,7 @@ jobs:
       - name: Use metrics from promotion
         id: metrics
         run: |
+          set -euo pipefail
           # Metrics were extracted during promotion in release job
           echo "compressed_size=${{ needs.release.outputs.compressed_size }}" >> $GITHUB_OUTPUT
           echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}" >> $GITHUB_OUTPUT
@@ -1238,6 +1277,7 @@ jobs:
 
       - name: Generate release notes
         run: |
+          set -euo pipefail
           bun scripts/generate-release-notes.ts \
             --pg-version="${{ needs.prep.outputs.pg_version_full }}" \
             --tag="${{ needs.prep.outputs.image_tag }}" \
@@ -1261,6 +1301,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           # Create release with generated notes
           gh release create "v${{ needs.prep.outputs.version_tag }}" \
             --title "aza-pg ${{ needs.prep.outputs.version_tag }}" \
@@ -1320,6 +1361,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           bun scripts/release/cleanup-testing-tags.ts \
             --repository "fluxo-kt/aza-pg-testing" \
             --tags "testing-${{ github.sha }}" \
@@ -1328,6 +1370,7 @@ jobs:
       - name: Validate cleanup outcome
         if: always()
         run: |
+          set -euo pipefail
           if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
             echo "✅ Testing tag deleted successfully"
           elif [ "${{ steps.cleanup-step.outcome }}" = "failure" ]; then
@@ -1342,6 +1385,7 @@ jobs:
       - name: Report cleanup status
         if: always()
         run: |
+          set -euo pipefail
           echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 

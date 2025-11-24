@@ -48,6 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           # Determine retention policy
           DAYS="${{ inputs.days }}"
           KEEP_LAST="${{ inputs.keep_last }}"
@@ -81,6 +82,7 @@ jobs:
       - name: Summary
         if: always()
         run: |
+          set -euo pipefail
           echo "### Cleanup Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Repository**: \`fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY

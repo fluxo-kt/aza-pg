@@ -256,7 +256,7 @@ async function buildImage(config: BuildConfig): Promise<void> {
     "--platform",
     platforms,
     "--file",
-    config.regression ? "docker/postgres/Dockerfile.regression" : "docker/postgres/Dockerfile",
+    config.regression ? "docker/postgres/regression.Dockerfile" : "docker/postgres/Dockerfile",
   ];
 
   // Only add --target if specified (otherwise Docker builds final stage by default)

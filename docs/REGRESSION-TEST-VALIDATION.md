@@ -66,7 +66,7 @@ const installCommands = allPgdgPackages
 #### 1.3 Missing Utilities
 
 **Issue:** pgTAP build failed with "patch: not found"
-**Solution:** Added `patch` to apt-get install in Dockerfile.regression.template line 165
+**Solution:** Added `patch` to apt-get install in regression.Dockerfile.template line 165
 
 #### 1.4 Dockerfile Syntax
 
@@ -295,7 +295,7 @@ bun scripts/format-sql.ts --write
 - `scripts/extensions/manifest-data.ts` - Added preloadLibraryName field
 - `scripts/docker/generate-dockerfile.ts` - Regression preload generation, install-or-skip logic
 - `scripts/docker/generate-entrypoint.ts` - Use preloadLibraryName
-- `docker/postgres/Dockerfile.regression.template` - Added patch, placeholder for preload libs
+- `docker/postgres/regression.Dockerfile.template` - Added patch, placeholder for preload libs
 
 ### Test Runner Enhancement
 
@@ -304,7 +304,7 @@ bun scripts/format-sql.ts --write
 
 ### Generated Files
 
-- `docker/postgres/Dockerfile.regression` - Regenerated with fixes
+- `docker/postgres/regression.Dockerfile` - Regenerated with fixes
 - `docker/postgres/docker-auto-config-entrypoint.sh` - Regenerated with correct preloads
 
 ### SQL Formatting

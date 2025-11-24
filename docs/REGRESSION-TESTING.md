@@ -73,7 +73,7 @@ Tests all extensions including disabled ones for comprehensive coverage.
 
 - Extensions: All catalog entries from manifest (both enabled and disabled for comprehensive testing)
 - Preload libraries: 10 total (6 default + 4 optional: safeupdate, pgsodium, set_user, pg_partman)
-- Image: `aza-pg:pg18-regression` (separate Dockerfile.regression)
+- Image: `aza-pg:pg18-regression` (separate regression.Dockerfile)
 - pgTAP: Pre-installed for SQL unit testing
 
 **Use cases:**
@@ -355,7 +355,7 @@ bun scripts/build.ts
 ### Regression Test Image
 
 **Image:** `aza-pg:pg18-regression`
-**Dockerfile:** `docker/postgres/Dockerfile.regression`
+**Dockerfile:** `docker/postgres/regression.Dockerfile`
 **Extensions:** All catalog entries from manifest (comprehensive coverage)
 **Preloads:** 10 total (default + optional)
 **pgTAP:** Pre-installed v1.3.3
@@ -542,7 +542,7 @@ docker stop pg-test && docker rm pg-test
 
 ### Separate Dockerfile for Regression
 
-**Decision:** Use `Dockerfile.regression` instead of multi-stage target in production Dockerfile.
+**Decision:** Use `regression.Dockerfile` instead of multi-stage target in production Dockerfile.
 
 **Rationale:**
 

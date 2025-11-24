@@ -1,7 +1,14 @@
-# PostgreSQL {{PG_VERSION}} Regression Test Image
+# AUTO-GENERATED FILE - DO NOT EDIT
+# Generated at: 2025-11-24T13:13:45.792Z
+# Generator: scripts/docker/generate-dockerfile.ts
+# Template: docker/postgres/regression.Dockerfile.template
+# Manifest: docker/postgres/extensions.manifest.json
+# To regenerate: bun run generate
+
+# PostgreSQL 18.1 Regression Test Image
 # Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
-FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
+FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -15,7 +22,9 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 # hadolint ignore=DL3008
-RUN set -euo pipefail && \
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -25,7 +34,7 @@ RUN set -euo pipefail && \
       ca-certificates \
       rsync \
       unzip \
-      postgresql-server-dev-{{PG_MAJOR}} \
+      postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -72,23 +81,23 @@ RUN --mount=type=cache,target=/root/.cache \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
     mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb && \
-    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
-    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
-    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/contrib/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib/ && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/timescaledb && \
+    rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
+    rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
+    rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
     rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
-    if [ -d /usr/share/postgresql/{{PG_MAJOR}}/timescaledb ]; then \
-      rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
+    if [ -d /usr/share/postgresql/18/timescaledb ]; then \
+      rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
     fi && \
-    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
+    find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
     find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for cargo-pgrx builds
@@ -104,18 +113,20 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 # Reduces 3 ENV layers and accelerates dependency downloads
 RUN --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/root/.rustup \
     CARGO_PROFILE_RELEASE_LTO=thin \
     CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
-    mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
-    mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
-    rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
-    rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
-    find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
+    mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
+    mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
+    rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
+    rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
+    find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
+    rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
 # Stage for version info generation using standalone TypeScript script
@@ -131,13 +142,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL {{PG_VERSION}}..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="{{PG_VERSION}}" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="{{PG_VERSION}}" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.1..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final regression test image
-FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
+FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -154,12 +165,14 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 
 # Install runtime libraries + git/make/patch (needed for pgTAP) + jq (for version-info modification)
 # hadolint ignore=DL3008
-RUN set -euo pipefail && \
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y --no-install-recommends \
-      postgresql-client-{{PG_MAJOR}} \
+      postgresql-client-18 \
       git \
       make \
       patch \
@@ -171,14 +184,39 @@ RUN set -euo pipefail && \
 # Install ALL PGDG packages (including regression-only ones for comprehensive testing)
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-{{PGDG_PACKAGES_INSTALL_REGRESSION}}
+RUN set -euo pipefail && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
+    # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
+    echo "Installing PGDG packages (regression mode): 13 packages" && \
+    (apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-hll=2.19-1.pgdg13+1 && echo "✓ Installed: postgresql-18-hll=2.19-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-hll=2.19-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-pgvector=0.8.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgvector=0.8.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgvector=0.8.1-2.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-rum=1.3.15-1.pgdg13+1 && echo "✓ Installed: postgresql-18-rum=1.3.15-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-rum=1.3.15-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-hypopg=1.4.2-2.pgdg13+1 && echo "✓ Installed: postgresql-18-hypopg=1.4.2-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-hypopg=1.4.2-2.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-http=1.7.0-3.pgdg13+1 && echo "✓ Installed: postgresql-18-http=1.7.0-3.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-http=1.7.0-3.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-cron=1.6.7-2.pgdg13+1 && echo "✓ Installed: postgresql-18-cron=1.6.7-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-cron=1.6.7-2.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.0-1.pgdg12+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.0-1.pgdg12+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.0-1.pgdg12+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-partman=5.3.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.3.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.3.1-2.pgdg13+1" && \
+    # Report what was installed
+    dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \
+    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \
+    echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \
+    rm -f /tmp/installed-pgdg-exts.log && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
+    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Copy ALL compiled extensions (including regression-only ones)
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003
@@ -198,12 +236,12 @@ RUN set -euo pipefail && \
 # with a proper key management script that fetches the server secret securely from vault/KMS.
 # See: https://github.com/michelp/pgsodium/tree/main/getkey_scripts for examples
 RUN set -euo pipefail && \
-    echo '#!/bin/sh' > /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
-    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
-    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
-    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
-    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
-    chmod +x /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey
+    echo '#!/bin/sh' > /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
+    chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
 
 # Create backup directory with proper ownership
 RUN mkdir -p /backup && chown postgres:postgres /backup
@@ -225,7 +263,7 @@ RUN set -euo pipefail && \
 
 # Set regression preload libraries environment variable
 # This includes ALL optional preload modules for maximum test coverage (10 total)
-ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="{{REGRESSION_PRELOAD_LIBRARIES}}"
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_partman_bgw,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,set_user,timescaledb"
 
 # Copy runtime metadata files with testMode marker
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
@@ -245,9 +283,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}} (Regression Test)"
-LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with ALL extensions enabled for comprehensive regression testing"
-LABEL org.opencontainers.image.version="{{PG_VERSION}}-regression"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1 (Regression Test)"
+LABEL org.opencontainers.image.description="PostgreSQL 18.1 with ALL extensions enabled for comprehensive regression testing"
+LABEL org.opencontainers.image.version="18.1-regression"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

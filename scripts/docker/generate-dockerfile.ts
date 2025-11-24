@@ -2,7 +2,7 @@
 /**
  * Generate Dockerfile from template using manifest data
  *
- * This script reads the Dockerfile.template and Dockerfile.regression.template
+ * This script reads the Dockerfile.template and regression.Dockerfile.template
  * and replaces placeholders with actual values from the extensions manifest and extension-defaults.
  *
  * ARG Strategy:
@@ -30,8 +30,8 @@ import { error, info, section, success } from "../utils/logger";
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-const REGRESSION_TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.regression.template");
-const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.regression");
+const REGRESSION_TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile.template");
+const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
@@ -468,7 +468,7 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
 # Generated at: ${now}
 # Generator: scripts/docker/generate-dockerfile.ts
-# Template: docker/postgres/Dockerfile.regression.template
+# Template: docker/postgres/regression.Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 

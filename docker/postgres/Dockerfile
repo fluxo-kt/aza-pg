@@ -115,7 +115,6 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 RUN --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/root/.rustup \
     CARGO_PROFILE_RELEASE_LTO=thin \
     CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
     CARGO_PROFILE_RELEASE_STRIP=symbols \

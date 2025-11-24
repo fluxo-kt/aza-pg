@@ -182,8 +182,10 @@ export function cleanPsqlOutput(output: string): string {
   // Example: "psql:/tmp/boolean.sql:145: ERROR:" → "ERROR:"
   cleaned = cleaned.replace(/^psql:[^:]+:\d+:\s+(ERROR|FATAL|WARNING):/gm, "$1:");
 
-  // Remove psql meta-command output
-  cleaned = cleaned.replace(/^\\.*\n/gm, "");
+  // NOTE: Do NOT strip \pset and other meta-commands from output!
+  // PostgreSQL regression tests use psql -a flag which echoes commands,
+  // and the expected output files include these echoed meta-commands.
+  // Removing them causes output mismatches.
 
   // Remove timing information if present
   cleaned = cleaned.replace(/^Time: \d+\.\d+ ms\n/gm, "");

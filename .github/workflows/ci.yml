@@ -512,7 +512,7 @@ jobs:
       - name: Run Tier 1 regression tests (fast)
         run: |
           set -euo pipefail
-          echo "Running Tier 1 regression tests (fast - 4 tests: boolean, int2, int4, strings)..."
+          echo "Running Tier 1 regression tests (fast - 1 self-contained test: boolean)..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
 
@@ -532,9 +532,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Test Tier:** Tier 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests:** 4 self-contained tests (boolean, int2, int4, strings)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 1 self-contained test (boolean - creates own fixtures)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Full regression suite runs on release branch and nightly schedule_" >> $GITHUB_STEP_SUMMARY
+          echo "_Full regression suite (30 tests) runs on release branch_" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
   # Job 8: CI Complete (final gate)

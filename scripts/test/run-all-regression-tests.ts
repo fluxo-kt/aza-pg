@@ -139,12 +139,12 @@ async function runTier1(config: Config): Promise<boolean> {
   const args = ["scripts/test/test-postgres-core-regression.ts", `--mode=${config.mode}`];
 
   if (config.fast) {
-    // Fast tests: self-contained tests without external dependencies
-    // boolean: Boolean data type tests
-    // int2: smallint data type tests
-    // int4: integer data type tests
-    // strings: String operations (replaces select which depends on onek2 table)
-    args.push("--tests=boolean,int2,int4,strings");
+    // Fast tests: Only truly self-contained tests that create their own fixtures
+    // boolean: Creates BOOLTBL1, BOOLTBL2, BOOLTBL3, booltbl4 tables inline
+    // NOTE: Other tests (int2, int4, int8) depend on test_setup which requires
+    // PostgreSQL source data files (onek.data, tenk.data, etc.) and regress.so
+    // library that don't exist in containerized test environment.
+    args.push("--tests=boolean");
   }
   if (config.noCleanup) {
     args.push("--no-cleanup");

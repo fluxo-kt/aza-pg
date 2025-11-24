@@ -147,6 +147,7 @@ jobs:
           context: .
           file: ./docker/postgres/Dockerfile
           tags: aza-pg-ci:test
+          platforms: linux/amd64
           load: true
           build-args: |
             BUILD_DATE=${{ github.event.head_commit.timestamp }}

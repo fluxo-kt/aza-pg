@@ -24,6 +24,7 @@ runs:
       if: failure()
       shell: bash
       run: |
+        set -euo pipefail
         echo "Capturing ${{ inputs.test-type }} test failure logs..."
         OUTPUT_DIR="${{ runner.temp }}/${{ inputs.test-type }}-logs"
 

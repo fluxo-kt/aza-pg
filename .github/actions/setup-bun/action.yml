@@ -19,6 +19,7 @@ runs:
       id: bun-version
       shell: bash
       run: |
+        set -euo pipefail
         # Parse .tool-versions directly (bun not installed yet, can't use parse-bun-version.ts)
         BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}')
         if [[ -z "${BUN_VERSION}" ]]; then

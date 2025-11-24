@@ -1,0 +1,3 @@
+# Expected output files are generated, not hand-written
+# Keep directory structure but allow tracking of .out files
+!expected/*.out

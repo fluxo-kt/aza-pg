@@ -1,0 +1,49 @@
+--
+-- pgaudit - Basic regression test
+-- Tests extension availability and configuration
+--
+-- Verify extension is preloaded
+SELECT
+extname
+FROM
+pg_extension
+WHERE
+extname = 'pgaudit';
+extname
+---------
+pgaudit
+(1 row)
+-- Verify pgaudit settings are available
+SELECT
+count(*)
+FROM
+pg_settings
+WHERE
+name LIKE 'pgaudit.%';
+count
+-------
+11
+(1 row)
+-- Test configuration (session-level)
+SET
+pgaudit.log = 'read';
+SHOW pgaudit.log;
+pgaudit.log
+-------------
+read
+(1 row)
+-- Test log class configuration
+SET
+pgaudit.log = 'write, ddl';
+SHOW pgaudit.log;
+pgaudit.log
+-------------
+write, ddl
+(1 row)
+-- Reset configuration
+RESET pgaudit.log;
+SHOW pgaudit.log;
+pgaudit.log
+-------------
+none
+(1 row)

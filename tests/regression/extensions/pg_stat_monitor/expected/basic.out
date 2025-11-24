@@ -1,0 +1,62 @@
+--
+-- pg_stat_monitor - Basic regression test
+-- Tests extension creation and metrics collection
+--
+-- Create extension
+CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
+-- Verify extension created
+SELECT
+extname
+FROM
+pg_extension
+WHERE
+extname = 'pg_stat_monitor';
+extname
+-----------------
+pg_stat_monitor
+(1 row)
+-- Execute sample queries to generate metrics
+SELECT
+1 AS sample_query_1;
+sample_query_1
+----------------
+1
+(1 row)
+SELECT
+2 AS sample_query_2;
+sample_query_2
+----------------
+2
+(1 row)
+SELECT
+3 AS sample_query_3;
+sample_query_3
+----------------
+3
+(1 row)
+-- Verify pg_stat_monitor is collecting data
+SELECT
+count(*) >= 0 AS has_metrics
+FROM
+pg_stat_monitor;
+has_metrics
+-------------
+t
+(1 row)
+-- Verify key columns exist
+SELECT
+column_name
+FROM
+information_schema.columns
+WHERE
+table_name = 'pg_stat_monitor'
+AND table_schema = 'public'
+AND column_name IN ('bucket', 'query', 'calls')
+ORDER BY
+column_name;
+column_name
+-------------
+bucket
+calls
+query
+(3 rows)

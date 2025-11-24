@@ -37,7 +37,6 @@ interface ManifestEntry {
 }
 
 interface Manifest {
-  generatedAt: string;
   entries: ManifestEntry[];
 }
 
@@ -111,10 +110,8 @@ async function generateEntrypoint(): Promise<void> {
   entrypoint = entrypoint.replace("{{DEFAULT_SHARED_PRELOAD_LIBRARIES}}", defaultPreloadLibs);
 
   // Add generation header
-  const now = new Date().toISOString();
   const header = `#!/bin/bash
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: ${now}
 # Generator: scripts/docker/generate-entrypoint.ts
 # Template: docker/postgres/docker-auto-config-entrypoint.sh.template
 # Manifest: docker/postgres/extensions.manifest.json

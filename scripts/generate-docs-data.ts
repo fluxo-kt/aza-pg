@@ -37,7 +37,6 @@ interface ManifestEntry {
 }
 
 interface Manifest {
-  generatedAt: string;
   entries: ManifestEntry[];
 }
 
@@ -51,7 +50,6 @@ interface MemoryTier {
 }
 
 interface DocsData {
-  generatedAt: string;
   catalog: {
     total: number;
     enabled: number;
@@ -216,7 +214,6 @@ async function main() {
 
   // Generate data
   const docsData: DocsData = {
-    generatedAt: new Date().toISOString(),
     catalog: {
       total: entries.length,
       enabled: enabledEntries.length,

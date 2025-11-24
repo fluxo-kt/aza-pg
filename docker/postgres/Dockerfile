@@ -1,5 +1,4 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-24T13:13:45.792Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -14,6 +13,10 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Disable apt cache auto-deletion (required for cache mount effectiveness)
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
 # Copy build package list first (stable, needed for apt-get)
 COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-packages.txt
 
@@ -21,10 +24,9 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 # hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential \
@@ -41,7 +43,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
 # Install Rust toolchain (separate layer for better caching, ~60s install time)
 # Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
 RUN set -euo pipefail && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
 
 # Add Rust/Cargo to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -167,10 +169,9 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
 # hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y --no-install-recommends \

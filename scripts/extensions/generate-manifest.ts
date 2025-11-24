@@ -68,7 +68,6 @@ async function main() {
   resolved.sort((a, b) => a.name.localeCompare(b.name));
 
   const manifest = {
-    generatedAt: new Date().toISOString(),
     entries: resolved,
   };
 

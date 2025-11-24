@@ -155,7 +155,6 @@ interface ManifestEntry {
 }
 
 interface Manifest {
-  generatedAt: string;
   entries: ManifestEntry[];
 }
 
@@ -329,7 +328,6 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
   );
 
   return {
-    generatedAt: manifest.generatedAt,
     entries: filteredEntries,
   };
 }
@@ -344,7 +342,6 @@ function generateCargoManifest(manifest: Manifest): Manifest {
   );
 
   return {
-    generatedAt: manifest.generatedAt,
     entries: filteredEntries,
   };
 }
@@ -414,9 +411,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 
   // Add generation header
-  const now = new Date().toISOString();
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: ${now}
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -464,9 +459,7 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
 
   // Add generation header
-  const now = new Date().toISOString();
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: ${now}
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/regression.Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json

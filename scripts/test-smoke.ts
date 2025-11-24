@@ -175,26 +175,13 @@ async function testGeneratedDataFreshness(): Promise<TestResult> {
     }
 
     const data = await file.json();
-    if (!data.generatedAt) {
+    // Verify essential structure exists
+    if (!data.catalog || !Array.isArray(data.extensions)) {
       return {
         name: "Generated docs data exists",
         passed: false,
         duration: Date.now() - startTime,
-        error: "docs-data.json missing 'generatedAt' field",
-      };
-    }
-
-    const generatedAt = new Date(data.generatedAt);
-    const now = new Date();
-    const daysSinceGenerated = (now.getTime() - generatedAt.getTime()) / (1000 * 60 * 60 * 24);
-
-    // Warn if data is older than 30 days (but don't fail)
-    if (daysSinceGenerated > 30) {
-      return {
-        name: "Generated docs data exists",
-        passed: true,
-        duration: Date.now() - startTime,
-        error: `docs-data.json is ${daysSinceGenerated.toFixed(0)} days old - consider regenerating`,
+        error: "docs-data.json missing required fields (catalog, extensions)",
       };
     }
 

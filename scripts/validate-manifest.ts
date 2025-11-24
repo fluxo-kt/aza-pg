@@ -27,7 +27,6 @@ interface Extension {
 }
 
 interface Manifest {
-  generatedAt: string;
   entries: Extension[];
 }
 
@@ -62,11 +61,6 @@ function checkPgStatConflict(manifest: Manifest): boolean {
  */
 function validateManifestStructure(manifest: Manifest): boolean {
   let valid = true;
-
-  if (!manifest.generatedAt) {
-    error("Manifest missing 'generatedAt' field");
-    valid = false;
-  }
 
   if (!Array.isArray(manifest.entries)) {
     error("Manifest missing 'entries' array");

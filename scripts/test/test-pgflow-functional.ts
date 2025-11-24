@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 /**
+ * @deprecated This test uses the OLD pgflow v0.5 API (integer flow_id).
+ * The production image has pgflow v0.7.2 which uses a slug-based API.
+ * Use test-pgflow-functional-v072.ts instead for v0.7.2 compatibility testing.
+ *
  * Comprehensive pgflow functional test suite
  * Tests complete workflow orchestration lifecycle
  *

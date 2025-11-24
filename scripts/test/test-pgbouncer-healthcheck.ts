@@ -55,11 +55,15 @@ async function createTestEnv(
   projectName: string
 ): Promise<void> {
   const postgresImage = Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
+  // POSTGRES_BIND_IP=0.0.0.0 is required for inter-container communication
+  // This sets PostgreSQL's listen_addresses to allow PgBouncer to connect via Docker network
+  // Note: This also exposes port to host on all interfaces - acceptable for testing
   const envContent = `POSTGRES_PASSWORD=${credentials.postgresPassword}
 PGBOUNCER_AUTH_PASS=${credentials.pgbouncerPassword}
 PG_REPLICATION_PASSWORD=${credentials.replicationPassword}
 POSTGRES_IMAGE=${postgresImage}
 POSTGRES_MEMORY_LIMIT=2g
+POSTGRES_BIND_IP=0.0.0.0
 COMPOSE_PROJECT_NAME=${projectName}
 `;
 

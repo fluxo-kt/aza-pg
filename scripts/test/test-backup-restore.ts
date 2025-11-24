@@ -89,6 +89,10 @@ async function testStartContainer(config: TestConfig): Promise<TestResult> {
       throw new Error("PostgreSQL failed to start");
     }
 
+    // Fix permissions on backup volume (Docker creates it as root, need root to chown)
+    info("Setting permissions on backup volume...");
+    await $`docker exec -u root ${config.primaryContainer} chown -R postgres:postgres /var/lib/pgbackrest`;
+
     success("Container started with pgbackrest configuration");
     return { name: "Start Container with pgbackrest", passed: true, duration: Date.now() - start };
   } catch (err) {
@@ -161,6 +165,7 @@ async function testCreateTestData(config: TestConfig): Promise<TestResult> {
 
 /**
  * Test 3: Configure pgbackrest
+ * Note: Config is stored in /var/lib/pgbackrest/ which is postgres-writable
  */
 async function testConfigurePgbackrest(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -169,7 +174,7 @@ async function testConfigurePgbackrest(config: TestConfig): Promise<TestResult> 
 
     info("Creating pgbackrest configuration...");
 
-    // Create pgbackrest.conf
+    // Create pgbackrest.conf in postgres-writable location
     const pgbackrestConf = `[global]
 repo1-path=/var/lib/pgbackrest
 repo1-retention-full=2
@@ -177,15 +182,14 @@ log-level-console=info
 log-level-file=debug
 
 [test-stanza]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 pg1-port=5432
 `;
 
-    await $`docker exec ${config.primaryContainer} sh -c "mkdir -p /etc/pgbackrest && echo '${pgbackrestConf}' > /etc/pgbackrest/pgbackrest.conf"`;
-
-    // Ensure backup directory exists and has correct permissions
-    await $`docker exec ${config.primaryContainer} sh -c "mkdir -p /var/lib/pgbackrest && chown -R postgres:postgres /var/lib/pgbackrest"`;
-    await $`docker exec ${config.primaryContainer} sh -c "chown -R postgres:postgres /etc/pgbackrest"`;
+    // Create config in /var/lib/pgbackrest/ which is already owned by postgres
+    await $`docker exec -u postgres ${config.primaryContainer} sh -c "mkdir -p /var/lib/pgbackrest/conf && cat > /var/lib/pgbackrest/conf/pgbackrest.conf << 'EOF'
+${pgbackrestConf}
+EOF"`;
 
     success("pgbackrest configuration created");
     return { name: "Configure pgbackrest", passed: true, duration: Date.now() - start };
@@ -211,7 +215,7 @@ async function testCreateStanza(config: TestConfig): Promise<TestResult> {
 
     // Note: pgbackrest is a tool, not an extension, so it should be available in PATH
     const stanzaResult =
-      await $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/etc/pgbackrest/pgbackrest.conf stanza-create`.nothrow();
+      await $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf stanza-create`.nothrow();
 
     if (stanzaResult.exitCode !== 0) {
       const errorOutput = await new Response(stanzaResult.stderr).text();
@@ -244,7 +248,7 @@ async function testFullBackup(config: TestConfig): Promise<TestResult> {
     section("Test 5: Perform Full Backup");
 
     info("Performing full backup...");
-    const backupProc = $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/etc/pgbackrest/pgbackrest.conf --type=full backup`;
+    const backupProc = $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf --type=full backup`;
 
     // Wait with timeout
     const backupPromise = Promise.race([
@@ -313,7 +317,7 @@ async function testBackupInfo(config: TestConfig): Promise<TestResult> {
 
     info("Querying backup info...");
     const infoResult =
-      await $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/etc/pgbackrest/pgbackrest.conf info`;
+      await $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf info`;
 
     const infoOutput = infoResult.text();
     console.log("\nBackup Info:");
@@ -350,7 +354,7 @@ async function testIncrementalBackup(config: TestConfig): Promise<TestResult> {
     section("Test 8: Perform Incremental Backup");
 
     info("Performing incremental backup...");
-    const incrBackupProc = $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/etc/pgbackrest/pgbackrest.conf --type=incr backup`;
+    const incrBackupProc = $`docker exec -u postgres ${config.primaryContainer} pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf --type=incr backup`;
 
     // Wait with timeout
     const incrBackupPromise = Promise.race([
@@ -400,12 +404,15 @@ async function testRestoreBackup(config: TestConfig): Promise<TestResult> {
       throw new Error("Restore container failed to start");
     }
 
+    // Ensure permissions on backup volume (volume data persists but container is fresh)
+    await $`docker exec -u root ${config.restoreContainer} chown -R postgres:postgres /var/lib/pgbackrest`;
+
     // Stop PostgreSQL in restore container
     info("Stopping PostgreSQL in restore container...");
-    await $`docker exec ${config.restoreContainer} su - postgres -c "pg_ctl stop -D /var/lib/postgresql/data"`.nothrow();
+    await $`docker exec -u postgres ${config.restoreContainer} pg_ctl stop -D /var/lib/postgresql/18/docker`.nothrow();
     await Bun.sleep(3000);
 
-    // Copy pgbackrest configuration
+    // Copy pgbackrest configuration to postgres-writable location
     info("Configuring pgbackrest for restore...");
     const pgbackrestConf = `[global]
 repo1-path=/var/lib/pgbackrest
@@ -413,18 +420,19 @@ log-level-console=info
 log-level-file=debug
 
 [test-stanza]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 pg1-port=5432
 `;
 
-    await $`docker exec ${config.restoreContainer} sh -c "mkdir -p /etc/pgbackrest && echo '${pgbackrestConf}' > /etc/pgbackrest/pgbackrest.conf"`;
-    await $`docker exec ${config.restoreContainer} sh -c "chown -R postgres:postgres /etc/pgbackrest"`;
+    await $`docker exec -u postgres ${config.restoreContainer} sh -c "mkdir -p /var/lib/pgbackrest/conf && cat > /var/lib/pgbackrest/conf/pgbackrest.conf << 'EOF'
+${pgbackrestConf}
+EOF"`;
 
     // Clear data directory and restore
     info("Clearing data directory and restoring from backup...");
-    await $`docker exec ${config.restoreContainer} sh -c "rm -rf /var/lib/postgresql/data/* && chown -R postgres:postgres /var/lib/postgresql/data"`;
+    await $`docker exec -u root ${config.restoreContainer} sh -c "rm -rf /var/lib/postgresql/18/docker/* && chown -R postgres:postgres /var/lib/postgresql/18/docker"`;
 
-    const restoreProc = $`docker exec -u postgres ${config.restoreContainer} pgbackrest --stanza=test-stanza --config=/etc/pgbackrest/pgbackrest.conf restore`;
+    const restoreProc = $`docker exec -u postgres ${config.restoreContainer} pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf restore`;
 
     // Wait with timeout
     const restorePromise = Promise.race([
@@ -440,7 +448,7 @@ pg1-port=5432
 
     // Start PostgreSQL
     info("Starting PostgreSQL after restore...");
-    await $`docker exec ${config.restoreContainer} su - postgres -c "pg_ctl start -D /var/lib/postgresql/data"`;
+    await $`docker exec -u postgres ${config.restoreContainer} pg_ctl start -D /var/lib/postgresql/18/docker`;
     await Bun.sleep(5000);
 
     // Wait for PostgreSQL to be ready

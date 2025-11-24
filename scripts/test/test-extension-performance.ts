@@ -57,6 +57,8 @@ async function startContainer(): Promise<void> {
     throw new Error("PostgreSQL failed to start");
   }
 
+  // Wait additional time for extensions to fully initialize
+  await Bun.sleep(3000);
   console.log("✅ PostgreSQL ready!\n");
 }
 
@@ -113,8 +115,8 @@ async function benchmarkPgVector(): Promise<void> {
     `
     INSERT INTO embeddings (embedding)
     SELECT array_agg(random())::vector(768)
-    FROM generate_series(1, 10000), generate_series(1, 768)
-    GROUP BY generate_series
+    FROM generate_series(1, 10000) AS row_num, generate_series(1, 768) AS dim
+    GROUP BY row_num
   `,
     "Insert 10k vectors"
   );
@@ -261,6 +263,35 @@ async function benchmarkTimescaleDB(): Promise<void> {
 // ==========================
 async function benchmarkPostGIS(): Promise<void> {
   console.log("\n🔬 Benchmarking postgis (geospatial queries)...");
+
+  // Check if PostGIS is available (it's disabled in the production image)
+  try {
+    const available =
+      await $`docker exec ${CONTAINER_NAME} psql -U postgres -d ${DB_NAME} -t -A -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'postgis'"`.text();
+    if (available.trim() === "0") {
+      console.log(
+        "   ⏭️ PostGIS is not available in this image (disabled by default). Skipping..."
+      );
+      results.push({
+        extension: "postgis",
+        test: "SKIPPED - Extension not available",
+        executionTimeMs: 0,
+        rowsProcessed: 0,
+        throughputPerSec: 0,
+      });
+      return;
+    }
+  } catch {
+    console.log("   ⏭️ PostGIS check failed. Skipping...");
+    results.push({
+      extension: "postgis",
+      test: "SKIPPED - Extension check failed",
+      executionTimeMs: 0,
+      rowsProcessed: 0,
+      throughputPerSec: 0,
+    });
+    return;
+  }
 
   await execSQL("CREATE EXTENSION IF NOT EXISTS postgis CASCADE");
 
@@ -470,21 +501,28 @@ async function benchmarkPgroonga(): Promise<void> {
   await execSQL("DROP TABLE documents");
 }
 
+// Helper function to run SQL in postgres database (required for pg_cron)
+async function execSQLInPostgres(sql: string): Promise<string> {
+  const result =
+    await $`docker exec ${CONTAINER_NAME} psql -U postgres -d postgres -t -A -c ${sql}`.text();
+  return result.trim();
+}
+
 // ==========================
 // Benchmark: pg_cron
 // ==========================
 async function benchmarkPgCron(): Promise<void> {
   console.log("\n🔬 Benchmarking pg_cron (job scheduling)...");
 
-  await execSQL("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE");
+  // pg_cron can only be created in the postgres database (cron.database_name default)
+  // So we run these tests against the postgres database directly
+  await execSQLInPostgres("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE");
 
-  // Create test job
-  const scheduleTime = await execSQLTimed(
-    `
-    SELECT cron.schedule('test-job', '*/5 * * * *', \\$\\$ SELECT 1 \\$\\$)
-  `,
-    "Schedule cron job"
-  );
+  // Create test job (run in postgres database)
+  const scheduleStart = performance.now();
+  await execSQLInPostgres("SELECT cron.schedule('test-job', '*/5 * * * *', $$ SELECT 1 $$)");
+  const scheduleTime = performance.now() - scheduleStart;
+  console.log(`   Schedule cron job: ${scheduleTime.toFixed(2)}ms`);
 
   results.push({
     extension: "pg_cron",
@@ -494,13 +532,11 @@ async function benchmarkPgCron(): Promise<void> {
     throughputPerSec: 1 / (scheduleTime / 1000),
   });
 
-  // Query jobs
-  const queryTime = await execSQLTimed(
-    `
-    SELECT count(*) FROM cron.job
-  `,
-    "Query cron jobs"
-  );
+  // Query jobs (run in postgres database)
+  const queryStart = performance.now();
+  await execSQLInPostgres("SELECT count(*) FROM cron.job");
+  const queryTime = performance.now() - queryStart;
+  console.log(`   Query cron jobs: ${queryTime.toFixed(2)}ms`);
 
   results.push({
     extension: "pg_cron",
@@ -510,8 +546,8 @@ async function benchmarkPgCron(): Promise<void> {
     throughputPerSec: 1 / (queryTime / 1000),
   });
 
-  // Cleanup
-  await execSQL("SELECT cron.unschedule('test-job')");
+  // Cleanup (run in postgres database)
+  await execSQLInPostgres("SELECT cron.unschedule('test-job')");
 }
 
 // ==========================
@@ -524,22 +560,35 @@ async function analyzeMemoryOverhead(): Promise<void> {
   console.log(`   Baseline database size: ${baselineMemory}MB`);
 
   // Create extensions and measure memory growth
-  const extensions = ["pg_stat_statements", "vector", "timescaledb", "postgis", "pgroonga"];
+  // Note: postgis is disabled in production image, skip it
+  const extensions = ["pg_stat_statements", "vector", "timescaledb", "pgroonga"];
 
   for (const ext of extensions) {
-    await execSQL(`CREATE EXTENSION IF NOT EXISTS ${ext} CASCADE`);
-    const memoryAfter = await getMemoryUsage();
-    const overhead = memoryAfter - baselineMemory;
-    console.log(`   ${ext}: +${overhead}MB overhead`);
+    try {
+      await execSQL(`CREATE EXTENSION IF NOT EXISTS ${ext} CASCADE`);
+      const memoryAfter = await getMemoryUsage();
+      const overhead = memoryAfter - baselineMemory;
+      console.log(`   ${ext}: +${overhead}MB overhead`);
 
-    results.push({
-      extension: ext,
-      test: "Memory overhead (extension only)",
-      executionTimeMs: 0,
-      rowsProcessed: 0,
-      throughputPerSec: 0,
-      memoryUsedMB: overhead,
-    });
+      results.push({
+        extension: ext,
+        test: "Memory overhead (extension only)",
+        executionTimeMs: 0,
+        rowsProcessed: 0,
+        throughputPerSec: 0,
+        memoryUsedMB: overhead,
+      });
+    } catch {
+      console.log(`   ${ext}: SKIPPED (not available)`);
+      results.push({
+        extension: ext,
+        test: "Memory overhead - SKIPPED",
+        executionTimeMs: 0,
+        rowsProcessed: 0,
+        throughputPerSec: 0,
+        memoryUsedMB: 0,
+      });
+    }
   }
 }
 

@@ -100,6 +100,8 @@ async function cleanup(): Promise<void> {
     for (const file of envFiles) {
       await Bun.$`rm -f ${join(STACK_PATH, file)}`.quiet();
     }
+    // Also remove .env copy created for Docker Compose v2 compatibility
+    await Bun.$`rm -f ${join(STACK_PATH, ".env")}`.quiet();
   } catch {
     // Suppress cleanup errors
   }
@@ -191,6 +193,8 @@ async function getContainerState(containerId: string): Promise<string> {
 
 /**
  * Create test environment file
+ * Note: Docker Compose v2 always loads .env from cwd before --env-file,
+ * so we also copy to .env for compatibility
  */
 async function createTestEnv(
   filename: string,
@@ -200,6 +204,8 @@ async function createTestEnv(
   const envPath = join(STACK_PATH, filename);
   const fullContent = `${content}COMPOSE_PROJECT_NAME=${projectName}\n`;
   await Bun.write(envPath, fullContent);
+  // Also create .env copy for Docker Compose v2 compatibility
+  await Bun.write(join(STACK_PATH, ".env"), fullContent);
 }
 
 // =====================================================
@@ -225,6 +231,7 @@ PGBOUNCER_AUTH_PASS=wrong_auth_password_here
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 `,
     projectName
   );
@@ -317,6 +324,7 @@ PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 `,
     projectName
   );
@@ -389,6 +397,7 @@ PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 PGBOUNCER_LISTEN_ADDR=999.999.999.999
 `,
     projectName
@@ -472,6 +481,7 @@ PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 `,
     projectName
   );
@@ -533,6 +543,7 @@ PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 `,
     projectName
   );
@@ -624,6 +635,7 @@ PGBOUNCER_AUTH_PASS=test_pgbouncer_pass_123
 PG_REPLICATION_PASSWORD=replication_pass_123
 POSTGRES_IMAGE=${getPostgresImage()}
 POSTGRES_MEMORY_LIMIT=1536m
+POSTGRES_BIND_IP=0.0.0.0
 `,
     projectName
   );

@@ -4,8 +4,6 @@
  * Provides type-safe, validated operations for GitHub Actions integration.
  */
 
-import { existsSync } from "node:fs";
-
 /**
  * Sets a GitHub Actions output variable.
  *

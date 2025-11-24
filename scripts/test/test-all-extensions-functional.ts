@@ -65,7 +65,7 @@ Environment Variables:
 Notes:
   - Exactly one of --image or --container must be specified
   - When using --image, container is automatically cleaned up on exit
-  - Tests are comprehensive and may take 2-5 minutes to complete
+  - Tests are regression and may take 2-5 minutes to complete
   - Skipped tests indicate disabled extensions or unavailable features
 `);
   process.exit(0);

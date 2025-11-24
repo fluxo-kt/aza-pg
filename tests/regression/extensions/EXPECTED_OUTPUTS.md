@@ -13,7 +13,7 @@ bun run build
 # 2. Generate expected outputs for production mode
 bun scripts/test/test-extension-regression.ts --mode=production --generate-expected
 
-# 3. For comprehensive mode (requires PostGIS/pgRouting/PgQ enabled)
+# 3. For regression mode (requires PostGIS/pgRouting/PgQ enabled)
 # Edit scripts/extensions/manifest-data.ts to enable postgis, pgrouting, pgq
 # bun run generate && bun run build
 # bun scripts/test/test-extension-regression.ts --mode=comprehensive --generate-expected

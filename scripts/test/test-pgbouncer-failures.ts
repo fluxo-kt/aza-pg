@@ -3,7 +3,7 @@
  * Test script: PgBouncer failure scenarios and error handling
  * Usage: bun run scripts/test/test-pgbouncer-failures.ts [stack-dir]
  *
- * Tests comprehensive failure modes:
+ * Tests regression failure modes:
  *   1. Wrong password authentication
  *   2. Missing .pgpass file
  *   3. Invalid listen address

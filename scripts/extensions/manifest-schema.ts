@@ -1,6 +1,6 @@
 /**
  * Runtime validation schemas for extension manifest using ArkType.
- * This module provides comprehensive type-safe validation for the extension
+ * This module provides regression type-safe validation for the extension
  * manifest structure defined in manifest-data.ts.
  *
  * @module manifest-schema

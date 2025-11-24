@@ -10,7 +10,7 @@
  *   bun test scripts/test/test-auto-config-units.ts
  *
  * Features:
- * - 90 comprehensive test cases across 12 test suites
+ * - 90 regression test cases across 12 test suites
  * - Tests all calculation functions: shared_buffers, max_connections, work_mem, etc.
  * - Covers edge cases, boundary conditions, and real-world scenarios
  * - Fast execution (~6ms, no Docker required)

@@ -11,7 +11,7 @@
  *   bun scripts/test/test-postgres-core-regression.ts [options] [image]
  *
  * Options:
- *   --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+ *   --mode=MODE              Test mode: production | regression (default: auto-detect)
  *   --tests=test1,test2      Specific tests to run (comma-separated)
  *   --generate-diffs         Write regression.diffs file on failures
  *   --verbose                Detailed output
@@ -62,7 +62,7 @@ function parseArgs(): TestOptions | null {
   const modeArg = args.find((arg) => arg.startsWith("--mode="));
   if (modeArg) {
     const modeValue = modeArg.split("=")[1];
-    if (modeValue === "production" || modeValue === "comprehensive") {
+    if (modeValue === "production" || modeValue === "regression") {
       mode = modeValue;
     }
   }
@@ -116,7 +116,7 @@ Usage:
   bun scripts/test/test-postgres-core-regression.ts [options] [image]
 
 Options:
-  --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+  --mode=MODE              Test mode: production | regression (default: auto-detect)
   --tests=test1,test2      Specific tests to run (comma-separated)
   --generate-diffs         Write regression.diffs file on failures
   --verbose                Detailed output
@@ -125,7 +125,7 @@ Options:
 
 Test Modes:
   production               Test production image (enabled extensions only)
-  comprehensive            Test all extensions including disabled ones
+  regression            Test all extensions including disabled ones
 
 Default Tests (${CORE_TESTS.length} total):
   ${CORE_TESTS.join(", ")}

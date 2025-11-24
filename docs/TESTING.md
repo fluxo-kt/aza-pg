@@ -801,4 +801,4 @@ scripts/docker/
 
 **Key Takeaway**: When testing session-local PostgreSQL features (LOAD, SET, HypoPG, TEMP tables), always use multi-statement SQL blocks within a single `runSQL()` call. This preserves session state and prevents "feature not active" or "object not found" errors.
 
-**Status:** Comprehensive testing implemented. 100% extension coverage with functional smoke tests. All critical paths tested (extensions, auto-config, PgBouncer auth).
+**Status:** Regression testing implemented. 100% extension coverage with functional smoke tests. All critical paths tested (extensions, auto-config, PgBouncer auth).

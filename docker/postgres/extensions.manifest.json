@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-23T23:50:31.494Z",
+  "generatedAt": "2025-11-24T09:05:34.710Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -863,7 +863,7 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "Enabled by default with comprehensive time-series capabilities",
+          "Enabled by default with regression time-series capabilities",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
@@ -930,7 +930,7 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "Comprehensive test coverage includes vector columns, HNSW indexing, and similarity search"
+          "Regression test coverage includes vector columns, HNSW indexing, and similarity search"
         ]
       },
       "sourceUrl": "https://github.com/pgvector/pgvector",

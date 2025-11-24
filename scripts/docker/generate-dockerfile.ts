@@ -2,8 +2,8 @@
 /**
  * Generate Dockerfile from template using manifest data
  *
- * This script reads the Dockerfile.template and replaces placeholders with
- * actual values from the extensions manifest and extension-defaults.
+ * This script reads the Dockerfile.template and Dockerfile.regression.template
+ * and replaces placeholders with actual values from the extensions manifest and extension-defaults.
  *
  * ARG Strategy:
  * - All version dependencies are HARDCODED at generation time (PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions)
@@ -15,6 +15,7 @@
  * - {{PG_MAJOR}} - PostgreSQL major version (hardcoded, extracted from PG_VERSION, e.g., "18")
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
+ * - {{PGDG_PACKAGES_INSTALL_REGRESSION}} - Regression mode PGDG package installation (all extensions)
  * - {{VERSION_INFO_GENERATION}} - Version info generation script
  *
  * Usage:
@@ -29,6 +30,8 @@ import { error, info, section, success } from "../utils/logger";
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
+const REGRESSION_TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.regression.template");
+const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.regression");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
@@ -137,6 +140,7 @@ interface ManifestEntry {
   name: string;
   install_via?: string;
   enabled?: boolean;
+  enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
   runtime?: {
     sharedPreload?: boolean;
@@ -231,10 +235,10 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 }
 
 /**
- * Generate PGDG package installation script for comprehensive test mode
+ * Generate PGDG package installation script for regression test mode
  * Installs ALL PGDG packages (including disabled ones) for regression testing
  */
-function generatePgdgPackagesInstallComprehensive(manifest: Manifest, pgMajor: string): string {
+function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: string): string {
   const allPgdgPackages: string[] = [];
 
   for (const mapping of PGDG_MAPPINGS) {
@@ -256,7 +260,7 @@ function generatePgdgPackagesInstallComprehensive(manifest: Manifest, pgMajor: s
   }
 
   if (allPgdgPackages.length === 0) {
-    return `RUN echo "No PGDG packages available for comprehensive testing"`;
+    return `RUN echo "No PGDG packages available for regression testing"`;
   }
 
   const packagesList = allPgdgPackages.join(" ");
@@ -265,13 +269,13 @@ function generatePgdgPackagesInstallComprehensive(manifest: Manifest, pgMajor: s
   return `RUN set -euo pipefail && \\
     rm -rf /var/lib/apt/lists/* && \\
     apt-get update && \\
-    # Install ALL PGDG packages for comprehensive testing (includes disabled extensions)
-    echo "Installing PGDG packages (comprehensive mode): ${packagesList}" && \\
+    # Install ALL PGDG packages for regression testing (includes disabled extensions)
+    echo "Installing PGDG packages (regression mode): ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     # Verify expected PGDG extensions were installed
     dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log && \\
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
-    echo "Installed $INSTALLED_COUNT PGDG extension package(s) (comprehensive mode)" && \\
+    echo "Installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
     echo "Expected ${expectedCount} PGDG packages from manifest" && \\
     test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
@@ -349,7 +353,100 @@ function generateVersionInfoGeneration(_manifest: Manifest): string {
 }
 
 /**
- * Generate Dockerfile from template
+ * Generate production Dockerfile from template
+ */
+async function generateProductionDockerfile(manifest: Manifest, pgMajor: string): Promise<void> {
+  // Read template
+  info("Reading production template...");
+  if (!(await Bun.file(TEMPLATE_PATH).exists())) {
+    throw new Error(`Template not found: ${TEMPLATE_PATH}`);
+  }
+
+  const templateFile = Bun.file(TEMPLATE_PATH);
+  let dockerfile = await templateFile.text();
+
+  info("Generating PGDG package installation script...");
+  const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
+
+  info("Generating version info generation script...");
+  const versionInfoGeneration = generateVersionInfoGeneration(manifest);
+
+  // Replace placeholders
+  info("Replacing placeholders...");
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
+  dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
+  dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
+
+  // Add generation header
+  const now = new Date().toISOString();
+  const header = `# AUTO-GENERATED FILE - DO NOT EDIT
+# Generated at: ${now}
+# Generator: scripts/docker/generate-dockerfile.ts
+# Template: docker/postgres/Dockerfile.template
+# Manifest: docker/postgres/extensions.manifest.json
+# To regenerate: bun run generate
+
+`;
+
+  dockerfile = header + dockerfile;
+
+  // Write output
+  info(`Writing production Dockerfile to ${OUTPUT_PATH}...`);
+  await Bun.write(OUTPUT_PATH, dockerfile);
+
+  success("Production Dockerfile generated successfully!");
+}
+
+/**
+ * Generate regression test Dockerfile from template
+ */
+async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string): Promise<void> {
+  // Read template
+  info("Reading regression template...");
+  if (!(await Bun.file(REGRESSION_TEMPLATE_PATH).exists())) {
+    throw new Error(`Template not found: ${REGRESSION_TEMPLATE_PATH}`);
+  }
+
+  const templateFile = Bun.file(REGRESSION_TEMPLATE_PATH);
+  let dockerfile = await templateFile.text();
+
+  info("Generating regression PGDG package installation script...");
+  const pgdgPackagesInstallRegression = generatePgdgPackagesInstallRegression(manifest, pgMajor);
+
+  // Replace placeholders
+  info("Replacing placeholders...");
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
+  dockerfile = dockerfile.replace(
+    "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
+    pgdgPackagesInstallRegression
+  );
+
+  // Add generation header
+  const now = new Date().toISOString();
+  const header = `# AUTO-GENERATED FILE - DO NOT EDIT
+# Generated at: ${now}
+# Generator: scripts/docker/generate-dockerfile.ts
+# Template: docker/postgres/Dockerfile.regression.template
+# Manifest: docker/postgres/extensions.manifest.json
+# To regenerate: bun run generate
+
+`;
+
+  dockerfile = header + dockerfile;
+
+  // Write output
+  info(`Writing regression Dockerfile to ${REGRESSION_OUTPUT_PATH}...`);
+  await Bun.write(REGRESSION_OUTPUT_PATH, dockerfile);
+
+  success("Regression Dockerfile generated successfully!");
+}
+
+/**
+ * Generate both Dockerfiles from templates
  */
 async function generateDockerfile(): Promise<void> {
   section("Dockerfile Generation");
@@ -381,73 +478,38 @@ async function generateDockerfile(): Promise<void> {
     info("Note: Could not format with Prettier (not critical)");
   }
 
-  // Read template
-  info("Reading template...");
-  if (!(await Bun.file(TEMPLATE_PATH).exists())) {
-    throw new Error(`Template not found: ${TEMPLATE_PATH}`);
-  }
-
-  const templateFile = Bun.file(TEMPLATE_PATH);
-  let dockerfile = await templateFile.text();
-
-  // Extract PG_MAJOR and generate dynamic content
+  // Extract PG_MAJOR
   info("Extracting PG_MAJOR...");
   const pgMajor = extractPgMajor();
 
-  info("Generating PGDG package installation script...");
-  const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
+  // Generate production Dockerfile
+  console.log("");
+  section("Production Dockerfile");
+  await generateProductionDockerfile(manifest, pgMajor);
 
-  info("Generating comprehensive PGDG package installation script...");
-  const pgdgPackagesInstallComprehensive = generatePgdgPackagesInstallComprehensive(
-    manifest,
-    pgMajor
-  );
-
-  info("Generating version info generation script...");
-  const versionInfoGeneration = generateVersionInfoGeneration(manifest);
-
-  // Replace placeholders
-  info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
-  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
-  dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
-  dockerfile = dockerfile.replace(
-    "{{PGDG_PACKAGES_INSTALL_COMPREHENSIVE}}",
-    pgdgPackagesInstallComprehensive
-  );
-  dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
-
-  // Add generation header
-  const now = new Date().toISOString();
-  const header = `# AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: ${now}
-# Generator: scripts/docker/generate-dockerfile.ts
-# Template: docker/postgres/Dockerfile.template
-# Manifest: docker/postgres/extensions.manifest.json
-# To regenerate: bun run generate
-
-`;
-
-  dockerfile = header + dockerfile;
-
-  // Write output
-  info(`Writing Dockerfile to ${OUTPUT_PATH}...`);
-  await Bun.write(OUTPUT_PATH, dockerfile);
-
-  success("Dockerfile generated successfully!");
+  // Generate regression Dockerfile
+  console.log("");
+  section("Regression Dockerfile");
+  await generateRegressionDockerfile(manifest, pgMajor);
 
   // Print stats
+  console.log("");
+  section("Summary");
   const enabledPgdg = manifest.entries.filter(
     (e) => e.install_via === "pgdg" && (e.enabled ?? true) === true
   ).length;
   const disabledPgdg = manifest.entries.filter(
     (e) => e.install_via === "pgdg" && e.enabled === false
   ).length;
+  const regressionOnlyPgdg = manifest.entries.filter(
+    (e) => e.install_via === "pgdg" && e.enabled === false && e.enabledInComprehensiveTest === true
+  ).length;
 
-  console.log("");
   info(`PGDG extensions: ${enabledPgdg} enabled, ${disabledPgdg} disabled`);
+  info(`Regression-only extensions: ${regressionOnlyPgdg}`);
   info(`Total extensions: ${manifest.entries.length}`);
+  console.log("");
+  success("All Dockerfiles generated successfully!");
 }
 
 // Main execution

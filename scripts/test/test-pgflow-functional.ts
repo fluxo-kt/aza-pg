@@ -259,7 +259,7 @@ await test("Flow creation", async () => {
   const flow = await runSQL(`
     SELECT pgflow.create_flow(
       'test_workflow',
-      '{"description": "Test workflow for comprehensive testing"}',
+      '{"description": "Test workflow for regression testing"}',
       3,
       '10 seconds'::interval
     )

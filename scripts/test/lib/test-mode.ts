@@ -3,7 +3,7 @@
  *
  * Supports two test modes:
  * - production: Tests exact release image behavior (enabled extensions + default preloads)
- * - comprehensive: Tests ALL extensions and preloads (maximum coverage)
+ * - regression: Tests ALL extensions and preloads (maximum coverage)
  */
 
 import type { ManifestEntry } from "../../extensions/manifest-data.ts";
@@ -13,9 +13,9 @@ import { MANIFEST_ENTRIES } from "../../extensions/manifest-data.ts";
  * Test execution mode.
  *
  * @property production - Test production image (only enabled extensions, default preloads)
- * @property comprehensive - Test all extensions including disabled ones, all optional preloads
+ * @property regression - Test all extensions including disabled ones, all optional preloads
  */
-export type TestMode = "production" | "comprehensive";
+export type TestMode = "production" | "regression";
 
 /**
  * Version info embedded in Docker image at /etc/postgresql/version-info.json
@@ -26,7 +26,7 @@ export interface VersionInfo {
   buildDate: string;
   vcsRef: string;
   baseImageSha?: string;
-  testMode?: TestMode; // Set in comprehensive-test Docker stage
+  testMode?: TestMode; // Set in regression-test Docker stage
 }
 
 /**
@@ -42,7 +42,7 @@ export interface VersionInfo {
 export async function detectTestMode(): Promise<TestMode> {
   // Check environment variable
   const envMode = Bun.env.TEST_MODE;
-  if (envMode === "comprehensive" || envMode === "production") {
+  if (envMode === "regression" || envMode === "production") {
     return envMode;
   }
 
@@ -67,11 +67,11 @@ export async function detectTestMode(): Promise<TestMode> {
 /**
  * Get list of enabled extensions for given test mode.
  *
- * @param mode - Test mode ('production' or 'comprehensive')
+ * @param mode - Test mode ('production' or 'regression')
  * @returns Array of extension names that should be available
  */
 export function getEnabledExtensions(mode: TestMode): string[] {
-  if (mode === "comprehensive") {
+  if (mode === "regression") {
     // Comprehensive mode: ALL extensions except those with technical blockers
     return MANIFEST_ENTRIES.filter(
       (ext) =>
@@ -108,13 +108,13 @@ export function getTools(): string[] {
 /**
  * Get shared_preload_libraries configuration for given test mode.
  *
- * @param mode - Test mode ('production' or 'comprehensive')
+ * @param mode - Test mode ('production' or 'regression')
  * @returns Comma-separated list of preload libraries
  */
 export function getSharedPreloadLibraries(mode: TestMode): string {
   let preloadLibraries: string[];
 
-  if (mode === "comprehensive") {
+  if (mode === "regression") {
     // Comprehensive mode: ALL preload libraries (default + optional)
     preloadLibraries = MANIFEST_ENTRIES.filter(
       (ext) =>
@@ -153,7 +153,7 @@ export function shouldTestExtension(name: string, mode: TestMode): boolean {
   const manifest = getExtensionManifest(name);
   if (!manifest) return false;
 
-  if (mode === "comprehensive") {
+  if (mode === "regression") {
     // Comprehensive mode: test if enabled OR enabledInComprehensiveTest
     return manifest.enabled !== false || manifest.enabledInComprehensiveTest === true;
   } else {

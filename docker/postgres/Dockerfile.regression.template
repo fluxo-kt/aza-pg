@@ -1,4 +1,5 @@
-# PostgreSQL {{PG_VERSION}} with comprehensive extension suite
+# PostgreSQL {{PG_VERSION}} Regression Test Image
+# Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
 
@@ -135,7 +136,7 @@ RUN set -euo pipefail && \
     bun /tmp/generate-version-info.ts json --pg-version="{{PG_VERSION}}" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
-# Final runtime stage
+# Final regression test image
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
@@ -148,39 +149,46 @@ ARG VCS_REF
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime libraries for compiled extensions (final stage)
+# Install runtime libraries for ALL extensions (regression mode)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
-# Install runtime libraries for compiled extensions (final stage)
-# Note: This is the fourth apt-get call, optimized for minimal runtime dependencies.
-# Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
-# are intentional for multi-stage build optimization. DO NOT consolidate.
+# Install runtime libraries + git/make (needed for pgTAP) + jq (for version-info modification)
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y --no-install-recommends \
-      # postgresql-client provides psql CLI tool (base postgres image only has server)
-      # Required for: healthcheck (psql -tAc 'SELECT 1'), pg_dump/pg_restore in scripts
       postgresql-client-{{PG_MAJOR}} \
+      git \
+      make \
+      jq \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
-# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
-# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
-# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
+# Install ALL PGDG packages (including regression-only ones for comprehensive testing)
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-{{PGDG_PACKAGES_INSTALL}}
+{{PGDG_PACKAGES_INSTALL_REGRESSION}}
 
+# Copy ALL compiled extensions (including regression-only ones)
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-# Moved here (right after builder COPYs) to clean up before remaining operations
 RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+
+# Install pgTAP for testing (v1.3.3)
+# hadolint ignore=DL3003
+RUN set -euo pipefail && \
+    cd /tmp && \
+    git clone --depth 1 --branch v1.3.3 https://github.com/theory/pgtap.git && \
+    cd pgtap && \
+    make && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/pgtap
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
@@ -199,11 +207,10 @@ RUN set -euo pipefail && \
 # Create backup directory with proper ownership
 RUN mkdir -p /backup && chown postgres:postgres /backup
 
-# OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
-# Base PostgreSQL config (most stable - rarely modified)
+# Copy base PostgreSQL config
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
-# Runtime scripts (stable but change more often than base config)
+# Runtime scripts
 COPY docker/postgres/healthcheck.sh \
      docker/postgres/docker-auto-config-entrypoint.sh \
      /usr/local/bin/
@@ -215,12 +222,19 @@ RUN set -euo pipefail && \
     chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
-# Copy runtime metadata files LATE (frequently change with any manifest update)
-# Manifest and version-info change together whenever extensions are enabled/disabled
-# Placed here to avoid invalidating all previous cached layers
+# Set regression preload libraries environment variable
+# This includes ALL optional preload modules for maximum test coverage (10 total)
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_cron,pgaudit,pg_stat_statements,auto_explain,safeupdate,pgsodium,pg_stat_monitor,timescaledb,pg_partman,set_user"
+
+# Copy runtime metadata files with testMode marker
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
-COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info-base.json
+
+# Add testMode marker to version-info.json for regression test detection
+RUN set -euo pipefail && \
+    jq '. + {testMode: "regression"}' /etc/postgresql/version-info-base.json > /etc/postgresql/version-info.json && \
+    rm /etc/postgresql/version-info-base.json
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user
@@ -230,9 +244,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}}"
-LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="{{PG_VERSION}}"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}} (Regression Test)"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with ALL extensions enabled for comprehensive regression testing"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}-regression"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

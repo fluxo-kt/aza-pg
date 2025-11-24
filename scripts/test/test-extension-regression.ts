@@ -7,13 +7,13 @@
  *
  * Test Modes:
  * - production: Top 10 most critical extensions
- * - comprehensive: All enabled extensions (24 production + 3 comprehensive-only)
+ * - regression: All enabled extensions (24 production + 3 regression-only)
  *
  * Usage:
  *   bun scripts/test/test-extension-regression.ts [options] [image]
  *
  * Options:
- *   --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+ *   --mode=MODE              Test mode: production | regression (default: auto-detect)
  *   --extensions=ext1,ext2   Specific extensions to test (comma-separated)
  *   --generate-expected      Generate expected output files (.out) from actual results
  *   --verbose                Detailed output including diffs
@@ -22,7 +22,7 @@
  *
  * Examples:
  *   bun scripts/test/test-extension-regression.ts
- *   bun scripts/test/test-extension-regression.ts --mode=comprehensive
+ *   bun scripts/test/test-extension-regression.ts --mode=regression
  *   bun scripts/test/test-extension-regression.ts --extensions=pgvector,timescaledb
  *   bun scripts/test/test-extension-regression.ts --generate-expected
  */
@@ -57,7 +57,7 @@ const TOP_10_EXTENSIONS = [
 ];
 
 /**
- * Comprehensive-only extensions (disabled in production, tested in comprehensive mode).
+ * Comprehensive-only extensions (disabled in production, tested in regression mode).
  */
 const COMPREHENSIVE_ONLY_EXTENSIONS = [
   "postgis", // spatial data (large, disabled by default)
@@ -90,7 +90,7 @@ function parseArgs(): TestOptions | null {
   const modeArg = args.find((arg) => arg.startsWith("--mode="));
   if (modeArg) {
     const modeValue = modeArg.split("=")[1];
-    if (modeValue === "production" || modeValue === "comprehensive") {
+    if (modeValue === "production" || modeValue === "regression") {
       mode = modeValue;
     }
   }
@@ -144,7 +144,7 @@ Usage:
   bun scripts/test/test-extension-regression.ts [options] [image]
 
 Options:
-  --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+  --mode=MODE              Test mode: production | regression (default: auto-detect)
   --extensions=ext1,ext2   Specific extensions to test (comma-separated)
   --generate-expected      Generate expected output files (.out) from actual results
   --verbose                Detailed output including diffs
@@ -153,7 +153,7 @@ Options:
 
 Test Modes:
   production               Test top 10 most critical extensions (${TOP_10_EXTENSIONS.length} total)
-  comprehensive            Test all enabled extensions (${TOP_10_EXTENSIONS.length + COMPREHENSIVE_ONLY_EXTENSIONS.length}+ total)
+  regression            Test all enabled extensions (${TOP_10_EXTENSIONS.length + COMPREHENSIVE_ONLY_EXTENSIONS.length}+ total)
 
 Top 10 Production Extensions:
   ${TOP_10_EXTENSIONS.join(", ")}
@@ -163,7 +163,7 @@ Comprehensive-Only Extensions:
 
 Examples:
   bun scripts/test/test-extension-regression.ts
-  bun scripts/test/test-extension-regression.ts --mode=comprehensive
+  bun scripts/test/test-extension-regression.ts --mode=regression
   bun scripts/test/test-extension-regression.ts --extensions=pgvector,timescaledb
   bun scripts/test/test-extension-regression.ts --generate-expected
   `.trim()
@@ -178,7 +178,7 @@ function getExtensionsToTest(mode: TestMode, explicitExtensions: string[]): stri
     return explicitExtensions;
   }
 
-  if (mode === "comprehensive") {
+  if (mode === "regression") {
     return [...TOP_10_EXTENSIONS, ...COMPREHENSIVE_ONLY_EXTENSIONS];
   } else {
     return TOP_10_EXTENSIONS;
@@ -221,7 +221,7 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
   try {
     // Start container with appropriate shared_preload_libraries for mode
     const sharedPreload =
-      mode === "comprehensive"
+      mode === "regression"
         ? "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,pgsodium,pg_partman,set_user"
         : "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb";
 

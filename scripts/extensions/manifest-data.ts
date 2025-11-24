@@ -49,7 +49,7 @@ export interface RuntimeSpec {
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
   excludeFromAutoTests?: boolean; // Exclude from automated test suite
   /**
-   * If true, enable this shared preload library in comprehensive test mode.
+   * If true, enable this shared preload library in regression test mode.
    * Only applicable when sharedPreload: true and defaultEnable: false.
    */
   preloadInComprehensiveTest?: boolean;
@@ -72,9 +72,9 @@ export interface ManifestEntry {
   install_via?: "pgdg" | "source";
   enabled?: boolean;
   /**
-   * Enable this extension in comprehensive test mode even if disabled in production.
+   * Enable this extension in regression test mode even if disabled in production.
    * Useful for extensions disabled to reduce build time/size but still valuable to test.
-   * Default: false (use `enabled` value in comprehensive mode).
+   * Default: false (use `enabled` value in regression mode).
    */
   enabledInComprehensiveTest?: boolean;
   disabledReason?: string;
@@ -110,7 +110,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Comprehensive test coverage includes vector columns, HNSW indexing, and similarity search",
+        "Regression test coverage includes vector columns, HNSW indexing, and similarity search",
       ],
     },
     sourceUrl: "https://github.com/pgvector/pgvector",
@@ -688,7 +688,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Enabled by default with comprehensive time-series capabilities",
+        "Enabled by default with regression time-series capabilities",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
       ],

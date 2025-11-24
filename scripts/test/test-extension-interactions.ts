@@ -8,13 +8,13 @@
  * Test Modes:
  * - production: 4 critical interactions (TimescaleDB+pgvector, PostGIS+pg_trgm,
  *   pgsodium+supabase_vault, all default preloads)
- * - comprehensive: 10+ interactions (includes optional preloads, additional combinations)
+ * - regression: 10+ interactions (includes optional preloads, additional combinations)
  *
  * Usage:
  *   bun scripts/test/test-extension-interactions.ts [options] [image]
  *
  * Options:
- *   --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+ *   --mode=MODE              Test mode: production | regression (default: auto-detect)
  *   --tests=test1,test2      Specific interaction tests to run (comma-separated)
  *   --verbose                Detailed output
  *   --container=NAME         Use existing container instead of starting new one
@@ -22,7 +22,7 @@
  *
  * Examples:
  *   bun scripts/test/test-extension-interactions.ts
- *   bun scripts/test/test-extension-interactions.ts --mode=comprehensive
+ *   bun scripts/test/test-extension-interactions.ts --mode=regression
  *   bun scripts/test/test-extension-interactions.ts --tests=timescaledb-pgvector
  *   bun scripts/test/test-extension-interactions.ts --container=my-postgres
  */
@@ -48,9 +48,7 @@ interface InteractionTest {
   test: (runSQL: SQLRunner) => Promise<void>;
 }
 
-type SQLRunner = (
-  sql: string
-) => Promise<{ stdout: string; stderr: string; success: boolean }>;
+type SQLRunner = (sql: string) => Promise<{ stdout: string; stderr: string; success: boolean }>;
 
 interface TestOptions {
   mode: TestMode;
@@ -76,7 +74,7 @@ function parseArgs(): TestOptions | null {
   const modeArg = args.find((arg) => arg.startsWith("--mode="));
   if (modeArg) {
     const modeValue = modeArg.split("=")[1];
-    if (modeValue === "production" || modeValue === "comprehensive") {
+    if (modeValue === "production" || modeValue === "regression") {
       mode = modeValue;
     }
   }
@@ -128,7 +126,7 @@ Usage:
   bun scripts/test/test-extension-interactions.ts [options] [image]
 
 Options:
-  --mode=MODE              Test mode: production | comprehensive (default: auto-detect)
+  --mode=MODE              Test mode: production | regression (default: auto-detect)
   --tests=test1,test2      Specific interaction tests to run (comma-separated)
   --verbose                Detailed output
   --container=NAME         Use existing container instead of starting new one
@@ -136,7 +134,7 @@ Options:
 
 Test Modes:
   production               4 critical interactions (default preloads + key combinations)
-  comprehensive            10+ interactions (optional preloads + extended combinations)
+  regression            10+ interactions (optional preloads + extended combinations)
 
 Production Mode Tests (4):
   - timescaledb-pgvector:       Time-series vector search
@@ -155,7 +153,7 @@ Comprehensive Mode Tests (10+):
 
 Examples:
   bun scripts/test/test-extension-interactions.ts
-  bun scripts/test/test-extension-interactions.ts --mode=comprehensive
+  bun scripts/test/test-extension-interactions.ts --mode=regression
   bun scripts/test/test-extension-interactions.ts --tests=timescaledb-pgvector
   bun scripts/test/test-extension-interactions.ts --container=my-postgres
   `.trim()
@@ -173,7 +171,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "timescaledb-pgvector",
     displayName: "TimescaleDB + pgvector: Time-series vector search",
     extensions: ["timescaledb", "vector"],
-    modes: ["production", "comprehensive"],
+    modes: ["production", "regression"],
     preloadRequired: ["timescaledb"],
     test: async (runSQL) => {
       // Create hypertable with vector column
@@ -243,7 +241,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "hypopg-pg_stat_statements",
     displayName: "hypopg + pg_stat_statements: Query optimization stack",
     extensions: ["hypopg", "pg_stat_statements"],
-    modes: ["production", "comprehensive"],
+    modes: ["production", "regression"],
     preloadRequired: ["pg_stat_statements"],
     test: async (runSQL) => {
       // Create extension hypopg
@@ -271,7 +269,8 @@ const INTERACTION_TESTS: InteractionTest[] = [
       const hypIndex = await runSQL(`
         SELECT * FROM hypopg_create_index('CREATE INDEX ON test_query_opt (name)')
       `);
-      if (!hypIndex.success) throw new Error(`Create hypothetical index failed: ${hypIndex.stderr}`);
+      if (!hypIndex.success)
+        throw new Error(`Create hypothetical index failed: ${hypIndex.stderr}`);
 
       // Run query that would use the index
       const query = await runSQL(`
@@ -297,7 +296,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "postgis-pg_trgm",
     displayName: "PostGIS + pg_trgm: Spatial + fuzzy text search",
     extensions: ["postgis", "pg_trgm"],
-    modes: ["comprehensive"], // PostGIS is disabled in production mode
+    modes: ["regression"], // PostGIS is disabled in production mode
     test: async (runSQL) => {
       // Create extension postgis if not exists
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
@@ -360,7 +359,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "pgsodium-vault",
     displayName: "pgsodium + supabase_vault: Encryption stack",
     extensions: ["pgsodium", "supabase_vault"],
-    modes: ["production", "comprehensive"],
+    modes: ["production", "regression"],
     preloadRequired: ["pgsodium"],
     test: async (runSQL) => {
       // Create extension pgsodium if not exists
@@ -373,7 +372,9 @@ const INTERACTION_TESTS: InteractionTest[] = [
       }
 
       // Verify pgsodium key exists
-      const keyCheck = await runSQL("SELECT count(*) FROM pgsodium.key WHERE name = 'pgsodium_root'");
+      const keyCheck = await runSQL(
+        "SELECT count(*) FROM pgsodium.key WHERE name = 'pgsodium_root'"
+      );
       if (!keyCheck.success || keyCheck.stdout === "0") {
         // Expected failure: pgsodium_getkey script not configured
         // This is documented behavior requiring manual setup
@@ -419,8 +420,15 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "all-default-preloads",
     displayName: "All default preload libraries: Conflict detection",
     extensions: ["pg_cron", "pgaudit", "pg_stat_statements", "pg_stat_monitor", "timescaledb"],
-    modes: ["production", "comprehensive"],
-    preloadRequired: ["pg_cron", "pgaudit", "pg_stat_statements", "auto_explain", "pg_stat_monitor", "timescaledb"],
+    modes: ["production", "regression"],
+    preloadRequired: [
+      "pg_cron",
+      "pgaudit",
+      "pg_stat_statements",
+      "auto_explain",
+      "pg_stat_monitor",
+      "timescaledb",
+    ],
     test: async (runSQL) => {
       // Verify server started successfully (already done by container startup)
       // Test each preload library works
@@ -451,7 +459,9 @@ const INTERACTION_TESTS: InteractionTest[] = [
       }
 
       // Test timescaledb
-      const timescaleTest = await runSQL("SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'");
+      const timescaleTest = await runSQL(
+        "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'"
+      );
       if (!timescaleTest.success || !timescaleTest.stdout.trim()) {
         throw new Error(`timescaledb not available: ${timescaleTest.stderr}`);
       }
@@ -472,7 +482,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "all-optional-preloads",
     displayName: "All optional preload libraries: Maximum preload testing",
     extensions: ["pgsodium", "pg_partman", "set_user"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     preloadRequired: ["pgsodium", "pg_partman", "set_user"],
     test: async (runSQL) => {
       // Verify server starts with additional optional preloads
@@ -506,7 +516,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "pg_partman-timescaledb",
     displayName: "pg_partman + timescaledb: Partition compatibility",
     extensions: ["pg_partman", "timescaledb"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     preloadRequired: ["timescaledb"],
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS pg_partman");
@@ -523,7 +533,8 @@ const INTERACTION_TESTS: InteractionTest[] = [
           value text
         ) PARTITION BY RANGE (created_at)
       `);
-      if (!partmanTable.success) throw new Error(`Create partman table failed: ${partmanTable.stderr}`);
+      if (!partmanTable.success)
+        throw new Error(`Create partman table failed: ${partmanTable.stderr}`);
 
       const partmanSetup = await runSQL(`
         SELECT partman.create_parent(
@@ -544,7 +555,8 @@ const INTERACTION_TESTS: InteractionTest[] = [
           value double precision
         )
       `);
-      if (!hypertable.success) throw new Error(`Create hypertable table failed: ${hypertable.stderr}`);
+      if (!hypertable.success)
+        throw new Error(`Create hypertable table failed: ${hypertable.stderr}`);
 
       const hypertableSetup = await runSQL(`
         SELECT create_hypertable('test_hypertable', 'time', if_not_exists => TRUE)
@@ -555,7 +567,8 @@ const INTERACTION_TESTS: InteractionTest[] = [
 
       // Verify no conflicts - both should work
       const insertPartman = await runSQL("INSERT INTO test_partman (value) VALUES ('test')");
-      if (!insertPartman.success) throw new Error(`Insert into partman table failed: ${insertPartman.stderr}`);
+      if (!insertPartman.success)
+        throw new Error(`Insert into partman table failed: ${insertPartman.stderr}`);
 
       const insertHypertable = await runSQL(`
         INSERT INTO test_hypertable (time, device_id, value)
@@ -575,7 +588,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "pgaudit-pg_stat_monitor",
     displayName: "pgaudit + pg_stat_monitor: Audit + monitoring stack",
     extensions: ["pgaudit", "pg_stat_monitor"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     preloadRequired: ["pgaudit", "pg_stat_monitor"],
     test: async (runSQL) => {
       // Enable both extensions (both are preloaded)
@@ -613,7 +626,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "postgis-pgrouting",
     displayName: "PostGIS + pgrouting: GIS + routing stack",
     extensions: ["postgis", "pgrouting"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
       await runSQL("CREATE EXTENSION IF NOT EXISTS pgrouting");
@@ -628,7 +641,8 @@ const INTERACTION_TESTS: InteractionTest[] = [
           geom geometry(LineString, 4326)
         )
       `);
-      if (!createGraph.success) throw new Error(`Create network table failed: ${createGraph.stderr}`);
+      if (!createGraph.success)
+        throw new Error(`Create network table failed: ${createGraph.stderr}`);
 
       // Insert simple network (4 nodes, 4 edges forming a square)
       const insertEdges = await runSQL(`
@@ -677,7 +691,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "encryption-audit",
     displayName: "Multiple encryption extensions: pgsodium + pgaudit",
     extensions: ["pgsodium", "pgaudit"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     preloadRequired: ["pgsodium", "pgaudit"],
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS pgsodium");
@@ -708,11 +722,13 @@ const INTERACTION_TESTS: InteractionTest[] = [
           pgsodium.crypto_secretbox_keygen(),
           pgsodium.crypto_secretbox('sensitive data'::bytea, '\\x0123456789abcdef0123456789abcdef0123456789abcdef'::bytea, pgsodium.crypto_secretbox_keygen())
       `);
-      if (!insertData.success) throw new Error(`Insert encrypted data failed: ${insertData.stderr}`);
+      if (!insertData.success)
+        throw new Error(`Insert encrypted data failed: ${insertData.stderr}`);
 
       // Verify encrypted data is audited correctly
       const auditConfig = await runSQL("SHOW pgaudit.log");
-      if (!auditConfig.success) throw new Error(`Query pgaudit config failed: ${auditConfig.stderr}`);
+      if (!auditConfig.success)
+        throw new Error(`Query pgaudit config failed: ${auditConfig.stderr}`);
 
       // Cleanup
       await runSQL("DROP TABLE test_encrypted_audit");
@@ -723,7 +739,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "gis-extensions",
     displayName: "All GIS extensions: PostGIS + h3 + h3_postgis",
     extensions: ["postgis", "h3", "h3_postgis"],
-    modes: ["comprehensive"],
+    modes: ["regression"],
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
       await runSQL("CREATE EXTENSION IF NOT EXISTS h3");
@@ -1067,7 +1083,9 @@ async function main(): Promise<number> {
 
       if (nonVaultFailures.length > 0) {
         // Real failures - exit with error
-        console.log(`\n❌ ${nonVaultFailures.length} test(s) failed (excluding expected vault failures)`);
+        console.log(
+          `\n❌ ${nonVaultFailures.length} test(s) failed (excluding expected vault failures)`
+        );
         return 1;
       } else if (vaultFailures.length > 0) {
         // Only vault failures (expected) - exit success with note

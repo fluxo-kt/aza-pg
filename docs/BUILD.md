@@ -482,7 +482,7 @@ See [EXTENSIONS.md](EXTENSIONS.md) for complete details.
 
 ## Testing & Validation
 
-Run comprehensive test suite:
+Run regression test suite:
 
 ```bash
 # Full test suite (validation + Docker build + functional tests)

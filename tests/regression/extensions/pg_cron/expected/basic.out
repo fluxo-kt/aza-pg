@@ -36,12 +36,22 @@ count
 -------
 2
 (1 row)
--- Schedule a test job (will be cleaned up)
+-- Clean up any leftover test jobs from previous runs
 SELECT
-cron.schedule ('test-regression-job', '0 0 * * *', 'SELECT 1');
-schedule
-----------
-2
+cron.unschedule (jobid)
+FROM
+cron.job
+WHERE
+jobname = 'regression-test-job';
+unschedule
+------------
+(0 rows)
+-- Schedule a test job (check that ID > 0, not exact value)
+SELECT
+cron.schedule ('regression-test-job', '0 0 * * *', 'SELECT 1') > 0 AS scheduled;
+scheduled
+-----------
+t
 (1 row)
 -- Verify job was created
 SELECT
@@ -51,10 +61,10 @@ command
 FROM
 cron.job
 WHERE
-jobname = 'test-regression-job';
+jobname = 'regression-test-job';
 jobname | schedule | command
 ---------------------+-----------+----------
-test-regression-job | 0 0 * * * | SELECT 1
+regression-test-job | 0 0 * * * | SELECT 1
 (1 row)
 -- Unschedule job
 SELECT
@@ -62,7 +72,7 @@ cron.unschedule (jobid)
 FROM
 cron.job
 WHERE
-jobname = 'test-regression-job';
+jobname = 'regression-test-job';
 unschedule
 ------------
 t
@@ -73,7 +83,7 @@ count(*)
 FROM
 cron.job
 WHERE
-jobname = 'test-regression-job';
+jobname = 'regression-test-job';
 count
 -------
 0

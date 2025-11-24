@@ -30,9 +30,18 @@ WHERE
   AND table_name IN ('job', 'job_run_details');
 
 
--- Schedule a test job (will be cleaned up)
+-- Clean up any leftover test jobs from previous runs
 SELECT
-  cron.schedule ('test-regression-job', '0 0 * * *', 'SELECT 1');
+  cron.unschedule (jobid)
+FROM
+  cron.job
+WHERE
+  jobname = 'regression-test-job';
+
+
+-- Schedule a test job (check that ID > 0, not exact value)
+SELECT
+  cron.schedule ('regression-test-job', '0 0 * * *', 'SELECT 1') > 0 AS scheduled;
 
 
 -- Verify job was created
@@ -43,7 +52,7 @@ SELECT
 FROM
   cron.job
 WHERE
-  jobname = 'test-regression-job';
+  jobname = 'regression-test-job';
 
 
 -- Unschedule job
@@ -52,7 +61,7 @@ SELECT
 FROM
   cron.job
 WHERE
-  jobname = 'test-regression-job';
+  jobname = 'regression-test-job';
 
 
 -- Verify job was removed
@@ -61,4 +70,4 @@ SELECT
 FROM
   cron.job
 WHERE
-  jobname = 'test-regression-job';
+  jobname = 'regression-test-job';

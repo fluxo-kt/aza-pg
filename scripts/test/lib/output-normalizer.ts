@@ -184,6 +184,11 @@ export function cleanPsqlOutput(output: string): string {
   // This happens because we use `psql -a -f file` which prefixes messages with file:line
   cleaned = cleaned.replace(/^psql:[^:]+:\d+:\s+(ERROR|FATAL|WARNING|NOTICE):/gm, "$1:");
 
+  // Remove "extension X already exists, skipping" NOTICE lines
+  // This happens in production mode where extensions are pre-loaded
+  // The NOTICE is cosmetic and doesn't affect test validity
+  cleaned = cleaned.replace(/^NOTICE:\s+extension "[^"]+" already exists, skipping\n/gm, "");
+
   // NOTE: Do NOT strip \pset and other meta-commands from output!
   // PostgreSQL regression tests use psql -a flag which echoes commands,
   // and the expected output files include these echoed meta-commands.

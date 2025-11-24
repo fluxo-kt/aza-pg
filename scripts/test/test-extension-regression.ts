@@ -282,19 +282,15 @@ async function stopPostgresContainer(containerName: string): Promise<void> {
 
 /**
  * Get connection configuration for container
+ *
+ * Uses containerName to run psql via docker exec instead of host TCP connection.
+ * This avoids network issues and matches how Tier 3 (interaction tests) works.
  */
 async function getConnectionConfig(containerName: string): Promise<ConnectionConfig> {
-  // Get container's mapped port
-  const result = await $`docker port ${containerName} 5432`;
-  const portLine = result.stdout.toString().trim();
-
-  // Parse port from output like "5432/tcp -> 0.0.0.0:54321"
-  const portMatch = portLine.match(/:(\d+)$/);
-  const port = portMatch?.[1] ? parseInt(portMatch[1]) : 5432;
-
+  // Use docker exec to run psql inside the container (not host TCP connection)
+  // This is more reliable and matches Tier 3 behavior
   return {
-    host: "localhost",
-    port,
+    containerName, // This tells regression-runner to use docker exec
     database: "postgres",
     user: "postgres",
     password: "postgres",

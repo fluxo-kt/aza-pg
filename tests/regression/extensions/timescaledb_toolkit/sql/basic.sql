@@ -15,17 +15,23 @@ WHERE
   extname = 'timescaledb_toolkit';
 
 
--- Create test data
+-- Create test data with deterministic values
 CREATE TEMP TABLE metrics (TIME TIMESTAMPTZ, value DOUBLE PRECISION);
 
 
 INSERT INTO
   metrics (TIME, value)
-SELECT
-  '2025-01-01 00:00:00'::TIMESTAMPTZ + (i || ' hours')::INTERVAL,
-  (i * 10.0) + random() * 5
-FROM
-  generate_series(1, 10) AS i;
+VALUES
+  ('2025-01-01 01:00:00'::TIMESTAMPTZ, 12.5),
+  ('2025-01-01 02:00:00'::TIMESTAMPTZ, 22.5),
+  ('2025-01-01 03:00:00'::TIMESTAMPTZ, 32.5),
+  ('2025-01-01 04:00:00'::TIMESTAMPTZ, 42.5),
+  ('2025-01-01 05:00:00'::TIMESTAMPTZ, 52.5),
+  ('2025-01-01 06:00:00'::TIMESTAMPTZ, 62.5),
+  ('2025-01-01 07:00:00'::TIMESTAMPTZ, 72.5),
+  ('2025-01-01 08:00:00'::TIMESTAMPTZ, 82.5),
+  ('2025-01-01 09:00:00'::TIMESTAMPTZ, 92.5),
+  ('2025-01-01 10:00:00'::TIMESTAMPTZ, 102.5);
 
 
 -- Test approximate percentile

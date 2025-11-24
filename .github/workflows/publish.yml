@@ -762,7 +762,7 @@ jobs:
     uses: ./.github/workflows/regression-tests.yml
     needs: [prep, merge, test-smoke]
     with:
-      image_ref: ${{ format('{0}/{1}:testing-{2}', env.REGISTRY, env.IMAGE_NAME_TESTING, github.sha) }}
+      image_ref: ghcr.io/fluxo-kt/aza-pg-testing:testing-${{ github.sha }}
     secrets: inherit
 
   test-complete:

@@ -147,7 +147,7 @@ export function isAcceptableVariation(expected: string, actual: string): boolean
  *
  * Example: Sorting order may differ based on LC_COLLATE
  */
-function isAcceptableLocaleVariation(expected: string, actual: string): boolean {
+function isAcceptableLocaleVariation(_expected: string, _actual: string): boolean {
   // For now, we don't auto-accept locale variations
   // This is a placeholder for future enhancement if needed
   // Most tests don't depend on locale-specific sorting
@@ -159,7 +159,7 @@ function isAcceptableLocaleVariation(expected: string, actual: string): boolean 
  *
  * Example: "2024-01-01 12:00:00+00" vs "2024-01-01 12:00:00 UTC"
  */
-function isAcceptableTimezoneVariation(expected: string, actual: string): boolean {
+function isAcceptableTimezoneVariation(_expected: string, _actual: string): boolean {
   // For now, we don't auto-accept timezone variations
   // This is a placeholder for future enhancement if needed
   // Most core tests don't involve timezone-sensitive operations
@@ -203,13 +203,13 @@ export function cleanPsqlOutput(output: string): string {
 export function extractErrorMessage(output: string): string | null {
   // Look for ERROR: lines
   const errorMatch = output.match(/^ERROR:  (.+)$/m);
-  if (errorMatch) {
+  if (errorMatch?.[1]) {
     return errorMatch[1];
   }
 
   // Look for FATAL: lines
   const fatalMatch = output.match(/^FATAL:  (.+)$/m);
-  if (fatalMatch) {
+  if (fatalMatch?.[1]) {
     return fatalMatch[1];
   }
 

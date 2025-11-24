@@ -249,7 +249,7 @@ async function getConnectionConfig(containerName: string): Promise<ConnectionCon
 
   // Parse port from output like "5432/tcp -> 0.0.0.0:54321"
   const portMatch = portLine.match(/:(\d+)$/);
-  const port = portMatch ? parseInt(portMatch[1]) : 5432;
+  const port = portMatch?.[1] ? parseInt(portMatch[1]) : 5432;
 
   return {
     host: "localhost",

@@ -64,7 +64,7 @@ function parseArgs(): BuildConfig {
     push: false,
     load: true,
     regression: false,
-    target: "final",
+    target: "", // No target - build final stage by default
   };
 
   const args = Bun.argv.slice(2);
@@ -81,7 +81,7 @@ function parseArgs(): BuildConfig {
         break;
       case "--regression":
         config.regression = true;
-        config.target = "final"; // Regression Dockerfile is standalone (no multi-stage targets);
+        // Regression Dockerfile is standalone - build final stage by default
         // Append -regression to tag if not already present
         if (!config.imageTag.includes("regression")) {
           config.imageTag = `${config.imageTag}-regression`;
@@ -257,11 +257,14 @@ async function buildImage(config: BuildConfig): Promise<void> {
     platforms,
     "--file",
     config.regression ? "docker/postgres/Dockerfile.regression" : "docker/postgres/Dockerfile",
-    "--target",
-    config.target,
-    "--tag",
-    `${config.imageName}:${config.imageTag}`,
   ];
+
+  // Only add --target if specified (otherwise Docker builds final stage by default)
+  if (config.target) {
+    buildArgs.push("--target", config.target);
+  }
+
+  buildArgs.push("--tag", `${config.imageName}:${config.imageTag}`);
 
   // Cache configuration (GHA cache in CI, local cache in dev)
   // In CI: Use GitHub Actions cache (type=gha) for fast cross-run caching
@@ -361,7 +364,9 @@ async function buildImage(config: BuildConfig): Promise<void> {
   console.log("================================================================");
   console.log(`Duration: ${duration}s`);
   console.log(`Image: ${config.imageName}:${config.imageTag}`);
-  console.log(`Target: ${config.target}`);
+  if (config.target) {
+    console.log(`Target: ${config.target}`);
+  }
   console.log(`Platforms: ${platforms}`);
 
   if (config.push) {

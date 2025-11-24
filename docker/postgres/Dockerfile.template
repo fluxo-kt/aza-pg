@@ -173,6 +173,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       postgresql-client-{{PG_MAJOR}} \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.runtime-packages.txt
 
 # Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)

@@ -179,6 +179,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       postgresql-client-18 \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.runtime-packages.txt
 
 # Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
@@ -203,6 +204,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
     test "$INSTALLED_COUNT" -ge 11 || (echo "ERROR: Installed count mismatch (expected >= 11, got $INSTALLED_COUNT)" && exit 1) && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 

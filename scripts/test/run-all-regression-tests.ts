@@ -26,6 +26,7 @@
 
 import { $ } from "bun";
 import { detectTestMode, getTestModeSummary, type TestMode } from "./lib/test-mode.ts";
+import { CI_FAST_TESTS } from "./lib/test-groups.ts";
 
 interface Config {
   mode: TestMode;
@@ -139,12 +140,14 @@ async function runTier1(config: Config): Promise<boolean> {
   const args = ["scripts/test/test-postgres-core-regression.ts", `--mode=${config.mode}`];
 
   if (config.fast) {
-    // Fast tests: Only truly self-contained tests that create their own fixtures
-    // boolean: Creates BOOLTBL1, BOOLTBL2, BOOLTBL3, booltbl4 tables inline
-    // NOTE: Other tests (int2, int4, int8) depend on test_setup which requires
-    // PostgreSQL source data files (onek.data, tenk.data, etc.) and regress.so
-    // library that don't exist in containerized test environment.
-    args.push("--tests=boolean");
+    // Fast tests: Self-contained tests + tests that work with minimal_setup.sql
+    // Total: 12 tests (6 self-contained + 6 minimal setup)
+    // Self-contained: boolean, strings, float4, numeric, numerology, json
+    // Minimal setup: int2, int4, int8, float8, text, varchar
+    // Uses minimal_setup.sql which creates tables with INSERT statements only
+    // (no PostgreSQL data files or regress.so library required)
+    args.push(`--tests=${CI_FAST_TESTS.join(",")}`);
+    console.log(`Fast mode: Running ${CI_FAST_TESTS.length} tests with minimal_setup`);
   }
   if (config.noCleanup) {
     args.push("--no-cleanup");

@@ -178,9 +178,11 @@ function isAcceptableTimezoneVariation(_expected: string, _actual: string): bool
 export function cleanPsqlOutput(output: string): string {
   let cleaned = output;
 
-  // Remove psql file path prefix from ERROR/FATAL/WARNING messages
+  // Remove psql file path prefix from ERROR/FATAL/WARNING/NOTICE messages
   // Example: "psql:/tmp/boolean.sql:145: ERROR:" → "ERROR:"
-  cleaned = cleaned.replace(/^psql:[^:]+:\d+:\s+(ERROR|FATAL|WARNING):/gm, "$1:");
+  // Example: "psql:/tmp/float4.sql:156: NOTICE:" → "NOTICE:"
+  // This happens because we use `psql -a -f file` which prefixes messages with file:line
+  cleaned = cleaned.replace(/^psql:[^:]+:\d+:\s+(ERROR|FATAL|WARNING|NOTICE):/gm, "$1:");
 
   // NOTE: Do NOT strip \pset and other meta-commands from output!
   // PostgreSQL regression tests use psql -a flag which echoes commands,
@@ -190,9 +192,8 @@ export function cleanPsqlOutput(output: string): string {
   // Remove timing information if present
   cleaned = cleaned.replace(/^Time: \d+\.\d+ ms\n/gm, "");
 
-  // Remove NOTICE messages (these are informational, not part of test output)
-  // Example: "NOTICE:  table "test" does not exist, skipping"
-  cleaned = cleaned.replace(/^NOTICE:  .*\n/gm, "");
+  // NOTE: Do NOT remove NOTICE messages! They are part of the expected test output.
+  // The expected output files include NOTICE messages that the tests generate.
 
   // Apply standard normalization
   cleaned = normalizeRegressionOutput(cleaned);

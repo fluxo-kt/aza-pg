@@ -30,12 +30,14 @@ import { join } from "node:path";
 import { detectTestMode, type TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import {
-  runRegressionTests,
+  runRegressionTestsWithSetup,
   generateRegressionDiffs,
   type TestResult,
+  type SetupResult,
   type ConnectionConfig,
 } from "./lib/regression-runner.ts";
 import { CORE_TESTS, SQL_DIR, EXPECTED_DIR } from "../ci/fetch-pg-regression-tests.ts";
+import { requiresMinimalSetup, requiresFullSetup, groupTestsBySetup } from "./lib/test-groups.ts";
 
 interface TestOptions {
   mode: TestMode;
@@ -194,15 +196,20 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
       -p 5432 \
       ${image}`.quiet();
 
-    // Wait for PostgreSQL to be ready
+    // Wait for PostgreSQL to be fully ready
+    // Note: PostgreSQL init process restarts the server, so we need to:
+    // 1. Wait for first pg_isready success
+    // 2. Wait for init to complete (server may restart)
+    // 3. Confirm pg_isready still works after potential restart
     console.log("Waiting for PostgreSQL to be ready...");
 
-    let ready = false;
-    for (let i = 0; i < 30; i++) {
+    let initialReady = false;
+    for (let i = 0; i < 60; i++) {
       try {
         const result = await $`docker exec ${containerName} pg_isready -U postgres`.nothrow();
+        console.log(result.stdout.toString().trim());
         if (result.exitCode === 0) {
-          ready = true;
+          initialReady = true;
           break;
         }
       } catch {
@@ -211,8 +218,47 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
       await Bun.sleep(1000);
     }
 
-    if (!ready) {
-      throw new Error("PostgreSQL failed to start within 30 seconds");
+    if (!initialReady) {
+      throw new Error("PostgreSQL failed to start within 60 seconds");
+    }
+
+    // Wait for init scripts to complete and server to potentially restart
+    // Check for "ready to accept connections" in logs (appears after final startup)
+    console.log("Waiting for initialization to complete...");
+    let fullyReady = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        // Check if the final "ready to accept connections" message is in logs
+        const logs = await $`docker logs ${containerName} 2>&1`.nothrow();
+        const logOutput = logs.stdout.toString();
+
+        // Count occurrences - we want 2 (one during init, one after restart)
+        // Or check for the final startup message pattern
+        if (
+          logOutput.includes("PostgreSQL init process complete") &&
+          logOutput.includes("database system is ready to accept connections")
+        ) {
+          // Verify pg_isready still works
+          const check = await $`docker exec ${containerName} pg_isready -U postgres`.nothrow();
+          if (check.exitCode === 0) {
+            fullyReady = true;
+            break;
+          }
+        }
+      } catch {
+        // Error checking logs, wait and retry
+      }
+      await Bun.sleep(500);
+    }
+
+    if (!fullyReady) {
+      // Fallback: just wait a few seconds and check pg_isready
+      console.log("Fallback: waiting additional time for stability...");
+      await Bun.sleep(3000);
+      const finalCheck = await $`docker exec ${containerName} pg_isready -U postgres`.nothrow();
+      if (finalCheck.exitCode !== 0) {
+        throw new Error("PostgreSQL not ready after waiting for initialization");
+      }
     }
 
     console.log("PostgreSQL is ready\n");
@@ -240,6 +286,29 @@ async function stopPostgresContainer(containerName: string): Promise<void> {
 }
 
 /**
+ * Create the regression database with C locale (required for deterministic string ordering)
+ */
+async function createRegressionDatabase(containerName: string): Promise<void> {
+  console.log("Creating regression database with C locale...");
+
+  // Create database with C locale for deterministic string ordering in tests
+  // This matches how pg_regress creates its test database
+  const createDbResult =
+    await $`docker exec ${containerName} psql -U postgres -c "CREATE DATABASE regression WITH TEMPLATE = template0 LC_COLLATE = 'C' LC_CTYPE = 'C' ENCODING = 'UTF8';"`.nothrow();
+
+  if (createDbResult.exitCode !== 0) {
+    const stderr = createDbResult.stderr.toString();
+    // Database might already exist, which is fine
+    if (!stderr.includes("already exists")) {
+      throw new Error(`Failed to create regression database: ${stderr}`);
+    }
+    console.log("  Regression database already exists");
+  } else {
+    console.log("  Regression database created successfully");
+  }
+}
+
+/**
  * Get connection configuration for container
  */
 async function getConnectionConfig(containerName: string): Promise<ConnectionConfig> {
@@ -254,7 +323,7 @@ async function getConnectionConfig(containerName: string): Promise<ConnectionCon
   return {
     host: "localhost",
     port,
-    database: "postgres",
+    database: "regression", // Use regression database with C locale
     user: "postgres",
     password: "postgres",
   };
@@ -298,6 +367,57 @@ function printTestResults(results: TestResult[], verbose: boolean): void {
 }
 
 /**
+ * Determine which setup is needed and return setup configuration
+ */
+function getSetupConfig(tests: string[]): {
+  setupName: string;
+  sqlFile: string;
+  expectedFile: string | null;
+} | null {
+  // Check if full setup is required (tests need data files)
+  if (requiresFullSetup(tests)) {
+    return {
+      setupName: "test_setup",
+      sqlFile: join(SQL_DIR, "test_setup.sql"),
+      expectedFile: join(EXPECTED_DIR, "test_setup.out"),
+    };
+  }
+
+  // Check if minimal setup is required (INSERT-only tables)
+  if (requiresMinimalSetup(tests)) {
+    return {
+      setupName: "minimal_setup",
+      sqlFile: join(SQL_DIR, "minimal_setup.sql"),
+      expectedFile: join(EXPECTED_DIR, "minimal_setup.out"),
+    };
+  }
+
+  // No setup required (self-contained tests only)
+  return null;
+}
+
+/**
+ * Print setup result
+ */
+function printSetupResult(result: SetupResult, verbose: boolean): void {
+  const status = result.success ? "✓" : "✗";
+  const duration = `${Math.round(result.duration)}ms`;
+
+  if (result.success) {
+    console.log(`Setup: ${status} (${duration})\n`);
+  } else {
+    console.log(`Setup: ${status} (${duration}) - FAILED`);
+    if (result.error) {
+      console.log(`  Error: ${result.error}`);
+    }
+    if (verbose && result.diff) {
+      console.log(`\n${result.diff}\n`);
+    }
+    console.log();
+  }
+}
+
+/**
  * Main execution
  */
 async function main(): Promise<number> {
@@ -316,6 +436,44 @@ async function main(): Promise<number> {
     // Ensure tests are fetched
     await ensureTestsAreFetched(options.tests);
 
+    // Determine setup requirements
+    const setupConfig = getSetupConfig(options.tests);
+    if (setupConfig) {
+      console.log(`Setup required: ${setupConfig.setupName}`);
+
+      // Ensure setup files exist
+      const setupSqlExists = await Bun.file(setupConfig.sqlFile).exists();
+      const setupExpectedExists = setupConfig.expectedFile
+        ? await Bun.file(setupConfig.expectedFile).exists()
+        : true;
+
+      if (!setupSqlExists || !setupExpectedExists) {
+        console.error(`\nError: Setup files not found for ${setupConfig.setupName}`);
+        console.error(`  SQL file: ${setupConfig.sqlFile} (exists: ${setupSqlExists})`);
+        if (setupConfig.expectedFile) {
+          console.error(
+            `  Expected file: ${setupConfig.expectedFile} (exists: ${setupExpectedExists})`
+          );
+        }
+        return 1;
+      }
+    } else {
+      console.log("Setup required: none (self-contained tests only)");
+    }
+
+    // Group tests by their setup requirements for logging
+    const testGroups = groupTestsBySetup(options.tests);
+    console.log(`Test breakdown:`);
+    if (testGroups.selfContained.length > 0) {
+      console.log(`  Self-contained: ${testGroups.selfContained.length} tests`);
+    }
+    if (testGroups.minimalSetup.length > 0) {
+      console.log(`  Minimal setup: ${testGroups.minimalSetup.length} tests`);
+    }
+    if (testGroups.fullSetup.length > 0) {
+      console.log(`  Full setup: ${testGroups.fullSetup.length} tests`);
+    }
+
     // Start container or use existing one
     let containerName: string;
     let shouldCleanup = false;
@@ -330,6 +488,9 @@ async function main(): Promise<number> {
 
     // Track container for signal handler cleanup
     containerToCleanup = containerName;
+
+    // Create regression database with C locale for deterministic string ordering
+    await createRegressionDatabase(containerName);
 
     try {
       // Get connection configuration
@@ -347,29 +508,45 @@ async function main(): Promise<number> {
 
       console.log(`Running ${testList.length} tests...\n`);
 
-      // Run tests
-      const results = await runRegressionTests(testList, connection, (testName, index, total) => {
-        if (options.verbose) {
-          console.log(`[${index}/${total}] Running ${testName}...`);
+      // Run tests with setup if needed
+      const { setupResult, testResults } = await runRegressionTestsWithSetup(
+        testList,
+        connection,
+        setupConfig || undefined,
+        (testName, index, total) => {
+          if (options.verbose) {
+            console.log(`[${index}/${total}] Running ${testName}...`);
+          }
         }
-      });
+      );
 
-      // Print results
-      printTestResults(results, options.verbose);
+      // Print setup result if setup was run
+      if (setupResult) {
+        printSetupResult(setupResult, options.verbose);
+
+        // If setup failed, we already returned early, but handle gracefully
+        if (!setupResult.success) {
+          console.error("\nSetup failed. No tests were run.");
+          return 1;
+        }
+      }
+
+      // Print test results
+      printTestResults(testResults, options.verbose);
 
       // Generate regression.diffs if requested
       if (options.generateDiffs) {
         const diffsPath = join(import.meta.dir, "../../regression.diffs");
-        await generateRegressionDiffs(results, diffsPath);
+        await generateRegressionDiffs(testResults, diffsPath);
 
-        const failedCount = results.filter((r) => !r.passed).length;
+        const failedCount = testResults.filter((r) => !r.passed).length;
         if (failedCount > 0) {
           console.log(`\nRegression diffs written to: ${diffsPath}`);
         }
       }
 
       // Determine exit code
-      const failedCount = results.filter((r) => !r.passed).length;
+      const failedCount = testResults.filter((r) => !r.passed).length;
       return failedCount > 0 ? 1 : 0;
     } finally {
       // Clean up container if we started it

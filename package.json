@@ -40,6 +40,12 @@
     "test:all": "bun scripts/test-all.ts",
     "test:all:fast": "bun scripts/test-all.ts --fast",
     "test:image": "bun scripts/docker/test-image.ts",
+    "test:regression:core": "bun scripts/test/test-postgres-core-regression.ts",
+    "test:regression:extensions": "bun scripts/test/test-extension-regression.ts",
+    "test:regression:interactions": "bun scripts/test/test-extension-interactions.ts",
+    "test:regression:all": "bun scripts/test/test-postgres-core-regression.ts && bun scripts/test/test-extension-regression.ts && bun scripts/test/test-extension-interactions.ts",
+    "test:regression:production": "TEST_MODE=production bun test:regression:all",
+    "test:regression:comprehensive": "TEST_MODE=regression bun test:regression:all",
     "hooks:install": "bun-git-hooks",
     "hooks:uninstall": "bun-git-hooks uninstall",
     "postinstall": "bun-git-hooks"

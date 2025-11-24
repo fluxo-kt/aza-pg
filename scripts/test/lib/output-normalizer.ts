@@ -178,6 +178,10 @@ function isAcceptableTimezoneVariation(_expected: string, _actual: string): bool
 export function cleanPsqlOutput(output: string): string {
   let cleaned = output;
 
+  // Remove psql file path prefix from ERROR/FATAL/WARNING messages
+  // Example: "psql:/tmp/boolean.sql:145: ERROR:" → "ERROR:"
+  cleaned = cleaned.replace(/^psql:[^:]+:\d+:\s+(ERROR|FATAL|WARNING):/gm, "$1:");
+
   // Remove psql meta-command output
   cleaned = cleaned.replace(/^\\.*\n/gm, "");
 

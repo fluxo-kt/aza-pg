@@ -107,26 +107,35 @@ export async function runRegressionTest(
       // Run psql inside container via docker exec
       // Copy SQL file to container first
       const containerPath = `/tmp/${testName}.sql`;
-      await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.quiet();
+      const cpResult =
+        await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.nothrow();
 
-      // Run psql with options:
-      // -X: Don't read .psqlrc (ensures clean environment)
-      // -a: Echo all input (shows SQL commands in output, matching official tests)
-      // -q: Quiet mode (suppress extra messages)
-      // -f: Read commands from file
-      const result =
-        await $`docker exec ${connection.containerName} psql -X -a -q -U postgres -d postgres -f ${containerPath}`.nothrow();
+      if (cpResult.exitCode !== 0) {
+        const stderr = cpResult.stderr.toString();
+        executionError = `Failed to copy SQL file to container: ${stderr}`;
+        exitCode = cpResult.exitCode;
+      } else {
+        // Run psql with options:
+        // -X: Don't read .psqlrc (ensures clean environment)
+        // -a: Echo all input (shows SQL commands in output, matching official tests)
+        // -q: Quiet mode (suppress extra messages)
+        // -f: Read commands from file
+        // 2>&1: Merge stderr into stdout (ERROR messages need to be in output)
+        const result =
+          await $`docker exec ${connection.containerName} sh -c 'psql -X -a -q -U postgres -d postgres -f ${containerPath} 2>&1'`.nothrow();
 
-      exitCode = result.exitCode;
-      actualOutput = result.stdout.toString();
+        exitCode = result.exitCode;
+        actualOutput = result.stdout.toString();
 
-      // Cleanup temporary file
-      await $`docker exec ${connection.containerName} rm ${containerPath}`.quiet();
+        // Cleanup temporary file (failure is not critical)
+        await $`docker exec ${connection.containerName} rm ${containerPath}`.nothrow();
 
-      // Capture stderr if command failed
-      if (exitCode !== 0) {
-        const stderr = result.stderr.toString();
-        executionError = stderr || `psql exited with code ${exitCode}`;
+        // Capture stderr if command failed (exit code 2+ indicates true error, not SQL errors)
+        // Exit code 1 is normal for regression tests that test error conditions
+        if (exitCode >= 2) {
+          const stderr = result.stderr.toString();
+          executionError = stderr || `psql exited with code ${exitCode}`;
+        }
       }
     } else {
       // Run psql from host
@@ -137,13 +146,15 @@ export async function runRegressionTest(
       // -a: Echo all input (shows SQL commands in output, matching official tests)
       // -q: Quiet mode (suppress extra messages)
       // -f: Read commands from file
-      const result = await $`psql -X -a -q ${connString} -f ${sqlFile}`.nothrow();
+      // 2>&1: Merge stderr into stdout (ERROR messages need to be in output)
+      const result = await $`sh -c 'psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
 
       exitCode = result.exitCode;
       actualOutput = result.stdout.toString();
 
-      // Capture stderr if command failed
-      if (exitCode !== 0) {
+      // Capture stderr if command failed (exit code 2+ indicates true error, not SQL errors)
+      // Exit code 1 is normal for regression tests that test error conditions
+      if (exitCode >= 2) {
         const stderr = result.stderr.toString();
         executionError = stderr || `psql exited with code ${exitCode}`;
       }

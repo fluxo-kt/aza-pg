@@ -328,6 +328,9 @@ async function main(): Promise<number> {
       shouldCleanup = true;
     }
 
+    // Track container for signal handler cleanup
+    containerToCleanup = containerName;
+
     try {
       // Get connection configuration
       const connection = await getConnectionConfig(containerName);
@@ -382,10 +385,40 @@ async function main(): Promise<number> {
   }
 }
 
+// Track container for cleanup on signal
+let containerToCleanup: string | null = null;
+
+// Graceful cleanup on job cancellation/interruption
+process.on("SIGINT", async () => {
+  console.log("\n\n⚠️  Received SIGINT, cleaning up...");
+  if (containerToCleanup) {
+    try {
+      await stopPostgresContainer(containerToCleanup);
+      console.log("✅ Container cleaned up successfully");
+    } catch (error) {
+      console.error("❌ Failed to cleanup container:", error);
+    }
+  }
+  process.exit(130); // Standard exit code for SIGINT
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n\n⚠️  Received SIGTERM, cleaning up...");
+  if (containerToCleanup) {
+    try {
+      await stopPostgresContainer(containerToCleanup);
+      console.log("✅ Container cleaned up successfully");
+    } catch (error) {
+      console.error("❌ Failed to cleanup container:", error);
+    }
+  }
+  process.exit(143); // Standard exit code for SIGTERM
+});
+
 // Execute if run directly
 if (import.meta.main) {
   const exitCode = await main();
   process.exit(exitCode);
 }
 
-export { main, parseArgs };
+export { main, parseArgs, containerToCleanup };

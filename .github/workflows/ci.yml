@@ -7,15 +7,16 @@
 # Comprehensive test suite for all PRs and commits to main/dev branches.
 # Validates code quality, builds Docker image, and runs extensive test suite.
 #
-# PIPELINE STRUCTURE (7 jobs, ~35min total):
+# PIPELINE STRUCTURE (8 jobs, ~38min total):
 # ------------------------------------------
-# 1. validate       (~2min)  - Fast validation, unit tests, manifest checks
-# 2. build          (~15min) - Build Docker image, export as artifact
-# 3. test-extensions (~15min) - Extension loading, smoke tests, combinations
-# 4. test-stacks    (~10min) - Single stack deployment tests
-# 5. test-security  (~5min)  - Security hardening tests
-# 6. test-features  (~15min) - Auto-config, pgflow, pgbouncer, negative tests
-# 7. ci-complete    (~10s)   - Final gate, summary
+# 1. validate              (~2min)  - Fast validation, unit tests, manifest checks
+# 2. build                 (~15min) - Build Docker image, export as artifact
+# 3. test-extensions        (~15min) - Extension loading, smoke tests, combinations
+# 4. test-stacks           (~10min) - Single stack deployment tests
+# 5. test-security         (~5min)  - Security hardening tests
+# 6. test-features         (~15min) - Auto-config, pgflow, pgbouncer, negative tests
+# 7. regression-tests-fast (~3min)  - Tier 1 regression tests (4 tests, production mode)
+# 8. ci-complete           (~10s)   - Final gate, summary
 #
 # PARALLELIZATION:
 # ---------------
@@ -473,12 +474,68 @@ jobs:
           echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
-  # Job 7: CI Complete (final gate)
+  # Job 7: Regression Tests (fast - Tier 1 only)
+  # ==========================================================================
+  regression-tests-fast:
+    name: Regression Tests (Fast)
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-ci:test
+
+      - name: Run Tier 1 regression tests (fast)
+        run: |
+          set -euo pipefail
+          echo "Running Tier 1 regression tests (fast - 4 tests)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: regression
+          containers: all
+          artifact-prefix: regression-fast
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Regression Tests (Fast) Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Tier:** Tier 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests:** 4 selected tests (boolean, int2, int4, select)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Full regression suite runs on release branch and nightly schedule_" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 8: CI Complete (final gate)
   # ==========================================================================
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
-    needs: [validate, build, test-extensions, test-stacks, test-security, test-features]
+    needs:
+      [
+        validate,
+        build,
+        test-extensions,
+        test-stacks,
+        test-security,
+        test-features,
+        regression-tests-fast,
+      ]
     timeout-minutes: 1
     if: always()
 
@@ -510,6 +567,10 @@ jobs:
             echo "::error::Feature tests failed"
             exit 1
           fi
+          if [ "${{ needs.regression-tests-fast.result }}" != "success" ]; then
+            echo "::error::Regression tests failed"
+            exit 1
+          fi
           echo "✅ All CI checks passed!"
 
       - name: Generate final summary
@@ -528,6 +589,7 @@ jobs:
           echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
@@ -539,7 +601,8 @@ jobs:
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-stacks.result }}" = "success" ] && \
              [ "${{ needs.test-security.result }}" = "success" ] && \
-             [ "${{ needs.test-features.result }}" = "success" ]; then
+             [ "${{ needs.test-features.result }}" = "success" ] && \
+             [ "${{ needs.regression-tests-fast.result }}" = "success" ]; then
             echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "The CI pipeline completed successfully. All validation, build, and test jobs passed." >> $GITHUB_STEP_SUMMARY

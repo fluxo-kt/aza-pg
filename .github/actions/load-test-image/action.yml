@@ -38,11 +38,23 @@ runs:
       if: inputs.source == 'artifact'
       shell: bash
       run: |
+        set -euo pipefail
         echo "Loading Docker image from artifact..."
-        docker load < ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz
+
+        # Parse docker load output to get exact loaded image reference (deterministic)
+        # Avoids race condition from grepping image list when multiple matches exist
+        LOAD_OUTPUT=$(docker load < ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz)
+        LOADED_IMAGE=$(echo "$LOAD_OUTPUT" | grep -oP 'Loaded image: \K.*' | head -1)
+
+        if [ -z "$LOADED_IMAGE" ]; then
+          echo "❌ ERROR: Failed to extract loaded image reference from output"
+          echo "Docker load output: $LOAD_OUTPUT"
+          exit 1
+        fi
+
+        echo "Loaded image: $LOADED_IMAGE"
 
         # Tag with requested name if different from loaded image
-        LOADED_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep aza-pg-ci | head -1)
         if [ "$LOADED_IMAGE" != "${{ inputs.image-name }}" ]; then
           docker tag "$LOADED_IMAGE" "${{ inputs.image-name }}"
           echo "Tagged $LOADED_IMAGE as ${{ inputs.image-name }}"
@@ -59,6 +71,7 @@ runs:
       if: inputs.source == 'registry'
       shell: bash
       run: |
+        set -euo pipefail
         echo "Pulling Docker image from registry..."
         bun scripts/docker/pull-with-retry.ts \
           --image "${{ inputs.registry-image }}" \

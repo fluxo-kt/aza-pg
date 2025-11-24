@@ -43,7 +43,7 @@
     "test:regression:core": "bun scripts/test/test-postgres-core-regression.ts",
     "test:regression:extensions": "bun scripts/test/test-extension-regression.ts",
     "test:regression:interactions": "bun scripts/test/test-extension-interactions.ts",
-    "test:regression:all": "bun scripts/test/test-postgres-core-regression.ts && bun scripts/test/test-extension-regression.ts && bun scripts/test/test-extension-interactions.ts",
+    "test:regression:all": "bun scripts/test/run-all-regression-tests.ts",
     "test:regression:production": "TEST_MODE=production bun test:regression:all",
     "test:regression:comprehensive": "TEST_MODE=regression bun test:regression:all",
     "hooks:install": "bun-git-hooks",

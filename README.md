@@ -163,6 +163,33 @@ bun run test:all:fast        # Validation only
 bun run validate:artifacts   # Validate published image artifacts
 ```
 
+**Regression Testing:**
+
+```bash
+# Run all regression tests (production mode)
+bun test:regression:all
+
+# Run specific tier
+bun test:regression:core        # Tier 1: PostgreSQL core (30 tests)
+bun test:regression:extensions  # Tier 2: Extension tests (13 extensions)
+bun test:regression:interactions # Tier 3: Interaction tests (14 scenarios)
+
+# Run in regression mode (all extensions including disabled ones)
+TEST_MODE=regression bun test:regression:all
+
+# Build regression image (includes pgTAP + all extensions)
+bun scripts/build.ts --regression
+```
+
+**Test Tiers:**
+
+- **Tier 1**: Core PostgreSQL regression (30 official tests, ~3-5 min)
+- **Tier 2**: Extension-specific regression (13 extensions, ~5-8 min)
+- **Tier 3**: Extension interactions (14 scenarios, ~2-4 min)
+- **Tier 4**: pgTAP unit tests (82 SQL tests, ~5-10 min)
+
+See [docs/REGRESSION-TESTING.md](docs/REGRESSION-TESTING.md) for comprehensive regression testing documentation.
+
 **Release Validation:** [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md) contains comprehensive validation results for the latest published release image (updated with each release).
 
 See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).

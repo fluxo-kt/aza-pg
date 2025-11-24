@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-24T09:05:35.061Z
+# Generated at: 2025-11-24T09:17:04.320Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.template
 # Manifest: docker/postgres/extensions.manifest.json
@@ -21,7 +21,9 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
 # hadolint ignore=DL3008
-RUN set -euo pipefail && \
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -34,7 +36,7 @@ RUN set -euo pipefail && \
       postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -f /tmp/extensions.build-packages.txt
 
 # Install Rust toolchain (separate layer for better caching, ~60s install time)
 # Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
@@ -110,6 +112,8 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 # Reduces 3 ENV layers and accelerates dependency downloads
 RUN --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/root/.rustup \
     CARGO_PROFILE_RELEASE_LTO=thin \
     CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
@@ -163,7 +167,9 @@ COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-pac
 # Separate apt-get calls across stages (builder-base, builder-pgxs, builder-cargo, final)
 # are intentional for multi-stage build optimization. DO NOT consolidate.
 # hadolint ignore=DL3008
-RUN set -euo pipefail && \
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
@@ -173,14 +179,16 @@ RUN set -euo pipefail && \
       postgresql-client-18 \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
+    rm -f /tmp/extensions.runtime-packages.txt
 
 # Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
 # Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-RUN set -euo pipefail && \
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
@@ -195,7 +203,7 @@ RUN set -euo pipefail && \
     test "$INSTALLED_COUNT" -ge 11 || (echo "ERROR: Installed count mismatch (expected >= 11, got $INSTALLED_COUNT)" && exit 1) && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
+    rm -f /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 COPY --from=builder-pgxs /opt/ext-out/ /
@@ -226,10 +234,13 @@ RUN mkdir -p /backup && chown postgres:postgres /backup
 # Base PostgreSQL config (most stable - rarely modified)
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
-# Runtime scripts (stable but change more often than base config)
-COPY docker/postgres/healthcheck.sh \
-     docker/postgres/docker-auto-config-entrypoint.sh \
-     /usr/local/bin/
+# Healthcheck script (stable - rarely modified)
+COPY docker/postgres/healthcheck.sh /usr/local/bin/healthcheck.sh
+
+# Auto-config entrypoint (moderate - occasionally updated for new features)
+COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto-config-entrypoint.sh
+
+# Runtime init scripts
 COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # Consolidate all chmod operations into single RUN (better layer caching)
@@ -239,11 +250,12 @@ RUN set -euo pipefail && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Copy runtime metadata files LATE (frequently change with any manifest update)
-# Manifest and version-info change together whenever extensions are enabled/disabled
-# Placed here to avoid invalidating all previous cached layers
-COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+# Version info files (stable - only change with manifest updates)
 COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
 COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
+
+# Extension manifest (volatile - changes frequently)
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user

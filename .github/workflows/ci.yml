@@ -137,14 +137,18 @@ jobs:
           driver: docker-container
           driver-opts: network=host
 
-      - name: Build Docker image
-        run: |
-          echo "Building PostgreSQL image for CI..."
-          export POSTGRES_IMAGE=aza-pg-ci
-          export POSTGRES_TAG=test
-
-          # Build using canonical build script (single-platform amd64)
-          bun scripts/build.ts
+      - name: Build Docker image with layer caching
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/postgres/Dockerfile
+          tags: aza-pg-ci:test
+          load: true
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=aza-pg-ci
+          cache-to: type=gha,mode=max,scope=aza-pg-ci
 
       - name: Verify image built successfully
         run: |

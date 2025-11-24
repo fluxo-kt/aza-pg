@@ -215,7 +215,9 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
   const packagesList = enabledPgdgPackages.join(" ");
   const expectedCount = enabledPgdgPackages.length;
 
-  return `RUN set -euo pipefail && \\
+  return `RUN --mount=type=cache,target=/var/lib/apt/lists \\
+    --mount=type=cache,target=/var/cache/apt \\
+    set -euo pipefail && \\
     rm -rf /var/lib/apt/lists/* && \\
     apt-get update && \\
     # Install enabled PGDG packages (pre-calculated in TS)
@@ -230,7 +232,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    rm -f /tmp/extensions.manifest.json && \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 

@@ -1,5 +1,5 @@
 # ============================================================================
-# Regression Tests - Release Validation
+# Regression Tests - Reusable Workflow
 # ============================================================================
 #
 # PURPOSE:
@@ -10,8 +10,8 @@
 #
 # WHEN IT RUNS:
 # -------------
-# 1. Manual trigger (workflow_dispatch) - On-demand validation
-# 2. Push to 'release' branch - Automated validation before publish
+# 1. Called by publish.yml - Blocks production release if tests fail
+# 2. Manual trigger (workflow_dispatch) - On-demand validation
 #
 # WHAT IT TESTS:
 # --------------
@@ -33,27 +33,41 @@
 # - Test reports (passed/failed tests, timing)
 # - Regression diffs (if any test fails)
 # - Artifacts uploaded on failure for debugging
+# - tests_passed output (boolean): true if all tiers passed, false otherwise
 #
-# DIFFERENCES FROM OTHER WORKFLOWS:
-# ---------------------------------
-# vs ci.yml:                Only runs Tier 1 fast tests (4 tests)
-# vs nightly-regression.yml: Production mode only, Tiers 1-3 only (no Tier 4)
+# USAGE:
+# ------
+# As reusable workflow:
+#   jobs:
+#     regression-tests:
+#       uses: ./.github/workflows/regression-tests.yml
+#       with:
+#         image_ref: ghcr.io/fluxo-kt/aza-pg-testing:testing-abc123
+#
+# As manual workflow:
+#   gh workflow run regression-tests.yml -f image_ref=ghcr.io/fluxo-kt/aza-pg:18-single-node
 #
 # ============================================================================
 
 name: Regression Tests
 
 on:
+  workflow_call:
+    inputs:
+      image_ref:
+        description: "Full image reference to test (registry/repository:tag or @digest)"
+        required: true
+        type: string
+    outputs:
+      tests_passed:
+        description: "Whether all regression tests passed (true/false)"
+        value: ${{ jobs.complete.outputs.tests_passed }}
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: "Image tag to test (default: 18-single-node)"
-        required: false
+      image_ref:
+        description: "Full image reference to test (e.g., ghcr.io/fluxo-kt/aza-pg:18-single-node)"
+        required: true
         type: string
-        default: "18-single-node"
-  push:
-    branches:
-      - release
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -63,103 +77,13 @@ permissions:
   contents: read
   packages: read
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   # ==========================================================================
-  # Job 1: Build regression test image
-  # ==========================================================================
-  build:
-    name: Build Regression Test Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      image_tag: ${{ steps.tag.outputs.tag }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          driver-opts: network=host
-
-      - name: Determine image tag
-        id: tag
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.image_tag }}"
-          else
-            # Default to 18-single-node for release branch
-            TAG="18-single-node"
-          fi
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Using image tag: ${TAG}"
-
-      - name: Build Docker image with layer caching
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/postgres/Dockerfile
-          tags: aza-pg-regression:test
-          load: true
-          build-args: |
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-            VCS_REF=${{ github.sha }}
-          cache-from: type=gha,scope=aza-pg-regression
-          cache-to: type=gha,mode=max,scope=aza-pg-regression
-
-      - name: Verify image built successfully
-        run: |
-          set -euo pipefail
-          echo "Verifying image exists..."
-          docker images | grep aza-pg-regression
-
-          echo "Testing basic functionality..."
-          docker run --rm aza-pg-regression:test psql --version
-
-          echo "✅ Image verification passed"
-
-      - name: Export image as tarball
-        run: |
-          set -euo pipefail
-          echo "Exporting image to tarball..."
-          docker save aza-pg-regression:test | gzip > /tmp/aza-pg-regression-image.tar.gz
-          ls -lh /tmp/aza-pg-regression-image.tar.gz
-
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: regression-image
-          path: /tmp/aza-pg-regression-image.tar.gz
-          retention-days: 1
-          compression-level: 0 # Already compressed with gzip
-
-      - name: Generate build summary
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`aza-pg-regression:test\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production regression testing" >> $GITHUB_STEP_SUMMARY
-
-  # ==========================================================================
-  # Job 2: Run Tier 1 regression tests
+  # Job 1: Run Tier 1 regression tests
   # ==========================================================================
   tier-1:
     name: Tier 1 - Core PostgreSQL
     runs-on: ubuntu-latest
-    needs: build
     timeout-minutes: 10
 
     steps:
@@ -169,16 +93,17 @@ jobs:
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
         with:
-          ghcr-login: "false"
-          image-source: artifact
-          image-name: aza-pg-regression:test
-          artifact-name: regression-image
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
 
       - name: Run Tier 1 regression tests
         run: |
           set -euo pipefail
           echo "Running Tier 1 regression tests (Core PostgreSQL)..."
-          export POSTGRES_IMAGE=aza-pg-regression:test
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
           bun scripts/test/run-all-regression-tests.ts --tier=1 --mode=production
 
       - name: Capture test diagnostics
@@ -211,12 +136,12 @@ jobs:
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
-  # Job 3: Run Tier 2 regression tests
+  # Job 2: Run Tier 2 regression tests
   # ==========================================================================
   tier-2:
     name: Tier 2 - Extension Tests
     runs-on: ubuntu-latest
-    needs: [build, tier-1]
+    needs: tier-1
     timeout-minutes: 15
 
     steps:
@@ -226,16 +151,17 @@ jobs:
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
         with:
-          ghcr-login: "false"
-          image-source: artifact
-          image-name: aza-pg-regression:test
-          artifact-name: regression-image
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
 
       - name: Run Tier 2 regression tests
         run: |
           set -euo pipefail
           echo "Running Tier 2 regression tests (Extension-specific)..."
-          export POSTGRES_IMAGE=aza-pg-regression:test
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
           bun scripts/test/run-all-regression-tests.ts --tier=2 --mode=production
 
       - name: Capture test diagnostics
@@ -268,12 +194,12 @@ jobs:
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
-  # Job 4: Run Tier 3 regression tests
+  # Job 3: Run Tier 3 regression tests
   # ==========================================================================
   tier-3:
     name: Tier 3 - Extension Interactions
     runs-on: ubuntu-latest
-    needs: [build, tier-1]
+    needs: tier-1
     timeout-minutes: 15
 
     steps:
@@ -283,16 +209,17 @@ jobs:
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
         with:
-          ghcr-login: "false"
-          image-source: artifact
-          image-name: aza-pg-regression:test
-          artifact-name: regression-image
+          ghcr-login: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          image-source: registry
+          image-name: ${{ inputs.image_ref }}
+          registry-image: ${{ inputs.image_ref }}
 
       - name: Run Tier 3 regression tests
         run: |
           set -euo pipefail
           echo "Running Tier 3 regression tests (Extension interactions)..."
-          export POSTGRES_IMAGE=aza-pg-regression:test
+          export POSTGRES_IMAGE="${{ inputs.image_ref }}"
           bun scripts/test/run-all-regression-tests.ts --tier=3 --mode=production
 
       - name: Capture test diagnostics
@@ -325,7 +252,7 @@ jobs:
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
-  # Job 5: Regression tests complete
+  # Job 4: Regression tests complete
   # ==========================================================================
   complete:
     name: Regression Tests Complete
@@ -333,9 +260,12 @@ jobs:
     needs: [tier-1, tier-2, tier-3]
     timeout-minutes: 1
     if: always()
+    outputs:
+      tests_passed: ${{ steps.check-results.outputs.passed }}
 
     steps:
       - name: Check all tier results
+        id: check-results
         run: |
           set -euo pipefail
           echo "Checking regression test results..."
@@ -358,10 +288,12 @@ jobs:
           fi
 
           if [ $FAILED -eq 1 ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
             echo "❌ One or more regression test tiers failed"
             exit 1
           fi
 
+          echo "passed=true" >> $GITHUB_OUTPUT
           echo "✅ All regression tests passed"
 
       - name: Generate final summary
@@ -378,6 +310,7 @@ jobs:
           echo "| Tier 2 | Extension-specific (10-13 extensions) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tier 3 | Extension interactions (4-14 tests) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ inputs.image_ref }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

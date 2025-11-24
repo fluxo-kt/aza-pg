@@ -811,7 +811,66 @@ bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18-single-node  # Full 
 
 ### CI Integration
 
-GitHub Actions workflow runs all tests on:
+#### Workflow Architecture
+
+aza-pg uses a **reusable workflow pattern** for regression testing integration:
+
+**Key Workflows:**
+
+1. **`regression-tests.yml`** (Reusable Workflow)
+   - Can be called by other workflows via `workflow_call`
+   - Can be triggered manually via `workflow_dispatch`
+   - Runs Tier 1-3 regression tests (30 PostgreSQL + 13 extension + 14 interaction tests)
+   - Accepts `image_ref` input (full registry/repository:tag or @digest)
+   - Returns `tests_passed` output (boolean)
+   - Duration: ~10-15 minutes
+
+2. **`publish.yml`** (Release Workflow)
+   - Calls `regression-tests.yml` as a blocking gate
+   - Tests run BEFORE promotion to production registry
+   - Passes testing image reference: `testing-{sha}`
+   - Release blocked if regression tests fail
+
+**Integration Pattern:**
+
+```yaml
+# In publish.yml
+regression-tests:
+  name: Regression Tests (Blocking Gate)
+  uses: ./.github/workflows/regression-tests.yml
+  needs: [prep, merge, test-smoke]
+  with:
+    image_ref: ${{ format('{0}/{1}:testing-{2}', env.REGISTRY, env.IMAGE_NAME_TESTING, github.sha) }}
+  secrets: inherit
+
+test-complete:
+  needs:
+    [
+      test-smoke,
+      test-extensions,
+      test-features,
+      test-security,
+      regression-tests,
+    ]
+  # Production release blocked if any test fails
+```
+
+**Benefits:**
+
+- **DRY**: Single workflow definition used by publish AND manual runs
+- **Blocking**: Regression tests gate production releases
+- **Flexible**: Can be triggered manually for ad-hoc validation
+- **Maintainable**: Changes to regression tests automatically apply to all uses
+
+**Test Coverage by Workflow:**
+
+- **ci.yml**: Fast tests only (4 Tier 1 tests, linting, validation)
+- **publish.yml**: Comprehensive test gate (smoke, extensions, features, security, regression)
+- **regression-tests.yml**: Tier 1-3 regression tests (production mode)
+
+#### Test Environments
+
+GitHub Actions workflows run all tests on:
 
 - Platform: `linux/amd64`, `linux/arm64` (QEMU emulation for arm64 validation)
 - Extension kinds: `compiled`, `pgdg`, `builtin`

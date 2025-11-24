@@ -757,10 +757,18 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
+  regression-tests:
+    name: Regression Tests (Blocking Gate)
+    uses: ./.github/workflows/regression-tests.yml
+    needs: [prep, merge, test-smoke]
+    with:
+      image_ref: ${{ format('{0}/{1}:testing-{2}', env.REGISTRY, env.IMAGE_NAME_TESTING, github.sha) }}
+    secrets: inherit
+
   test-complete:
     name: All Tests Complete
     runs-on: ubuntu-latest
-    needs: [test-smoke, test-extensions, test-features, test-security]
+    needs: [test-smoke, test-extensions, test-features, test-security, regression-tests]
     timeout-minutes: 1
     if: always()
 
@@ -792,6 +800,11 @@ jobs:
             FAILED=1
           fi
 
+          if [ "${{ needs.regression-tests.result }}" != "success" ]; then
+            echo "::error::Regression tests failed"
+            FAILED=1
+          fi
+
           if [ $FAILED -eq 1 ]; then
             echo "❌ One or more test suites failed - blocking production release"
             exit 1
@@ -813,12 +826,14 @@ jobs:
           echo "| Extension Tests | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Feature Tests | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Security Tests | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests | ${{ needs.regression-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.test-smoke.result }}" = "success" ] && \
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-features.result }}" = "success" ] && \
-             [ "${{ needs.test-security.result }}" = "success" ]; then
+             [ "${{ needs.test-security.result }}" = "success" ] && \
+             [ "${{ needs.regression-tests.result }}" = "success" ]; then
             echo "## ✅ Test Gate: PASSED" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "All comprehensive tests passed. Image approved for production release." >> $GITHUB_STEP_SUMMARY

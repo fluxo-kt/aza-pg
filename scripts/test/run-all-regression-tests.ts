@@ -55,14 +55,14 @@ function parseArgs(): Config {
 
   for (const arg of args) {
     if (arg.startsWith("--mode=")) {
-      const mode = arg.split("=")[1];
+      const mode = arg.split("=")[1] ?? "";
       if (mode !== "production" && mode !== "regression") {
         console.error(`Invalid mode: ${mode}. Must be 'production' or 'regression'`);
         process.exit(1);
       }
       config.mode = mode;
     } else if (arg.startsWith("--tier=")) {
-      const tier = Number.parseInt(arg.split("=")[1], 10);
+      const tier = Number.parseInt(arg.split("=")[1] ?? "0", 10);
       if (tier !== 1 && tier !== 2 && tier !== 3) {
         console.error(`Invalid tier: ${tier}. Must be 1, 2, or 3`);
         process.exit(1);

@@ -1,5 +1,5 @@
 # AUTO-GENERATED FILE - DO NOT EDIT
-# Generated at: 2025-11-24T11:47:09.157Z
+# Generated at: 2025-11-24T12:10:47.489Z
 # Generator: scripts/docker/generate-dockerfile.ts
 # Template: docker/postgres/Dockerfile.regression.template
 # Manifest: docker/postgres/extensions.manifest.json

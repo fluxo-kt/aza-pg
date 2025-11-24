@@ -290,7 +290,7 @@ async function getConnectionConfig(containerName: string): Promise<ConnectionCon
 
   // Parse port from output like "5432/tcp -> 0.0.0.0:54321"
   const portMatch = portLine.match(/:(\d+)$/);
-  const port = portMatch ? parseInt(portMatch[1]) : 5432;
+  const port = portMatch?.[1] ? parseInt(portMatch[1]) : 5432;
 
   return {
     host: "localhost",
@@ -305,7 +305,7 @@ async function getConnectionConfig(containerName: string): Promise<ConnectionCon
  * Generate expected output file from actual test result
  */
 async function generateExpectedOutput(extensionName: string, actualOutput: string): Promise<void> {
-  const { expectedFile, baseDir } = getExtensionTestPaths(extensionName);
+  const { expectedFile } = getExtensionTestPaths(extensionName);
 
   // Ensure directory exists
   const expectedDir = dirname(expectedFile);

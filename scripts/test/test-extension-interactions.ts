@@ -868,24 +868,6 @@ async function stopPostgresContainer(containerName: string): Promise<void> {
 }
 
 /**
- * Get connection configuration for container
- */
-async function getConnectionConfig(containerName: string): Promise<{ host: string; port: number }> {
-  // Get container's mapped port
-  const result = await $`docker port ${containerName} 5432`;
-  const portLine = result.stdout.toString().trim();
-
-  // Parse port from output like "5432/tcp -> 0.0.0.0:54321"
-  const portMatch = portLine.match(/:(\d+)$/);
-  const port = portMatch ? parseInt(portMatch[1]) : 5432;
-
-  return {
-    host: "localhost",
-    port,
-  };
-}
-
-/**
  * Create SQL runner function for a container
  */
 function createSQLRunner(containerName: string): SQLRunner {

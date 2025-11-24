@@ -25,7 +25,7 @@
 import { $ } from "bun";
 import { join, dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { detectTestMode, type TestMode } from "./lib/test-mode.ts";
+import type { TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import { cleanPsqlOutput } from "./lib/output-normalizer.ts";
 
@@ -269,7 +269,7 @@ async function getConnectionString(containerName: string): Promise<string> {
 
   // Parse port from output like "5432/tcp -> 0.0.0.0:54321"
   const portMatch = portLine.match(/:(\d+)$/);
-  const port = portMatch ? parseInt(portMatch[1]) : 5432;
+  const port = portMatch?.[1] ? parseInt(portMatch[1]) : 5432;
 
   return `postgresql://postgres:postgres@localhost:${port}/postgres`;
 }

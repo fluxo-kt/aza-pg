@@ -282,6 +282,9 @@ jobs:
           BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | awk '{print $2}' | head -1)
           PG_VERSION=$(echo "${BASE_IMAGE}" | grep -oP '\d+\.\d+' | head -1)
 
+          # Derive catalog statistics dynamically from manifest
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+
           echo "### PostgreSQL Image Built Successfully :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
@@ -294,8 +297,8 @@ jobs:
           echo "**PostgreSQL Version:** ${PG_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 38 total catalog entries (36 enabled, 2 disabled: pgq, supautils)" >> $GITHUB_STEP_SUMMARY
-          echo "- 36 enabled: 6 builtin + 25 extensions + 5 tools" >> $GITHUB_STEP_SUMMARY
+          echo "- ${CATALOG_TOTAL} total catalog entries (${CATALOG_ENABLED} enabled, ${CATALOG_DISABLED} disabled)" >> $GITHUB_STEP_SUMMARY
+          echo "- ${CATALOG_ENABLED} enabled: ${CATALOG_ENABLED_BUILTINS} builtin + ${CATALOG_ENABLED_EXTENSIONS} extensions + ${CATALOG_ENABLED_TOOLS} tools" >> $GITHUB_STEP_SUMMARY
           echo "  (14 PGDG, 11 compiled extensions)" >> $GITHUB_STEP_SUMMARY
           echo "- 6 baseline auto-created: pg_cron, pg_stat_statements, pg_trgm," >> $GITHUB_STEP_SUMMARY
           echo "  pgaudit, plpgsql, vector" >> $GITHUB_STEP_SUMMARY
@@ -658,7 +661,9 @@ jobs:
       - name: Test all extensions (comprehensive)
         run: |
           set -euo pipefail
-          echo "🧪 Testing all 36 enabled extensions comprehensively..."
+          # Derive enabled extension count dynamically
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          echo "🧪 Testing all ${CATALOG_ENABLED} enabled catalog entries comprehensively..."
           docker run -d --name pg-ext-test \
             -e POSTGRES_PASSWORD=test \
             --memory=4g \

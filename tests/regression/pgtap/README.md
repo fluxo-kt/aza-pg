@@ -59,8 +59,8 @@ docker exec pg-regression psql -U postgres -f /tests/regression/pgtap/01_extensi
 
 ## Test Modes
 
-- **Production Mode**: Tests enabled extensions only (24 extensions)
-- **Regression Mode**: Tests all extensions including disabled ones (27 extensions)
+- **Production Mode**: Tests enabled extensions only (derived from manifest runtime.defaultEnable=true)
+- **Regression Mode**: Tests all catalog entries including disabled extensions (comprehensive coverage)
 
 Some tests automatically adapt based on available extensions (e.g., `age`, `pgq`, `postgis` are regression-only).
 

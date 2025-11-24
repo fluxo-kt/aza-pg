@@ -15,8 +15,8 @@ The regression testing system provides multi-tier validation to ensure correctne
 
 **Dual-Mode Architecture:**
 
-- **Production mode**: Tests exact release image behavior (24 enabled extensions)
-- **Regression mode**: Tests all extensions including disabled ones (27 extensions)
+- **Production mode**: Tests exact release image behavior (enabled extensions from manifest)
+- **Regression mode**: Tests all catalog entries including disabled extensions (comprehensive coverage)
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ Tests exact release image behavior with enabled extensions only.
 
 **Configuration:**
 
-- Extensions: 24 enabled
+- Extensions: Enabled extensions from manifest (runtime.defaultEnable=true)
 - Preload libraries: 6 default (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb)
 - Image: `aza-pg:pg18` (production Dockerfile)
 
@@ -71,7 +71,7 @@ Tests all extensions including disabled ones for comprehensive coverage.
 
 **Configuration:**
 
-- Extensions: 27 total (24 enabled + 3 regression-only: postgis, pgrouting, pgq)
+- Extensions: All catalog entries from manifest (both enabled and disabled for comprehensive testing)
 - Preload libraries: 10 total (6 default + 4 optional: safeupdate, pgsodium, set_user, pg_partman)
 - Image: `aza-pg:pg18-regression` (separate Dockerfile.regression)
 - pgTAP: Pre-installed for SQL unit testing
@@ -342,7 +342,7 @@ Comprehensive nightly testing for early issue detection.
 
 **Image:** `aza-pg:pg18`
 **Dockerfile:** `docker/postgres/Dockerfile`
-**Extensions:** 24 enabled
+**Extensions:** Enabled from manifest (runtime.defaultEnable=true)
 **Preloads:** 6 default
 **pgTAP:** Not included
 
@@ -356,7 +356,7 @@ bun scripts/build.ts
 
 **Image:** `aza-pg:pg18-regression`
 **Dockerfile:** `docker/postgres/Dockerfile.regression`
-**Extensions:** 27 total (enabled + regression-only)
+**Extensions:** All catalog entries from manifest (comprehensive coverage)
 **Preloads:** 10 total (default + optional)
 **pgTAP:** Pre-installed v1.3.3
 

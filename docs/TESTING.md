@@ -20,8 +20,8 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 
 aza-pg includes a comprehensive regression testing framework with dual-mode architecture:
 
-- **Production Mode**: Tests exact release image behavior (24 enabled extensions)
-- **Regression Mode**: Tests all extensions including disabled ones (27 extensions, regression image)
+- **Production Mode**: Tests exact release image behavior (enabled extensions from manifest)
+- **Regression Mode**: Tests all extensions including disabled ones (comprehensive catalog coverage)
 
 ### Test Tiers
 
@@ -52,8 +52,8 @@ bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
 
 ### Images
 
-- **Production**: `aza-pg:pg18` (production Dockerfile, 24 extensions, 6 preloads)
-- **Regression**: `aza-pg:pg18-regression` (separate Dockerfile, 27 extensions, 10 preloads, pgTAP)
+- **Production**: `aza-pg:pg18` (production Dockerfile, enabled extensions, 6 preloads)
+- **Regression**: `aza-pg:pg18-regression` (separate Dockerfile, all catalog entries, 10 preloads, pgTAP)
 
 Build regression image:
 

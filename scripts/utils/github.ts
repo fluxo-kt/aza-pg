@@ -4,6 +4,8 @@
  * Provides type-safe, validated operations for GitHub Actions integration.
  */
 
+import { appendFileSync } from "node:fs";
+
 /**
  * Sets a GitHub Actions output variable.
  *
@@ -51,7 +53,7 @@ export async function setGitHubOutput(
 
   try {
     // Append to output file (GitHub Actions format: key=value)
-    await Bun.write(outputFile, `${key}=${stringValue}\n`, { append: true });
+    appendFileSync(outputFile, `${key}=${stringValue}\n`);
   } catch (error) {
     throw new Error(
       `Failed to write GitHub output for key "${key}": ${error instanceof Error ? error.message : String(error)}`
@@ -83,7 +85,7 @@ export async function appendStepSummary(content: string): Promise<void> {
   }
 
   try {
-    await Bun.write(summaryFile, content, { append: true });
+    appendFileSync(summaryFile, content);
   } catch (error) {
     throw new Error(
       `Failed to write GitHub step summary: ${error instanceof Error ? error.message : String(error)}`

@@ -1,0 +1,4 @@
+# PostgreSQL official regression tests (fetched on-demand)
+# Run: bun scripts/ci/fetch-pg-regression-tests.ts
+sql/
+expected/

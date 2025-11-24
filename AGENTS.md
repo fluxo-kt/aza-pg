@@ -356,6 +356,7 @@ No version override via --build-arg or workflow inputs (use extension-defaults.t
 - PRODUCTION.md - Deployment, security
 - RELEASE-VALIDATION.md - Latest release validation results (updated with each release)
 - docs/BUILD.md - Build instructions, CI/CD workflows
+- docs/COOLIFY.md - Coolify PaaS deployment (volume mount: `/var/lib/postgresql`, not `/data`)
 - docs/TOOLING.md - Tech choices, locked decisions
 - docs/VERSION-MANAGEMENT.md - Version declarations, extension manifests, update procedures
 - docs/UPGRADING.md - Runtime PostgreSQL and extension upgrades

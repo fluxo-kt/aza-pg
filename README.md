@@ -234,6 +234,24 @@ bun scripts/tools/generate-ssl-certs.ts
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md).
 
+## Coolify Deployment
+
+aza-pg works with [Coolify](https://coolify.io) with one critical configuration change.
+
+### Quick Setup
+
+1. Create PostgreSQL resource with image: `ghcr.io/fluxo-kt/aza-pg:18`
+2. **Change volume mount** from `/var/lib/postgresql/data` to `/var/lib/postgresql`
+3. Set `POSTGRES_PASSWORD` environment variable
+4. (Optional) Set `POSTGRES_BIND_IP=0.0.0.0` for network access
+5. (Optional) Set `POSTGRES_MEMORY` to match Coolify's memory limit
+
+See [docs/COOLIFY.md](docs/COOLIFY.md) for complete setup guide, SSL configuration, and troubleshooting.
+
+### Why the Different Mount Path?
+
+PostgreSQL 18+ uses a new data directory structure (`/var/lib/postgresql/18/docker`) to support `pg_upgrade` for major version migrations. Mount the parent directory to let PostgreSQL manage its subdirectory structure.
+
 ## FAQ
 
 **Kubernetes support?** No. Use cloud-native operators.

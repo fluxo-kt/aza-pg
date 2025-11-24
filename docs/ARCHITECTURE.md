@@ -488,11 +488,12 @@ The following optimizations have been identified for potential implementation ba
 - **timescaledb_toolkit case study:** Successfully reduced from 186MB to 13MB (93% reduction) through aggressive Rust optimization flags (CARGO_PROFILE_RELEASE_OPT_LEVEL=s, LTO=thin, strip=symbols)
 - **Applicable techniques:** Similar bitcode/symbol stripping can be applied to other large extensions (pg_jsonschema: 4.4MB, pgroonga: 2.1MB)
 
-**Image Variant Strategy:**
+**Potential Image Variant Strategy (Future Consideration):**
 
-- **Core variant:** ~600MB image with essential extensions only (35% smaller than full 950MB image)
+- **Core variant:** Minimal image with essential extensions only (estimated 35% size reduction)
 - **Specialized variants:** Analytics-focused (timescaledb suite), search-focused (pgroonga, vectorscale), geospatial-focused (PostGIS suite)
 - **User benefit:** Faster deployment pulls, reduced storage requirements, clearer workload intentions
+- **Status:** Not yet implemented; currently maintaining single comprehensive image
 
 **Long-term Considerations:**
 

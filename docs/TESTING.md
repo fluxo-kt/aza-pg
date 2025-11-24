@@ -623,7 +623,7 @@ bun scripts/test-all.ts --help
 2. **Build Tests** (run sequentially):
    - Docker image build (with 15min timeout)
    - Extension binary size verification
-   - Extension count verification (30+ extensions)
+   - Extension count verification (dynamically derived from manifest)
 
 3. **Functional Tests** (run sequentially):
    - Basic extension loading (vector, pg_cron)

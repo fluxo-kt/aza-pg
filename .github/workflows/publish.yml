@@ -107,7 +107,15 @@ jobs:
           echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
           echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
           echo "disabled=${CATALOG_DISABLED}" >> $GITHUB_OUTPUT
-          echo "Catalog: ${CATALOG_ENABLED} enabled, ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
+          echo "extensions=${CATALOG_EXTENSIONS}" >> $GITHUB_OUTPUT
+          echo "tools=${CATALOG_TOOLS}" >> $GITHUB_OUTPUT
+          echo "builtins=${CATALOG_BUILTINS}" >> $GITHUB_OUTPUT
+          echo "modules=${CATALOG_MODULES}" >> $GITHUB_OUTPUT
+          echo "enabled_extensions=${CATALOG_ENABLED_EXTENSIONS}" >> $GITHUB_OUTPUT
+          echo "enabled_tools=${CATALOG_ENABLED_TOOLS}" >> $GITHUB_OUTPUT
+          echo "enabled_builtins=${CATALOG_ENABLED_BUILTINS}" >> $GITHUB_OUTPUT
+          echo "enabled_modules=${CATALOG_ENABLED_MODULES}" >> $GITHUB_OUTPUT
+          echo "Catalog: ${CATALOG_ENABLED} enabled (${CATALOG_ENABLED_EXTENSIONS} ext, ${CATALOG_ENABLED_BUILTINS} builtin, ${CATALOG_ENABLED_TOOLS} tools), ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
 
       - name: Extract PostgreSQL version from base image
         id: pg-version

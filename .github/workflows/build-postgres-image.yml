@@ -298,15 +298,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
           echo "- ${CATALOG_TOTAL} total catalog entries (${CATALOG_ENABLED} enabled, ${CATALOG_DISABLED} disabled)" >> $GITHUB_STEP_SUMMARY
-          echo "- ${CATALOG_ENABLED} enabled: ${CATALOG_ENABLED_BUILTINS} builtin + ${CATALOG_ENABLED_EXTENSIONS} extensions + ${CATALOG_ENABLED_TOOLS} tools" >> $GITHUB_STEP_SUMMARY
-          echo "  (14 PGDG, 11 compiled extensions)" >> $GITHUB_STEP_SUMMARY
-          echo "- 6 baseline auto-created: pg_cron, pg_stat_statements, pg_trgm," >> $GITHUB_STEP_SUMMARY
-          echo "  pgaudit, plpgsql, vector" >> $GITHUB_STEP_SUMMARY
-          echo "- 4 preloaded: auto_explain, pg_cron, pg_stat_statements, pgaudit" >> $GITHUB_STEP_SUMMARY
-          echo "- 30 additional extensions available on-demand via CREATE EXTENSION" >> $GITHUB_STEP_SUMMARY
-          echo "- PGDG packages: pgvector, pg_cron, pgaudit, timescaledb, postgis, etc." >> $GITHUB_STEP_SUMMARY
-          echo "- Compiled extensions: pg_jsonschema, wrappers, pgsodium, vectorscale, etc." >> $GITHUB_STEP_SUMMARY
-          echo "- Versions managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
+          echo "- ${CATALOG_ENABLED} enabled: ${CATALOG_ENABLED_EXTENSIONS} extensions + ${CATALOG_ENABLED_BUILTINS} builtins + ${CATALOG_ENABLED_TOOLS} tools" >> $GITHUB_STEP_SUMMARY
+          echo "- ${CATALOG_EXTENSIONS} extensions total (${CATALOG_ENABLED_EXTENSIONS} enabled, $((CATALOG_EXTENSIONS - CATALOG_ENABLED_EXTENSIONS)) on-demand)" >> $GITHUB_STEP_SUMMARY
+          echo "- Popular extensions: pgvector, timescaledb, postgis, pg_cron, pgaudit, pgsodium" >> $GITHUB_STEP_SUMMARY
+          echo "- All versions pinned and managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify local image
         if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'

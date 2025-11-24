@@ -163,12 +163,16 @@ jobs:
           docker run --rm aza-pg-ci:test psql --version
 
           echo "Checking extension count..."
+          # Derive expected count dynamically from manifest
+          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
+          EXPECTED_MIN=$((CATALOG_EXTENSIONS + CATALOG_BUILTINS))
+
           EXTENSION_COUNT=$(docker run --rm aza-pg-ci:test \
             sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null' | wc -l)
-          echo "Found $EXTENSION_COUNT extension control files"
+          echo "Found $EXTENSION_COUNT extension control files (expected: ${EXPECTED_MIN} = ${CATALOG_EXTENSIONS} ext + ${CATALOG_BUILTINS} builtin)"
 
-          if [ "$EXTENSION_COUNT" -lt 30 ]; then
-            echo "::error::Expected at least 30 extensions, found $EXTENSION_COUNT"
+          if [ "$EXTENSION_COUNT" -lt "$EXPECTED_MIN" ]; then
+            echo "::error::Expected at least ${EXPECTED_MIN} extensions, found $EXTENSION_COUNT"
             exit 1
           fi
 

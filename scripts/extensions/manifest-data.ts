@@ -53,6 +53,12 @@ export interface RuntimeSpec {
    * Only applicable when sharedPreload: true and defaultEnable: false.
    */
   preloadInComprehensiveTest?: boolean;
+  /**
+   * Override the library name for shared_preload_libraries.
+   * Defaults to extension name if not specified.
+   * Example: pg_partman extension uses pg_partman_bgw.so library
+   */
+  preloadLibraryName?: string;
   notes?: string[];
 }
 
@@ -283,6 +289,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
+      preloadLibraryName: "safeupdate",
       notes: ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."],
     },
     sourceUrl: "https://github.com/eradman/pg-safeupdate",
@@ -751,6 +758,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
+      preloadLibraryName: "pg_partman_bgw",
       notes: ["Set pg_partman_bgw.role and interval to enable background worker."],
     },
     sourceUrl: "https://github.com/pgpartman/pg_partman",

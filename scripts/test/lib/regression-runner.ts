@@ -50,6 +50,13 @@ export interface ConnectionConfig {
   database?: string;
   user?: string;
   password?: string;
+
+  /**
+   * Optional container name for running psql via docker exec.
+   * When provided, psql runs inside the container instead of from the host.
+   * This avoids the need for psql to be installed on the host machine.
+   */
+  containerName?: string;
 }
 
 /**
@@ -90,29 +97,56 @@ export async function runRegressionTest(
     };
   }
 
-  // Build psql command
-  const connString = connection.connectionString || buildConnectionString(connection);
-
   // Execute SQL file via psql
   let actualOutput = "";
   let exitCode = 0;
   let executionError: string | null = null;
 
   try {
-    // Run psql with options:
-    // -X: Don't read .psqlrc (ensures clean environment)
-    // -a: Echo all input (shows SQL commands in output, matching official tests)
-    // -q: Quiet mode (suppress extra messages)
-    // -f: Read commands from file
-    const result = await $`psql -X -a -q ${connString} -f ${sqlFile}`.nothrow();
+    if (connection.containerName) {
+      // Run psql inside container via docker exec
+      // Copy SQL file to container first
+      const containerPath = `/tmp/${testName}.sql`;
+      await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.quiet();
 
-    exitCode = result.exitCode;
-    actualOutput = result.stdout.toString();
+      // Run psql with options:
+      // -X: Don't read .psqlrc (ensures clean environment)
+      // -a: Echo all input (shows SQL commands in output, matching official tests)
+      // -q: Quiet mode (suppress extra messages)
+      // -f: Read commands from file
+      const result =
+        await $`docker exec ${connection.containerName} psql -X -a -q -U postgres -d postgres -f ${containerPath}`.nothrow();
 
-    // Capture stderr if command failed
-    if (exitCode !== 0) {
-      const stderr = result.stderr.toString();
-      executionError = stderr || `psql exited with code ${exitCode}`;
+      exitCode = result.exitCode;
+      actualOutput = result.stdout.toString();
+
+      // Cleanup temporary file
+      await $`docker exec ${connection.containerName} rm ${containerPath}`.quiet();
+
+      // Capture stderr if command failed
+      if (exitCode !== 0) {
+        const stderr = result.stderr.toString();
+        executionError = stderr || `psql exited with code ${exitCode}`;
+      }
+    } else {
+      // Run psql from host
+      const connString = connection.connectionString || buildConnectionString(connection);
+
+      // Run psql with options:
+      // -X: Don't read .psqlrc (ensures clean environment)
+      // -a: Echo all input (shows SQL commands in output, matching official tests)
+      // -q: Quiet mode (suppress extra messages)
+      // -f: Read commands from file
+      const result = await $`psql -X -a -q ${connString} -f ${sqlFile}`.nothrow();
+
+      exitCode = result.exitCode;
+      actualOutput = result.stdout.toString();
+
+      // Capture stderr if command failed
+      if (exitCode !== 0) {
+        const stderr = result.stderr.toString();
+        executionError = stderr || `psql exited with code ${exitCode}`;
+      }
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

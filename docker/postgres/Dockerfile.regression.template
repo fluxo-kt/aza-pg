@@ -152,7 +152,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install runtime libraries for ALL extensions (regression mode)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
 
-# Install runtime libraries + git/make (needed for pgTAP) + jq (for version-info modification)
+# Install runtime libraries + git/make/patch (needed for pgTAP) + jq (for version-info modification)
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
@@ -162,6 +162,7 @@ RUN set -euo pipefail && \
       postgresql-client-{{PG_MAJOR}} \
       git \
       make \
+      patch \
       jq \
       ${RUNTIME_PKGS} && \
     apt-get clean && \
@@ -224,7 +225,7 @@ RUN set -euo pipefail && \
 
 # Set regression preload libraries environment variable
 # This includes ALL optional preload modules for maximum test coverage (10 total)
-ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_cron,pgaudit,pg_stat_statements,auto_explain,safeupdate,pgsodium,pg_stat_monitor,timescaledb,pg_partman,set_user"
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="{{REGRESSION_PRELOAD_LIBRARIES}}"
 
 # Copy runtime metadata files with testMode marker
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json

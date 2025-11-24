@@ -26,6 +26,7 @@ interface RuntimeSpec {
   sharedPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean;
+  preloadLibraryName?: string;
   notes?: string[];
 }
 
@@ -72,7 +73,10 @@ function generateDefaultSharedPreloadLibraries(manifest: Manifest): string {
   });
 
   // Sort alphabetically for consistency
-  const extensionNames = preloadExtensions.map((e) => e.name).sort();
+  // Use preloadLibraryName if specified, otherwise use extension name
+  const extensionNames = preloadExtensions
+    .map((e) => e.runtime?.preloadLibraryName || e.name)
+    .sort();
 
   return extensionNames.join(",");
 }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-11-24T09:05:34.710Z",
+  "generatedAt": "2025-11-24T12:10:47.085Z",
   "entries": [
     {
       "name": "auto_explain",
@@ -244,6 +244,7 @@
         "sharedPreload": true,
         "defaultEnable": false,
         "preloadInComprehensiveTest": true,
+        "preloadLibraryName": "pg_partman_bgw",
         "notes": [
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
@@ -319,6 +320,7 @@
         "sharedPreload": true,
         "defaultEnable": false,
         "preloadInComprehensiveTest": true,
+        "preloadLibraryName": "safeupdate",
         "notes": [
           "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
         ]

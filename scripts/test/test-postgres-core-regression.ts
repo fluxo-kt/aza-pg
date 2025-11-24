@@ -332,6 +332,9 @@ async function main(): Promise<number> {
       // Get connection configuration
       const connection = await getConnectionConfig(containerName);
 
+      // Add container name to connection config for docker exec support
+      connection.containerName = containerName;
+
       // Build test list
       const testList = options.tests.map((testName) => ({
         testName,

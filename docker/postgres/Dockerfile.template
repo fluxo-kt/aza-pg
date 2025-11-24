@@ -244,3 +244,117 @@ EXPOSE 5432
 
 ENTRYPOINT ["/usr/local/bin/docker-auto-config-entrypoint.sh"]
 CMD ["postgres"]
+
+# Comprehensive test stage - includes ALL extensions (even disabled ones) + pgTAP
+# This stage is used for regression testing to ensure disabled extensions still work
+FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS comprehensive-test
+
+# Use bash with pipefail for RUN commands
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
+ARG BUILD_DATE
+ARG VCS_REF
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime libraries for ALL extensions (comprehensive mode)
+COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
+
+# Install runtime libraries + git/make (needed for pgTAP) + jq (for version-info modification)
+# hadolint ignore=DL3008
+RUN set -euo pipefail && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update && \
+    RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
+    apt-get install -y --no-install-recommends \
+      postgresql-client-{{PG_MAJOR}} \
+      git \
+      make \
+      jq \
+      ${RUNTIME_PKGS} && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
+
+# Install ALL PGDG packages (including disabled ones for comprehensive testing)
+COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
+
+{{PGDG_PACKAGES_INSTALL_COMPREHENSIVE}}
+
+# Copy ALL compiled extensions (including comprehensive-only ones)
+COPY --from=builder-pgxs /opt/ext-out/ /
+COPY --from=builder-cargo /opt/ext-out/ /
+
+# Remove LLVM bitcode from base PostgreSQL image
+RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+
+# Install pgTAP for testing (v1.3.3)
+RUN set -euo pipefail && \
+    cd /tmp && \
+    git clone --depth 1 --branch v1.3.3 https://github.com/theory/pgtap.git && \
+    cd pgtap && \
+    make && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/pgtap
+
+# Create stub pgsodium_getkey script
+RUN set -euo pipefail && \
+    echo '#!/bin/sh' > /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey && \
+    chmod +x /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey
+
+# Create backup directory with proper ownership
+RUN mkdir -p /backup && chown postgres:postgres /backup
+
+# Copy configs
+COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
+
+# Runtime scripts
+COPY docker/postgres/healthcheck.sh \
+     docker/postgres/docker-auto-config-entrypoint.sh \
+     /usr/local/bin/
+COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+
+# Consolidate all chmod operations
+RUN set -euo pipefail && \
+    chmod +x /usr/local/bin/healthcheck.sh && \
+    chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
+    chmod +x /docker-entrypoint-initdb.d/*.sh
+
+# Set comprehensive preload libraries environment variable
+# This includes ALL optional preload modules for maximum test coverage
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_cron,pgaudit,pg_stat_statements,auto_explain,safeupdate,pgsodium,pg_stat_monitor,timescaledb,pg_partman,set_user"
+
+# Copy runtime metadata files with testMode marker
+COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
+COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
+COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info-base.json
+
+# Add testMode marker to version-info.json for comprehensive test detection
+RUN set -euo pipefail && \
+    jq '. + {testMode: "comprehensive"}' /etc/postgresql/version-info-base.json > /etc/postgresql/version-info.json && \
+    rm /etc/postgresql/version-info-base.json
+
+# Switch to postgres user
+USER postgres
+
+# OCI image labels with build metadata
+LABEL org.opencontainers.image.vendor="fluxo-kt"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL {{PG_VERSION}} (Comprehensive Test)"
+LABEL org.opencontainers.image.description="PostgreSQL {{PG_VERSION}} with ALL extensions enabled for comprehensive regression testing"
+LABEL org.opencontainers.image.version="{{PG_VERSION}}-comprehensive"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+
+# Health check and port exposure
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
+    CMD /usr/local/bin/healthcheck.sh
+
+EXPOSE 5432
+
+ENTRYPOINT ["/usr/local/bin/docker-auto-config-entrypoint.sh"]
+CMD ["postgres"]

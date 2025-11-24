@@ -231,6 +231,56 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 }
 
 /**
+ * Generate PGDG package installation script for comprehensive test mode
+ * Installs ALL PGDG packages (including disabled ones) for regression testing
+ */
+function generatePgdgPackagesInstallComprehensive(manifest: Manifest, pgMajor: string): string {
+  const allPgdgPackages: string[] = [];
+
+  for (const mapping of PGDG_MAPPINGS) {
+    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
+    // Include ALL PGDG packages (enabled OR enabledInComprehensiveTest)
+    if (entry && entry.install_via === "pgdg") {
+      const shouldInclude = (entry.enabled ?? true) || entry.enabledInComprehensiveTest === true;
+      if (shouldInclude) {
+        // Use hardcoded version from extensionDefaults
+        const version = extensionDefaults.pgdgVersions[mapping.versionKey];
+
+        // Validate package name and version for shell safety
+        validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
+        validatePackageName(version, `PGDG version (${mapping.manifestName})`);
+
+        allPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
+      }
+    }
+  }
+
+  if (allPgdgPackages.length === 0) {
+    return `RUN echo "No PGDG packages available for comprehensive testing"`;
+  }
+
+  const packagesList = allPgdgPackages.join(" ");
+  const expectedCount = allPgdgPackages.length;
+
+  return `RUN set -euo pipefail && \\
+    rm -rf /var/lib/apt/lists/* && \\
+    apt-get update && \\
+    # Install ALL PGDG packages for comprehensive testing (includes disabled extensions)
+    echo "Installing PGDG packages (comprehensive mode): ${packagesList}" && \\
+    apt-get install -y --no-install-recommends ${packagesList} && \\
+    # Verify expected PGDG extensions were installed
+    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log && \\
+    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
+    echo "Installed $INSTALLED_COUNT PGDG extension package(s) (comprehensive mode)" && \\
+    echo "Expected ${expectedCount} PGDG packages from manifest" && \\
+    test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
+    rm -f /tmp/installed-pgdg-exts.log && \\
+    apt-get clean && \\
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+}
+
+/**
  * Generate filtered manifest for PGXS-style builds
  * Includes: pgxs, autotools, cmake, meson, make, timescaledb
  */
@@ -347,6 +397,12 @@ async function generateDockerfile(): Promise<void> {
   info("Generating PGDG package installation script...");
   const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
 
+  info("Generating comprehensive PGDG package installation script...");
+  const pgdgPackagesInstallComprehensive = generatePgdgPackagesInstallComprehensive(
+    manifest,
+    pgMajor
+  );
+
   info("Generating version info generation script...");
   const versionInfoGeneration = generateVersionInfoGeneration(manifest);
 
@@ -356,6 +412,10 @@ async function generateDockerfile(): Promise<void> {
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
+  dockerfile = dockerfile.replace(
+    "{{PGDG_PACKAGES_INSTALL_COMPREHENSIVE}}",
+    pgdgPackagesInstallComprehensive
+  );
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 
   // Add generation header

@@ -42,6 +42,8 @@ interface BuildConfig {
   multiArch: boolean;
   push: boolean;
   load: boolean;
+  comprehensive: boolean;
+  target: string;
 }
 
 // Parse command line arguments
@@ -61,6 +63,8 @@ function parseArgs(): BuildConfig {
     multiArch: false,
     push: false,
     load: true,
+    comprehensive: false,
+    target: "final",
   };
 
   const args = Bun.argv.slice(2);
@@ -74,6 +78,14 @@ function parseArgs(): BuildConfig {
       case "--push":
         config.push = true;
         config.load = false;
+        break;
+      case "--comprehensive":
+        config.comprehensive = true;
+        config.target = "comprehensive-test";
+        // Append -comprehensive to tag if not already present
+        if (!config.imageTag.includes("comprehensive")) {
+          config.imageTag = `${config.imageTag}-comprehensive`;
+        }
         break;
       case "--help":
         printHelp();
@@ -99,6 +111,13 @@ Usage:
   bun scripts/build.ts                 # Single-platform (current arch)
   bun scripts/build.ts --multi-arch    # Multi-platform (amd64 + arm64)
   bun scripts/build.ts --push          # Build and push to registry
+  bun scripts/build.ts --comprehensive # Build comprehensive test image (all extensions + pgTAP)
+
+Options:
+  --multi-arch       Build for both amd64 and arm64 platforms
+  --push             Push image to registry after build
+  --comprehensive    Build comprehensive-test stage (all extensions including disabled ones)
+  --help             Show this help message
 
 Requirements:
   - Docker Buildx installed (bundled with Docker Desktop / Docker 19.03+)
@@ -109,6 +128,7 @@ Performance:
   - First build: ~12min (compiles all extensions)
   - Cached build: ~2min (reuses CI artifacts)
   - No network: ~12min (falls back to local cache)
+  - Comprehensive build: ~15min (additional extensions + pgTAP)
 `.trim();
   console.log(helpText);
 }
@@ -237,6 +257,8 @@ async function buildImage(config: BuildConfig): Promise<void> {
     platforms,
     "--file",
     "docker/postgres/Dockerfile",
+    "--target",
+    config.target,
     "--tag",
     `${config.imageName}:${config.imageTag}`,
   ];
@@ -339,6 +361,7 @@ async function buildImage(config: BuildConfig): Promise<void> {
   console.log("================================================================");
   console.log(`Duration: ${duration}s`);
   console.log(`Image: ${config.imageName}:${config.imageTag}`);
+  console.log(`Target: ${config.target}`);
   console.log(`Platforms: ${platforms}`);
 
   if (config.push) {
@@ -352,6 +375,18 @@ async function buildImage(config: BuildConfig): Promise<void> {
   console.log("");
   console.log("Test the image:");
   console.log(`  docker run --rm ${config.imageName}:${config.imageTag} psql --version`);
+
+  if (config.comprehensive) {
+    console.log("");
+    console.log("Verify comprehensive test mode:");
+    console.log(
+      `  docker run --rm ${config.imageName}:${config.imageTag} cat /etc/postgresql/version-info.json | jq .testMode`
+    );
+    console.log(
+      `  docker run --rm ${config.imageName}:${config.imageTag} psql -U postgres -c "CREATE EXTENSION pgtap;"`
+    );
+  }
+
   console.log("");
   console.log("Deploy with compose:");
   console.log("  cd stacks/primary");

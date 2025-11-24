@@ -10,6 +10,11 @@
 build.log
 test-results-*.log
 
+# Regression test artifacts
+*.diffs
+tests/regression/core/regression.diffs
+extension-regression.diffs
+
 # Dumps and backups
 *.dump
 *.sql.gz

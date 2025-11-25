@@ -12,7 +12,8 @@
 
 ## Invariants
 
-- **Manifest = single source of truth**: Encodes what's completely disabled (not available), what's preloaded and/or enabled/created
+- **Manifest = single source of truth**: `manifest-data.ts` defines ALL versions (PG, base image SHA, pgdgVersions, git tags)
+- **extension-defaults.ts = auto-generated**: NEVER edit directly — regenerated from manifest
 - **Tools ≠ extensions** (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
 - **Dockerfile is auto-generated** from template + manifest (NEVER edit directly)
@@ -36,8 +37,10 @@ bun scripts/{ci,docker,debug,release}/<script>.ts --help
 
 - **auto_explain**: Module (shared_preload_libraries), NOT extension — NO CREATE EXTENSION needed
 - **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
+- **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
-- **Version changes**: Update `extension-defaults.ts` → regenerate → rebuild
+- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild
+- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically (auto-validated)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime
@@ -80,6 +83,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 ## Common Mistakes
 
 - ❌ Editing `Dockerfile` directly → ✅ Edit `Dockerfile.template` + regenerate
+- ❌ Editing `extension-defaults.ts` directly → ✅ Edit `manifest-data.ts` + regenerate
 - ❌ Using Node.js fs/child_process → ✅ Use Bun.file/Bun.$
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script

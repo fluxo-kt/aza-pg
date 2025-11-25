@@ -20,30 +20,31 @@ This guide is for **updating version declarations** in the source code. For runt
 
 ## Architecture Overview
 
-### Dual-Source Design
+### Single Source of Truth Design
 
-The aza-pg project uses **two complementary version sources**:
+The aza-pg project uses **one authoritative source** for all version information:
 
-1. **`scripts/extensions/manifest-data.ts`** - Git source control
-   - Defines git repositories, tags, refs, commits
-   - Used for: Building from source (PGXS, cargo-pgrx, cmake, meson)
-   - Covers: All 50+ extensions and tools
+**`scripts/extensions/manifest-data.ts`** - The single source of truth
 
-2. **`scripts/extension-defaults.ts`** - PGDG package versions
-   - Defines Debian package versions for pre-compiled extensions
-   - Used for: Fast PGDG apt installations (14 extensions)
-   - Covers: PostgreSQL base image SHA, PGDG extension versions
+- **MANIFEST_METADATA**: PostgreSQL version and base image SHA
+- **MANIFEST_ENTRIES**: All extensions with git sources AND pgdgVersion fields
+- Covers: All 39+ extensions and tools
 
-**Why both?** Some extensions install from PGDG repositories (faster), others build from source (required for latest features, cargo-pgrx, etc.). Both sources work together:
+**How it works:**
 
-- PGDG extensions: Use apt packages (fast) with versions from `extension-defaults.ts`
-- Source-built extensions: Clone git repos with tags/refs from `manifest-data.ts`
+- Each extension entry defines its git source (repository, tag/ref)
+- PGDG-installed extensions additionally include a `pgdgVersion` field
+- The `pgdgVersion` semantic version MUST match the `source.tag` version
+- Version consistency is automatically validated at build time
 
 **Generated artifacts** (never edit directly):
 
-- `docker/postgres/Dockerfile` - Auto-generated from template + defaults
+- `scripts/extension-defaults.ts` - Auto-generated from manifest (for backward compatibility)
+- `docker/postgres/Dockerfile` - Auto-generated from template + manifest
 - `docker/postgres/extensions.*.manifest.json` - Auto-generated with resolved commits
 - `docs/.generated/docs-data.json` - Auto-generated reference documentation
+
+**Why this design?** Previous dual-source architecture led to version drift (e.g., plpgsql_check v2.8.3 in manifest vs 2.8.4 in extension-defaults). Consolidating to a single source eliminates this class of bugs entirely.
 
 ---
 
@@ -51,15 +52,17 @@ The aza-pg project uses **two complementary version sources**:
 
 ### When to Update Which File
 
-| What to Update                            | File                    | Lines   | Command                           |
-| ----------------------------------------- | ----------------------- | ------- | --------------------------------- |
-| PostgreSQL version                        | `extension-defaults.ts` | 44      | Edit `pgVersion`                  |
-| PostgreSQL base image SHA                 | `extension-defaults.ts` | 45      | Edit `baseImageSha`               |
-| PGDG extension versions (14 total)        | `extension-defaults.ts` | 46-61   | Edit `pgdgVersions.*`             |
-| Git-based extension tags/refs (50+ total) | `manifest-data.ts`      | Various | Edit `source.tag` or `source.ref` |
-| Bun version                               | `.tool-versions`        | 1       | Edit `bun X.Y.Z`                  |
+| What to Update                           | File               | Field                                |
+| ---------------------------------------- | ------------------ | ------------------------------------ |
+| PostgreSQL version                       | `manifest-data.ts` | `MANIFEST_METADATA.pgVersion`        |
+| PostgreSQL base image SHA                | `manifest-data.ts` | `MANIFEST_METADATA.baseImageSha`     |
+| PGDG extension version (13 total)        | `manifest-data.ts` | Entry's `pgdgVersion` field          |
+| Git-based extension tags/refs (39 total) | `manifest-data.ts` | Entry's `source.tag` or `source.ref` |
+| Bun version                              | `.tool-versions`   | `bun X.Y.Z`                          |
 
-**After ANY change:** Run `bun run generate` to propagate updates to Dockerfile and manifests.
+**⚠️ NEVER edit `scripts/extension-defaults.ts`** - it's auto-generated from manifest-data.ts
+
+**After ANY change:** Run `bun run generate` to propagate updates to Dockerfile, extension-defaults.ts, and manifests.
 
 ---
 
@@ -86,25 +89,24 @@ docker pull postgres:18.2-trixie
 docker inspect postgres:18.2-trixie | grep -A 10 RepoDigests
 ```
 
-#### Step 2: Update extension-defaults.ts
+#### Step 2: Update manifest-data.ts
 
 ```typescript
-// File: scripts/extension-defaults.ts (lines 44-45)
-export const extensionDefaults: ExtensionDefaults = {
+// File: scripts/extensions/manifest-data.ts (top of file)
+export const MANIFEST_METADATA = {
   pgVersion: "18.2", // ← Update this
-  baseImageSha: "sha256:abc123...", // ← Update this (full 64-char hash)
-  // ...
-};
+  baseImageSha: "sha256:abc123...", // ← Update this (full sha256:HASH format)
+} as const;
 ```
 
 #### Step 3: Regenerate and Validate
 
 ```bash
-# Regenerate Dockerfile from template
+# Regenerate all artifacts (Dockerfile, extension-defaults.ts, manifests)
 bun run generate
 
 # Verify changes
-git diff docker/postgres/Dockerfile
+git diff docker/postgres/Dockerfile scripts/extension-defaults.ts
 
 # Validate (fast checks)
 bun run validate
@@ -117,7 +119,7 @@ cd stacks/single && docker compose up -d
 #### Step 4: Commit Changes
 
 ```bash
-git add scripts/extension-defaults.ts docker/postgres/Dockerfile
+git add scripts/extensions/manifest-data.ts scripts/extension-defaults.ts docker/
 git commit -m "deps(postgres): update base image to 18.2"
 ```
 
@@ -127,9 +129,9 @@ git commit -m "deps(postgres): update base image to 18.2"
 
 **Example:** Update pgvector from 0.8.0 to 0.8.1
 
-PGDG extensions are pre-compiled Debian packages. 14 extensions use this method:
+PGDG extensions are pre-compiled Debian packages. 13 extensions use this method:
 
-- pgvector, pg_cron, pgaudit, timescaledb, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
+- pgvector, pg_cron, pgaudit, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
 
 #### Step 1: Find Latest PGDG Version
 
@@ -156,19 +158,9 @@ docker run --rm postgres:18-trixie bash -c "
 # Or search: apt.postgresql.org package list
 ```
 
-#### Step 2: Update extension-defaults.ts
+#### Step 2: Update manifest-data.ts (Both Fields!)
 
-```typescript
-// File: scripts/extension-defaults.ts (lines 46-61)
-pgdgVersions: {
-  pgvector: "0.8.1-2.pgdg13+1",  // ← Update this (full Debian version)
-  // ... other extensions
-}
-```
-
-#### Step 3: Update manifest-data.ts (Git Tag)
-
-Even though PGDG handles installation, keep git tags synchronized for documentation:
+**CRITICAL:** Update BOTH `source.tag` AND `pgdgVersion` in the same entry. Version consistency is automatically validated.
 
 ```typescript
 // File: scripts/extensions/manifest-data.ts
@@ -177,24 +169,28 @@ Even though PGDG handles installation, keep git tags synchronized for documentat
   source: {
     type: "git",
     repository: "https://github.com/pgvector/pgvector.git",
-    tag: "v0.8.1",  // ← Update to match PGDG semantic version
+    tag: "v0.8.1",  // ← Update git tag (prefix with "v" if repo uses it)
   },
+  install_via: "pgdg",
+  pgdgVersion: "0.8.1-2.pgdg13+1",  // ← Update PGDG version (semantic must match tag!)
   // ...
 }
 ```
 
-#### Step 4: Regenerate and Validate
+**Validation:** The semantic version from `pgdgVersion` (e.g., "0.8.1") must match `source.tag` (e.g., "v0.8.1"). This is enforced by `validate-pgdg-versions.ts`.
+
+#### Step 3: Regenerate and Validate
 
 ```bash
 bun run generate
-bun run validate
-git diff docker/postgres/Dockerfile docker/postgres/extensions.manifest.json
+bun run validate  # Automatically runs PGDG version validation
+git diff docker/postgres/Dockerfile scripts/extension-defaults.ts
 ```
 
-#### Step 5: Commit Changes
+#### Step 4: Commit Changes
 
 ```bash
-git add scripts/extension-defaults.ts scripts/extensions/manifest-data.ts docker/
+git add scripts/extensions/manifest-data.ts scripts/extension-defaults.ts docker/
 git commit -m "deps(pgvector): update to 0.8.1"
 ```
 
@@ -428,61 +424,49 @@ git commit -m "deps(batch1): update PGDG extensions to latest"
 
 ## Version Source Locations
 
-### Primary Sources (Edit These)
+### Primary Source (Edit This)
 
-#### 1. PostgreSQL Base & PGDG Extensions
+**File:** `scripts/extensions/manifest-data.ts` — THE SINGLE SOURCE OF TRUTH
 
-**File:** `scripts/extension-defaults.ts`
+#### 1. MANIFEST_METADATA: PostgreSQL Base Version
 
 ```typescript
-export const extensionDefaults: ExtensionDefaults = {
+export const MANIFEST_METADATA = {
   pgVersion: "18.1", // PostgreSQL semantic version
-  baseImageSha: "sha256:5ec39c1...", // Full 64-char SHA256 digest
-  pgdgVersions: {
-    pgcron: "1.6.7-2.pgdg13+1", // Full Debian package version
-    pgaudit: "18.0-2.pgdg13+1",
-    pgvector: "0.8.1-2.pgdg13+1",
-    timescaledb: "2.23.1+dfsg-1.pgdg13+1",
-    postgis: "3.6.1+dfsg-1.pgdg13+1",
-    partman: "5.3.1-2.pgdg13+1",
-    repack: "1.5.3-1.pgdg13+1",
-    plpgsqlCheck: "2.8.4-1.pgdg13+1",
-    hll: "2.19-1.pgdg13+1",
-    http: "1.7.0-3.pgdg13+1",
-    hypopg: "1.4.2-2.pgdg13+1",
-    pgrouting: "3.8.0-2.pgdg13+1",
-    rum: "1.3.15-1.pgdg13+1",
-    setUser: "4.2.0-1.pgdg13+1",
-  },
-};
+  baseImageSha:
+    "sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f",
+} as const;
 ```
 
-**Propagates to:**
-
-- `docker/postgres/Dockerfile` (ARG values)
-- `.github/workflows/*.yml` (via script export)
-
----
-
-#### 2. Git-Based Extensions & Tools
-
-**File:** `scripts/extensions/manifest-data.ts`
-
-**Structure:**
+#### 2. MANIFEST_ENTRIES: All Extensions & Tools
 
 ```typescript
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
+  // PGDG extension example (has pgdgVersion):
   {
     name: "vector",
     kind: "extension",
     source: {
-      type: "git", // or "git-ref" for commit SHAs
+      type: "git",
       repository: "https://github.com/pgvector/pgvector.git",
-      tag: "v0.8.0", // Git tag (prefer over refs)
+      tag: "v0.8.0",
     },
+    install_via: "pgdg",
+    pgdgVersion: "0.8.0-1.pgdg13+1", // Must match source.tag semantically!
     // ...
   },
-  // ... 49 more entries
+  // Source-built extension example (no pgdgVersion):
+  {
+    name: "pgbackrest",
+    kind: "tool",
+    source: {
+      type: "git",
+      repository: "https://github.com/pgbackrest/pgbackrest.git",
+      tag: "release/2.57.0",
+    },
+    // ... no pgdgVersion (built from source)
+  },
+  // ... 37 more entries
 ];
 ```
 
@@ -492,11 +476,18 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
 - `type: "git-ref"` with `ref: "abc123..."` - Commit SHA (for unreleased fixes)
 - `type: "builtin"` - PostgreSQL built-in extensions (no source)
 
+**Install methods:**
+
+- `install_via: "pgdg"` - Pre-compiled from PGDG repository (requires `pgdgVersion`)
+- `install_via: "source"` - Built from git source (PGXS, cargo-pgrx, cmake, meson)
+
 **Propagates to:**
 
-- `docker/postgres/extensions.manifest.json` (with resolved commit SHAs)
-- `docker/postgres/extensions.pgxs.manifest.json` (filtered: 28 entries)
-- `docker/postgres/extensions.cargo.manifest.json` (filtered: 4 entries)
+- `scripts/extension-defaults.ts` - AUTO-GENERATED for backward compatibility
+- `docker/postgres/Dockerfile` - Version hardcoded at generation time
+- `docker/postgres/extensions.manifest.json` - With resolved commit SHAs
+- `docker/postgres/extensions.pgxs.manifest.json` - Filtered for PGXS builds
+- `docker/postgres/extensions.cargo.manifest.json` - Filtered for cargo-pgrx builds
 
 ---
 
@@ -517,32 +508,46 @@ bun 1.3.3
 
 ### Generated Artifacts (Never Edit Directly)
 
-#### 1. Dockerfile
+#### 1. Extension Defaults (Backward Compatibility)
+
+**File:** `scripts/extension-defaults.ts`
+
+**Generated from:** `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion fields)
+
+**Generation:** `bun scripts/extensions/generate-extension-defaults.ts`
+
+**Purpose:** Provides backward-compatible interface for Dockerfile generation and workflows. Contains the same data as manifest-data.ts in a flat structure.
+
+**⚠️ WARNING:** This file has an AUTO-GENERATED banner. Never edit directly.
+
+---
+
+#### 2. Dockerfile
 
 **File:** `docker/postgres/Dockerfile`
 
-**Generated from:** `docker/postgres/Dockerfile.template` + `extension-defaults.ts`
+**Generated from:** `docker/postgres/Dockerfile.template` + `manifest-data.ts` (via extension-defaults.ts)
 
 **Generation:** `bun scripts/docker/generate-dockerfile.ts`
 
 **Contains (hardcoded at generation time):**
 
-- PG_VERSION (e.g., `18.1`) - hardcoded from extension-defaults.ts
-- PG_BASE_IMAGE_SHA (e.g., `sha256:...`) - hardcoded from extension-defaults.ts
-- PGDG package versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`) - hardcoded from extension-defaults.ts
+- PG_VERSION (e.g., `18.1`) - from MANIFEST_METADATA.pgVersion
+- PG_BASE_IMAGE_SHA (e.g., `sha256:...`) - from MANIFEST_METADATA.baseImageSha
+- PGDG package versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`) - from pgdgVersion fields
 - Metadata ARGs: `BUILD_DATE` and `VCS_REF` (no defaults - passed at build time)
 
 **Note:** Version dependencies are NOT ARGs (cannot be overridden at build time). They are hardcoded in the FROM statement and package installation commands during Dockerfile generation.
 
 ---
 
-#### 2. Extension Manifests
+#### 3. Extension Manifests
 
 **Files:**
 
-- `docker/postgres/extensions.manifest.json` (all 50 extensions)
-- `docker/postgres/extensions.pgxs.manifest.json` (28 PGXS builds)
-- `docker/postgres/extensions.cargo.manifest.json` (4 cargo-pgrx builds)
+- `docker/postgres/extensions.manifest.json` (all 39 extensions)
+- `docker/postgres/extensions.pgxs.manifest.json` (PGXS builds)
+- `docker/postgres/extensions.cargo.manifest.json` (cargo-pgrx builds)
 
 **Generated from:** `manifest-data.ts` with git commit resolution
 
@@ -919,16 +924,19 @@ Or keep workflow defaults in sync manually (documented in comments).
 
 ## Summary
 
-**Single source of truth:** Two complementary sources working together
+**Single source of truth:** `scripts/extensions/manifest-data.ts`
 
-- `extension-defaults.ts` for PGDG packages (14 extensions)
-- `manifest-data.ts` for git sources (50+ extensions)
+- `MANIFEST_METADATA` for PostgreSQL version and base image SHA
+- `MANIFEST_ENTRIES[].pgdgVersion` for PGDG packages (13 extensions)
+- `MANIFEST_ENTRIES[].source.tag/ref` for all 39 extensions
 
 **Update workflow:**
 
-1. Edit version in appropriate file
-2. Run `bun run generate` to propagate
-3. Run `bun run validate` to verify
+1. Edit version in `manifest-data.ts` (both `source.tag` AND `pgdgVersion` for PGDG extensions)
+2. Run `bun run generate` to propagate to extension-defaults.ts, Dockerfile, and manifests
+3. Run `bun run validate` to verify (includes automatic PGDG version consistency check)
 4. Commit changes (both source and generated files)
 
-**Key principle:** Generated artifacts are committed to git for reproducibility. Always regenerate after version changes.
+**⚠️ NEVER edit `scripts/extension-defaults.ts`** — it's auto-generated from manifest-data.ts
+
+**Key principle:** Generated artifacts are committed to git for reproducibility. Always regenerate after version changes. Version consistency between `source.tag` and `pgdgVersion` is enforced automatically.

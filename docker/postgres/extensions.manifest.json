@@ -51,6 +51,7 @@
       "displayName": "postgresql-hll",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "2.19-1.pgdg13+1",
       "category": "analytics",
       "description": "HyperLogLog probabilistic counting data type.",
       "source": {
@@ -74,6 +75,7 @@
       "displayName": "pgsql-http",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "1.7.0-3.pgdg13+1",
       "category": "integration",
       "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
       "source": {
@@ -100,6 +102,7 @@
       "name": "hypopg",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "1.4.2-2.pgdg13+1",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
       "source": {
@@ -146,6 +149,7 @@
       "name": "pg_cron",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "1.6.7-2.pgdg13+1",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
       "source": {
@@ -228,6 +232,7 @@
       "name": "pg_partman",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "5.3.1-2.pgdg13+1",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
       "source": {
@@ -278,6 +283,7 @@
       "name": "pg_repack",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "1.5.3-1.pgdg13+1",
       "category": "maintenance",
       "description": "Online table/index reorganization without long locks.",
       "source": {
@@ -386,6 +392,7 @@
       "name": "pgaudit",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "18.0-2.pgdg13+1",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
       "source": {
@@ -597,6 +604,7 @@
       "name": "pgrouting",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "4.0.0-1.pgdg12+1",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "enabled": false,
@@ -675,13 +683,14 @@
       "name": "plpgsql_check",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "2.8.4-1.pgdg13+1",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.3",
-        "commit": "c7ce7004c54feeae0fe8b7b7bd58464be061e48d"
+        "tag": "v2.8.4",
+        "commit": "1482592c208989e87e7026946d47ded51318c503"
       },
       "build": {
         "type": "pgxs"
@@ -697,6 +706,7 @@
       "name": "postgis",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "3.6.1+dfsg-1.pgdg13+1",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
@@ -739,6 +749,7 @@
       "name": "rum",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "1.3.15-1.pgdg13+1",
       "category": "search",
       "description": "RUM GiST access method for ranked full-text search.",
       "source": {
@@ -762,6 +773,7 @@
       "displayName": "pgaudit_set_user",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "4.2.0-1.pgdg13+1",
       "category": "security",
       "description": "Audited SET ROLE helper complementing pgaudit.",
       "source": {
@@ -915,6 +927,7 @@
       "displayName": "pgvector",
       "kind": "extension",
       "install_via": "pgdg",
+      "pgdgVersion": "0.8.1-2.pgdg13+1",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {

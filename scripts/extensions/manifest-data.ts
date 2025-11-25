@@ -1,9 +1,26 @@
 /**
  * Canonical catalog of extensions and tools bundled with the aza-pg image.
- * Edit this file to upgrade/downgrade extensions. Run
- *   bun scripts/extensions/generate-manifest.ts
- * to refresh docker/postgres/extensions.manifest.json.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR ALL VERSION INFORMATION.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Edit this file to upgrade/downgrade extensions. Run:
+ *   bun run generate
+ * to refresh all generated files (Dockerfile, extensions.manifest.json, extension-defaults.ts).
+ *
+ * IMPORTANT: Never edit scripts/extension-defaults.ts directly - it is auto-generated from this file.
  */
+
+/**
+ * PostgreSQL base configuration - SINGLE SOURCE OF TRUTH
+ * Used by: Dockerfile generation, CI workflows, build scripts
+ */
+export const MANIFEST_METADATA = {
+  /** PostgreSQL version (e.g., "18.1") */
+  pgVersion: "18.1",
+  /** Base image SHA256 digest for reproducible builds */
+  baseImageSha: "sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f",
+} as const;
 
 export type SourceSpec =
   | { type: "builtin" }
@@ -76,6 +93,15 @@ export interface ManifestEntry {
   aptPackages?: string[];
   notes?: string[];
   install_via?: "pgdg" | "source";
+  /**
+   * Full PGDG Debian package version string for apt-installable extensions.
+   * Only applicable when install_via === "pgdg".
+   * Example: "2.8.4-1.pgdg13+1" for postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1
+   *
+   * IMPORTANT: This is the SINGLE SOURCE OF TRUTH for PGDG versions.
+   * The semantic version here should match the source.tag (e.g., tag "v2.8.4" → pgdgVersion "2.8.4-...")
+   */
+  pgdgVersion?: string;
   enabled?: boolean;
   /**
    * Enable this extension in regression test mode even if disabled in production.
@@ -103,6 +129,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgvector",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "0.8.1-2.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -126,6 +153,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_cron",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "1.6.7-2.pgdg13+1",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
     source: {
@@ -150,6 +178,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgaudit",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "18.0-2.pgdg13+1",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -230,6 +259,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "hypopg",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "1.4.2-2.pgdg13+1",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
     source: {
@@ -262,12 +292,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "plpgsql_check",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "2.8.4-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.8.3",
+      tag: "v2.8.4",
     },
     build: { type: "pgxs" },
     runtime: { sharedPreload: false, defaultEnable: false },
@@ -326,6 +357,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgsql-http",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "1.7.0-3.pgdg13+1",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
     source: {
@@ -395,6 +427,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "rum",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "1.3.15-1.pgdg13+1",
     category: "search",
     description: "RUM GiST access method for ranked full-text search.",
     source: {
@@ -411,6 +444,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "postgis",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "3.6.1+dfsg-1.pgdg13+1",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
@@ -448,6 +482,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgrouting",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "4.0.0-1.pgdg12+1",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
@@ -626,6 +661,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_repack",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "1.5.3-1.pgdg13+1",
     category: "maintenance",
     description: "Online table/index reorganization without long locks.",
     source: {
@@ -746,6 +782,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_partman",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "5.3.1-2.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -787,6 +824,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "2.19-1.pgdg13+1",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {
@@ -846,6 +884,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgaudit_set_user",
     kind: "extension",
     install_via: "pgdg",
+    pgdgVersion: "4.2.0-1.pgdg13+1",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",
     source: {

@@ -20,7 +20,11 @@
       "aptPackages": ["clang", "llvm", "pkg-config", "make"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+          "Source build required for latest features"
+        ]
       },
       "sourceUrl": "https://github.com/supabase/pg_jsonschema",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
@@ -46,11 +50,13 @@
       "dependencies": ["timescaledb"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": [
+          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v1.21.0 (1 version behind)",
+          "Alt: Timescale repo v1.22.0 - timescaledb-toolkit-postgresql-18",
+          "Source build for latest v1.22.0"
+        ]
       },
-      "notes": [
-        "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility."
-      ],
       "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
       "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
     },
@@ -75,7 +81,12 @@
       "dependencies": ["vector"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": true
+        "defaultEnable": true,
+        "notes": [
+          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.7.1 (2 versions behind)",
+          "Alt: Timescale repo - NO PG18 packages available",
+          "Source build required for v0.9.0"
+        ]
       },
       "sourceUrl": "https://github.com/timescale/pgvectorscale",
       "docsUrl": "https://github.com/timescale/pgvectorscale#readme"

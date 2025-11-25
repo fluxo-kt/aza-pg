@@ -6,9 +6,9 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 
 | Repository    | PG18 Support | Extensions               | Use Case                                   |
 | ------------- | ------------ | ------------------------ | ------------------------------------------ |
-| **PGDG**      | ✅ Full      | 11 (w/ exact versions)   | Primary source; stable, tested packages    |
+| **PGDG**      | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages    |
 | **Pigsty**    | ✅ Full      | 421+                     | Alternative when PGDG lacks extension      |
-| **Timescale** | ✅ Full      | 3 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community)   |
+| **Timescale** | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community)   |
 | **Percona**   | ❌ No PG18   | ~10                      | Future option when PG18 packages available |
 
 ## Decision Matrix
@@ -24,6 +24,7 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 - Rust extensions (pgrx-based) - PGDG excludes these
 - Extension needs newer version than PGDG offers
 - Custom patches or features required
+- TimescaleDB with full TSL features (continuous aggregates, compression policies)
 
 **When to consider Pigsty:**
 
@@ -31,21 +32,31 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 - Version 1-2 behind is acceptable
 - Need rapid deployment without compilation
 
+**When to consider Timescale repo:**
+
+- Need TSL-licensed TimescaleDB features (not just Apache 2.0 features)
+- Want official Timescale packages instead of source builds
+- Need timescaledb_toolkit with matching version
+
 ## PGDG Extensions (PG18)
 
 Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 
-| Extension   | PGDG Version | Source Tag | Match |
-| ----------- | ------------ | ---------- | ----- |
-| pgvector    | 0.8.1        | v0.8.1     | ✅    |
-| timescaledb | 2.23.1       | 2.23.1     | ✅    |
-| pg_cron     | 1.6.5        | v1.6.5     | ✅    |
-| pgaudit     | 18.0         | 18.0       | ✅    |
-| hll         | 2.19         | v2.19      | ✅    |
-| postgis     | 3.6.1        | 3.6.1      | ✅    |
-| pgrouting   | 4.0.0        | v4.0.0     | ✅    |
-| pg_partman  | 5.3.1        | v5.3.1     | ✅    |
-| pg_repack   | 1.5.3        | ver_1.5.3  | ✅    |
+| Extension     | PGDG Version | Source Tag | Pigsty Alt     |
+| ------------- | ------------ | ---------- | -------------- |
+| pgvector      | 0.8.1        | v0.8.1     | v0.8.0         |
+| pg_cron       | 1.6.7        | v1.6.7     | v1.6.7 (same)  |
+| pgaudit       | 18.0         | 18.0       | v18.0 (same)   |
+| hypopg        | 1.4.2        | 1.4.2      | v1.4.2 (same)  |
+| plpgsql_check | 2.8.4        | v2.8.4     | v2.8.4 (same)  |
+| http          | 1.7.0        | v1.7.0     | v1.7.0 (same)  |
+| rum           | 1.3.15       | 1.3.15     | v1.3.15 (same) |
+| hll           | 2.19         | v2.19      | v2.19 (same)   |
+| postgis       | 3.6.1        | 3.6.1      | v3.6.1 (same)  |
+| pgrouting     | 4.0.0        | v4.0.0     | v4.0.0 (same)  |
+| pg_partman    | 5.3.1        | v5.3.1     | v5.3.1 (same)  |
+| pg_repack     | 1.5.3        | ver_1.5.3  | v1.5.3 (same)  |
+| set_user      | 4.2.0        | REL4_2_0   | v4.2.0 (same)  |
 
 ## Source-Built Extensions
 
@@ -53,20 +64,33 @@ These extensions MUST be built from source (no PGDG packages):
 
 ### Rust/pgrx Extensions
 
-| Extension               | Reason             | Version |
-| ----------------------- | ------------------ | ------- |
-| **wrappers**            | Rust FDW framework | v0.5.7  |
-| **vectorscale**         | Rust pgrx          | 0.9.0   |
-| **pg_jsonschema**       | Rust pgrx          | commit  |
-| **timescaledb_toolkit** | Rust pgrx          | 1.22.0  |
+| Extension               | Version | Pigsty Alt | Timescale Alt | Notes                          |
+| ----------------------- | ------- | ---------- | ------------- | ------------------------------ |
+| **wrappers**            | v0.5.7  | v0.5.0     | ❌            | Pigsty 2 versions behind       |
+| **vectorscale**         | 0.9.0   | v0.7.1     | ❌ (no PG18)  | Source required for latest     |
+| **pg_jsonschema**       | commit  | v0.3.3     | ❌            | Source required for latest     |
+| **timescaledb_toolkit** | 1.22.0  | v1.21.0    | v1.22.0       | Timescale repo has exact match |
+
+### TimescaleDB (Special Case)
+
+| Extension       | Version | Pigsty Alt            | Timescale Alt | Notes                |
+| --------------- | ------- | --------------------- | ------------- | -------------------- |
+| **timescaledb** | 2.23.1  | v2.20.0 (Apache only) | v2.23.1 (TSL) | Source build for TSL |
 
 ### Other Source-Built
 
-| Extension           | Reason                  | Notes             |
-| ------------------- | ----------------------- | ----------------- |
-| **pg_stat_monitor** | Percona repo lacks PG18 | Using commit SHA  |
-| **pgsodium**        | Not in PGDG             | Built from source |
-| **pgmq**            | Not in PGDG             | Rust-based        |
+| Extension           | Version | Pigsty Alt | Percona Alt  | Notes                      |
+| ------------------- | ------- | ---------- | ------------ | -------------------------- |
+| **pg_stat_monitor** | git-ref | v2.1       | ❌ (no PG18) | Pinned commit for PG18     |
+| **pgsodium**        | v3.1.9  | v3.1.9     | ❌           | Pigsty has exact match     |
+| **pgmq**            | v1.7.0  | v1.6       | ❌           | Source for latest features |
+| **pg_hashids**      | v1.2.1  | v1.2.1     | ❌           | Pigsty has exact match     |
+| **wal2json**        | 2.6     | v2.6       | ❌           | Pigsty has exact match     |
+| **pg_safeupdate**   | 1.5     | v1.5       | ❌           | Pigsty has exact match     |
+| **pgq**             | v3.5.1  | v3.5.1     | ❌           | Pigsty has exact match     |
+| **vault**           | v0.3.1  | v0.3.1     | ❌           | Supabase-specific          |
+| **index_advisor**   | v0.2.0  | ❌         | ❌           | Supabase-specific          |
+| **pgroonga**        | 4.0.4   | PG13-17    | ❌           | Pigsty lacks PG18          |
 
 ## Repository Details
 
@@ -84,33 +108,77 @@ curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o
 ### Pigsty (pigsty.io)
 
 ```bash
-# Repository info: https://pigsty.io/docs/pgsql/ext/#extension-repo
+# Install pig CLI tool
+curl -fsSL https://repo.pigsty.io/pig | bash
+
+# Setup repository
+pig repo set
+
+# Install PostgreSQL 18 kernel
+pig install pg18
+
+# Install extension for PG18
+pig install pg_duckdb -v 18
 ```
 
-- **Pros:** 421+ extensions, fast deployment
-- **Cons:** Versions may lag (e.g., wrappers v0.5.0 vs v0.5.7)
+- **Catalog:** https://ext.pigsty.io/
+- **Pros:** 421+ extensions, fast deployment, no compilation needed
+- **Cons:** Versions may lag 1-2 behind (e.g., wrappers v0.5.0 vs v0.5.7)
 - **Status:** Community-maintained, frequent updates
 
 ### Timescale (packagecloud.io/timescale)
 
 ```bash
-# Add repository for TSL-licensed TimescaleDB
-curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash
+# Add Timescale repository (Debian/Ubuntu)
+curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | sudo bash
+
+# Update package cache
+apt-get update
+
+# Install packages
+apt-get install -y timescaledb-2-postgresql-18
+apt-get install -y timescaledb-toolkit-postgresql-18
 ```
 
-- **Packages:** timescaledb-2-postgresql-18, timescaledb-toolkit-postgresql-18
+**Available packages for PG18:**
+
+| Package                           | Version | License |
+| --------------------------------- | ------- | ------- |
+| timescaledb-2-postgresql-18       | 2.23.1  | TSL     |
+| timescaledb-2-oss-postgresql-18   | 2.23.1  | Apache  |
+| timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
+
 - **License:** Timescale License (TSL) - not Apache 2.0
-- **Note:** NO vectorscale PG18 packages available
+- **Note:** NO vectorscale PG18 packages available in Timescale repo
+- **Loader:** timescaledb-2-loader-postgresql-18 also available
 
 ### Percona (repo.percona.com)
 
 ```bash
 # PG18 NOT YET AVAILABLE (as of Nov 2025)
-# Future: wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+
+# Future setup when PG18 releases:
+# wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+# dpkg -i percona-release_latest.generic_all.deb
+# percona-release enable ppg-18 release
+# apt-get update
+
+# Expected packages (when available):
+# apt-get install percona-postgresql-18
+# apt-get install percona-pg_stat_monitor18
 ```
 
-- **Status:** ppg-18 packages not yet released
-- **Monitor:** Check for pg_stat_monitor PG18 packages
+**Status as of Nov 2025:**
+
+- `ppg-18` packages NOT released yet
+- PG18 support tracked in: https://github.com/percona/pg_stat_monitor/issues/566
+- Current Percona packages only support up to PG17
+
+**Why we care:**
+
+- pg_stat_monitor official repo is Percona
+- Currently using git-ref (commit SHA) for PG18 pre-release support
+- When ppg-18 releases, consider switching to official package
 
 ## Version Management
 

@@ -144,6 +144,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       excludeFromAutoTests: false,
       notes: [
         "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
+        "Alt: Pigsty v0.8.0 (1 patch behind)",
         "Regression test coverage includes vector columns, HNSW indexing, and similarity search",
       ],
     },
@@ -169,6 +170,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       excludeFromAutoTests: false,
       notes: [
         "PGDG: postgresql-18-cron (v1.6.7-2.pgdg13+1)",
+        "Alt: Pigsty v1.6.7 (same version)",
         "Preloaded by default - background worker scheduling enabled",
         "Job scheduling tested in functional test suite",
       ],
@@ -194,6 +196,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "PGDG: postgresql-18-pgaudit (v18.0-2.pgdg13+1)",
+        "Alt: Pigsty v18.0 (same version)",
         "Tune pgaudit.log to control verbosity.",
       ],
     },
@@ -301,7 +304,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hypopg (v1.4.2-2.pgdg13+1)"],
+      notes: [
+        "PGDG: postgresql-18-hypopg (v1.4.2-2.pgdg13+1)",
+        "Alt: Pigsty v1.4.2 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/HypoPG/hypopg",
     docsUrl: "https://hypopg.readthedocs.io",
@@ -321,7 +327,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG. Source build required."],
+      notes: ["NOT in PGDG or Pigsty (Supabase-specific extension)", "Source build required"],
     },
     sourceUrl: "https://github.com/supabase/index_advisor",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/index_advisor",
@@ -342,7 +348,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-plpgsql-check (v2.8.4-1.pgdg13+1)"],
+      notes: [
+        "PGDG: postgresql-18-plpgsql-check (v2.8.4-1.pgdg13+1)",
+        "Alt: Pigsty v2.8.4 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",
     docsUrl: "https://github.com/okbob/plpgsql_check#readme",
@@ -363,7 +372,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "safeupdate",
-      notes: ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."],
+      notes: [
+        "NOT in PGDG. Alt: Pigsty v1.5 (same version)",
+        "Requires shared_preload_libraries to intercept UPDATE/DELETE queries.",
+      ],
     },
     sourceUrl: "https://github.com/eradman/pg-safeupdate",
     docsUrl: "https://github.com/eradman/pg-safeupdate#readme",
@@ -412,7 +424,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-http (v1.7.0-3.pgdg13+1)"],
+      notes: ["PGDG: postgresql-18-http (v1.7.0-3.pgdg13+1)", "Alt: Pigsty v1.7.0 (same version)"],
     },
     sourceUrl: "https://github.com/pramsey/pgsql-http",
     docsUrl: "https://github.com/pramsey/pgsql-http#readme",
@@ -467,8 +479,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     ],
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
-      "NOT available in PGDG for PostgreSQL 18 (available only for PG 13-17 in third-party repos like Pigsty)",
-      "Compiled from source due to lack of official PGDG package support for PG18",
+      "NOT available in PGDG for PostgreSQL 18",
+      "Alt: Pigsty v4.0.0 - PG13-17 only, NO PG18 packages",
+      "Source build required for PG18",
     ],
     sourceUrl: "https://github.com/pgroonga/pgroonga",
     docsUrl: "https://pgroonga.github.io",
@@ -489,7 +502,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-rum (v1.3.15-1.pgdg13+1)"],
+      notes: ["PGDG: postgresql-18-rum (v1.3.15-1.pgdg13+1)", "Alt: Pigsty v1.3.15 (same version)"],
     },
     sourceUrl: "https://github.com/postgrespro/rum",
     docsUrl: "https://github.com/postgrespro/rum#readme",
@@ -531,7 +544,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)"],
+      notes: [
+        "PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)",
+        "Alt: Pigsty v3.6.1 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/postgis/postgis",
     docsUrl: "https://postgis.net/documentation",
@@ -558,7 +574,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)"],
+      notes: [
+        "PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)",
+        "Alt: Pigsty v4.0.0 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/pgRouting/pgrouting",
     docsUrl: "https://docs.pgrouting.org",
@@ -580,6 +599,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       preloadInComprehensiveTest: true,
       notes: [
+        "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
         "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
         "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
         "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
@@ -605,7 +625,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG (Supabase). Source build required."],
+      notes: [
+        "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
+        "Source build required",
+      ],
     },
     sourceUrl: "https://github.com/supabase/vault",
     docsUrl: "https://supabase.com/docs/guides/database/vault",
@@ -627,7 +650,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       patches: ['s/pgrx = "0\\.16\\.0"/pgrx = "=0.16.1"/'],
     },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
-    runtime: { sharedPreload: false, defaultEnable: false },
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: false,
+      notes: [
+        "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+        "Source build required for latest features",
+      ],
+    },
     sourceUrl: "https://github.com/supabase/pg_jsonschema",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/pg_jsonschema",
   },
@@ -645,7 +675,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG. Source build required."],
+      notes: ["NOT in PGDG. Alt: Pigsty v1.2.1 (same version)", "Source build or Pigsty package"],
     },
     sourceUrl: "https://github.com/iCyberon/pg_hashids",
     docsUrl: "https://github.com/iCyberon/pg_hashids#readme",
@@ -661,7 +691,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v1.7.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
-    runtime: { sharedPreload: false, defaultEnable: true },
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: true,
+      notes: [
+        "NOT in PGDG. Alt: Pigsty v1.6 (1 minor version behind)",
+        "Source build for latest v1.7.0",
+      ],
+    },
     sourceUrl: "https://github.com/pgmq/pgmq",
     docsUrl: "https://github.com/pgmq/pgmq#readme",
   },
@@ -717,13 +754,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v3.5.1",
     },
     build: { type: "pgxs" },
-    runtime: { sharedPreload: false, defaultEnable: false },
-    notes: [
-      "Compiled from source (NOT available in PGDG for PostgreSQL 18)",
-      "Pure PLpgSQL extension with no external dependencies",
-      "Installs into pg_catalog schema (non-relocatable)",
-      "Build time: ~2-3 minutes",
-    ],
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: false,
+      notes: [
+        "NOT in PGDG. Alt: Pigsty v3.5.1 (same version)",
+        "Pure PLpgSQL extension with no external dependencies",
+        "Installs into pg_catalog schema (non-relocatable)",
+      ],
+    },
     sourceUrl: "https://github.com/pgq/pgq",
     docsUrl: "https://wiki.postgresql.org/wiki/PGQ_Tutorial",
   },
@@ -744,7 +783,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-repack (v1.5.3-1.pgdg13+1)"],
+      notes: [
+        "PGDG: postgresql-18-repack (v1.5.3-1.pgdg13+1)",
+        "Alt: Pigsty v1.5.3 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/reorg/pg_repack",
     docsUrl: "https://reorg.github.io/pg_repack",
@@ -760,11 +802,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       ref: "b00caafb684b3bd64f020ccd057303cd8a7af0d8",
     },
     build: { type: "pgxs" },
-    runtime: { sharedPreload: true, defaultEnable: true },
-    notes: [
-      "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
-      "Pinned to pg_stat_monitor 2.3.0 pre-release commit 4ac02b24433894b320b044ed30747d0c38e79fa5 for PostgreSQL 18 support.",
-    ],
+    runtime: {
+      sharedPreload: true,
+      defaultEnable: true,
+      notes: [
+        "NOT in PGDG. Alt: Pigsty v2.1 (behind). Alt: Percona repo - NO PG18 packages yet",
+        "Pinned to pre-release commit for PG18 support",
+        "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
+      ],
+    },
     sourceUrl: "https://github.com/percona/pg_stat_monitor",
     docsUrl: "https://docs.percona.com/pg-stat-monitor",
   },
@@ -809,8 +855,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo OR source build. NOT in PGDG.",
-        "Enabled by default with regression time-series capabilities",
+        "NOT in PGDG. Alt: Pigsty v2.20.0 (Apache 2.0 only, no TSL features)",
+        "Alt: Timescale repo v2.23.1 (full TSL license) - timescaledb-2-postgresql-18",
+        "Source build for TSL-licensed v2.23.1",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
       ],
@@ -831,10 +878,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "cargo-pgrx", subdir: "extension", features: ["pg18"], noDefaultFeatures: true },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["timescaledb"],
-    runtime: { sharedPreload: false, defaultEnable: false },
-    notes: [
-      "Pinned to timescaledb_toolkit 1.22.0 (commit af5519c282fa2716fd87c4d9b8a15b0d857e9f29) for PostgreSQL 18 compatibility.",
-    ],
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: false,
+      notes: [
+        "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v1.21.0 (1 version behind)",
+        "Alt: Timescale repo v1.22.0 - timescaledb-toolkit-postgresql-18",
+        "Source build for latest v1.22.0",
+      ],
+    },
     sourceUrl: "https://github.com/timescale/timescaledb-toolkit",
     docsUrl: "https://github.com/timescale/timescaledb-toolkit/tree/main/docs",
   },
@@ -852,7 +904,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["Requires wal_level=logical in postgresql.conf for CDC functionality."],
+      notes: [
+        "NOT in PGDG. Alt: Pigsty v2.6 (same version)",
+        "Requires wal_level=logical in postgresql.conf for CDC functionality.",
+      ],
     },
     sourceUrl: "https://github.com/eulerto/wal2json",
     docsUrl: "https://github.com/eulerto/wal2json#readme",
@@ -877,6 +932,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadLibraryName: "pg_partman_bgw",
       notes: [
         "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
+        "Alt: Pigsty v5.3.1 (same version)",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
     },
@@ -897,7 +953,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "cargo-pgrx", subdir: "pgvectorscale", features: ["pg18"] },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["vector"],
-    runtime: { sharedPreload: false, defaultEnable: true },
+    runtime: {
+      sharedPreload: false,
+      defaultEnable: true,
+      notes: [
+        "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.7.1 (2 versions behind)",
+        "Alt: Timescale repo - NO PG18 packages available",
+        "Source build required for v0.9.0",
+      ],
+    },
     sourceUrl: "https://github.com/timescale/pgvectorscale",
     docsUrl: "https://github.com/timescale/pgvectorscale#readme",
   },
@@ -918,7 +982,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)"],
+      notes: ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)", "Alt: Pigsty v2.19 (same version)"],
     },
     sourceUrl: "https://github.com/citusdata/postgresql-hll",
     docsUrl: "https://github.com/citusdata/postgresql-hll#readme",
@@ -946,7 +1010,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["CLI tool. NOT a PostgreSQL extension.", "Installs /usr/bin/pgbackrest."],
+      notes: [
+        "CLI tool. NOT a PostgreSQL extension.",
+        "Alt: PGDG binary package. Alt: Pigsty binary package. Alt: Percona (no PG18)",
+        "Installs /usr/bin/pgbackrest.",
+      ],
     },
     sourceUrl: "https://github.com/pgbackrest/pgbackrest",
     docsUrl: "https://pgbackrest.org/user-guide.html",
@@ -968,6 +1036,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: [
         "CLI tool. NOT a PostgreSQL extension.",
+        "Alt: PGDG binary package. Alt: Pigsty binary package.",
         "Binary installed to /usr/local/bin/pgbadger.",
       ],
     },
@@ -992,7 +1061,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
-      notes: ["PGDG: postgresql-18-set-user (v4.2.0-1.pgdg13+1)"],
+      notes: [
+        "PGDG: postgresql-18-set-user (v4.2.0-1.pgdg13+1)",
+        "Alt: Pigsty v4.2.0 (same version)",
+      ],
     },
     sourceUrl: "https://github.com/pgaudit/set_user",
     docsUrl: "https://github.com/pgaudit/set_user#readme",

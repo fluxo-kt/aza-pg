@@ -14,11 +14,11 @@ readonly DEFAULT_RAM_MB=1024
 
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
 # This list is automatically derived from the extensions manifest and regenerated when the manifest changes.
+# Note: timescaledb is now enabled by default for time-series features
 # Optional libraries requiring preload (enable via POSTGRES_SHARED_PRELOAD_LIBRARIES):
 #   - pgsodium: Requires pgsodium_getkey script for TCE (Transparent Column Encryption)
 #   - supautils: Superuser guards for managed Postgres
-#   - timescaledb: Time-series database features (disabled by default)
-#   - safeupdate: UPDATE/DELETE safety guard (disabled by default)
+#   - safeupdate: UPDATE/DELETE safety guard
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
 readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb"
 

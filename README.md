@@ -17,7 +17,7 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 - PostgreSQL 18 only (no multi-version support)
 - Docker Compose only (no Kubernetes)
 - Auto-config requires cgroup v2 or `POSTGRES_MEMORY` env var
-- Connection limits: 80 (≤512MB), 120 (<4GB), 200 (≥4GB)
+- Connection limits: 60 (≤2GB), 84 (2-4GB), 102 (4-8GB), 120 (≥8GB) with `mixed` workload default
 - PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
 
 ## Why aza-pg?
@@ -125,12 +125,14 @@ Configs in `stacks/{primary,replica,single}`.
 
 Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at startup:
 
-| RAM  | shared_buffers | effective_cache_size | work_mem | max_connections |
-| ---- | -------------- | -------------------- | -------- | --------------- |
-| 512M | 128M (25%)     | 384M (75%)           | 1M       | 80              |
-| 2G   | 512M (25%)     | 1536M (75%)          | 4M       | 120             |
-| 4G   | 1G (25%)       | 3G (75%)             | 5M       | 200             |
-| 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 200             |
+| RAM  | shared_buffers | effective_cache_size | work_mem | max_connections\* |
+| ---- | -------------- | -------------------- | -------- | ----------------- |
+| 512M | 128M (25%)     | 384M (75%)           | 1M       | 60                |
+| 2G   | 512M (25%)     | 1536M (75%)          | 4M       | 84                |
+| 4G   | 1G (25%)       | 3G (75%)             | 5M       | 102               |
+| 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 120               |
+
+\*Connection limits shown for `mixed` workload (default). Set `POSTGRES_WORKLOAD_TYPE=web` (200), `oltp` (300), or `dw` (100) to change base limit. RAM-tier scaling applies: 50%/70%/85%/100% for <2GB/2-4GB/4-8GB/≥8GB.
 
 Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 

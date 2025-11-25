@@ -472,28 +472,30 @@ All enabled extensions have functional tests with 100% coverage across three dim
 
 ### Test Coverage Matrix
 
-| Category      | Extensions | Tests    | Coverage |
-| ------------- | ---------- | -------- | -------- |
-| AI/Vector     | 2          | 6        | 100%     |
-| Analytics     | 1          | 2        | 100%     |
-| CDC           | 1          | 3        | 100%     |
-| GIS           | 2          | 6        | 100%     |
-| Indexing      | 2          | 4        | 100%     |
-| Integration   | 2          | 6        | 100%     |
-| Language      | 1          | 4        | 100%     |
-| Maintenance   | 2          | 5        | 100%     |
-| Observability | 4          | 8        | 100%     |
-| Operations    | 2          | 4        | 100%     |
-| Performance   | 2          | 5        | 100%     |
-| Quality       | 1          | 3        | 100%     |
-| Queueing      | 1          | 4        | 100%     |
-| Safety        | 3          | 6        | 100%     |
-| Search        | 3          | 6        | 100%     |
-| Security      | 4          | 10       | 100%     |
-| Timeseries    | 2          | 5        | 100%     |
-| Utilities     | 1          | 4        | 100%     |
-| Validation    | 1          | 4        | 100%     |
-| **TOTAL**     | **38**     | **117+** | **100%** |
+| Category      | Extensions | Tests  | Coverage |
+| ------------- | ---------- | ------ | -------- |
+| AI/Vector     | 2          | 6      | 100%     |
+| Analytics     | 1          | 2      | 100%     |
+| CDC           | 1          | 3      | 100%     |
+| GIS           | 2          | 6      | 100%     |
+| Indexing      | 2          | 4      | 100%     |
+| Integration   | 2          | 6      | 100%     |
+| Language      | 1          | 4      | 100%     |
+| Maintenance   | 2          | 5      | 100%     |
+| Observability | 4          | 8      | 100%     |
+| Operations    | 2          | 4      | 100%     |
+| Performance   | 2          | 5      | 100%     |
+| Quality       | 1          | 3      | 100%     |
+| Queueing      | 1          | 4      | 100%     |
+| Safety        | 3          | 6      | 100%     |
+| Search        | 3          | 6      | 100%     |
+| Security      | 4          | 10     | 100%     |
+| Timeseries    | 2          | 5      | 100%     |
+| Utilities     | 1          | 4      | 100%     |
+| Validation    | 1          | 4      | 100%     |
+| **TOTAL**     | **37**     | **91** | **100%** |
+
+> **Note:** For current extension counts (enabled/disabled/total), see `docs/.generated/docs-data.json`.
 
 ### Auto-Config Test Coverage
 

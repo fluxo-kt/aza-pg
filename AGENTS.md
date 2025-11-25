@@ -117,10 +117,10 @@ docker run -e POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_stat_mo
 
 **Workload Optimization** (`POSTGRES_WORKLOAD_TYPE`):
 
-- `web` (default): max_connections=200, balanced for OLTP + read-heavy queries
+- `mixed` (default): max_connections=120, balanced general-purpose workload
+- `web`: max_connections=200, balanced for OLTP + read-heavy queries
 - `oltp`: max_connections=300, optimized for high-concurrency transactions
 - `dw`: max_connections=100, optimized for analytics/data warehouse (high statistics_target=500)
-- `mixed`: max_connections=120, balanced general-purpose workload
 
 **Storage Tuning** (`POSTGRES_STORAGE_TYPE`):
 

@@ -214,8 +214,15 @@ function getVersion(entry: ManifestEntry): string {
       .replace(/^REL/, "") // REL4_2_0 -> 4_2_0
       .replace(/^v(\d)/, "$1"); // v1.0.0 -> 1.0.0 (only if followed by digit)
 
+    // Handle name_version patterns (e.g., wal2json_2_6 -> 2.6, pgflow@0.7.2 -> 0.7.2)
+    // Extract numeric version from patterns like "name_X_Y" or "name@X.Y.Z"
+    const nameVersionMatch = version.match(/^[a-zA-Z][a-zA-Z0-9]*[_@](.+)$/);
+    if (nameVersionMatch?.[1]) {
+      version = nameVersionMatch[1];
+    }
+
     // Replace underscores with dots for versioned tags
-    // Examples: wal2json_2_6 -> wal2json.2.6, 4_2_0 -> 4.2.0
+    // Examples: 2_6 -> 2.6, 4_2_0 -> 4.2.0
     version = version.replace(/_/g, ".");
 
     return version;
@@ -264,9 +271,10 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 }
 
 // Source installation method emoji badges
+// Note: All emojis use variation selector (U+FE0F) for consistent rendering
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
-  pgdg: "📦",
+  pgdg: "📦️",
   source: "🏗️",
 };
 

@@ -50,6 +50,10 @@ services:
 
     environment:
       PGBOUNCER_AUTH_PASS: ${PGBOUNCER_AUTH_PASS:?PGBOUNCER_AUTH_PASS is required}
+      PGBOUNCER_LISTEN_ADDR: ${PGBOUNCER_LISTEN_ADDR:-0.0.0.0}
+      PGBOUNCER_SERVER_SSLMODE: ${PGBOUNCER_SERVER_SSLMODE:-prefer}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-200}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
 
     volumes:
       - ./configs/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro

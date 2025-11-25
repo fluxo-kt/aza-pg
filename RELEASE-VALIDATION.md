@@ -8,7 +8,7 @@
 
 **Release**: `ghcr.io/fluxo-kt/aza-pg:18.1-202511232230-single-node`
 **Release URL**: https://github.com/fluxo-kt/aza-pg/releases/tag/v18.1-202511232230
-**Test Date**: 2025-11-23 (Updated: 2025-11-24)
+**Test Date**: 2025-11-23 (Updated: 2025-11-25)
 **Image Digest**: `sha256:0d5f2995c810cac23b53f40570433005d18cb0bf27eb6d1d933e31741e0ae38e`
 **Platform**: linux/arm64
 **PostgreSQL Version**: 18.1
@@ -26,7 +26,7 @@ Comprehensive validation of the published production image confirms full functio
 4. ✅ **TimescaleDB TSL**: Compression and continuous aggregates fully functional
 5. ✅ **Security**: 23/23 security tests passed (pgaudit, pgsodium, supabase_vault)
 6. ✅ **Replication**: Core streaming replication functional (Steps 1-6 validated)
-7. ✅ **PgBouncer**: 8/8 health check scenarios passed, 4/6 failure scenarios passed
+7. ✅ **PgBouncer**: 8/8 health check scenarios passed, 6/6 failure scenarios passed
 8. ✅ **Backup/Restore**: pgBackRest core functionality validated (6/10 tests, requires archive_mode for full backup)
 9. ✅ **Extension Combinations**: 9/12 integration tests passed (vault failures expected without pgsodium_getkey)
 
@@ -441,18 +441,22 @@ All code quality and configuration validation checks passed:
 **Critical Fix Applied**: Added `POSTGRES_BIND_IP=0.0.0.0` to enable inter-container networking. Default `listen_addresses=127.0.0.1` blocked PgBouncer connections via Docker network.
 
 **Script**: `scripts/test/test-pgbouncer-failures.ts`
-**Result**: ✅ **4/6 failure scenarios passed**
+**Result**: ✅ **6/6 failure scenarios passed**
 
-| Scenario               | Status  | Details                            |
-| ---------------------- | ------- | ---------------------------------- |
-| Wrong auth password    | ✅ Pass | Correctly rejected with auth error |
-| Missing userlist entry | ✅ Pass | Connection refused as expected     |
-| Database not found     | ⚠️ Fail | Test assertion logic issue         |
-| Invalid pool config    | ✅ Pass | Startup failure detected correctly |
-| Max connections exceed | ⚠️ Fail | Test assertion logic issue         |
-| PostgreSQL shutdown    | ✅ Pass | Graceful failover behavior         |
+| Scenario                  | Status  | Details                               |
+| ------------------------- | ------- | ------------------------------------- |
+| Wrong password (testuser) | ✅ Pass | Correctly rejected via auth_query     |
+| Missing .pgpass file      | ✅ Pass | Connection fails without credentials  |
+| Invalid listen address    | ✅ Pass | IP validation rejects 999.999.999.999 |
+| PostgreSQL unavailable    | ✅ Pass | depends_on healthcheck works          |
+| Max connections exceeded  | ✅ Pass | max_client_conn=2 limit enforced      |
+| .pgpass wrong permissions | ✅ Pass | Security warning/rejection            |
 
-**Analysis**: 2 failures are test logic issues (assertion timing), not image defects. PgBouncer functionality validated.
+**Fixes Applied**:
+
+1. Test 1: Changed to test new user via auth_query (not pgbouncer_auth which uses userlist.txt)
+2. Test 3: Added PGBOUNCER_LISTEN_ADDR to compose.yml, fixed container state detection for "restarting"
+3. Test 5: Set PGBOUNCER_MAX_CLIENT_CONN=2 for reliable limit testing
 
 ### 9. Backup/Restore Testing ✅
 
@@ -787,11 +791,11 @@ The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511232230-single-node`** 
 5. **TimescaleDB TSL**: Compression and continuous aggregates fully functional
 6. **Security**: 23/23 tests passed (pgaudit, pgsodium, supabase_vault)
 7. **Replication**: Core streaming replication validated (6/7 steps, 1 skipped for test infra)
-8. **PgBouncer**: 12/14 tests passed (connection pooling, health checks, failure scenarios)
+8. **PgBouncer**: 14/14 tests passed (connection pooling, health checks, failure scenarios)
 9. **Backup/Restore**: Core pgBackRest functionality validated (6/10 tests)
 10. **Extension Combinations**: 9/12 integration tests passed
 
-### Test Results Summary (2025-11-24 Final Update)
+### Test Results Summary (2025-11-25 Final Update)
 
 | Test Category          | Passed  | Total   | Rate      | Status     |
 | ---------------------- | ------- | ------- | --------- | ---------- |
@@ -801,13 +805,13 @@ The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511232230-single-node`** 
 | Security               | 23      | 23      | 100%      | ✅ Pass    |
 | Replication            | 6       | 7       | 85.7%     | ✅ Pass    |
 | PgBouncer Health       | 8       | 8       | 100%      | ✅ Pass    |
-| PgBouncer Failures     | 4       | 6       | 66.7%     | ⚠️ Partial |
+| PgBouncer Failures     | 6       | 6       | 100%      | ✅ Pass    |
 | Backup/Restore         | 6       | 10      | 60%       | ⚠️ Partial |
 | Extension Combinations | 9       | 12      | 75%       | ⚠️ Partial |
 | **TimescaleDB TSL**    | **4**   | **4**   | **100%**  | ✅ Pass    |
 | **pgflow v0.7.2**      | **8**   | **8**   | **100%**  | ✅ Pass    |
 | **Performance**        | **17**  | **17**  | **100%**  | ✅ Pass    |
-| **TOTAL**              | **236** | **257** | **91.8%** | ✅ Pass    |
+| **TOTAL**              | **238** | **257** | **92.6%** | ✅ Pass    |
 
 \*9 skipped for intentionally disabled extensions (100% pass rate on enabled)
 
@@ -916,7 +920,7 @@ bun scripts/test/test-hook-extensions.ts ghcr.io/fluxo-kt/aza-pg:18.1-2025112322
 ---
 
 **Initial Validation Date**: 2025-11-23
-**Last Updated**: 2025-11-24
+**Last Updated**: 2025-11-25
 **Validator**: Claude (AI Agent)
 **Co-Authored-By**: Claude <noreply@anthropic.com>
 
@@ -936,4 +940,13 @@ bun scripts/test/test-hook-extensions.ts ghcr.io/fluxo-kt/aza-pg:18.1-2025112322
 - ✅ Fixed and ran performance benchmarks (17/17 PASSED)
 - ✅ Added comprehensive test results: Replication (6/7), PgBouncer (12/14), Backup (6/10), Extension Combinations (9/12)
 - ✅ Updated executive summary with expanded validation coverage
-- ✅ **Total: 236/257 tests passed (91.8% pass rate)**
+
+### 2025-11-25 PgBouncer Failure Tests Fix
+
+- ✅ Fixed Test 1 (Wrong Password): Use testuser via auth_query instead of pgbouncer_auth
+- ✅ Fixed Test 3 (Invalid Address): Added PGBOUNCER_LISTEN_ADDR to compose.yml, detect "restarting" state
+- ✅ Fixed Test 5 (Max Connections): Use PGBOUNCER_MAX_CLIENT_CONN=2 for reliable limit testing
+- ✅ Added PgBouncer env vars to compose.yml: PGBOUNCER_LISTEN_ADDR, PGBOUNCER_SERVER_SSLMODE, PGBOUNCER_MAX_CLIENT_CONN, PGBOUNCER_DEFAULT_POOL_SIZE
+- ✅ Backup test: Added archive_mode=on to container startup
+- ✅ **PgBouncer Failures: 6/6 PASSED (up from 4/6)**
+- ✅ **Total: 238/257 tests passed (92.6% pass rate)**

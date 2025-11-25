@@ -66,6 +66,7 @@ function generateTestPassword(): string {
 
 /**
  * Test 1: Start Container with pgbackrest
+ * Starts PostgreSQL with archive_mode=on for proper pgBackRest backup support.
  */
 async function testStartContainer(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -76,8 +77,14 @@ async function testStartContainer(config: TestConfig): Promise<TestResult> {
     info("Creating backup volume...");
     await $`docker volume create ${config.backupVolume}`;
 
-    info("Starting primary container with pgbackrest configuration...");
-    await $`docker run -d --name ${config.primaryContainer} -e POSTGRES_PASSWORD=${config.testPassword} -v ${config.backupVolume}:/var/lib/pgbackrest ${config.imageTag}`.quiet();
+    // Start with archive_mode enabled for full pgBackRest functionality
+    // archive_command will be configured after stanza-create
+    info("Starting primary container with archive_mode=on...");
+    await $`docker run -d --name ${config.primaryContainer} \
+      -e POSTGRES_PASSWORD=${config.testPassword} \
+      -v ${config.backupVolume}:/var/lib/pgbackrest \
+      ${config.imageTag} \
+      postgres -c archive_mode=on -c archive_command='/bin/true'`.quiet();
 
     info("Waiting for PostgreSQL to be ready...");
     const ready = await waitForPostgres({
@@ -93,7 +100,7 @@ async function testStartContainer(config: TestConfig): Promise<TestResult> {
     info("Setting permissions on backup volume...");
     await $`docker exec -u root ${config.primaryContainer} chown -R postgres:postgres /var/lib/pgbackrest`;
 
-    success("Container started with pgbackrest configuration");
+    success("Container started with archive_mode=on");
     return { name: "Start Container with pgbackrest", passed: true, duration: Date.now() - start };
   } catch (err) {
     return {
@@ -205,6 +212,7 @@ EOF"`;
 
 /**
  * Test 4: Create Stanza
+ * Creates pgBackRest stanza. archive_mode is already enabled from container start.
  */
 async function testCreateStanza(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -228,6 +236,15 @@ async function testCreateStanza(config: TestConfig): Promise<TestResult> {
     }
 
     success("pgbackrest stanza created");
+
+    // Verify archive_mode is on (was set at container start)
+    const archiveMode =
+      await $`docker exec ${config.primaryContainer} psql -U postgres -tAc "SHOW archive_mode;"`;
+    if (archiveMode.text().trim() !== "on") {
+      throw new Error(`archive_mode is not 'on': ${archiveMode.text().trim()}`);
+    }
+
+    success("archive_mode is enabled");
     return { name: "Create Stanza", passed: true, duration: Date.now() - start };
   } catch (err) {
     return {
@@ -391,8 +408,12 @@ async function testRestoreBackup(config: TestConfig): Promise<TestResult> {
     info("Stopping primary container...");
     await $`docker stop ${config.primaryContainer}`;
 
-    info("Starting restore container...");
-    await $`docker run -d --name ${config.restoreContainer} -e POSTGRES_PASSWORD=${config.testPassword} -v ${config.backupVolume}:/var/lib/pgbackrest ${config.imageTag}`.quiet();
+    info("Starting restore container with archive_mode=on...");
+    await $`docker run -d --name ${config.restoreContainer} \
+      -e POSTGRES_PASSWORD=${config.testPassword} \
+      -v ${config.backupVolume}:/var/lib/pgbackrest \
+      ${config.imageTag} \
+      postgres -c archive_mode=on -c archive_command='/bin/true'`.quiet();
 
     info("Waiting for restore container to be ready...");
     const ready = await waitForPostgres({
@@ -409,7 +430,7 @@ async function testRestoreBackup(config: TestConfig): Promise<TestResult> {
 
     // Stop PostgreSQL in restore container
     info("Stopping PostgreSQL in restore container...");
-    await $`docker exec -u postgres ${config.restoreContainer} pg_ctl stop -D /var/lib/postgresql/18/docker`.nothrow();
+    await $`docker exec -u postgres ${config.restoreContainer} pg_ctl stop -D /var/lib/postgresql/18/docker -m fast`.nothrow();
     await Bun.sleep(3000);
 
     // Copy pgbackrest configuration to postgres-writable location

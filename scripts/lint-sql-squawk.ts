@@ -41,7 +41,7 @@ async function findSqlFiles(): Promise<string[]> {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
   const showHelp = args.includes("--help") || args.includes("-h");
 
   if (showHelp) {

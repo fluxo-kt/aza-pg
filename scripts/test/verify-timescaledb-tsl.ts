@@ -367,7 +367,7 @@ async function testLicenseInfo(): Promise<TestResult> {
  * Main test runner
  */
 async function main() {
-  const args = process.argv.slice(2);
+  const args = Bun.argv.slice(2);
 
   if (args.includes("--help") || args.includes("-h") || args.length === 0) {
     console.log(`

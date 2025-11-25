@@ -85,6 +85,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
+  installMethod: "builtin" | "pgdg" | "source";
 }
 
 // Category display names mapping (ordered by importance)
@@ -262,12 +263,22 @@ function getVersionLink(ext: ExtensionInfo): string | null {
   return null;
 }
 
+// Source installation method emoji badges
+const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
+  builtin: "⚙️",
+  pgdg: "📦",
+  source: "🏗️",
+};
+
 /**
  * Format extension markdown with links
- * Format: **[name](source)** [`version`](release) 📖 — Description
+ * Format: {source_emoji} **[name](source)** [`version`](release) 📖 — Description
  */
 function formatExtensionMarkdown(ext: ExtensionInfo): string {
-  const { displayName, version, sourceUrl, docsUrl, description } = ext;
+  const { displayName, version, sourceUrl, docsUrl, description, installMethod } = ext;
+
+  // Source badge at line start
+  const sourceEmoji = SOURCE_EMOJI[installMethod];
 
   // Format name (with link if sourceUrl available)
   const nameMarkdown = sourceUrl ? `**[${displayName}](${sourceUrl})**` : `**${displayName}**`;
@@ -298,7 +309,7 @@ function formatExtensionMarkdown(ext: ExtensionInfo): string {
       ? ` [📖](${docsUrl})`
       : "";
 
-  return `- ${nameMarkdown}${versionMarkdown}${badgeText}${docsLinkMarkdown} — ${description}`;
+  return `- ${sourceEmoji} ${nameMarkdown}${versionMarkdown}${badgeText}${docsLinkMarkdown} — ${description}`;
 }
 
 /**
@@ -327,6 +338,8 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       sourceUrl: entry.sourceUrl,
       docsUrl: entry.docsUrl,
       source: entry.source,
+      installMethod:
+        entry.kind === "builtin" ? "builtin" : entry.install_via === "pgdg" ? "pgdg" : "source",
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -547,9 +560,15 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("<details>");
   lines.push("<summary><b>Legend</b></summary>");
   lines.push("");
-  lines.push("- **⚡ preloaded**: Loaded via `shared_preload_libraries` on startup");
-  lines.push("- **✨ auto-created**: Automatically created in new databases");
-  lines.push("- **🔧 preload-only**: Module only (no `CREATE EXTENSION` needed)");
+  lines.push("**Source:**");
+  lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
+  lines.push("- 📦 PGDG package (pre-compiled from apt.postgresql.org)");
+  lines.push("- 🏗️ Source build (compiled during Docker image build)");
+  lines.push("");
+  lines.push("**Status:**");
+  lines.push("- ⚡ preloaded: Loaded via `shared_preload_libraries` on startup");
+  lines.push("- ✨ auto-created: Automatically created in new databases");
+  lines.push("- 🔧 preload-only: Module only (no `CREATE EXTENSION` needed)");
   lines.push("- _No badge_: Available on-demand via `CREATE EXTENSION`");
   lines.push("");
   lines.push("</details>");

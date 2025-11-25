@@ -4,11 +4,8 @@
  * Provides type-safe, validated operations for GitHub Actions integration.
  */
 
-// Bun-first: removed node:fs/promises appendFile dependency
-// Using Bun.file() + Bun.write() for file appending
-
 /**
- * Appends content to a file (Bun-first pattern)
+ * Appends content to a file using Bun.file() + Bun.write()
  */
 async function appendToFile(path: string, content: string): Promise<void> {
   const file = Bun.file(path);

@@ -67,7 +67,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - `Bun.file()`, `Bun.write()` over fs/promises
 - `Bun.$` or `Bun.spawn()` over child_process
 - `Bun.env` over process.env
-- Exception: `path` module (no Bun alternative)
+- Exception: `path` module (no Bun alternative), `stat()` from node:fs for directory checks (Bun.file.exists only works for files)
 
 **Linting**: oxlint (fast) + prettier + shellcheck + hadolint + yamllint | TS strict mode
 

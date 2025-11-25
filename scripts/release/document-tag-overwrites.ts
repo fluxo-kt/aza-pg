@@ -15,7 +15,6 @@
  */
 
 import { $ } from "bun";
-// Bun-first: removed node:fs/promises appendFile dependency
 
 interface TagInfo {
   tag: string;

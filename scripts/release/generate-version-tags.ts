@@ -17,8 +17,7 @@
  *   convenience=18.1-single-node,18-single-node,18.1,18
  */
 
-// Bun-first file append helper (no node:fs/promises dependency)
-// Empty export to make this file a module (enables top-level await)
+// Empty export makes this file a module (enables top-level await)
 export {};
 
 interface VersionTags {

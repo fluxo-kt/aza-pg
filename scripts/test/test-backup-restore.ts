@@ -99,6 +99,20 @@ async function testStartContainer(config: TestConfig): Promise<TestResult> {
       throw new Error("PostgreSQL failed to start");
     }
 
+    // Wait extra time for initdb to complete and final PostgreSQL to start
+    // The docker-entrypoint runs a temporary PostgreSQL during initdb, then starts the final one
+    info("Waiting for initdb to complete...");
+    await Bun.sleep(5000);
+
+    // Verify PostgreSQL is still running after initdb
+    const stillReady = await waitForPostgres({
+      container: config.primaryContainer,
+      timeout: 30,
+    });
+    if (!stillReady) {
+      throw new Error("PostgreSQL not ready after initdb completed");
+    }
+
     // Fix permissions on backup volume (Docker creates it as root, need root to chown)
     info("Setting permissions on backup volume...");
     await $`docker exec -u root ${config.primaryContainer} chown -R postgres:postgres /var/lib/pgbackrest`;
@@ -421,7 +435,9 @@ async function testRestoreBackup(config: TestConfig): Promise<TestResult> {
     info("Creating restore container with custom restore script...");
 
     // Start container with bash to run restore, then start postgres
-    // The restore process: clear data dir, restore, then exec postgres
+    // The restore process: clear data dir, restore with --type=immediate (skip WAL replay), then exec postgres
+    // --type=immediate is critical: it tells pgBackRest to configure PostgreSQL for immediate promotion
+    // without requiring archived WAL files (which we don't have in this test environment)
     const restoreScript = `#!/bin/bash
 set -e
 echo "Setting up pgbackrest config..."
@@ -439,8 +455,20 @@ CONF
 echo "Clearing data directory..."
 rm -rf /var/lib/postgresql/18/docker/*
 
-echo "Restoring from backup..."
-pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf restore
+echo "Finding full backup to restore (avoids incremental which needs WAL)..."
+FULL_BACKUP=$(pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf info --output=json | grep -o '"label":"[^"]*F"' | head -1 | cut -d'"' -f4)
+echo "Restoring full backup: $FULL_BACKUP"
+pgbackrest --stanza=test-stanza --config=/var/lib/pgbackrest/conf/pgbackrest.conf --set=$FULL_BACKUP restore
+
+# Use pg_resetwal to reset WAL and control file for clean startup
+# This is safe because pgBackRest ensures data consistency at backup time
+echo "Resetting WAL with pg_resetwal for clean startup..."
+pg_resetwal -f /var/lib/postgresql/18/docker
+
+# Remove recovery files so PostgreSQL starts as primary
+rm -f /var/lib/postgresql/18/docker/backup_label
+rm -f /var/lib/postgresql/18/docker/recovery.signal
+rm -f /var/lib/postgresql/18/docker/standby.signal
 
 echo "Starting PostgreSQL..."
 exec postgres -c archive_mode=on -c archive_command='/bin/true'

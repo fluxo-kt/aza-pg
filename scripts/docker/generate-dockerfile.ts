@@ -217,8 +217,8 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
   const packagesList = enabledPgdgPackages.join(" ");
   const expectedCount = enabledPgdgPackages.length;
 
-  return `RUN --mount=type=cache,target=/var/lib/apt/lists \\
-    --mount=type=cache,target=/var/cache/apt \\
+  return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
     rm -rf /var/lib/apt/lists/* && \\
     apt-get update && \\

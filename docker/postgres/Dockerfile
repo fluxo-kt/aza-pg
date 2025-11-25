@@ -14,7 +14,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
-RUN rm -f /etc/apt/apt.conf.d/docker-clean; \
+RUN set -euo pipefail && \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # Copy build package list first (stable, needed for apt-get)
@@ -67,7 +68,7 @@ COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 
 # Make build script executable (after COPY to ensure file exists)
-RUN chmod +x /usr/local/bin/build-extensions.ts
+RUN set -euo pipefail && chmod +x /usr/local/bin/build-extensions.ts
 
 # Stage for PGXS/autotools/cmake/meson/make/timescaledb builds
 FROM builder-base AS builder-pgxs
@@ -187,8 +188,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
@@ -213,7 +214,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations
-RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
@@ -230,7 +231,7 @@ RUN set -euo pipefail && \
     chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
 
 # Create backup directory with proper ownership
-RUN mkdir -p /backup && chown postgres:postgres /backup
+RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
 
 # OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
 # Base PostgreSQL config (most stable - rarely modified)

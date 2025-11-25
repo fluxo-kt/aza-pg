@@ -102,7 +102,7 @@ jobs:
           echo "Orphaned tags may require manual cleanup"
 
       - name: Verify Dockerfile generation is current
-        run: bun run verify:generated
+        run: bun scripts/verify-generated.ts
 
       - name: Validate manifest
         run: bun run validate

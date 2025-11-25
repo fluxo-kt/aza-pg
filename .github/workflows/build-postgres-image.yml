@@ -138,13 +138,13 @@ jobs:
         run: bun run validate:all
 
       - name: Check documentation consistency
-        run: bun run check:docs
+        run: bun scripts/check-docs-consistency.ts
 
       - name: Run smoke tests
-        run: bun run test:smoke
+        run: bun scripts/test-smoke.ts
 
       - name: Verify manifest sync
-        run: bun run verify:generated
+        run: bun scripts/verify-generated.ts
 
       - name: Validate workflow defaults
         run: bun scripts/ci/validate-workflow-defaults.ts

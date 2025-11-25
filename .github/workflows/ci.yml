@@ -97,7 +97,7 @@ jobs:
         run: bun scripts/ci/verify-manifest-sync.ts
 
       - name: Verify generated files are up to date
-        run: bun run verify:generated
+        run: bun scripts/verify-generated.ts
 
       - name: Repository health check
         run: bun scripts/ci/repository-health-check.ts

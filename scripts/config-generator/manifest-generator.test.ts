@@ -473,13 +473,16 @@ describe("Real Manifest Data Validation", () => {
   });
 
   test("All enabled extensions with source dependencies are valid", () => {
+    // Build Map for O(1) lookups instead of O(n) .find() per dependency
+    const entryMap = new Map(MANIFEST_ENTRIES.map((e) => [e.name, e]));
+
     for (const entry of MANIFEST_ENTRIES) {
       if (entry.enabled === false) continue;
       if (!entry.dependencies) continue;
 
       // Check that dependencies exist in manifest
       for (const dep of entry.dependencies) {
-        const depEntry = MANIFEST_ENTRIES.find((e) => e.name === dep);
+        const depEntry = entryMap.get(dep);
         expect(depEntry).toBeDefined();
       }
     }
@@ -584,12 +587,15 @@ describe("Integration Test - Manifest Consistency", () => {
   });
 
   test("Extensions with dependencies have dependencies enabled or conditional", () => {
+    // Build Map for O(1) lookups instead of O(n) .find() per dependency
+    const entryMap = new Map(MANIFEST_ENTRIES.map((e) => [e.name, e]));
+
     for (const entry of MANIFEST_ENTRIES) {
       if (!entry.dependencies) continue;
       if (entry.enabled === false) continue;
 
       for (const depName of entry.dependencies) {
-        const dep = MANIFEST_ENTRIES.find((e) => e.name === depName);
+        const dep = entryMap.get(depName);
         expect(dep).toBeDefined();
 
         // If the extension is enabled, dependency should be enabled or be a builtin

@@ -17,6 +17,20 @@ import { describe, test, expect } from "bun:test";
 import { generateExtensionsInitScript } from "./sql-generator";
 import type { ManifestEntry } from "../extensions/manifest-data";
 
+/**
+ * Factory function to create test ManifestEntry objects with sensible defaults.
+ * Only override what you need for each test.
+ */
+function createMockEntry(overrides: Partial<ManifestEntry> & { name: string }): ManifestEntry {
+  return {
+    kind: "extension",
+    category: "test",
+    description: `Test extension: ${overrides.name}`,
+    source: { type: "builtin" },
+    ...overrides,
+  };
+}
+
 describe("generateExtensionsInitScript - Table Creation", () => {
   test("Creates pg_aza_status table", async () => {
     const extensions: ManifestEntry[] = [];
@@ -50,15 +64,7 @@ describe("generateExtensionsInitScript - Table Creation", () => {
 
 describe("generateExtensionsInitScript - Extension Creation", () => {
   test("Single extension generates CREATE EXTENSION command", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "pgvector",
-        kind: "extension",
-        category: "ai",
-        description: "Vector similarity search",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "pgvector", category: "ai" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -68,28 +74,10 @@ describe("generateExtensionsInitScript - Extension Creation", () => {
   });
 
   test("Multiple extensions all included in SQL", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "pgvector",
-        kind: "extension",
-        category: "ai",
-        description: "Vector similarity search",
-        source: { type: "builtin" },
-      },
-      {
-        name: "pg_stat_statements",
-        kind: "builtin",
-        category: "observability",
-        description: "Track statistics",
-        source: { type: "builtin" },
-      },
-      {
-        name: "postgis",
-        kind: "extension",
-        category: "geo",
-        description: "Geographic objects",
-        source: { type: "builtin" },
-      },
+    const extensions = [
+      createMockEntry({ name: "pgvector", category: "ai" }),
+      createMockEntry({ name: "pg_stat_statements", kind: "builtin", category: "observability" }),
+      createMockEntry({ name: "postgis", category: "geo" }),
     ];
 
     const sql = await generateExtensionsInitScript(extensions);
@@ -100,15 +88,12 @@ describe("generateExtensionsInitScript - Extension Creation", () => {
   });
 
   test("Extension displayName used in comments", async () => {
-    const extensions: ManifestEntry[] = [
-      {
+    const extensions = [
+      createMockEntry({
         name: "pgvector",
         displayName: "pgVector - Vector Similarity",
-        kind: "extension",
         category: "ai",
-        description: "Vector similarity search",
-        source: { type: "builtin" },
-      },
+      }),
     ];
 
     const sql = await generateExtensionsInitScript(extensions);
@@ -117,15 +102,7 @@ describe("generateExtensionsInitScript - Extension Creation", () => {
   });
 
   test("Extension category shown in comments", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "pgvector",
-        kind: "extension",
-        category: "machine-learning",
-        description: "Vector similarity search",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "pgvector", category: "machine-learning" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -135,15 +112,7 @@ describe("generateExtensionsInitScript - Extension Creation", () => {
 
 describe("generateExtensionsInitScript - Error Handling", () => {
   test("Each extension wrapped in BEGIN/EXCEPTION block", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -157,15 +126,7 @@ describe("generateExtensionsInitScript - Error Handling", () => {
   });
 
   test("Status updated based on success/failure", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -178,15 +139,7 @@ describe("generateExtensionsInitScript - Error Handling", () => {
   });
 
   test("RAISE EXCEPTION on failures", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -222,8 +175,7 @@ describe("generateExtensionsInitScript - Empty Manifest", () => {
 
 describe("generateExtensionsInitScript - DO Block Structure", () => {
   test("Uses DO $$ anonymous block", async () => {
-    const extensions: ManifestEntry[] = [];
-    const sql = await generateExtensionsInitScript(extensions);
+    const sql = await generateExtensionsInitScript([]);
 
     expect(sql).toContain("DO $$");
     expect(sql).toContain("DECLARE");
@@ -233,15 +185,7 @@ describe("generateExtensionsInitScript - DO Block Structure", () => {
   });
 
   test("Declares necessary variables", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -253,15 +197,7 @@ describe("generateExtensionsInitScript - DO Block Structure", () => {
   });
 
   test("Records initialization start", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -275,8 +211,7 @@ describe("generateExtensionsInitScript - DO Block Structure", () => {
 
 describe("generateExtensionsInitScript - Generation Metadata", () => {
   test("Includes generation comments", async () => {
-    const extensions: ManifestEntry[] = [];
-    const sql = await generateExtensionsInitScript(extensions);
+    const sql = await generateExtensionsInitScript([]);
 
     expect(sql).toContain("PostgreSQL initialization");
     expect(sql).toContain("Generated by scripts/config-generator/generator.ts");
@@ -285,15 +220,7 @@ describe("generateExtensionsInitScript - Generation Metadata", () => {
   });
 
   test("Script version uses date format", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -305,22 +232,7 @@ describe("generateExtensionsInitScript - Generation Metadata", () => {
 
 describe("generateExtensionsInitScript - Expected Extensions Array", () => {
   test("Expected extensions array includes all extension names", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "ext1",
-        kind: "extension",
-        category: "test",
-        description: "Test extension 1",
-        source: { type: "builtin" },
-      },
-      {
-        name: "ext2",
-        kind: "extension",
-        category: "test",
-        description: "Test extension 2",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "ext1" }), createMockEntry({ name: "ext2" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -328,15 +240,7 @@ describe("generateExtensionsInitScript - Expected Extensions Array", () => {
   });
 
   test("Expected extensions list is properly formatted", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "single_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "single_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -346,22 +250,7 @@ describe("generateExtensionsInitScript - Expected Extensions Array", () => {
 
 describe("generateExtensionsInitScript - Success Messages", () => {
   test("Success message lists all extensions", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "ext1",
-        kind: "extension",
-        category: "test",
-        description: "Test extension 1",
-        source: { type: "builtin" },
-      },
-      {
-        name: "ext2",
-        kind: "extension",
-        category: "test",
-        description: "Test extension 2",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "ext1" }), createMockEntry({ name: "ext2" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -369,15 +258,7 @@ describe("generateExtensionsInitScript - Success Messages", () => {
   });
 
   test("Success message mentions additional extensions", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -387,22 +268,13 @@ describe("generateExtensionsInitScript - Success Messages", () => {
 
 describe("generateExtensionsInitScript - SQL Validity", () => {
   test("Generated SQL is non-empty", async () => {
-    const extensions: ManifestEntry[] = [];
-    const sql = await generateExtensionsInitScript(extensions);
+    const sql = await generateExtensionsInitScript([]);
 
     expect(sql.length).toBeGreaterThan(0);
   });
 
   test("SQL contains no obvious syntax errors", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -418,15 +290,7 @@ describe("generateExtensionsInitScript - SQL Validity", () => {
   });
 
   test("Extension names are properly quoted", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "test_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "test_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -440,34 +304,24 @@ describe("generateExtensionsInitScript - SQL Validity", () => {
 
 describe("generateExtensionsInitScript - Real-World Scenarios", () => {
   test("Production-like manifest with multiple extensions", async () => {
-    const extensions: ManifestEntry[] = [
-      {
+    const extensions = [
+      createMockEntry({
         name: "pg_stat_statements",
         displayName: "pg_stat_statements",
         kind: "builtin",
         category: "observability",
-        description: "Track planning and execution statistics",
-        source: { type: "builtin" },
-      },
-      {
+      }),
+      createMockEntry({
         name: "pgvector",
         displayName: "pgVector",
-        kind: "extension",
         category: "ai",
-        description: "Vector similarity search",
         source: {
           type: "git",
           repository: "https://github.com/pgvector/pgvector.git",
           tag: "v0.7.0",
         },
-      },
-      {
-        name: "postgis",
-        kind: "extension",
-        category: "geo",
-        description: "Geographic objects",
-        source: { type: "builtin" },
-      },
+      }),
+      createMockEntry({ name: "postgis", category: "geo" }),
     ];
 
     const sql = await generateExtensionsInitScript(extensions);
@@ -487,15 +341,7 @@ describe("generateExtensionsInitScript - Real-World Scenarios", () => {
   });
 
   test("Extensions without displayName use name", async () => {
-    const extensions: ManifestEntry[] = [
-      {
-        name: "simple_ext",
-        kind: "extension",
-        category: "test",
-        description: "Test extension",
-        source: { type: "builtin" },
-      },
-    ];
+    const extensions = [createMockEntry({ name: "simple_ext" })];
 
     const sql = await generateExtensionsInitScript(extensions);
 
@@ -504,18 +350,81 @@ describe("generateExtensionsInitScript - Real-World Scenarios", () => {
   });
 
   test("Extension without category defaults to misc", async () => {
-    const extensions: ManifestEntry[] = [
+    const extensions = [
       {
         name: "test_ext",
         kind: "extension",
-        // No category specified
-        description: "Test extension",
+        description: "Test",
         source: { type: "builtin" },
-      } as any,
+      } as ManifestEntry,
     ];
 
     const sql = await generateExtensionsInitScript(extensions);
 
     expect(sql).toContain("(misc)");
+  });
+});
+
+describe("generateExtensionsInitScript - Edge Cases", () => {
+  test("Handles extension names with underscores correctly", async () => {
+    const extensions = [createMockEntry({ name: "pg_stat_statements" })];
+
+    const sql = await generateExtensionsInitScript(extensions);
+
+    expect(sql).toContain('CREATE EXTENSION IF NOT EXISTS "pg_stat_statements"');
+    expect(sql).toContain("'pg_stat_statements'");
+  });
+
+  test("Handles extension names with numbers correctly", async () => {
+    const extensions = [createMockEntry({ name: "h3" })];
+
+    const sql = await generateExtensionsInitScript(extensions);
+
+    expect(sql).toContain('CREATE EXTENSION IF NOT EXISTS "h3"');
+  });
+
+  test("Handles very long extension names", async () => {
+    const longName = "a".repeat(63); // Max identifier length in PostgreSQL
+    const extensions = [createMockEntry({ name: longName })];
+
+    const sql = await generateExtensionsInitScript(extensions);
+
+    expect(sql).toContain(`CREATE EXTENSION IF NOT EXISTS "${longName}"`);
+    expect(sql).toContain(`'${longName}'`);
+  });
+
+  test("Handles many extensions efficiently", async () => {
+    const extensions = Array.from({ length: 50 }, (_, i) => createMockEntry({ name: `ext_${i}` }));
+
+    const sql = await generateExtensionsInitScript(extensions);
+
+    // Should contain all 50 extension names
+    expect(sql).toContain('"ext_0"');
+    expect(sql).toContain('"ext_49"');
+    expect((sql.match(/CREATE EXTENSION IF NOT EXISTS/g) || []).length).toBe(50);
+  });
+
+  test("Empty array produces valid SQL with no CREATE EXTENSION", async () => {
+    const sql = await generateExtensionsInitScript([]);
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS pg_aza_status");
+    expect(sql).not.toContain("CREATE EXTENSION IF NOT EXISTS");
+    expect(sql).toContain("No baseline extensions enabled");
+  });
+
+  test("Single extension with all optional fields", async () => {
+    const extensions = [
+      createMockEntry({
+        name: "complex_ext",
+        displayName: "Complex Extension™",
+        category: "test-category",
+        description: "A complex extension with special chars: <>",
+      }),
+    ];
+
+    const sql = await generateExtensionsInitScript(extensions);
+
+    expect(sql).toContain('CREATE EXTENSION IF NOT EXISTS "complex_ext"');
+    expect(sql).toContain("Complex Extension™");
   });
 });

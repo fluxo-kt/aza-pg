@@ -26,21 +26,24 @@ docker/postgres/       # Dockerfile, entrypoints, initdb
 scripts/               # Bun TS scripts (no absolute paths)
 stacks/{primary,replica,single}  # Compose deployments
 
-# 3-Tier Workflow
-bun run check          # Fast: Static checks (read-only, ~10s)
-bun run fix            # Fast: Auto-fix + validate (~30s)
-bun run test           # Optimized: Full suite with cache (~15min)
-bun run test:full      # Full: Complete rebuild + tests (~45min)
-
-# Essentials
+# Essential Commands
+bun run validate       # Fast validation: all static checks (~10s, read-only)
+bun run validate:full  # Full validation: + extended checks (~30s)
+bun run format         # Format all code (prettier, SQL formatter)
+bun run lint           # Lint code (oxlint, read-only)
+bun run lint:fix       # Auto-fix linting issues
+bun run test           # Optimized: full suite, uses existing build (~30min)
+bun run test:full      # Complete: rebuilds image + all tests (~45min)
 bun run build          # Build Docker image
 bun run generate       # Regenerate all files from manifest
 
-# Granular (debugging)
-bun run test:unit      # Unit tests only
-bun run test:hooks     # Hook extension tests
-bun run check:manifest # Manifest validation
-bun run check:docs     # Documentation consistency
+# Granular (debugging/CI)
+bun run test:unit          # Unit tests only (no Docker)
+bun run test:hooks         # Hook extension tests
+bun run test:extensions    # Extension loading tests
+bun run test:security      # Security tests
+bun run validate:manifest  # Manifest validation only
+bun run validate:docs      # Documentation consistency only
 ```
 
 ## Gotchas

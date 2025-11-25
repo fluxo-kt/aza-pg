@@ -79,10 +79,10 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### integration
 
-| Extension                                                              | Version                                                                                          | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                    |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0)                              | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl. |
-| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [303da1dd](https://github.com/supabase/wrappers/commit/303da1dd0e7a94365ecf5d48866739fe9fda4d07) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.   |
+| Extension                                                              | Version                                                             | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl. |
+| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.5.7](https://github.com/supabase/wrappers/releases/tag/v0.5.7)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.   |
 
 ### maintenance
 

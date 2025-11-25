@@ -87,10 +87,10 @@
       "category": "integration",
       "description": "Rust FDW framework powering Supabase foreign wrappers.",
       "source": {
-        "type": "git-ref",
+        "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "ref": "303da1dd0e7a94365ecf5d48866739fe9fda4d07",
-        "commit": "303da1dd0e7a94365ecf5d48866739fe9fda4d07"
+        "tag": "v0.5.7",
+        "commit": "374cf9fdb1cc389136570a80df9cc462a564d799"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -104,7 +104,11 @@
         "sharedPreload": false,
         "defaultEnable": false
       },
-      "notes": ["Requires cargo-pgrx 0.16.1 aligned with PG18."],
+      "notes": [
+        "Requires cargo-pgrx 0.16.1 aligned with PG18.",
+        "v0.5.7: MotherDuck FDW, ClickHouse stream_buffer_size, Iceberg batch_size, S3 vectors embd→s3vec rename.",
+        "NOT available in PGDG. Pigsty has v0.5.0 (2 versions behind). Building from source for latest."
+      ],
       "sourceUrl": "https://github.com/supabase/wrappers",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"
     }

@@ -159,24 +159,10 @@ jobs:
         id: tags
         run: |
           set -euo pipefail
-          PG_FULL="${{ steps.pg-version.outputs.full }}"
-          PG_MAJOR="${{ steps.pg-version.outputs.major }}"
-          BUILD_TS="${{ steps.timestamp.outputs.value }}"  # Use human-readable format for tags
-
-          # Separate version (for releases) from image tag (for containers)
-          VERSION_TAG="${PG_FULL}-${BUILD_TS}"                # 18.1-202511221455 (no type for releases)
-          IMAGE_TAG="${PG_FULL}-${BUILD_TS}-single-node"     # 18.1-202511221455-single-node (with type for images)
-
-          # Convenience tags
-          CONVENIENCE_TAGS="${PG_FULL}-single-node,${PG_MAJOR}-single-node,${PG_FULL},${PG_MAJOR}"
-
-          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          echo "convenience=${CONVENIENCE_TAGS}" >> $GITHUB_OUTPUT
-
-          echo "Version tag (for releases): ${VERSION_TAG}"
-          echo "Image tag (for containers): ${IMAGE_TAG}"
-          echo "Convenience tags: ${CONVENIENCE_TAGS}"
+          bun scripts/release/generate-version-tags.ts \
+            --pg-version="${{ steps.pg-version.outputs.full }}" \
+            --timestamp="${{ steps.timestamp.outputs.value }}" \
+            --github-output
 
       - name: Extract metadata for Docker
         id: meta
@@ -226,35 +212,20 @@ jobs:
         id: cache-key
         run: |
           set -euo pipefail
-          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
-          CACHE_KEY="publish-cache-${{ github.ref_name }}-${CONTENT_HASH}"
-          echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
-          echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
-          echo "Generated cache key: ${CACHE_KEY}"
+          bun scripts/release/generate-cache-key.ts \
+            --branch="${{ github.ref_name }}" \
+            --content-hash="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}" \
+            --github-output
 
       - name: Document existing tags (for rollback reference)
         continue-on-error: true
         run: |
           set -euo pipefail
-          echo "### Tag Overwrite Reference" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following tags will be updated. Previous digests recorded for rollback reference:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          for TAG in "${{ steps.pg-version.outputs.full }}-single-node" \
-                     "${{ steps.pg-version.outputs.major }}-single-node" \
-                     "${{ steps.pg-version.outputs.full }}" \
-                     "${{ steps.pg-version.outputs.major }}"; do
-            if PREV_DIGEST=$(docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} 2>/dev/null | \
-                             jq -r '.manifests[0].digest // .digest' 2>/dev/null); then
-              echo "- **${TAG}**: Previous digest \`${PREV_DIGEST}\`" >> $GITHUB_STEP_SUMMARY
-              echo "Previous ${TAG}: ${PREV_DIGEST}"
-            else
-              echo "- **${TAG}**: New tag (no previous version)" >> $GITHUB_STEP_SUMMARY
-              echo "${TAG}: New tag"
-            fi
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
+          bun scripts/release/document-tag-overwrites.ts \
+            --registry="${{ env.REGISTRY }}" \
+            --repository="${{ env.IMAGE_NAME }}" \
+            --tags="${{ steps.pg-version.outputs.full }}-single-node,${{ steps.pg-version.outputs.major }}-single-node,${{ steps.pg-version.outputs.full }},${{ steps.pg-version.outputs.major }}" \
+            --github-summary
 
   build:
     name: Build (${{ matrix.platform }})

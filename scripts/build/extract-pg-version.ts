@@ -1,168 +1,153 @@
 #!/usr/bin/env bun
+
 /**
- * Extract PostgreSQL version information from a base image.
- *
- * Used by publish.yml to derive:
- * - Major version (MM)
- * - Minor version (mm)
- * - Full version string "MM.mm"
- *
- * When --github-output is set, writes step outputs to $GITHUB_OUTPUT:
- *   major=18
- *   minor=0
- *   full=18.0
- *   base_image_name=postgres:18-trixie
- *   base_image_digest=sha256:...
+ * Extract PostgreSQL version from base image reference
  *
  * Usage:
- *   bun scripts/build/extract-pg-version.ts --image postgres:18-trixie@sha256:... --github-output
+ *   bun scripts/build/extract-pg-version.ts --image "postgres:18.1-trixie@sha256:..." [--github-output]
+ *
+ * Arguments:
+ *   --image         Full image reference (e.g., "postgres:18.1-trixie@sha256:abc...")
+ *   --github-output Output to GITHUB_OUTPUT file (GitHub Actions)
+ *
+ * Output (GitHub Actions):
+ *   major=18
+ *   minor=1
+ *   full=18.1
+ *   base_image_name=postgres:18.1-trixie
+ *   base_image_digest=sha256:abc...
+ *
+ * Output (Console):
+ *   PostgreSQL Major: 18
+ *   PostgreSQL Minor: 1
+ *   PostgreSQL Full: 18.1
+ *   Base Image: postgres:18.1-trixie
+ *   Base Digest: sha256:abc...
  */
 
-import { $ } from "bun";
+import { appendFile } from "node:fs/promises";
 
-type CliOptions = {
-  image: string;
-  githubOutput: boolean;
-};
-
-function printHelp(): void {
-  const helpText = `
-Extract PostgreSQL version information from a Docker image.
-
-Usage:
-  bun scripts/build/extract-pg-version.ts --image <name[@digest]> [--github-output]
-
-Options:
-  --image <ref>        Base image reference (e.g. postgres:18-trixie@sha256:...)
-  --github-output      Write results to $GITHUB_OUTPUT for GitHub Actions
-  --help, -h           Show this help
-`.trim();
-
-  console.log(helpText);
+interface ParsedImage {
+  major: string;
+  minor: string;
+  full: string;
+  baseImageName: string;
+  baseImageDigest: string;
 }
 
-function parseArgs(argv: string[]): CliOptions {
-  const args = argv.slice(2);
-  const options: CliOptions = {
-    image: "",
-    githubOutput: false,
-  };
+function parseImageReference(image: string): ParsedImage {
+  // Pattern: postgres:18.1-trixie@sha256:abc123...
+  // or: postgres:18.1@sha256:abc123...
+  // or: postgres:18-trixie@sha256:abc123...
 
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
+  const digestMatch = image.match(/@(sha256:[a-f0-9]+)$/i);
+  const baseImageDigest = digestMatch?.[1] ?? "";
 
-    switch (arg) {
-      case "--help":
-      case "-h":
-        printHelp();
-        // eslint-disable-next-line no-process-exit
-        process.exit(0);
-      case "--image": {
-        const value = args[i + 1];
-        if (!value) {
-          throw new Error("--image requires a value");
-        }
-        options.image = value;
-        i += 1;
-        break;
-      }
-      case "--github-output":
-        options.githubOutput = true;
-        break;
-      default:
-        throw new Error(`Unknown option: ${arg}`);
-    }
+  // Remove digest to get base image name
+  const baseImageName = digestMatch ? image.slice(0, image.indexOf("@")) : image;
+
+  // Extract version from tag (after : but before -)
+  // Format: postgres:VERSION[-variant]@sha256:...
+  const tagMatch = baseImageName.match(/:([0-9]+(?:\.[0-9]+)?)/);
+  if (!tagMatch || !tagMatch[1]) {
+    console.error(`Error: Could not parse PostgreSQL version from image: ${image}`);
+    console.error("Expected format: postgres:18.1-trixie@sha256:... or postgres:18@sha256:...");
+    process.exit(1);
   }
 
-  if (!options.image) {
-    throw new Error("--image is required");
+  const versionStr = tagMatch[1];
+  const versionParts = versionStr.split(".");
+
+  const major = versionParts[0];
+  if (!major) {
+    console.error(`Error: Could not parse major version from: ${versionStr}`);
+    process.exit(1);
   }
 
-  return options;
-}
-
-function parseVersion(psqlOutput: string): { major: string; minor: string; full: string } {
-  // Expected patterns:
-  //   psql (PostgreSQL) 18.0
-  //   psql (PostgreSQL) 18.1 (Debian 18.1-1.pgdg120+1)
-  const match = psqlOutput.match(/PostgreSQL\)\s+(\d+)\.(\d+)/);
-  if (!match) {
-    throw new Error(`Unable to parse PostgreSQL version from: ${psqlOutput.trim()}`);
-  }
-
-  const major = match[1]!;
-  const minor = match[2]!;
+  const minor = versionParts[1] ?? "0"; // Default to 0 if no minor version
   const full = `${major}.${minor}`;
 
-  return { major, minor, full };
-}
-
-function splitImage(image: string): { name: string; digest: string } {
-  const atIndex = image.indexOf("@");
-  if (atIndex === -1) {
-    return { name: image, digest: "" };
-  }
-
   return {
-    name: image.slice(0, atIndex),
-    digest: image.slice(atIndex + 1),
+    major,
+    minor,
+    full,
+    baseImageName,
+    baseImageDigest,
   };
 }
 
-async function writeGithubOutput(fields: Record<string, string>): Promise<void> {
-  const githubOutputPath = Bun.env.GITHUB_OUTPUT;
-  if (!githubOutputPath) {
-    throw new Error("GITHUB_OUTPUT is not set but --github-output was provided");
+async function writeGitHubOutput(parsed: ParsedImage): Promise<void> {
+  const outputFile = Bun.env.GITHUB_OUTPUT;
+  if (!outputFile) {
+    console.error("Error: GITHUB_OUTPUT environment variable not set");
+    console.error("This flag is intended for GitHub Actions only");
+    process.exit(1);
   }
 
-  const file = Bun.file(githubOutputPath);
-  const exists = await file.exists();
-  const existing = exists ? await file.text() : "";
+  const output = [
+    `major=${parsed.major}`,
+    `minor=${parsed.minor}`,
+    `full=${parsed.full}`,
+    `base_image_name=${parsed.baseImageName}`,
+    `base_image_digest=${parsed.baseImageDigest}`,
+  ].join("\n");
 
-  const lines = Object.entries(fields)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
+  await appendFile(outputFile, output + "\n");
 
-  const nextContent =
-    existing.length === 0 || existing.endsWith("\n")
-      ? `${existing}${lines}\n`
-      : `${existing}\n${lines}\n`;
-
-  await Bun.write(githubOutputPath, nextContent);
+  console.log(`PostgreSQL version extracted from image:`);
+  console.log(`  Major: ${parsed.major}`);
+  console.log(`  Minor: ${parsed.minor}`);
+  console.log(`  Full: ${parsed.full}`);
+  console.log(`  Base Image: ${parsed.baseImageName}`);
+  console.log(`  Base Digest: ${parsed.baseImageDigest.slice(0, 20)}...`);
 }
 
-async function main(): Promise<void> {
-  const options = parseArgs(Bun.argv);
-  const { image, githubOutput } = options;
-
-  // Run psql --version inside the base image. This does not require a running server.
-  const { stdout } = await $`docker run --rm ${image} psql --version`.quiet();
-  const rawOutput = stdout.toString();
-
-  const { major, minor, full } = parseVersion(rawOutput);
-  const { name: baseName, digest: baseDigest } = splitImage(image);
-
-  console.log(`Detected PostgreSQL version from image ${image}:`);
-  console.log(`  Major: ${major}`);
-  console.log(`  Minor: ${minor}`);
-  console.log(`  Full:  ${full}`);
-  console.log(`  Base image name:   ${baseName}`);
-  console.log(`  Base image digest: ${baseDigest || "(none)"}`);
-
-  if (githubOutput) {
-    await writeGithubOutput({
-      major,
-      minor,
-      full,
-      base_image_name: baseName,
-      base_image_digest: baseDigest,
-    });
-  }
+function printConsoleOutput(parsed: ParsedImage): void {
+  console.log(`PostgreSQL Major: ${parsed.major}`);
+  console.log(`PostgreSQL Minor: ${parsed.minor}`);
+  console.log(`PostgreSQL Full: ${parsed.full}`);
+  console.log(`Base Image: ${parsed.baseImageName}`);
+  console.log(`Base Digest: ${parsed.baseImageDigest}`);
 }
 
-main().catch((err) => {
-  console.error("extract-pg-version failed:", err instanceof Error ? err.message : String(err));
-  // eslint-disable-next-line no-process-exit
+// Parse CLI arguments
+const args = Bun.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`
+Extract PostgreSQL version from base image reference
+
+Usage:
+  bun scripts/build/extract-pg-version.ts --image "postgres:18.1-trixie@sha256:..." [--github-output]
+
+Arguments:
+  --image         Full image reference (required)
+  --github-output Output to GITHUB_OUTPUT file (GitHub Actions)
+  --help, -h      Show this help message
+
+Examples:
+  bun scripts/build/extract-pg-version.ts --image "postgres:18.1-trixie@sha256:abc123"
+  bun scripts/build/extract-pg-version.ts --image "postgres:18@sha256:def456" --github-output
+`);
+  process.exit(0);
+}
+
+const imageArg = args.find((arg) => arg.startsWith("--image="))?.split("=").slice(1).join("=");
+const imageArgIndex = args.indexOf("--image");
+const image = imageArg ?? (imageArgIndex >= 0 ? args[imageArgIndex + 1] : undefined);
+
+if (!image) {
+  console.error("Error: --image argument is required");
+  console.error("Usage: bun scripts/build/extract-pg-version.ts --image <image-reference>");
   process.exit(1);
-});
+}
 
+const githubOutput = args.includes("--github-output");
+
+const parsed = parseImageReference(image);
+
+if (githubOutput) {
+  await writeGitHubOutput(parsed);
+} else {
+  printConsoleOutput(parsed);
+}

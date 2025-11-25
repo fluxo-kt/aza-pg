@@ -50,10 +50,18 @@
   },
   "preloaded": {
     "modules": ["auto_explain"],
-    "extensions": ["pg_cron", "pg_stat_monitor", "pg_stat_statements", "pgaudit", "timescaledb"]
+    "extensions": [
+      "pg_cron",
+      "pg_safeupdate",
+      "pg_stat_monitor",
+      "pg_stat_statements",
+      "pgaudit",
+      "timescaledb"
+    ]
   },
   "autoCreated": [
     "pg_cron",
+    "pg_safeupdate",
     "pg_stat_monitor",
     "pg_stat_statements",
     "pg_trgm",

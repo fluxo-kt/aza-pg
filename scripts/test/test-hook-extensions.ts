@@ -4,7 +4,7 @@
  * Usage: bun run scripts/test/test-hook-extensions.ts [image-tag]
  *
  * Tests extensions that don't use CREATE EXTENSION:
- *   - pg_safeupdate (hook-based, session_preload_libraries)
+ *   - pg_safeupdate (hook-based, default-enabled in shared_preload_libraries)
  *
  * Note: pg_plan_filter removed (incompatible with PostgreSQL 18)
  * Note: supautils removed (disabled - compilation issues)
@@ -20,7 +20,7 @@ import {
   checkDockerDaemon,
   dockerCleanup,
   ensureImageAvailable,
-  waitForPostgres,
+  waitForPostgresStable,
 } from "../utils/docker";
 import { error } from "../utils/logger.ts";
 
@@ -39,6 +39,43 @@ async function assertSqlSuccess(container: string, sql: string, message: string)
     console.log(`❌ FAILED: ${message}`);
     console.log(`   SQL: ${sql}`);
     console.log(`   Error: ${err}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Assert SQL command fails with expected error pattern
+ */
+async function assertSqlFails(
+  container: string,
+  sql: string,
+  errorPatterns: string[],
+  message: string
+): Promise<void> {
+  const result = await Bun.spawn(
+    ["docker", "exec", container, "psql", "-U", "postgres", "-t", "-c", sql],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+
+  const stdout = await new Response(result.stdout).text();
+  const stderr = await new Response(result.stderr).text();
+  const exitCode = await result.exited;
+  const output = (stdout + stderr).toLowerCase();
+
+  if (exitCode === 0) {
+    console.log(`❌ FAILED: ${message}`);
+    console.log(`   Expected failure but command succeeded`);
+    console.log(`   SQL: ${sql}`);
+    process.exit(1);
+  }
+
+  const matchedPattern = errorPatterns.some((pattern) => output.includes(pattern.toLowerCase()));
+  if (matchedPattern) {
+    console.log(`✅ ${message}`);
+  } else {
+    console.log(`❌ FAILED: ${message}`);
+    console.log(`   Expected error patterns: ${errorPatterns.join(" | ")}`);
+    console.log(`   Actual output: ${stdout}${stderr}`);
     process.exit(1);
   }
 }
@@ -86,17 +123,11 @@ async function runCase(
     // Start container
     await $`docker ${args}`.quiet();
 
-    // Wait for PostgreSQL to be ready
-    try {
-      await waitForPostgres({
-        host: "localhost",
-        port: 5432,
-        user: "postgres",
-        timeout: 60,
-        container,
-      });
-    } catch {
-      console.log(`❌ FAILED: PostgreSQL failed to start in time`);
+    // Wait for PostgreSQL to be stable (handles initdb restart race condition)
+    // NOTE: waitForPostgresStable includes basic readiness check + stability verification
+    const isStable = await waitForPostgresStable({ container, timeout: 60 });
+    if (!isStable) {
+      console.log(`❌ FAILED: PostgreSQL not ready or not stable after init`);
       const logs = await $`docker logs ${container}`.text();
       console.log("Container logs:");
       console.log(logs);
@@ -109,9 +140,9 @@ async function runCase(
 
     // Cleanup
     await dockerCleanup(container);
-  } catch (error) {
+  } catch (err) {
     console.log(`❌ ERROR: Failed to start container for '${name}'`);
-    console.log(error);
+    console.log(err);
     await dockerCleanup(container);
     process.exit(1);
   }
@@ -120,9 +151,9 @@ async function runCase(
 }
 
 // ==============================================================================
-// Test 1: pg_safeupdate (hook-based, uses session_preload_libraries)
+// Test 1: pg_safeupdate default-enabled (blocks unsafe operations by default)
 // ==============================================================================
-async function testPgSafeupdateSessionPreload(container: string): Promise<void> {
+async function testPgSafeupdateDefaultEnabled(container: string): Promise<void> {
   // Verify safeupdate.so exists (note: library name is "safeupdate", not "pg_safeupdate")
   const soPath = "/usr/lib/postgresql/18/lib/safeupdate.so";
   try {
@@ -133,7 +164,18 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
     process.exit(1);
   }
 
-  // Test 1: Without preload, UPDATE without WHERE should succeed
+  // Verify safeupdate is in shared_preload_libraries
+  const preloadLibs =
+    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
+  if (preloadLibs.toLowerCase().includes("safeupdate")) {
+    console.log(`✅ safeupdate is in shared_preload_libraries`);
+  } else {
+    console.log(`❌ FAILED: safeupdate not found in shared_preload_libraries`);
+    console.log(`   Actual: ${preloadLibs.trim()}`);
+    process.exit(1);
+  }
+
+  // Create test table and data
   await assertSqlSuccess(
     container,
     "CREATE TABLE IF NOT EXISTS safeupdate_test (id int)",
@@ -146,127 +188,97 @@ async function testPgSafeupdateSessionPreload(container: string): Promise<void> 
     "Insert test data for pg_safeupdate"
   );
 
+  // Test: UPDATE without WHERE should FAIL (safeupdate is default-enabled)
+  await assertSqlFails(
+    container,
+    "UPDATE safeupdate_test SET id = 99;",
+    ["update requires a where clause", "rejected by safeupdate"],
+    "UPDATE without WHERE is blocked by default (safeupdate enabled)"
+  );
+
+  // Test: UPDATE with WHERE should succeed
+  await assertSqlSuccess(
+    container,
+    "UPDATE safeupdate_test SET id = 99 WHERE id = 1;",
+    "UPDATE with WHERE succeeds (safe operation)"
+  );
+
+  // Test: DELETE without WHERE should FAIL
+  await assertSqlFails(
+    container,
+    "DELETE FROM safeupdate_test;",
+    ["delete requires a where clause", "rejected by safeupdate"],
+    "DELETE without WHERE is blocked by default (safeupdate enabled)"
+  );
+
+  // Test: DELETE with WHERE should succeed
+  await assertSqlSuccess(
+    container,
+    "DELETE FROM safeupdate_test WHERE id = 99;",
+    "DELETE with WHERE succeeds (safe operation)"
+  );
+
+  // Cleanup
+  await assertSqlSuccess(container, "DROP TABLE safeupdate_test;", "Cleanup safeupdate test table");
+}
+
+// ==============================================================================
+// Test 2: pg_safeupdate override (user can disable via POSTGRES_SHARED_PRELOAD_LIBRARIES)
+// ==============================================================================
+async function testPgSafeupdateOverride(container: string): Promise<void> {
+  // Verify safeupdate is NOT in shared_preload_libraries (user override)
+  const preloadLibs =
+    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
+  if (preloadLibs.toLowerCase().includes("safeupdate")) {
+    console.log(
+      `❌ FAILED: safeupdate should NOT be in shared_preload_libraries (override active)`
+    );
+    console.log(`   Actual: ${preloadLibs.trim()}`);
+    process.exit(1);
+  } else {
+    console.log(`✅ safeupdate is NOT in shared_preload_libraries (override active)`);
+  }
+
+  // Create test table and data
+  await assertSqlSuccess(
+    container,
+    "CREATE TABLE IF NOT EXISTS safeupdate_test (id int)",
+    "Create test table for pg_safeupdate override test"
+  );
+
+  await assertSqlSuccess(
+    container,
+    "INSERT INTO safeupdate_test VALUES (1), (2)",
+    "Insert test data for pg_safeupdate override test"
+  );
+
+  // Test: UPDATE without WHERE should SUCCEED (safeupdate disabled via override)
   await assertSqlSuccess(
     container,
     "UPDATE safeupdate_test SET id = 99;",
-    "UPDATE without WHERE succeeds (pg_safeupdate not loaded)"
+    "UPDATE without WHERE succeeds (safeupdate disabled via override)"
   );
 
-  // Reset table
+  // Reset table for DELETE test
   await assertSqlSuccess(
     container,
     "TRUNCATE safeupdate_test; INSERT INTO safeupdate_test VALUES (1), (2);",
     "Reset test table"
   );
 
-  // Test 2: With session_preload_libraries, UPDATE without WHERE should FAIL
-  // Note: session_preload_libraries must be set BEFORE session starts
-  // We use PGOPTIONS environment variable to set it for a new session
-  const result2 = await Bun.spawn(
-    [
-      "docker",
-      "exec",
-      "-e",
-      "PGOPTIONS=-c session_preload_libraries=safeupdate",
-      container,
-      "psql",
-      "-U",
-      "postgres",
-      "-t",
-      "-c",
-      "UPDATE safeupdate_test SET id = 99;",
-    ],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-    }
+  // Test: DELETE without WHERE should SUCCEED (safeupdate disabled via override)
+  await assertSqlSuccess(
+    container,
+    "DELETE FROM safeupdate_test;",
+    "DELETE without WHERE succeeds (safeupdate disabled via override)"
   );
-
-  const stdout2 = await new Response(result2.stdout).text();
-  const stderr2 = await new Response(result2.stderr).text();
-  const exitCode2 = await result2.exited;
-  const output2 = (stdout2 + stderr2).toLowerCase();
-
-  if (exitCode2 === 0) {
-    console.log(`❌ FAILED: pg_safeupdate blocks UPDATE without WHERE`);
-    console.log(`   Expected failure but command succeeded`);
-    process.exit(1);
-  } else if (
-    output2.includes("update requires a where clause") ||
-    output2.includes("rejected by safeupdate")
-  ) {
-    console.log(`✅ pg_safeupdate blocks UPDATE without WHERE`);
-  } else {
-    console.log(`❌ FAILED: pg_safeupdate blocks UPDATE without WHERE`);
-    console.log(`   Expected error pattern: UPDATE requires a WHERE clause|rejected by safeupdate`);
-    console.log(`   Actual output: ${stdout2}${stderr2}`);
-    process.exit(1);
-  }
-
-  // Test 3: UPDATE with WHERE should succeed even with pg_safeupdate
-  try {
-    await $`docker exec -e PGOPTIONS="-c session_preload_libraries=safeupdate" ${container} psql -U postgres -t -c "UPDATE safeupdate_test SET id = 99 WHERE id = 1;"`.quiet();
-    console.log(`✅ UPDATE with WHERE succeeds with pg_safeupdate loaded`);
-  } catch {
-    console.log(`❌ FAILED: UPDATE with WHERE succeeds with pg_safeupdate loaded`);
-    console.log(`   SQL: UPDATE safeupdate_test SET id = 99 WHERE id = 1;`);
-    process.exit(1);
-  }
-
-  // Test 4: DELETE without WHERE should fail with pg_safeupdate
-  const result4 = await Bun.spawn(
-    [
-      "docker",
-      "exec",
-      "-e",
-      "PGOPTIONS=-c session_preload_libraries=safeupdate",
-      container,
-      "psql",
-      "-U",
-      "postgres",
-      "-t",
-      "-c",
-      "DELETE FROM safeupdate_test;",
-    ],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-    }
-  );
-
-  const stdout4 = await new Response(result4.stdout).text();
-  const stderr4 = await new Response(result4.stderr).text();
-  const exitCode4 = await result4.exited;
-  const output4 = (stdout4 + stderr4).toLowerCase();
-
-  if (exitCode4 === 0) {
-    console.log(`❌ FAILED: pg_safeupdate blocks DELETE without WHERE`);
-    console.log(`   Expected failure but command succeeded`);
-    process.exit(1);
-  } else if (
-    output4.includes("delete requires a where clause") ||
-    output4.includes("rejected by safeupdate")
-  ) {
-    console.log(`✅ pg_safeupdate blocks DELETE without WHERE`);
-  } else {
-    console.log(`❌ FAILED: pg_safeupdate blocks DELETE without WHERE`);
-    console.log(`   Expected error pattern: DELETE requires a WHERE clause|rejected by safeupdate`);
-    console.log(`   Actual output: ${stdout4}${stderr4}`);
-    process.exit(1);
-  }
-
-  // Test 5: DELETE with WHERE should succeed
-  try {
-    await $`docker exec -e PGOPTIONS="-c session_preload_libraries=safeupdate" ${container} psql -U postgres -t -c "DELETE FROM safeupdate_test WHERE id = 99;"`.quiet();
-    console.log(`✅ DELETE with WHERE succeeds with pg_safeupdate loaded`);
-  } catch {
-    console.log(`❌ FAILED: DELETE with WHERE succeeds with pg_safeupdate loaded`);
-    console.log(`   SQL: DELETE FROM safeupdate_test WHERE id = 99;`);
-    process.exit(1);
-  }
 
   // Cleanup
-  await assertSqlSuccess(container, "DROP TABLE safeupdate_test;", "Cleanup safeupdate test table");
+  await assertSqlSuccess(
+    container,
+    "DROP TABLE safeupdate_test;",
+    "Cleanup safeupdate override test table"
+  );
 }
 
 // ==============================================================================
@@ -308,20 +320,43 @@ async function main(): Promise<void> {
   console.log(`Image tag: ${imageTag}`);
   console.log();
 
-  // Run test cases
-  await runCase("Test 1: pg_safeupdate session preload", testPgSafeupdateSessionPreload, imageTag, {
-    memory: "2g",
-    env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
-  });
+  // Test 1: pg_safeupdate default-enabled behavior
+  await runCase(
+    "Test 1: pg_safeupdate default-enabled (blocks unsafe operations)",
+    testPgSafeupdateDefaultEnabled,
+    imageTag,
+    {
+      memory: "2g",
+      env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
+    }
+  );
+
+  // Test 2: pg_safeupdate override (user can disable)
+  // Use explicit POSTGRES_SHARED_PRELOAD_LIBRARIES without safeupdate
+  await runCase(
+    "Test 2: pg_safeupdate override (user can disable via env)",
+    testPgSafeupdateOverride,
+    imageTag,
+    {
+      memory: "2g",
+      env: {
+        POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
+        // Explicitly omit safeupdate from preload libraries
+        POSTGRES_SHARED_PRELOAD_LIBRARIES:
+          "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb",
+      },
+    }
+  );
 
   console.log("========================================");
   console.log("✅ All hook extension tests passed!");
-  console.log("✅ Total: 1 test case");
+  console.log("✅ Total: 2 test cases");
   console.log("========================================");
   console.log();
   console.log("Summary:");
-  console.log("  - pg_safeupdate: Hook-based, uses session_preload_libraries");
-  console.log("  - Extension verified for loading, functionality, and isolation");
+  console.log("  - pg_safeupdate: Default-enabled via shared_preload_libraries");
+  console.log("  - Default behavior: Blocks UPDATE/DELETE without WHERE clause");
+  console.log("  - Override: Users can disable via POSTGRES_SHARED_PRELOAD_LIBRARIES");
   console.log();
   console.log("Notes:");
   console.log("  - pg_plan_filter excluded (incompatible with PostgreSQL 18)");
@@ -329,7 +364,7 @@ async function main(): Promise<void> {
 }
 
 // Run main function
-main().catch((error) => {
-  error(`Unexpected error: ${error}`);
+main().catch((err) => {
+  error(`Unexpected error: ${err}`);
   process.exit(1);
 });

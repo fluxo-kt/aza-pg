@@ -243,6 +243,84 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
 }
 
 /**
+ * Options for waiting for PostgreSQL to be stable
+ */
+export interface WaitForPostgresStableOptions extends WaitForPostgresOptions {
+  /** Number of consecutive successful queries required (default: 3) */
+  requiredSuccesses?: number;
+  /** Interval between stability checks in milliseconds (default: 2000) */
+  checkInterval?: number;
+}
+
+/**
+ * Wait for PostgreSQL to be stable after initialization
+ *
+ * IMPORTANT: pg_isready returns true during initdb phase, but PostgreSQL restarts after
+ * initdb completes. This causes a race condition where tests try to connect during shutdown.
+ *
+ * This function requires multiple consecutive successful SQL queries to verify stability,
+ * avoiding the initdb restart race condition.
+ *
+ * @param options - Configuration options
+ * @returns true if PostgreSQL is stable, false if timeout reached
+ * @throws Error if container is not provided (required for stability check)
+ */
+export async function waitForPostgresStable(
+  options: WaitForPostgresStableOptions = {}
+): Promise<boolean> {
+  const { container, timeout = 60, requiredSuccesses = 3, checkInterval = 2000 } = options;
+
+  if (!container || container.trim() === "") {
+    throw new Error(
+      "waitForPostgresStable: container name is required (cannot check stability without docker exec)"
+    );
+  }
+
+  // First, wait for basic readiness
+  const isReady = await waitForPostgres(options);
+  if (!isReady) {
+    return false;
+  }
+
+  // Now wait for stability (consecutive successful queries)
+  info(`Waiting for PostgreSQL stability (${requiredSuccesses} consecutive successful queries)...`);
+
+  const startTime = Date.now();
+  const timeoutMs = timeout * 1000;
+  let consecutiveSuccesses = 0;
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const proc = spawn(
+        ["docker", "exec", container, "psql", "-U", "postgres", "-c", "SELECT 1", "-t"],
+        {
+          stdout: "ignore",
+          stderr: "ignore",
+        }
+      );
+      const exitCode = await proc.exited;
+
+      if (exitCode === 0) {
+        consecutiveSuccesses++;
+        if (consecutiveSuccesses >= requiredSuccesses) {
+          success(`PostgreSQL is stable (${requiredSuccesses} consecutive queries succeeded)`);
+          return true;
+        }
+      } else {
+        consecutiveSuccesses = 0; // Reset on failure
+      }
+    } catch {
+      consecutiveSuccesses = 0; // Reset on error
+    }
+
+    await Bun.sleep(checkInterval);
+  }
+
+  error(`PostgreSQL not stable after ${timeout} seconds`);
+  return false;
+}
+
+/**
  * Run docker command and return stdout + stderr
  * When command fails, stderr is included in output for error diagnosis
  */

@@ -32,6 +32,7 @@ interface RuntimeSpec {
   sharedPreload: boolean;
   defaultEnable: boolean;
   preloadOnly?: boolean;
+  preloadLibraryName?: string;
   notes?: string[];
 }
 
@@ -165,7 +166,9 @@ async function validateDefaultEnable(manifest: Manifest): Promise<void> {
   for (const entry of manifest.entries) {
     if (entry.runtime?.defaultEnable) {
       const inBaseline = baselineExtensions.has(entry.name.toLowerCase());
-      const inPreload = preloadLibraries.has(entry.name);
+      // Check both the extension name and the custom preloadLibraryName if specified
+      const preloadName = entry.runtime?.preloadLibraryName ?? entry.name;
+      const inPreload = preloadLibraries.has(preloadName);
 
       // Builtin extensions that don't require CREATE EXTENSION (like plpgsql)
       // are always available, so we don't require them to be in baseline or preload
@@ -203,15 +206,22 @@ async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void>
   console.log(`  Configured preload libraries: ${Array.from(preloadLibraries).join(", ")}`);
 
   // Find all extensions that SHOULD be in preload (sharedPreload: true AND defaultEnable: true)
-  const expectedPreload = manifest.entries
-    .filter((e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.enabled !== false)
-    .map((e) => e.name);
+  // Use preloadLibraryName if specified, otherwise use extension name
+  const expectedPreloadEntries = manifest.entries.filter(
+    (e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.enabled !== false
+  );
+  const expectedPreload = expectedPreloadEntries.map(
+    (e) => e.runtime?.preloadLibraryName ?? e.name
+  );
 
   console.log(`  Expected preload (from manifest): ${expectedPreload.join(", ")}`);
 
   // Check for libraries in DEFAULT_SHARED_PRELOAD_LIBRARIES that shouldn't be there
+  // Look up by both name and preloadLibraryName
   for (const lib of preloadLibraries) {
-    const entry = manifest.entries.find((e) => e.name === lib);
+    const entry = manifest.entries.find(
+      (e) => e.name === lib || e.runtime?.preloadLibraryName === lib
+    );
 
     if (!entry) {
       error(

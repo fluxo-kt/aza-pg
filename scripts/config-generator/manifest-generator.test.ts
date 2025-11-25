@@ -135,9 +135,9 @@ describe("Preload Libraries Detection", () => {
     );
     expect(optionalPreload.length).toBeGreaterThan(0);
 
-    // Should include pg_safeupdate, pgsodium, pg_partman, set_user
+    // Should include pgsodium, pg_partman, set_user (pg_safeupdate is now default-enabled)
     const optionalNames = optionalPreload.map((e) => e.name);
-    expect(optionalNames).toContain("pg_safeupdate");
+    expect(optionalNames).toContain("pgsodium");
   });
 
   test("Identifies preload-only extensions", () => {
@@ -440,12 +440,12 @@ describe("Real Manifest Data Validation", () => {
     expect(autoExplain?.runtime?.preloadOnly).toBe(true);
   });
 
-  test("pg_safeupdate is a tool with custom preload library name", () => {
+  test("pg_safeupdate is a tool with custom preload library name, default-enabled", () => {
     const safeupdate = MANIFEST_ENTRIES.find((e) => e.name === "pg_safeupdate");
     expect(safeupdate).toBeDefined();
     expect(safeupdate?.kind).toBe("tool");
     expect(safeupdate?.runtime?.sharedPreload).toBe(true);
-    expect(safeupdate?.runtime?.defaultEnable).toBe(false);
+    expect(safeupdate?.runtime?.defaultEnable).toBe(true);
     expect(safeupdate?.runtime?.preloadLibraryName).toBe("safeupdate");
   });
 
@@ -579,9 +579,11 @@ describe("Integration Test - Manifest Consistency", () => {
   test("No tool kind has CREATE EXTENSION flow", () => {
     const tools = MANIFEST_ENTRIES.filter((e) => e.kind === "tool");
     for (const tool of tools) {
-      // Tools should either be preload-only or have no defaultEnable
+      // Tools with defaultEnable must load via preload (preloadOnly or sharedPreload), not CREATE EXTENSION
       if (tool.runtime?.defaultEnable === true) {
-        expect(tool.runtime?.preloadOnly).toBe(true);
+        const loadsViaPreload =
+          tool.runtime?.preloadOnly === true || tool.runtime?.sharedPreload === true;
+        expect(loadsViaPreload).toBe(true);
       }
     }
   });

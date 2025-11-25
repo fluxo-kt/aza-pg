@@ -318,7 +318,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
-      defaultEnable: false,
+      defaultEnable: true,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "safeupdate",
       notes: ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."],

@@ -59,12 +59,17 @@ export function getTestableExtensions(manifest?: ManifestEntry[]): ManifestEntry
 }
 
 /**
- * Get extensions that require shared_preload_libraries.
+ * Get extensions that require shared_preload_libraries for CREATE EXTENSION tests.
  *
- * Returns extensions where runtime.sharedPreload === true.
+ * Returns extensions where runtime.sharedPreload === true AND can be tested via CREATE EXTENSION.
  *
- * CRITICAL: Excludes tools (kind="tool") since they are NOT built into the Docker image
- * and cannot be loaded via shared_preload_libraries. Tools are binary utilities only.
+ * NOTE: Tools (kind="tool") are excluded because:
+ * - They don't use CREATE EXTENSION (no .control file)
+ * - They are tested separately in hook extension tests
+ *
+ * IMPORTANT: Some tools like pg_safeupdate DO have .so files and CAN be preloaded,
+ * but they don't follow the standard CREATE EXTENSION flow, so they're excluded here.
+ * Tool preloading is handled by DEFAULT_SHARED_PRELOAD_LIBRARIES in entrypoint.
  */
 export function getPreloadExtensions(manifest?: ManifestEntry[]): ManifestEntry[] {
   const entries = manifest ?? loadManifestForTests();
@@ -80,9 +85,8 @@ export function getPreloadExtensions(manifest?: ManifestEntry[]): ManifestEntry[
       return false;
     }
 
-    // ⭐ CRITICAL FIX: Tools cannot be preloaded (not built into image)
-    // Tools are binary utilities (pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate)
-    // that don't have .so files in the PostgreSQL lib directory
+    // Exclude tools - they don't use CREATE EXTENSION and are tested separately
+    // NOTE: Tools like pg_safeupdate CAN be preloaded but use hooks instead of CREATE EXTENSION
     if (entry.kind === "tool") {
       return false;
     }
@@ -316,14 +320,16 @@ export function validateManifest(manifest?: ManifestEntry[]): void {
 }
 
 /**
- * Validate that a list of entries contains no tools.
+ * Validate that a list of entries contains no tools for CREATE EXTENSION tests.
  *
- * This is a defensive function to catch manifest filtering bugs that could
- * cause PostgreSQL container crashes. Tools (kind="tool") are binary utilities
- * that are NOT built into the Docker image and CANNOT be loaded via
- * shared_preload_libraries or CREATE EXTENSION.
+ * This is a defensive function to catch manifest filtering bugs in CREATE EXTENSION tests.
+ * Tools (kind="tool") don't have .control files and CANNOT use CREATE EXTENSION,
+ * so they should not be included in extension loading tests.
  *
- * Tools include: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate
+ * IMPORTANT: This does NOT mean tools can't be preloaded!
+ * - Hook tools (pg_safeupdate): CAN be preloaded via shared_preload_libraries, tested separately
+ * - Binary tools (pgbackrest, pgbadger): Pure utilities, not loadable by PostgreSQL
+ * - Output plugins (wal2json): Loaded via logical decoding, not shared_preload_libraries
  *
  * @param entries - List of manifest entries to validate
  * @param context - Description of where this list is being used (for error messages)
@@ -335,7 +341,7 @@ export function validateNoTools(entries: ManifestEntry[], context: string): void
     const toolNames = tools.map((t) => t.name).join(", ");
     throw new Error(
       `${context}: Found tools in extension list: ${toolNames}. ` +
-        `Tools cannot be loaded via shared_preload_libraries or CREATE EXTENSION. ` +
+        `Tools cannot use CREATE EXTENSION (no .control file). ` +
         `This indicates a bug in manifest filtering logic. ` +
         `Check getPreloadExtensions() and getTestableExtensions() filters.`
     );

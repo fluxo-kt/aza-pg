@@ -264,12 +264,12 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-disabled-extensions.ts
 
-      # Hook extension test disabled: pg_safeupdate (tool, not built) and supautils (disabled) unavailable
-      # - name: Test hook extensions
-      #   run: |
-      #     echo "Testing hook-based extensions..."
-      #     export POSTGRES_IMAGE=aza-pg-ci:test
-      #     bun scripts/test/test-hook-extensions.ts
+      - name: Test hook extensions (pg_safeupdate)
+        run: |
+          set -euo pipefail
+          echo "Testing hook-based extensions (pg_safeupdate default-enabled)..."
+          export POSTGRES_IMAGE=aza-pg-ci:test
+          bun scripts/test/test-hook-extensions.ts
 
       # Extension combinations test - validates complex multi-extension scenarios
       # Previously disabled due to bug in manifest filtering (included tools in preload)

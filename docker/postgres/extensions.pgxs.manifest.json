@@ -19,7 +19,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/citusdata/postgresql-hll",
       "docsUrl": "https://github.com/citusdata/postgresql-hll#readme"
@@ -44,7 +45,8 @@
       "aptPackages": ["libcurl4-openssl-dev", "libjson-c-dev"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-http (v1.7.0-3.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/pramsey/pgsql-http",
       "docsUrl": "https://github.com/pramsey/pgsql-http#readme"
@@ -67,7 +69,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-hypopg (v1.4.2-2.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/HypoPG/hypopg",
       "docsUrl": "https://hypopg.readthedocs.io"
@@ -89,7 +92,8 @@
       "dependencies": ["hypopg"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG. Source build required."]
       },
       "sourceUrl": "https://github.com/supabase/index_advisor",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/index_advisor"
@@ -115,6 +119,7 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
+          "PGDG: postgresql-18-cron (v1.6.7-2.pgdg13+1)",
           "Preloaded by default - background worker scheduling enabled",
           "Job scheduling tested in functional test suite"
         ]
@@ -138,7 +143,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG. Source build required."]
       },
       "sourceUrl": "https://github.com/iCyberon/pg_hashids",
       "docsUrl": "https://github.com/iCyberon/pg_hashids#readme"
@@ -164,7 +170,10 @@
         "defaultEnable": false,
         "preloadInComprehensiveTest": true,
         "preloadLibraryName": "pg_partman_bgw",
-        "notes": ["Set pg_partman_bgw.role and interval to enable background worker."]
+        "notes": [
+          "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
+          "Set pg_partman_bgw.role and interval to enable background worker."
+        ]
       },
       "sourceUrl": "https://github.com/pgpartman/pg_partman",
       "docsUrl": "https://github.com/pgpartman/pg_partman#readme"
@@ -187,7 +196,8 @@
       },
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG. Source build required."]
       },
       "sourceUrl": "https://github.com/pgexperts/pg_plan_filter",
       "docsUrl": "https://github.com/pgexperts/pg_plan_filter#readme"
@@ -211,7 +221,8 @@
       "aptPackages": ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-repack (v1.5.3-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/reorg/pg_repack",
       "docsUrl": "https://reorg.github.io/pg_repack"
@@ -284,7 +295,10 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
-        "notes": ["Tune pgaudit.log to control verbosity."]
+        "notes": [
+          "PGDG: postgresql-18-pgaudit (v18.0-2.pgdg13+1)",
+          "Tune pgaudit.log to control verbosity."
+        ]
       },
       "sourceUrl": "https://github.com/pgaudit/pgaudit",
       "docsUrl": "https://www.pgaudit.org"
@@ -314,9 +328,9 @@
       ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["CLI tool. NOT a PostgreSQL extension.", "Installs /usr/bin/pgbackrest."]
       },
-      "notes": ["Installs /usr/bin/pgbackrest."],
       "sourceUrl": "https://github.com/pgbackrest/pgbackrest",
       "docsUrl": "https://pgbackrest.org/user-guide.html"
     },
@@ -337,9 +351,12 @@
       "aptPackages": ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": [
+          "CLI tool. NOT a PostgreSQL extension.",
+          "Binary installed to /usr/local/bin/pgbadger."
+        ]
       },
-      "notes": ["Binary installed to /usr/local/bin/pgbadger."],
       "sourceUrl": "https://github.com/darold/pgbadger",
       "docsUrl": "https://pgbadger.darold.net/documentation.html"
     },
@@ -453,7 +470,8 @@
       "aptPackages": ["cmake", "libboost-graph-dev"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)"]
       },
       "sourceUrl": "https://github.com/pgRouting/pgrouting",
       "docsUrl": "https://docs.pgrouting.org"
@@ -505,7 +523,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-plpgsql-check (v2.8.4-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/okbob/plpgsql_check",
       "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
@@ -548,7 +567,8 @@
       ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/postgis/postgis",
       "docsUrl": "https://postgis.net/documentation"
@@ -571,7 +591,8 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["PGDG: postgresql-18-rum (v1.3.15-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/postgrespro/rum",
       "docsUrl": "https://github.com/postgrespro/rum#readme"
@@ -596,7 +617,8 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
-        "preloadInComprehensiveTest": true
+        "preloadInComprehensiveTest": true,
+        "notes": ["PGDG: postgresql-18-set-user (v4.2.0-1.pgdg13+1)"]
       },
       "sourceUrl": "https://github.com/pgaudit/set_user",
       "docsUrl": "https://github.com/pgaudit/set_user#readme"
@@ -619,7 +641,8 @@
       "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false
+        "defaultEnable": false,
+        "notes": ["NOT in PGDG (Supabase). Source build required."]
       },
       "sourceUrl": "https://github.com/supabase/vault",
       "docsUrl": "https://supabase.com/docs/guides/database/vault"
@@ -673,6 +696,7 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
+          "Timescale repo OR source build. NOT in PGDG.",
           "Enabled by default with regression time-series capabilities",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
@@ -703,6 +727,7 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
+          "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
           "Regression test coverage includes vector columns, HNSW indexing, and similarity search"
         ]
       },

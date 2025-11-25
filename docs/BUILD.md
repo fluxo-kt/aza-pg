@@ -512,9 +512,9 @@ bun run validate
 # Full validation (includes all checks)
 bun run validate:all
 
-# Specific checks
-bun run lint              # Oxlint for TypeScript/JavaScript (alias for validate)
-bun run format            # Auto-fix formatting (alias for validate:fix)
+# Aliases (run validate with different modes)
+bun run lint              # Check only (alias for validate)
+bun run format            # Check + auto-fix (alias for validate:fix)
 bun run check:manifest    # Manifest validation
 bun run check:shell       # Shellcheck for bash scripts
 bun run check:yaml        # yamllint for YAML files

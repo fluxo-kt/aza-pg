@@ -51,7 +51,9 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Counts**: See `docs/.generated/docs-data.json` for live module/preload/tool counts
 
-**Optional preload** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`): safeupdate, pgsodium (⚠️ required for event triggers), set_user, pg_partman, pg_plan_filter
+**Default preload**: auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb
+
+**Optional preload** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`): pgsodium (⚠️ required for event triggers), set_user, pg_partman, pg_plan_filter
 
 ## Auto-Config
 

@@ -14,9 +14,9 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 | `POSTGRES_SHARED_PRELOAD_LIBRARIES` | See below     | Comma-separated preload modules                                            |
 | `DISABLE_DATA_CHECKSUMS`            | `false`       | Set `true` to disable (not recommended)                                    |
 
-**Default preload**: `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb`
+**Default preload**: `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,safeupdate,timescaledb`
 
-**Optional preload**: `pgsodium`, `supautils`, `safeupdate`, `set_user`, `pg_partman_bgw`, `pg_plan_filter`
+**Optional preload**: `pgsodium`, `supautils`, `set_user`, `pg_partman_bgw`, `pg_plan_filter`
 
 ## PostgreSQL Connection
 

@@ -217,6 +217,40 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
   const packagesList = enabledPgdgPackages.join(" ");
   const expectedCount = enabledPgdgPackages.length;
 
+  // Build list of expected .so files for verification
+  // Map PGDG package names to their .so file names
+  const soFileMap: Record<string, string> = {
+    cron: "pg_cron.so",
+    pgvector: "vector.so",
+    pgaudit: "pgaudit.so",
+    repack: "pg_repack.so",
+    hll: "hll.so",
+    http: "http.so",
+    hypopg: "hypopg.so",
+    rum: "rum.so",
+    "set-user": "set_user.so",
+    "plpgsql-check": "plpgsql_check.so",
+    partman: "pg_partman_bgw.so",
+  };
+
+  // Get expected .so files for enabled packages
+  const expectedSoFiles = enabledPgdgPackages
+    .map((pkg) => {
+      const match = pkg.match(/postgresql-\d+-([^=]+)/);
+      if (match?.[1] && soFileMap[match[1]]) {
+        return soFileMap[match[1]];
+      }
+      return null;
+    })
+    .filter((f): f is string => f !== null);
+
+  const soVerificationCommands =
+    expectedSoFiles.length > 0
+      ? expectedSoFiles
+          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
+          .join(" && \\\n    ") + " && \\\n    "
+      : "";
+
   return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
@@ -230,9 +264,11 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
     echo "Expected ${expectedCount} enabled PGDG packages from manifest" && \\
-    # Allow some variance but ensure we have at least 1 package
     test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
+    # Verify critical .so files exist (prevents silent installation failures)
+    echo "Verifying PGDG .so files exist..." && \\
+    ${soVerificationCommands}echo "All ${expectedSoFiles.length} PGDG .so files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
     rm -f /tmp/extensions.manifest.json && \\

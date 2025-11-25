@@ -446,7 +446,7 @@ export const extensionDefaults: ExtensionDefaults = {
     postgis: "3.6.1+dfsg-1.pgdg13+1",
     partman: "5.3.1-2.pgdg13+1",
     repack: "1.5.3-1.pgdg13+1",
-    plpgsqlCheck: "2.8.3-1.pgdg13+1",
+    plpgsqlCheck: "2.8.4-1.pgdg13+1",
     hll: "2.19-1.pgdg13+1",
     http: "1.7.0-3.pgdg13+1",
     hypopg: "1.4.2-2.pgdg13+1",

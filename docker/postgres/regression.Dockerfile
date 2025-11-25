@@ -200,7 +200,7 @@ RUN set -euo pipefail && \
     (apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.0-1.pgdg12+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.0-1.pgdg12+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.0-1.pgdg12+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.3-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-partman=5.3.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.3.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.3.1-2.pgdg13+1" && \
     # Report what was installed
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \

@@ -36,7 +36,7 @@ export function generateHealthcheckScript(
   lines.push("# - Works correctly on replicas (inherited state is validated)");
   lines.push("# - Uses status table for diagnostic context when available");
   lines.push("");
-  lines.push("set -eu");
+  lines.push("set -euo pipefail");
   lines.push("");
 
   // Version-specific expectations (baked in from manifest)

@@ -7,7 +7,7 @@
 # - Works correctly on replicas (inherited state is validated)
 # - Uses status table for diagnostic context when available
 
-set -eu
+set -euo pipefail
 
 # Expected extensions for this aza-pg version (from manifest)
 EXPECTED_EXTENSIONS=("pg_cron" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "plpgsql" "timescaledb" "vector" "vectorscale")

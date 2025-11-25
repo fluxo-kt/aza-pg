@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 # Safe PgBouncer bootstrap that injects password without leaking into config
-set -eu
+set -euo pipefail
 
 TEMPLATE="/etc/pgbouncer/pgbouncer.ini.template"
 OUTPUT="/tmp/pgbouncer.ini"

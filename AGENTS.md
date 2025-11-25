@@ -26,24 +26,33 @@ docker/postgres/       # Dockerfile, entrypoints, initdb
 scripts/               # Bun TS scripts (no absolute paths)
 stacks/{primary,replica,single}  # Compose deployments
 
-# Essential Commands
-bun run validate       # Fast validation: all static checks (~10s, read-only)
-bun run validate:full  # Full validation: + extended checks (~30s)
-bun run format         # Format all code (prettier, SQL formatter)
-bun run lint           # Lint code (oxlint, read-only)
-bun run lint:fix       # Auto-fix linting issues
-bun run test           # Optimized: full suite, uses existing build (~30min)
-bun run test:full      # Complete: rebuilds image + all tests (~45min)
-bun run build          # Build Docker image
-bun run generate       # Regenerate all files from manifest
+# Essential Commands (organized by category)
 
-# Granular (debugging/CI)
-bun run test:unit          # Unit tests only (no Docker)
-bun run test:hooks         # Hook extension tests
-bun run test:extensions    # Extension loading tests
-bun run test:security      # Security tests
-bun run validate:manifest  # Manifest validation only
-bun run validate:docs      # Documentation consistency only
+# Validation (fast checks before commit)
+bun run validate            # Fast: static checks (~10s, read-only)
+bun run validate:full       # Full: + extended checks (~30s)
+bun run validate:manifest   # Manifest validation only
+bun run validate:docs       # Documentation consistency only
+
+# Formatting
+bun run format              # Format all code (prettier, SQL formatter)
+bun run format:check        # Check formatting (read-only)
+
+# Linting
+bun run lint                # Lint code (oxlint, read-only)
+bun run lint:fix            # Auto-fix linting issues
+
+# Testing
+bun run test                # Optimized: uses existing build (~30min)
+bun run test:all            # Complete: rebuilds image + all tests (~45min)
+bun run test:unit           # Unit tests only (no Docker)
+bun run test:hooks          # Hook extension tests
+bun run test:extensions     # Extension loading tests
+bun run test:security       # Security tests
+
+# Build/Generation
+bun run build               # Build Docker image
+bun run generate            # Regenerate all files from manifest
 ```
 
 ## Gotchas

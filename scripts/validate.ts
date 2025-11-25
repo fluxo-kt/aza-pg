@@ -53,11 +53,29 @@ async function isDockerAvailable(): Promise<boolean> {
 }
 
 /**
- * Run a validation check
- * @returns object with passed status and whether it's critical
+ * Validation result with optional output capture
  */
-async function runCheck(check: ValidationCheck): Promise<{ passed: boolean; critical: boolean }> {
-  info(`Running: ${check.description}`);
+type ValidationResult = {
+  passed: boolean;
+  critical: boolean;
+  name: string;
+  stdout?: string;
+  stderr?: string;
+};
+
+/**
+ * Run a validation check
+ * @param check - The validation check to run
+ * @param bufferOutput - If true, capture stdout/stderr for later printing (parallel mode)
+ * @returns object with passed status, critical flag, and optional captured output
+ */
+async function runCheck(
+  check: ValidationCheck,
+  bufferOutput: boolean = false
+): Promise<ValidationResult> {
+  if (!bufferOutput) {
+    info(`Running: ${check.description}`);
+  }
 
   // Check if this check can be skipped via environment variable
   const isOptional = check.envOverride && Bun.env[check.envOverride] === "1";
@@ -67,70 +85,102 @@ async function runCheck(check: ValidationCheck): Promise<{ passed: boolean; crit
   if (check.requiresDocker && !(await isDockerAvailable())) {
     const message = `${check.name} skipped - Docker not available. Install Docker or set ${check.envOverride}=1`;
     if (effectivelyRequired) {
-      error(message);
-      return { passed: false, critical: true };
+      if (!bufferOutput) error(message);
+      return { passed: false, critical: true, name: check.name };
     } else {
-      warning(message);
-      return { passed: false, critical: false };
+      if (!bufferOutput) warning(message);
+      return { passed: false, critical: false, name: check.name };
     }
   }
 
   try {
     const proc = Bun.spawn(check.command, {
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: bufferOutput ? "pipe" : "inherit",
+      stderr: bufferOutput ? "pipe" : "inherit",
     });
+
+    // Collect output if buffering
+    let stdout: string | undefined;
+    let stderr: string | undefined;
+    if (bufferOutput) {
+      [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+    }
 
     const exitCode = await proc.exited;
 
     if (exitCode === 0) {
-      success(`${check.name} passed`);
-      return { passed: true, critical: effectivelyRequired };
+      if (!bufferOutput) success(`${check.name} passed`);
+      return { passed: true, critical: effectivelyRequired, name: check.name, stdout, stderr };
     } else {
       if (effectivelyRequired) {
-        error(`${check.name} failed (exit code ${exitCode})`);
-        return { passed: false, critical: true };
+        if (!bufferOutput) error(`${check.name} failed (exit code ${exitCode})`);
+        return { passed: false, critical: true, name: check.name, stdout, stderr };
       } else {
-        warning(`${check.name} failed (exit code ${exitCode}) - non-critical`);
-        return { passed: false, critical: false };
+        if (!bufferOutput) warning(`${check.name} failed (exit code ${exitCode}) - non-critical`);
+        return { passed: false, critical: false, name: check.name, stdout, stderr };
       }
     }
   } catch (err) {
     const message = `${check.name} error: ${getErrorMessage(err)}`;
     if (effectivelyRequired) {
-      error(message);
-      return { passed: false, critical: true };
+      if (!bufferOutput) error(message);
+      return { passed: false, critical: true, name: check.name };
     } else {
-      warning(`${message} - non-critical`);
-      return { passed: false, critical: false };
+      if (!bufferOutput) warning(`${message} - non-critical`);
+      return { passed: false, critical: false, name: check.name };
     }
   }
 }
 
 /**
- * Run checks in parallel
+ * Run checks in parallel with buffered output to prevent mixing
  */
-async function runChecksParallel(
-  checks: ValidationCheck[]
-): Promise<{ passed: boolean; critical: boolean }[]> {
-  info("Running checks in parallel...");
+async function runChecksParallel(checks: ValidationCheck[]): Promise<ValidationResult[]> {
+  info("Running checks in parallel...\n");
 
-  const promises = checks.map(async (check) => {
-    return await runCheck(check);
-  });
+  // Run all checks in parallel, buffering their output
+  const results = await Promise.all(checks.map((check) => runCheck(check, true)));
 
-  return await Promise.all(promises);
+  // Print results sequentially to avoid mixed output
+  for (const result of results) {
+    info(`Check: ${result.name}`);
+
+    // Print buffered stdout
+    if (result.stdout?.trim()) {
+      process.stdout.write(result.stdout);
+      if (!result.stdout.endsWith("\n")) console.log("");
+    }
+
+    // Print buffered stderr
+    if (result.stderr?.trim()) {
+      process.stderr.write(result.stderr);
+      if (!result.stderr.endsWith("\n")) console.log("");
+    }
+
+    // Print result status
+    if (result.passed) {
+      success(`${result.name} passed`);
+    } else if (result.critical) {
+      error(`${result.name} failed`);
+    } else {
+      warning(`${result.name} failed (non-critical)`);
+    }
+    console.log("");
+  }
+
+  return results;
 }
 
 /**
- * Run checks sequentially
+ * Run checks sequentially (real-time output, no buffering needed)
  */
-async function runChecksSequential(
-  checks: ValidationCheck[]
-): Promise<{ passed: boolean; critical: boolean }[]> {
-  const results: { passed: boolean; critical: boolean }[] = [];
+async function runChecksSequential(checks: ValidationCheck[]): Promise<ValidationResult[]> {
+  const results: ValidationResult[] = [];
   for (const check of checks) {
-    const result = await runCheck(check);
+    const result = await runCheck(check, false);
     results.push(result);
     console.log(""); // Blank line between checks
   }

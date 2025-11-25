@@ -16,11 +16,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Bun
+      - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
-
-      - name: Install dependencies
-        run: bun install
 
       - name: Check for extension updates
         id: check

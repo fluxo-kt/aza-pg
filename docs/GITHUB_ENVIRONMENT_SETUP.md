@@ -1,8 +1,10 @@
 # GitHub Environment Setup for aza-pg
 
-## Required GitHub Repository Configuration
+## Required Secrets
 
-### Production Environment Setup
+**None.** All workflows use the built-in `GITHUB_TOKEN` which is automatically provided by GitHub Actions.
+
+## Production Environment Setup
 
 The `publish.yml` workflow requires a GitHub Environment named `production` with manual approval.
 
@@ -13,25 +15,16 @@ The `publish.yml` workflow requires a GitHub Environment named `production` with
 3. Click **New environment**
 4. Name it exactly: `production`
 5. Configure protection rules:
-   - ☑️ **Required reviewers**
-   - Add at least 1 reviewer (repository maintainers recommended)
-   - Optional: Set deployment branch rule to `release` only
+   - ☑️ **Required reviewers**: Add yourself or team members
+   - **Deployment branches**: Only `release` branch
+
+**No additional secrets needed** — uses `GITHUB_TOKEN` automatically.
 
 **Why this is required:**
 
 - Prevents accidental releases from unintended branch pushes
 - Provides manual approval gate before publishing public images
 - Allows review of build/scan results before promotion to production tags
-
-### Environment Configuration Details
-
-```yaml
-Name: production
-Protection Rules:
-  - Required reviewers: 1+ (maintainers)
-  - Deployment branches: release (recommended)
-  - Wait timer: 0 minutes (optional: add delay)
-```
 
 ### Approval Workflow
 
@@ -60,10 +53,47 @@ permissions:
   contents: read # Read repository code
   packages: write # Push to GHCR
   id-token: write # Cosign keyless OIDC
+  attestations: write # SBOM/Provenance
   security-events: write # Upload SARIF to Security tab
 ```
 
-### Troubleshooting
+## Image Signing (Cosign)
+
+The release workflow signs images using **Cosign with keyless OIDC**:
+
+- **Mode**: `COSIGN_EXPERIMENTAL=1` (keyless signing)
+- **Provider**: GitHub Actions OIDC (auto-configured)
+- **Attestations**: SBOM + Provenance (SLSA v0.2)
+- **Transparency log**: Rekor (public, immutable)
+
+**No additional secrets or keys required.**
+
+### Verifying Signed Images
+
+```bash
+# Verify signature
+cosign verify \
+  --certificate-identity-regexp="https://github.com/fluxo-kt/aza-pg" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+  ghcr.io/fluxo-kt/aza-pg:18
+
+# Verify attestations
+cosign verify-attestation \
+  --certificate-identity-regexp="https://github.com/fluxo-kt/aza-pg" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+  --type slsaprovenance \
+  ghcr.io/fluxo-kt/aza-pg:18
+```
+
+## GitHub Container Registry (GHCR)
+
+Images are pushed to `ghcr.io/fluxo-kt/aza-pg`:
+
+- **Authentication**: `GITHUB_TOKEN` with `packages: write` permission
+- **Visibility**: Public (configured in repo settings)
+- **No PAT needed**: Built-in token has sufficient permissions
+
+## Troubleshooting
 
 **Issue:** Workflow fails with "Environment not found"
 **Solution:** Create the `production` environment in repository settings
@@ -76,6 +106,25 @@ permissions:
 
 **Issue:** Approval times out
 **Solution:** No timeout by default, but check if wait timer was configured
+
+**Issue:** "Permission denied" when pushing to GHCR
+**Solution:**
+
+- Verify repo settings: **Settings** → **Actions** → **General** → **Workflow permissions** → "Read and write permissions"
+- Check package visibility: **Packages** → **aza-pg** → **Package settings** → "Public"
+
+**Issue:** Cosign signing fails
+**Solution:**
+
+- Ensure `id-token: write` permission in workflow
+- Verify GitHub Actions OIDC provider is enabled (auto-enabled for public repos)
+- Check workflow runs on `release` branch (not fork)
+
+**Issue:** Image not visible in GHCR
+**Solution:**
+
+- First push creates package as private by default
+- Manually change to public: **Packages** → **aza-pg** → **Package settings** → "Change visibility" → "Public"
 
 ### Testing the Approval Flow
 

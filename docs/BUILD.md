@@ -705,6 +705,454 @@ All builds follow the Bun-first philosophy:
 
 See [TOOLING.md](TOOLING.md) for complete tooling decisions.
 
+## Script Reference
+
+Comprehensive collection of build, test, and operational scripts using Bun-first TypeScript patterns. All scripts include robust error handling and use shared utilities from `lib/common.ts`.
+
+### Directory Structure
+
+```
+scripts/
+├── lib/              # Shared library functions
+├── test/             # Test and validation scripts
+├── tools/            # Operational tooling
+├── build.ts          # Main build script (Bun TypeScript)
+```
+
+### Shared Library (lib/common.ts)
+
+Core utilities for all scripts:
+
+**Functions:**
+
+- `logInfo()`, `logSuccess()`, `logWarning()`, `logError()` - Colored logging
+- `dockerCleanup(container)` - Safe container removal
+- `checkCommand(cmd)` - Verify command availability
+- `checkDockerDaemon()` - Verify Docker is running
+- `waitForPostgres(host, port, user, timeout, container?)` - Wait for PostgreSQL readiness
+
+**Usage:**
+
+```typescript
+import {
+  checkCommand,
+  checkDockerDaemon,
+  waitForPostgres,
+} from "../lib/common.ts";
+
+await checkCommand("docker");
+await checkDockerDaemon();
+await waitForPostgres("localhost", 5432, "postgres", 60);
+```
+
+### Test Scripts
+
+#### test-build.ts [image-tag]
+
+Builds Docker image and verifies extensions are functional.
+
+**What it tests:**
+
+- Image build process (via buildx)
+- PostgreSQL version
+- Auto-config entrypoint presence
+- Extension creation (vector, pg_trgm, pg_cron, pgaudit, etc.)
+- Extension functionality (vector types, similarity, cron jobs)
+
+**Usage:**
+
+```bash
+bun scripts/test/test-build.ts                # Default tag: aza-pg:pg18
+bun scripts/test/test-build.ts my-custom:tag  # Custom tag
+```
+
+**Dependencies:** `docker`, `buildx`
+
+---
+
+#### test-auto-config.ts [image-tag]
+
+Validates auto-config RAM/CPU detection and PostgreSQL tuning.
+
+**What it tests:**
+
+1. Manual memory override (`POSTGRES_MEMORY`)
+2. 2GB cgroup v2 detection
+3. 512MB minimum memory limit
+4. 64GB high-memory override
+5. CPU core detection and worker tuning
+6. Below-minimum memory rejection (256MB)
+7. Custom `shared_preload_libraries` override
+
+**Usage:**
+
+```bash
+bun scripts/test/test-auto-config.ts                # Default tag: aza-pg:pg18
+bun scripts/test/test-auto-config.ts my-custom:tag  # Custom tag
+```
+
+**Dependencies:** `docker`
+
+---
+
+#### run-extension-smoke.ts [image-tag]
+
+Tests extension loading in dependency order using manifest.
+
+**What it tests:**
+
+- Topological sort of extension dependencies
+- CREATE EXTENSION for all extensions (excluding tools)
+- Dependency resolution accuracy
+
+**Usage:**
+
+```bash
+bun scripts/test/run-extension-smoke.ts                # Default tag: aza-pg:test
+bun scripts/test/run-extension-smoke.ts my-custom:tag  # Custom tag
+```
+
+**Dependencies:** `docker`
+
+---
+
+#### test-pgbouncer-healthcheck.ts [stack-dir]
+
+Validates PgBouncer healthcheck and authentication.
+
+**What it tests:**
+
+- Stack deployment (compose up)
+- PostgreSQL readiness
+- PgBouncer auth via `pgbouncer_lookup()` function
+- Health check connectivity
+- Query execution through PgBouncer
+
+**Usage:**
+
+```bash
+bun scripts/test/test-pgbouncer-healthcheck.ts                  # Default: stacks/primary
+bun scripts/test/test-pgbouncer-healthcheck.ts stacks/primary   # Explicit path
+```
+
+**Dependencies:** `docker`, `docker compose`, `psql`
+
+---
+
+#### wait-for-postgres.ts [host] [port] [user] [timeout]
+
+Waits for PostgreSQL to accept connections.
+
+**Usage:**
+
+```bash
+bun scripts/test/wait-for-postgres.ts                             # localhost:5432, 60s
+bun scripts/test/wait-for-postgres.ts db.example.com 5432 admin   # Remote host
+PGHOST=localhost PGPORT=6432 bun scripts/test/wait-for-postgres.ts  # Via PgBouncer
+bun scripts/test/wait-for-postgres.ts localhost 5432 postgres 120   # 2min timeout
+```
+
+**Dependencies:** `pg_isready`
+
+---
+
+### Operational Scripts (tools/)
+
+#### backup-postgres.ts [database] [output-file]
+
+Creates compressed PostgreSQL backup using `pg_dump`.
+
+**Features:**
+
+- Auto-named backup files with timestamp
+- Gzip compression
+- Backup validation (file size, gzip integrity)
+- Remote host support via `PGHOST`/`PGPORT`/`PGUSER`
+- Safe: prevents overwriting existing backups
+
+**Usage:**
+
+```bash
+bun scripts/tools/backup-postgres.ts                      # Backup 'postgres' db
+bun scripts/tools/backup-postgres.ts mydb                 # Backup 'mydb'
+bun scripts/tools/backup-postgres.ts mydb backup.sql.gz   # Custom output file
+PGHOST=db.example.com PGUSER=admin bun scripts/tools/backup-postgres.ts mydb
+```
+
+**Environment variables:**
+
+- `PGHOST` - PostgreSQL host (default: localhost)
+- `PGPORT` - PostgreSQL port (default: 5432)
+- `PGUSER` - PostgreSQL user (default: postgres)
+- `PGPASSWORD` - PostgreSQL password (required for remote)
+
+**Dependencies:** `pg_dump`, `pg_isready`, `gzip`, `du`
+
+---
+
+#### restore-postgres.ts <backup-file> [database]
+
+Restores PostgreSQL database from backup.
+
+**Features:**
+
+- Compressed (.gz) and plain SQL file support
+- Backup file validation (existence, readability, gzip integrity)
+- Interactive confirmation (destructive operation)
+- Database statistics after restore
+
+**Usage:**
+
+```bash
+bun scripts/tools/restore-postgres.ts backup.sql.gz           # Restore to 'postgres'
+bun scripts/tools/restore-postgres.ts backup.sql.gz mydb      # Restore to 'mydb'
+PGHOST=db.example.com bun scripts/tools/restore-postgres.ts backup.sql.gz
+```
+
+**Environment variables:** Same as `backup-postgres.ts`
+
+**Dependencies:** `psql`, `pg_isready`, `gunzip`
+
+---
+
+#### promote-replica.ts [OPTIONS]
+
+Promotes PostgreSQL replica to primary role.
+
+**Features:**
+
+- Verifies replica is in recovery mode
+- Optional pre-promotion backup
+- Safe promotion using `pg_ctl promote`
+- Configuration updates (removes `standby.signal`)
+- Post-promotion verification
+
+**Options:**
+
+- `--container NAME` - Container name (default: postgres-replica)
+- `--data-dir PATH` - Data directory (default: /var/lib/postgresql/data)
+- `--no-backup` - Skip backup before promotion
+- `--yes` - Skip confirmation prompt
+- `--help` - Show help message
+
+**Usage:**
+
+```bash
+bun scripts/tools/promote-replica.ts                     # Interactive promotion
+bun scripts/tools/promote-replica.ts --container my-replica --yes    # Skip confirmation
+bun scripts/tools/promote-replica.ts --no-backup --yes               # Fast (no backup)
+```
+
+**Dependencies:** `docker`
+
+**Warnings:**
+
+- One-way operation (cannot revert)
+- Ensure old primary is stopped (avoid split-brain)
+- Update client connection strings after promotion
+
+---
+
+#### generate-ssl-certs.ts
+
+Generates self-signed SSL certificates for PostgreSQL TLS.
+
+**Output:**
+
+- `server.key` - Private key
+- `server.crt` - Self-signed certificate
+
+**Usage:**
+
+```bash
+bun scripts/tools/generate-ssl-certs.ts
+```
+
+**Dependencies:** `openssl`
+
+---
+
+### Common Development Patterns
+
+#### Error Handling
+
+All scripts follow consistent error handling using Bun TypeScript:
+
+```typescript
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+} from "./lib/common.ts";
+
+// Prerequisites check
+await checkCommand("docker");
+await checkDockerDaemon();
+
+// Cleanup handler
+process.on("exit", () => {
+  dockerCleanup(containerName);
+});
+```
+
+#### Type Safety
+
+All scripts use TypeScript with Bun for type safety:
+
+```typescript
+import type { BuildOptions } from "./types.ts";
+
+const options: BuildOptions = {
+  multiArch: false,
+  push: false,
+  tag: "aza-pg:pg18",
+};
+```
+
+#### Logging
+
+Consistent colored logging via `common.ts`:
+
+```typescript
+import { logInfo, logSuccess, logWarning, logError } from "./lib/common.ts";
+
+logInfo("Starting operation...");
+logSuccess("Operation completed");
+logWarning("Non-critical issue detected");
+logError("Critical failure");
+```
+
+### Recommended Test Sequence
+
+1. **Build verification:**
+
+   ```bash
+   bun scripts/test/test-build.ts
+   ```
+
+2. **Auto-config validation:**
+
+   ```bash
+   bun scripts/test/test-auto-config.ts
+   ```
+
+3. **Extension smoke test:**
+
+   ```bash
+   bun scripts/test/run-extension-smoke.ts
+   ```
+
+4. **PgBouncer integration:**
+   ```bash
+   bun scripts/test/test-pgbouncer-healthcheck.ts
+   ```
+
+### Operational Workflows
+
+#### Backup and Restore Cycle
+
+```bash
+# Backup production database
+PGHOST=prod.db.example.com PGPASSWORD=xxx bun scripts/tools/backup-postgres.ts mydb
+
+# Restore to staging
+PGHOST=staging.db.example.com PGPASSWORD=yyy bun scripts/tools/restore-postgres.ts backup_mydb_20250131_120000.sql.gz mydb
+```
+
+#### Replica Promotion (Failover)
+
+```bash
+# 1. Stop old primary (critical!)
+docker stop postgres-primary
+
+# 2. Promote replica
+bun scripts/tools/promote-replica.ts --container postgres-replica
+
+# 3. Verify promotion
+docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should return 'f'
+
+# 4. Update application connection strings to new primary
+```
+
+### Script Dependencies
+
+**Required for all scripts:**
+
+- `bun` (install via `curl -fsSL https://bun.sh/install | bash`)
+- `docker` (Docker Engine or Docker Desktop)
+
+**Test scripts:**
+
+- `docker buildx` (bundled with Docker Desktop)
+- `psql` / `pg_isready` (for PgBouncer test)
+
+**Tool scripts:**
+
+- `pg_dump`, `pg_isready`, `psql` (PostgreSQL client tools)
+- `gzip`, `gunzip`, `du` (standard Unix utilities)
+- `openssl` (for SSL cert generation)
+
+### Contributing Scripts
+
+When adding new scripts:
+
+1. **Use common library:** Import from `lib/common.ts` for shared functions
+2. **Type safety:** Use TypeScript with proper type annotations
+3. **Consistent error handling:** Use try-catch with proper cleanup
+4. **Logging:** Use `logInfo()`, `logSuccess()`, etc. from common.ts
+5. **Cleanup handlers:** Use `process.on('exit')` pattern
+6. **Documentation:** Add JSDoc comments and update documentation
+7. **Testing:** Verify script works on clean environment
+
+**Example script template:**
+
+```typescript
+#!/usr/bin/env bun
+/**
+ * Script description
+ *
+ * Usage: bun script.ts [args]
+ *
+ * Examples:
+ *   bun script.ts example1
+ *   bun script.ts example2
+ */
+
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  logInfo,
+  logSuccess,
+  logError,
+} from "./lib/common.ts";
+
+const CONTAINER_NAME = "my-container";
+
+// Cleanup handler
+process.on("exit", () => {
+  dockerCleanup(CONTAINER_NAME);
+});
+
+async function main() {
+  try {
+    // Check prerequisites
+    await checkCommand("docker");
+    await checkDockerDaemon();
+
+    // Main logic
+    logInfo("Starting operation...");
+    // ... implementation ...
+    logSuccess("Operation complete");
+  } catch (error) {
+    logError(`Operation failed: ${error}`);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
 ## Related Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System design and data flows

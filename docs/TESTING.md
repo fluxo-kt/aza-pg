@@ -5,12 +5,17 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 ## Table of Contents
 
 1. [Regression Testing](#regression-testing)
-2. [Session Isolation Pattern](#session-isolation-pattern)
-3. [Testing Extension Functionality](#testing-extension-functionality)
-4. [Common Pitfalls](#common-pitfalls)
-5. [Test Categories](#test-categories)
-6. [Testing Strategy & Coverage](#testing-strategy-coverage)
-7. [Running Tests](#running-tests)
+2. [Regression Test Suites](#regression-test-suites)
+   - [PostgreSQL Official Regression Tests (Tier 1)](#postgresql-official-regression-tests-tier-1)
+   - [Extension Regression Tests (Tier 2)](#extension-regression-tests-tier-2)
+   - [Expected Output Generation Status](#expected-output-generation-status)
+   - [pgTAP Regression Tests (Tier 4)](#pgtap-regression-tests-tier-4)
+3. [Session Isolation Pattern](#session-isolation-pattern)
+4. [Testing Extension Functionality](#testing-extension-functionality)
+5. [Common Pitfalls](#common-pitfalls)
+6. [Test Categories](#test-categories)
+7. [Testing Strategy & Coverage](#testing-strategy-coverage)
+8. [Running Tests](#running-tests)
 
 ## Regression Testing
 
@@ -70,6 +75,335 @@ Tests automatically detect mode from:
 3. Default: production
 
 **See [REGRESSION-TESTING.md](./REGRESSION-TESTING.md) for complete documentation.**
+
+---
+
+## Regression Test Suites
+
+### PostgreSQL Official Regression Tests (Tier 1)
+
+Core PostgreSQL regression tests fetched from the official postgres/postgres repository.
+
+**Structure:**
+
+```
+tests/regression/core/pg-official/
+├── sql/          # SQL test files (fetched from src/test/regress/sql/)
+├── expected/     # Expected output files (fetched from src/test/regress/expected/)
+└── README.md     # Documentation
+```
+
+**Fetching Tests:**
+
+Tests are fetched on-demand and cached locally. To fetch tests:
+
+```bash
+# Fetch all default tests (~30 core tests)
+bun scripts/ci/fetch-pg-regression-tests.ts
+
+# Fetch specific tests
+bun scripts/ci/fetch-pg-regression-tests.ts --tests=boolean,int2,int4
+
+# Force re-download (ignore cache)
+bun scripts/ci/fetch-pg-regression-tests.ts --force
+```
+
+**Source:**
+
+- Repository: `postgres/postgres`
+- Branch: `REL_18_STABLE`
+- Path: `src/test/regress/`
+
+**Cache Policy:**
+
+Test files are **not committed** to the repository (see `.gitignore`).
+
+They are:
+
+- Fetched automatically when running tests (if missing)
+- Cached locally for faster subsequent runs
+- Safe to delete (will be re-fetched as needed)
+
+**Default Test Set:**
+
+The default set includes ~30 critical PostgreSQL regression tests covering:
+
+- **Data types**: boolean, int2, int4, int8, float4, float8, numeric, text, varchar
+- **Core operations**: select, insert, update, delete, join, union, subselect
+- **Essential features**: constraints, triggers, create_index, create_table, transactions, aggregates, copy, prepare
+- **Advanced features**: json, jsonb, arrays, strings, numerology, btree_index
+
+See `scripts/ci/fetch-pg-regression-tests.ts` for the complete list.
+
+### Extension Regression Tests (Tier 2)
+
+Deterministic regression tests for PostgreSQL extensions using SQL + expected output comparison (pg_regress pattern).
+
+**Structure:**
+
+```
+tests/regression/extensions/
+├── {extension-name}/
+│   ├── sql/
+│   │   └── basic.sql      # SQL test commands
+│   └── expected/
+│       └── basic.out      # Expected psql output
+└── README.md
+```
+
+**Test Coverage:**
+
+**Production Mode (Top 10 Extensions):**
+
+1. **vector** (pgvector) - Vector similarity search, distance operators
+2. **timescaledb** - Hypertable creation, time-series data
+3. **pg_cron** - Job scheduling infrastructure
+4. **pgsodium** - Cryptographic functions, encryption
+5. **pgaudit** - Security auditing configuration
+6. **pg_stat_monitor** - Enhanced query metrics
+7. **hypopg** - Hypothetical index creation
+8. **pg_trgm** - Trigram similarity, fuzzy search
+9. **pgmq** - Message queue operations
+10. **timescaledb_toolkit** - Time-series hyperfunctions
+
+**Comprehensive Mode (Additional 3 Extensions):**
+
+11. **postgis** - Spatial data types and operations
+12. **pgrouting** - Graph routing algorithms (Dijkstra)
+13. **pgq** - High-performance queue operations
+
+**Generating Expected Outputs:**
+
+Expected output files must be generated from a known-good build:
+
+```bash
+# Build production image
+bun run build
+
+# Generate expected outputs for production extensions
+bun scripts/test/test-extension-regression.ts --mode=production --generate-expected
+
+# Generate expected outputs for comprehensive extensions (requires comprehensive build)
+bun scripts/test/test-extension-regression.ts --mode=comprehensive --generate-expected
+```
+
+**IMPORTANT**: Expected outputs are deterministic and should be committed to the repository. They serve as the regression baseline for future test runs.
+
+**Running Tests:**
+
+**Production Mode:**
+
+```bash
+# Test top 10 production extensions
+bun scripts/test/test-extension-regression.ts --mode=production
+```
+
+**Comprehensive Mode:**
+
+```bash
+# Test all extensions (requires comprehensive build with postgis, pgrouting, pgq enabled)
+bun scripts/test/test-extension-regression.ts --mode=comprehensive
+```
+
+**Specific Extensions:**
+
+```bash
+# Test specific extensions only
+bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb,pg_cron
+```
+
+**Using Existing Container:**
+
+```bash
+# Use existing running container
+bun scripts/test/test-extension-regression.ts --container=my-postgres-container
+```
+
+**Test Design Principles:**
+
+1. **Simplicity**: Each test is < 50 lines of SQL, focuses on core functionality
+2. **Determinism**: No random values, timestamps use fixed dates, outputs are predictable
+3. **Self-contained**: Tests create and clean up their own data
+4. **Basic coverage**: Tests verify extension works, not comprehensive feature coverage
+
+**Adding New Extension Tests:**
+
+1. Create directory: `tests/regression/extensions/{extension-name}/{sql,expected}/`
+2. Write SQL test: `sql/basic.sql` (see existing tests as templates)
+3. Generate expected output: `--generate-expected` flag
+4. Add extension to `TOP_10_EXTENSIONS` or `COMPREHENSIVE_ONLY_EXTENSIONS` in `test-extension-regression.ts`
+5. Commit SQL + expected output files
+
+**Test Execution Details:**
+
+- Uses `psql -X -a -q` for consistent output format
+- Output normalization handles psql formatting variations
+- Diff generation uses `diff -c` (context diff) for readability
+- Failed tests generate `extension-regression.diffs` file
+
+**Related Documentation:**
+
+- **Tier 1 Tests**: `tests/regression/core/` - PostgreSQL core regression tests
+- **Functional Tests**: `scripts/test/test-all-extensions-functional.ts` - 117+ extension tests
+- **Regression Runner**: `scripts/test/lib/regression-runner.ts` - Shared test infrastructure
+
+### Expected Output Generation Status
+
+This tracks which extension regression tests have generated expected outputs.
+
+**Generation Instructions:**
+
+Expected output files (`.out`) must be generated from a clean, known-good build:
+
+```bash
+# 1. Build production image
+bun run build
+
+# 2. Generate expected outputs for production mode
+bun scripts/test/test-extension-regression.ts --mode=production --generate-expected
+
+# 3. For comprehensive mode (requires PostGIS/pgRouting/PgQ enabled)
+# Edit scripts/extensions/manifest-data.ts to enable postgis, pgrouting, pgq
+# bun run generate && bun run build
+# bun scripts/test/test-extension-regression.ts --mode=comprehensive --generate-expected
+```
+
+**Status:**
+
+**Production Extensions (Top 10):**
+
+- [ ] **vector** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **timescaledb** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pg_cron** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pgsodium** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pgaudit** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pg_stat_monitor** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **hypopg** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pg_trgm** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **pgmq** - `expected/basic.out` - NEEDS GENERATION
+- [ ] **timescaledb_toolkit** - `expected/basic.out` - NEEDS GENERATION
+
+**Comprehensive-Only Extensions:**
+
+- [ ] **postgis** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
+- [ ] **pgrouting** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
+- [ ] **pgq** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
+
+**Notes:**
+
+- Expected outputs are deterministic and should remain stable across builds
+- Non-deterministic values (random(), now()) avoided in tests
+- All SQL test files (`sql/basic.sql`) are ready and committed
+- Expected outputs will be generated during next production build validation
+
+### pgTAP Regression Tests (Tier 4)
+
+SQL-based unit tests using pgTAP for PostgreSQL and extension functionality.
+
+**Overview:**
+
+pgTAP is a TAP-compliant testing framework for PostgreSQL. These tests verify core PostgreSQL functionality, extension behavior, and security features.
+
+**Test Files:**
+
+| File                              | Description                                  | Tests |
+| --------------------------------- | -------------------------------------------- | ----- |
+| `01_extensions_availability.sql`  | Extension availability verification          | 15    |
+| `02_schema_and_objects.sql`       | Schema, tables, functions, triggers          | 20    |
+| `03_vector_extension.sql`         | pgvector functionality and similarity search | 12    |
+| `04_timescaledb_extension.sql`    | TimescaleDB hypertables and time-series      | 15    |
+| `05_security_and_permissions.sql` | Roles, RLS, permissions, audit               | 20    |
+
+**Total: 82 tests**
+
+**Running Tests:**
+
+**Using psql:**
+
+```bash
+# Run all pgTAP tests
+psql -U postgres -d test_db -f tests/regression/pgtap/01_extensions_availability.sql
+
+# Run specific test file
+psql -U postgres -d test_db -f tests/regression/pgtap/03_vector_extension.sql
+```
+
+**Using pg_prove:**
+
+```bash
+# Install pg_prove (if not already installed)
+sudo cpan TAP::Parser::SourceHandler::pgTAP
+
+# Run all tests
+pg_prove -U postgres -d test_db tests/regression/pgtap/*.sql
+
+# Run specific test
+pg_prove -U postgres -d test_db tests/regression/pgtap/03_vector_extension.sql
+
+# Verbose output
+pg_prove -v -U postgres -d test_db tests/regression/pgtap/*.sql
+```
+
+**In Docker Container:**
+
+```bash
+# Start regression test image
+docker run --name pg-regression -d -e POSTGRES_PASSWORD=postgres aza-pg:pg18-regression
+
+# Run tests
+docker exec pg-regression psql -U postgres -c "CREATE EXTENSION pgtap;"
+docker exec pg-regression psql -U postgres -f /tests/regression/pgtap/01_extensions_availability.sql
+```
+
+**Test Modes:**
+
+- **Production Mode**: Tests enabled extensions only (derived from manifest runtime.defaultEnable=true)
+- **Regression Mode**: Tests all catalog entries including disabled extensions (comprehensive coverage)
+
+Some tests automatically adapt based on available extensions (e.g., `age`, `pgq`, `postgis` are regression-only).
+
+**Test Structure:**
+
+Each test file follows this structure:
+
+```sql
+BEGIN;
+
+SELECT plan(N);  -- Declare number of tests
+
+-- Test assertions
+SELECT has_extension('vector', 'pgvector should be available');
+SELECT is(2 + 2, 4, 'arithmetic should work');
+SELECT ok(condition, 'description');
+
+SELECT * FROM finish();
+
+ROLLBACK;
+```
+
+**pgTAP Assertions Used:**
+
+- **Schema**: `has_schema()`, `schema_owner_is()`
+- **Tables**: `has_table()`, `has_column()`, `col_not_null()`, `col_is_unique()`
+- **Indexes**: `has_index()`, `has_pk()`
+- **Functions**: `has_function()`, `function_returns()`, `function_lang_is()`
+- **Triggers**: `has_trigger()`
+- **Extensions**: `has_extension()`
+- **Permissions**: `schema_privs_are()`, `table_privs_are()`
+- **Roles**: `has_role()`, `is_superuser()`, `isnt_superuser()`
+- **General**: `ok()`, `is()`, `isnt()`, `pass()`, `skip()`
+
+**Requirements:**
+
+- PostgreSQL 18.x
+- pgTAP extension (pre-installed in regression test image)
+- Enabled extensions (varies by test mode)
+
+**References:**
+
+- [pgTAP Documentation](https://pgtap.org/)
+- [TAP Protocol](https://testanything.org/)
+- [PostgreSQL Testing Best Practices](https://wiki.postgresql.org/wiki/Testing)
 
 ---
 

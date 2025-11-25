@@ -1,6 +1,6 @@
 # aza-pg: Production PostgreSQL with Auto-Config — AI Agent Guide (NO LOGS HERE! NO BS, ONLY FUTURE-PROOF VALUE!)
 
-**PG 18 container**: Auto-tuned config, 40+ extensions, SHA-pinned dependencies, Bun/TS-first tooling, Compose-only deployment, digest-based releases.
+**PG 18 container**: Auto-tuned config, comprehensive extensions, SHA-pinned dependencies, Bun/TS-first tooling, Compose-only deployment, digest-based releases.
 
 • **Bun-First**: All scripts use Bun TypeScript. Prefer Bun APIs to usuals from Node.js when possible and reasonable. See Development Standards below. **But NO Bun in the final images**
 • **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Dockerfiles are auto-generation-only from manifest, should be as simple as possible — all logic and nuances belong in TypeScript scripts.
@@ -84,7 +84,7 @@ bun scripts/{ci,docker,debug,release}/<script>.ts --help
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Health check**: Port 6432/postgres (not admin console)
 - **Cgroup missing**: Set POSTGRES_MEMORY or mem_limit explicitly
-- **Tools vs extensions**: No CREATE EXTENSION on tools (5: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate)
+- **Tools vs extensions**: No CREATE EXTENSION on tools (4 enabled: pgbackrest, pgbadger, wal2json, pg_safeupdate)
 - **PGDG-disabled**: Compiled extensions only (PGDG are install-or-skip)
 - **Auto-config**: `-c` flags override postgresql.conf at runtime
 
@@ -92,7 +92,7 @@ bun scripts/{ci,docker,debug,release}/<script>.ts --help
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Key details**: Modules: 1 (auto_explain) | Preloaded: 6 (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb) | Tools (no CREATE EXTENSION): 5 | See docs/EXTENSIONS.md for full catalog
+**Key details**: Modules: 1 (auto_explain) | Preloaded: 6 | Tools: 4 | See `docs/.generated/docs-data.json` for live counts
 
 **Optional preload modules** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`):
 
@@ -315,7 +315,7 @@ No version override via --build-arg or workflow inputs (use extension-defaults.t
 - ✅ `await Bun.file(path).text()` and `await Bun.write(path, content)`
 - ❌ `execSync("command")` from child_process
 - ✅ `await $`command`` from Bun.$
-- Exception: `statSync` for directories (Bun.file.exists only works for files)
+- Exception: `stat()` from `node:fs/promises` for directory checks (Bun.file.exists only works for files)
 
 **Not regenerating after manifest changes**:
 
@@ -399,8 +399,8 @@ No version override via --build-arg or workflow inputs (use extension-defaults.t
 **Extension Architecture**:
 
 - Modules (auto_explain): Preload-only, no CREATE EXTENSION
-- Tools (5 total): No catalog entry, no CREATE EXTENSION
-- Extensions: Standard CREATE EXTENSION flow (counts in manifest)
+- Tools (4 enabled): No catalog entry, no CREATE EXTENSION
+- Extensions: Standard CREATE EXTENSION flow
 - License restrictions: pgvector basic ops free, HNSW requires pgvector_rs license
 
 ## Troubleshooting Patterns

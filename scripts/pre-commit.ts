@@ -58,6 +58,7 @@ async function preCommit(): Promise<void> {
         "docker/postgres/Dockerfile",
         "docker/postgres/extensions.manifest.json",
         "docker/postgres/extensions.build-packages.txt",
+        "docker/postgres/healthcheck.sh",
         "docs/.generated/docs-data.json",
         "docs/EXTENSIONS.md",
         "docker/postgres/configs/postgresql-base.conf",

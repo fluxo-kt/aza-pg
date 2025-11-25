@@ -18,10 +18,10 @@ Key principles:
 
 aza-pg classifies bundled functionality into four buckets:
 
-- **Tools** (5): CLI / hook utilities that do not require `CREATE EXTENSION`
-  - Examples: pgbackrest, pgbadger, wal2json, pg_plan_filter, pg_safeupdate
+- **Tools** (4): CLI / hook utilities that do not require `CREATE EXTENSION`
+  - Examples: pgbackrest, pgbadger, wal2json, pg_safeupdate
   - Installed in `/usr/local/bin/` or wired via PostgreSQL hooks
-  - Note: supautils is currently disabled (manifest-controlled)
+  - Note: pg_plan_filter is currently disabled (manifest-controlled)
 
 - **Builtins** (6): Core PostgreSQL contrib extensions
   - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist

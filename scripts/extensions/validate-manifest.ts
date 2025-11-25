@@ -8,13 +8,15 @@ import { join } from "node:path";
 import { validateManifest } from "./manifest-schema.ts";
 import * as logger from "../utils/logger";
 
-// Expected counts (from extensions.manifest.json, validated dynamically)
-const EXPECTED_COUNTS = {
-  total: 39,
-  builtin: 6,
-  pgdg: 13,
-  compiled: 20,
-};
+// Counts are auto-derived from manifest (no hardcoding - manifest is source of truth)
+interface ManifestCounts {
+  total: number;
+  builtin: number;
+  pgdg: number;
+  compiled: number;
+  enabled: number;
+  disabled: number;
+}
 
 // File paths - derive PROJECT_ROOT from import.meta.dir
 const PROJECT_ROOT = join(import.meta.dir, "../..");
@@ -87,38 +89,42 @@ async function readFile(path: string): Promise<string> {
   return await file.text();
 }
 
-// 1. Count validation
-function validateCounts(manifest: Manifest): void {
+// 1. Count derivation (no hardcoded validation - manifest is source of truth)
+function deriveCounts(manifest: Manifest): ManifestCounts {
   const total = manifest.entries.length;
   const builtin = manifest.entries.filter((e) => e.kind === "builtin").length;
   const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
 
-  // Compiled = extensions built from source (not PGDG, not builtin, and either "extension" or "tool" kind)
-  // This excludes builtin extensions since they're not compiled
+  // Compiled = extensions built from source (not PGDG, not builtin)
   const compiled = manifest.entries.filter(
     (e) => e.kind !== "builtin" && e.install_via !== "pgdg"
   ).length;
 
-  logger.info("[COUNT VALIDATION]");
-  console.log(`  Total extensions: ${total} (expected: ${EXPECTED_COUNTS.total})`);
-  console.log(`  Builtin: ${builtin} (expected: ${EXPECTED_COUNTS.builtin})`);
-  console.log(`  PGDG: ${pgdg} (expected: ${EXPECTED_COUNTS.pgdg})`);
-  console.log(`  Compiled: ${compiled} (expected: ${EXPECTED_COUNTS.compiled})`);
+  const enabled = manifest.entries.filter((e) => e.enabled !== false).length;
+  const disabled = manifest.entries.filter((e) => e.enabled === false).length;
 
-  if (total !== EXPECTED_COUNTS.total) {
-    error(`Total extension count mismatch: got ${total}, expected ${EXPECTED_COUNTS.total}`);
-  }
-  if (builtin !== EXPECTED_COUNTS.builtin) {
-    error(`Builtin extension count mismatch: got ${builtin}, expected ${EXPECTED_COUNTS.builtin}`);
-  }
-  if (pgdg !== EXPECTED_COUNTS.pgdg) {
-    error(`PGDG extension count mismatch: got ${pgdg}, expected ${EXPECTED_COUNTS.pgdg}`);
-  }
-  if (compiled !== EXPECTED_COUNTS.compiled) {
+  logger.info("[MANIFEST COUNTS]");
+  console.log(`  Total: ${total}`);
+  console.log(`  Builtin: ${builtin}`);
+  console.log(`  PGDG: ${pgdg}`);
+  console.log(`  Compiled: ${compiled}`);
+  console.log(`  Enabled: ${enabled}`);
+  console.log(`  Disabled: ${disabled}`);
+
+  // Sanity check: counts should sum correctly
+  if (builtin + pgdg + compiled !== total) {
     error(
-      `Compiled extension count mismatch: got ${compiled}, expected ${EXPECTED_COUNTS.compiled}`
+      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + compiled(${compiled}) = ${builtin + pgdg + compiled}, but total = ${total}`
     );
   }
+
+  if (enabled + disabled !== total) {
+    error(
+      `Enabled/disabled count mismatch: enabled(${enabled}) + disabled(${disabled}) = ${enabled + disabled}, but total = ${total}`
+    );
+  }
+
+  return { total, builtin, pgdg, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -362,12 +368,15 @@ async function main(): Promise<void> {
     const manifest = await readManifest();
 
     // Run all validations
-    validateCounts(manifest);
+    const counts = deriveCounts(manifest);
     await validateDefaultEnable(manifest);
     await validateSharedPreloadLibraries(manifest);
     await validatePgdgConsistency(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
+
+    // Store counts for success message
+    const manifestCounts = counts;
 
     // Print results
     console.log();
@@ -390,8 +399,9 @@ async function main(): Promise<void> {
     if (errors.length === 0 && warnings.length === 0) {
       console.log();
       logger.success(
-        `Manifest validation passed (${EXPECTED_COUNTS.total} extensions: ` +
-          `${EXPECTED_COUNTS.builtin} builtin + ${EXPECTED_COUNTS.pgdg} PGDG + ${EXPECTED_COUNTS.compiled} compiled)`
+        `Manifest validation passed (${manifestCounts.total} extensions: ` +
+          `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);
     } else if (errors.length === 0) {

@@ -77,7 +77,7 @@ describe("Extension Defaults Validation", () => {
     expect(versions.pgcron).toBeDefined();
     expect(versions.pgaudit).toBeDefined();
     expect(versions.pgvector).toBeDefined();
-    expect(versions.timescaledb).toBeDefined();
+    // NOTE: timescaledb removed - uses install_via: "source" in manifest (compiled from source)
     expect(versions.postgis).toBeDefined();
     expect(versions.partman).toBeDefined();
     expect(versions.repack).toBeDefined();
@@ -92,7 +92,7 @@ describe("Extension Defaults Validation", () => {
 
   test("PGDG versions follow expected pattern", () => {
     // Pattern: version-build.pgdgNN+1 (e.g., "1.6.7-2.pgdg13+1")
-    // Some packages like timescaledb include +dfsg in the version
+    // Some packages like postgis include +dfsg in the version
     const versionPattern = /^[\d.]+(\+\w+)?(-\d+)?\.pgdg\d+\+\d+$/;
 
     for (const [_key, version] of Object.entries(extensionDefaults.pgdgVersions)) {
@@ -137,11 +137,11 @@ describe("Manifest File Validation", () => {
     );
 
     // Known PGDG extensions that should have versions
+    // NOTE: timescaledb removed - uses install_via: "source" (compiled from source)
     const expectedExtensions = [
       "pg_cron",
       "pgaudit",
       "vector",
-      "timescaledb",
       "postgis",
       "pg_partman",
       "pg_repack",

@@ -77,12 +77,7 @@ const PGDG_MAPPINGS: PgdgMapping[] = [
     versionKey: "pgvector",
   }, // score 34
   { manifestName: "rum", packageName: "rum", argName: "RUM_VERSION", versionKey: "rum" }, // score 40
-  {
-    manifestName: "timescaledb",
-    packageName: "timescaledb",
-    argName: "TIMESCALEDB_VERSION",
-    versionKey: "timescaledb",
-  }, // stable (mature extension)
+  // NOTE: timescaledb removed - it uses install_via: "source" in manifest (compiled from source, not PGDG)
   {
     manifestName: "hypopg",
     packageName: "hypopg",

@@ -411,10 +411,10 @@ describe("generateExtensionsInitScript - SQL Validity", () => {
     const endCount = (sql.match(/\$\$;/g) || []).length;
     expect(doCount).toBe(endCount);
 
-    // Check for balanced BEGIN/END
+    // Check for balanced BEGIN/END (PL/pgSQL requires equal counts)
     const beginCount = (sql.match(/\bBEGIN\b/g) || []).length;
     const endKeywordCount = (sql.match(/\bEND;/g) || []).length;
-    expect(beginCount).toBeGreaterThanOrEqual(endKeywordCount);
+    expect(beginCount).toBe(endKeywordCount);
   });
 
   test("Extension names are properly quoted", async () => {

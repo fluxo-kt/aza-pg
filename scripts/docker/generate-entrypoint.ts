@@ -22,7 +22,7 @@ const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/docker-auto-config-entryp
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 
-interface RuntimeSpec {
+export interface RuntimeSpec {
   sharedPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean;
@@ -30,13 +30,13 @@ interface RuntimeSpec {
   notes?: string[];
 }
 
-interface ManifestEntry {
+export interface ManifestEntry {
   name: string;
   enabled?: boolean;
   runtime?: RuntimeSpec;
 }
 
-interface Manifest {
+export interface Manifest {
   entries: ManifestEntry[];
 }
 
@@ -55,7 +55,7 @@ async function readManifest(): Promise<Manifest> {
 /**
  * Generate comma-separated list of extensions to preload by default
  */
-function generateDefaultSharedPreloadLibraries(manifest: Manifest): string {
+export function generateDefaultSharedPreloadLibraries(manifest: Manifest): string {
   // Filter extensions where:
   // 1. runtime.sharedPreload == true
   // 2. runtime.defaultEnable == true

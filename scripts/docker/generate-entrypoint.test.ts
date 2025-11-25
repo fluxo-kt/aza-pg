@@ -13,54 +13,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-
-// Mock types matching the actual implementation
-interface RuntimeSpec {
-  sharedPreload?: boolean;
-  defaultEnable?: boolean;
-  preloadOnly?: boolean;
-  preloadLibraryName?: string;
-  notes?: string[];
-}
-
-interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  runtime?: RuntimeSpec;
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
-
-/**
- * Implementation extracted from generate-entrypoint.ts for testing
- * This is the actual function being tested
- */
-function generateDefaultSharedPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true
-  // 2. runtime.defaultEnable == true
-  // 3. enabled != false (i.e., enabled is null or true)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime) return false;
-
-    const isSharedPreload = runtime.sharedPreload === true;
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isEnabled = entry.enabled !== false; // null or true
-
-    return isSharedPreload && isDefaultEnable && isEnabled;
-  });
-
-  // Sort alphabetically for consistency
-  // Use preloadLibraryName if specified, otherwise use extension name
-  const extensionNames = preloadExtensions
-    .map((e) => e.runtime?.preloadLibraryName || e.name)
-    .sort();
-
-  return extensionNames.join(",");
-}
+import { generateDefaultSharedPreloadLibraries, type Manifest } from "./generate-entrypoint";
 
 describe("generateDefaultSharedPreloadLibraries - Basic Filtering", () => {
   test("Extension with all required flags is included", () => {
@@ -283,7 +236,7 @@ describe("generateDefaultSharedPreloadLibraries - Sorting and Formatting", () =>
     expect(result).not.toContain(" ");
   });
 
-  test("Sorting is case-sensitive (lowercase first)", () => {
+  test("Sorting is lexicographic (capitals before lowercase)", () => {
     const manifest: Manifest = {
       entries: [
         {

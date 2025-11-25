@@ -23,7 +23,7 @@
  */
 
 import { join } from "node:path";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { error, info, success, section, exportJsonLines, exportJunitXml } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
 
@@ -68,8 +68,8 @@ function parseArgs(): { outputDir: string; format: "json" | "junit" } {
  */
 async function readJsonLinesFiles(dir: string): Promise<ExtendedTestResult[]> {
   try {
-    const stat = statSync(dir);
-    if (!stat.isDirectory()) {
+    const stats = await stat(dir);
+    if (!stats.isDirectory()) {
       error(`Not a directory: ${dir}`);
       process.exit(1);
     }

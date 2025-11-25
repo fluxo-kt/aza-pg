@@ -12,7 +12,7 @@ import { $ } from "bun";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "node:path";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { TIMEOUTS } from "../config/test-timeouts";
 
 /**
@@ -412,8 +412,8 @@ async function main(): Promise<void> {
   const stackPath = join(projectRoot, stackDir);
 
   try {
-    const stat = statSync(stackPath);
-    if (!stat.isDirectory()) {
+    const stats = await stat(stackPath);
+    if (!stats.isDirectory()) {
       error(`Stack path is not a directory: ${stackPath}`);
       process.exit(1);
     }

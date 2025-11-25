@@ -18,7 +18,7 @@
 
 import { $ } from "bun";
 import { join, resolve } from "node:path";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { TIMEOUTS } from "../config/test-timeouts";
@@ -770,8 +770,8 @@ async function main(): Promise<void> {
 
   // Validate stack directory
   try {
-    const stat = statSync(STACK_PATH);
-    if (!stat.isDirectory()) {
+    const stats = await stat(STACK_PATH);
+    if (!stats.isDirectory()) {
       error(`Stack path is not a directory: ${STACK_PATH}`);
       process.exit(1);
     }

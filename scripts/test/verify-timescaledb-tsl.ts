@@ -398,6 +398,10 @@ This script tests actual TSL functionality by:
   }
 
   const image = args[0];
+  if (!image) {
+    // TypeScript narrowing: args.length check above ensures this never happens
+    process.exit(1);
+  }
   console.log("TimescaleDB TSL Feature Verification\n");
   console.log("=====================================");
   console.log(`Image: ${image}\n`);

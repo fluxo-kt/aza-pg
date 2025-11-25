@@ -46,7 +46,7 @@
 
 import { $ } from "bun";
 import { join, resolve } from "node:path";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { error, success, warning, info, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 
@@ -164,8 +164,8 @@ async function ensureOutputDir(outputDir: string): Promise<void> {
   const absPath = resolve(outputDir);
 
   try {
-    const stat = statSync(absPath);
-    if (stat.isDirectory()) {
+    const stats = await stat(absPath);
+    if (stats.isDirectory()) {
       info(`Using existing output directory: ${absPath}`);
       return;
     }
@@ -367,8 +367,8 @@ async function main(): Promise<void> {
   // Ensure cache directory exists
   const absCacheDir = resolve(options.cacheDir);
   try {
-    const stat = statSync(absCacheDir);
-    if (!stat.isDirectory()) {
+    const cacheStats = await stat(absCacheDir);
+    if (!cacheStats.isDirectory()) {
       info(`Cache path exists but is not a directory, creating: ${absCacheDir}`);
       await $`mkdir -p ${absCacheDir}`;
     }

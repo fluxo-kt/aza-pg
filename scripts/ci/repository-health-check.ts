@@ -23,7 +23,7 @@
  */
 
 import { join } from "node:path";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { error, success, info } from "../utils/logger";
 
 interface Options {
@@ -158,11 +158,11 @@ async function checkItem(repoRoot: string, item: CheckItem, verbose: boolean): P
   // Check existence based on type
   let exists = false;
   try {
-    const stat = statSync(fullPath);
+    const stats = await stat(fullPath);
     if (item.type === "file") {
-      exists = stat.isFile();
+      exists = stats.isFile();
     } else {
-      exists = stat.isDirectory();
+      exists = stats.isDirectory();
     }
   } catch {
     exists = false;

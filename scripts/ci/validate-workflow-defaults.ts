@@ -13,7 +13,6 @@
  *   1 - Validation failed (mismatches found)
  */
 
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { extensionDefaults, extractSemanticVersion } from "../extension-defaults.ts";
 
@@ -54,7 +53,7 @@ async function main() {
 
   const workflowPath = resolve(import.meta.dir, "../../.github/workflows/build-postgres-image.yml");
 
-  if (!existsSync(workflowPath)) {
+  if (!(await Bun.file(workflowPath).exists())) {
     error(`Workflow file not found: ${workflowPath}`);
     process.exit(1);
   }

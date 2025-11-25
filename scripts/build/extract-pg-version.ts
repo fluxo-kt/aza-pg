@@ -25,7 +25,8 @@
  *   Base Digest: sha256:abc...
  */
 
-import { appendFile } from "node:fs/promises";
+// Empty export makes this file a module (enables top-level await)
+export {};
 
 interface ParsedImage {
   major: string;
@@ -92,7 +93,9 @@ async function writeGitHubOutput(parsed: ParsedImage): Promise<void> {
     `base_image_digest=${parsed.baseImageDigest}`,
   ].join("\n");
 
-  await appendFile(outputFile, output + "\n");
+  const file = Bun.file(outputFile);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(outputFile, existing + output + "\n");
 
   console.log(`PostgreSQL version extracted from image:`);
   console.log(`  Major: ${parsed.major}`);

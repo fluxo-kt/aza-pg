@@ -63,6 +63,7 @@ const COMPREHENSIVE_ONLY_EXTENSIONS = [
   "postgis", // spatial data (large, disabled by default)
   "pgrouting", // routing algorithms (depends on postgis)
   "pgq", // high-performance queue (disabled by default)
+  "wrappers", // FDW framework (integration tests)
 ];
 
 interface TestOptions {

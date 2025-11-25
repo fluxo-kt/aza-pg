@@ -16,7 +16,8 @@
  *   content_hash=abc123
  */
 
-import { appendFile } from "node:fs/promises";
+// Empty export makes this file a module (enables top-level await)
+export {};
 
 interface CacheKey {
   key: string;
@@ -37,7 +38,9 @@ async function writeGitHubOutput(cacheKey: CacheKey): Promise<void> {
 
   const output = [`key=${cacheKey.key}`, `content_hash=${cacheKey.contentHash}`].join("\n");
 
-  await appendFile(outputFile, output + "\n");
+  const file = Bun.file(outputFile);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(outputFile, existing + output + "\n");
 
   console.log(`Generated cache key: ${cacheKey.key}`);
 }

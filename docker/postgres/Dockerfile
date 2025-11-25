@@ -79,7 +79,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Copy full manifest for cross-stage dependency validation
 COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
-RUN --mount=type=cache,target=/root/.cache \
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
@@ -113,9 +113,9 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # OPT#3+4: Inline Rust optimization flags and add cargo registry cache mount
 # Reduces 3 ENV layers and accelerates dependency downloads
-RUN --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     CARGO_PROFILE_RELEASE_LTO=thin \
     CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
     CARGO_PROFILE_RELEASE_STRIP=symbols \

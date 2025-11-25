@@ -5,14 +5,14 @@
  * Runs ALL validation checks and tests in an orchestrated manner:
  * 1. Validation checks (parallel) - 22 checks (unit tests, linting, config validation, manifest sync, PGDG, SQL)
  * 2. Build tests (sequential) - 4 checks (build, size, extension count, build tests)
- * 3. Functional tests (sequential) - 23 checks (extension loading, auto-config, stacks, verification, integration, security)
+ * 3. Functional tests (sequential) - 22 checks (extension loading, auto-config, stacks, verification, integration, security)
  *
- * Total: 49 checks across validation, build, and functional categories
+ * Total: 48 checks across validation, build, and functional categories
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (49 checks)
+ *   bun scripts/test-all.ts              # Full test suite (48 checks)
  *   bun scripts/test-all.ts --fast       # Validation only (22 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (48 checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (47 checks)
  *
  * Exit code: 0 only if ALL critical tests pass
  */
@@ -57,6 +57,8 @@ type Result = {
   error?: string;
   skipped?: boolean;
   skipReason?: string;
+  stdout?: string;
+  stderr?: string;
 };
 
 /**
@@ -105,11 +107,18 @@ async function imageExists(imageName: string): Promise<boolean> {
 
 /**
  * Run a single check with timeout
+ * @param bufferOutput - If true, capture stdout/stderr instead of inheriting (for parallel execution)
  */
-async function runCheck(check: Check, imageName?: string): Promise<Result> {
+async function runCheck(
+  check: Check,
+  imageName?: string,
+  bufferOutput: boolean = false
+): Promise<Result> {
   const startTime = Date.now();
 
-  info(`Running: ${check.description}`);
+  if (!bufferOutput) {
+    info(`Running: ${check.description}`);
+  }
 
   // Check if this check can be skipped via environment variable
   const isOptional = check.envOverride && Bun.env[check.envOverride] === "1";
@@ -174,8 +183,8 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
       : Bun.env;
 
     const proc = Bun.spawn(check.command, {
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: bufferOutput ? "pipe" : "inherit",
+      stderr: bufferOutput ? "pipe" : "inherit",
       env,
       cwd: PROJECT_ROOT,
     });
@@ -191,6 +200,16 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
       }, check.timeout);
     }
 
+    // Collect output if buffering
+    let stdout: string | undefined;
+    let stderr: string | undefined;
+    if (bufferOutput) {
+      [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+    }
+
     const exitCode = await proc.exited;
 
     if (timeoutId) {
@@ -201,30 +220,8 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
 
     if (timedOut) {
       const message = `Timed out after ${check.timeout}ms`;
-      error(`${check.name} - ${message}`);
-      return {
-        name: check.name,
-        passed: false,
-        critical: effectivelyCritical,
-        duration,
-        error: message,
-      };
-    }
-
-    if (exitCode === 0) {
-      success(`${check.name} passed (${formatDuration(duration)})`);
-      return {
-        name: check.name,
-        passed: true,
-        critical: effectivelyCritical,
-        duration,
-      };
-    } else {
-      const message = `Exit code ${exitCode}`;
-      if (effectivelyCritical) {
-        error(`${check.name} failed - ${message}`);
-      } else {
-        warning(`${check.name} failed - ${message} (non-critical)`);
+      if (!bufferOutput) {
+        error(`${check.name} - ${message}`);
       }
       return {
         name: check.name,
@@ -232,15 +229,51 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
         critical: effectivelyCritical,
         duration,
         error: message,
+        stdout,
+        stderr,
+      };
+    }
+
+    if (exitCode === 0) {
+      if (!bufferOutput) {
+        success(`${check.name} passed (${formatDuration(duration)})`);
+      }
+      return {
+        name: check.name,
+        passed: true,
+        critical: effectivelyCritical,
+        duration,
+        stdout,
+        stderr,
+      };
+    } else {
+      const message = `Exit code ${exitCode}`;
+      if (!bufferOutput) {
+        if (effectivelyCritical) {
+          error(`${check.name} failed - ${message}`);
+        } else {
+          warning(`${check.name} failed - ${message} (non-critical)`);
+        }
+      }
+      return {
+        name: check.name,
+        passed: false,
+        critical: effectivelyCritical,
+        duration,
+        error: message,
+        stdout,
+        stderr,
       };
     }
   } catch (err) {
     const duration = Date.now() - startTime;
     const message = getErrorMessage(err);
-    if (effectivelyCritical) {
-      error(`${check.name} error - ${message}`);
-    } else {
-      warning(`${check.name} error - ${message} (non-critical)`);
+    if (!bufferOutput) {
+      if (effectivelyCritical) {
+        error(`${check.name} error - ${message}`);
+      } else {
+        warning(`${check.name} error - ${message} (non-critical)`);
+      }
     }
     return {
       name: check.name,
@@ -253,10 +286,40 @@ async function runCheck(check: Check, imageName?: string): Promise<Result> {
 }
 
 /**
- * Run checks in parallel
+ * Run checks in parallel with buffered output (clean, non-mixed logs)
  */
 async function runChecksParallel(checks: Check[], imageName?: string): Promise<Result[]> {
-  return await Promise.all(checks.map((check) => runCheck(check, imageName)));
+  // Run all checks in parallel with buffered output
+  const results = await Promise.all(checks.map((check) => runCheck(check, imageName, true)));
+
+  // Print buffered output sequentially for clean logs
+  for (const result of results) {
+    console.log(""); // Separator between checks
+    info(`Check: ${result.name}`);
+
+    // Print captured output (if any)
+    if (result.stdout?.trim()) {
+      process.stdout.write(result.stdout);
+      if (!result.stdout.endsWith("\n")) console.log("");
+    }
+    if (result.stderr?.trim()) {
+      process.stderr.write(result.stderr);
+      if (!result.stderr.endsWith("\n")) console.log("");
+    }
+
+    // Print result status
+    if (result.skipped) {
+      warning(`${result.name} skipped - ${result.skipReason}`);
+    } else if (result.passed) {
+      success(`${result.name} passed (${formatDuration(result.duration)})`);
+    } else if (result.critical) {
+      error(`${result.name} failed - ${result.error}`);
+    } else {
+      warning(`${result.name} failed - ${result.error} (non-critical)`);
+    }
+  }
+
+  return results;
 }
 
 /**

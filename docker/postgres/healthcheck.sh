@@ -90,10 +90,12 @@ ACTUAL_PRELOAD=$(psql -U postgres -d postgres -tAc \
     "SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'" \
     2>/dev/null || echo "")
 
-# Extract critical libraries that MUST be present
-for lib in pg_cron timescaledb; do
+# Verify expected preload libraries are present (generated from manifest)
+# Convert comma-separated EXPECTED_PRELOAD to array and check each
+IFS=',' read -ra PRELOAD_LIBS <<< "$EXPECTED_PRELOAD"
+for lib in "${PRELOAD_LIBS[@]}"; do
     if ! echo "$ACTUAL_PRELOAD" | grep -q "$lib"; then
-        echo "FAIL: shared_preload_libraries missing critical library: $lib" >&2
+        echo "FAIL: shared_preload_libraries missing expected library: $lib" >&2
         echo "Expected preload: $EXPECTED_PRELOAD" >&2
         echo "Actual preload: $ACTUAL_PRELOAD" >&2
         exit 1

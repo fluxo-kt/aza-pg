@@ -147,10 +147,12 @@ export function generateHealthcheckScript(
   lines.push("    \"SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'\" \\");
   lines.push('    2>/dev/null || echo "")');
   lines.push("");
-  lines.push("# Extract critical libraries that MUST be present");
-  lines.push("for lib in pg_cron timescaledb; do");
+  lines.push("# Verify expected preload libraries are present (generated from manifest)");
+  lines.push("# Convert comma-separated EXPECTED_PRELOAD to array and check each");
+  lines.push("IFS=',' read -ra PRELOAD_LIBS <<< \"$EXPECTED_PRELOAD\"");
+  lines.push('for lib in "${PRELOAD_LIBS[@]}"; do');
   lines.push('    if ! echo "$ACTUAL_PRELOAD" | grep -q "$lib"; then');
-  lines.push('        echo "FAIL: shared_preload_libraries missing critical library: $lib" >&2');
+  lines.push('        echo "FAIL: shared_preload_libraries missing expected library: $lib" >&2');
   lines.push('        echo "Expected preload: $EXPECTED_PRELOAD" >&2');
   lines.push('        echo "Actual preload: $ACTUAL_PRELOAD" >&2');
   lines.push("        exit 1");

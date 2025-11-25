@@ -39,12 +39,7 @@ services:
     networks:
       - postgres_net
 
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 120s
+    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
 
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}

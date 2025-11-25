@@ -32,11 +32,11 @@ describe("Manifest Validation - Valid Data", () => {
     const validManifest = [
       {
         name: "test_extension",
-        kind: "extension",
+        kind: "extension" as const,
         category: "testing",
         description: "Test extension for validation",
         source: {
-          type: "builtin",
+          type: "builtin" as const,
         },
         runtime: {
           sharedPreload: false,

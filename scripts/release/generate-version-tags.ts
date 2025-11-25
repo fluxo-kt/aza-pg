@@ -17,7 +17,9 @@
  *   convenience=18.1-single-node,18-single-node,18.1,18
  */
 
-import { appendFile } from "node:fs/promises";
+// Bun-first file append helper (no node:fs/promises dependency)
+// Empty export to make this file a module (enables top-level await)
+export {};
 
 interface VersionTags {
   versionTag: string; // For releases: 18.1-202511221455
@@ -57,7 +59,10 @@ async function writeGitHubOutput(tags: VersionTags): Promise<void> {
     `convenience=${tags.convenience.join(",")}`,
   ].join("\n");
 
-  await appendFile(outputFile, output + "\n");
+  // Bun-first append: read existing + concatenate + write back
+  const file = Bun.file(outputFile);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(outputFile, existing + output + "\n");
 
   console.log("Generated version tags:");
   console.log(`  Version tag (for releases): ${tags.versionTag}`);

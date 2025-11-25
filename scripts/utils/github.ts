@@ -4,7 +4,17 @@
  * Provides type-safe, validated operations for GitHub Actions integration.
  */
 
-import { appendFile } from "node:fs/promises";
+// Bun-first: removed node:fs/promises appendFile dependency
+// Using Bun.file() + Bun.write() for file appending
+
+/**
+ * Appends content to a file (Bun-first pattern)
+ */
+async function appendToFile(path: string, content: string): Promise<void> {
+  const file = Bun.file(path);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(path, existing + content);
+}
 
 /**
  * Sets a GitHub Actions output variable.
@@ -53,7 +63,7 @@ export async function setGitHubOutput(
 
   try {
     // Append to output file (GitHub Actions format: key=value)
-    await appendFile(outputFile, `${key}=${stringValue}\n`);
+    await appendToFile(outputFile, `${key}=${stringValue}\n`);
   } catch (error) {
     throw new Error(
       `Failed to write GitHub output for key "${key}": ${error instanceof Error ? error.message : String(error)}`
@@ -85,7 +95,7 @@ export async function appendStepSummary(content: string): Promise<void> {
   }
 
   try {
-    await appendFile(summaryFile, content);
+    await appendToFile(summaryFile, content);
   } catch (error) {
     throw new Error(
       `Failed to write GitHub step summary: ${error instanceof Error ? error.message : String(error)}`

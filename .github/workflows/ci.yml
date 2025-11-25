@@ -318,7 +318,7 @@ jobs:
         with:
           ghcr-login: "false"
           image-source: artifact
-          image-name: aza-pg-testing:pg18
+          image-name: aza-pg-ci:test
 
       - name: Create test .env file
         run: |

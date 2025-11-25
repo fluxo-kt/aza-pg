@@ -88,35 +88,41 @@ interface ExtensionInfo {
   installMethod: "builtin" | "pgdg" | "source";
 }
 
+// Category merge map: source → target
+// Merges single-extension categories into related larger categories
+const CATEGORY_MERGE: Record<string, string> = {
+  analytics: "observability", // hll → observability
+  cdc: "operations", // wal2json → operations
+  validation: "utilities", // pg_jsonschema → utilities
+  safety: "security", // pg_safeupdate → security
+  workflow: "queueing", // pgflow → queueing
+  language: "indexing", // plpgsql → indexing (as "Core Extensions")
+};
+
 // Category display names mapping (ordered by importance)
+// Note: Merged categories get updated display names
 const CATEGORY_NAMES: Record<string, string> = {
   ai: "AI/ML & Vector Search",
   timeseries: "Time-Series",
   search: "Full-Text Search",
-  analytics: "Analytics",
-  security: "Security & Auditing",
-  observability: "Observability & Monitoring",
+  security: "Security & Auditing", // includes safety
+  observability: "Observability & Analytics", // includes analytics
   performance: "Performance",
-  operations: "Operations & Automation",
+  operations: "Operations & CDC", // includes cdc
   maintenance: "Maintenance",
   integration: "Integration & FDW",
-  queueing: "Queueing & Messaging",
-  cdc: "Change Data Capture",
-  validation: "Validation",
-  safety: "Safety & Guards",
+  queueing: "Queueing & Workflows", // includes workflow
   quality: "Quality & Testing",
   gis: "GIS & Spatial",
-  utilities: "Utilities",
-  indexing: "Indexing",
-  language: "Languages",
+  utilities: "Utilities & Validation", // includes validation
+  indexing: "Core Extensions", // includes language
 };
 
-// Category order (matches EXTENSIONS.md structure)
+// Category order (consolidated from 19 to ~13)
 const CATEGORY_ORDER = [
   "ai",
   "timeseries",
   "search",
-  "analytics",
   "security",
   "observability",
   "performance",
@@ -124,14 +130,10 @@ const CATEGORY_ORDER = [
   "maintenance",
   "integration",
   "queueing",
-  "cdc",
-  "validation",
-  "safety",
   "quality",
   "gis",
   "utilities",
   "indexing",
-  "language",
 ];
 
 /**
@@ -321,16 +323,19 @@ function formatExtensionMarkdown(ext: ExtensionInfo): string {
 }
 
 /**
- * Group enabled extensions by category
+ * Group enabled extensions by category (with merging)
  */
 function groupByCategory(manifest: Manifest): CategoryGroup[] {
   const enabledExtensions = manifest.entries.filter((e) => e.enabled !== false);
 
-  // Group by category
+  // Group by category (applying merge map)
   const categoryMap = new Map<string, ExtensionInfo[]>();
 
   for (const entry of enabledExtensions) {
-    const category = entry.category;
+    // Apply category merge: redirect source categories to their targets
+    const rawCategory = entry.category;
+    const category = CATEGORY_MERGE[rawCategory] ?? rawCategory;
+
     if (!categoryMap.has(category)) {
       categoryMap.set(category, []);
     }
@@ -464,11 +469,27 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   );
   lines.push("");
 
+  // At a Glance summary table
+  lines.push("## 📊 At a Glance");
+  lines.push("");
+  lines.push("| Metric | Value |");
+  lines.push("|--------|-------|");
+  lines.push(`| PostgreSQL | ${args.pgVersion} |`);
+  lines.push(`| Extensions | ${args.catalogEnabled} |`);
+  lines.push(`| Preloaded | ${preloadedCount} |`);
+  lines.push(`| Auto-Created | ${autoCreatedCount} |`);
+  lines.push(`| Categories | ${categoryGroups.length} |`);
+  if (args.compressedSize) {
+    lines.push(`| Image Size | ${args.compressedSize} |`);
+  }
+  lines.push("| Platforms | amd64, arm64 |");
+  lines.push("");
+
   // GHCR Package Link (prominent)
   // Use package version ID if provided, otherwise fall back to digest short (legacy)
   const packageId =
     args.packageVersionId?.toString() ?? args.digest.replace("sha256:", "").substring(0, 12);
-  lines.push("## 📦 Package");
+  lines.push("## 📦️ Package");
   lines.push("");
   lines.push(
     `**[View on GitHub Container Registry →](https://github.com/${REPO_OWNER}/${REPO_NAME}/pkgs/container/${REPO_NAME}/${packageId}?tag=${args.tag})**`
@@ -478,6 +499,26 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push(`- **Digest**: \`${args.digest}\``);
   lines.push(`- **Tags**: \`${args.tag}\`, \`${convenienceTags.join("`, `")}\``);
   lines.push("");
+
+  // Get auto-created extension names (sorted alphabetically)
+  const autoCreatedNames = manifest.entries
+    .filter((e) => e.runtime?.defaultEnable === true)
+    .map((e) => e.name)
+    .sort();
+
+  // Get enabled extensions that are NOT auto-created (for on-demand examples)
+  // Filter: enabled, not auto-created, not preload-only, and is an extension (not tool)
+  const onDemandExamples = manifest.entries
+    .filter(
+      (e) =>
+        e.enabled !== false &&
+        e.runtime?.defaultEnable !== true &&
+        e.runtime?.preloadOnly !== true &&
+        e.kind !== "tool"
+    )
+    .map((e) => e.name)
+    .sort()
+    .slice(0, 2); // Pick first 2 alphabetically for examples
 
   // Quick Start section (moved to top)
   lines.push("## 🚀 Quick Start");
@@ -495,12 +536,15 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("```");
   lines.push("");
   lines.push("```sql");
-  lines.push("-- Extensions are auto-created by default:");
-  lines.push("-- pg_cron, pg_stat_statements, pg_trgm, pgaudit, vector");
-  lines.push("");
-  lines.push("-- Enable additional extensions on-demand:");
-  lines.push("CREATE EXTENSION timescaledb;");
-  lines.push("CREATE EXTENSION postgis;");
+  lines.push(`-- Auto-created extensions (${autoCreatedNames.length} ready to use):`);
+  lines.push(`-- ${autoCreatedNames.join(", ")}`);
+  if (onDemandExamples.length > 0) {
+    lines.push("");
+    lines.push("-- Enable additional extensions on-demand:");
+    for (const name of onDemandExamples) {
+      lines.push(`CREATE EXTENSION ${name};`);
+    }
+  }
   lines.push("");
   lines.push("-- List all available:");
   lines.push("SELECT name, default_version, comment ");
@@ -528,7 +572,7 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   }
 
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
-  lines.push(`- **Total Extensions**: ${args.catalogEnabled} enabled, ${args.catalogTotal} total`);
+  lines.push(`- **Extensions**: ${args.catalogEnabled}`);
   lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
   lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
   lines.push(`- **Build**: Single-node optimized`);
@@ -570,7 +614,7 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("");
   lines.push("**Source:**");
   lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
-  lines.push("- 📦 PGDG package (pre-compiled from apt.postgresql.org)");
+  lines.push("- 📦️ PGDG package (pre-compiled from apt.postgresql.org)");
   lines.push("- 🏗️ Source build (compiled during Docker image build)");
   lines.push("");
   lines.push("**Status:**");
@@ -582,25 +626,19 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("</details>");
   lines.push("");
 
-  // Auto-Configuration section
+  // Auto-Configuration section (concise with link to docs)
   lines.push("## ⚙️ Auto-Configuration");
   lines.push("");
-  lines.push("Automatically detects and optimizes PostgreSQL settings:");
+  lines.push("Automatically detects RAM/CPU and optimizes PostgreSQL settings for your workload.");
   lines.push("");
-  lines.push("**Resource Detection:**");
-  lines.push("- RAM: Optimizes `shared_buffers` (up to 32GB), `work_mem` (up to 32MB)");
-  lines.push("- CPU: Tunes `max_parallel_workers`, `max_worker_processes`");
+  lines.push("| Environment Variable | Options | Default |");
+  lines.push("|---------------------|---------|---------|");
+  lines.push("| `POSTGRES_WORKLOAD_TYPE` | `web`, `oltp`, `dw`, `mixed` | `web` |");
+  lines.push("| `POSTGRES_STORAGE_TYPE` | `ssd`, `hdd`, `san` | `ssd` |");
   lines.push("");
-  lines.push("**Workload Profiles** (`POSTGRES_WORKLOAD_TYPE`):");
-  lines.push("- `web` (default): max_connections=200, balanced OLTP + read-heavy");
-  lines.push("- `oltp`: max_connections=300, high-concurrency transactions");
-  lines.push("- `dw`: max_connections=100, analytics/data warehouse (high statistics_target=500)");
-  lines.push("- `mixed`: max_connections=120, general-purpose balanced");
-  lines.push("");
-  lines.push("**Storage Tuning** (`POSTGRES_STORAGE_TYPE`):");
-  lines.push("- `ssd` (default): random_page_cost=1.1, effective_io_concurrency=200");
-  lines.push("- `hdd`: random_page_cost=4.0, effective_io_concurrency=2");
-  lines.push("- `san`: random_page_cost=1.1, effective_io_concurrency=1");
+  lines.push(
+    `[→ Full configuration reference](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PRODUCTION.md#auto-configuration)`
+  );
   lines.push("");
 
   // Verification section

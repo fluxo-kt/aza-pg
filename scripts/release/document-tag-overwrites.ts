@@ -15,7 +15,7 @@
  */
 
 import { $ } from "bun";
-import { appendFile } from "node:fs/promises";
+// Bun-first: removed node:fs/promises appendFile dependency
 
 interface TagInfo {
   tag: string;
@@ -85,7 +85,10 @@ async function writeGitHubSummary(results: TagInfo[]): Promise<void> {
 
   lines.push("");
 
-  await appendFile(summaryFile, lines.join("\n"));
+  // Bun-first append: read existing + concatenate + write back
+  const file = Bun.file(summaryFile);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(summaryFile, existing + lines.join("\n"));
   console.log("Tag overwrite reference written to GitHub Summary");
 }
 

@@ -419,8 +419,8 @@ async function testCPU1Core(config: TestConfig): Promise<TestResult> {
       await verifySetting(
         container,
         "max_worker_processes",
-        /2/,
-        "max_worker_processes at 2 for 1 core"
+        /8/,
+        "max_worker_processes at 8 (min floor)"
       );
       await verifySetting(
         container,
@@ -444,8 +444,8 @@ async function testCPU4Cores(config: TestConfig): Promise<TestResult> {
       await verifySetting(
         container,
         "max_worker_processes",
-        /5/,
-        "max_worker_processes at 5 for 4 cores"
+        /8/,
+        "max_worker_processes at 8 (min floor)"
       );
       await verifySetting(
         container,

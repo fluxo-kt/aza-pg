@@ -37,6 +37,7 @@ export interface ManifestEntry {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
     preloadOnly?: boolean;
+    preloadLibraryName?: string;
   };
 }
 
@@ -640,7 +641,8 @@ export async function testPreloadedExtensions(
           entry.runtime?.sharedPreload === true &&
           entry.runtime?.defaultEnable === true
       )
-      .map((entry) => entry.name);
+      // Use preloadLibraryName if specified (e.g., pg_safeupdate -> safeupdate)
+      .map((entry) => entry.runtime?.preloadLibraryName || entry.name);
 
     if (preloadedExtensions.length === 0) {
       return {

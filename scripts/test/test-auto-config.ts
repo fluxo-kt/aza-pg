@@ -261,8 +261,8 @@ async function caseCpuDetection(logs: string, container: string): Promise<void> 
   await assertPgConfig(
     container,
     "max_worker_processes",
-    "3",
-    "Config injection: max_worker_processes (2 cores + 1)"
+    "8",
+    "Config injection: max_worker_processes (min 8)"
   );
   await assertPgConfig(
     container,
@@ -399,8 +399,8 @@ async function case1gb1cpu(logs: string, container: string): Promise<void> {
   await assertPgConfig(
     container,
     "max_worker_processes",
-    "2",
-    "Config injection: max_worker_processes"
+    "8",
+    "Config injection: max_worker_processes (min 8)"
   );
 }
 
@@ -488,8 +488,8 @@ async function case24gb4cpu(logs: string, container: string): Promise<void> {
   await assertPgConfig(
     container,
     "max_worker_processes",
-    "5",
-    "Config injection: max_worker_processes"
+    "8",
+    "Config injection: max_worker_processes (min 8)"
   );
 }
 

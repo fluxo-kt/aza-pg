@@ -238,7 +238,7 @@ docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
 
 ### Automated Backups
 
-pgBackRest is installed in the PostgreSQL image and available at `/usr/local/bin/pgbackrest`.
+pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest` (PGDG package).
 
 For production backup configuration, see `examples/backup/` directory which contains:
 

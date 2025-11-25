@@ -447,6 +447,121 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
 }
 
 /**
+ * Generate Configuration section with collapsible subsections
+ */
+function generateConfigurationSection(): string[] {
+  const lines: string[] = [];
+
+  lines.push("## 🔧 Configuration");
+  lines.push("");
+
+  // Prominent volume warning alert box
+  lines.push("> ⚠️ **Volume Mount Warning (PostgreSQL 18+)**");
+  lines.push("> Mount `/var/lib/postgresql` (**NOT** `/var/lib/postgresql/data`).");
+  lines.push(
+    "> Wrong path = startup failure. [Details →](https://github.com/fluxo-kt/aza-pg/blob/main/docs/COOLIFY.md#storage-configuration)"
+  );
+  lines.push("");
+
+  // Environment Variables (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Environment Variables</b></summary>");
+  lines.push("");
+  lines.push("| Variable | Required | Default | Description |");
+  lines.push("|----------|----------|---------|-------------|");
+  lines.push("| `POSTGRES_PASSWORD` | ✅ | - | Superuser password |");
+  lines.push("| `POSTGRES_USER` | No | `postgres` | Superuser name |");
+  lines.push("| `POSTGRES_DB` | No | `postgres` | Default database |");
+  lines.push("| `POSTGRES_MEMORY` | No | auto | RAM (MB) for auto-tuning |");
+  lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
+  lines.push("| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web`/`oltp`/`dw`/`mixed` |");
+  lines.push("| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd`/`hdd`/`san` |");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Volume Mounts (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Volume Mounts</b></summary>");
+  lines.push("");
+  lines.push("| Path | Purpose | Required |");
+  lines.push("|------|---------|----------|");
+  lines.push("| `/var/lib/postgresql` | Data directory | Yes |");
+  lines.push("| `/backup` | Backup storage | No |");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Ports & Network (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Ports & Network</b></summary>");
+  lines.push("");
+  lines.push("| Port | Service | Default Bind |");
+  lines.push("|------|---------|--------------|");
+  lines.push("| 5432 | PostgreSQL | 127.0.0.1 |");
+  lines.push("| 6432 | PgBouncer | 127.0.0.1 |");
+  lines.push("| 9187 | Prometheus metrics | 127.0.0.1 |");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Connection Defaults (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Connection Defaults</b></summary>");
+  lines.push("");
+  lines.push("- **User**: `postgres`");
+  lines.push("- **Database**: `postgres`");
+  lines.push("- **Auth**: SCRAM-SHA-256");
+  lines.push("- **Bind**: localhost only (secure by default)");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Resource Requirements (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Resource Requirements</b></summary>");
+  lines.push("");
+  lines.push("| Tier | Memory | CPU |");
+  lines.push("|------|--------|-----|");
+  lines.push("| Minimum | 512MB | 0.5 |");
+  lines.push("| Production | 2GB+ | 2+ |");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Health Check (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Health Check</b></summary>");
+  lines.push("");
+  lines.push("7-tier validation via `pg_isready`:");
+  lines.push("- Interval: 10s, Timeout: 5s");
+  lines.push("- Start period: 120s, Retries: 3");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Security Defaults (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Security Defaults</b></summary>");
+  lines.push("");
+  lines.push("- Non-root user (postgres, UID 999)");
+  lines.push("- Data checksums enabled");
+  lines.push("- pgaudit audit logging");
+  lines.push("- Localhost-only binding");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Link to full docs
+  lines.push(
+    "[→ Full configuration guide](https://github.com/fluxo-kt/aza-pg/blob/main/docs/PRODUCTION.md)"
+  );
+  lines.push("");
+
+  return lines;
+}
+
+/**
  * Generate markdown release notes
  */
 function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: CategoryGroup[]): string {
@@ -553,6 +668,9 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("```");
   lines.push("");
 
+  // Configuration section (with collapsible subsections)
+  lines.push(...generateConfigurationSection());
+
   // Image Details section
   lines.push("## 🐳 Image Details");
   lines.push("");
@@ -624,21 +742,6 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("- _No badge_: Available on-demand via `CREATE EXTENSION`");
   lines.push("");
   lines.push("</details>");
-  lines.push("");
-
-  // Auto-Configuration section (concise with link to docs)
-  lines.push("## ⚙️ Auto-Configuration");
-  lines.push("");
-  lines.push("Automatically detects RAM/CPU and optimizes PostgreSQL settings for your workload.");
-  lines.push("");
-  lines.push("| Environment Variable | Options | Default |");
-  lines.push("|---------------------|---------|---------|");
-  lines.push("| `POSTGRES_WORKLOAD_TYPE` | `web`, `oltp`, `dw`, `mixed` | `web` |");
-  lines.push("| `POSTGRES_STORAGE_TYPE` | `ssd`, `hdd`, `san` | `ssd` |");
-  lines.push("");
-  lines.push(
-    `[→ Full configuration reference](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PRODUCTION.md#auto-configuration)`
-  );
   lines.push("");
 
   // Verification section

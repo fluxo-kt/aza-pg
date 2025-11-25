@@ -177,6 +177,9 @@ export const BASE_CONFIG: BaseConfig = {
     // Override via: POSTGRES_SHARED_PRELOAD_LIBRARIES env var
     sharedPreloadLibraries: [],
     idleSessionTimeout: "0",
+    // Min 8 workers for background processes (TimescaleDB, pg_cron, logical replication, etc.)
+    // This ensures the init phase has enough workers; auto-config may increase at runtime
+    maxWorkerProcesses: 8,
 
     // PostgreSQL 18 Async I/O
     ioMethod: "worker",

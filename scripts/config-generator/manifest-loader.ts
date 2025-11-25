@@ -81,7 +81,10 @@ export function getDefaultSharedPreloadLibraries(manifest: Manifest): string {
   });
 
   // Sort alphabetically for consistency across regenerations
-  const extensionNames = preloadExtensions.map((e) => e.name).sort();
+  // Use preloadLibraryName if specified (e.g., pg_safeupdate → safeupdate)
+  const extensionNames = preloadExtensions
+    .map((e) => e.runtime?.preloadLibraryName ?? e.name)
+    .sort();
 
   return extensionNames.join(",");
 }

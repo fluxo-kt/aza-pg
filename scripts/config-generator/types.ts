@@ -5,6 +5,7 @@ export interface PostgreSQLSettings {
   listenAddresses: string;
   port: number;
   maxConnections?: number; // Overridden by auto-config
+  maxWorkerProcesses?: number; // Min 8 for background workers (TimescaleDB, pg_cron, etc.)
   sharedPreloadLibraries: string[];
   idleSessionTimeout?: string;
 

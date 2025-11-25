@@ -195,6 +195,7 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
 
   const categories = {
     connection: ["listenAddresses", "sharedPreloadLibraries"],
+    workers: ["maxWorkerProcesses"],
     io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
       "logDestination",

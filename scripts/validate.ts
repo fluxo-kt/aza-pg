@@ -4,9 +4,10 @@
  * Runs all linting, formatting, and type checking in one command
  *
  * Usage:
- *   bun scripts/validate.ts                       # Fast validation (oxlint, prettier, tsc)
+ *   bun scripts/validate.ts                       # Fast validation (oxlint, prettier, tsc, unit tests)
  *   bun scripts/validate.ts --fast                # Same as above (explicit)
  *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts --fix                 # Auto-fix: prettier --write, oxlint --fix, SQL formatting
  *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
  *   bun scripts/validate.ts --parallel            # Run checks in parallel (faster but less readable errors)
  *   bun scripts/validate.ts --runtime             # Include runtime verification (requires --image=<tag>)
@@ -145,11 +146,12 @@ async function validate(
   stagedOnly: boolean = false,
   includeRuntime: boolean = false,
   includeFilesystem: boolean = false,
-  imageTag?: string
+  imageTag?: string,
+  fixMode: boolean = false
 ): Promise<void> {
   const startTime = Date.now();
 
-  const modeLabel = mode === "fast" ? "FAST" : "FULL";
+  const modeLabel = fixMode ? "FIX" : mode === "fast" ? "FAST" : "FULL";
   const parallelLabel = parallel ? " (PARALLEL)" : "";
   const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
   const runtimeLabel = includeRuntime ? " + RUNTIME" : "";
@@ -186,30 +188,54 @@ async function validate(
     },
     {
       name: "Oxlint",
-      command: stagedOnly
-        ? [
-            "sh",
-            "-c",
-            "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint",
-          ]
-        : ["bun", "x", "oxlint", "."],
-      description: stagedOnly
-        ? "JavaScript/TypeScript linting (staged files only)"
-        : "JavaScript/TypeScript linting",
+      command: fixMode
+        ? stagedOnly
+          ? [
+              "sh",
+              "-c",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint --fix",
+            ]
+          : ["bun", "x", "oxlint", "--fix", "."]
+        : stagedOnly
+          ? [
+              "sh",
+              "-c",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint",
+            ]
+          : ["bun", "x", "oxlint", "."],
+      description: fixMode
+        ? stagedOnly
+          ? "Auto-fixing linting issues (staged files)"
+          : "Auto-fixing linting issues"
+        : stagedOnly
+          ? "JavaScript/TypeScript linting (staged files only)"
+          : "JavaScript/TypeScript linting",
       required: true,
     },
     {
       name: "Prettier",
-      command: stagedOnly
-        ? [
-            "sh",
-            "-c",
-            "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --check --ignore-unknown",
-          ]
-        : ["bun", "x", "prettier", "--check", "."],
-      description: stagedOnly
-        ? "Code formatting check (staged files only)"
-        : "Code formatting check",
+      command: fixMode
+        ? stagedOnly
+          ? [
+              "sh",
+              "-c",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --write --ignore-unknown",
+            ]
+          : ["bun", "x", "prettier", "--write", "."]
+        : stagedOnly
+          ? [
+              "sh",
+              "-c",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --check --ignore-unknown",
+            ]
+          : ["bun", "x", "prettier", "--check", "."],
+      description: fixMode
+        ? stagedOnly
+          ? "Auto-formatting code (staged files)"
+          : "Auto-formatting code"
+        : stagedOnly
+          ? "Code formatting check (staged files only)"
+          : "Code formatting check",
       required: true,
     },
     {
@@ -220,10 +246,30 @@ async function validate(
     },
     {
       name: "SQL Validation",
-      command: ["bun", "scripts/check-sql.ts"],
-      description: "SQL formatting and syntax validation",
+      command: fixMode
+        ? ["bun", "scripts/format-sql.ts", "--write"]
+        : ["bun", "scripts/check-sql.ts"],
+      description: fixMode ? "Auto-formatting SQL files" : "SQL formatting and syntax validation",
       required: true,
     },
+    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI
+    // Skipped in fix mode since fix mode is for auto-formatting, not running tests
+    ...(fixMode
+      ? []
+      : [
+          {
+            name: "Unit Tests",
+            command: [
+              "bun",
+              "test",
+              "./scripts/config-generator/manifest-generator.test.ts",
+              "./scripts/test/test-auto-config-units.ts",
+              "./scripts/test/test-utils.test.ts",
+            ],
+            description: "Unit tests (auto-config, manifest validation, utilities)",
+            required: true,
+          },
+        ]),
   ];
 
   // Extended checks (only in --all mode)
@@ -394,8 +440,9 @@ const parallel = argsSet.has("--parallel");
 const stagedOnly = argsSet.has("--staged");
 const includeRuntime = argsSet.has("--runtime");
 const includeFilesystem = argsSet.has("--filesystem");
+const fixMode = argsSet.has("--fix");
 const imageArg = args.find((arg) => arg.startsWith("--image="));
 const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
 
 // Run validation
-await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag);
+await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);

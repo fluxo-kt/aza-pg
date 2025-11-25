@@ -173,6 +173,12 @@ async function validate(
       required: true,
     },
     {
+      name: "PGDG Version Validation",
+      command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
+      description: "PGDG version consistency (pgdgVersion matches source.tag)",
+      required: true,
+    },
+    {
       name: "Dockerfile Validation",
       command: ["bun", "scripts/docker/validate-dockerfile.ts"],
       description: "Verify Dockerfile is up-to-date with template and manifest",

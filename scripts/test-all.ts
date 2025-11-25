@@ -3,16 +3,16 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Validation checks (parallel) - 18 checks (unit tests, linting, config validation, manifest sync)
+ * 1. Validation checks (parallel) - 22 checks (unit tests, linting, config validation, manifest sync, PGDG, SQL)
  * 2. Build tests (sequential) - 4 checks (build, size, extension count, build tests)
  * 3. Functional tests (sequential) - 23 checks (extension loading, auto-config, stacks, verification, integration, security)
  *
- * Total: 45 checks across validation, build, and functional categories
+ * Total: 49 checks across validation, build, and functional categories
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (45 checks)
- *   bun scripts/test-all.ts --fast       # Validation only (18 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (44 checks)
+ *   bun scripts/test-all.ts              # Full test suite (49 checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (22 checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (48 checks)
  *
  * Exit code: 0 only if ALL critical tests pass
  */
@@ -352,10 +352,24 @@ function printSummary(results: Result[], totalDuration: number): Stats {
 const allChecks: Check[] = [
   // === VALIDATION CHECKS (run in parallel) ===
   {
+    name: "Environment File Check",
+    category: "validation",
+    command: ["sh", "-c", "! git ls-files | grep -E '/\\.env$' | grep -v '\\.env\\.example'"],
+    description: "Verify no .env files are tracked (only .env.example allowed)",
+    critical: true,
+  },
+  {
     name: "Manifest Validation",
     category: "validation",
     command: ["bun", "scripts/validate-manifest.ts"],
     description: "Extension manifest validation",
+    critical: true,
+  },
+  {
+    name: "PGDG Version Validation",
+    category: "validation",
+    command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
+    description: "PGDG version consistency (pgdgVersion matches source.tag)",
     critical: true,
   },
   {
@@ -377,6 +391,13 @@ const allChecks: Check[] = [
     category: "validation",
     command: ["bun", "x", "prettier", "--check", "."],
     description: "Code formatting check",
+    critical: true,
+  },
+  {
+    name: "SQL Validation",
+    category: "validation",
+    command: ["bun", "scripts/check-sql.ts"],
+    description: "SQL formatting and syntax validation",
     critical: true,
   },
   {
@@ -414,6 +435,13 @@ const allChecks: Check[] = [
     category: "validation",
     command: ["bun", "test", "./scripts/test/test-utils.test.ts"],
     description: "Unit tests for manifest validation and utilities",
+    critical: true,
+  },
+  {
+    name: "Unit Tests: Manifest Generator",
+    category: "validation",
+    command: ["bun", "test", "./scripts/config-generator/manifest-generator.test.ts"],
+    description: "Unit tests for Dockerfile manifest generation",
     critical: true,
   },
   {

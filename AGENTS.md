@@ -28,27 +28,19 @@ stacks/{primary,replica,single}  # Compose deployments
 
 # Essential Commands (organized by category)
 
-# Validation (fast checks before commit)
-bun run validate            # Fast: static checks (~10s, read-only)
-bun run validate:full       # Full: + extended checks (~30s)
-bun run validate:manifest   # Manifest validation only
-bun run validate:docs       # Documentation consistency only
+# Validation & Fixing
+bun run validate            # Fast: static checks + unit tests (~3s)
+bun run validate:all        # Full: + shellcheck, hadolint, yamllint (~30s)
+bun run validate:fix        # Auto-fix: prettier, oxlint, SQL formatting
 
-# Formatting
-bun run format              # Format all code (prettier, SQL formatter)
-bun run format:check        # Check formatting (read-only)
-
-# Linting
-bun run lint                # Lint code (oxlint, read-only)
-bun run lint:fix            # Auto-fix linting issues
+# Aliases (conventional names)
+bun run format              # Alias for validate:fix
+bun run lint                # Alias for validate
 
 # Testing
 bun run test                # Optimized: uses existing build (~30min)
 bun run test:all            # Complete: rebuilds image + all tests (~45min)
 bun run test:unit           # Unit tests only (no Docker)
-bun run test:hooks          # Hook extension tests
-bun run test:extensions     # Extension loading tests
-bun run test:security       # Security tests
 
 # Build/Generation
 bun run build               # Build Docker image
@@ -111,7 +103,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Using Node.js fs/child_process → ✅ Use Bun.file/Bun.$
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
-- ❌ Skip validation → ✅ `bun run validate:full` before commit
+- ❌ Skip validation → ✅ `bun run validate` before commit
 
 ## Git Workflow
 

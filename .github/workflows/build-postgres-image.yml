@@ -135,7 +135,7 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Run full validation
-        run: bun run validate:full
+        run: bun run validate:all
 
       - name: Check documentation consistency
         run: bun run check:docs

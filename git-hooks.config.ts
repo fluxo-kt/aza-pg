@@ -25,7 +25,7 @@ const config: GitHooksConfig = {
   "pre-commit": "bun scripts/pre-commit.ts",
 
   // Pre-push disabled - CI enforces quality
-  // "pre-push": "bun run validate:full",
+  // "pre-push": "bun run validate:all",
 
   verbose: true,
 };

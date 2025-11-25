@@ -689,7 +689,7 @@ Runs:
 #### Level 2: Full Validation (5-10 minutes)
 
 ```bash
-bun run validate:full
+bun run validate:all
 ```
 
 Runs:

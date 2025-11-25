@@ -69,7 +69,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Why**: Extremely fast TypeScript/JavaScript linter (50-100x faster than ESLint), Rust-based
 **Status**: ✅ LOCKED - Do NOT replace with ESLint
 **Configuration**: `.oxlintrc.json`
-**Usage**: `bun run lint`, `bun run lint:fix`
+**Usage**: `bun run lint` (alias for `validate`), `bun run validate:fix` (for auto-fix)
 
 **Decision Rationale**:
 
@@ -84,7 +84,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Why**: Industry-standard code formatter, zero-config philosophy
 **Status**: ✅ CURRENT - **Planned migration to Oxfmt when stable**
 **Configuration**: `.prettierrc.json`, `.prettierignore`
-**Usage**: `bun run format`, `bun run format:check`
+**Usage**: `bun run format` (alias for `validate:fix`)
 
 **Decision Rationale**:
 

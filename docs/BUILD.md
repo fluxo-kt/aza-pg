@@ -510,11 +510,11 @@ See [TESTING.md](TESTING.md) for detailed testing documentation.
 bun run validate
 
 # Full validation (includes all checks)
-bun run validate:full
+bun run validate:all
 
 # Specific checks
-bun run lint              # Oxlint for TypeScript/JavaScript
-bun run format:check      # Prettier formatting
+bun run lint              # Oxlint for TypeScript/JavaScript (alias for validate)
+bun run format            # Auto-fix formatting (alias for validate:fix)
 bun run check:manifest    # Manifest validation
 bun run check:shell       # Shellcheck for bash scripts
 bun run check:yaml        # yamllint for YAML files
@@ -1171,7 +1171,7 @@ bun run build -- --multi-arch --push  # Multi-platform + push
 
 # Validate
 bun run validate                      # Fast checks
-bun run validate:full                 # Full suite
+bun run validate:all                  # Full suite
 
 # Test
 bun run test:all                      # Full test suite

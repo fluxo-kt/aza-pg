@@ -12,7 +12,6 @@
  *     --tag=18.1-202511132330-single-node \
  *     --digest=sha256:abc123... \
  *     --catalog-enabled=36 \
- *     --catalog-total=38 \
  *     --output=release-notes.md \
  *     [--package-version-id=585941799] \
  *     [--compressed-size="247.79 MB"] \
@@ -26,7 +25,6 @@
  *   --tag                 Full image tag (e.g., "18.1-202511132330-single-node")
  *   --digest              Image digest (e.g., "sha256:abc123...")
  *   --catalog-enabled     Number of enabled extensions
- *   --catalog-total       Total extensions in catalog
  *   --output              Output markdown file path
  *   --package-version-id  (Optional) GHCR package version ID for package link
  *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
@@ -58,7 +56,6 @@ interface Args {
   tag: string;
   digest: string;
   catalogEnabled: number;
-  catalogTotal: number;
   output: string;
   packageVersionId?: number; // Optional for backward compatibility
   compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
@@ -151,7 +148,6 @@ function parseArgs(): Args | null {
   const tag = getArg("tag");
   const digest = getArg("digest");
   const catalogEnabled = getArg("catalog-enabled");
-  const catalogTotal = getArg("catalog-total");
   const output = getArg("output");
   const packageVersionId = getArg("package-version-id"); // Optional
   const compressedSize = getArg("compressed-size"); // Optional
@@ -161,7 +157,7 @@ function parseArgs(): Args | null {
   const baseImageDigest = getArg("base-image-digest"); // Optional
 
   // Validate required args
-  if (!pgVersion || !tag || !digest || !catalogEnabled || !catalogTotal || !output) {
+  if (!pgVersion || !tag || !digest || !catalogEnabled || !output) {
     console.error("ERROR: Missing required arguments");
     console.error("");
     console.error("Usage:");
@@ -170,7 +166,6 @@ function parseArgs(): Args | null {
     console.error("    --tag=18.1-202511132330-single-node \\");
     console.error("    --digest=sha256:abc123... \\");
     console.error("    --catalog-enabled=36 \\");
-    console.error("    --catalog-total=38 \\");
     console.error("    --output=release-notes.md \\");
     console.error("    [--package-version-id=585941799]  # Optional: GHCR package version ID");
     console.error("    [--compressed-size='247.79 MB']   # Optional: Compressed image size");
@@ -186,7 +181,6 @@ function parseArgs(): Args | null {
     tag,
     digest,
     catalogEnabled: parseInt(catalogEnabled, 10),
-    catalogTotal: parseInt(catalogTotal, 10),
     output,
     packageVersionId: packageVersionId ? parseInt(packageVersionId, 10) : undefined,
     compressedSize,
@@ -584,22 +578,6 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   );
   lines.push("");
 
-  // At a Glance summary table
-  lines.push("## 📊 At a Glance");
-  lines.push("");
-  lines.push("| Metric | Value |");
-  lines.push("|--------|-------|");
-  lines.push(`| PostgreSQL | ${args.pgVersion} |`);
-  lines.push(`| Extensions | ${args.catalogEnabled} |`);
-  lines.push(`| Preloaded | ${preloadedCount} |`);
-  lines.push(`| Auto-Created | ${autoCreatedCount} |`);
-  lines.push(`| Categories | ${categoryGroups.length} |`);
-  if (args.compressedSize) {
-    lines.push(`| Image Size | ${args.compressedSize} |`);
-  }
-  lines.push("| Platforms | amd64, arm64 |");
-  lines.push("");
-
   // GHCR Package Link (prominent)
   // Use package version ID if provided, otherwise fall back to digest short (legacy)
   const packageId =
@@ -613,6 +591,45 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push(`- **Registry**: \`${REGISTRY}\``);
   lines.push(`- **Digest**: \`${args.digest}\``);
   lines.push(`- **Tags**: \`${args.tag}\`, \`${convenienceTags.join("`, `")}\``);
+  lines.push("");
+
+  // Image Details section
+  lines.push("## 🐳 Image Details");
+  lines.push("");
+  lines.push(`- **PostgreSQL Version**: ${args.pgVersion}`);
+
+  // Format base image with optional Docker Hub link
+  if (args.baseImageName && args.baseImageDigest) {
+    const dockerHubLink = getDockerHubLink(args.baseImageName, args.baseImageDigest);
+    if (dockerHubLink) {
+      lines.push(`- **Base Image**: [${args.baseImageName}](${dockerHubLink}) (SHA-pinned)`);
+    } else {
+      lines.push(`- **Base Image**: ${args.baseImageName} (SHA-pinned)`);
+    }
+  } else {
+    // Fallback to default format if base image info not provided
+    lines.push(`- **Base Image**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
+  }
+
+  lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
+  lines.push(`- **Extensions**: ${args.catalogEnabled}`);
+  lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
+  lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
+  lines.push(`- **Build**: Single-node optimized`);
+
+  // Add size metrics if provided
+  if (args.compressedSize || args.uncompressedSize || args.layerCount !== undefined) {
+    if (args.compressedSize) {
+      lines.push(`- **Compressed Size**: ${args.compressedSize} (wire transfer)`);
+    }
+    if (args.uncompressedSize) {
+      lines.push(`- **Uncompressed Size**: ${args.uncompressedSize} (disk usage)`);
+    }
+    if (args.layerCount !== undefined) {
+      lines.push(`- **Layers**: ${args.layerCount}`);
+    }
+  }
+
   lines.push("");
 
   // Get auto-created extension names (sorted alphabetically)
@@ -668,48 +685,6 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("```");
   lines.push("");
 
-  // Configuration section (with collapsible subsections)
-  lines.push(...generateConfigurationSection());
-
-  // Image Details section
-  lines.push("## 🐳 Image Details");
-  lines.push("");
-  lines.push(`- **PostgreSQL Version**: ${args.pgVersion}`);
-
-  // Format base image with optional Docker Hub link
-  if (args.baseImageName && args.baseImageDigest) {
-    const dockerHubLink = getDockerHubLink(args.baseImageName, args.baseImageDigest);
-    if (dockerHubLink) {
-      lines.push(`- **Base Image**: [${args.baseImageName}](${dockerHubLink}) (SHA-pinned)`);
-    } else {
-      lines.push(`- **Base Image**: ${args.baseImageName} (SHA-pinned)`);
-    }
-  } else {
-    // Fallback to default format if base image info not provided
-    lines.push(`- **Base Image**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
-  }
-
-  lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
-  lines.push(`- **Extensions**: ${args.catalogEnabled}`);
-  lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
-  lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
-  lines.push(`- **Build**: Single-node optimized`);
-
-  // Add size metrics if provided
-  if (args.compressedSize || args.uncompressedSize || args.layerCount !== undefined) {
-    if (args.compressedSize) {
-      lines.push(`- **Compressed Size**: ${args.compressedSize} (wire transfer)`);
-    }
-    if (args.uncompressedSize) {
-      lines.push(`- **Uncompressed Size**: ${args.uncompressedSize} (disk usage)`);
-    }
-    if (args.layerCount !== undefined) {
-      lines.push(`- **Layers**: ${args.layerCount}`);
-    }
-  }
-
-  lines.push("");
-
   // What's Inside section with status markers
   lines.push("## 📚 Extensions Catalog");
   lines.push("");
@@ -743,6 +718,9 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("");
   lines.push("</details>");
   lines.push("");
+
+  // Configuration section (with collapsible subsections)
+  lines.push(...generateConfigurationSection());
 
   // Verification section
   lines.push("## ✅ Verification");
@@ -815,7 +793,7 @@ async function main() {
   console.log(`✓ Release notes generated: ${outputPath}`);
   console.log(`  PostgreSQL: ${args.pgVersion}`);
   console.log(`  Tag: ${args.tag}`);
-  console.log(`  Enabled extensions: ${args.catalogEnabled}/${args.catalogTotal}`);
+  console.log(`  Enabled extensions: ${args.catalogEnabled}`);
   console.log(`  Categories: ${categoryGroups.length}`);
 }
 

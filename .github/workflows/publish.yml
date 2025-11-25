@@ -1285,7 +1285,6 @@ jobs:
             --tag="${{ needs.prep.outputs.image_tag }}" \
             --digest="${{ needs.merge.outputs.image_digest }}" \
             --catalog-enabled="${{ needs.prep.outputs.catalog_enabled }}" \
-            --catalog-total="${{ needs.prep.outputs.catalog_total }}" \
             --package-version-id="${{ steps.package_version.outputs.package_version_id }}" \
             --compressed-size="${{ steps.metrics.outputs.compressed_size }}" \
             --uncompressed-size="${{ steps.metrics.outputs.uncompressed_size }}" \

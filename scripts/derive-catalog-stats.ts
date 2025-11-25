@@ -13,6 +13,7 @@ import { setGitHubOutput, isGitHubActions } from "./utils/github.ts";
 interface ManifestEntry {
   name: string;
   kind: "extension" | "tool" | "builtin" | "module";
+  enabled?: boolean;
   runtime?: {
     defaultEnable?: boolean;
     [key: string]: unknown;
@@ -71,7 +72,7 @@ function deriveCatalogStats(manifest: Manifest): CatalogStats {
   let enabledModuleCount = 0;
 
   for (const ext of extensions) {
-    const isEnabled = ext.runtime?.defaultEnable === true;
+    const isEnabled = ext.enabled !== false;
 
     // Count by enabled status
     if (isEnabled) {

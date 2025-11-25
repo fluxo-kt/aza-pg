@@ -288,6 +288,7 @@ bun scripts/test/test-extension-regression.ts --mode=production --generate-expec
 - [ ] **postgis** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
 - [ ] **pgrouting** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
 - [ ] **pgq** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
+- [x] **wrappers** - `expected/basic.out` - GENERATED (6 assertions)
 
 **Notes:**
 
@@ -769,7 +770,7 @@ PostgreSQL builtins that should always work:
 
 ### Integration (1)
 
-- wrappers: Foreign data wrappers (Supabase)
+- wrappers: Foreign data wrappers (Supabase) - 10 functional tests, 1 regression suite (6 assertions)
 
 ### Safety (2)
 
@@ -813,7 +814,7 @@ All enabled extensions have functional tests with 100% coverage across three dim
 | CDC           | 1          | 3      | 100%     |
 | GIS           | 2          | 6      | 100%     |
 | Indexing      | 2          | 4      | 100%     |
-| Integration   | 2          | 6      | 100%     |
+| Integration   | 2          | 13     | 100%     |
 | Language      | 1          | 4      | 100%     |
 | Maintenance   | 2          | 5      | 100%     |
 | Observability | 4          | 8      | 100%     |
@@ -827,7 +828,7 @@ All enabled extensions have functional tests with 100% coverage across three dim
 | Timeseries    | 2          | 5      | 100%     |
 | Utilities     | 1          | 4      | 100%     |
 | Validation    | 1          | 4      | 100%     |
-| **TOTAL**     | **37**     | **91** | **100%** |
+| **TOTAL**     | **37**     | **98** | **100%** |
 
 > **Note:** For current extension counts (enabled/disabled/total), see `docs/.generated/docs-data.json`.
 

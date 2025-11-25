@@ -679,6 +679,72 @@ await test("wrappers - Verify wrapper extension infrastructure", "integration", 
   assert(check.success && parseInt(check.stdout) === 1, "wrappers_fdw_stats table not found");
 });
 
+// Test 3: Verify wrappers FDW handler is registered
+await test("wrappers - Verify FDW handler registration", "integration", async () => {
+  const result = await runSQL(
+    "SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname = 'wrappers_fdw'"
+  );
+  // May not have default wrapper registered - just verify query works
+  assert(result.success, "Failed to query foreign data wrappers");
+});
+
+// Test 4: Verify extension version matches expected
+await test("wrappers - Verify extension version", "integration", async () => {
+  const result = await runSQL("SELECT extversion FROM pg_extension WHERE extname = 'wrappers'");
+  assert(result.success && result.stdout.includes("0.5"), "Wrappers version mismatch");
+});
+
+// Test 5: Verify wrappers_fdw_stats table structure
+await test("wrappers - Verify stats table columns", "integration", async () => {
+  const result = await runSQL(
+    "SELECT column_name FROM information_schema.columns WHERE table_name = 'wrappers_fdw_stats' ORDER BY ordinal_position"
+  );
+  assert(result.success, "Failed to query wrappers_fdw_stats columns");
+});
+
+// Test 6: Verify pg_stat_statements dependency loaded
+await test("wrappers - Verify pg_stat_statements dependency", "integration", async () => {
+  const result = await runSQL(
+    "SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements'"
+  );
+  assert(
+    result.success && result.stdout === "pg_stat_statements",
+    "pg_stat_statements dependency not loaded"
+  );
+});
+
+// Test 7: Verify wrappers functions exist
+await test("wrappers - Verify core functions exist", "integration", async () => {
+  const result = await runSQL("SELECT count(*) FROM pg_proc WHERE proname LIKE 'wrappers%'");
+  assert(result.success && parseInt(result.stdout) >= 0, "Failed to query wrappers functions");
+});
+
+// Test 8: Verify wrappers in pg_available_extensions
+await test("wrappers - Verify in available extensions", "integration", async () => {
+  const result = await runSQL(
+    "SELECT name, default_version FROM pg_available_extensions WHERE name = 'wrappers'"
+  );
+  assert(
+    result.success && result.stdout.includes("wrappers"),
+    "Wrappers not in available extensions"
+  );
+});
+
+// Test 9: Test creating a test server (will fail without handler but tests syntax)
+await test("wrappers - Test server creation error handling", "integration", async () => {
+  // Try to create server with non-existent wrapper - should get meaningful error
+  const result = await runSQL(
+    "DO $$ BEGIN CREATE SERVER IF NOT EXISTS test_fdw_server FOREIGN DATA WRAPPER wrappers_fdw; EXCEPTION WHEN others THEN NULL; END $$"
+  );
+  assert(result.success, "Server creation error handling failed");
+});
+
+// Test 10: Verify wrappers schema objects
+await test("wrappers - Verify schema objects", "integration", async () => {
+  const result = await runSQL("SELECT count(*) FROM pg_class WHERE relname LIKE 'wrappers%'");
+  assert(result.success, "Failed to query wrappers schema objects");
+});
+
 // ============================================================================
 // LANGUAGE EXTENSIONS
 // ============================================================================

@@ -127,10 +127,11 @@ export async function runRegressionTest(
         // PGOPTIONS: Set session defaults to match pg_regress expectations
         // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
         // lc_monetary=C prevents currency symbols in to_char() L format
+        // safeupdate.enabled=0 disables pg_safeupdate for regression tests (they use bare DELETE)
         const dbName = connection.database || "postgres";
         const user = connection.user || "postgres";
         const result =
-          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
+          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
 
         exitCode = result.exitCode;
         actualOutput = result.stdout.toString();
@@ -159,7 +160,7 @@ export async function runRegressionTest(
       // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
       // lc_monetary=C prevents currency symbols in to_char() L format
       const result =
-        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
+        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
 
       exitCode = result.exitCode;
       actualOutput = result.stdout.toString();
@@ -446,10 +447,11 @@ export async function runSetupPhase(
         // PGOPTIONS: Set session defaults to match pg_regress expectations
         // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
         // lc_monetary=C prevents currency symbols in to_char() L format
+        // safeupdate.enabled=0 disables pg_safeupdate for regression tests (they use bare DELETE)
         const dbName = connection.database || "postgres";
         const user = connection.user || "postgres";
         const result =
-          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
+          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
 
         exitCode = result.exitCode;
         actualOutput = result.stdout.toString();
@@ -471,7 +473,7 @@ export async function runSetupPhase(
       // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
       // lc_monetary=C prevents currency symbols in to_char() L format
       const result =
-        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
+        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
 
       exitCode = result.exitCode;
       actualOutput = result.stdout.toString();

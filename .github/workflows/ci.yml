@@ -476,7 +476,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
           echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgflow migration tool (latest + v0.7.2)" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow v0.8.1 schema installation and workflows" >> $GITHUB_STEP_SUMMARY
           echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
           echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
 

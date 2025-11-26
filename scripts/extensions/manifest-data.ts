@@ -437,7 +437,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/pg_net.git",
-      tag: "v0.14.0",
+      tag: "v0.20.2",
     },
     build: { type: "pgxs" },
     aptPackages: ["libcurl4-openssl-dev"],

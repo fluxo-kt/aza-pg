@@ -56,8 +56,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/pg_net.git",
-        "tag": "v0.14.0",
-        "commit": "9752f197f878c0562def4ac88c1dd2e64739d2b1"
+        "tag": "v0.20.2",
+        "commit": "8203cb72c87479d39c9e3e47ce3e493242110f83"
       },
       "build": {
         "type": "pgxs"

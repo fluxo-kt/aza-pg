@@ -933,8 +933,8 @@ export async function testToolsPresent(
     }
 
     const toolBinaries: Record<string, string> = {
-      pgbackrest: "/usr/local/bin/pgbackrest",
-      pgbadger: "/usr/local/bin/pgbadger",
+      pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
+      pgbadger: "/usr/bin/pgbadger", // PGDG package path
       wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
       plan_filter: "/usr/lib/postgresql/18/lib/plan_filter.so",
       safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",

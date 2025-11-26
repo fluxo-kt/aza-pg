@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { appendFile } from "node:fs/promises";
+
 /**
  * Unified cleanup script for GHCR testing images
  *
@@ -658,24 +660,56 @@ async function cleanup(options: CleanupOptions): Promise<void> {
 
   // Summary
   console.log("");
+
+  const deletedTags = toDelete.length - failureCount;
+  const deletedSigs = successCount - deletedTags;
+
   if (options.dryRun) {
     success(
       `[DRY RUN] Would delete ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (+ associated signatures)`
     );
   } else if (failureCount === 0) {
     success(
-      `Deleted ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (+ ${successCount - toDelete.length} signatures)`
+      `Deleted ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (+ ${deletedSigs} signatures)`
     );
   } else {
-    const deletedTags = toDelete.length - failureCount;
     success(`Deleted ${deletedTags} of ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
     error(`Failed to delete ${failureCount} tag${failureCount !== 1 ? "s" : ""}:`);
     for (const f of failures) {
       error(`  - ${f.tag}: ${f.error}`);
     }
-    if (!options.continueOnError) {
-      process.exit(1);
+  }
+
+  // Write to GitHub Actions step summary
+  if (Bun.env.GITHUB_ACTIONS === "true" && Bun.env.GITHUB_STEP_SUMMARY) {
+    const summary: string[] = [];
+    summary.push("### 🧹 Cleanup Results\n");
+    summary.push(`| Metric | Count |`);
+    summary.push(`|--------|-------|`);
+    summary.push(`| Tags to delete | ${toDelete.length} |`);
+    summary.push(`| Tags deleted | ${deletedTags} |`);
+    summary.push(`| Signatures deleted | ${deletedSigs} |`);
+    summary.push(`| Failed | ${failureCount} |`);
+    if (options.dryRun) {
+      summary.push(`\n**Mode**: Dry run (no actual deletions)`);
     }
+    if (failureCount > 0) {
+      summary.push(`\n**Failed tags**:`);
+      for (const f of failures) {
+        summary.push(`- \`${f.tag}\`: ${f.error}`);
+      }
+    }
+    summary.push("");
+
+    try {
+      await appendFile(Bun.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+    } catch {
+      // Ignore summary write errors
+    }
+  }
+
+  if (failureCount > 0 && !options.continueOnError) {
+    process.exit(1);
   }
 }
 

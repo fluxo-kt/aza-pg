@@ -159,9 +159,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### utilities
 
-| Extension                                              | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                          |
-| ------------------------------------------------------ | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
-| [`pg_hashids`](https://github.com/iCyberon/pg_hashids) | [v1.2.1](https://github.com/iCyberon/pg_hashids/releases/tag/v1.2.1) | No                 | No             | [Docs](https://github.com/iCyberon/pg_hashids#readme) | Encode integers into short hashids for obfuscated identifiers. |
+| Extension                                              | Version                                                                                            | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| [`pg_hashids`](https://github.com/iCyberon/pg_hashids) | [8c404dd8](https://github.com/iCyberon/pg_hashids/commit/8c404dd86408f3a987a3ff6825ac7e42bd618b98) | No                 | No             | [Docs](https://github.com/iCyberon/pg_hashids#readme) | Encode integers into short hashids for obfuscated identifiers. |
 
 ### validation
 

@@ -1589,6 +1589,16 @@ await test("pg_hashids - Consistency test", "utilities", async () => {
   );
 });
 
+await test("pg_hashids - Decode single value with id_decode_once", "utilities", async () => {
+  const encode = await runSQL("SELECT id_encode(99999)");
+  assert(encode.success, "Encoding failed");
+  const encodedValue = encode.stdout.trim();
+
+  // id_decode_once returns a single bigint, not an array (v1.3 feature)
+  const decode = await runSQL(`SELECT id_decode_once('${encodedValue}')::text`);
+  assert(decode.success && decode.stdout.trim() === "99999", "id_decode_once failed");
+});
+
 // ============================================================================
 // VALIDATION EXTENSIONS
 // ============================================================================

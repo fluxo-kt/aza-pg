@@ -695,15 +695,19 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "utilities",
     description: "Encode integers into short hashids for obfuscated identifiers.",
     source: {
-      type: "git",
+      type: "git-ref",
       repository: "https://github.com/iCyberon/pg_hashids.git",
-      tag: "v1.2.1",
+      ref: "8c404dd86408f3a987a3ff6825ac7e42bd618b98",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG. Alt: Pigsty v1.2.1 (same version)", "Source build or Pigsty package"],
+      notes: [
+        "NOT in PGDG. Pigsty has v1.2.1 only (no PG18 packages)",
+        "Using v1.3 from master (unreleased, no git tag)",
+        "Source build required",
+      ],
     },
     sourceUrl: "https://github.com/iCyberon/pg_hashids",
     docsUrl: "https://github.com/iCyberon/pg_hashids#readme",

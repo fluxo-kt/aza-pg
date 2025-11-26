@@ -190,16 +190,9 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
 
   try {
     // Start container
-    // Note: We exclude 'safeupdate' from shared_preload_libraries because PostgreSQL
-    // regression tests use bare DELETE statements (DELETE FROM table;) which safeupdate blocks.
-    // This is intentional for regression testing only - production deployments should keep safeupdate enabled.
-    const regressionPreloadLibs =
-      "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb";
-
     await $`docker run -d --name ${containerName} \
       -e POSTGRES_PASSWORD=postgres \
       -e TEST_MODE=${mode} \
-      -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${regressionPreloadLibs} \
       -p 5432 \
       ${image}`.quiet();
 

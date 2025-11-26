@@ -610,15 +610,7 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     info(`Deleting ${toDelete.length} specified tag${toDelete.length !== 1 ? "s" : ""}`);
   }
 
-  // Build version ID to tags map for signature lookup
-  const versionIdToTags = new Map<number, string[]>();
-  for (const v of versions) {
-    if (v.metadata?.container?.tags) {
-      versionIdToTags.set(v.id, v.metadata.container.tags);
-    }
-  }
-
-  // Delete tags
+  // Delete tags (pattern * includes .sig tags, so no separate signature handling needed)
   let successCount = 0;
   let failureCount = 0;
   const failures: Array<{ tag: string; error: string }> = [];
@@ -627,22 +619,6 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     try {
       await deletePackageVersion(org, packageName, tagInfo.versionId, tagInfo.tag, options.dryRun);
       successCount++;
-
-      // Also delete associated signature (.sig) if exists (skip if already a .sig tag)
-      if (!tagInfo.tag.endsWith(".sig")) {
-        const sigTag = `${tagInfo.tag}.sig`;
-        for (const [versionId, tags] of versionIdToTags) {
-          if (tags.includes(sigTag)) {
-            try {
-              await deletePackageVersion(org, packageName, versionId, sigTag, options.dryRun);
-              successCount++;
-            } catch (sigErr) {
-              warning(`Failed to delete signature ${sigTag}: ${getErrorMessage(sigErr)}`);
-            }
-            break;
-          }
-        }
-      }
     } catch (err) {
       const errMessage = getErrorMessage(err);
       error(`Failed to delete ${tagInfo.tag}: ${errMessage}`);
@@ -660,22 +636,17 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     }
   }
 
-  // Summary
+  // Summary (pattern * includes .sig tags, counted as regular tags)
   console.log("");
 
-  const deletedTags = toDelete.length - failureCount;
-  const deletedSigs = successCount - deletedTags;
+  const deletedCount = successCount;
 
   if (options.dryRun) {
-    success(
-      `[DRY RUN] Would delete ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (+ associated signatures)`
-    );
+    success(`[DRY RUN] Would delete ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
   } else if (failureCount === 0) {
-    success(
-      `Deleted ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (+ ${deletedSigs} signatures)`
-    );
+    success(`Deleted ${deletedCount} tag${deletedCount !== 1 ? "s" : ""}`);
   } else {
-    success(`Deleted ${deletedTags} of ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
+    success(`Deleted ${deletedCount} of ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
     error(`Failed to delete ${failureCount} tag${failureCount !== 1 ? "s" : ""}:`);
     for (const f of failures) {
       error(`  - ${f.tag}: ${f.error}`);
@@ -689,8 +660,7 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     summary.push(`| Metric | Count |`);
     summary.push(`|--------|-------|`);
     summary.push(`| Tags to delete | ${toDelete.length} |`);
-    summary.push(`| Tags deleted | ${deletedTags} |`);
-    summary.push(`| Signatures deleted | ${deletedSigs} |`);
+    summary.push(`| Tags deleted | ${deletedCount} |`);
     summary.push(`| Failed | ${failureCount} |`);
     if (options.dryRun) {
       summary.push(`\n**Mode**: Dry run (no actual deletions)`);

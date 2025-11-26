@@ -628,17 +628,19 @@ async function cleanup(options: CleanupOptions): Promise<void> {
       await deletePackageVersion(org, packageName, tagInfo.versionId, tagInfo.tag, options.dryRun);
       successCount++;
 
-      // Also delete associated signature (.sig) if exists
-      const sigTag = `${tagInfo.tag}.sig`;
-      for (const [versionId, tags] of versionIdToTags) {
-        if (tags.includes(sigTag)) {
-          try {
-            await deletePackageVersion(org, packageName, versionId, sigTag, options.dryRun);
-            successCount++;
-          } catch (sigErr) {
-            warning(`Failed to delete signature ${sigTag}: ${getErrorMessage(sigErr)}`);
+      // Also delete associated signature (.sig) if exists (skip if already a .sig tag)
+      if (!tagInfo.tag.endsWith(".sig")) {
+        const sigTag = `${tagInfo.tag}.sig`;
+        for (const [versionId, tags] of versionIdToTags) {
+          if (tags.includes(sigTag)) {
+            try {
+              await deletePackageVersion(org, packageName, versionId, sigTag, options.dryRun);
+              successCount++;
+            } catch (sigErr) {
+              warning(`Failed to delete signature ${sigTag}: ${getErrorMessage(sigErr)}`);
+            }
+            break;
           }
-          break;
         }
       }
     } catch (err) {

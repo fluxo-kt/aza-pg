@@ -309,7 +309,6 @@ bun scripts/format-sql.ts --write
 
 ### SQL Formatting
 
-- `docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql` - Trailing whitespace removed
 - `examples/pgflow/10-pgflow.sql` - Trailing whitespace removed
 - `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` - Trailing whitespace removed
 

@@ -126,6 +126,24 @@ pig install pg_duckdb -v 18
 - **Cons:** Versions may lag 1-2 behind (e.g., wrappers v0.5.0 vs v0.5.7)
 - **Status:** Community-maintained, frequent updates
 
+**⚠️ PG18 Limitations (as of Nov 2025):**
+
+| Extension     | PG18 Support | Platform Notes                            |
+| ------------- | ------------ | ----------------------------------------- |
+| pgsodium      | ⚠️ Partial   | Debian 12/Ubuntu 22/24 lack PG18 packages |
+| pg_hashids    | ❌ NO        | No PG18 packages on ANY platform          |
+| pg_safeupdate | ❌ NO        | No PG18 packages on ANY platform          |
+| wal2json      | ⚠️ Partial   | d12, u22, u24 only                        |
+| pgq           | ✅ Yes       | d12, u22, u24 available                   |
+| vault         | ⚠️ Unknown   | Not explicitly documented                 |
+
+**Why not using Pigsty for aza-pg:**
+
+1. **Debian Trixie (13) not supported** - Pigsty only lists Debian 12 (d12)
+2. **Missing PG18 packages** - pg_hashids and pg_safeupdate have NO PG18 packages
+3. **Would require base image change** - Breaking change from Trixie to Bookworm
+4. **Partial availability** - Only 4 of 6 target extensions would potentially work
+
 ### Timescale (packagecloud.io/timescale)
 
 ```bash

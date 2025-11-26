@@ -708,6 +708,38 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaud
 
 **Note**: Hook-based extensions don't use CREATE EXTENSION - they load via preload libraries.
 
+### 8. Docker Credential Helper Not Found
+
+**Symptom**: PgBouncer tests fail with error: `docker-credential-osxkeychain: executable file not found in $PATH`
+
+**Cause**: System Docker config (`~/.docker/config.json`) references credential helper but the binary is not installed or not in PATH.
+
+**Fix Option 1** - Remove credential helper from Docker config (Quick):
+
+```bash
+# Edit ~/.docker/config.json and remove the "credsStore" line:
+{
+  "auths": {
+    "ghcr.io": {}
+  }
+}
+```
+
+**Fix Option 2** - Install credential helper (Permanent):
+
+```bash
+# macOS
+brew install docker-credential-helper
+
+# Linux (Ubuntu/Debian)
+sudo apt-get install docker-credential-helpers
+
+# Arch Linux
+sudo pacman -S docker-credential-helpers
+```
+
+**Automatic Fallback**: Test scripts automatically detect missing credential helpers and create isolated test configurations. No manual intervention required unless you want to fix the system-level configuration.
+
 ## Test Categories
 
 ### Core Extensions (5)

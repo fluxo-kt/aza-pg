@@ -202,6 +202,83 @@ Actual work items created when steps become ready. Processed by workers.
 
 Steps can depend on other steps. A step only starts when all dependencies complete.
 
+## Real-Time Event Notifications
+
+pgflow v0.8.1 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
+
+### Subscribing to Events
+
+```sql
+-- Subscribe to ALL pgflow events (global channel)
+LISTEN pgflow_events;
+
+-- Subscribe to a specific workflow topic
+LISTEN order_processing;
+```
+
+### Event Payload Structure
+
+Events are delivered as JSON:
+
+```json
+{
+  "payload": {
+    "event_type": "step:completed",
+    "run_id": "uuid",
+    "step_slug": "validate",
+    "status": "completed"
+  },
+  "event": "step:completed",
+  "topic": "order_processing",
+  "timestamp": 1700000000.123
+}
+```
+
+### Event Types
+
+| Event            | Description                      |
+| ---------------- | -------------------------------- |
+| `step:completed` | A step has finished successfully |
+| `run:failed`     | A workflow run has failed        |
+| `run:completed`  | A workflow run completed         |
+
+### Client-Side Example (Node.js)
+
+```typescript
+import { Client } from "pg";
+
+const client = new Client(connectionString);
+await client.connect();
+
+// Subscribe to events
+await client.query("LISTEN pgflow_events");
+
+// Handle notifications
+client.on("notification", (msg) => {
+  const event = JSON.parse(msg.payload);
+  console.log("Event:", event.event, event.payload);
+});
+```
+
+### Client-Side Example (Python)
+
+```python
+import psycopg2
+import select
+
+conn = psycopg2.connect(dsn)
+conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+curs = conn.cursor()
+curs.execute("LISTEN pgflow_events;")
+
+while True:
+    if select.select([conn], [], [], 5) != ([], [], []):
+        conn.poll()
+        while conn.notifies:
+            notify = conn.notifies.pop(0)
+            print(f"Got: {notify.payload}")
+```
+
 ## Monitoring
 
 ```sql

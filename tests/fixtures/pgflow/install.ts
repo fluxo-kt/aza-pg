@@ -5,7 +5,12 @@
  * Used for testing pgflow functionality without bundling it in the Docker image.
  *
  * NOTE: pgflow v0.8.1 integrates with Supabase Realtime. For non-Supabase deployments,
- * this helper creates a no-op stub for `realtime.send()` before installing the schema.
+ * this helper creates a pg_notify-based replacement for `realtime.send()` that uses
+ * PostgreSQL's native LISTEN/NOTIFY mechanism for event broadcasting.
+ *
+ * Clients can subscribe to events using:
+ *   LISTEN pgflow_events;  -- All pgflow events
+ *   LISTEN <topic>;        -- Specific workflow/topic events
  */
 
 import { join, dirname } from "node:path";
@@ -15,15 +20,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FILE = join(__dirname, "schema-v0.8.1.sql");
 
 /**
- * SQL to create a no-op stub for Supabase Realtime.
+ * SQL to create a pg_notify-based replacement for Supabase Realtime.
  * pgflow v0.8.1 calls realtime.send() for event broadcasting.
- * This stub allows pgflow to work without Supabase Realtime.
+ *
+ * This implementation uses PostgreSQL's native LISTEN/NOTIFY mechanism
+ * to provide real-time event broadcasting without Supabase dependencies.
+ *
+ * Usage (client-side):
+ *   LISTEN pgflow_events;  -- Subscribe to all pgflow events
+ *   LISTEN my_workflow;    -- Subscribe to a specific topic
+ *
+ * Events are delivered as JSON with structure:
+ *   { "payload": {...}, "event": "step:completed", "topic": "..." }
  */
 const REALTIME_STUB_SQL = `
--- Create realtime schema if not exists (no-op stub for non-Supabase deployments)
+-- Create realtime schema if not exists (pg_notify-based for non-Supabase deployments)
 CREATE SCHEMA IF NOT EXISTS realtime;
 
--- Create no-op send function that matches Supabase Realtime signature
+-- Create pg_notify-based send function that matches Supabase Realtime signature
+-- Uses PostgreSQL's native LISTEN/NOTIFY for pub/sub event broadcasting
 CREATE OR REPLACE FUNCTION realtime.send(
   payload jsonb,
   event text,
@@ -33,13 +48,33 @@ CREATE OR REPLACE FUNCTION realtime.send(
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- No-op: This is a stub for non-Supabase deployments
-  -- In production Supabase, this broadcasts events via websockets
-  NULL;
+  -- Broadcast event using PostgreSQL native NOTIFY
+  -- Clients can subscribe using: LISTEN <topic>;
+  -- Events are delivered as JSON payloads
+  PERFORM pg_notify(
+    topic,
+    jsonb_build_object(
+      'payload', payload,
+      'event', event,
+      'topic', topic,
+      'timestamp', extract(epoch from now())
+    )::text
+  );
+
+  -- Also broadcast to a global pgflow_events channel for centralized monitoring
+  PERFORM pg_notify(
+    'pgflow_events',
+    jsonb_build_object(
+      'payload', payload,
+      'event', event,
+      'topic', topic,
+      'timestamp', extract(epoch from now())
+    )::text
+  );
 END;
 $$;
 
-COMMENT ON FUNCTION realtime.send IS 'No-op stub for Supabase Realtime - pgflow v0.8.1 compatibility';
+COMMENT ON FUNCTION realtime.send IS 'pg_notify-based event broadcaster for pgflow v0.8.1 (non-Supabase deployments)';
 `;
 
 export interface InstallResult {

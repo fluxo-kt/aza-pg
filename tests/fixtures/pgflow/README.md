@@ -123,6 +123,44 @@ done
 | Functions | 15+   |
 | Types     | 1     |
 
+## Supabase Realtime Compatibility
+
+pgflow v0.8.1 integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the `install.ts` helper automatically creates a **pg_notify-based replacement** that uses PostgreSQL's native LISTEN/NOTIFY mechanism.
+
+### How It Works
+
+Before installing the pgflow schema, the helper creates:
+
+```sql
+-- Function signature matches Supabase Realtime
+CREATE FUNCTION realtime.send(payload jsonb, event text, topic text, private boolean)
+
+-- Implementation uses PostgreSQL native NOTIFY:
+PERFORM pg_notify(topic, json_payload);
+PERFORM pg_notify('pgflow_events', json_payload);
+```
+
+### Subscribing to Events
+
+```sql
+-- Subscribe to all pgflow events
+LISTEN pgflow_events;
+
+-- Subscribe to specific topic
+LISTEN my_workflow;
+```
+
+### Event Payload
+
+```json
+{
+  "payload": { "event_type": "step:completed", "run_id": "...", ... },
+  "event": "step:completed",
+  "topic": "my_workflow",
+  "timestamp": 1700000000.123
+}
+```
+
 ## Dependencies
 
 pgflow requires the `pgmq` extension, which is included in the aza-pg image.

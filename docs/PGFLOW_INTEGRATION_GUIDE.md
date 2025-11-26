@@ -104,7 +104,7 @@ pgflow creates three schemas:
 
 1. **`pgflow`**: Core workflow tables and functions
 2. **`pgmq`**: Message queue (created if not exists)
-3. **`realtime`**: Compatibility stub (no-op send function)
+3. **`realtime`**: Event broadcasting via pg_notify (LISTEN/NOTIFY)
 
 ### Core Tables
 
@@ -128,7 +128,7 @@ Defines workflow steps with dependencies.
 | ---------------- | ----------- | --------------------------------------- |
 | flow_slug        | text        | Parent flow (FK)                        |
 | step_slug        | text        | Unique step identifier within flow (PK) |
-| step_type        | text        | Step type (always 'single' in v0.7.2)   |
+| step_type        | text        | Step type (always 'single' in v0.8.1)   |
 | step_index       | integer     | Execution order hint                    |
 | deps_count       | integer     | Number of dependencies                  |
 | opt_max_attempts | integer     | Override max attempts (nullable)        |
@@ -191,7 +191,7 @@ Tracks step execution within a run.
 
 #### 6. `pgflow.step_tasks`
 
-Tracks individual task executions (1 task per step in v0.7.2).
+Tracks individual task executions (1 task per step in v0.8.1).
 
 | Column         | Type        | Description                          |
 | -------------- | ----------- | ------------------------------------ |
@@ -199,7 +199,7 @@ Tracks individual task executions (1 task per step in v0.7.2).
 | run_id         | uuid        | Parent run (FK)                      |
 | step_slug      | text        | Parent step (FK)                     |
 | message_id     | bigint      | pgmq message ID (nullable)           |
-| task_index     | integer     | Task index (always 0 in v0.7.2)      |
+| task_index     | integer     | Task index (always 0 in v0.8.1)      |
 | status         | text        | queued/started/completed/failed      |
 | attempts_count | integer     | Number of execution attempts         |
 | error_message  | text        | Last error message (nullable)        |
@@ -288,7 +288,7 @@ SELECT * FROM pgflow.start_flow(
 
 ### 5. Tasks
 
-A **task** is the actual work unit queued for execution. In v0.7.2, each step creates exactly 1 task.
+A **task** is the actual work unit queued for execution. In v0.8.1, each step creates exactly 1 task.
 
 Workers poll for tasks, process them, and mark them as completed or failed.
 
@@ -523,7 +523,7 @@ FUNCTION pgflow.read_with_poll(
 
 **Note**: This is a low-level function. Most workers use `start_tasks()` instead.
 
-#### `pgflow.start_tasks()` (v0.7.2 recommended)
+#### `pgflow.start_tasks()` (v0.8.1 recommended)
 
 Marks tasks as started and returns task details.
 
@@ -588,7 +588,7 @@ FUNCTION pgflow.complete_task(
 
 - `run_id`: Run identifier
 - `step_slug`: Step identifier
-- `task_index`: Task index (always 0 in v0.7.2)
+- `task_index`: Task index (always 0 in v0.8.1)
 - `output`: Task output data (available to dependent steps)
 
 **Returns**: Updated task record
@@ -918,7 +918,7 @@ BEGIN
           PERFORM pgflow.complete_task(
             v_task.run_id,
             v_task.step_slug,
-            0,  -- task_index always 0 in v0.7.2
+            0,  -- task_index always 0 in v0.8.1
             v_output
           );
         END;
@@ -1239,9 +1239,9 @@ SELECT * FROM pgflow.complete_task(..., 'fetch_data', 0,
 
 ## Limitations
 
-### Version v0.7.2 (Phases 1-3)
+### Current Version (v0.8.1)
 
-This integration includes only Phases 1-3 of pgflow. The following features are **not available**:
+The following features have limited support or workarounds:
 
 #### Missing Features
 
@@ -1261,7 +1261,7 @@ This integration includes only Phases 1-3 of pgflow. The following features are 
 4. **Realtime Events (Phase 5)**
    - Supabase Edge Function integration
    - Live event broadcasting to clients
-   - **Status**: Stubbed as no-op `realtime.send()`
+   - **Status**: Implemented via PostgreSQL pg_notify (LISTEN/NOTIFY)
 
 5. **Worker Deprecation Field (Phase 8)**
    - `deprecated_at` column in workers table
@@ -1286,11 +1286,11 @@ END $$;
 
 **opt_start_delay**: Use pg_cron or application-level scheduling
 
-**Realtime events**: Implement with LISTEN/NOTIFY or external message queue
+**Realtime events**: Use `LISTEN pgflow_events` or `LISTEN <topic>` for pg_notify events
 
 ### General Limitations
 
-1. **Single task per step**: v0.7.2 only supports `task_index = 0`
+1. **Single task per step**: v0.8.1 only supports `task_index = 0`
 2. **No cancellation**: No built-in workflow cancellation (must implement manually)
 3. **No pause/resume**: Workflows cannot be paused
 4. **No workflow versioning**: Schema changes affect all runs
@@ -1298,10 +1298,10 @@ END $$;
 
 ### Upgrade Path
 
-To get complete pgflow schema:
+To get the latest pgflow schema:
 
 1. Visit https://github.com/pgflow-dev/pgflow
-2. Install via npm: `npm install @pgflow/core@0.7.2`
+2. Install via npm: `bun add @pgflow/dsl @pgflow/client` (or `npm install @pgflow/core@0.8.1`)
 3. Run migration files manually from `pkgs/core/migrations/`
 
 ---

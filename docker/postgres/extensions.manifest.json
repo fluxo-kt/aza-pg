@@ -264,37 +264,6 @@
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
     },
     {
-      "name": "pg_net",
-      "kind": "extension",
-      "category": "integration",
-      "description": "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/supabase/pg_net.git",
-        "tag": "v0.14.0",
-        "commit": "9752f197f878c0562def4ac88c1dd2e64739d2b1"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "aptPackages": [
-        "libcurl4-openssl-dev"
-      ],
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
-        "notes": [
-          "NOT in PGDG (Supabase-specific). Source build required.",
-          "Requires shared_preload_libraries for background worker",
-          "Powers async HTTP webhooks from triggers",
-          "Use net.http_post() for outbound API calls"
-        ]
-      },
-      "sourceUrl": "https://github.com/supabase/pg_net",
-      "docsUrl": "https://supabase.github.io/pg_net/"
-    },
-    {
       "name": "pg_partman",
       "kind": "extension",
       "install_via": "pgdg",

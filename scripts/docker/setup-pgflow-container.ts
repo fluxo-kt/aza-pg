@@ -6,7 +6,7 @@
  * - Stage 1: Container startup
  * - Stage 2: Container running verification
  * - Stage 3: PostgreSQL ready (pg_isready)
- * - Stage 4: pgflow schema initialized (7 tables + 13+ functions)
+ * - Stage 4: pgflow schema installation (7 tables + 13+ functions)
  * - Stage 5: Final verification
  *
  * Usage:
@@ -40,6 +40,7 @@ import { $ } from "bun";
 import { parseArgs } from "node:util";
 import { dockerCleanup } from "../utils/docker";
 import { error, info, success, warning, section } from "../utils/logger";
+import { installPgflowSchema } from "../../tests/fixtures/pgflow/install";
 
 interface SetupOptions {
   name: string;
@@ -210,17 +211,20 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
   }
   success("✓ PostgreSQL accepting connections");
 
-  // Stage 4: Wait for pgflow schema initialization
-  info(`Stage 4: Waiting for pgflow schema (timeout: ${options.timeout}s)...`);
-  if (!(await waitForPgflowSchema(options.name, options.database, options.timeout))) {
-    error(`pgflow schema not initialized after ${options.timeout}s`);
+  // Stage 4: Install pgflow schema
+  info("Stage 4: Installing pgflow schema...");
+  const installResult = await installPgflowSchema(options.name, options.database);
+  if (!installResult.success) {
+    error(`Failed to install pgflow schema: ${installResult.stderr}`);
 
     if (options.diagnosticDir) {
       await captureDiagnostics(options.name, options.diagnosticDir);
     }
     return 2;
   }
-  success("✓ pgflow schema fully initialized");
+  success(
+    `✓ pgflow schema installed (${installResult.tablesCreated} tables, ${installResult.functionsCreated} functions)`
+  );
 
   // Stage 5: Final verification
   info("Stage 5: Final verification...");

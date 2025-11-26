@@ -133,7 +133,9 @@ interface BuildSpec {
 
 interface ManifestEntry {
   name: string;
+  kind?: "extension" | "tool" | "builtin";
   install_via?: string;
+  pgdgVersion?: string;
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -350,13 +352,80 @@ ${installCommands} && \\
 }
 
 /**
+ * PGDG tool binary verification mapping
+ * Maps tool name to expected binary path after PGDG installation
+ */
+const PGDG_TOOL_BINARIES: Record<string, string> = {
+  pgbackrest: "/usr/bin/pgbackrest",
+  pgbadger: "/usr/bin/pgbadger",
+};
+
+/**
+ * Generate PGDG tool installation script
+ * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
+ */
+function generatePgdgToolsInstall(manifest: Manifest): string {
+  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
+
+  for (const entry of manifest.entries) {
+    if (
+      entry.kind === "tool" &&
+      entry.install_via === "pgdg" &&
+      entry.pgdgVersion &&
+      (entry.enabled ?? true)
+    ) {
+      // Validate tool name and version for shell safety
+      validatePackageName(entry.name, `PGDG tool name (${entry.name})`);
+      validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+
+      const binary = PGDG_TOOL_BINARIES[entry.name];
+      if (!binary) {
+        throw new Error(
+          `Missing binary path in PGDG_TOOL_BINARIES for tool: ${entry.name}\n` +
+            `Add it to the PGDG_TOOL_BINARIES object in generate-dockerfile.ts`
+        );
+      }
+
+      enabledPgdgTools.push({
+        name: entry.name,
+        version: entry.pgdgVersion,
+        binary,
+      });
+    }
+  }
+
+  if (enabledPgdgTools.length === 0) {
+    return `RUN echo "No PGDG tools enabled in manifest"`;
+  }
+
+  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
+  const binaryVerifications = enabledPgdgTools
+    .map((t) => `test -x ${t.binary}`)
+    .join(" && \\\n    ");
+
+  return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
+    set -euo pipefail && \\
+    apt-get update && \\
+    echo "Installing PGDG tools: ${packagesList}" && \\
+    apt-get install -y --no-install-recommends ${packagesList} && \\
+    # Verify tool binaries exist and are executable
+    ${binaryVerifications} && \\
+    echo "All ${enabledPgdgTools.length} PGDG tool(s) verified" && \\
+    apt-get clean && \\
+    rm -rf /var/lib/apt/lists/*`;
+}
+
+/**
  * Generate filtered manifest for PGXS-style builds
  * Includes: pgxs, autotools, cmake, meson, make, timescaledb
+ * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
  */
 function generatePgxsManifest(manifest: Manifest): Manifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
   const filteredEntries = manifest.entries.filter(
-    (entry) => entry.build && pgxsBuildTypes.includes(entry.build.type)
+    (entry) =>
+      entry.build && pgxsBuildTypes.includes(entry.build.type) && entry.install_via !== "pgdg" // Exclude PGDG-installed entries
   );
 
   return {
@@ -367,10 +436,11 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
 /**
  * Generate filtered manifest for Cargo builds
  * Includes: cargo-pgrx
+ * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
  */
 function generateCargoManifest(manifest: Manifest): Manifest {
   const filteredEntries = manifest.entries.filter(
-    (entry) => entry.build && entry.build.type === "cargo-pgrx"
+    (entry) => entry.build && entry.build.type === "cargo-pgrx" && entry.install_via !== "pgdg" // Exclude PGDG-installed entries
   );
 
   return {
@@ -431,6 +501,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating PGDG package installation script...");
   const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
 
+  info("Generating PGDG tools installation script...");
+  const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
+
   info("Generating version info generation script...");
   const versionInfoGeneration = generateVersionInfoGeneration(manifest);
 
@@ -440,6 +513,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
+  dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 
   // Add generation header

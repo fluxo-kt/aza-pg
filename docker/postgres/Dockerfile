@@ -222,6 +222,20 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -f /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
+# Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    echo "Installing PGDG tools: pgbackrest=2.57.0-1.pgdg13+1 pgbadger=13.1-2.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.57.0-1.pgdg13+1 pgbadger=13.1-2.pgdg13+1 && \
+    # Verify tool binaries exist and are executable
+    test -x /usr/bin/pgbackrest && \
+    test -x /usr/bin/pgbadger && \
+    echo "All 2 PGDG tool(s) verified" && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 

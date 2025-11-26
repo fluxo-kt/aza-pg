@@ -990,6 +990,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgbackrest",
     kind: "tool",
+    install_via: "pgdg",
+    pgdgVersion: "2.57.0-1.pgdg13+1",
     category: "operations",
     description: "Parallel, incremental backup and restore CLI.",
     source: {
@@ -1011,8 +1013,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool. NOT a PostgreSQL extension.",
-        "Alt: PGDG binary package. Alt: Pigsty binary package. Alt: Percona (no PG18)",
+        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
+        "PGDG: pgbackrest (v2.57.0-1.pgdg13+1). Alt: Pigsty. Alt: Percona (no PG18)",
         "Installs /usr/bin/pgbackrest.",
       ],
     },
@@ -1022,6 +1024,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgbadger",
     kind: "tool",
+    install_via: "pgdg",
+    pgdgVersion: "13.1-2.pgdg13+1",
     category: "observability",
     description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
     source: {
@@ -1035,9 +1039,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool. NOT a PostgreSQL extension.",
-        "Alt: PGDG binary package. Alt: Pigsty binary package.",
-        "Binary installed to /usr/local/bin/pgbadger.",
+        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
+        "PGDG: pgbadger (v13.1-2.pgdg13+1). Alt: Pigsty binary package.",
+        "Binary installed to /usr/bin/pgbadger.",
       ],
     },
     sourceUrl: "https://github.com/darold/pgbadger",

@@ -1,87 +1,6 @@
 {
   "entries": [
     {
-      "name": "hll",
-      "displayName": "postgresql-hll",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "2.19-1.pgdg13+1",
-      "category": "analytics",
-      "description": "HyperLogLog probabilistic counting data type.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/citusdata/postgresql-hll.git",
-        "tag": "v2.19",
-        "commit": "be7ef6fbc882afa1f60b1bbe5203209e1f450cd6"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)", "Alt: Pigsty v2.19 (same version)"]
-      },
-      "sourceUrl": "https://github.com/citusdata/postgresql-hll",
-      "docsUrl": "https://github.com/citusdata/postgresql-hll#readme"
-    },
-    {
-      "name": "http",
-      "displayName": "pgsql-http",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "1.7.0-3.pgdg13+1",
-      "category": "integration",
-      "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pramsey/pgsql-http.git",
-        "tag": "v1.7.0",
-        "commit": "fbea6fe46c9e1db5a18103606ec00a9809e91d11"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "aptPackages": ["libcurl4-openssl-dev", "libjson-c-dev"],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-http (v1.7.0-3.pgdg13+1)",
-          "Alt: Pigsty v1.7.0 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/pramsey/pgsql-http",
-      "docsUrl": "https://github.com/pramsey/pgsql-http#readme"
-    },
-    {
-      "name": "hypopg",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "1.4.2-2.pgdg13+1",
-      "category": "performance",
-      "description": "Simulate hypothetical indexes for planner what-if analysis.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/HypoPG/hypopg.git",
-        "tag": "1.4.2",
-        "commit": "8d7ca569185edc7549b983736c8862fbe211144f"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-hypopg (v1.4.2-2.pgdg13+1)",
-          "Alt: Pigsty v1.4.2 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/HypoPG/hypopg",
-      "docsUrl": "https://hypopg.readthedocs.io"
-    },
-    {
       "name": "index_advisor",
       "kind": "extension",
       "category": "performance",
@@ -103,36 +22,6 @@
       },
       "sourceUrl": "https://github.com/supabase/index_advisor",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/index_advisor"
-    },
-    {
-      "name": "pg_cron",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "1.6.7-2.pgdg13+1",
-      "category": "operations",
-      "description": "Lightweight cron-based job runner inside PostgreSQL.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/citusdata/pg_cron.git",
-        "tag": "v1.6.7",
-        "commit": "465b38c737f584d520229f5a1d69d1d44649e4e5"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true,
-        "excludeFromAutoTests": false,
-        "notes": [
-          "PGDG: postgresql-18-cron (v1.6.7-2.pgdg13+1)",
-          "Alt: Pigsty v1.6.7 (same version)",
-          "Preloaded by default - background worker scheduling enabled",
-          "Job scheduling tested in functional test suite"
-        ]
-      },
-      "sourceUrl": "https://github.com/citusdata/pg_cron",
-      "docsUrl": "https://github.com/citusdata/pg_cron#readme"
     },
     {
       "name": "pg_hashids",
@@ -160,36 +49,6 @@
       "docsUrl": "https://github.com/iCyberon/pg_hashids#readme"
     },
     {
-      "name": "pg_partman",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "5.3.1-2.pgdg13+1",
-      "category": "maintenance",
-      "description": "Declarative partition maintenance with optional background worker.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.3.1",
-        "commit": "b5be3ddac25e809e5e23469124f7eb6463d44406"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
-        "preloadLibraryName": "pg_partman_bgw",
-        "notes": [
-          "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
-          "Alt: Pigsty v5.3.1 (same version)",
-          "Set pg_partman_bgw.role and interval to enable background worker."
-        ]
-      },
-      "sourceUrl": "https://github.com/pgpartman/pg_partman",
-      "docsUrl": "https://github.com/pgpartman/pg_partman#readme"
-    },
-    {
       "name": "pg_plan_filter",
       "kind": "tool",
       "category": "safety",
@@ -212,34 +71,6 @@
       },
       "sourceUrl": "https://github.com/pgexperts/pg_plan_filter",
       "docsUrl": "https://github.com/pgexperts/pg_plan_filter#readme"
-    },
-    {
-      "name": "pg_repack",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "1.5.3-1.pgdg13+1",
-      "category": "maintenance",
-      "description": "Online table/index reorganization without long locks.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/reorg/pg_repack.git",
-        "tag": "ver_1.5.3",
-        "commit": "6902ab313aeb49227867087dca99cf107f7be23b"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "aptPackages": ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-repack (v1.5.3-1.pgdg13+1)",
-          "Alt: Pigsty v1.5.3 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/reorg/pg_repack",
-      "docsUrl": "https://reorg.github.io/pg_repack"
     },
     {
       "name": "pg_safeupdate",
@@ -293,96 +124,6 @@
       },
       "sourceUrl": "https://github.com/percona/pg_stat_monitor",
       "docsUrl": "https://docs.percona.com/pg-stat-monitor"
-    },
-    {
-      "name": "pgaudit",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "18.0-2.pgdg13+1",
-      "category": "security",
-      "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgaudit/pgaudit.git",
-        "tag": "18.0",
-        "commit": "f39f8dbb15dc5bd4cbe5f1e5abe0d930ed7593a8"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true,
-        "notes": [
-          "PGDG: postgresql-18-pgaudit (v18.0-2.pgdg13+1)",
-          "Alt: Pigsty v18.0 (same version)",
-          "Tune pgaudit.log to control verbosity."
-        ]
-      },
-      "sourceUrl": "https://github.com/pgaudit/pgaudit",
-      "docsUrl": "https://www.pgaudit.org"
-    },
-    {
-      "name": "pgbackrest",
-      "kind": "tool",
-      "category": "operations",
-      "description": "Parallel, incremental backup and restore CLI.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgbackrest/pgbackrest.git",
-        "tag": "release/2.57.0",
-        "commit": "d9773a31c97077761ee8e7d06e073b0b0734e26f"
-      },
-      "build": {
-        "type": "meson"
-      },
-      "aptPackages": [
-        "meson",
-        "ninja-build",
-        "libssl-dev",
-        "liblz4-dev",
-        "libzstd-dev",
-        "libbz2-dev",
-        "libyaml-dev"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "CLI tool. NOT a PostgreSQL extension.",
-          "Alt: PGDG binary package. Alt: Pigsty binary package. Alt: Percona (no PG18)",
-          "Installs /usr/bin/pgbackrest."
-        ]
-      },
-      "sourceUrl": "https://github.com/pgbackrest/pgbackrest",
-      "docsUrl": "https://pgbackrest.org/user-guide.html"
-    },
-    {
-      "name": "pgbadger",
-      "kind": "tool",
-      "category": "observability",
-      "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/darold/pgbadger.git",
-        "tag": "v13.1",
-        "commit": "8a2b87193cbf80bc426e584c238aefa581af5fe8"
-      },
-      "build": {
-        "type": "make"
-      },
-      "aptPackages": ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "CLI tool. NOT a PostgreSQL extension.",
-          "Alt: PGDG binary package. Alt: Pigsty binary package.",
-          "Binary installed to /usr/local/bin/pgbadger."
-        ]
-      },
-      "sourceUrl": "https://github.com/darold/pgbadger",
-      "docsUrl": "https://pgbadger.darold.net/documentation.html"
     },
     {
       "name": "pgmq",
@@ -476,38 +217,6 @@
       "docsUrl": "https://pgroonga.github.io"
     },
     {
-      "name": "pgrouting",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "4.0.0-1.pgdg12+1",
-      "category": "gis",
-      "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
-      "enabled": false,
-      "enabledInComprehensiveTest": true,
-      "disabledReason": "Disabled to reduce build time and image size. Depends on PostGIS which is also disabled. Enable when routing functionality is needed.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgRouting/pgrouting.git",
-        "tag": "v4.0.0",
-        "commit": "4f0eec583f0c9e6a82a5b3356ff300029d11ed53"
-      },
-      "build": {
-        "type": "cmake"
-      },
-      "dependencies": ["postgis"],
-      "aptPackages": ["cmake", "libboost-graph-dev"],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)",
-          "Alt: Pigsty v4.0.0 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/pgRouting/pgrouting",
-      "docsUrl": "https://docs.pgrouting.org"
-    },
-    {
       "name": "pgsodium",
       "kind": "extension",
       "category": "security",
@@ -536,136 +245,6 @@
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
       "docsUrl": "https://michelp.github.io/pgsodium"
-    },
-    {
-      "name": "plpgsql_check",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "2.8.4-1.pgdg13+1",
-      "category": "quality",
-      "description": "Static analyzer for PL/pgSQL functions and triggers.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.4",
-        "commit": "1482592c208989e87e7026946d47ded51318c503"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-plpgsql-check (v2.8.4-1.pgdg13+1)",
-          "Alt: Pigsty v2.8.4 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/okbob/plpgsql_check",
-      "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
-    },
-    {
-      "name": "postgis",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "3.6.1+dfsg-1.pgdg13+1",
-      "category": "gis",
-      "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
-      "enabled": false,
-      "enabledInComprehensiveTest": true,
-      "disabledReason": "Disabled to reduce build time and image size. GIS functionality not currently required. Enable when spatial data support is needed.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.1",
-        "commit": "f533623505f73939a2d25d66ff252fb6619c4ac7"
-      },
-      "build": {
-        "type": "autotools"
-      },
-      "aptPackages": [
-        "autoconf",
-        "automake",
-        "libtool",
-        "g++",
-        "libgeos-dev",
-        "libproj-dev",
-        "libjson-c-dev",
-        "libprotobuf-c-dev",
-        "protobuf-c-compiler",
-        "libxml2-dev",
-        "libgdal-dev",
-        "liblz4-dev",
-        "libzstd-dev",
-        "bison",
-        "flex"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)",
-          "Alt: Pigsty v3.6.1 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/postgis/postgis",
-      "docsUrl": "https://postgis.net/documentation"
-    },
-    {
-      "name": "rum",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "1.3.15-1.pgdg13+1",
-      "category": "search",
-      "description": "RUM GiST access method for ranked full-text search.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/postgrespro/rum.git",
-        "tag": "1.3.15",
-        "commit": "d66640112d88572d21dc93ff873cafe3b11c9521"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-rum (v1.3.15-1.pgdg13+1)",
-          "Alt: Pigsty v1.3.15 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/postgrespro/rum",
-      "docsUrl": "https://github.com/postgrespro/rum#readme"
-    },
-    {
-      "name": "set_user",
-      "displayName": "pgaudit_set_user",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "4.2.0-1.pgdg13+1",
-      "category": "security",
-      "description": "Audited SET ROLE helper complementing pgaudit.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgaudit/set_user.git",
-        "tag": "REL4_2_0",
-        "commit": "db4e871528c4b62bba672abaf9044f4cc618ae8c"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
-        "notes": [
-          "PGDG: postgresql-18-set-user (v4.2.0-1.pgdg13+1)",
-          "Alt: Pigsty v4.2.0 (same version)"
-        ]
-      },
-      "sourceUrl": "https://github.com/pgaudit/set_user",
-      "docsUrl": "https://github.com/pgaudit/set_user#readme"
     },
     {
       "name": "supabase_vault",
@@ -752,36 +331,6 @@
       },
       "sourceUrl": "https://github.com/timescale/timescaledb",
       "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
-    },
-    {
-      "name": "vector",
-      "displayName": "pgvector",
-      "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "0.8.1-2.pgdg13+1",
-      "category": "ai",
-      "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/pgvector/pgvector.git",
-        "tag": "v0.8.1",
-        "commit": "778dacf20c07caf904557a88705142631818d8cb"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": true,
-        "excludeFromAutoTests": false,
-        "notes": [
-          "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
-          "Alt: Pigsty v0.8.0 (1 patch behind)",
-          "Regression test coverage includes vector columns, HNSW indexing, and similarity search"
-        ]
-      },
-      "sourceUrl": "https://github.com/pgvector/pgvector",
-      "docsUrl": "https://github.com/pgvector/pgvector#readme"
     },
     {
       "name": "wal2json",

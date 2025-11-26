@@ -184,6 +184,9 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 {{PGDG_PACKAGES_INSTALL}}
 
+# Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
+{{PGDG_TOOLS_INSTALL}}
+
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 

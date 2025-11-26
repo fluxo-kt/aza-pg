@@ -36,13 +36,15 @@ const NAME_TO_KEY: Record<string, string> = {
 };
 
 /**
- * Get PGDG extensions from manifest (only those with install_via: "pgdg" AND pgdgVersion)
+ * Get PGDG extensions from manifest (only extensions with install_via: "pgdg" AND pgdgVersion)
+ * Excludes tools - those use PGDG but are handled separately in Dockerfile generation
  */
 function getPgdgExtensions(): Array<{ name: string; key: string; version: string }> {
   const pgdgExtensions: Array<{ name: string; key: string; version: string }> = [];
 
   for (const entry of MANIFEST_ENTRIES) {
-    if (entry.install_via === "pgdg" && entry.pgdgVersion) {
+    // Only include extensions (not tools or builtins) with PGDG installation
+    if (entry.kind === "extension" && entry.install_via === "pgdg" && entry.pgdgVersion) {
       const key = NAME_TO_KEY[entry.name];
       if (!key) {
         throw new Error(

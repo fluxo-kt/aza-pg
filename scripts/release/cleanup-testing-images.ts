@@ -444,8 +444,6 @@ function extractTagsWithMetadata(versions: PackageVersion[], pattern: string): T
     const ageDays = ageMs / (1000 * 60 * 60 * 24); // Decimal days for precision
 
     for (const tag of version.metadata.container.tags) {
-      // Skip .sig tags - they're handled automatically when deleting main tags
-      if (tag.endsWith(".sig")) continue;
       if (matchesPattern(tag, pattern)) {
         tags.push({ tag, versionId: version.id, createdAt, ageDays });
       }

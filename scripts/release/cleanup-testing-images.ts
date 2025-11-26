@@ -542,6 +542,93 @@ function printTagList(tags: TagInfo[]): void {
 }
 
 // ============================================================================
+// Delete All Versions (for --older-than 0)
+// ============================================================================
+
+async function deleteAllVersions(
+  org: string,
+  packageName: string,
+  versions: PackageVersion[],
+  options: CleanupOptions
+): Promise<void> {
+  let successCount = 0;
+  let failureCount = 0;
+  const failures: Array<{ name: string; error: string }> = [];
+
+  for (const version of versions) {
+    // Use first tag as identifier, or digest/name for untagged versions
+    const identifier = version.metadata?.container?.tags?.[0] || version.name;
+
+    try {
+      await deletePackageVersion(org, packageName, version.id, identifier, options.dryRun);
+      successCount++;
+    } catch (err) {
+      const errMessage = getErrorMessage(err);
+      error(`Failed to delete ${identifier}: ${errMessage}`);
+
+      if (Bun.env.GITHUB_ACTIONS === "true") {
+        console.log(`::error::Failed to delete version ${identifier}: ${errMessage}`);
+      }
+
+      failureCount++;
+      failures.push({ name: identifier, error: errMessage });
+
+      if (!options.continueOnError) {
+        process.exit(1);
+      }
+    }
+  }
+
+  // Summary
+  console.log("");
+
+  if (options.dryRun) {
+    success(`[DRY RUN] Would delete ${versions.length} version${versions.length !== 1 ? "s" : ""}`);
+  } else if (failureCount === 0) {
+    success(`Deleted ${successCount} version${successCount !== 1 ? "s" : ""}`);
+  } else {
+    success(
+      `Deleted ${successCount} of ${versions.length} version${versions.length !== 1 ? "s" : ""}`
+    );
+    error(`Failed to delete ${failureCount} version${failureCount !== 1 ? "s" : ""}:`);
+    for (const f of failures) {
+      error(`  - ${f.name}: ${f.error}`);
+    }
+  }
+
+  // Write to GitHub Actions step summary
+  if (Bun.env.GITHUB_ACTIONS === "true" && Bun.env.GITHUB_STEP_SUMMARY) {
+    const summary: string[] = [];
+    summary.push("### 🧹 Cleanup Results (Delete All)\n");
+    summary.push(`| Metric | Count |`);
+    summary.push(`|--------|-------|`);
+    summary.push(`| Versions to delete | ${versions.length} |`);
+    summary.push(`| Versions deleted | ${successCount} |`);
+    summary.push(`| Failed | ${failureCount} |`);
+    if (options.dryRun) {
+      summary.push(`\n**Mode**: Dry run (no actual deletions)`);
+    }
+    if (failureCount > 0) {
+      summary.push(`\n**Failed versions**:`);
+      for (const f of failures) {
+        summary.push(`- \`${f.name}\`: ${f.error}`);
+      }
+    }
+    summary.push("");
+
+    try {
+      await appendFile(Bun.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+    } catch {
+      // Ignore summary write errors
+    }
+  }
+
+  if (failureCount > 0 && !options.continueOnError) {
+    process.exit(1);
+  }
+}
+
+// ============================================================================
 // Main Cleanup Logic
 // ============================================================================
 
@@ -564,6 +651,15 @@ async function cleanup(options: CleanupOptions): Promise<void> {
   }
 
   info(`Found ${versions.length} package version${versions.length !== 1 ? "s" : ""}`);
+
+  // Special case: --older-than 0 means delete ALL versions (tagged + untagged)
+  if (options.olderThan === 0) {
+    info(
+      `Deleting ALL ${versions.length} version${versions.length !== 1 ? "s" : ""} (--older-than 0)`
+    );
+    await deleteAllVersions(org, packageName, versions, options);
+    return;
+  }
 
   // Extract tags matching pattern
   const allTags = extractTagsWithMetadata(versions, options.pattern);

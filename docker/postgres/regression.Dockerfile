@@ -263,7 +263,7 @@ RUN set -euo pipefail && \
 
 # Set regression preload libraries environment variable
 # This includes ALL optional preload modules for maximum test coverage (10 total)
-ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_partman_bgw,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,set_user,timescaledb"
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_partman_bgw,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,set_user,timescaledb"
 
 # Copy runtime metadata files with testMode marker
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json

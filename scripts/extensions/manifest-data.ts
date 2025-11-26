@@ -430,6 +430,32 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     docsUrl: "https://github.com/pramsey/pgsql-http#readme",
   },
   {
+    name: "pg_net",
+    kind: "extension",
+    category: "integration",
+    description: "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
+    source: {
+      type: "git",
+      repository: "https://github.com/supabase/pg_net.git",
+      tag: "v0.14.0",
+    },
+    build: { type: "pgxs" },
+    aptPackages: ["libcurl4-openssl-dev"],
+    runtime: {
+      sharedPreload: true,
+      defaultEnable: false,
+      preloadInComprehensiveTest: true,
+      notes: [
+        "NOT in PGDG (Supabase-specific). Source build required.",
+        "Requires shared_preload_libraries for background worker",
+        "Powers async HTTP webhooks from triggers",
+        "Use net.http_post() for outbound API calls",
+      ],
+    },
+    sourceUrl: "https://github.com/supabase/pg_net",
+    docsUrl: "https://supabase.github.io/pg_net/",
+  },
+  {
     name: "wrappers",
     displayName: "supabase-wrappers",
     kind: "extension",

@@ -1,12 +1,12 @@
 {
   "catalog": {
-    "total": 39,
-    "enabled": 33,
+    "total": 40,
+    "enabled": 34,
     "disabled": 6
   },
   "byKind": {
     "builtin": 6,
-    "extension": 23,
+    "extension": 24,
     "tool": 4
   },
   "builtins": [
@@ -25,6 +25,7 @@
     "pg_cron",
     "pg_hashids",
     "pg_jsonschema",
+    "pg_net",
     "pg_partman",
     "pg_repack",
     "pg_stat_monitor",
@@ -75,7 +76,7 @@
     "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements", "pgbadger"],
     "indexing": ["btree_gin", "btree_gist"],
     "analytics": ["hll"],
-    "integration": ["http", "wrappers"],
+    "integration": ["http", "pg_net", "wrappers"],
     "performance": ["hypopg", "index_advisor"],
     "operations": ["pg_cron", "pgbackrest"],
     "utilities": ["pg_hashids"],

@@ -3,8 +3,8 @@
  * Extension Manifest Validator
  *
  * Validates extensions.manifest.json for conflicts and issues:
- * - Warns if both pg_stat_monitor and pg_stat_statements have defaultEnable=true (supported in PG18)
  * - Validates manifest structure and schema
+ * - Notes if both pg_stat_monitor and pg_stat_statements enabled (supported in PG18)
  *
  * Usage:
  *   bun scripts/validate-manifest.ts
@@ -12,7 +12,7 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
-import { error, info, section, success, warning } from "./utils/logger.ts";
+import { error, info, section, success } from "./utils/logger.ts";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
@@ -46,8 +46,8 @@ function checkPgStatConflict(manifest: Manifest): boolean {
 
   if (monitorDefaultEnable && statementsDefaultEnable) {
     // PostgreSQL 18 supports both extensions via pgsm aggregation mode
-    // This is intentional for comparison purposes, so treat as informational warning
-    warning("Both pg_stat_monitor and pg_stat_statements have defaultEnable=true");
+    // This is intentional for comparison purposes, purely informational
+    info("Both pg_stat_monitor and pg_stat_statements have defaultEnable=true");
     info("PostgreSQL 18 supports both extensions via pgsm aggregation mode");
     info("This configuration allows comparison of both monitoring approaches");
     return true;

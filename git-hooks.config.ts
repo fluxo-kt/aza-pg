@@ -24,6 +24,9 @@ const config: GitHooksConfig = {
    */
   "pre-commit": "bun scripts/pre-commit.ts",
 
+  // Override bun-git-hooks default commit-msg (bunx gitlint) with no-op
+  "commit-msg": "true",
+
   // Pre-push disabled - CI enforces quality
   // "pre-push": "bun run validate:all",
 

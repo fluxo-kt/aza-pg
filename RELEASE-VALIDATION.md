@@ -15,23 +15,26 @@
 
 ### Executive Summary
 
-✅ **ALL CRITICAL FEATURES VERIFIED - PRODUCTION READY**
+✅ **ALL CRITICAL FEATURES VERIFIED - PRODUCTION READY - 100% TEST SUCCESS**
 
 Comprehensive validation of the published production image confirms full functionality across all core features:
 
 1. ✅ **Validation Checks**: 22/22 passed - All code quality, configuration, and security checks
 2. ✅ **Build Checks**: 3/3 passed - Image size, extension count, build verification
-3. ✅ **Functional Checks**: 19/23 passed (4 non-critical failures, 0 critical failures)
+3. ✅ **Functional Checks**: 23/23 passed - **100% SUCCESS** - All functional tests passing
 4. ✅ **Extensions**: 40 extensions verified functional, all CREATE EXTENSION tests passed
 5. ✅ **Auto-Configuration**: Working across all memory tiers (512MB, 2GB, 4GB+)
 6. ✅ **Replication**: Streaming replication fully functional with proper healthcheck integration
 7. ✅ **Security**: SCRAM-SHA-256, pgaudit, network binding all verified
 
-**Test Improvements Made**:
+**Test Infrastructure Improvements Made**:
 
 - Fixed runtime verification to handle `preloadLibraryName` field (pg_safeupdate → safeupdate)
 - Added `POSTGRES_ROLE=replica` environment variable for replica healthcheck compatibility
 - Improved postgres_exporter error handling for missing monitoring network
+- **NEW**: Added pgflow schema auto-installation for comprehensive extension tests
+- **NEW**: Added Docker config isolation and image pre-pull for PgBouncer tests
+- **NEW**: Added Docker credential helper troubleshooting documentation
 
 **Key Features Validated**:
 
@@ -46,27 +49,29 @@ Comprehensive validation of the published production image confirms full functio
 
 **Status**: ✅ **APPROVED FOR PRODUCTION DEPLOYMENT**
 
-### Non-Critical Test Failures (4)
+### Test Success Achievement
 
-All failures are due to environmental or test design issues, not image problems:
+**All 48/48 tests passing (100% success rate)** - Previous test failures have been resolved through test infrastructure improvements:
 
-1. **Comprehensive Extension Tests** (6/116 pgflow tests failed)
-   - Reason: pgflow is SQL-only and requires manual schema installation
-   - Tests expect pre-seeded database (not realistic for fresh container)
-   - 101/116 tests passed (87.1% success rate)
-   - Status: Non-blocking, test design issue
+1. **Comprehensive Extension Tests** - ✅ Fixed with pgflow schema auto-installation
+   - Created reusable installer utility (`scripts/test/lib/pgflow-installer.ts`)
+   - Auto-installs pgflow schema before workflow tests (idempotent, safe to call multiple times)
+   - All 116/116 extension tests now pass including 6 pgflow tests
 
-2. **Comprehensive Image Test**
-   - Reason: Same pgflow schema issues as above
-   - Status: Non-blocking, test design issue
+2. **Comprehensive Image Test** - ✅ Fixed with same pgflow auto-installation approach
+   - No more manual schema setup required for tests
+   - Tests are now self-contained and reproducible
 
-3. **PgBouncer Health Check**
-   - Reason: Docker credential helper not in PATH (`docker-credential-osxkeychain`)
-   - Status: Non-blocking, environmental configuration issue
+3. **PgBouncer Health Check** - ✅ Fixed with Docker config isolation and image pre-pull
+   - Created Docker config isolation utility (`scripts/utils/docker-test-config.ts`)
+   - Pre-pulls postgres + pgbouncer images before docker-compose operations
+   - Prevents credential helper errors during compose up
+   - All 8/8 PgBouncer healthcheck tests now pass
 
-4. **PgBouncer Failure Scenarios**
-   - Reason: Same Docker credential helper issue
-   - Status: Non-blocking, environmental configuration issue
+4. **PgBouncer Failure Scenarios** - ✅ Fixed with same Docker config isolation approach
+   - Applied pre-pull logic to all 6 test functions
+   - Tests work on systems without Docker credential helper installed
+   - All 6/6 PgBouncer failure scenario tests now pass
 
 ### Image Information
 
@@ -88,9 +93,9 @@ All failures are due to environmental or test design issues, not image problems:
 ## Comprehensive Test Results
 
 **Test Suite**: `bun scripts/test-all.ts --skip-build`
-**Duration**: 7m 49s
+**Duration**: 14m 18s
 **Total Checks**: 48
-**Result**: ✅ **44/48 passed** (91.7% success rate)
+**Result**: ✅ **48/48 passed** (100% success rate) 🎉
 **Critical Failures**: 0
 
 ### Phase 1: Validation Checks (22/22 passed) ✅
@@ -126,36 +131,33 @@ All code quality and configuration validation checks passed:
 - ✅ Extension Count Verification (305ms)
 - ✅ Build Tests (7.85s)
 
-### Phase 3: Functional Tests (19/23 passed) ✅
+### Phase 3: Functional Tests (23/23 passed) ✅
 
-**Passing Tests**:
+**All Tests Passing** (100% success rate):
 
-- ✅ Basic Extension Loading (2.56s) - vector, pg_cron CREATE EXTENSION tests
+- ✅ Basic Extension Loading (4.66s) - vector, pg_cron CREATE EXTENSION tests
 - ✅ Auto-Tuning (512MB) (4.61s) - RAM detection and config tuning
 - ✅ Auto-Tuning (2GB) (4.58s) - RAM detection and config tuning
-- ✅ Auto-Tuning (4GB) (2.53s) - RAM detection and config tuning
-- ✅ Single Stack Deployment (1m 18s) - Full single-node deployment
-- ✅ **Replica Stack Deployment (27.55s)** - **FIXED**: Streaming replication with POSTGRES_ROLE=replica
-- ✅ Filesystem Verification (860ms) - Extension files present
-- ✅ **Runtime Verification (7.95s)** - **FIXED**: Preload libraries check with preloadLibraryName support
+- ✅ Auto-Tuning (4GB) (4.66s) - RAM detection and config tuning
+- ✅ Single Stack Deployment (1m 19s) - Full single-node deployment
+- ✅ **Replica Stack Deployment (27.64s)** - Streaming replication with POSTGRES_ROLE=replica
+- ✅ Filesystem Verification (908ms) - Extension files present
+- ✅ **Runtime Verification (7.95s)** - Preload libraries check with preloadLibraryName support
 - ✅ Disabled Extensions Test (3.04s) - 5 disabled extensions properly excluded
-- ✅ Hook Extensions Test (18.08s) - shared_preload_libraries hooks working
+- ✅ **Comprehensive Extension Tests (2m 6s)** - **FIXED**: All 116/116 tests including pgflow
+- ✅ Hook Extensions Test (18.49s) - shared_preload_libraries hooks working
+- ✅ **Comprehensive Image Test (18.22s)** - **FIXED**: Full image validation with pgflow
 - ✅ Auto-Config Tests (2m 16s) - Memory/CPU detection across tiers
-- ✅ Extension Tests (10.08s) - Manifest-driven extension creation
-- ✅ Integration Extension Combinations (4.24s) - timescaledb+pgvector, postgis+pgroonga
-- ✅ pgflow v0.8.1 Schema Tests (4.64s) - Schema structure validation
-- ✅ pgflow v0.8.1 Functional Tests (5.44s) - Workflow orchestration
-- ✅ pgflow v0.8.1 Multi-Project Isolation (6.38s) - Per-database isolation
-- ✅ pgq Functional Tests (68ms) - PostgreSQL queue operations
-- ✅ Security Tests (5.60s) - SCRAM-SHA-256, pgaudit, network binding
-- ✅ Negative Scenario Tests (45.57s) - Error handling validation
-
-**Non-Critical Failures** (4):
-
-- ⚠️ Comprehensive Extension Tests (17.35s) - pgflow schema installation issue (test design)
-- ⚠️ Comprehensive Image Test (14.98s) - pgflow schema installation issue (test design)
-- ⚠️ PgBouncer Health Check (259ms) - Docker credential helper not configured (environmental)
-- ⚠️ PgBouncer Failure Scenarios (206ms) - Docker credential helper not configured (environmental)
+- ✅ Extension Tests (10.77s) - Manifest-driven extension creation
+- ✅ Integration Extension Combinations (4.31s) - timescaledb+pgvector, postgis+pgroonga
+- ✅ pgflow v0.8.1 Schema Tests (4.72s) - Schema structure validation
+- ✅ pgflow v0.8.1 Functional Tests (5.51s) - Workflow orchestration
+- ✅ pgflow v0.8.1 Multi-Project Isolation (6.49s) - Per-database isolation
+- ✅ pgq Functional Tests (69ms) - PostgreSQL queue operations
+- ✅ Security Tests (5.71s) - SCRAM-SHA-256, pgaudit, network binding
+- ✅ Negative Scenario Tests (46.31s) - Error handling validation
+- ✅ **PgBouncer Health Check (11.29s)** - **FIXED**: All 8 healthcheck tests passing
+- ✅ **PgBouncer Failure Scenarios (1m 4s)** - **FIXED**: All 6 failure scenario tests passing
 
 ---
 
@@ -284,6 +286,56 @@ All disabled extensions correctly unavailable:
 
 **Commit**: `fix(test): add POSTGRES_ROLE=replica for healthcheck compatibility`
 
+### 3. pgflow Schema Auto-Installation Fix
+
+**Problem**: Comprehensive Extension Tests were failing with 6/116 pgflow tests failing because pgflow schema didn't exist. pgflow is marked `enabled:false` in manifest (per-project installation design), but tests expected schema to exist.
+
+**Solution**:
+
+- Created `scripts/test/lib/pgflow-installer.ts` - reusable utility for idempotent pgflow schema installation
+- Updated `test-all-extensions-functional.ts` - auto-install pgflow before workflow tests
+- Installer checks if schema exists first (idempotent, safe to call multiple times)
+- Returns detailed stats on installation (tables, functions created)
+
+**Impact**: All 116/116 extension tests now pass including 6 pgflow tests. Tests are self-contained and don't require manual pgflow setup.
+
+**Commits**:
+
+- `efb0eca` - `fix(test): add pgflow schema auto-installation for comprehensive extension tests`
+
+### 4. Docker Config Isolation and Image Pre-Pull Fix
+
+**Problem**: PgBouncer tests were failing with "docker-credential-osxkeychain: executable file not found in $PATH" error. Root cause: docker-compose tries to pull images during 'compose up', triggering credential errors.
+
+**Solution**:
+
+- Created `scripts/utils/docker-test-config.ts` - Docker config isolation utility
+  - Detects if credential helper available (osxkeychain, pass, secretservice, wincred)
+  - Creates isolated config without credential helper if unavailable
+  - Provides cleanup function for isolated configs
+
+- Updated `test-pgbouncer-healthcheck.ts`:
+  - Pre-pull postgres + pgbouncer images in parallel BEFORE docker-compose up
+  - Pass isolated Docker config to all compose operations
+  - Prevents credential errors during image pull in compose operations
+
+- Updated `test-pgbouncer-failures.ts`:
+  - Added same pre-pull logic to all 6 test functions
+  - Uses Promise.all() for parallel image pulling
+  - Consistent error handling across all failure scenarios
+
+- Updated `docs/TESTING.md`:
+  - Added comprehensive troubleshooting section for Docker credential helper issues
+  - Documented both quick fix (remove from config) and permanent fix (install helper)
+  - Noted automatic fallback behavior in test scripts
+
+**Impact**: All 8/8 PgBouncer health check tests pass, all 6/6 PgBouncer failure scenario tests pass. Tests work on systems without Docker credential helper installed.
+
+**Commits**:
+
+- `dfa8745` - `fix(test): add Docker config isolation and image pre-pull for PgBouncer tests`
+- `55cdb7f` - `docs(test): add Docker credential helper troubleshooting to TESTING.md`
+
 ---
 
 ## Recommendations
@@ -296,21 +348,22 @@ All disabled extensions correctly unavailable:
 2. **Workload Type**: Use `POSTGRES_WORKLOAD_TYPE` to optimize for your use case (mixed/web/oltp/dw)
 3. **Replication**: Set `POSTGRES_ROLE=replica` on standby nodes for proper healthcheck behavior
 4. **Monitoring**: Configure external monitoring network if using postgres_exporter
-5. **pgflow**: Manually install pgflow schema if using workflow orchestration features
+5. **pgflow**: Manually install pgflow schema if using workflow orchestration features (tests auto-install for validation)
 
 ### For Test Environment
 
-Consider addressing non-critical test failures:
+✅ **All test infrastructure improvements complete** - No outstanding test environment issues:
 
-1. **pgflow Tests**: Update test suite to handle SQL-only extensions without pre-seeded database
-2. **PgBouncer Tests**: Configure Docker credential helper or use alternative credential storage
-3. **Comprehensive Tests**: Split pgflow tests from core extension tests for clearer results
+1. ✅ **pgflow Tests**: Now auto-install schema before tests (fully resolved)
+2. ✅ **PgBouncer Tests**: Automatic Docker config isolation and image pre-pull (fully resolved)
+3. ✅ **Test Coverage**: 48/48 tests passing with comprehensive validation (100% success rate)
+4. ✅ **Test Documentation**: Troubleshooting guide added to TESTING.md for common issues
 
 ### Known Limitations
 
-1. **pgflow**: SQL-only system requires manual schema installation, not auto-created like extensions
+1. **pgflow**: SQL-only system requires manual schema installation in production, not auto-created like extensions (tests handle this automatically)
 2. **postgres_exporter**: Requires external monitoring network (optional)
-3. **Docker Credentials**: Some test environments may need credential helper configuration
+3. **Docker Credentials**: Test scripts automatically handle missing credential helpers with isolated configs
 
 ---
 
@@ -320,15 +373,20 @@ The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511260856-single-node`** 
 
 **Key Achievements**:
 
-- ✅ 44/48 tests passed (91.7% success rate)
+- ✅ **48/48 tests passed (100% success rate)** 🎉
 - ✅ 0 critical failures
+- ✅ 0 non-critical failures (all previous issues resolved)
 - ✅ All extensions functional
 - ✅ Auto-configuration working across all memory tiers
 - ✅ Replication streaming correctly
 - ✅ Security features verified
-- ✅ Test infrastructure improved for future releases
+- ✅ Test infrastructure significantly improved with 4 major fixes:
+  - pgflow schema auto-installation
+  - Docker config isolation
+  - Image pre-pull before compose operations
+  - Comprehensive troubleshooting documentation
 
-**Validation Status**: ✅ **PRODUCTION READY**
+**Validation Status**: ✅ **PRODUCTION READY - FULLY VALIDATED**
 
 **Next Steps**:
 
@@ -336,10 +394,11 @@ The published image **`ghcr.io/fluxo-kt/aza-pg:18.1-202511260856-single-node`** 
 2. Monitor PostgreSQL logs for any warnings during first week
 3. Verify auto-configuration produces expected settings for your memory tier
 4. Test replication failover if using replica nodes
-5. Consider installing pgflow schema if using workflow features
+5. pgflow schema auto-installs during tests; manual installation still needed for production use
 
 ---
 
-_Last Updated: 2025-11-26_
+_Last Updated: 2025-11-26 (Validation Re-run with Test Infrastructure Improvements)_
 _Validated By: Claude (Anthropic)_
 _Test Suite Version: v18.1-202511260856_
+_Test Infrastructure Version: v2 (includes pgflow auto-install + Docker isolation fixes)_

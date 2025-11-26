@@ -106,7 +106,7 @@ describe("Tool Binary Path Validation", () => {
   test("all tool entries have documented binary paths", async () => {
     const manifest = await loadManifest();
     const tools = manifest.entries.filter(
-      (e) => e.kind === "tool" && e.name !== "plan_filter" && e.name !== "safeupdate"
+      (e) => e.kind === "tool" && e.name !== "pg_plan_filter" && e.name !== "pg_safeupdate"
     );
 
     const missingPaths: string[] = [];

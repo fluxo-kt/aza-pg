@@ -16,7 +16,7 @@ import { appendFile } from "node:fs/promises";
  *
  * Common options:
  *   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
- *   --pattern PATTERN     Tag pattern for retention modes (default: testing-*)
+ *   --pattern PATTERN     Tag pattern for retention modes (default: *)
  *   --dry-run             Preview deletions without executing
  *   --continue-on-error   Don't stop on individual failures
  *   --list                Show all tags with creation dates
@@ -101,7 +101,7 @@ Selection modes (mutually exclusive):
 
 Common options:
   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
-  --pattern PATTERN     Tag pattern for retention modes (default: testing-*)
+  --pattern PATTERN     Tag pattern for retention modes (default: *)
   --dry-run             Preview deletions without executing
   --continue-on-error   Don't stop on individual failures
   --list                Show all tags with creation dates
@@ -135,7 +135,7 @@ function parseArgs(): CleanupOptions {
 
   const options: CleanupOptions = {
     repository: "fluxo-kt/aza-pg-testing",
-    pattern: "testing-*",
+    pattern: "*",
     dryRun: false,
     continueOnError: false,
     listOnly: false,
@@ -444,6 +444,8 @@ function extractTagsWithMetadata(versions: PackageVersion[], pattern: string): T
     const ageDays = ageMs / (1000 * 60 * 60 * 24); // Decimal days for precision
 
     for (const tag of version.metadata.container.tags) {
+      // Skip .sig tags - they're handled automatically when deleting main tags
+      if (tag.endsWith(".sig")) continue;
       if (matchesPattern(tag, pattern)) {
         tags.push({ tag, versionId: version.id, createdAt, ageDays });
       }

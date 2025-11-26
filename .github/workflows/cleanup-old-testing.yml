@@ -97,7 +97,7 @@ jobs:
           fi
 
           echo "- **Dry Run**: \`${{ inputs.dry_run || 'false' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Pattern**: \`testing-*\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pattern**: \`*\` (all tags in testing repository)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Note**: This is an automated daily cleanup to reduce storage costs." >> $GITHUB_STEP_SUMMARY
           echo "Testing tags are ephemeral and only used during the build-test-promote cycle." >> $GITHUB_STEP_SUMMARY

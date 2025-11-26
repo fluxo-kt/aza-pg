@@ -933,7 +933,7 @@ bun run test:all
 # OR: bun scripts/test-all.ts
 
 # Fast mode - validation only (skips Docker build and functional tests)
-bun run test:all:fast
+bun run validate
 # OR: bun scripts/test-all.ts --fast
 
 # Skip build - run all tests except Docker build (useful if image exists)
@@ -1084,8 +1084,8 @@ bun run scripts/test/test-integration.ts
 
 ```bash
 # Comprehensive Docker image test harness
-bun run test:image [image-tag]                      # Test aza-pg:latest (default)
-bun run test:image aza-pg:18.1-202511142330        # Test specific image
+bun scripts/docker/test-image.ts                    # Test aza-pg:latest (default)
+bun scripts/docker/test-image.ts aza-pg:18.1-202511142330  # Test specific image
 bun scripts/docker/test-image.ts ghcr.io/fluxo-kt/aza-pg:18-single-node  # Full registry path
 
 # Options:

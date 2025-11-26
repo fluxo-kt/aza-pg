@@ -1,6 +1,9 @@
 # pgflow Integration Guide
 
-Comprehensive guide to using pgflow v0.7.2, the built-in PostgreSQL-native workflow orchestration system in aza-pg.
+Comprehensive guide to using pgflow v0.8.1, the PostgreSQL-native workflow orchestration system.
+
+> **Note**: As of v0.8.1, pgflow is NOT bundled in the aza-pg image. It must be installed per-project.
+> See [PGFLOW-SETUP.md](./PGFLOW-SETUP.md) for installation instructions.
 
 ## Table of Contents
 
@@ -60,27 +63,34 @@ pgflow is a PostgreSQL-native workflow orchestration system that enables you to:
 
 ## Availability
 
-### Built-in by Default
+### Per-Project Installation (v0.8.1+)
 
-pgflow is **pre-installed** in all aza-pg images. The SQL schema is automatically initialized when a new database cluster is created via `/docker-entrypoint-initdb.d/05-pgflow.sql`.
+pgflow is **NOT bundled** in the aza-pg Docker image. It must be installed per-project to enable true isolation between different projects/databases.
+
+**Installation options:**
+
+1. **npm packages (recommended)**: `bun add @pgflow/dsl @pgflow/client`
+2. **Direct SQL**: Download schema from GitHub and run via psql
+
+See [PGFLOW-SETUP.md](./PGFLOW-SETUP.md) for detailed installation instructions.
 
 ### Dependencies
 
-- **pgmq extension**: Auto-enabled in aza-pg manifest
-- **PostgreSQL 14+**: For gen_random_uuid, jsonb functions
+- **pgmq extension**: Included in aza-pg image (v1.7.0)
+- **PostgreSQL 17+**: Required for pgflow v0.8.x
 
 ### Verification
 
-Check that pgflow is installed:
+After installing pgflow in your database:
 
 ```sql
 -- List pgflow schema
 \dn pgflow
 
--- Count tables (should be 6)
+-- Count tables (should be 7)
 SELECT count(*) FROM pg_tables WHERE schemaname = 'pgflow';
 
--- Count functions (should be ~10)
+-- Count functions (should be 14+)
 SELECT count(*) FROM pg_proc WHERE pronamespace = 'pgflow'::regnamespace;
 ```
 

@@ -543,37 +543,37 @@
       "displayName": "pgflow",
       "kind": "extension",
       "category": "workflow",
-      "description": "DAG-based workflow orchestration engine with task queuing, dependencies, and retry logic.",
+      "description": "DAG-based workflow orchestration engine. Per-project installation required.",
+      "enabled": false,
+      "disabledReason": "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.7.2",
-        "commit": "0f9533eda870f47615303a137e6674f5c948b39b"
+        "tag": "pgflow@0.8.1",
+        "commit": "3b7b6cf9e7adfaa6fe64947726a038b4423b74c6"
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": true,
+        "defaultEnable": false,
         "preloadOnly": true,
         "notes": [
-          "SQL-only schema (no CREATE EXTENSION required)",
-          "Installed via /docker-entrypoint-initdb.d/05-pgflow.sql",
-          "Requires pgmq extension (enabled by default)",
-          "Version 0.7.2 (Phases 1-3 only - missing map steps from Phases 9-11)",
-          "realtime.send() stubbed for standalone PostgreSQL (no Supabase Edge Functions)"
+          "NOT bundled in image - install per-project",
+          "Requires pgmq 1.5.0+ (included in image)",
+          "See docs/PGFLOW-SETUP.md for installation",
+          "v0.8.1 supports map steps, task_index, pgmq 1.5.x compatibility"
         ]
       },
       "dependencies": [
         "pgmq"
       ],
       "notes": [
-        "NOT a traditional extension - pure SQL schema with tables and functions",
-        "Creates schemas: pgflow, pgmq (if missing), realtime (stub)",
-        "Core features: DAG workflows, task queuing, retry logic, worker tracking",
-        "Advanced features not included: map steps (parallel array processing), opt_start_delay",
-        "NO build step - SQL file manually maintained in docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql"
+        "SQL-only schema - no compiled components",
+        "Use @pgflow/dsl and @pgflow/client npm packages",
+        "Multi-project: Use separate databases for isolation",
+        "Schema available in tests/fixtures/pgflow/ for testing"
       ],
       "sourceUrl": "https://github.com/pgflow-dev/pgflow",
-      "docsUrl": "https://github.com/pgflow-dev/pgflow#readme"
+      "docsUrl": "https://pgflow.dev"
     },
     {
       "name": "pgmq",

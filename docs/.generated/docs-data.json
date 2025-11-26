@@ -1,12 +1,12 @@
 {
   "catalog": {
     "total": 39,
-    "enabled": 34,
-    "disabled": 5
+    "enabled": 33,
+    "disabled": 6
   },
   "byKind": {
     "builtin": 6,
-    "extension": 24,
+    "extension": 23,
     "tool": 4
   },
   "builtins": [
@@ -29,7 +29,6 @@
     "pg_repack",
     "pg_stat_monitor",
     "pgaudit",
-    "pgflow",
     "pgmq",
     "pgroonga",
     "pgsodium",
@@ -45,7 +44,7 @@
   ],
   "tools": ["pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgq", "pgrouting", "postgis", "supautils"],
+    "extensions": ["pgflow", "pgq", "pgrouting", "postgis", "supautils"],
     "tools": ["pg_plan_filter"]
   },
   "preloaded": {
@@ -85,7 +84,6 @@
     "safety": ["pg_safeupdate"],
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
-    "workflow": ["pgflow"],
     "queueing": ["pgmq"],
     "language": ["plpgsql"],
     "quality": ["plpgsql_check"],

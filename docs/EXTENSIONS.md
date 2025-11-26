@@ -170,9 +170,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### workflow
 
-| Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                       | Notes                                                                                     |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.7.2](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.7.2) | Yes                | No             | [Docs](https://github.com/pgflow-dev/pgflow#readme) | DAG-based workflow orchestration engine with task queuing, dependencies, and retry logic. |
+| Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.8.1](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.8.1) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
 
 <!-- extensions-table:end -->
 

@@ -1,168 +1,173 @@
-# pgflow SQL Update Process
+# pgflow Schema Update Process
 
-**Purpose**: Document how to update vendored pgflow SQL files and ensure they pass our SQL quality checks.
+**Purpose**: Document how to update the pgflow test schema and verify compatibility with aza-pg.
 
-## Context
+## Architecture Change (v0.8.1)
 
-We vendor pgflow SQL schema files from `@pgflow/core` package:
+**Important**: As of v0.8.1, pgflow is NO LONGER bundled in the Docker image.
 
-- `docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql` (production init script)
-- `examples/pgflow/10-pgflow.sql` (example/documentation)
+| Before               | After                    |
+| -------------------- | ------------------------ |
+| Bundled in initdb.d  | Per-project installation |
+| Auto-installed       | Manual installation      |
+| Single shared schema | Isolated per database    |
 
-These files must pass our SQL linting (sql-formatter + Squawk) without warnings.
+See `docs/PGFLOW-SETUP.md` for user installation instructions.
+
+## Test Schema Location
+
+The pgflow schema is maintained in test fixtures for validation:
+
+```
+tests/fixtures/pgflow/
+├── schema-v0.8.1.sql   # Combined schema for testing
+├── install.ts          # Installation helper
+└── README.md           # Update instructions
+```
 
 ## Update Workflow
 
-### 1. Fetch New pgflow Version
+### 1. Check for New pgflow Version
 
 ```bash
-# Check latest version
-npm view @pgflow/core version
+# Check npm for latest version
+npm view @pgflow/dsl version
+npm view @pgflow/client version
 
-# pgflow uses multiple schema files in pkgs/core/schemas/ directory
-# Download all schema files from the version tag or commit
-# Example for v0.7.2:
-curl -O https://raw.githubusercontent.com/pgflow-dev/pgflow/main/pkgs/core/schemas/0050_tables_definitions.sql
-curl -O https://raw.githubusercontent.com/pgflow-dev/pgflow/main/pkgs/core/schemas/0060_tables_runtime.sql
-# (continue for all numbered schema files in the schemas/ directory)
-
-# Or clone the repository and extract schema files:
-git clone --depth 1 --branch v0.7.2 https://github.com/pgflow-dev/pgflow.git
-cat pgflow/pkgs/core/schemas/*.sql > combined-schema.sql
+# Or check GitHub releases
+open https://github.com/pgflow-dev/pgflow/releases
 ```
 
-### 2. Apply Our Modifications
+### 2. Download Schema Files
 
-Run these fixes on the downloaded SQL:
+pgflow uses 21 numbered SQL files in `pkgs/core/schemas/`:
 
 ```bash
-# Make executable
-chmod +x scripts/apply-pgflow-fixes.sh
+VERSION="0.9.0"  # Update to target version
+BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
 
-# Apply fixes
-./scripts/apply-pgflow-fixes.sh schema.sql
+# Create combined schema
+echo "-- pgflow v${VERSION} Schema" > tests/fixtures/pgflow/schema-v${VERSION}.sql
+echo "-- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@${VERSION}/pkgs/core/schemas/" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+
+FILES=(
+  0010_extensions.sql
+  0020_schemas.sql
+  0030_utilities.sql
+  0040_types.sql
+  0050_tables_definitions.sql
+  0055_tables_workers.sql
+  0060_tables_runtime.sql
+  0090_function_poll_for_tasks.sql
+  0100_function_add_step.sql
+  0100_function_cascade_complete_taskless_steps.sql
+  0100_function_complete_task.sql
+  0100_function_create_flow.sql
+  0100_function_fail_task.sql
+  0100_function_maybe_complete_run.sql
+  0100_function_start_flow.sql
+  0100_function_start_ready_steps.sql
+  0105_function_get_run_with_states.sql
+  0110_function_set_vt_batch.sql
+  0110_function_start_flow_with_states.sql
+  0120_function_start_tasks.sql
+  0200_grants_and_revokes.sql
+)
+
+for file in "${FILES[@]}"; do
+  echo -e "\n-- ============================================================================" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  echo "-- Source: ${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  echo -e "-- ============================================================================\n" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  curl -sS "${BASE_URL}/${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+done
 ```
 
-The script applies:
+### 3. Update References
 
-1. **IF NOT EXISTS to CREATE statements** (idempotency)
-2. **CREATE OR REPLACE for functions** (idempotency)
-3. **Migration section documentation** (context for warnings)
-4. **DO NOT add IF NOT EXISTS to CREATE TYPE** (PostgreSQL doesn't support it for composite types)
+Update these files:
 
-### 3. Verify SQL Quality
+1. **`tests/fixtures/pgflow/install.ts`**:
+   - Update `PGFLOW_VERSION` constant
+   - Update schema file path if version changed
+
+2. **`scripts/extensions/manifest-data.ts`**:
+   - Update `tag: "pgflow@X.Y.Z"`
+
+3. **`examples/pgflow/10-pgflow.sql`**:
+   - Copy new schema for documentation
+
+4. **npm packages** (if using):
+   ```bash
+   bun add -d @pgflow/dsl@X.Y.Z @pgflow/client@X.Y.Z
+   ```
+
+### 4. Run Tests
 
 ```bash
-# Fix formatting + run linting (one command)
-bun run lint:sql
-# Should show: "Found 0 issues in 3 files 🎉"
+# Validate schema completeness
+bun scripts/test/test-pgflow-schema.ts --image=aza-pg:latest
 
-# Full validation
-bun run validate
+# Full functional tests
+bun scripts/test/test-pgflow-v081.ts --image=aza-pg:latest
+
+# Multi-project isolation
+bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
 ```
 
-### 4. Update Version References
+### 5. Update Documentation
 
-Update these files with new version:
-
-- Header comment in `05-pgflow.sql` (e.g., `-- VERSION: v0.7.3`)
-- `package.json` if pgflow is a dependency
-- This document's date
-
-### 5. Test SQL Loads
-
-```bash
-# Test SQL can be loaded into PostgreSQL
-docker run --rm -v "$(pwd)/docker/postgres/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro" \
-  -e POSTGRES_PASSWORD=test \
-  postgres:18-trixie
-
-# Check logs for errors
-```
+- `docs/PGFLOW-SETUP.md` - Version compatibility table
+- `tests/fixtures/pgflow/README.md` - Schema file list
 
 ### 6. Commit Changes
 
 ```bash
-git add docker/postgres/docker-entrypoint-initdb.d/05-pgflow.sql examples/pgflow/10-pgflow.sql
-git commit -m "chore(pgflow): update to v0.7.x
+git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts examples/pgflow/
+git commit -m "feat(pgflow): update test schema to v${VERSION}
 
-Update vendored pgflow SQL schema to v0.7.x.
+Update pgflow test fixtures to v${VERSION}.
 
 Changes:
-- Update pgflow schema from @pgflow/core@0.7.x
-- Apply idempotency fixes (IF NOT EXISTS, CREATE OR REPLACE)
-- Verify zero Squawk warnings
-- Test SQL loads successfully
+- Download and combine 21 schema files from pgflow@${VERSION}
+- Update manifest version reference
+- Verify all tests pass
 
-Source: https://github.com/pgflow-dev/pgflow/releases/tag/v0.7.x"
+Source: https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@${VERSION}
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-## Common Issues
+## Version Compatibility
 
-### Issue: Squawk Syntax Errors
+| pgflow | pgmq Required | PostgreSQL | aza-pg Support |
+| ------ | ------------- | ---------- | -------------- |
+| 0.8.1  | 1.5.0+        | 17+        | ✅ Full        |
+| 0.7.2  | 1.4.x         | 14+        | ⚠️ Legacy      |
 
-**Cause**: `IF NOT EXISTS` added to unsupported statements
+## Breaking Changes Log
 
-**Fix**: PostgreSQL doesn't support IF NOT EXISTS for:
+### v0.8.0 → v0.8.1
 
-- CREATE TYPE (composite types)
-- ALTER TABLE statements
-- Some constraint operations
+- Fixed Supabase CLI version requirement (2.50.3+)
+- No schema changes
 
-Remove IF NOT EXISTS from these cases.
+### v0.7.x → v0.8.0
 
-### Issue: Migration Section Warnings
-
-**Cause**: ALTER TABLE operations in migration sections
-
-**Fix**: These are expected. Migration sections are for upgrades only.
-Fresh installations create tables correctly from the start.
-Warnings are documented in migration section comments.
-
-### Issue: Foreign Key Constraint Warnings
-
-**Cause**: Squawk warns about FK constraints blocking writes
-
-**Fix**: Already excluded in `.squawk.toml` as `adding-foreign-key-constraint`.
-Init scripts run on empty databases - no live traffic to block.
-
-## Squawk Configuration
-
-Our `.squawk.toml` is tailored for initialization scripts:
-
-```toml
-# Init scripts run on empty databases during container startup
-assume_in_transaction = true
-
-excluded_rules = [
-  "require-concurrent-index-creation",  # No live traffic
-  "prefer-bigint-over-int",            # Not all ints need 64-bit
-  "constraint-missing-not-valid",      # Empty tables
-  "require-timeout-settings",          # Short-lived init
-  "adding-foreign-key-constraint",     # No live traffic
-]
-```
-
-Do NOT exclude rules globally without documenting why in this file.
+- **BREAKING**: Requires pgmq 1.5.0+ (was 1.4.x)
+- **BREAKING**: Requires PostgreSQL 17+ (was 14+)
+- Added `step_type` column for map steps
+- Added `task_index` for parallel processing
+- Removed deprecated `read_with_poll()` function
 
 ## Maintenance Notes
 
-**Last Updated**: 2025-11-23
-**Current pgflow Version**: v0.7.2
-**Maintainer**: Check git log for recent contributors
+**Last Updated**: 2025-11-26
+**Current Version**: v0.8.1
+**Schema Location**: `tests/fixtures/pgflow/schema-v0.8.1.sql`
 
-## Sources
+## Resources
 
-- [pgflow Repository](https://github.com/pgflow-dev/pgflow)
-- [pgflow Core Schemas](https://github.com/pgflow-dev/pgflow/tree/main/pkgs/core/schemas) (SQL schema files location)
-- [Squawk Documentation](https://squawkhq.com/docs/rules)
-- [PostgreSQL IF NOT EXISTS Support](https://www.postgresql.org/docs/current/sql-commands.html)
-
-## Repository Structure Notes
-
-**Important**: pgflow repository structure (as of v0.7.2+):
-
-- **Correct path**: `pkgs/core/schemas/*.sql` (multiple numbered schema files)
-- **NOT**: `packages/core/sql/schema.sql` (outdated structure)
-- Schema files are numbered (0050_tables_definitions.sql, 0060_tables_runtime.sql, etc.)
-- Must be combined in order to create complete schema
+- [pgflow Documentation](https://pgflow.dev)
+- [pgflow GitHub](https://github.com/pgflow-dev/pgflow)
+- [pgflow Schemas](https://github.com/pgflow-dev/pgflow/tree/main/pkgs/core/schemas)
+- [Installation Guide](./PGFLOW-SETUP.md)

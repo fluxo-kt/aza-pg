@@ -489,7 +489,7 @@ Run regression test suite:
 bun run test:all
 
 # Fast mode (validation only, skips Docker build and functional tests)
-bun run test:all:fast
+bun run validate
 
 # Show help
 bun scripts/test-all.ts --help
@@ -513,12 +513,12 @@ bun run validate
 bun run validate:all
 
 # Aliases (run validate with different modes)
-bun run lint              # Check only (alias for validate)
-bun run format            # Check + auto-fix (alias for validate:fix)
-bun run check:manifest    # Manifest validation
-bun run check:shell       # Shellcheck for bash scripts
-bun run check:yaml        # yamllint for YAML files
-bun run check:docker      # hadolint for Dockerfiles
+bun run lint                      # Check only (alias for validate)
+bun run format                    # Check + auto-fix (alias for validate:fix)
+bun scripts/validate-manifest.ts  # Manifest validation
+shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh  # Shell scripts
+yamllint -c .yamllint.yaml .      # YAML files
+hadolint docker/postgres/Dockerfile  # Dockerfile
 ```
 
 ## Troubleshooting
@@ -577,7 +577,7 @@ The Dockerfile pins the PostgreSQL base image to a specific SHA for reproducibil
 
 ```bash
 # Check current base image SHA
-bun run check:base-image
+bun scripts/validate-base-image-sha.ts
 
 # Get latest SHA from Docker Hub
 docker pull postgres:18-trixie
@@ -1175,7 +1175,7 @@ bun run validate:all                  # Full suite
 
 # Test
 bun run test:all                      # Full test suite
-bun run test:all:fast                 # Skip Docker build
+bun run validate                      # Validation only (fast)
 
 # Generate
 bun run generate                      # Regenerate all configs

@@ -160,9 +160,9 @@ scrape_configs:
 
 ```bash
 bun run build                # 2min with remote cache
-bun run test:all             # Full suite
-bun run test:all:fast        # Validation only
-bun run validate:artifacts   # Validate published image artifacts
+bun run test:all                                    # Full suite
+bun run validate                                    # Validation only (fast)
+bun scripts/docker/validate-published-image-artifacts.ts  # Validate published image
 ```
 
 **Regression Testing:**

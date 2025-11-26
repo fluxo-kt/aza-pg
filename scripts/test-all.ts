@@ -875,7 +875,7 @@ const allChecks: Check[] = [
     timeout: 300000, // 5 minutes
   },
   {
-    name: "pgflow Functional Tests",
+    name: "pgflow v0.8.1 Schema Tests",
     category: "functional",
     command: [
       "sh",
@@ -883,20 +883,41 @@ const allChecks: Check[] = [
       [
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "cd scripts/test && bun run test-pgflow-functional.ts --container=$CONTAINER",
+        "bun scripts/test/test-pgflow-schema.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
         "exit $RESULT",
       ].join("; "),
     ],
-    description: "Comprehensive pgflow workflow orchestration functional tests",
+    description: "pgflow v0.8.1 schema verification (table/function/type counts)",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "pgflow v0.8.1 Functional Tests",
+    category: "functional",
+    command: [
+      "sh",
+      "-c",
+      [
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "bun scripts/test/test-pgflow-v081.ts --container=$CONTAINER",
+        "RESULT=$?",
+        "docker rm -f $CONTAINER >/dev/null",
+        "exit $RESULT",
+      ].join("; "),
+    ],
+    description: "Comprehensive pgflow v0.8.1 workflow orchestration functional tests",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
     timeout: 300000, // 5 minutes
   },
   {
-    name: "pgflow v0.7.2 Compatibility",
+    name: "pgflow v0.8.1 Multi-Project Isolation",
     category: "functional",
     command: [
       "sh",
@@ -904,14 +925,13 @@ const allChecks: Check[] = [
       [
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "cd scripts/test && bun run test-pgflow-functional-v072.ts --container=$CONTAINER",
+        "bun scripts/test/test-pgflow-multiproject.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
         "exit $RESULT",
       ].join("; "),
     ],
-    description:
-      "Test pgflow v0.7.2 API compatibility (flow_slug, retry/timeout handling, two-phase polling)",
+    description: "Test pgflow per-database isolation for multi-project deployments",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,

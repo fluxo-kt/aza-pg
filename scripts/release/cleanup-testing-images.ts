@@ -556,6 +556,7 @@ async function deleteAllVersions(
   options: CleanupOptions
 ): Promise<void> {
   let successCount = 0;
+  let retainedCount = 0;
   let failureCount = 0;
   const failures: Array<{ name: string; error: string }> = [];
   let lastVersionProtectedCount = 0;
@@ -577,7 +578,7 @@ async function deleteAllVersions(
         // If this is the first occurrence, treat as "last version" protection
         if (lastVersionProtectedCount === 1) {
           info(`Retained: ${identifier} (last version cannot be deleted - GHCR limitation)`);
-          successCount++; // Count as success, not failure
+          retainedCount++; // Track as retained, not success or failure
           continue;
         }
 
@@ -606,20 +607,16 @@ async function deleteAllVersions(
   // Summary
   console.log("");
 
-  const retainedCount = versions.length - successCount - failureCount;
-
   if (options.dryRun) {
     success(`[DRY RUN] Would delete ${versions.length} version${versions.length !== 1 ? "s" : ""}`);
-  } else if (failureCount === 0 && retainedCount === 1) {
+  } else if (failureCount === 0 && retainedCount > 0) {
     success(
-      `Deleted ${successCount} version${successCount !== 1 ? "s" : ""} (1 retained - GHCR limitation)`
+      `Deleted ${successCount} version${successCount !== 1 ? "s" : ""} (${retainedCount} retained - GHCR limitation)`
     );
   } else if (failureCount === 0) {
     success(`Deleted ${successCount} version${successCount !== 1 ? "s" : ""}`);
   } else {
-    success(
-      `Deleted ${successCount} of ${versions.length} version${versions.length !== 1 ? "s" : ""}`
-    );
+    success(`Deleted ${successCount} version${successCount !== 1 ? "s" : ""}`);
     error(`Failed to delete ${failureCount} version${failureCount !== 1 ? "s" : ""}:`);
     for (const f of failures) {
       error(`  - ${f.name}: ${f.error}`);

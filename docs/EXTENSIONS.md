@@ -197,10 +197,78 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - **Operations** – `pgbackrest` binary lives in `/usr/local/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available for offline log analysis.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
 
+## HTTP Extensions Comparison: pg_net vs pgsql-http
+
+Both extensions enable HTTP requests from PostgreSQL but serve different use cases:
+
+| Aspect          | **pg_net**                            | **pgsql-http**                      |
+| --------------- | ------------------------------------- | ----------------------------------- |
+| **Execution**   | Asynchronous (background worker)      | Synchronous (blocking)              |
+| **Transaction** | Fires AFTER commit                    | Executes DURING transaction         |
+| **Methods**     | GET, POST (JSON only), DELETE         | GET, POST, PUT, PATCH, DELETE, HEAD |
+| **Preload**     | Required (`shared_preload_libraries`) | Not required                        |
+| **Response**    | Poll `net._http_response` table       | Immediate return                    |
+| **Durability**  | Unlogged tables (crash risk)          | ACID-compliant                      |
+| **Config**      | GUC only (batch_size, ttl)            | Per-session cURL options            |
+
+### When to Use Each
+
+**Use pg_net for:**
+
+- Fire-and-forget webhooks
+- Event notifications after successful commits
+- High-throughput async integrations
+- Cases where you don't need the response in the transaction
+
+```sql
+-- Webhook fires only if transaction commits
+BEGIN;
+  INSERT INTO orders (customer_id, total) VALUES (123, 99.99);
+  SELECT net.http_post(
+    'https://webhook.example.com/order-created',
+    '{"order_id": 456}'::jsonb
+  );
+COMMIT;  -- Request sent NOW
+```
+
+**Use pgsql-http for:**
+
+- API calls requiring response data in transaction
+- Conditional logic based on HTTP result
+- PUT/PATCH/HEAD methods
+- Non-JSON POST bodies
+- Fine-grained cURL control (timeouts, SSL, auth)
+
+```sql
+-- Response available immediately for conditional logic
+SELECT CASE
+  WHEN (http_get('https://api.example.com/inventory/123')).status = 200
+  THEN 'In stock'
+  ELSE 'Unavailable'
+END;
+```
+
+### Configuration Examples
+
+**pg_net** (postgresql.conf):
+
+```
+pg_net.batch_size = 200      # Requests per worker iteration
+pg_net.ttl = '6 hours'       # Response retention
+pg_net.database_name = 'mydb'
+```
+
+**pgsql-http** (session):
+
+```sql
+SELECT http_set_curlopt('CURLOPT_TIMEOUT', '30');
+SELECT http_set_curlopt('CURLOPT_USERPWD', 'user:pass');
+SELECT http_set_curlopt('CURLOPT_SSL_VERIFYPEER', '1');
+```
+
 ## Compatibility Exceptions
 
 - **Citus** – The latest upstream release (Citus 13.0 on 2025-02-10) only supports PostgreSQL 17 and earlier, so the extension is intentionally omitted from the PostgreSQL 18 image to avoid shipping an incompatible build. We will add it once an official PG18-compatible release lands.
-- **pg_net** – Supabase’s published metadata lists official support for PostgreSQL 13–17; the code currently fails to compile on PostgreSQL 18, so we exclude it until a PG18-compatible release is available.
 
 ## Enabling and Disabling Extensions
 

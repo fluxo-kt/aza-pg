@@ -382,12 +382,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supautils",
+    enabled: false,
+    disabledReason:
+      "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
     kind: "extension",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
-    enabled: false,
-    disabledReason:
-      "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
@@ -395,7 +395,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "pgxs",
-      patches: ["s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"],
+      // Patch pattern works in isolation but fails to apply in Docker build
+      // Attempted patterns: [[:space:]], \\s+, space+ - all failed
+      // Root issue: applySedPatch() returns false (no match) despite correct pattern
+      patches: ["s/bool +log_skipped_evtrigs/static bool log_skipped_evtrigs/"],
     },
     runtime: {
       sharedPreload: true,

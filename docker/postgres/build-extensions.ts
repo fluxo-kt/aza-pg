@@ -485,11 +485,11 @@ function parseSedPattern(sedPattern: string): { pattern: RegExp; replacement: st
 
   // Convert sed regex to JavaScript regex
   let jsPattern = pattern
-    // Convert POSIX character classes to JS equivalents
-    .replace(/\[:space:\]/g, "\\s")
-    .replace(/\[:alnum:\]/g, "[A-Za-z0-9]")
-    .replace(/\[:alpha:\]/g, "[A-Za-z]")
-    .replace(/\[:digit:\]/g, "\\d")
+    // Convert POSIX character classes to JS equivalents (must handle [[:class:]] syntax)
+    .replace(/\[\[:space:\]\]/g, "\\s")
+    .replace(/\[\[:alnum:\]\]/g, "[A-Za-z0-9]")
+    .replace(/\[\[:alpha:\]\]/g, "[A-Za-z]")
+    .replace(/\[\[:digit:\]\]/g, "\\d")
     // Convert sed quantifiers {n,m} to JS
     .replace(/\\{(\d+),?(\d*)\\}/g, "{$1,$2}")
     // Handle start of line anchor
@@ -561,7 +561,7 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
     } else if (patch.includes(".c")) {
       // For C projects, find specific C files mentioned in patch or all .c files
       if (patch.includes("log_skipped_evtrigs")) {
-        // Anchor to specific file for supautils patch
+        // Anchor to specific file for supautils patch (src/supautils.c:72)
         const result = await $`find ${dest} -name "supautils.c" -type f`.text();
         targetFiles = result.trim().split("\n").filter(Boolean);
       } else {

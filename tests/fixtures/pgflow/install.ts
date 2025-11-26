@@ -87,7 +87,7 @@ export interface InstallResult {
 
 /**
  * Install pgflow schema into a PostgreSQL database via Docker container.
- * Automatically creates a no-op realtime.send() stub for non-Supabase deployments.
+ * Automatically creates a pg_notify-based realtime.send() for non-Supabase deployments.
  */
 export async function installPgflowSchema(
   container: string,

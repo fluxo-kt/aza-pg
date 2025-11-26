@@ -389,7 +389,11 @@ if [ "$CPU_CORES" -le 4 ]; then
 else
     MAX_WORKER_PROCESSES=$(( CPU_CORES + CPU_CORES / 2 ))
 fi
-[ "$MAX_WORKER_PROCESSES" -lt 2 ] && MAX_WORKER_PROCESSES=2
+# Minimum 8 workers to support all background workers:
+# TimescaleDB (2-3), pg_cron (1), logical replication (1), telemetry (1), plus headroom
+# Allow override via POSTGRES_MAX_WORKER_PROCESSES environment variable
+MAX_WORKER_PROCESSES=${POSTGRES_MAX_WORKER_PROCESSES:-$MAX_WORKER_PROCESSES}
+[ "$MAX_WORKER_PROCESSES" -lt 8 ] && MAX_WORKER_PROCESSES=8
 [ "$MAX_WORKER_PROCESSES" -gt 64 ] && MAX_WORKER_PROCESSES=64
 
 # Set parallel workers based on CPU cores

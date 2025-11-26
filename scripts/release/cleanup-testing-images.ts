@@ -408,6 +408,10 @@ async function deletePackageVersion(
           warning(`Tag already deleted: ${tag}`);
           return true;
         }
+        // Check for "last version" error (misleading "5000 downloads" message)
+        if (stderr.includes("5000 downloads") || stderr.includes("cannot be deleted")) {
+          throw new Error("LAST_VERSION_PROTECTED");
+        }
         throw new Error(`Failed to delete: ${stderr}`);
       }
 
@@ -554,6 +558,7 @@ async function deleteAllVersions(
   let successCount = 0;
   let failureCount = 0;
   const failures: Array<{ name: string; error: string }> = [];
+  let lastVersionProtectedCount = 0;
 
   for (const version of versions) {
     // Use first tag as identifier, or digest/name for untagged versions
@@ -564,6 +569,25 @@ async function deleteAllVersions(
       successCount++;
     } catch (err) {
       const errMessage = getErrorMessage(err);
+
+      // Track "last version" errors separately (might be protection OR real error with >5000 downloads)
+      if (errMessage.includes("LAST_VERSION_PROTECTED")) {
+        lastVersionProtectedCount++;
+
+        // If this is the first occurrence, treat as "last version" protection
+        if (lastVersionProtectedCount === 1) {
+          info(`Retained: ${identifier} (last version cannot be deleted - GHCR limitation)`);
+          successCount++; // Count as success, not failure
+          continue;
+        }
+
+        // Multiple occurrences = real error (package actually has >5000 downloads)
+        warning(
+          `Multiple versions failing with "5000 downloads" error - likely real download limit, not last-version protection`
+        );
+      }
+
+      // Real errors (or second+ "last version" error)
       error(`Failed to delete ${identifier}: ${errMessage}`);
 
       if (Bun.env.GITHUB_ACTIONS === "true") {
@@ -582,8 +606,14 @@ async function deleteAllVersions(
   // Summary
   console.log("");
 
+  const retainedCount = versions.length - successCount - failureCount;
+
   if (options.dryRun) {
     success(`[DRY RUN] Would delete ${versions.length} version${versions.length !== 1 ? "s" : ""}`);
+  } else if (failureCount === 0 && retainedCount === 1) {
+    success(
+      `Deleted ${successCount} version${successCount !== 1 ? "s" : ""} (1 retained - GHCR limitation)`
+    );
   } else if (failureCount === 0) {
     success(`Deleted ${successCount} version${successCount !== 1 ? "s" : ""}`);
   } else {
@@ -604,6 +634,9 @@ async function deleteAllVersions(
     summary.push(`|--------|-------|`);
     summary.push(`| Versions to delete | ${versions.length} |`);
     summary.push(`| Versions deleted | ${successCount} |`);
+    if (retainedCount > 0) {
+      summary.push(`| Retained (GHCR limit) | ${retainedCount} |`);
+    }
     summary.push(`| Failed | ${failureCount} |`);
     if (options.dryRun) {
       summary.push(`\n**Mode**: Dry run (no actual deletions)`);

@@ -2,15 +2,15 @@ name: Cleanup Old Testing Images
 
 on:
   schedule:
-    # Weekly on Sundays at 00:00 UTC
-    - cron: "0 0 * * 0"
+    # Daily at 02:00 UTC
+    - cron: "0 2 * * *"
 
   workflow_dispatch:
     inputs:
       days:
-        description: "Delete testing tags older than N days (leave empty for default: 14)"
+        description: "Delete testing tags older than N days (default: 2, use 0 to delete ALL)"
         required: false
-        default: "14"
+        default: "2"
         type: string
       keep_last:
         description: "Alternative: Keep only last N tags (overrides days if set)"
@@ -63,18 +63,18 @@ jobs:
           if [ -n "$KEEP_LAST" ]; then
             # Count-based retention (overrides days)
             echo "Using count-based retention: keep last $KEEP_LAST tags"
-            bun scripts/release/cleanup-old-testing-tags.ts \
+            bun scripts/release/cleanup-testing-images.ts \
               --repository fluxo-kt/aza-pg-testing \
               --keep-last "$KEEP_LAST" \
               --continue-on-error \
               $DRY_RUN
           else
-            # Time-based retention (default: 14 days)
-            DAYS="${DAYS:-14}"
+            # Time-based retention (default: 2 days)
+            DAYS="${DAYS:-2}"
             echo "Using time-based retention: delete tags older than $DAYS days"
-            bun scripts/release/cleanup-old-testing-tags.ts \
+            bun scripts/release/cleanup-testing-images.ts \
               --repository fluxo-kt/aza-pg-testing \
-              --days "$DAYS" \
+              --older-than "$DAYS" \
               --continue-on-error \
               $DRY_RUN
           fi
@@ -92,12 +92,12 @@ jobs:
           if [ -n "$KEEP_LAST" ]; then
             echo "- **Retention Policy**: Count-based (keep last $KEEP_LAST tags)" >> $GITHUB_STEP_SUMMARY
           else
-            DAYS="${{ inputs.days || '14' }}"
+            DAYS="${{ inputs.days || '2' }}"
             echo "- **Retention Policy**: Time-based (delete tags older than $DAYS days)" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "- **Dry Run**: \`${{ inputs.dry_run || 'false' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Pattern**: \`testing-*\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note**: This is an automated cleanup workflow to reduce storage costs." >> $GITHUB_STEP_SUMMARY
+          echo "**Note**: This is an automated daily cleanup to reduce storage costs." >> $GITHUB_STEP_SUMMARY
           echo "Testing tags are ephemeral and only used during the build-test-promote cycle." >> $GITHUB_STEP_SUMMARY

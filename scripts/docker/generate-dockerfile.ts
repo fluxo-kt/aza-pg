@@ -608,7 +608,7 @@ async function generateDockerfile(): Promise<void> {
   // Format with Prettier for consistency
   info("Formatting filtered manifests with Prettier...");
   try {
-    await Bun.$`bunx prettier --write ${PGXS_MANIFEST_PATH} ${CARGO_MANIFEST_PATH}`.quiet();
+    await Bun.$`bun x prettier --write ${PGXS_MANIFEST_PATH} ${CARGO_MANIFEST_PATH}`.quiet();
     success(`Filtered manifests written and formatted`);
   } catch {
     // Non-critical - manifests are valid JSON even if not formatted

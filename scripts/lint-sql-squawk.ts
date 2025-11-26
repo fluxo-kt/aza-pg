@@ -80,7 +80,7 @@ Documentation: https://squawkhq.com/docs/rules
 
   try {
     // Run Squawk on all SQL files
-    const result = await $`bunx squawk ${sqlFiles}`.nothrow();
+    const result = await $`bun x squawk ${sqlFiles}`.nothrow();
 
     if (result.exitCode === 0) {
       console.log("\n✅ No PostgreSQL-specific issues found");

@@ -86,7 +86,7 @@ async function preCommit(): Promise<void> {
   if (lintableFiles.length > 0) {
     info("🔍 Auto-fixing linting issues...");
     try {
-      await $`bunx oxlint --fix ${lintableFiles}`.quiet();
+      await $`bun x oxlint --fix ${lintableFiles}`.quiet();
       success("✅ Auto-fixed linting issues");
       filesToRestage.push(...lintableFiles);
     } catch (err) {
@@ -111,7 +111,7 @@ async function preCommit(): Promise<void> {
   if (formattableFiles.length > 0) {
     info("💅 Auto-formatting code...");
     try {
-      await $`bunx prettier --write ${formattableFiles}`.quiet();
+      await $`bun x prettier --write ${formattableFiles}`.quiet();
       success("✅ Auto-formatted code");
       filesToRestage.push(...formattableFiles);
     } catch (err) {

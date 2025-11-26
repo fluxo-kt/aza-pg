@@ -254,7 +254,7 @@ async function runSquawkLinter(sqlFiles: string[]): Promise<boolean> {
   console.log(`\n🐘 Running Squawk PostgreSQL linter on ${filesToLint.length} file(s)...\n`);
 
   try {
-    const result = await $`bunx squawk ${filesToLint}`.nothrow();
+    const result = await $`bun x squawk ${filesToLint}`.nothrow();
 
     if (result.exitCode === 0) {
       console.log("✅ Squawk: No PostgreSQL-specific issues found");

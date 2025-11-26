@@ -32,6 +32,7 @@
 import { $ } from "bun";
 import { resolve } from "node:path";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
+import { installPgflowSchemaIfNeeded } from "./lib/pgflow-installer";
 
 // Show help if requested
 if (Bun.argv.includes("--help") || Bun.argv.includes("-h")) {
@@ -1677,6 +1678,19 @@ await test("pg_jsonschema - Schema with constraints", "validation", async () => 
 // ============================================================================
 console.log("\n🔄 Workflow Extensions");
 console.log("-".repeat(80));
+
+// Install pgflow schema if not already present (pgflow is SQL-only, not a traditional extension)
+const pgflowInstall = await installPgflowSchemaIfNeeded(CONTAINER);
+if (!pgflowInstall.available) {
+  console.log(`⚠️  pgflow schema installation failed: ${pgflowInstall.error}`);
+  console.log("   Skipping pgflow tests...\n");
+} else if (pgflowInstall.installed) {
+  console.log(
+    `✅ pgflow schema installed (${pgflowInstall.stats?.tablesCreated} tables, ${pgflowInstall.stats?.functionsCreated} functions)\n`
+  );
+} else {
+  console.log(`✅ pgflow schema already present\n`);
+}
 
 await test("pgflow - Verify schema exists (SQL-only, not extension)", "workflow", async () => {
   // pgflow is a SQL-only schema initialized at startup, not a traditional extension

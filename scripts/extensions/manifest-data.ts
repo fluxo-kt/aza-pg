@@ -673,7 +673,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       type: "cargo-pgrx",
       features: ["pg18"],
       noDefaultFeatures: true,
-      patches: ['s/pgrx = "0\\.16\\.0"/pgrx = "=0.16.1"/'],
     },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: {

@@ -241,10 +241,7 @@
         "features": [
           "pg18"
         ],
-        "noDefaultFeatures": true,
-        "patches": [
-          "s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"
-        ]
+        "noDefaultFeatures": true
       },
       "aptPackages": [
         "clang",

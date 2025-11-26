@@ -243,16 +243,16 @@ async function validate(
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint --fix",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun run oxlint --fix",
             ]
-          : ["bun", "x", "oxlint", "--fix", "."]
+          : ["bun", "run", "oxlint:fix", "."]
         : stagedOnly
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun run oxlint",
             ]
-          : ["bun", "x", "oxlint", "."],
+          : ["bun", "run", "oxlint", "."],
       description: fixMode
         ? stagedOnly
           ? "Auto-fixing linting issues (staged files)"
@@ -269,16 +269,16 @@ async function validate(
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --write --ignore-unknown",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:write --ignore-unknown",
             ]
-          : ["bun", "x", "prettier", "--write", "."]
+          : ["bun", "run", "prettier:write", "."]
         : stagedOnly
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --check --ignore-unknown",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:check --ignore-unknown",
             ]
-          : ["bun", "x", "prettier", "--check", "."],
+          : ["bun", "run", "prettier:check", "."],
       description: fixMode
         ? stagedOnly
           ? "Auto-formatting code (staged files)"
@@ -290,7 +290,7 @@ async function validate(
     },
     {
       name: "TypeScript",
-      command: ["bun", "x", "tsc", "--noEmit"],
+      command: ["bun", "run", "tsc", "--noEmit"],
       description: "Type checking (requires full project context)",
       required: true,
     },

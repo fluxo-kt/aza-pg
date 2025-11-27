@@ -36,10 +36,20 @@ const generators: GeneratorTask[] = [
   { name: "Configs", script: "scripts/config-generator/generator.ts", dependsOn: ["Manifest"] },
   { name: "Docs Data", script: "scripts/generate-docs-data.ts", dependsOn: ["Manifest"] },
   { name: "Markdown", script: "scripts/extensions/render-markdown.ts", dependsOn: ["Manifest"] },
+  {
+    name: "Workflow Config",
+    script: "scripts/ci/generate-workflow-config.ts",
+    dependsOn: ["Manifest"],
+  },
 
   // Phase 4: Parallel Docker generators (depend on manifest)
   { name: "Dockerfile", script: "scripts/docker/generate-dockerfile.ts", dependsOn: ["Manifest"] },
   { name: "Entrypoint", script: "scripts/docker/generate-entrypoint.ts", dependsOn: ["Manifest"] },
+  {
+    name: "Image Contents",
+    script: "scripts/docker/generate-image-contents.ts",
+    dependsOn: ["Manifest"],
+  },
 ];
 
 async function runGenerator(task: GeneratorTask): Promise<void> {

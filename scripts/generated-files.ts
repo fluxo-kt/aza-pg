@@ -15,6 +15,7 @@ export const GENERATED_FILES = [
   "docker/postgres/extensions.build-packages.txt",
   "docker/postgres/healthcheck.sh",
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
+  "docker/postgres/IMAGE-CONTENTS.txt",
 
   // Documentation
   "docs/.generated/docs-data.json",
@@ -34,6 +35,9 @@ export const GENERATED_FILES = [
   // PostgreSQL configs - single stack
   "stacks/single/configs/postgresql.conf",
   "stacks/single/configs/pg_hba.conf",
+
+  // Workflow configuration
+  ".github/workflow-config.json",
 ] as const;
 
 export type GeneratedFile = (typeof GENERATED_FILES)[number];

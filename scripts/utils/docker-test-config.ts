@@ -16,7 +16,7 @@
  *   await $`docker compose up -d`.env(dockerEnv);
  */
 
-import { mkdir } from "node:fs/promises";
+import { $ } from "bun";
 import { warning } from "./logger";
 
 /**
@@ -58,7 +58,7 @@ export function hasCredentialHelper(): boolean {
  */
 export async function createTestDockerConfig(): Promise<string> {
   const tmpDir = `/tmp/docker-test-config-${Date.now()}-${process.pid}`;
-  await mkdir(tmpDir, { recursive: true });
+  await $`mkdir -p ${tmpDir}`.quiet();
 
   // Create minimal Docker config without credential helper
   const config = {

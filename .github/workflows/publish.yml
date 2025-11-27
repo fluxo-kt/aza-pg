@@ -104,8 +104,8 @@ jobs:
       - name: Verify Dockerfile generation is current
         run: bun scripts/verify-generated.ts
 
-      - name: Validate manifest
-        run: bun run validate
+      - name: Validate manifest and full checks
+        run: bun run validate:all
 
       - name: Derive catalog statistics
         id: catalog

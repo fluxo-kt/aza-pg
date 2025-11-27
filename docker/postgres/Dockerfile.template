@@ -218,6 +218,9 @@ COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 # Healthcheck script (stable - rarely modified)
 COPY docker/postgres/healthcheck.sh /usr/local/bin/healthcheck.sh
 
+# Image contents documentation (generated from manifest)
+COPY docker/postgres/IMAGE-CONTENTS.txt /IMAGE-CONTENTS.txt
+
 # Auto-config entrypoint (moderate - occasionally updated for new features)
 COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto-config-entrypoint.sh
 

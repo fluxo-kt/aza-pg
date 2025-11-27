@@ -338,6 +338,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Documentation Links",
+      command: ["bun", "scripts/ci/validate-doc-links.ts"],
+      description: "Documentation internal link validation",
+      required: true,
+    },
+    {
       name: "Base Image SHA",
       command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
       description: "Base image SHA validation (warn if stale)",

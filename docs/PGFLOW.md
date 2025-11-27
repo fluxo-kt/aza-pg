@@ -1,24 +1,26 @@
-# pgflow Integration Guide
+# pgflow Documentation
 
-Comprehensive guide to using pgflow v0.8.1, the PostgreSQL-native workflow orchestration system.
-
-> **Note**: As of v0.8.1, pgflow is NOT bundled in the aza-pg image. It must be installed per-project.
-> See [PGFLOW-SETUP.md](./PGFLOW-SETUP.md) for installation instructions.
+Comprehensive guide to pgflow v0.8.1, a PostgreSQL-native DAG workflow orchestration engine with task queuing, dependencies, and retry logic.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Availability](#availability)
-- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
 - [Core Concepts](#core-concepts)
 - [Basic Usage](#basic-usage)
+- [Architecture](#architecture)
 - [API Reference](#api-reference)
 - [Advanced Topics](#advanced-topics)
 - [Worker Implementation](#worker-implementation)
+- [Real-Time Event Notifications](#real-time-event-notifications)
 - [Performance Considerations](#performance-considerations)
+- [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
 - [Examples](#examples)
 - [Limitations](#limitations)
+- [Schema Update Process](#schema-update-process)
+- [Resources](#resources)
 
 ---
 
@@ -26,7 +28,7 @@ Comprehensive guide to using pgflow v0.8.1, the PostgreSQL-native workflow orche
 
 ### What is pgflow?
 
-pgflow is a PostgreSQL-native workflow orchestration system that enables you to:
+pgflow is a PostgreSQL-native workflow orchestration system that runs entirely inside PostgreSQL using the pgmq extension. It enables you to:
 
 - **Define DAG workflows**: Create directed acyclic graphs of tasks with dependencies
 - **Queue and execute tasks**: Leverage pgmq for reliable task queuing
@@ -59,39 +61,303 @@ pgflow is a PostgreSQL-native workflow orchestration system that enables you to:
 - Cross-service orchestration (use Temporal, Airflow, or similar)
 - Simple scheduled tasks (use pg_cron instead)
 
+### Important: Per-Project Installation
+
+**pgflow is NOT bundled in the aza-pg Docker image.** It must be installed per-project into each database that needs workflow capabilities. This ensures true isolation between different projects/databases.
+
 ---
 
-## Availability
+## Quick Start
 
-### Per-Project Installation (v0.8.1+)
+### Prerequisites
 
-pgflow is **NOT bundled** in the aza-pg Docker image. It must be installed per-project to enable true isolation between different projects/databases.
+- aza-pg container running (provides pgmq extension)
+- Database created for your project
+- PostgreSQL 17+ (pgflow 0.8.x requirement)
+- pgmq 1.5.0+ (included in aza-pg image)
 
-**Installation options:**
+### Option 1: Using npm Packages (Recommended)
 
-1. **npm packages (recommended)**: `bun add @pgflow/dsl @pgflow/client`
-2. **Direct SQL**: Download schema from GitHub and run via psql
+The official pgflow packages provide TypeScript DSL for defining workflows:
 
-See [PGFLOW-SETUP.md](./PGFLOW-SETUP.md) for detailed installation instructions.
+```bash
+# Install in your project
+bun add @pgflow/dsl @pgflow/client
+```
 
-### Dependencies
+```typescript
+import { Flow } from "@pgflow/dsl";
 
-- **pgmq extension**: Included in aza-pg image (v1.7.0)
-- **PostgreSQL 17+**: Required for pgflow v0.8.x
+// Define workflow with full type safety
+const MyWorkflow = new Flow<{ url: string }>({
+  slug: "my_workflow",
+  maxAttempts: 3,
+  baseDelay: 5,
+  timeout: 60,
+})
+  .step({ slug: "fetch" }, async (input) => {
+    // Step implementation
+    return { data: "fetched" };
+  })
+  .step({ slug: "process", dependsOn: ["fetch"] }, async (input) => {
+    return { result: input.fetch.data };
+  });
+```
 
-### Verification
+### Option 2: Direct SQL Installation
 
-After installing pgflow in your database:
+1. Get the schema from the pgflow repository:
+
+```bash
+# Download combined schema
+VERSION="0.8.1"
+curl -sL "https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas/combined.sql" \
+  -o pgflow-${VERSION}.sql
+```
+
+2. Install in your database:
+
+```bash
+# Connect to your project database
+psql -d your_project_db -f pgflow-0.8.1.sql
+```
+
+3. Verify installation:
 
 ```sql
--- List pgflow schema
-\dn pgflow
+-- Check tables (should be 7)
+SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'pgflow';
 
--- Count tables (should be 7)
-SELECT count(*) FROM pg_tables WHERE schemaname = 'pgflow';
+-- Check functions (should be 14+)
+SELECT COUNT(*) FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = 'pgflow';
+```
 
--- Count functions (should be 14+)
-SELECT count(*) FROM pg_proc WHERE pronamespace = 'pgflow'::regnamespace;
+---
+
+## Installation
+
+### Multi-Project Setup
+
+For true isolation, each project should have its own database with independent pgflow schema:
+
+```sql
+-- Create project databases
+CREATE DATABASE project_alpha;
+CREATE DATABASE project_beta;
+
+-- Connect and install pgflow in each
+\c project_alpha
+\i pgflow-0.8.1.sql
+
+\c project_beta
+\i pgflow-0.8.1.sql
+```
+
+Each database has completely independent:
+
+- Workflow definitions (`pgflow.flows`, `pgflow.steps`)
+- Execution state (`pgflow.runs`, `pgflow.step_states`)
+- Task queues (via pgmq)
+
+### Version Compatibility
+
+| pgflow | pgmq Required | PostgreSQL Required |
+| ------ | ------------- | ------------------- |
+| 0.8.1  | 1.5.0+        | 17+                 |
+| 0.7.2  | 1.4.x         | 14+                 |
+
+### Schema Files
+
+The pgflow schema consists of 21 SQL files that must be combined in order:
+
+1. `0010_extensions.sql` - pgmq extension
+2. `0020_schemas.sql` - pgflow schema creation
+3. `0030_utilities.sql` - Utility functions
+4. `0040_types.sql` - Custom composite types
+5. `0050_tables_definitions.sql` - Flow/step definition tables
+6. `0055_tables_workers.sql` - Worker tracking tables
+7. `0060_tables_runtime.sql` - Runtime execution tables
+8. `0090_function_poll_for_tasks.sql` - Task polling (deprecated)
+9. `0100_function_*.sql` - Core workflow functions (8 files)
+10. `0105_function_get_run_with_states.sql` - State queries
+11. `0110_function_*.sql` - Batch operations (2 files)
+12. `0120_function_start_tasks.sql` - Task initialization
+13. `0200_grants_and_revokes.sql` - Security settings
+
+Source: https://github.com/pgflow-dev/pgflow/tree/main/pkgs/core/schemas
+
+---
+
+## Core Concepts
+
+### 1. Flows
+
+A **flow** is a named workflow definition with default retry and timeout settings. Identified by `flow_slug`.
+
+```sql
+SELECT * FROM pgflow.create_flow(
+  flow_slug := 'etl_pipeline',
+  max_attempts := 3,      -- Retry up to 3 times
+  base_delay := 5,        -- Initial retry delay: 5 seconds
+  timeout := 120          -- Step timeout: 120 seconds
+);
+```
+
+### 2. Steps
+
+A **step** is a unit of work within a flow. Steps can have dependencies on other steps.
+
+```sql
+-- Add independent step
+SELECT * FROM pgflow.add_step('etl_pipeline', 'extract');
+
+-- Add step with dependency
+SELECT * FROM pgflow.add_step(
+  flow_slug := 'etl_pipeline',
+  step_slug := 'transform',
+  deps_slugs := ARRAY['extract']  -- Waits for 'extract' to complete
+);
+```
+
+### 3. Dependencies
+
+Dependencies create a DAG structure. A step only executes after all its dependencies complete.
+
+```sql
+-- Linear pipeline: extract → transform → load
+SELECT * FROM pgflow.add_step('pipeline', 'extract');
+SELECT * FROM pgflow.add_step('pipeline', 'transform', ARRAY['extract']);
+SELECT * FROM pgflow.add_step('pipeline', 'load', ARRAY['transform']);
+
+-- Parallel branches: extract → [transform_a, transform_b] → merge
+SELECT * FROM pgflow.add_step('pipeline', 'extract');
+SELECT * FROM pgflow.add_step('pipeline', 'transform_a', ARRAY['extract']);
+SELECT * FROM pgflow.add_step('pipeline', 'transform_b', ARRAY['extract']);
+SELECT * FROM pgflow.add_step('pipeline', 'merge', ARRAY['transform_a', 'transform_b']);
+```
+
+### 4. Runs
+
+A **run** is a workflow execution instance with input data.
+
+```sql
+SELECT * FROM pgflow.start_flow(
+  flow_slug := 'etl_pipeline',
+  input := '{"source": "s3://bucket/data.csv", "format": "csv"}'::jsonb
+);
+```
+
+**Returns**: Run record with `run_id` for tracking.
+
+### 5. Tasks
+
+A **task** is the actual work unit queued for execution. In v0.8.1, each step creates exactly 1 task. Actual work items created when steps become ready. Processed by workers.
+
+### 6. Workers
+
+Workers are processes that poll queues, execute tasks, and update state.
+
+```sql
+-- Register worker (typically done by worker process)
+INSERT INTO pgflow.workers (worker_id, queue_name, function_name)
+VALUES (gen_random_uuid(), 'etl_pipeline', 'worker_main')
+RETURNING *;
+```
+
+---
+
+## Basic Usage
+
+### Creating a Workflow
+
+```sql
+-- 1. Define the flow
+SELECT * FROM pgflow.create_flow(
+  flow_slug := 'data_sync',
+  max_attempts := 3,
+  base_delay := 2,
+  timeout := 60
+);
+
+-- 2. Add steps with dependencies
+SELECT * FROM pgflow.add_step('data_sync', 'fetch_data');
+SELECT * FROM pgflow.add_step('data_sync', 'validate', ARRAY['fetch_data']);
+SELECT * FROM pgflow.add_step('data_sync', 'process', ARRAY['validate']);
+SELECT * FROM pgflow.add_step('data_sync', 'store', ARRAY['process']);
+
+-- 3. View the workflow definition
+SELECT s.step_slug, s.step_index, s.deps_count,
+       array_agg(d.dep_slug ORDER BY d.dep_slug) AS dependencies
+FROM pgflow.steps s
+LEFT JOIN pgflow.deps d ON d.flow_slug = s.flow_slug AND d.step_slug = s.step_slug
+WHERE s.flow_slug = 'data_sync'
+GROUP BY s.step_slug, s.step_index, s.deps_count
+ORDER BY s.step_index;
+```
+
+### Starting a Workflow
+
+```sql
+-- Start a new run
+SELECT * FROM pgflow.start_flow(
+  'data_sync',
+  '{"api_endpoint": "https://api.example.com/data", "limit": 1000}'::jsonb
+);
+
+-- Returns run record with run_id
+-- Example: run_id = '550e8400-e29b-41d4-a716-446655440000'
+```
+
+### Monitoring Workflow Status
+
+```sql
+-- Check run status
+SELECT run_id, status, remaining_steps, started_at, completed_at, failed_at
+FROM pgflow.runs
+WHERE flow_slug = 'data_sync'
+ORDER BY started_at DESC
+LIMIT 10;
+
+-- Check step states for a specific run
+SELECT step_slug, status, remaining_deps, started_at, completed_at, failed_at
+FROM pgflow.step_states
+WHERE run_id = '550e8400-e29b-41d4-a716-446655440000'
+ORDER BY created_at;
+
+-- Check task details
+SELECT step_slug, status, attempts_count, error_message, started_at, completed_at
+FROM pgflow.step_tasks
+WHERE run_id = '550e8400-e29b-41d4-a716-446655440000'
+ORDER BY queued_at;
+```
+
+### Processing Tasks (Worker Side)
+
+```sql
+-- Poll for ready tasks
+SELECT * FROM pgflow.start_tasks(
+  'order_processing',
+  ARRAY[msg_id]::bigint[],
+  worker_uuid
+);
+
+-- Complete task with output
+SELECT pgflow.complete_task(
+  run_id,
+  'validate',
+  0,  -- task_index
+  '{"valid": true}'::jsonb
+);
+
+-- Or fail task (will retry if attempts remaining)
+SELECT pgflow.fail_task(
+  run_id,
+  'validate',
+  0,
+  'Validation failed: invalid order'
+);
 ```
 
 ---
@@ -222,153 +488,6 @@ Tracks worker registration and heartbeats.
 | started_at        | timestamptz | Worker registration timestamp    |
 | stopped_at        | timestamptz | Worker stop timestamp (nullable) |
 | last_heartbeat_at | timestamptz | Last heartbeat timestamp         |
-
----
-
-## Core Concepts
-
-### 1. Flows
-
-A **flow** is a named workflow definition with default retry and timeout settings.
-
-```sql
-SELECT * FROM pgflow.create_flow(
-  flow_slug := 'etl_pipeline',
-  max_attempts := 3,      -- Retry up to 3 times
-  base_delay := 5,        -- Initial retry delay: 5 seconds
-  timeout := 120          -- Step timeout: 120 seconds
-);
-```
-
-### 2. Steps
-
-A **step** is a unit of work within a flow. Steps can have dependencies on other steps.
-
-```sql
--- Add independent step
-SELECT * FROM pgflow.add_step('etl_pipeline', 'extract');
-
--- Add step with dependency
-SELECT * FROM pgflow.add_step(
-  flow_slug := 'etl_pipeline',
-  step_slug := 'transform',
-  deps_slugs := ARRAY['extract']  -- Waits for 'extract' to complete
-);
-```
-
-### 3. Dependencies
-
-Dependencies create a DAG structure. A step only executes after all its dependencies complete.
-
-```sql
--- Linear pipeline: extract → transform → load
-SELECT * FROM pgflow.add_step('pipeline', 'extract');
-SELECT * FROM pgflow.add_step('pipeline', 'transform', ARRAY['extract']);
-SELECT * FROM pgflow.add_step('pipeline', 'load', ARRAY['transform']);
-
--- Parallel branches: extract → [transform_a, transform_b] → merge
-SELECT * FROM pgflow.add_step('pipeline', 'extract');
-SELECT * FROM pgflow.add_step('pipeline', 'transform_a', ARRAY['extract']);
-SELECT * FROM pgflow.add_step('pipeline', 'transform_b', ARRAY['extract']);
-SELECT * FROM pgflow.add_step('pipeline', 'merge', ARRAY['transform_a', 'transform_b']);
-```
-
-### 4. Runs
-
-A **run** is a workflow execution instance with input data.
-
-```sql
-SELECT * FROM pgflow.start_flow(
-  flow_slug := 'etl_pipeline',
-  input := '{"source": "s3://bucket/data.csv", "format": "csv"}'::jsonb
-);
-```
-
-**Returns**: Run record with `run_id` for tracking.
-
-### 5. Tasks
-
-A **task** is the actual work unit queued for execution. In v0.8.1, each step creates exactly 1 task.
-
-Workers poll for tasks, process them, and mark them as completed or failed.
-
-### 6. Workers
-
-Workers are processes that poll queues, execute tasks, and update state.
-
-```sql
--- Register worker (typically done by worker process)
-INSERT INTO pgflow.workers (worker_id, queue_name, function_name)
-VALUES (gen_random_uuid(), 'etl_pipeline', 'worker_main')
-RETURNING *;
-```
-
----
-
-## Basic Usage
-
-### Creating a Workflow
-
-```sql
--- 1. Define the flow
-SELECT * FROM pgflow.create_flow(
-  flow_slug := 'data_sync',
-  max_attempts := 3,
-  base_delay := 2,
-  timeout := 60
-);
-
--- 2. Add steps with dependencies
-SELECT * FROM pgflow.add_step('data_sync', 'fetch_data');
-SELECT * FROM pgflow.add_step('data_sync', 'validate', ARRAY['fetch_data']);
-SELECT * FROM pgflow.add_step('data_sync', 'process', ARRAY['validate']);
-SELECT * FROM pgflow.add_step('data_sync', 'store', ARRAY['process']);
-
--- 3. View the workflow definition
-SELECT s.step_slug, s.step_index, s.deps_count,
-       array_agg(d.dep_slug ORDER BY d.dep_slug) AS dependencies
-FROM pgflow.steps s
-LEFT JOIN pgflow.deps d ON d.flow_slug = s.flow_slug AND d.step_slug = s.step_slug
-WHERE s.flow_slug = 'data_sync'
-GROUP BY s.step_slug, s.step_index, s.deps_count
-ORDER BY s.step_index;
-```
-
-### Starting a Workflow
-
-```sql
--- Start a new run
-SELECT * FROM pgflow.start_flow(
-  'data_sync',
-  '{"api_endpoint": "https://api.example.com/data", "limit": 1000}'::jsonb
-);
-
--- Returns run record with run_id
--- Example: run_id = '550e8400-e29b-41d4-a716-446655440000'
-```
-
-### Monitoring Workflow Status
-
-```sql
--- Check run status
-SELECT run_id, status, remaining_steps, started_at, completed_at, failed_at
-FROM pgflow.runs
-WHERE flow_slug = 'data_sync'
-ORDER BY started_at DESC
-LIMIT 10;
-
--- Check step states for a specific run
-SELECT step_slug, status, remaining_deps, started_at, completed_at, failed_at
-FROM pgflow.step_states
-WHERE run_id = '550e8400-e29b-41d4-a716-446655440000'
-ORDER BY created_at;
-
--- Check task details
-SELECT step_slug, status, attempts_count, error_message, started_at, completed_at
-FROM pgflow.step_tasks
-WHERE run_id = '550e8400-e29b-41d4-a716-446655440000'
-ORDER BY queued_at;
-```
 
 ---
 
@@ -505,23 +624,6 @@ SELECT * FROM pgflow.start_flow(
 ```
 
 ### Task Processing (Worker Side)
-
-#### `pgflow.read_with_poll()`
-
-Polls a queue for messages (internal helper, typically not called directly).
-
-```sql
-FUNCTION pgflow.read_with_poll(
-  queue_name text,
-  vt integer,                     -- Visibility timeout
-  qty integer,                    -- Max messages to read
-  max_poll_seconds integer DEFAULT 5,
-  poll_interval_ms integer DEFAULT 100,
-  conditional jsonb DEFAULT '{}'
-) RETURNS SETOF pgmq.message_record
-```
-
-**Note**: This is a low-level function. Most workers use `start_tasks()` instead.
 
 #### `pgflow.start_tasks()` (v0.8.1 recommended)
 
@@ -784,19 +886,6 @@ SELECT * FROM pgflow.add_step(
 );
 ```
 
-#### Manual Retry
-
-Re-queue a failed task manually:
-
-```sql
--- 1. Get message_id from failed task
-SELECT message_id, error_message FROM pgflow.step_tasks
-WHERE run_id = '...' AND step_slug = '...' AND status = 'failed';
-
--- 2. Manually re-queue (requires pgmq internals)
--- (Not recommended - better to fix root cause and restart flow)
-```
-
 ### Timeouts
 
 #### Step Timeout
@@ -959,6 +1048,85 @@ $$;
 
 ---
 
+## Real-Time Event Notifications
+
+pgflow v0.8.1 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
+
+### Subscribing to Events
+
+```sql
+-- Subscribe to ALL pgflow events (global channel)
+LISTEN pgflow_events;
+
+-- Subscribe to a specific workflow topic
+LISTEN order_processing;
+```
+
+### Event Payload Structure
+
+Events are delivered as JSON:
+
+```json
+{
+  "payload": {
+    "event_type": "step:completed",
+    "run_id": "uuid",
+    "step_slug": "validate",
+    "status": "completed"
+  },
+  "event": "step:completed",
+  "topic": "order_processing",
+  "timestamp": 1700000000.123
+}
+```
+
+### Event Types
+
+| Event            | Description                      |
+| ---------------- | -------------------------------- |
+| `step:completed` | A step has finished successfully |
+| `run:failed`     | A workflow run has failed        |
+| `run:completed`  | A workflow run completed         |
+
+### Client-Side Example (Node.js)
+
+```typescript
+import { Client } from "pg";
+
+const client = new Client(connectionString);
+await client.connect();
+
+// Subscribe to events
+await client.query("LISTEN pgflow_events");
+
+// Handle notifications
+client.on("notification", (msg) => {
+  const event = JSON.parse(msg.payload);
+  console.log("Event:", event.event, event.payload);
+});
+```
+
+### Client-Side Example (Python)
+
+```python
+import psycopg2
+import select
+
+conn = psycopg2.connect(dsn)
+conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+curs = conn.cursor()
+curs.execute("LISTEN pgflow_events;")
+
+while True:
+    if select.select([conn], [], [], 5) != ([], [], []):
+        conn.poll()
+        while conn.notifies:
+            notify = conn.notifies.pop(0)
+            print(f"Got: {notify.payload}")
+```
+
+---
+
 ## Performance Considerations
 
 ### Indexing
@@ -984,9 +1152,31 @@ pgflow creates indexes on:
 - **Vertical scaling**: Increase worker batch size (`qty` parameter)
 - **Queue separation**: Use separate flows for different workload priorities
 
-### Monitoring Queries
+---
+
+## Monitoring
 
 ```sql
+-- Active runs
+SELECT flow_slug, status, COUNT(*)
+FROM pgflow.runs
+WHERE status = 'started'
+GROUP BY flow_slug, status;
+
+-- Failed tasks
+SELECT r.flow_slug, ss.step_slug, st.error_message
+FROM pgflow.step_tasks st
+JOIN pgflow.runs r ON st.run_id = r.run_id
+JOIN pgflow.step_states ss ON st.run_id = ss.run_id AND st.step_slug = ss.step_slug
+WHERE st.status = 'failed';
+
+-- Workflow completion times
+SELECT flow_slug,
+       AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) as avg_seconds
+FROM pgflow.runs
+WHERE status = 'completed'
+GROUP BY flow_slug;
+
 -- Active runs by status
 SELECT status, count(*) FROM pgflow.runs GROUP BY status;
 
@@ -1014,6 +1204,30 @@ GROUP BY queue_name;
 ---
 
 ## Troubleshooting
+
+### Schema Not Found
+
+```
+ERROR: schema "pgflow" does not exist
+```
+
+→ Run the installation SQL in your database
+
+### pgmq Extension Missing
+
+```
+ERROR: extension "pgmq" is not available
+```
+
+→ Ensure you're using the aza-pg image which includes pgmq
+
+### Version Mismatch
+
+```
+ERROR: function pgflow.xxx does not exist
+```
+
+→ Your schema version may not match your client. Reinstall the schema.
 
 ### Tasks Stuck in 'queued' Status
 
@@ -1296,20 +1510,176 @@ END $$;
 4. **No workflow versioning**: Schema changes affect all runs
 5. **No distributed locking**: Use advisory locks if needed
 
-### Upgrade Path
+---
 
-To get the latest pgflow schema:
+## Schema Update Process
 
-1. Visit https://github.com/pgflow-dev/pgflow
-2. Install via npm: `bun add @pgflow/dsl @pgflow/client` (or `npm install @pgflow/core@0.8.1`)
-3. Run migration files manually from `pkgs/core/migrations/`
+This section documents how to update the pgflow test schema and verify compatibility with aza-pg.
+
+### Architecture Change (v0.8.1)
+
+**Important**: As of v0.8.1, pgflow is NO LONGER bundled in the Docker image.
+
+| Before               | After                    |
+| -------------------- | ------------------------ |
+| Bundled in initdb.d  | Per-project installation |
+| Auto-installed       | Manual installation      |
+| Single shared schema | Isolated per database    |
+
+### Test Schema Location
+
+The pgflow schema is maintained in test fixtures for validation:
+
+```
+tests/fixtures/pgflow/
+├── schema-v0.8.1.sql   # Combined schema for testing
+├── install.ts          # Installation helper
+└── README.md           # Update instructions
+```
+
+### Update Workflow
+
+#### 1. Check for New pgflow Version
+
+```bash
+# Check npm for latest version
+npm view @pgflow/dsl version
+npm view @pgflow/client version
+
+# Or check GitHub releases
+open https://github.com/pgflow-dev/pgflow/releases
+```
+
+#### 2. Download Schema Files
+
+pgflow uses 21 numbered SQL files in `pkgs/core/schemas/`:
+
+```bash
+VERSION="0.9.0"  # Update to target version
+BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
+
+# Create combined schema
+echo "-- pgflow v${VERSION} Schema" > tests/fixtures/pgflow/schema-v${VERSION}.sql
+echo "-- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@${VERSION}/pkgs/core/schemas/" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+
+FILES=(
+  0010_extensions.sql
+  0020_schemas.sql
+  0030_utilities.sql
+  0040_types.sql
+  0050_tables_definitions.sql
+  0055_tables_workers.sql
+  0060_tables_runtime.sql
+  0090_function_poll_for_tasks.sql
+  0100_function_add_step.sql
+  0100_function_cascade_complete_taskless_steps.sql
+  0100_function_complete_task.sql
+  0100_function_create_flow.sql
+  0100_function_fail_task.sql
+  0100_function_maybe_complete_run.sql
+  0100_function_start_flow.sql
+  0100_function_start_ready_steps.sql
+  0105_function_get_run_with_states.sql
+  0110_function_set_vt_batch.sql
+  0110_function_start_flow_with_states.sql
+  0120_function_start_tasks.sql
+  0200_grants_and_revokes.sql
+)
+
+for file in "${FILES[@]}"; do
+  echo -e "\n-- ============================================================================" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  echo "-- Source: ${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  echo -e "-- ============================================================================\n" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+  curl -sS "${BASE_URL}/${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
+done
+```
+
+#### 3. Update References
+
+Update these files:
+
+1. **`tests/fixtures/pgflow/install.ts`**:
+   - Update `PGFLOW_VERSION` constant
+   - Update schema file path if version changed
+
+2. **`scripts/extensions/manifest-data.ts`**:
+   - Update `tag: "pgflow@X.Y.Z"`
+
+3. **`examples/pgflow/10-pgflow.sql`**:
+   - Copy new schema for documentation
+
+4. **npm packages** (if using):
+   ```bash
+   bun add -d @pgflow/dsl@X.Y.Z @pgflow/client@X.Y.Z
+   ```
+
+#### 4. Run Tests
+
+```bash
+# Validate schema completeness
+bun scripts/test/test-pgflow-schema.ts --image=aza-pg:latest
+
+# Full functional tests
+bun scripts/test/test-pgflow-v081.ts --image=aza-pg:latest
+
+# Multi-project isolation
+bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
+```
+
+#### 5. Update Documentation
+
+- `docs/PGFLOW.md` - Version compatibility table
+- `tests/fixtures/pgflow/README.md` - Schema file list
+
+#### 6. Commit Changes
+
+```bash
+git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts examples/pgflow/
+git commit -m "feat(pgflow): update test schema to v${VERSION}
+
+Update pgflow test fixtures to v${VERSION}.
+
+Changes:
+- Download and combine 21 schema files from pgflow@${VERSION}
+- Update manifest version reference
+- Verify all tests pass
+
+Source: https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@${VERSION}
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+### Breaking Changes Log
+
+#### v0.8.0 → v0.8.1
+
+- Fixed Supabase CLI version requirement (2.50.3+)
+- No schema changes
+
+#### v0.7.x → v0.8.0
+
+- **BREAKING**: Requires pgmq 1.5.0+ (was 1.4.x)
+- **BREAKING**: Requires PostgreSQL 17+ (was 14+)
+- Added `step_type` column for map steps
+- Added `task_index` for parallel processing
+- Removed deprecated `read_with_poll()` function
+
+### Maintenance Notes
+
+**Last Updated**: 2025-11-26
+**Current Version**: v0.8.1
+**Schema Location**: `tests/fixtures/pgflow/schema-v0.8.1.sql`
 
 ---
 
-## See Also
+## Resources
 
-- [pgflow GitHub Repository](https://github.com/pgflow-dev/pgflow)
+- [pgflow Documentation](https://pgflow.dev)
+- [pgflow GitHub](https://github.com/pgflow-dev/pgflow)
+- [pgflow Schemas](https://github.com/pgflow-dev/pgflow/tree/main/pkgs/core/schemas)
+- [@pgflow/dsl on npm](https://www.npmjs.com/package/@pgflow/dsl)
+- [@pgflow/client on npm](https://www.npmjs.com/package/@pgflow/client)
 - [pgmq Documentation](https://github.com/pgmq/pgmq#readme)
 - [PostgreSQL LISTEN/NOTIFY](https://www.postgresql.org/docs/current/sql-notify.html)
-- [Extension Catalog](../EXTENSIONS.md)
-- [aza-pg Architecture](../ARCHITECTURE.md)
+- [Extension Catalog](EXTENSIONS.md)
+- [aza-pg Architecture](ARCHITECTURE.md)

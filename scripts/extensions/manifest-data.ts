@@ -743,7 +743,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description: "DAG-based workflow orchestration engine. Per-project installation required.",
     enabled: false,
     enabledInComprehensiveTest: false, // SQL-only schema, per-project installation
-    disabledReason: "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
+    disabledReason: "Per-project installation - see docs/PGFLOW.md for instructions",
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
@@ -756,7 +756,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       notes: [
         "NOT bundled in image - install per-project",
         "Requires pgmq 1.5.0+ (included in image)",
-        "See docs/PGFLOW-SETUP.md for installation",
+        "See docs/PGFLOW.md for installation",
         "v0.8.1 supports map steps, task_index, pgmq 1.5.x compatibility",
       ],
     },

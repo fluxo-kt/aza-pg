@@ -39,6 +39,12 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> $GITHUB_OUTPUT
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
         env:
@@ -64,7 +70,7 @@ jobs:
             # Count-based retention (overrides days)
             echo "Using count-based retention: keep last $KEEP_LAST tags"
             bun scripts/release/cleanup-testing-images.ts \
-              --repository fluxo-kt/aza-pg-testing \
+              --repository ${{ steps.config.outputs.testing_image_name }} \
               --keep-last "$KEEP_LAST" \
               --continue-on-error \
               $DRY_RUN
@@ -73,7 +79,7 @@ jobs:
             DAYS="${DAYS:-2}"
             echo "Using time-based retention: delete tags older than $DAYS days"
             bun scripts/release/cleanup-testing-images.ts \
-              --repository fluxo-kt/aza-pg-testing \
+              --repository ${{ steps.config.outputs.testing_image_name }} \
               --older-than "$DAYS" \
               --continue-on-error \
               $DRY_RUN
@@ -85,7 +91,7 @@ jobs:
           set -euo pipefail
           echo "### Cleanup Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Repository**: \`fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: \`${{ steps.config.outputs.testing_image_name }}\`" >> $GITHUB_STEP_SUMMARY
 
           # Determine which policy was used
           KEEP_LAST="${{ inputs.keep_last }}"

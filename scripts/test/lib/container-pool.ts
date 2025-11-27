@@ -207,9 +207,10 @@ export class ContainerPool {
     const schema = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // Create schema and set search_path
+    // Include pg_catalog to ensure system tables are accessible
     await this.executeRaw(
       container.name,
-      `CREATE SCHEMA IF NOT EXISTS "${schema}"; SET search_path TO "${schema}", public;`
+      `CREATE SCHEMA IF NOT EXISTS "${schema}"; SET search_path TO "${schema}", public, pg_catalog;`
     );
 
     container.inUse = true;
@@ -283,7 +284,8 @@ export class ContainerPool {
     schema: string,
     sql: string
   ): Promise<string> {
-    const wrappedSql = `SET search_path TO "${schema}", public; ${sql}`;
+    // Include pg_catalog to ensure system tables are accessible
+    const wrappedSql = `SET search_path TO "${schema}", public, pg_catalog; ${sql}`;
     return this.executeRaw(containerName, wrappedSql);
   }
 
@@ -295,11 +297,17 @@ export class ContainerPool {
     schema: string,
     sql: string
   ): Promise<T[]> {
-    const wrappedSql = `SET search_path TO "${schema}", public; ${sql}`;
+    // Build the SQL with proper separation: SET cannot be in a subquery
+    // Include pg_catalog to ensure system tables are accessible
+    const cleanSql = sql.replace(/;$/, "");
+    const wrappedSql = `SET search_path TO "${schema}", public, pg_catalog; SELECT json_agg(t) FROM (${cleanSql}) t`;
 
     // Use JSON output format for easier parsing
+    // -q: quiet mode (suppress NOTICE messages and SET output)
+    // -A: unaligned output
+    // -t: tuples only (no headers)
     const result =
-      await $`docker exec ${containerName} psql -U postgres -d postgres -tA -c ${`SELECT json_agg(t) FROM (${wrappedSql.replace(/;$/, "")}) t`}`
+      await $`docker exec ${containerName} psql -U postgres -d postgres -qAt -c ${wrappedSql}`
         .quiet()
         .nothrow();
 

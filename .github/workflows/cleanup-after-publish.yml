@@ -28,6 +28,12 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> $GITHUB_OUTPUT
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
         env:
@@ -46,7 +52,7 @@ jobs:
 
           # Delete the testing tag AND its signature
           bun scripts/release/cleanup-testing-images.ts \
-            --repository "fluxo-kt/aza-pg-testing" \
+            --repository "${{ steps.config.outputs.testing_image_name }}" \
             --tags "testing-${{ github.event.workflow_run.head_sha }}" \
             --continue-on-error
 
@@ -60,6 +66,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Upstream Workflow**: [${{ github.event.workflow_run.conclusion }}](${{ github.event.workflow_run.html_url }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Testing Tag**: \`testing-${{ github.event.workflow_run.head_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Repository**: \`ghcr.io/fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: \`ghcr.io/${{ steps.config.outputs.testing_image_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This cleanup runs automatically when a publish workflow is cancelled to prevent orphaned testing images." >> $GITHUB_STEP_SUMMARY

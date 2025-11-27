@@ -58,10 +58,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to test (default: 18-single-node)"
+        description: "Image tag to test (default from config)"
         required: false
         type: string
-        default: "18-single-node"
       skip_tier:
         description: "Skip a specific tier (1, 2, or 3)"
         required: false
@@ -99,6 +98,12 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "default_tag=$(jq -r '.defaultTag' .github/workflow-config.json)" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -112,8 +117,8 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.image_tag }}"
           else
-            # Default to 18-single-node for scheduled runs
-            TAG="18-single-node"
+            # Default from workflow config for scheduled runs
+            TAG="${{ steps.config.outputs.default_tag }}"
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "Using image tag: ${TAG}"

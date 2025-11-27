@@ -34,7 +34,13 @@ services:
     networks:
       - postgres_net
 
-    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
+    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 

@@ -203,8 +203,11 @@ export class ContainerPool {
       return this.acquire();
     }
 
+    // Mark container as in-use IMMEDIATELY to prevent race conditions
+    container.inUse = true;
+
     // Create unique schema for this acquisition
-    const schema = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const schema = `test_${crypto.randomUUID().replace(/-/g, "")}`;
 
     // Create schema and set search_path
     // Include pg_catalog to ensure system tables are accessible
@@ -213,7 +216,6 @@ export class ContainerPool {
       `CREATE SCHEMA IF NOT EXISTS "${schema}"; SET search_path TO "${schema}", public, pg_catalog;`
     );
 
-    container.inUse = true;
     container.currentSchema = schema;
 
     return {
@@ -240,13 +242,22 @@ export class ContainerPool {
           container.name,
           `DROP SCHEMA IF EXISTS "${container.currentSchema}" CASCADE;`
         );
+        // Only mark as available if schema drop succeeded
+        container.inUse = false;
+        container.currentSchema = null;
       } catch (error) {
-        console.warn(`Warning: Failed to drop schema ${container.currentSchema}:`, error);
+        // Keep container marked as in-use to prevent schema leaks
+        console.error(
+          `ERROR: Failed to drop schema ${container.currentSchema} on ${container.name}. Container remains in-use to prevent leaks.`,
+          error
+        );
+        throw error; // Propagate error to caller
       }
+    } else {
+      // No schema to clean up, safe to release
+      container.inUse = false;
+      container.currentSchema = null;
     }
-
-    container.inUse = false;
-    container.currentSchema = null;
   }
 
   /**
@@ -386,7 +397,9 @@ export async function getGlobalPool(config?: PoolConfig): Promise<ContainerPool>
       }
     };
 
-    process.on("exit", () => cleanup());
+    process.on("beforeExit", async () => {
+      await cleanup();
+    });
     process.on("SIGINT", async () => {
       await cleanup();
       process.exit(130);

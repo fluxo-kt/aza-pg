@@ -41,7 +41,7 @@ const EXTENSIONS: ExtensionTest[] = manifest
     createSQL:
       ext.kind === "builtin" && !["btree_gin", "btree_gist", "pg_trgm"].includes(ext.name)
         ? "" // Builtin extensions that don't need CREATE EXTENSION
-        : `CREATE EXTENSION IF NOT EXISTS ${ext.name} CASCADE`,
+        : `CREATE EXTENSION IF NOT EXISTS "${ext.name}" CASCADE`,
     testSQL: `SELECT * FROM pg_extension WHERE extname = '${ext.name}'`,
   }));
 

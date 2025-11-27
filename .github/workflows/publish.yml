@@ -613,7 +613,7 @@ jobs:
           # Setup container for pgflow v0.8.1 tests (per-project installation)
           bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-test \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
             --password test_pgflow_pass \
             --database pgflow_test \
             --memory 2048 \
@@ -848,7 +848,7 @@ jobs:
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@v1
         with:
-          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          image: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
           failure-threshold: WARN
           accept-keywords: key
@@ -895,7 +895,7 @@ jobs:
             aquasec/trivy:latest image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
           # Capture Trivy scan in JSON format for detailed analysis
@@ -905,13 +905,13 @@ jobs:
             aquasec/trivy:latest image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 
           # Capture image metadata
           echo "=== Image Metadata ===" | tee ${{ runner.temp }}/scan-diagnostics/image-metadata.txt
           docker buildx imagetools inspect \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/image-metadata.txt || true
 
           # Copy SARIF file if it exists
@@ -983,8 +983,8 @@ jobs:
         run: |
           set -euo pipefail  # Exit on any error
           # Sign by digest using testing repository reference (immutable reference)
-          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${DIGEST}"
 
           echo "✅ Image signed successfully with keyless OIDC"
           echo "📝 Signature uploaded to Rekor transparency log"
@@ -994,7 +994,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/release/promote-image.ts \
-            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            --source "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --title "aza-pg Single-Node PostgreSQL" \

@@ -383,6 +383,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "supautils",
     enabled: false,
+    enabledInComprehensiveTest: false, // Build fails due to unresolved patch issues
     disabledReason:
       "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
     kind: "extension",
@@ -741,6 +742,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "workflow",
     description: "DAG-based workflow orchestration engine. Per-project installation required.",
     enabled: false,
+    enabledInComprehensiveTest: false, // SQL-only schema, per-project installation
     disabledReason: "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
     source: {
       type: "git",

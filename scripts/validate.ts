@@ -231,6 +231,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Manifest Integrity",
+      command: ["bun", "scripts/ci/validate-manifest-integrity.ts"],
+      description: "NAME_TO_KEY and PGDG_MAPPINGS completeness",
+      required: true,
+    },
+    {
       name: "Dockerfile Validation",
       command: ["bun", "scripts/docker/validate-dockerfile.ts"],
       description: "Verify Dockerfile is up-to-date with template and manifest",

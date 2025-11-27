@@ -574,6 +574,7 @@
       "category": "workflow",
       "description": "DAG-based workflow orchestration engine. Per-project installation required.",
       "enabled": false,
+      "enabledInComprehensiveTest": false,
       "disabledReason": "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
       "source": {
         "type": "git",
@@ -944,6 +945,7 @@
     {
       "name": "supautils",
       "enabled": false,
+      "enabledInComprehensiveTest": false,
       "disabledReason": "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
       "kind": "extension",
       "category": "safety",
@@ -952,7 +954,7 @@
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
         "tag": "v3.0.2",
-        "commit": "1b071b72cc50ecee36ac9e4b782cb84212ae6d20"
+        "commit": "2b8c31182da2f1df3fdd204fd5d1d66dbaf71ff1"
       },
       "build": {
         "type": "pgxs",

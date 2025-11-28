@@ -67,15 +67,12 @@ function getVersion(entry: ManifestEntry): string {
 function generateContents(manifest: Manifest): string {
   const lines: string[] = [];
   const pgVersion = MANIFEST_METADATA.pgVersion;
-  const buildDate = new Date().toISOString().split("T")[0];
 
   // Header
   lines.push("╔═══════════════════════════════════════════════════════════════╗");
   lines.push(`║  aza-pg Single-Node PostgreSQL ${pgVersion}`.padEnd(64) + "║");
   lines.push("║  https://github.com/fluxo-kt/aza-pg".padEnd(64) + "║");
   lines.push("╚═══════════════════════════════════════════════════════════════╝");
-  lines.push("");
-  lines.push(`Generated: ${buildDate}`);
   lines.push("");
 
   // Filter enabled entries

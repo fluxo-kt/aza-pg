@@ -34,7 +34,7 @@ DECLARE
 BEGIN
     -- Record initialization start
     INSERT INTO pg_aza_status (script_version, expected_extensions, status, notes)
-    VALUES ('2025-11-27', v_expected_exts, 'in_progress', 'Baseline extension initialization started')
+    VALUES ('18.1-3fc8a8c', v_expected_exts, 'in_progress', 'Baseline extension initialization started')
     RETURNING id INTO v_status_id;
 
     -- Attempt to create each extension with error handling

@@ -59,16 +59,6 @@ try {
   const manifestFile = (await dockerFile.exists()) ? dockerFile : localFile;
   const manifest: Manifest = await manifestFile.json();
 
-  // Build timestamp (YYYYMMDDHHNN format)
-  const now = new Date();
-  const buildTimestamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-  ].join("");
-
   // Calculate statistics
   const allEntries = manifest.entries;
   const enabledEntries = allEntries.filter((e) => e.enabled ?? true);
@@ -90,7 +80,6 @@ try {
   // Generate machine-readable JSON
   const versionInfo = {
     postgres_version: pgVersion,
-    build_timestamp: buildTimestamp,
     build_type: "single-node",
     manifest_generated: manifest.generatedAt,
     extensions: {
@@ -125,7 +114,6 @@ try {
   lines.push(`aza-pg - PostgreSQL ${pgMajor} with Extensions`);
   lines.push("===============================================================================");
   lines.push("");
-  lines.push(`Build Date: ${now.toISOString().split("T")[0]}`);
   lines.push(`Manifest Generated: ${manifest.generatedAt}`);
   lines.push("");
 

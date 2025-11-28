@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { appendFile } from "node:fs/promises";
+// Bun-first: Helper to append to GitHub step summary using Bun APIs
+async function appendToGitHubSummary(content: string): Promise<void> {
+  const summaryPath = Bun.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) return;
+
+  const file = Bun.file(summaryPath);
+  const existing = (await file.exists()) ? await file.text() : "";
+  await Bun.write(summaryPath, existing + content);
+}
 
 /**
  * Unified cleanup script for GHCR testing images
@@ -647,7 +655,7 @@ async function deleteAllVersions(
     summary.push("");
 
     try {
-      await appendFile(Bun.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+      await appendToGitHubSummary(summary.join("\n") + "\n");
     } catch {
       // Ignore summary write errors
     }
@@ -800,7 +808,7 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     summary.push("");
 
     try {
-      await appendFile(Bun.env.GITHUB_STEP_SUMMARY, summary.join("\n") + "\n");
+      await appendToGitHubSummary(summary.join("\n") + "\n");
     } catch {
       // Ignore summary write errors
     }

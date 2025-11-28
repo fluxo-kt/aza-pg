@@ -1,0 +1,104 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+env:
+  CI: true
+  BUILD_NUMBER: ${{ github.run_number }}
+  SCM_TAG: ${{ github.sha }}
+  IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIMER'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 23
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+      security-events: read
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 20 # Longer history for better diff analysis
+
+      # https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_commit_signing: true
+          track_progress: true # ✨ Enables tracking comments
+
+          # This is an optional setting that allows Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            # Please review this pull request and provide feedback on:
+            - Code quality, maintainability, and best practices
+            - Potential bugs or issues
+            - Performance considerations, problems, and optimizations
+            - Security implications, risks, and vulnerabilities
+            - Test coverage gaps, test quality (no meaningless tests!)
+            - Documentation updates if needed
+            - Complexity, over-complicated code, over-engineering, non-obvious/unclear, or unmaintainable code
+            - Code simplicity, elegance, and clarity
+            - Adherence to project guidance, requirements, and goals
+            - Usage of available (especially right in the project) code, practices, and patterns instead of reinventing the wheel
+            - Logic errors, edge cases, potential bugs
+            - Proper error handling, code robustness, and resilience
+            - Comprehensive enough logging
+
+            ## Act integrally and presciently.  Never take lazy route, no shortcuts! **Be circumspect, Think whole, Align with goals & requirements, Gather all, Solve all, Exhaust errors, Eliminate issues, Interrogate assumptions, Falsify, Own the outcome.**  Map all unknowns (identify gaps), Exhaust all dependencies and sources, Falsify completeness (validate).
+
+            ## Ensure u DIDN'T MISS anything, gathered ALL the required information, actually checked every aspect needed, you aren't fucked up anywhere. Use reasoning recalibration (slow, explicit, critical, thoughtful, deep, accurate, non-surface, think harder and longer, ultrathink recursively HOLISTICALLY; Use First Principles, Invert, Falsify, Bayes, grok, Stress-Test); SWOT; Check what criticals are neglected!
+
+            • You DENIED to overlook the critical context.  DETERMINE key intent.  Proactively ANTICIPATE needs.  Act strategically
+            • Be thorough, scrupulous, and critical, but constructive.
+            • Provide specific concrete thoughtful suggestions for improvements.
+            • Verify and check all aspects.
+            • Check ALL functionality is implemented, no placeholders or mistakes.
+            • Be very honest.  Tell me everything I need to know even if I don't want to hear it.  Be proactive and **flag issues before they become problems**.
+            • Ensure no-BS NOT over-engineered yet simple, elegant, and robust solution that accords with KISS+YAGNI+DRY×SOLID principles.
+            • Carefully and thoughtfully investigate/verify ALL potential issues, conflicts, edge cases, and contradictions.
+            • Simplicity MATTERS! Always aim for the best MINIMAL effective code necessary.
+            • Keep code maintenance in mind, no short-term thinking.
+            • Always assume the code was from a junior/middle developer who could miss obvious things, choose suboptimal or not the best solutions, and/or misunderstand complexity or requirements. Code quality should be as if the guy who ends up maintaining it will be a violent psychopath who knows where you live.
+            • Act strategically!  Don't hold back.  Give it your all.  Do cool as fuck.  No BS!
+            • Be critical to yourself BEFORE and AFTER EACH step and challenge your decisions from a few perspectives to come to the best solutions.
+            Really re-verify yourself all the time.  You (as LLM) can do very stupid, mindless things despite being smart!  So keep focus and alarmness!
+            • DETERMINE key intent of the code.
+            • Proactively ANTICIPATE needs and potential issues.
+
+            # **NEVER write praise/flattery/adulation/remorse/regret/apology/yapping/fluff, no useless BS**  NO "this is good but...". Mention ONLY problems and solutions. That's it.  The goal is NOT to be nice. It's to make things better. DO NOT mention what's good, only what should be improved, fixed, removed, changed, or updated. No empty comments, be direct. Provide value, and essence only. Don't waste other people's time.
+
+            Use the repository's CLAUDE.md for guidance on project and conventions.
+
+            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Use GitHub's suggestion format when proposing code changes.
+            Use inline comments to highlight specific areas of concern or for specific code issues.
+
+            # **Confirm RIGHT NOW on EACH distinct criteria/principle/priority/goal and that you understand and roger that! Work right away after (no waiting!)**
+
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
+          claude_args: '--max-turns 300 --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'

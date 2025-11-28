@@ -363,7 +363,9 @@ async function validate(
         ? [
             "sh",
             "-c",
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; test ! -s shellcheck-results.json",
+            // CI mode: JSON output for SARIF upload. Use jq to check for empty array ([] = no errors)
+            // because shellcheck outputs [] even with no errors, which is 2 bytes, not 0
+            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e 'length == 0' shellcheck-results.json > /dev/null",
           ]
         : [
             "sh",

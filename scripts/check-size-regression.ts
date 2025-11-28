@@ -15,6 +15,10 @@
  * Usage:
  *   bun scripts/check-size-regression.ts                    # Check sizes (requires Docker build)
  *   bun scripts/check-size-regression.ts --baseline-only    # Show baselines without checking
+ *
+ * Environment:
+ *   POSTGRES_IMAGE=<image>   # Override image name (default: aza-pg:pg18)
+ *   REQUIRE_DOCKER=true      # Fail if Docker/image unavailable (for CI/publish)
  */
 
 import { getErrorMessage } from "./utils/errors";
@@ -205,8 +209,16 @@ async function main() {
 
   section("Extension Size Regression Check");
 
+  // REQUIRE_DOCKER=true makes this check fail (not skip) when Docker/image unavailable
+  // This is used in publish workflow to ensure size regression checks actually run
+  const requireDocker = Bun.env.REQUIRE_DOCKER === "true";
+
   // Check if Docker is available
   if (!(await isDockerAvailable())) {
+    if (requireDocker) {
+      error("Docker not available - REQUIRE_DOCKER is set, failing instead of skipping");
+      process.exit(1);
+    }
     warning("Docker not available - size regression check skipped");
     info("This check requires a built Docker image to inspect .so files");
     info("Run with --baseline-only to see tracked extensions");
@@ -228,6 +240,14 @@ async function main() {
   info(`Checking image: ${imageName}`);
 
   if (!(await imageExists(imageName))) {
+    if (requireDocker) {
+      error(
+        `Docker image '${imageName}' not found - REQUIRE_DOCKER is set, failing instead of skipping`
+      );
+      info("Build the image first: docker build -t aza-pg:pg18 -f docker/postgres/Dockerfile .");
+      info("Or set POSTGRES_IMAGE env var to point to an existing image");
+      process.exit(1);
+    }
     warning(`Docker image '${imageName}' not found - size regression check skipped`);
     info("Build the image first: docker build -t aza-pg:pg18 -f docker/postgres/Dockerfile .");
     info("Or set POSTGRES_IMAGE env var to point to an existing image");

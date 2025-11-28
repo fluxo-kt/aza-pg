@@ -429,6 +429,20 @@ jobs:
 
           echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
 
+      # Post-build validation: Run docker-dependent checks that were skipped in prep job
+      # These checks MUST pass (not skip) in publish workflow - REQUIRE_DOCKER enforces this
+      - name: Run post-build size regression check
+        run: |
+          set -euo pipefail
+          echo "Running extension size regression check on built image..."
+          bun scripts/check-size-regression.ts
+        env:
+          # Point to the testing image we just pulled
+          POSTGRES_IMAGE: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          # REQUIRE_DOCKER=true makes this check FAIL instead of skip if Docker/image unavailable
+          # This ensures size regression checks actually run in the publish workflow
+          REQUIRE_DOCKER: "true"
+
   # ==========================================================================
   # COMPREHENSIVE TEST GATE - Production Release Validation
   # ==========================================================================

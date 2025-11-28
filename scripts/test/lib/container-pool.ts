@@ -211,12 +211,18 @@ export class ContainerPool {
 
     // Create schema and set search_path
     // Include pg_catalog to ensure system tables are accessible
-    await this.executeRaw(
-      container.name,
-      `CREATE SCHEMA IF NOT EXISTS "${schema}"; SET search_path TO "${schema}", public, pg_catalog;`
-    );
-
-    container.currentSchema = schema;
+    try {
+      await this.executeRaw(
+        container.name,
+        `CREATE SCHEMA IF NOT EXISTS "${schema}"; SET search_path TO "${schema}", public, pg_catalog;`
+      );
+      container.currentSchema = schema;
+    } catch (error) {
+      // Release container lock on schema creation failure to prevent pool deadlock
+      container.inUse = false;
+      container.currentSchema = null;
+      throw error;
+    }
 
     return {
       name: container.name,

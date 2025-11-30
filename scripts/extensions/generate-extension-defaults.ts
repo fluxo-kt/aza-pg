@@ -170,7 +170,7 @@ async function main(): Promise<void> {
 
   // Format with Prettier
   try {
-    await Bun.$`bunx prettier --write ${OUTPUT_PATH}`.quiet();
+    await Bun.$`bun run prettier:write ${OUTPUT_PATH}`.quiet();
     console.log("✓ Formatted with Prettier");
   } catch {
     console.log("Note: Could not format with Prettier (non-critical)");

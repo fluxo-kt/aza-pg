@@ -1,0 +1,65 @@
+╔═══════════════════════════════════════════════════════════════╗
+║  aza-pg Single-Node PostgreSQL 18.1                           ║
+║  https://github.com/fluxo-kt/aza-pg                           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════
+EXTENSIONS (CREATE EXTENSION available)
+═══════════════════════════════════════════════════════════════
+
+  btree_gin                    builtin        indexing
+  btree_gist                   builtin        indexing
+  hll                          v2.19          analytics
+  http                         v1.7.0         integration
+  hypopg                       v1.4.2         performance
+  index_advisor                v0.2.0         performance
+  pg_cron                      v1.6.7         operations
+  pg_hashids                   builtin        utilities
+  pg_jsonschema                builtin        validation
+  pg_net                       v0.20.2        integration
+  pg_partman                   v5.3.1         maintenance
+  pg_repack                    v1.5.3         maintenance
+  pg_stat_monitor              builtin        observability
+  pg_stat_statements           builtin        observability
+  pg_trgm                      builtin        search
+  pgaudit                      v18.0          security
+  pgmq                         v1.7.0         queueing
+  pgroonga                     v4.0.4         search
+  pgsodium                     v3.1.9         security
+  plpgsql                      builtin        language
+  plpgsql_check                v2.8.4         quality
+  rum                          v1.3.15        search
+  set_user                     v4.2.0         security
+  supabase_vault               v0.3.1         security
+  timescaledb                  v2.23.1        timeseries
+  timescaledb_toolkit          v1.22.0        timeseries
+  vector                       v0.8.1         ai
+  vectorscale                  v0.9.0         ai
+  wrappers                     v0.5.7         integration
+
+Total: 29 extensions
+
+═══════════════════════════════════════════════════════════════
+TOOLS (command-line utilities)
+═══════════════════════════════════════════════════════════════
+
+  pg_safeupdate                v1.5
+  pgbackrest                   v2.57.0
+  pgbadger                     v13.1
+  wal2json                     vwal2json_2_6
+
+═══════════════════════════════════════════════════════════════
+PRELOADED MODULES (shared_preload_libraries default)
+═══════════════════════════════════════════════════════════════
+
+  auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb
+
+  Configure via POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable.
+
+═══════════════════════════════════════════════════════════════
+DOCUMENTATION
+═══════════════════════════════════════════════════════════════
+
+  Repository:     https://github.com/fluxo-kt/aza-pg
+  Extensions:     https://github.com/fluxo-kt/aza-pg/blob/main/docs/EXTENSIONS.md
+  Auto-config:    https://github.com/fluxo-kt/aza-pg/blob/main/docs/AUTO-CONFIG.md

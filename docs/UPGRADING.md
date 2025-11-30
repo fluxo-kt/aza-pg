@@ -17,7 +17,7 @@ This guide covers **runtime upgrade procedures** (upgrading a running production
 
 ```bash
 # Check current PostgreSQL version in codebase
-grep pgVersion scripts/extension-defaults.ts
+grep pgVersion scripts/extensions/manifest-data.ts
 ```
 
 **If version needs updating**: See [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md#procedure-1-update-postgresql-base-version) to update version declarations in the codebase, regenerate Dockerfile, and rebuild the image.
@@ -37,21 +37,19 @@ grep pgVersion scripts/extension-defaults.ts
 
 ### Upgrade Path: PostgreSQL 18 → 19 (Example)
 
-#### Step 1: Update Version in Extension Defaults
+#### Step 1: Update Version in Manifest
 
-Edit `scripts/extension-defaults.ts` and update versions:
+Edit `scripts/extensions/manifest-data.ts` and update:
 
 ```typescript
-export const extensionDefaults: ExtensionDefaults = {
+// Update MANIFEST_METADATA for the new PostgreSQL version:
+export const MANIFEST_METADATA = {
   pgVersion: "19.0", // Changed from 18.1
   baseImageSha: "sha256:...", // Updated SHA for postgres:19.0-trixie
-  pgdgVersions: {
-    // Update extension versions for PostgreSQL 19 compatibility
-    pgvector: "...",
-    pgcron: "...",
-    // ... update other PGDG versions as needed
-  },
-};
+} as const;
+
+// Then update each extension's pgdgVersion in the EXTENSIONS array
+// to match PostgreSQL 19 compatible versions
 ```
 
 #### Step 2: Verify Extension Compatibility
@@ -62,7 +60,7 @@ Check each extension supports PostgreSQL 19:
 - pg_cron: https://github.com/citusdata/pg_cron/releases
 - pgAudit: https://github.com/pgaudit/pgaudit/releases
 
-Update `extension-defaults.ts` with compatible versions.
+Update `scripts/extensions/manifest-data.ts` with compatible versions.
 
 #### Step 3: Regenerate Dockerfile and Build
 
@@ -77,7 +75,7 @@ bun run build
 docker run --rm aza-pg:pg18 postgres --version
 ```
 
-**Note**: All versions are hardcoded in the generated Dockerfile from `extension-defaults.ts`. The Dockerfile is auto-generated - never edit it directly.
+**Note**: All versions are hardcoded in the generated Dockerfile from `scripts/extensions/manifest-data.ts`. The Dockerfile is auto-generated - never edit it directly.
 
 #### Step 4: Test Locally
 
@@ -183,18 +181,20 @@ SELECT * FROM pg_stat_replication;
 # Find commit SHA from tag (usually in URL or commit list)
 ```
 
-#### Step 2: Update Extension Defaults
+#### Step 2: Update Manifest
 
-Edit `scripts/extension-defaults.ts`:
+Edit `scripts/extensions/manifest-data.ts`:
 
 ```typescript
-// For PGDG extensions (like pgvector), update the version:
-pgdgVersions: {
-  pgvector: "0.8.2-2.pgdg13+1",  // Changed from 0.8.1-2.pgdg13+1
-  // ... other versions
+// For PGDG extensions (like pgvector), update the pgdgVersion in the extension entry:
+{
+  name: 'vector',  // Note: extension name, displayName is 'pgvector'
+  pgdgVersion: '0.8.2-2.pgdg13+1',  // Changed from 0.8.1-2.pgdg13+1
+  source: { tag: 'v0.8.2' },  // Also update source tag to match
+  // ... other properties
 },
 
-// For source-built extensions, update the git tag/ref in manifest-data.ts
+// For source-built extensions, update the source.tag property
 ```
 
 Then regenerate:

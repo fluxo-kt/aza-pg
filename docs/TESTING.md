@@ -19,62 +19,16 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 
 ## Regression Testing
 
-**For comprehensive regression testing documentation, see [REGRESSION-TESTING.md](./REGRESSION-TESTING.md).**
+**→ See [REGRESSION-TESTING.md](./REGRESSION-TESTING.md) for comprehensive regression testing documentation.**
 
-### Overview
-
-aza-pg includes a comprehensive regression testing framework with dual-mode architecture:
-
-- **Production Mode**: Tests exact release image behavior (enabled extensions from manifest)
-- **Regression Mode**: Tests all extensions including disabled ones (comprehensive catalog coverage)
-
-### Test Tiers
-
-| Tier       | Description                                 | Count         | Duration  |
-| ---------- | ------------------------------------------- | ------------- | --------- |
-| **Tier 1** | Core PostgreSQL regression (official tests) | 30 tests      | ~3-5 min  |
-| **Tier 2** | Extension-specific regression               | 13 extensions | ~5-8 min  |
-| **Tier 3** | Extension interaction tests                 | 14 scenarios  | ~2-4 min  |
-| **Tier 4** | pgTAP unit tests (SQL-based)                | 82 tests      | ~5-10 min |
-
-### Quick Start
+Quick reference:
 
 ```bash
-# Run all regression tests (production mode)
-bun test:regression:all
-
-# Run specific tier
-bun test:regression:core        # Tier 1: PostgreSQL core
-bun test:regression:extensions  # Tier 2: Extension tests
-bun test:regression:interactions # Tier 3: Interaction tests
-
-# Run in regression mode (all extensions)
-TEST_MODE=regression bun test:regression:all
-
-# Use master runner with options
-bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
+bun test:regression:all          # All tiers (production mode)
+bun test:regression:core         # Tier 1: PostgreSQL core (30 tests)
+bun test:regression:extensions   # Tier 2: Extension tests (13 extensions)
+TEST_MODE=regression bun test:regression:all  # Regression mode (all extensions)
 ```
-
-### Images
-
-- **Production**: `aza-pg:pg18` (production Dockerfile, enabled extensions, 6 preloads)
-- **Regression**: `aza-pg:pg18-regression` (separate Dockerfile, all catalog entries, 10 preloads, pgTAP)
-
-Build regression image:
-
-```bash
-bun scripts/build.ts --regression
-```
-
-### Test Mode Detection
-
-Tests automatically detect mode from:
-
-1. `TEST_MODE` environment variable
-2. `/etc/postgresql/version-info.json` (if in container)
-3. Default: production
-
-**See [REGRESSION-TESTING.md](./REGRESSION-TESTING.md) for complete documentation.**
 
 ---
 
@@ -707,6 +661,38 @@ POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaud
 ```
 
 **Note**: Hook-based extensions don't use CREATE EXTENSION - they load via preload libraries.
+
+### 8. Docker Credential Helper Not Found
+
+**Symptom**: PgBouncer tests fail with error: `docker-credential-osxkeychain: executable file not found in $PATH`
+
+**Cause**: System Docker config (`~/.docker/config.json`) references credential helper but the binary is not installed or not in PATH.
+
+**Fix Option 1** - Remove credential helper from Docker config (Quick):
+
+```bash
+# Edit ~/.docker/config.json and remove the "credsStore" line:
+{
+  "auths": {
+    "ghcr.io": {}
+  }
+}
+```
+
+**Fix Option 2** - Install credential helper (Permanent):
+
+```bash
+# macOS
+brew install docker-credential-helper
+
+# Linux (Ubuntu/Debian)
+sudo apt-get install docker-credential-helpers
+
+# Arch Linux
+sudo pacman -S docker-credential-helpers
+```
+
+**Automatic Fallback**: Test scripts automatically detect missing credential helpers and create isolated test configurations. No manual intervention required unless you want to fix the system-level configuration.
 
 ## Test Categories
 

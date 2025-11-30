@@ -36,7 +36,13 @@ services:
     mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-1024m}
     cpus: ${POSTGRES_CPU_LIMIT:-2}
 
-    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
+    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   pgbouncer:
     image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13}

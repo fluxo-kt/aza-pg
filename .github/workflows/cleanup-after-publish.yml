@@ -1,0 +1,71 @@
+name: Cleanup After Publish
+
+# This workflow catches the gap where `if: always()` doesn't run:
+# when a workflow is cancelled (e.g., due to cancel-in-progress: true).
+# It triggers after publish.yml completes and cleans up orphaned testing tags.
+
+on:
+  workflow_run:
+    workflows: ["Publish Single-Node Image"]
+    types: [completed]
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cleanup Orphaned Testing Artifacts
+    runs-on: ubuntu-latest
+    # Only run if publish was cancelled (normal cleanup handles success/failure)
+    if: github.event.workflow_run.conclusion == 'cancelled'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Cleanup testing artifacts from cancelled workflow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Cleaning up testing artifacts from cancelled publish workflow..."
+          echo "Workflow run ID: ${{ github.event.workflow_run.id }}"
+          echo "Head SHA: ${{ github.event.workflow_run.head_sha }}"
+          echo "Conclusion: ${{ github.event.workflow_run.conclusion }}"
+
+          # Delete the testing tag AND its signature
+          bun scripts/release/cleanup-testing-images.ts \
+            --repository "${{ steps.config.outputs.testing_image_name }}" \
+            --tags "testing-${{ github.event.workflow_run.head_sha }}" \
+            --continue-on-error
+
+      - name: Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Orphan Cleanup Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger**: Publish workflow was cancelled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream Workflow**: [${{ github.event.workflow_run.conclusion }}](${{ github.event.workflow_run.html_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Testing Tag**: \`testing-${{ github.event.workflow_run.head_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: \`ghcr.io/${{ steps.config.outputs.testing_image_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This cleanup runs automatically when a publish workflow is cancelled to prevent orphaned testing images." >> $GITHUB_STEP_SUMMARY

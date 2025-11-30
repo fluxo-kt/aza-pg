@@ -41,7 +41,8 @@ function mergeSettings(
 function generatePostgresqlConf(
   stack: StackType,
   settings: PostgreSQLSettings,
-  overrides: Partial<PostgreSQLSettings>
+  overrides: Partial<PostgreSQLSettings>,
+  defaultPreloads: string
 ): string {
   const lines: string[] = [];
 
@@ -173,9 +174,7 @@ function generatePostgresqlConf(
   lines.push("# The following settings are overridden at container startup:");
   lines.push("# - Memory: shared_buffers, effective_cache_size, maintenance_work_mem, work_mem");
   lines.push("# - Connections: max_connections, max_worker_processes, max_parallel_workers");
-  lines.push(
-    "# - Extensions: shared_preload_libraries (default: pg_stat_statements,auto_explain,pg_cron,pgaudit)"
-  );
+  lines.push(`# - Extensions: shared_preload_libraries (default: ${defaultPreloads})`);
   lines.push("# Auto-config is always enabled and cannot be disabled.");
 
   return lines.join("\n");
@@ -314,6 +313,10 @@ async function generateConfigs() {
   info("Generating PostgreSQL configurations...\n");
 
   try {
+    // Load manifest first (needed for preload libraries in config comments)
+    const manifest = await loadManifest(REPO_ROOT);
+    const defaultPreloads = getDefaultSharedPreloadLibraries(manifest);
+
     // Generate base config
     info("Generating base configuration...");
     const baseConf = generateBaseConf(BASE_CONFIG.common);
@@ -330,7 +333,12 @@ async function generateConfigs() {
 
       const stackOverrides = BASE_CONFIG.stacks[stack];
       const settings = mergeSettings(BASE_CONFIG.common, stackOverrides);
-      const postgresqlConf = generatePostgresqlConf(stack, settings, stackOverrides);
+      const postgresqlConf = generatePostgresqlConf(
+        stack,
+        settings,
+        stackOverrides,
+        defaultPreloads
+      );
 
       let confDir: string;
       let confName: string;
@@ -353,7 +361,6 @@ async function generateConfigs() {
 
     // Generate 01-extensions.sql init script
     info("Generating extension init script...");
-    const manifest = await loadManifest(REPO_ROOT);
     const extensionsToEnable = getDefaultEnabledExtensions(manifest);
     const extensionsInitScript = await generateExtensionsInitScript(extensionsToEnable);
     const extensionsInitPath = join(
@@ -365,8 +372,7 @@ async function generateConfigs() {
 
     // Generate healthcheck.sh script (synchronized with init script)
     info("Generating healthcheck script...");
-    const preloadLibraries = getDefaultSharedPreloadLibraries(manifest);
-    const healthcheckScript = generateHealthcheckScript(extensionsToEnable, preloadLibraries);
+    const healthcheckScript = generateHealthcheckScript(extensionsToEnable, defaultPreloads);
     const healthcheckPath = join(REPO_ROOT, "docker/postgres/healthcheck.sh");
     await writeConfigFile(healthcheckPath, healthcheckScript);
     // Make healthcheck executable

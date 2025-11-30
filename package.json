@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Production-Ready PostgreSQL 18 Infrastructure Stack with extensions and tools",
   "type": "module",
+  "trustedDependencies": [
+    "squawk-cli"
+  ],
   "author": "Art Shendrik",
   "license": "MIT",
   "scripts": {
@@ -18,7 +21,13 @@
     "build": "bun scripts/build.ts",
     "generate": "bun scripts/generate-all.ts",
     "hooks:install": "bun-git-hooks",
-    "postinstall": "bun-git-hooks"
+    "postinstall": "bun-git-hooks",
+    "oxlint": "oxlint",
+    "oxlint:fix": "oxlint --fix",
+    "prettier:check": "prettier --check",
+    "prettier:write": "prettier --write",
+    "squawk": "squawk",
+    "tsc": "tsc"
   },
   "devDependencies": {
     "@bun-security-scanner/osv": "^1.0.0",

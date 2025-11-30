@@ -231,6 +231,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Manifest Integrity",
+      command: ["bun", "scripts/ci/validate-manifest-integrity.ts"],
+      description: "NAME_TO_KEY and PGDG_MAPPINGS completeness",
+      required: true,
+    },
+    {
       name: "Dockerfile Validation",
       command: ["bun", "scripts/docker/validate-dockerfile.ts"],
       description: "Verify Dockerfile is up-to-date with template and manifest",
@@ -243,16 +249,16 @@ async function validate(
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint --fix",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun run oxlint --fix",
             ]
-          : ["bun", "x", "oxlint", "--fix", "."]
+          : ["bun", "run", "oxlint:fix", "."]
         : stagedOnly
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun x oxlint",
+              "git diff --cached --name-only -z --diff-filter=d | grep -z '\\.tsx\\?$' | xargs -0 -r bun run oxlint",
             ]
-          : ["bun", "x", "oxlint", "."],
+          : ["bun", "run", "oxlint", "."],
       description: fixMode
         ? stagedOnly
           ? "Auto-fixing linting issues (staged files)"
@@ -269,16 +275,16 @@ async function validate(
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --write --ignore-unknown",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:write --ignore-unknown",
             ]
-          : ["bun", "x", "prettier", "--write", "."]
+          : ["bun", "run", "prettier:write", "."]
         : stagedOnly
           ? [
               "sh",
               "-c",
-              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun x prettier --check --ignore-unknown",
+              "git diff --cached --name-only -z --diff-filter=d | xargs -0 -r bun run prettier:check --ignore-unknown",
             ]
-          : ["bun", "x", "prettier", "--check", "."],
+          : ["bun", "run", "prettier:check", "."],
       description: fixMode
         ? stagedOnly
           ? "Auto-formatting code (staged files)"
@@ -290,7 +296,7 @@ async function validate(
     },
     {
       name: "TypeScript",
-      command: ["bun", "x", "tsc", "--noEmit"],
+      command: ["bun", "run", "tsc", "--noEmit"],
       description: "Type checking (requires full project context)",
       required: true,
     },
@@ -332,6 +338,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Documentation Links",
+      command: ["bun", "scripts/ci/validate-doc-links.ts"],
+      description: "Documentation internal link validation",
+      required: true,
+    },
+    {
       name: "Base Image SHA",
       command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
       description: "Base image SHA validation (warn if stale)",
@@ -351,7 +363,9 @@ async function validate(
         ? [
             "sh",
             "-c",
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; test ! -s shellcheck-results.json",
+            // CI mode: JSON output for SARIF upload. Use jq to check for empty array ([] = no errors)
+            // because shellcheck outputs [] even with no errors, which is 2 bytes, not 0
+            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e 'length == 0' shellcheck-results.json > /dev/null",
           ]
         : [
             "sh",

@@ -22,6 +22,7 @@ import { stat } from "node:fs/promises";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
 import { info, success, warning, error } from "../utils/logger.ts";
 import { TIMEOUTS } from "../config/test-timeouts";
+import { getTestDockerConfig, cleanupTestDockerConfig } from "../utils/docker-test-config";
 
 // =====================================================
 // Interfaces
@@ -51,6 +52,8 @@ const testResult: TestResult = {
 
 // Cleanup state
 let cleanupProject = "";
+let cleanupDockerEnv: Record<string, string> | undefined;
+let cleanupDockerConfig: string | undefined;
 
 // =====================================================
 // Helper Functions
@@ -71,9 +74,12 @@ async function cleanup(): Promise<void> {
   if (cleanupProject) {
     info(`Cleaning up test project: ${cleanupProject}...`);
     try {
-      await $`docker compose -f ${STACK_PATH}/compose.yml down -v --remove-orphans`
-        .env({ COMPOSE_PROJECT_NAME: cleanupProject })
-        .quiet();
+      const cmd = $`docker compose -f ${STACK_PATH}/compose.yml down -v --remove-orphans`;
+      await (
+        cleanupDockerEnv
+          ? cmd.env(cleanupDockerEnv)
+          : cmd.env({ COMPOSE_PROJECT_NAME: cleanupProject })
+      ).quiet();
 
       // Verify containers are removed
       const checkResult =
@@ -106,6 +112,8 @@ async function cleanup(): Promise<void> {
     // Suppress cleanup errors
   }
 
+  await cleanupTestDockerConfig(cleanupDockerConfig);
+
   success("Cleanup completed");
 }
 
@@ -116,15 +124,16 @@ async function waitForContainerStatus(
   project: string,
   service: string,
   expectedStatus: string,
-  timeout = TIMEOUTS.health
+  timeout = TIMEOUTS.health,
+  dockerEnv?: Record<string, string>
 ): Promise<boolean> {
   let elapsed = 0;
   while (elapsed < timeout) {
     try {
-      const result =
-        await $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} --format json`
-          .env({ COMPOSE_PROJECT_NAME: project })
-          .text();
+      const cmd = $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} --format json`;
+      const result = await (
+        dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+      ).text();
 
       if (result.trim()) {
         const parsed = JSON.parse(result);
@@ -152,12 +161,14 @@ async function waitForContainerStatus(
 async function checkLogsForPattern(
   project: string,
   service: string,
-  pattern: string
+  pattern: string,
+  dockerEnv?: Record<string, string>
 ): Promise<boolean> {
   try {
-    const logs = await $`docker compose -f ${STACK_PATH}/compose.yml logs ${service}`
-      .env({ COMPOSE_PROJECT_NAME: project })
-      .text();
+    const cmd = $`docker compose -f ${STACK_PATH}/compose.yml logs ${service}`;
+    const logs = await (
+      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+    ).text();
 
     return new RegExp(pattern, "i").test(logs);
   } catch {
@@ -168,11 +179,16 @@ async function checkLogsForPattern(
 /**
  * Get container ID for a service
  */
-async function getContainerId(project: string, service: string): Promise<string | null> {
+async function getContainerId(
+  project: string,
+  service: string,
+  dockerEnv?: Record<string, string>
+): Promise<string | null> {
   try {
-    const result = await $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} -q`
-      .env({ COMPOSE_PROJECT_NAME: project })
-      .text();
+    const cmd = $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} -q`;
+    const result = await (
+      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+    ).text();
     return result.trim() || null;
   } catch {
     return null;
@@ -226,6 +242,14 @@ async function testWrongPassword(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-wrong-pass");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   await createTestEnv(
     ".env.test-wrong-pass",
     `POSTGRES_PASSWORD=correct_postgres_pass_123
@@ -238,25 +262,32 @@ POSTGRES_BIND_IP=0.0.0.0
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     // Start full stack
     info("Starting PostgreSQL and PgBouncer...");
-    await $`docker compose --env-file .env.test-wrong-pass up -d postgres pgbouncer`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const cmd = $`docker compose --env-file .env.test-wrong-pass up -d postgres pgbouncer`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet();
 
-    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30);
+    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60, dockerEnv)) {
+      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30, dockerEnv);
       success("Services started successfully");
 
       // Create a test user in PostgreSQL
-      const postgresContainer = await getContainerId(projectName, "postgres");
+      const postgresContainer = await getContainerId(projectName, "postgres", dockerEnv);
       if (postgresContainer) {
         info("Creating test user in PostgreSQL...");
         await $`docker exec ${postgresContainer} psql -U postgres -d postgres -c "CREATE ROLE testuser WITH LOGIN PASSWORD 'correct_password';"`.quiet();
 
-        const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+        const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
         if (pgbouncerContainer) {
           // Try to connect with WRONG password - should fail via auth_query
           info("Attempting connection with wrong password...");
@@ -294,11 +325,8 @@ POSTGRES_BIND_IP=0.0.0.0
       testResult.testsFailed++;
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -315,6 +343,14 @@ async function testMissingPgpass(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-no-pgpass");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   await createTestEnv(
     ".env.test-no-pgpass",
     `POSTGRES_PASSWORD=test_postgres_pass_123
@@ -327,17 +363,24 @@ POSTGRES_BIND_IP=0.0.0.0
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     info("Starting services...");
-    await $`docker compose --env-file .env.test-no-pgpass up -d postgres pgbouncer`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const cmd = $`docker compose --env-file .env.test-no-pgpass up -d postgres pgbouncer`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet();
 
-    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      await waitForContainerStatus(projectName, "pgbouncer", "running", 15);
+    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60, dockerEnv)) {
+      await waitForContainerStatus(projectName, "pgbouncer", "running", 15, dockerEnv);
 
-      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
       if (pgbouncerContainer) {
         // Remove .pgpass file
         info("Removing .pgpass file from PgBouncer container...");
@@ -367,11 +410,8 @@ POSTGRES_BIND_IP=0.0.0.0
       testResult.testsFailed++;
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -390,6 +430,14 @@ async function testInvalidListenAddress(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-invalid-addr");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   await createTestEnv(
     ".env.test-invalid-addr",
     `POSTGRES_PASSWORD=test_postgres_pass_123
@@ -403,25 +451,29 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     info("Starting PostgreSQL...");
-    await $`docker compose --env-file .env.test-invalid-addr up -d postgres`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const cmd1 = $`docker compose --env-file .env.test-invalid-addr up -d postgres`;
+    await cmd1.cwd(STACK_PATH).env(dockerEnv).quiet();
 
-    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
+    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60, dockerEnv)) {
       info("Starting PgBouncer with invalid listen address...");
-      await $`docker compose --env-file .env.test-invalid-addr up -d pgbouncer`
-        .cwd(STACK_PATH)
-        .env({ COMPOSE_PROJECT_NAME: projectName })
-        .quiet()
-        .nothrow();
+      const cmd2 = $`docker compose --env-file .env.test-invalid-addr up -d pgbouncer`;
+      await cmd2.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
 
       // Wait for PgBouncer to crash and start restarting
       await Bun.sleep(5000);
 
-      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
       if (pgbouncerContainer) {
         const containerState = await getContainerState(pgbouncerContainer);
 
@@ -436,7 +488,8 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
             await checkLogsForPattern(
               projectName,
               "pgbouncer",
-              "ERROR.*Invalid.*octet|ERROR.*PGBOUNCER_LISTEN_ADDR|Invalid IP address"
+              "ERROR.*Invalid.*octet|ERROR.*PGBOUNCER_LISTEN_ADDR|Invalid IP address",
+              dockerEnv
             )
           ) {
             success("Test PASSED: PgBouncer properly rejected invalid listen address");
@@ -451,7 +504,7 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
           testResult.testsFailed++;
         } else {
           // Unknown state - check logs
-          if (await checkLogsForPattern(projectName, "pgbouncer", "ERROR|Invalid")) {
+          if (await checkLogsForPattern(projectName, "pgbouncer", "ERROR|Invalid", dockerEnv)) {
             success(
               "Test PASSED: PgBouncer rejected invalid config (state: " + containerState + ")"
             );
@@ -470,11 +523,8 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
       testResult.testsFailed++;
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -491,6 +541,14 @@ async function testPostgresUnavailable(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-no-postgres");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   await createTestEnv(
     ".env.test-no-postgres",
     `POSTGRES_PASSWORD=test_postgres_pass_123
@@ -503,21 +561,27 @@ POSTGRES_BIND_IP=0.0.0.0
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     info("Starting PgBouncer WITHOUT PostgreSQL...");
     // Try to start only PgBouncer (should wait due to depends_on)
-    await $`docker compose --env-file .env.test-no-postgres up -d pgbouncer`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose --env-file .env.test-no-postgres up -d pgbouncer`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
 
     // Wait for compose to potentially auto-start postgres
-    await waitForContainerStatus(projectName, "postgres", "running", 10);
+    await waitForContainerStatus(projectName, "postgres", "running", 10, dockerEnv);
 
     // Check if postgres was auto-started due to depends_on
-    const postgresContainer = await getContainerId(projectName, "postgres");
-    const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+    const postgresContainer = await getContainerId(projectName, "postgres", dockerEnv);
+    const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
 
     if (postgresContainer) {
       success("Test PASSED: Docker Compose automatically started PostgreSQL (depends_on working)");
@@ -532,11 +596,8 @@ POSTGRES_BIND_IP=0.0.0.0
       }
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -555,6 +616,14 @@ async function testMaxConnections(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-max-conn");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   // Set very low max_client_conn to make limit easier to hit
   await createTestEnv(
     ".env.test-max-conn",
@@ -569,17 +638,24 @@ PGBOUNCER_MAX_CLIENT_CONN=2
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     info("Starting services with max_client_conn=2...");
-    await $`docker compose --env-file .env.test-max-conn up -d postgres pgbouncer`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const cmd = $`docker compose --env-file .env.test-max-conn up -d postgres pgbouncer`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet();
 
-    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30);
+    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60, dockerEnv)) {
+      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30, dockerEnv);
 
-      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
       if (pgbouncerContainer) {
         // Open multiple connections that hold for 10 seconds
         info("Opening 2 long-running connections...");
@@ -640,11 +716,8 @@ PGBOUNCER_MAX_CLIENT_CONN=2
       testResult.testsFailed++;
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -661,6 +734,14 @@ async function testPgpassPermissions(): Promise<void> {
   const projectName = generateUniqueProjectName("pgbouncer-test-pgpass-perms");
   cleanupProject = projectName;
 
+  // Setup dockerEnv for this test
+  const dockerEnv = cleanupDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
+  // Update global for cleanup
+  cleanupDockerEnv = dockerEnv;
+
   await createTestEnv(
     ".env.test-pgpass-perms",
     `POSTGRES_PASSWORD=test_postgres_pass_123
@@ -673,17 +754,24 @@ POSTGRES_BIND_IP=0.0.0.0
     projectName
   );
 
+  // Pre-pull images to avoid credential issues during compose up
+  const postgresImage = getPostgresImage();
+  const pgbouncerImage =
+    "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+  await Promise.all([
+    $`docker pull ${postgresImage}`.quiet().nothrow(),
+    $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+  ]);
+
   try {
     info("Starting services...");
-    await $`docker compose --env-file .env.test-pgpass-perms up -d postgres pgbouncer`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const cmd = $`docker compose --env-file .env.test-pgpass-perms up -d postgres pgbouncer`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet();
 
-    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60)) {
-      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30);
+    if (await waitForContainerStatus(projectName, "postgres", "healthy", 60, dockerEnv)) {
+      await waitForContainerStatus(projectName, "pgbouncer", "healthy", 30, dockerEnv);
 
-      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer");
+      const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
       if (pgbouncerContainer) {
         // SECURITY TEST: Intentionally set insecure permissions to verify PostgreSQL client warning behavior
         // This is NOT a security vulnerability - it's testing that psql properly rejects insecure .pgpass files
@@ -729,11 +817,8 @@ POSTGRES_BIND_IP=0.0.0.0
       testResult.testsFailed++;
     }
   } finally {
-    await $`docker compose down -v`
-      .cwd(STACK_PATH)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet()
-      .nothrow();
+    const cmd = $`docker compose down -v`;
+    await cmd.cwd(STACK_PATH).env(dockerEnv).quiet().nothrow();
     cleanupProject = "";
   }
 }
@@ -786,6 +871,12 @@ async function main(): Promise<void> {
     error(`compose.yml not found in ${STACK_PATH}`);
     process.exit(1);
   }
+
+  // Setup isolated Docker config if credential helper unavailable
+  const testDockerConfig = await getTestDockerConfig();
+
+  // Set globals for cleanup
+  cleanupDockerConfig = testDockerConfig;
 
   console.log("========================================");
   console.log("PgBouncer Failure Scenario Tests");

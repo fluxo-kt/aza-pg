@@ -3,8 +3,9 @@
  * Generates PostgreSQL initialization SQL scripts from manifest data
  */
 
+import { createHash } from "crypto";
 import { format } from "sql-formatter";
-import type { ManifestEntry } from "../extensions/manifest-data";
+import { MANIFEST_METADATA, type ManifestEntry } from "../extensions/manifest-data";
 
 /**
  * Generate 01-extensions.sql initialization script with state tracking
@@ -60,7 +61,12 @@ export async function generateExtensionsInitScript(
   lines.push("");
 
   const extensionNames = extensionsToEnable.map((e) => e.name);
-  const scriptVersion = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+  // Content-based version: deterministic hash of enabled extensions (same input → same output)
+  const extHash = createHash("sha256")
+    .update(extensionNames.slice().sort().join(","))
+    .digest("hex")
+    .slice(0, 7);
+  const scriptVersion = `${MANIFEST_METADATA.pgVersion}-${extHash}`;
 
   // Start initialization tracking
   lines.push("DO $$");

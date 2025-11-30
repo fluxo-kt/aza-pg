@@ -29,7 +29,6 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
 import { detectTestMode, type TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import {
@@ -306,7 +305,7 @@ async function generateExpectedOutput(extensionName: string, actualOutput: strin
 
   // Ensure directory exists
   const expectedDir = dirname(expectedFile);
-  await mkdir(expectedDir, { recursive: true });
+  await $`mkdir -p ${expectedDir}`.quiet();
 
   // Write actual output as expected
   await Bun.write(expectedFile, actualOutput);

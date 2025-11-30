@@ -13,7 +13,7 @@ This guide is for **updating version declarations** in the source code. For runt
 - [Step-by-Step Update Procedures](#step-by-step-update-procedures)
 - [Version Source Locations](#version-source-locations)
 - [Finding Latest Versions](#finding-latest-versions)
-- [Validation & Testing](#validation--testing)
+- [Validation & Testing](#validation-testing)
 - [Common Issues](#common-issues)
 
 ---
@@ -917,7 +917,7 @@ Or keep workflow defaults in sync manually (documented in comments).
 
 - [UPGRADING.md](UPGRADING.md) - Runtime upgrade procedures
 - [BUILD.md](BUILD.md) - Build system documentation
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - System design
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System design
 - [AGENTS.md](../AGENTS.md) - Development guide
 
 ---

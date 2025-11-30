@@ -11,6 +11,7 @@ const filesToCheck = [
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
   "docs/.generated/docs-data.json",
   "docs/EXTENSIONS.md",
+  ".github/workflow-config.json",
 ];
 
 /**
@@ -28,6 +29,26 @@ function removeTimestamps(content: string): string {
       // Remove any ISO date strings that might be in comments or elsewhere
       .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, "TIMESTAMP")
   );
+}
+
+/**
+ * Compare file contents - uses structural comparison for JSON files
+ * to be format-agnostic (ignores whitespace/formatting differences)
+ */
+function contentEquals(file: string, originalContent: string, newContent: string): boolean {
+  // For JSON files, use structural comparison (format-agnostic)
+  if (file.endsWith(".json")) {
+    try {
+      const originalObj = JSON.parse(removeTimestamps(originalContent));
+      const newObj = JSON.parse(removeTimestamps(newContent));
+      return Bun.deepEquals(originalObj, newObj);
+    } catch {
+      // If parsing fails, fall back to string comparison
+    }
+  }
+
+  // For non-JSON files, use string comparison after timestamp normalization
+  return removeTimestamps(originalContent) === removeTimestamps(newContent);
 }
 
 async function verifyGeneratedFiles(): Promise<boolean> {
@@ -62,11 +83,8 @@ async function verifyGeneratedFiles(): Promise<boolean> {
     const newContent = await fileHandle.text();
     const originalContent = originalContents.get(file) || "";
 
-    // Compare without timestamps
-    const originalNormalized = removeTimestamps(originalContent);
-    const newNormalized = removeTimestamps(newContent);
-
-    if (originalNormalized !== newNormalized) {
+    // Compare using structural equality for JSON, string equality for others
+    if (!contentEquals(file, originalContent, newContent)) {
       differences.push(file);
     }
   }

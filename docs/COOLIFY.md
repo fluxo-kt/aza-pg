@@ -96,9 +96,12 @@ If limits don't match, you'll see warnings:
 
 | RAM   | shared_buffers | work_mem | max_connections |
 | ----- | -------------- | -------- | --------------- |
-| 512MB | 128MB          | 1MB      | 80              |
-| 2GB   | 512MB          | 4MB      | 120             |
-| 4GB   | 1GB            | 5MB      | 200             |
+| 512MB | 128MB          | 1MB      | 60              |
+| 2GB   | 512MB          | 4MB      | 84              |
+| 4GB   | 1GB            | 5MB      | 102             |
+| 8GB   | 2GB            | 8MB      | 120             |
+| 16GB  | 3.2GB          | 16MB     | 120             |
+| 32GB  | 6.5GB          | 32MB     | 120             |
 
 ## Network Configuration
 

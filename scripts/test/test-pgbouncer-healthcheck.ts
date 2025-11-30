@@ -14,6 +14,7 @@ import { error, info, success, warning } from "../utils/logger.ts";
 import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { TIMEOUTS } from "../config/test-timeouts";
+import { getTestDockerConfig, cleanupTestDockerConfig } from "../utils/docker-test-config";
 
 /**
  * Service health status from Docker Compose
@@ -79,11 +80,14 @@ COMPOSE_PROJECT_NAME=${projectName}
 /**
  * Get service health status from Docker Compose
  */
-async function getServiceHealth(stackPath: string, service: string): Promise<string> {
+async function getServiceHealth(
+  stackPath: string,
+  service: string,
+  dockerEnv?: Record<string, string>
+): Promise<string> {
   try {
-    const result = await $`docker compose --env-file .env.test ps ${service} --format json`
-      .cwd(stackPath)
-      .text();
+    const cmd = $`docker compose --env-file .env.test ps ${service} --format json`.cwd(stackPath);
+    const result = await (dockerEnv ? cmd.env(dockerEnv) : cmd).text();
     const serviceStatus: ServiceStatus = JSON.parse(result);
     return serviceStatus?.Health ?? "starting";
   } catch {
@@ -94,7 +98,11 @@ async function getServiceHealth(stackPath: string, service: string): Promise<str
 /**
  * Wait for services to be healthy
  */
-async function waitForServicesHealthy(stackPath: string, timeout: number): Promise<void> {
+async function waitForServicesHealthy(
+  stackPath: string,
+  timeout: number,
+  dockerEnv?: Record<string, string>
+): Promise<void> {
   info(`Waiting for services to be healthy (max ${timeout} seconds)...`);
 
   let elapsed = 0;
@@ -104,8 +112,8 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
   let lastPgbouncerStatus = "unknown";
 
   while (elapsed < timeout) {
-    lastPostgresStatus = await getServiceHealth(stackPath, "postgres");
-    lastPgbouncerStatus = await getServiceHealth(stackPath, "pgbouncer");
+    lastPostgresStatus = await getServiceHealth(stackPath, "postgres", dockerEnv);
+    lastPgbouncerStatus = await getServiceHealth(stackPath, "pgbouncer", dockerEnv);
 
     if (lastPostgresStatus === "healthy") {
       postgresHealthy = true;
@@ -130,7 +138,8 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
     error(`PostgreSQL failed to become healthy after ${timeout}s`);
     error(`Last known status: ${lastPostgresStatus}`);
     error(`Container: postgres (service in primary stack)`);
-    await $`docker compose --env-file .env.test logs postgres`.cwd(stackPath);
+    const logsCmd = $`docker compose --env-file .env.test logs postgres`.cwd(stackPath);
+    await (dockerEnv ? logsCmd.env(dockerEnv) : logsCmd);
     throw new Error(
       `PostgreSQL health check failed - timeout after ${timeout}s with status: ${lastPostgresStatus}`
     );
@@ -140,7 +149,8 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
     error(`PgBouncer failed to become healthy after ${timeout}s`);
     error(`Last known status: ${lastPgbouncerStatus}`);
     error(`Container: pgbouncer (service in primary stack)`);
-    await $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
+    const logsCmd = $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
+    await (dockerEnv ? logsCmd.env(dockerEnv) : logsCmd);
     throw new Error(
       `PgBouncer health check failed - timeout after ${timeout}s with status: ${lastPgbouncerStatus}`
     );
@@ -152,10 +162,13 @@ async function waitForServicesHealthy(stackPath: string, timeout: number): Promi
 /**
  * Get container ID for a service
  */
-async function getContainerId(stackPath: string, service: string): Promise<string> {
-  const result = await $`docker compose --env-file .env.test ps ${service} -q`
-    .cwd(stackPath)
-    .text();
+async function getContainerId(
+  stackPath: string,
+  service: string,
+  dockerEnv?: Record<string, string>
+): Promise<string> {
+  const cmd = $`docker compose --env-file .env.test ps ${service} -q`.cwd(stackPath);
+  const result = await (dockerEnv ? cmd.env(dockerEnv) : cmd).text();
   return result.trim();
 }
 
@@ -237,7 +250,8 @@ async function testAuthLocalhost(containerId: string): Promise<void> {
 async function testAuthHostname(
   postgresContainerId: string,
   pgbouncerPassword: string,
-  stackPath: string
+  stackPath: string,
+  dockerEnv?: Record<string, string>
 ): Promise<void> {
   info("Test 5: Testing authentication via pgbouncer:6432...");
 
@@ -246,7 +260,8 @@ async function testAuthHostname(
     success("Authentication successful via pgbouncer:6432");
   } catch {
     error("Authentication failed via pgbouncer:6432 from postgres container");
-    await $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
+    const logsCmd = $`docker compose --env-file .env.test logs pgbouncer`.cwd(stackPath);
+    await (dockerEnv ? logsCmd.env(dockerEnv) : logsCmd);
     throw new Error("Authentication failed via pgbouncer:6432");
   }
 }
@@ -322,14 +337,19 @@ async function testHostConnection(pgbouncerPassword: string): Promise<void> {
 /**
  * Cleanup function to stop services and remove test environment
  */
-async function cleanup(stackPath: string, projectName: string): Promise<void> {
+async function cleanup(
+  stackPath: string,
+  projectName: string,
+  dockerEnv?: Record<string, string>,
+  testDockerConfig?: string
+): Promise<void> {
   info("Cleaning up test environment...");
 
   try {
-    await $`docker compose --env-file .env.test down -v`
-      .cwd(stackPath)
-      .env({ COMPOSE_PROJECT_NAME: projectName })
-      .quiet();
+    const downCmd = $`docker compose --env-file .env.test down -v`.cwd(stackPath);
+    await (
+      dockerEnv ? downCmd.env(dockerEnv) : downCmd.env({ COMPOSE_PROJECT_NAME: projectName })
+    ).quiet();
 
     // Verify containers are removed
     const checkResult = await $`docker ps -a --filter name=${projectName} --format "{{.Names}}"`
@@ -358,6 +378,9 @@ async function cleanup(stackPath: string, projectName: string): Promise<void> {
   if (await Bun.file(envFileCopy).exists()) {
     await $`rm -f ${envFileCopy}`.quiet();
   }
+
+  // Cleanup isolated Docker config if created
+  await cleanupTestDockerConfig(testDockerConfig);
 
   success("Cleanup completed");
 }
@@ -447,7 +470,7 @@ async function main(): Promise<void> {
   const performCleanup = async () => {
     if (!cleanupCalled) {
       cleanupCalled = true;
-      await cleanup(stackPath, projectName);
+      await cleanup(stackPath, projectName, dockerEnv, testDockerConfig);
     }
   };
 
@@ -463,18 +486,35 @@ async function main(): Promise<void> {
     process.exit(143);
   });
 
+  // Setup isolated Docker config if credential helper unavailable
+  const testDockerConfig = await getTestDockerConfig();
+  const dockerEnv = testDockerConfig
+    ? { ...Bun.env, DOCKER_CONFIG: testDockerConfig, COMPOSE_PROJECT_NAME: projectName }
+    : { COMPOSE_PROJECT_NAME: projectName };
+
   try {
     // Create test environment
     info("Creating test environment configuration...");
     await createTestEnv(stackPath, credentials, projectName);
     success("Test environment created");
 
+    // Pre-pull images to avoid credential issues during compose up
+    info("Pre-pulling required images...");
+    const postgresImage = Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
+    const pgbouncerImage =
+      Bun.env.PGBOUNCER_IMAGE ??
+      "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+    await Promise.all([
+      $`docker pull ${postgresImage}`.quiet().nothrow(),
+      $`docker pull ${pgbouncerImage}`.quiet().nothrow(),
+    ]);
+
     // Start services
     info("Starting primary stack (postgres + pgbouncer)...");
     try {
       await $`docker compose --env-file .env.test up -d postgres pgbouncer`
         .cwd(stackPath)
-        .env({ COMPOSE_PROJECT_NAME: projectName });
+        .env(dockerEnv);
       success("Services started");
     } catch {
       error("Failed to start services");
@@ -483,18 +523,23 @@ async function main(): Promise<void> {
     }
 
     // Wait for services to be healthy (increased to 150s to account for 120s start_period)
-    await waitForServicesHealthy(stackPath, TIMEOUTS.replication);
+    await waitForServicesHealthy(stackPath, TIMEOUTS.replication, dockerEnv);
 
     // Get container IDs
-    const pgbouncerContainerId = await getContainerId(stackPath, "pgbouncer");
-    const postgresContainerId = await getContainerId(stackPath, "postgres");
+    const pgbouncerContainerId = await getContainerId(stackPath, "pgbouncer", dockerEnv);
+    const postgresContainerId = await getContainerId(stackPath, "postgres", dockerEnv);
 
     // Run all tests
     await testPgpassExists(pgbouncerContainerId);
     await testPgpassPermissions(pgbouncerContainerId);
     await testPgpassEntries(pgbouncerContainerId);
     await testAuthLocalhost(pgbouncerContainerId);
-    await testAuthHostname(postgresContainerId, credentials.pgbouncerPassword, stackPath);
+    await testAuthHostname(
+      postgresContainerId,
+      credentials.pgbouncerPassword,
+      stackPath,
+      dockerEnv
+    );
     await testShowPools(pgbouncerContainerId, credentials.pgbouncerPassword);
     await testHealthcheckCommand(pgbouncerContainerId);
     await testHostConnection(credentials.pgbouncerPassword);

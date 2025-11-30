@@ -278,45 +278,21 @@ jobs:
         if: matrix.platform == 'linux/amd64'
         run: |
           set -euo pipefail
-          # Extract PostgreSQL version from Dockerfile (hardcoded at generation time)
-          BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | awk '{print $2}' | head -1)
-          PG_VERSION=$(echo "${BASE_IMAGE}" | grep -oP '\d+\.\d+' | head -1)
-
-          # Derive catalog statistics dynamically from manifest
-          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
-
-          echo "### PostgreSQL Image Built Successfully :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
-            echo "**Build Type:** Multi-platform (amd64 + arm64 native)" >> $GITHUB_STEP_SUMMARY
-            echo "**Image Digest (amd64):** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "**Build Type:** Local single-platform (amd64)" >> $GITHUB_STEP_SUMMARY
-            echo "**Image Digest:** \`${{ steps.build-local.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "**PostgreSQL Version:** ${PG_VERSION}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Extensions:**" >> $GITHUB_STEP_SUMMARY
-          echo "- ${CATALOG_TOTAL} total catalog entries (${CATALOG_ENABLED} enabled, ${CATALOG_DISABLED} disabled)" >> $GITHUB_STEP_SUMMARY
-          echo "- ${CATALOG_ENABLED} enabled: ${CATALOG_ENABLED_EXTENSIONS} extensions + ${CATALOG_ENABLED_BUILTINS} builtins + ${CATALOG_ENABLED_TOOLS} tools" >> $GITHUB_STEP_SUMMARY
-          echo "- ${CATALOG_EXTENSIONS} extensions total (${CATALOG_ENABLED_EXTENSIONS} enabled, $((CATALOG_EXTENSIONS - CATALOG_ENABLED_EXTENSIONS)) on-demand)" >> $GITHUB_STEP_SUMMARY
-          echo "- Popular extensions: pgvector, timescaledb, postgis, pg_cron, pgaudit, pgsodium" >> $GITHUB_STEP_SUMMARY
-          echo "- All versions pinned and managed via extensions.manifest.json" >> $GITHUB_STEP_SUMMARY
+          DIGEST="${{ github.event.inputs.push_image == 'true' && steps.build.outputs.digest || steps.build-local.outputs.digest }}"
+          bun scripts/ci/verify-build-output.ts \
+            --image="${{ steps.meta.outputs.tags }}" \
+            --platform="${{ matrix.platform }}" \
+            --digest="${DIGEST}" \
+            --push-image="${{ github.event.inputs.push_image }}" \
+            --github-summary
 
       - name: Verify local image
         if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'
         run: |
           set -euo pipefail
-          # When loaded locally, image may not include registry prefix
-          # Try with registry prefix first, fallback to local tag
-          if docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version 2>/dev/null; then
-            echo "✅ Local image verified (with registry prefix)"
-          elif docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1 | xargs -I {} docker run --rm {} psql --version; then
-            echo "✅ Local image verified (local tag)"
-          else
-            echo "❌ Failed to verify local image"
-            exit 1
-          fi
+          bun scripts/ci/verify-local-image-with-fallback.ts \
+            --image-ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --ref-name="${{ github.ref_name }}"
 
   merge:
     name: Create Multi-Platform Manifest
@@ -328,6 +304,12 @@ jobs:
       image_digest: ${{ steps.merge.outputs.digest }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
       - name: Download digests
         uses: actions/download-artifact@v6
         with:
@@ -345,47 +327,15 @@ jobs:
 
       - name: Create manifest list and push
         id: merge
-        working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
-          # Create dev tags from digests
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}-${{ github.sha }} \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
-
-          # Inspect manifest once and extract both digest and format
-          INSPECT_JSON=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} --format '{{json .}}')
-
-          MANIFEST_DIGEST=$(echo "$INSPECT_JSON" | jq -r '.manifest.digest // empty')
-          if [ -z "$MANIFEST_DIGEST" ]; then
-            echo "❌ ERROR: Failed to extract manifest digest"
-            exit 1
-          fi
-
-          echo "digest=${MANIFEST_DIGEST}" >> $GITHUB_OUTPUT
-          echo "✅ Multi-platform manifest created: ${MANIFEST_DIGEST}"
-
-          # Verify manifest format (dev builds - informational only)
-          echo ""
-          echo "=== Manifest Format Check ==="
-          MEDIA_TYPE=$(echo "$INSPECT_JSON" | jq -r '.manifest.mediaType // empty')
-
-          if [ -z "$MEDIA_TYPE" ]; then
-            echo "⚠️  WARNING: Could not determine manifest media type"
-            echo "   Manifest inspection may have failed or returned unexpected format"
-          elif [[ "$MEDIA_TYPE" == "application/vnd.oci.image.index.v1+json" ]]; then
-            echo "✅ OCI Image Index v1 format (annotations supported)"
-          elif [[ "$MEDIA_TYPE" == "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
-            echo "⚠️  Docker manifest list v2 format (annotations NOT supported)"
-            echo "   Note: Dev builds may lack OCI annotations - this is informational only"
-          else
-            echo "⚠️  Unexpected manifest format: ${MEDIA_TYPE}"
-          fi
-          echo ""
-
-      - name: Set up Bun and dependencies
-        uses: ./.github/actions/setup-bun
+          bun scripts/ci/merge-multi-platform-manifest.ts \
+            --registry="${{ env.REGISTRY }}" \
+            --repository="${{ env.IMAGE_NAME }}" \
+            --tag="dev-${{ github.ref_name }}" \
+            --sha="${{ github.sha }}" \
+            --digests-dir="${{ runner.temp }}/digests" \
+            --github-output
 
       - name: Verify image
         run: |

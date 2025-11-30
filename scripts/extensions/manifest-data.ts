@@ -382,12 +382,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supautils",
+    enabled: false,
+    enabledInComprehensiveTest: false, // Build fails due to unresolved patch issues
+    disabledReason:
+      "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
     kind: "extension",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
-    enabled: false,
-    disabledReason:
-      "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
@@ -395,7 +396,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "pgxs",
-      patches: ["s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"],
+      // Patch pattern works in isolation but fails to apply in Docker build
+      // Attempted patterns: [[:space:]], \\s+, space+ - all failed
+      // Root issue: applySedPatch() returns false (no match) despite correct pattern
+      patches: ["s/bool +log_skipped_evtrigs/static bool log_skipped_evtrigs/"],
     },
     runtime: {
       sharedPreload: true,
@@ -673,7 +677,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       type: "cargo-pgrx",
       features: ["pg18"],
       noDefaultFeatures: true,
-      patches: ['s/pgrx = "0\\.16\\.0"/pgrx = "=0.16.1"/'],
     },
     aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: {
@@ -693,15 +696,19 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "utilities",
     description: "Encode integers into short hashids for obfuscated identifiers.",
     source: {
-      type: "git",
+      type: "git-ref",
       repository: "https://github.com/iCyberon/pg_hashids.git",
-      tag: "v1.2.1",
+      ref: "8c404dd86408f3a987a3ff6825ac7e42bd618b98",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG. Alt: Pigsty v1.2.1 (same version)", "Source build or Pigsty package"],
+      notes: [
+        "NOT in PGDG. Pigsty has v1.2.1 only (no PG18 packages)",
+        "Using v1.3 from master (unreleased, no git tag)",
+        "Source build required",
+      ],
     },
     sourceUrl: "https://github.com/iCyberon/pg_hashids",
     docsUrl: "https://github.com/iCyberon/pg_hashids#readme",
@@ -735,7 +742,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "workflow",
     description: "DAG-based workflow orchestration engine. Per-project installation required.",
     enabled: false,
-    disabledReason: "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
+    enabledInComprehensiveTest: false, // SQL-only schema, per-project installation
+    disabledReason: "Per-project installation - see docs/PGFLOW.md for instructions",
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
@@ -748,7 +756,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       notes: [
         "NOT bundled in image - install per-project",
         "Requires pgmq 1.5.0+ (included in image)",
-        "See docs/PGFLOW-SETUP.md for installation",
+        "See docs/PGFLOW.md for installation",
         "v0.8.1 supports map steps, task_index, pgmq 1.5.x compatibility",
       ],
     },

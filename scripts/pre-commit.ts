@@ -14,6 +14,7 @@
  */
 
 import { $ } from "bun";
+import { GENERATED_FILES } from "./generated-files";
 import { error, info, success, warning } from "./utils/logger";
 
 /**
@@ -53,24 +54,8 @@ async function preCommit(): Promise<void> {
       await $`bun run generate`.quiet();
       success("✅ Auto-regenerated all artifacts");
 
-      // Stage all generated files
-      const generatedFiles = [
-        "docker/postgres/Dockerfile",
-        "docker/postgres/extensions.manifest.json",
-        "docker/postgres/extensions.build-packages.txt",
-        "docker/postgres/healthcheck.sh",
-        "docs/.generated/docs-data.json",
-        "docs/EXTENSIONS.md",
-        "docker/postgres/configs/postgresql-base.conf",
-        "stacks/primary/configs/postgresql-primary.conf",
-        "stacks/primary/configs/pg_hba.conf",
-        "stacks/replica/configs/postgresql-replica.conf",
-        "stacks/replica/configs/pg_hba.conf",
-        "stacks/single/configs/postgresql.conf",
-        "stacks/single/configs/pg_hba.conf",
-        "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
-      ];
-      await stageFiles(generatedFiles);
+      // Stage all generated files (imported from generated-files.ts - single source of truth)
+      await stageFiles([...GENERATED_FILES]);
       info("📝 Auto-staged generated files");
     } catch (err) {
       error("❌ Failed to regenerate artifacts", err);
@@ -86,7 +71,7 @@ async function preCommit(): Promise<void> {
   if (lintableFiles.length > 0) {
     info("🔍 Auto-fixing linting issues...");
     try {
-      await $`bunx oxlint --fix ${lintableFiles}`.quiet();
+      await $`bun run oxlint:fix ${lintableFiles}`.quiet();
       success("✅ Auto-fixed linting issues");
       filesToRestage.push(...lintableFiles);
     } catch (err) {
@@ -111,7 +96,7 @@ async function preCommit(): Promise<void> {
   if (formattableFiles.length > 0) {
     info("💅 Auto-formatting code...");
     try {
-      await $`bunx prettier --write ${formattableFiles}`.quiet();
+      await $`bun run prettier:write ${formattableFiles}`.quiet();
       success("✅ Auto-formatted code");
       filesToRestage.push(...formattableFiles);
     } catch (err) {

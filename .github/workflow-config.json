@@ -1,0 +1,17 @@
+{
+  "pgVersion": "18.1",
+  "pgMajorVersion": "18",
+  "registry": "ghcr.io",
+  "organization": "fluxo-kt",
+  "productionImageName": "aza-pg",
+  "testingImageName": "aza-pg-testing",
+  "defaultTag": "18-single-node",
+  "defaultTestingTag": "testing-main",
+  "counts": {
+    "total": 40,
+    "enabled": 34,
+    "preloaded": 11,
+    "autoCreated": 7
+  },
+  "featuredExtensions": ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"]
+}

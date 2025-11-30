@@ -8,9 +8,7 @@ As of v0.8.1, pgflow is **NOT bundled** in the aza-pg Docker image. You must ins
 
 See the following documentation:
 
-- **[PGFLOW-SETUP.md](../../docs/PGFLOW-SETUP.md)** - Installation instructions
-- **[PGFLOW_INTEGRATION_GUIDE.md](../../docs/PGFLOW_INTEGRATION_GUIDE.md)** - Complete usage guide
-- **[PGFLOW-UPDATE-PROCESS.md](../../docs/PGFLOW-UPDATE-PROCESS.md)** - Schema update procedures
+- **[PGFLOW.md](../../docs/PGFLOW.md)** - Complete guide (installation, usage, update procedures)
 
 ## Files
 

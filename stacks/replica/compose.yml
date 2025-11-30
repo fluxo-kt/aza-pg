@@ -15,6 +15,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_ROLE: ${POSTGRES_ROLE:-replica}
       PG_REPLICATION_USER: ${PG_REPLICATION_USER:-replicator}
       PG_REPLICATION_PASSWORD: "${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}"
       PRIMARY_HOST: ${PRIMARY_HOST:?PRIMARY_HOST is required}
@@ -39,7 +40,13 @@ services:
     networks:
       - postgres_net
 
-    # Uses image's built-in 7-tier healthcheck (docker/postgres/healthcheck.sh)
+    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}

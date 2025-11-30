@@ -24,7 +24,6 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
 import type { TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import { cleanPsqlOutput } from "./lib/output-normalizer.ts";
@@ -306,7 +305,7 @@ async function generateExpectedOutput(
 
     // Ensure directory exists
     const expectedDir = dirname(expectedFile);
-    await mkdir(expectedDir, { recursive: true });
+    await $`mkdir -p ${expectedDir}`.quiet();
 
     // Write expected output
     await Bun.write(expectedFile, cleanedOutput);

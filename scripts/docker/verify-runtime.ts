@@ -51,6 +51,7 @@ interface ManifestEntry {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
     preloadOnly?: boolean;
+    preloadLibraryName?: string;
   };
 }
 
@@ -281,7 +282,10 @@ async function testPreloadedExtensions(manifest: Manifest): Promise<TestResult> 
           entry.runtime?.sharedPreload === true &&
           entry.runtime?.defaultEnable === true
       )
-      .map((entry) => entry.name);
+      .map((entry) => ({
+        name: entry.name,
+        libraryName: entry.runtime?.preloadLibraryName || entry.name,
+      }));
 
     if (preloadedExtensions.length === 0) {
       return {
@@ -313,8 +317,8 @@ async function testPreloadedExtensions(manifest: Manifest): Promise<TestResult> 
     const missing: string[] = [];
 
     for (const ext of preloadedExtensions) {
-      if (!preloadedLibs.includes(ext)) {
-        missing.push(ext);
+      if (!preloadedLibs.includes(ext.libraryName)) {
+        missing.push(ext.name);
       }
     }
 

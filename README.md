@@ -20,19 +20,6 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 - Connection limits: 60 (≤2GB), 84 (2-4GB), 102 (4-8GB), 120 (≥8GB) with `mixed` workload default
 - PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
 
-## Why aza-pg?
-
-| Feature                | Official postgres:18 | aza-pg:18                                                 |
-| ---------------------- | -------------------- | --------------------------------------------------------- |
-| **Extensions**         | Contrib only (~10)   | Comprehensive extension catalog                           |
-| **Configuration**      | Manual tuning        | Auto-detects RAM/CPU                                      |
-| **Connection Pooling** | Separate setup       | PgBouncer integrated                                      |
-| **Monitoring**         | Manual exporter      | postgres_exporter + pgbouncer_exporter                    |
-| **ARM64**              | QEMU emulation       | Native builds                                             |
-| **Reproducibility**    | Latest tags          | SHA-pinned base + extensions                              |
-| **Image Size**         | ~150MB               | ~250MB compressed / ~900MB uncompressed (with extensions) |
-| **Use Case**           | Minimal baseline     | Production-ready batteries included                       |
-
 ## Extensions
 
 Comprehensive extension catalog across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. Multiple extensions preloaded by default (see docs). See "Popular Use Cases" below for examples.

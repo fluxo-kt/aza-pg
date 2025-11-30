@@ -206,10 +206,10 @@
       "category": "utilities",
       "description": "Encode integers into short hashids for obfuscated identifiers.",
       "source": {
-        "type": "git",
+        "type": "git-ref",
         "repository": "https://github.com/iCyberon/pg_hashids.git",
-        "tag": "v1.2.1",
-        "commit": "16907249ccbc300b31c89c3eccd6042c5674505f"
+        "ref": "8c404dd86408f3a987a3ff6825ac7e42bd618b98",
+        "commit": "8c404dd86408f3a987a3ff6825ac7e42bd618b98"
       },
       "build": {
         "type": "pgxs"
@@ -218,8 +218,9 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v1.2.1 (same version)",
-          "Source build or Pigsty package"
+          "NOT in PGDG. Pigsty has v1.2.1 only (no PG18 packages)",
+          "Using v1.3 from master (unreleased, no git tag)",
+          "Source build required"
         ]
       },
       "sourceUrl": "https://github.com/iCyberon/pg_hashids",
@@ -241,10 +242,7 @@
         "features": [
           "pg18"
         ],
-        "noDefaultFeatures": true,
-        "patches": [
-          "s/pgrx = \"0\\.16\\.0\"/pgrx = \"=0.16.1\"/"
-        ]
+        "noDefaultFeatures": true
       },
       "aptPackages": [
         "clang",
@@ -576,7 +574,8 @@
       "category": "workflow",
       "description": "DAG-based workflow orchestration engine. Per-project installation required.",
       "enabled": false,
-      "disabledReason": "Per-project installation - see docs/PGFLOW-SETUP.md for instructions",
+      "enabledInComprehensiveTest": false,
+      "disabledReason": "Per-project installation - see docs/PGFLOW.md for instructions",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
@@ -590,7 +589,7 @@
         "notes": [
           "NOT bundled in image - install per-project",
           "Requires pgmq 1.5.0+ (included in image)",
-          "See docs/PGFLOW-SETUP.md for installation",
+          "See docs/PGFLOW.md for installation",
           "v0.8.1 supports map steps, task_index, pgmq 1.5.x compatibility"
         ]
       },
@@ -945,21 +944,22 @@
     },
     {
       "name": "supautils",
+      "enabled": false,
+      "enabledInComprehensiveTest": false,
+      "disabledReason": "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
       "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
-      "enabled": false,
-      "disabledReason": "Compilation requires patching that proved unreliable with sed. Variable declaration missing 'static' keyword; sed patterns failed to match reliably.",
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
         "tag": "v3.0.2",
-        "commit": "1b071b72cc50ecee36ac9e4b782cb84212ae6d20"
+        "commit": "2b8c31182da2f1df3fdd204fd5d1d66dbaf71ff1"
       },
       "build": {
         "type": "pgxs",
         "patches": [
-          "s/^bool[[:space:]]\\{1,\\}log_skipped_evtrigs/static bool log_skipped_evtrigs/"
+          "s/bool +log_skipped_evtrigs/static bool log_skipped_evtrigs/"
         ]
       },
       "runtime": {

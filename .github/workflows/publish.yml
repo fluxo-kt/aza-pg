@@ -19,7 +19,6 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  IMAGE_NAME_TESTING: fluxo-kt/aza-pg-testing
 
 jobs:
   prep:
@@ -54,10 +53,17 @@ jobs:
       meta_labels: ${{ steps.meta.outputs.labels }}
       meta_annotations: ${{ steps.meta.outputs.annotations }}
       bun_version: ${{ steps.bun-version.outputs.version }}
+      testing_image_name: ${{ steps.config.outputs.testing_image_name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> $GITHUB_OUTPUT
 
       - name: Set up Bun and dependencies
         id: bun-version
@@ -83,11 +89,11 @@ jobs:
           echo "::group::Cleanup Orphaned Tags"
           echo "Cleaning up testing-* tags from cancelled or failed workflows..."
 
-          # Delete testing-* tags older than 6 hours (catches cancelled workflows)
-          bun scripts/release/cleanup-old-testing-tags.ts \
-            --repository "fluxo-kt/aza-pg-testing" \
+          # Delete testing-* tags older than 2 hours (catches cancelled workflows)
+          bun scripts/release/cleanup-testing-images.ts \
+            --repository "${{ steps.config.outputs.testing_image_name }}" \
             --pattern "testing-*" \
-            --days 0.25 \
+            --older-than 0.083 \
             --continue-on-error \
             || echo "::warning::Orphan cleanup failed - continuing anyway"
 
@@ -104,8 +110,8 @@ jobs:
       - name: Verify Dockerfile generation is current
         run: bun scripts/verify-generated.ts
 
-      - name: Validate manifest
-        run: bun run validate
+      - name: Validate manifest and full checks
+        run: bun run validate:all
 
       - name: Derive catalog statistics
         id: catalog
@@ -264,7 +270,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.prep.outputs.meta_labels }}
           annotations: ${{ needs.prep.outputs.meta_annotations }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           build-args: |
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
             VCS_REF=${{ github.sha }}
@@ -367,12 +373,12 @@ jobs:
 
           # Build source digest list (from digests directory)
           cd ${{ runner.temp }}/digests
-          SOURCES=$(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@sha256:%s,' * | sed 's/,$//')
+          SOURCES=$(printf '${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@sha256:%s,' * | sed 's/,$//')
           cd -  # Return to repository root (needed for script execution)
 
           # Create manifest using TypeScript script (now runs from repo root)
           bun scripts/docker/create-manifest.ts \
-            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --tag "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
             --sources "$SOURCES" \
             --title "aza-pg Single-Node PostgreSQL" \
             --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
@@ -395,7 +401,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/validate-manifest.ts \
-            --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --manifest "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
             --platforms "linux/amd64,linux/arm64" \
             --require-annotations
 
@@ -403,12 +409,12 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
             --max-retries 3
 
           # Extract PostgreSQL version from built image
           PG_VERSION_OUTPUT=$(docker run --rm \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }} \
+            ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }} \
             psql --version)
           echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
 
@@ -422,6 +428,20 @@ jobs:
           fi
 
           echo "✅ Version verified: ${ACTUAL_VERSION} matches tagged version"
+
+      # Post-build validation: Run docker-dependent checks that were skipped in prep job
+      # These checks MUST pass (not skip) in publish workflow - REQUIRE_DOCKER enforces this
+      - name: Run post-build size regression check
+        run: |
+          set -euo pipefail
+          echo "Running extension size regression check on built image..."
+          bun scripts/check-size-regression.ts
+        env:
+          # Point to the testing image we just pulled
+          POSTGRES_IMAGE: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          # REQUIRE_DOCKER=true makes this check FAIL instead of skip if Docker/image unavailable
+          # This ensures size regression checks actually run in the publish workflow
+          REQUIRE_DOCKER: "true"
 
   # ==========================================================================
   # COMPREHENSIVE TEST GATE - Production Release Validation
@@ -448,8 +468,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -466,7 +486,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running basic smoke tests on multi-arch image..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
 
       - name: Capture test diagnostics
@@ -484,7 +504,7 @@ jobs:
           set -euo pipefail
           echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   test-extensions:
@@ -503,8 +523,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -515,35 +535,35 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing core extension loading..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
-          bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
 
       - name: Run extension smoke tests
         run: |
           set -euo pipefail
           echo "Running extension functional validation..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/run-extension-smoke.ts
 
       - name: Test disabled extensions
         run: |
           set -euo pipefail
           echo "Verifying disabled extensions are not available..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-disabled-extensions.ts
 
       - name: Test hook extensions
         run: |
           set -euo pipefail
           echo "Testing hook-based extensions..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun test ./scripts/test/test-hook-extensions.ts
 
       - name: Test extension combinations
         run: |
           set -euo pipefail
           echo "Testing extension combinations..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-integration-extension-combinations.ts
 
       - name: Capture test diagnostics
@@ -586,8 +606,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -598,7 +618,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing auto-config functionality..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-auto-config.ts
 
       - name: Setup pgflow test container
@@ -607,7 +627,7 @@ jobs:
           # Setup container for pgflow v0.8.1 tests (per-project installation)
           bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-test \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
             --password test_pgflow_pass \
             --database pgflow_test \
             --memory 2048 \
@@ -618,7 +638,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing pgflow v0.8.1 (per-project installation)..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test
           bun scripts/test/test-pgflow-v081.ts --container=publish-pgflow-test --database=pgflow_test
 
@@ -627,14 +647,14 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing PgBouncer health check..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-pgbouncer-healthcheck.ts
 
       - name: Test negative scenarios
         run: |
           set -euo pipefail
           echo "Testing negative scenarios (error handling)..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun test ./scripts/test/test-negative-scenarios.ts
 
       - name: Cleanup pgflow test containers
@@ -682,8 +702,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -694,7 +714,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running security hardening tests..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun test scripts/test/test-security.test.ts
 
       - name: Capture test diagnostics
@@ -725,7 +745,7 @@ jobs:
     uses: ./.github/workflows/regression-tests.yml
     needs: [prep, merge, test-smoke]
     with:
-      image_ref: ghcr.io/fluxo-kt/aza-pg-testing:testing-${{ github.sha }}
+      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
     secrets: inherit
 
   test-complete:
@@ -842,7 +862,7 @@ jobs:
       - name: Best practices scan (Dockle)
         uses: erzz/dockle-action@v1
         with:
-          image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          image: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
           failure-threshold: WARN
           accept-keywords: key
@@ -853,7 +873,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -869,7 +889,7 @@ jobs:
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}"
+          image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           format: "table"
           severity: "CRITICAL"
           exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
@@ -889,7 +909,7 @@ jobs:
             aquasec/trivy:latest image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
           # Capture Trivy scan in JSON format for detailed analysis
@@ -899,13 +919,13 @@ jobs:
             aquasec/trivy:latest image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 
           # Capture image metadata
           echo "=== Image Metadata ===" | tee ${{ runner.temp }}/scan-diagnostics/image-metadata.txt
           docker buildx imagetools inspect \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/image-metadata.txt || true
 
           # Copy SARIF file if it exists
@@ -977,8 +997,8 @@ jobs:
         run: |
           set -euo pipefail  # Exit on any error
           # Sign by digest using testing repository reference (immutable reference)
-          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
-          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${DIGEST}"
+          echo "Signing image by digest: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${DIGEST}"
+          cosign sign --yes "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${DIGEST}"
 
           echo "✅ Image signed successfully with keyless OIDC"
           echo "📝 Signature uploaded to Rekor transparency log"
@@ -988,7 +1008,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/release/promote-image.ts \
-            --source "${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TESTING }}@${{ needs.merge.outputs.image_digest }}" \
+            --source "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --title "aza-pg Single-Node PostgreSQL" \
@@ -1355,8 +1375,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          bun scripts/release/cleanup-testing-tags.ts \
-            --repository "fluxo-kt/aza-pg-testing" \
+          bun scripts/release/cleanup-testing-images.ts \
+            --repository "${{ needs.prep.outputs.testing_image_name }}" \
             --tags "testing-${{ github.sha }}" \
             --continue-on-error # Script continues on individual tag failures
 
@@ -1369,8 +1389,8 @@ jobs:
           elif [ "${{ steps.cleanup-step.outcome }}" = "failure" ]; then
             echo "::warning::Cleanup failed - tag may remain in registry"
             echo "Tag: testing-${{ github.sha }}"
-            echo "Repository: ghcr.io/fluxo-kt/aza-pg-testing"
-            echo "Weekly cleanup will remove orphaned tags"
+            echo "Repository: ghcr.io/${{ needs.prep.outputs.testing_image_name }}"
+            echo "Daily cleanup will remove orphaned tags"
           else
             echo "::warning::Cleanup skipped or cancelled"
           fi
@@ -1390,8 +1410,8 @@ jobs:
             echo "⚠️ **Cleanup encountered issues**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- **Tag**: \`testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Repository**: \`ghcr.io/fluxo-kt/aza-pg-testing\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Action**: Weekly scheduled cleanup will remove orphaned tags" >> $GITHUB_STEP_SUMMARY
+            echo "- **Repository**: \`ghcr.io/${{ needs.prep.outputs.testing_image_name }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Action**: Daily scheduled cleanup will remove orphaned tags" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "This does not affect the release. All images are published to production." >> $GITHUB_STEP_SUMMARY
           fi

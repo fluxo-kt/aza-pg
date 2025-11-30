@@ -32,6 +32,7 @@
 import { $ } from "bun";
 import { resolve } from "node:path";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
+import { installPgflowSchemaIfNeeded } from "./lib/pgflow-installer";
 
 // Show help if requested
 if (Bun.argv.includes("--help") || Bun.argv.includes("-h")) {
@@ -1588,6 +1589,16 @@ await test("pg_hashids - Consistency test", "utilities", async () => {
   );
 });
 
+await test("pg_hashids - Decode single value with id_decode_once", "utilities", async () => {
+  const encode = await runSQL("SELECT id_encode(99999)");
+  assert(encode.success, "Encoding failed");
+  const encodedValue = encode.stdout.trim();
+
+  // id_decode_once returns a single bigint, not an array (v1.3 feature)
+  const decode = await runSQL(`SELECT id_decode_once('${encodedValue}')::text`);
+  assert(decode.success && decode.stdout.trim() === "99999", "id_decode_once failed");
+});
+
 // ============================================================================
 // VALIDATION EXTENSIONS
 // ============================================================================
@@ -1677,6 +1688,19 @@ await test("pg_jsonschema - Schema with constraints", "validation", async () => 
 // ============================================================================
 console.log("\n🔄 Workflow Extensions");
 console.log("-".repeat(80));
+
+// Install pgflow schema if not already present (pgflow is SQL-only, not a traditional extension)
+const pgflowInstall = await installPgflowSchemaIfNeeded(CONTAINER);
+if (!pgflowInstall.available) {
+  console.log(`⚠️  pgflow schema installation failed: ${pgflowInstall.error}`);
+  console.log("   Skipping pgflow tests...\n");
+} else if (pgflowInstall.installed) {
+  console.log(
+    `✅ pgflow schema installed (${pgflowInstall.stats?.tablesCreated} tables, ${pgflowInstall.stats?.functionsCreated} functions)\n`
+  );
+} else {
+  console.log(`✅ pgflow schema already present\n`);
+}
 
 await test("pgflow - Verify schema exists (SQL-only, not extension)", "workflow", async () => {
   // pgflow is a SQL-only schema initialized at startup, not a traditional extension

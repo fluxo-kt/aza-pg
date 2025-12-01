@@ -1,6 +1,6 @@
 # pgflow Example
 
-This directory contains the pgflow SQL schema for reference and documentation.
+Reference for pgflow SQL schema and installation.
 
 ## Important: Per-Project Installation
 
@@ -10,15 +10,19 @@ See the following documentation:
 
 - **[PGFLOW.md](../../docs/PGFLOW.md)** - Complete guide (installation, usage, update procedures)
 
-## Files
+## Schema Location
 
-- `10-pgflow.sql` - Complete pgflow v0.9.0 schema (for reference)
+The pgflow schema is maintained in test fixtures:
+
+```
+tests/fixtures/pgflow/schema-v0.9.0.sql
+```
 
 ## Quick Install
 
 ```bash
 # Download and install in your database
-psql -d your_project_db -f examples/pgflow/10-pgflow.sql
+psql -d your_project_db -f tests/fixtures/pgflow/schema-v0.9.0.sql
 ```
 
 ## Using npm Packages

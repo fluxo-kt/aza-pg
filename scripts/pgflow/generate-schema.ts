@@ -3,7 +3,7 @@
  * pgflow Schema Generator
  *
  * Fetches and combines all pgflow schema files from a specific GitHub tag
- * into a single SQL file for use in tests and examples.
+ * into a single SQL file for use in tests.
  *
  * Usage:
  *   bun scripts/pgflow/generate-schema.ts 0.9.0
@@ -22,7 +22,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "../..");
 const FIXTURES_DIR = join(ROOT_DIR, "tests/fixtures/pgflow");
-const EXAMPLES_DIR = join(ROOT_DIR, "examples/pgflow");
 const INSTALL_TS = join(FIXTURES_DIR, "install.ts");
 
 // Schema files in the order they should be concatenated
@@ -218,7 +217,6 @@ async function main(): Promise<void> {
   // Generate combined schema
   const combinedSchema = generateCombinedSchema(options.version, schemas);
   const outputPath = join(FIXTURES_DIR, `schema-v${options.version}.sql`);
-  const examplesOutputPath = join(EXAMPLES_DIR, "10-pgflow.sql");
 
   console.log("");
   console.log(
@@ -268,18 +266,14 @@ async function main(): Promise<void> {
     }
   }
 
-  // Write files
+  // Write schema file
   if (options.dryRun) {
     console.log("");
     console.log("Dry run - would write:");
     console.log(`  ${outputPath}`);
-    console.log(`  ${examplesOutputPath}`);
   } else {
     await Bun.write(outputPath, combinedSchema);
     console.log(`\n✅ Written: ${outputPath}`);
-
-    await Bun.write(examplesOutputPath, combinedSchema);
-    console.log(`✅ Written: ${examplesOutputPath}`);
   }
 
   // Update install.ts if requested

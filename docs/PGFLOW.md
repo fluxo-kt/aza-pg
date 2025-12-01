@@ -1571,7 +1571,7 @@ The script:
 - Fetches all 21 schema files from the `pgflow@{version}` GitHub tag
 - Concatenates them in the correct order with source comments
 - Validates v0.9.0+ indicators (read_with_poll removed, set_vt_batch format, headers column)
-- Writes to `tests/fixtures/pgflow/schema-v{version}.sql` and `examples/pgflow/10-pgflow.sql`
+- Writes to `tests/fixtures/pgflow/schema-v{version}.sql`
 
 #### 3. Update References
 
@@ -1609,7 +1609,7 @@ bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
 #### 6. Commit Changes
 
 ```bash
-git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts examples/pgflow/
+git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts
 git commit -m "feat(pgflow): update test schema to v${VERSION}
 
 Update pgflow test fixtures to v${VERSION}.

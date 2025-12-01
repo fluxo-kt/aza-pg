@@ -1,7 +1,6 @@
--- pgflow v0.8.1 Schema
--- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@0.8.1/pkgs/core/schemas/
+-- pgflow v0.9.0 Schema
+-- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@0.9.0/pkgs/core/schemas/
 -- Combined schema file generated from 21 individual schema files
--- Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 -- ============================================================================
 -- Source: 0010_extensions.sql
 -- ============================================================================

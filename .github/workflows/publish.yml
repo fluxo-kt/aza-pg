@@ -624,7 +624,7 @@ jobs:
       - name: Setup pgflow test container
         run: |
           set -euo pipefail
-          # Setup container for pgflow v0.8.1 tests (per-project installation)
+          # Setup container for pgflow tests (per-project installation)
           bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-test \
             --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
@@ -634,13 +634,13 @@ jobs:
             --timeout 120 \
             --diagnostic-dir ${{ runner.temp }}/pgflow-setup-logs
 
-      - name: Test pgflow v0.8.1
+      - name: Test pgflow
         run: |
           set -euo pipefail
-          echo "Testing pgflow v0.8.1 (per-project installation)..."
+          echo "Testing pgflow (per-project installation)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
           bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test
-          bun scripts/test/test-pgflow-v081.ts --container=publish-pgflow-test --database=pgflow_test
+          bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test --database=pgflow_test
 
       - name: Test PgBouncer healthcheck
         continue-on-error: true # Non-critical test (critical: false in test-all.ts)
@@ -680,7 +680,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
           echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgflow v0.8.1 schema installation and workflows" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow schema installation and workflows" >> $GITHUB_STEP_SUMMARY
           echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
           echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

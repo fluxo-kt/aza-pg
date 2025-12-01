@@ -747,7 +747,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.8.1",
+      tag: "pgflow@0.9.0",
     },
     runtime: {
       sharedPreload: false,
@@ -757,7 +757,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
         "NOT bundled in image - install per-project",
         "Requires pgmq 1.5.0+ (included in image)",
         "See docs/PGFLOW.md for installation",
-        "v0.8.1 supports map steps, task_index, pgmq 1.5.x compatibility",
+        "v0.9.0 includes broadcast fixes, pgmq 1.5.1 compatibility, empty map handling",
       ],
     },
     dependencies: ["pgmq"],

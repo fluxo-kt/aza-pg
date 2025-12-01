@@ -173,7 +173,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.8.1](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.8.1) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.9.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.9.0) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
 
 <!-- extensions-table:end -->
 

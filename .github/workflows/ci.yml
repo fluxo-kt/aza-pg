@@ -422,21 +422,21 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-auto-config.ts
 
-      # pgflow v0.8.1 tests - schema installed per-project (not bundled in image)
+      # pgflow tests - schema installed per-project (not bundled in image)
       # Tests handle schema installation via tests/fixtures/pgflow/install.ts
-      - name: Test pgflow v0.8.1 schema
+      - name: Test pgflow schema
         run: |
           set -euo pipefail
-          echo "Testing pgflow v0.8.1 schema installation and verification..."
+          echo "Testing pgflow schema installation and verification..."
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-pgflow-schema.ts --image=aza-pg-ci:test
 
-      - name: Test pgflow v0.8.1 functional
+      - name: Test pgflow functional
         run: |
           set -euo pipefail
-          echo "Testing pgflow v0.8.1 workflow functionality..."
+          echo "Testing pgflow workflow functionality..."
           export POSTGRES_IMAGE=aza-pg-ci:test
-          bun scripts/test/test-pgflow-v081.ts --image=aza-pg-ci:test
+          bun scripts/test/test-pgflow-functional.ts --image=aza-pg-ci:test
 
       - name: Test pgflow multi-project isolation
         run: |
@@ -476,7 +476,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
           echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgflow v0.8.1 schema installation and workflows" >> $GITHUB_STEP_SUMMARY
+          echo "- pgflow schema installation and workflows" >> $GITHUB_STEP_SUMMARY
           echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
           echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
 

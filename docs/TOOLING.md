@@ -184,7 +184,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Scope**:
 
 - `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (auto-generated)
-- `tests/fixtures/pgflow/schema-v0.8.1.sql` (pgflow test schema)
+- `tests/fixtures/pgflow/schema-v0.9.0.sql` (pgflow test schema)
 - `examples/pgflow/10-pgflow.sql` (pgflow example)
 
 ---

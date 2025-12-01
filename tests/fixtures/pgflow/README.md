@@ -1,10 +1,10 @@
 # pgflow Test Fixtures
 
-This directory contains the pgflow v0.8.1 SQL schema for testing purposes.
+This directory contains the pgflow SQL schema for testing purposes.
 
 ## Contents
 
-- `schema-v0.8.1.sql` - Complete pgflow schema (21 combined SQL files)
+- `schema-v0.9.0.sql` - Complete pgflow schema (21 combined SQL files)
 - `install.ts` - TypeScript helper for installing schema into containers
 
 ## Usage
@@ -61,7 +61,7 @@ if (result.success) {
 ## Schema Source
 
 The schema is combined from 21 individual files in the pgflow repository:
-https://github.com/pgflow-dev/pgflow/tree/pgflow@0.8.1/pkgs/core/schemas/
+https://github.com/pgflow-dev/pgflow/tree/pgflow@0.9.0/pkgs/core/schemas/
 
 ### Files (in order)
 
@@ -115,7 +115,7 @@ for file in "${FILES[@]}"; do
 done
 ```
 
-## Expected Counts (v0.8.1)
+## Expected Counts (v0.9.0)
 
 | Component | Count |
 | --------- | ----- |
@@ -125,7 +125,7 @@ done
 
 ## Supabase Realtime Compatibility
 
-pgflow v0.8.1 integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the `install.ts` helper automatically creates a **pg_notify-based replacement** that uses PostgreSQL's native LISTEN/NOTIFY mechanism.
+pgflow integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the `install.ts` helper automatically creates a **pg_notify-based replacement** that uses PostgreSQL's native LISTEN/NOTIFY mechanism.
 
 ### How It Works
 

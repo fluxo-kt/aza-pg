@@ -2,7 +2,7 @@
 /**
  * pgflow Schema Verification Tests
  *
- * Validates that the pgflow v0.8.1 schema is complete and correctly structured.
+ * Validates that the pgflow schema is complete and correctly structured.
  * This is a lighter test that verifies schema integrity without full workflow testing.
  *
  * Usage:

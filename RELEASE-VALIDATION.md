@@ -43,7 +43,7 @@ Comprehensive validation of the published production image confirms full functio
 - ✅ 5 disabled extensions properly excluded from image
 - ✅ Auto-config system detects memory/CPU correctly and tunes PostgreSQL
 - ✅ Streaming replication with proper standby mode detection
-- ✅ pgflow v0.8.1 schema and functional tests pass
+- ✅ pgflow schema and functional tests pass
 - ✅ TimescaleDB, pgvector, PostGIS integration tests pass
 - ✅ Security features operational (SCRAM-SHA-256, pgaudit)
 
@@ -150,9 +150,9 @@ All code quality and configuration validation checks passed:
 - ✅ Auto-Config Tests (2m 16s) - Memory/CPU detection across tiers
 - ✅ Extension Tests (10.77s) - Manifest-driven extension creation
 - ✅ Integration Extension Combinations (4.31s) - timescaledb+pgvector, postgis+pgroonga
-- ✅ pgflow v0.8.1 Schema Tests (4.72s) - Schema structure validation
-- ✅ pgflow v0.8.1 Functional Tests (5.51s) - Workflow orchestration
-- ✅ pgflow v0.8.1 Multi-Project Isolation (6.49s) - Per-database isolation
+- ✅ pgflow Schema Tests (4.72s) - Schema structure validation
+- ✅ pgflow Functional Tests (5.51s) - Workflow orchestration
+- ✅ pgflow Multi-Project Isolation (6.49s) - Per-database isolation
 - ✅ pgq Functional Tests (69ms) - PostgreSQL queue operations
 - ✅ Security Tests (5.71s) - SCRAM-SHA-256, pgaudit, network binding
 - ✅ Negative Scenario Tests (46.31s) - Error handling validation

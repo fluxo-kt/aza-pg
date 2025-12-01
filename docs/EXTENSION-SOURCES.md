@@ -79,18 +79,18 @@ These extensions MUST be built from source (no PGDG packages):
 
 ### Other Source-Built
 
-| Extension           | Version       | Pigsty Alt       | Percona Alt  | Notes                            |
-| ------------------- | ------------- | ---------------- | ------------ | -------------------------------- |
-| **pg_stat_monitor** | git-ref       | v2.1             | ❌ (no PG18) | Pinned commit for PG18           |
-| **pgsodium**        | v3.1.9        | v3.1.9           | ❌           | Pigsty has exact match           |
-| **pgmq**            | v1.8.0        | v1.5.1           | ❌           | Source for latest (PG18 support) |
-| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌           | Using master v1.3 (unreleased)   |
-| **wal2json**        | 2.6           | v2.6             | ❌           | Pigsty has exact match           |
-| **pg_safeupdate**   | 1.5           | v1.5             | ❌           | Pigsty has exact match           |
-| **pgq**             | v3.5.1        | v3.5.1           | ❌           | Pigsty has exact match           |
-| **vault**           | v0.3.1        | v0.3.1           | ❌           | Supabase-specific                |
-| **index_advisor**   | v0.2.0        | ❌               | ❌           | Supabase-specific                |
-| **pgroonga**        | 4.0.4         | PG13-17          | ❌           | Pigsty lacks PG18                |
+| Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                                    |
+| ------------------- | ------------- | ---------------- | ----------- | ---------------------------------------- |
+| **pg_stat_monitor** | v2.3.1        | v2.1             | v2.3.1 ✅   | Source build; Percona apt also available |
+| **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
+| **pgmq**            | v1.8.0        | v1.5.1           | ❌          | Source for latest (PG18 support)         |
+| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)           |
+| **wal2json**        | 2.6           | v2.6             | ❌          | Pigsty has exact match                   |
+| **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match                   |
+| **pgq**             | v3.5.1        | v3.5.1           | ❌          | Pigsty has exact match                   |
+| **vault**           | v0.3.1        | v0.3.1           | ❌          | Supabase-specific                        |
+| **index_advisor**   | v0.2.0        | ❌               | ❌          | Supabase-specific                        |
+| **pgroonga**        | 4.0.4         | PG13-17          | ❌          | Pigsty lacks PG18                        |
 
 ## Repository Details
 
@@ -173,30 +173,30 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 ### Percona (repo.percona.com)
 
 ```bash
-# PG18 NOT YET AVAILABLE (as of Nov 2025)
+# PG18 NOW AVAILABLE (as of Nov 27, 2025)
 
-# Future setup when PG18 releases:
-# wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
-# dpkg -i percona-release_latest.generic_all.deb
-# percona-release enable ppg-18 release
-# apt-get update
+# Setup Percona repository:
+wget https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+dpkg -i percona-release_latest.generic_all.deb
+percona-release enable ppg-18 release
+apt-get update
 
-# Expected packages (when available):
-# apt-get install percona-postgresql-18
-# apt-get install percona-pg_stat_monitor18
+# Install packages:
+apt-get install percona-postgresql-18
+apt-get install percona-pg_stat_monitor18
 ```
 
-**Status as of Nov 2025:**
+**Status as of Dec 2025:**
 
-- `ppg-18` packages NOT released yet
-- PG18 support tracked in: https://github.com/percona/pg_stat_monitor/issues/566
-- Current Percona packages only support up to PG17
+- `ppg-18` packages NOW available (v2.3.1 released 2025-11-27)
+- PG18 support issue resolved: https://github.com/percona/pg_stat_monitor/issues/566 (CLOSED)
+- Package: `percona-pg-stat-monitor18` v2.3.1
 
-**Why we care:**
+**Why we use source build:**
 
 - pg_stat_monitor official repo is Percona
-- Currently using git-ref (commit SHA) for PG18 pre-release support
-- When ppg-18 releases, consider switching to official package
+- Source build gives same version (v2.3.1) with full control
+- Percona apt packages available as alternative
 
 ## Version Management
 

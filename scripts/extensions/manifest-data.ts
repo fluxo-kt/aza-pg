@@ -830,17 +830,18 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "observability",
     description: "Enhanced query performance telemetry with bucketed metrics.",
     source: {
-      type: "git-ref",
+      type: "git",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      ref: "b00caafb684b3bd64f020ccd057303cd8a7af0d8",
+      tag: "2.3.1",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Alt: Pigsty v2.1 (behind). Alt: Percona repo - NO PG18 packages yet",
-        "Pinned to pre-release commit for PG18 support",
+        "NOT in PGDG. Alt: Pigsty v2.1 (behind). Percona repo: v2.3.1 PG18 packages NOW available",
+        "v2.3.1: Stable release with full PG18 support (2025-11-28)",
+        "Source build used; Percona apt packages available as alternative (percona-pg-stat-monitor18)",
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       ],
     },

@@ -102,7 +102,10 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - provides: List of features/extensions provided
  * - aptPackages: System packages required for building
  * - notes: General notes about the extension
- * - install_via: Installation method override ("pgdg" for package, "source" to build from source)
+ * - install_via: Installation method override ("pgdg" or "percona" for package, "source" to build from source)
+ * - perconaVersion: Version string for Percona packages (required when install_via="percona")
+ * - perconaPackage: Package name for Percona packages (required when install_via="percona")
+ * - soFileName: Shared object filename for verification (required when install_via="percona")
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -118,7 +121,10 @@ export const ManifestEntrySchema = type({
   "provides?": "string[]",
   "aptPackages?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'source'",
+  "install_via?": "'pgdg'|'percona'|'source'",
+  "perconaVersion?": "string",
+  "perconaPackage?": "string",
+  "soFileName?": "string",
   "enabled?": "boolean",
 });
 

@@ -26,7 +26,6 @@ const EXCLUDE_PATTERNS = [
   "**/.git/**",
   "**/tests/regression/**", // Official PostgreSQL test fixtures - must not be modified
   "**/tests/fixtures/pgflow/**", // pgflow schema from upstream - must not be modified
-  "**/examples/pgflow/**", // pgflow example SQL from upstream - must not be modified
 ];
 
 interface ValidationResult {

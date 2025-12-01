@@ -222,6 +222,36 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -f /tmp/extensions.manifest.json && \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
+# Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
+# Provides extensions not available in PGDG: pg_stat_monitor, wal2json
+# Percona repository setup and package installation
+# Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
+# Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    echo "Setting up Percona repository for ppg-18..." && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \
+    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \
+    dpkg -i /tmp/percona-release.deb && \
+    percona-release enable ppg-18 release && \
+    apt-get update && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "Installed 2 Percona package(s)" && \
+    # Verify .so files exist
+    echo "Verifying Percona .so files exist..." && \
+    test -f /usr/lib/postgresql/18/lib/pg_stat_monitor.so && \
+    test -f /usr/lib/postgresql/18/lib/wal2json.so && \
+    echo "All 2 Percona .so files verified" && \
+    # Cleanup Percona release package
+    rm -f /tmp/percona-release.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \

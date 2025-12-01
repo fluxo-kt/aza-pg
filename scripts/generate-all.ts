@@ -14,6 +14,7 @@
 
 import { spawn } from "bun";
 import * as logger from "./utils/logger";
+import { GENERATED_FILES } from "./generated-files";
 
 interface GeneratorTask {
   name: string;
@@ -118,6 +119,29 @@ async function main(): Promise<void> {
       await Promise.all(phase.map((task) => runGenerator(task)));
     }
 
+    console.log();
+  }
+
+  // Format generated files with Prettier for consistency
+  // This ensures files like .github/workflow-config.json are properly formatted
+  // even when JSON.stringify output differs from Prettier's style
+  const formattableGenerated = GENERATED_FILES.filter(
+    (f) => f.endsWith(".json") || f.endsWith(".md")
+  );
+
+  if (formattableGenerated.length > 0) {
+    logger.info("Formatting generated files with Prettier...");
+    const formatProc = spawn(["bun", "run", "prettier:write", ...formattableGenerated], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const formatExitCode = await formatProc.exited;
+    if (formatExitCode !== 0) {
+      logger.warning("Some generated files could not be formatted");
+    } else {
+      logger.success("Formatted generated files");
+    }
     console.log();
   }
 

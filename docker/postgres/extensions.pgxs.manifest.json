@@ -130,32 +130,6 @@
       "docsUrl": "https://github.com/eradman/pg-safeupdate#readme"
     },
     {
-      "name": "pg_stat_monitor",
-      "kind": "extension",
-      "category": "observability",
-      "description": "Enhanced query performance telemetry with bucketed metrics.",
-      "source": {
-        "type": "git-ref",
-        "repository": "https://github.com/percona/pg_stat_monitor.git",
-        "ref": "b00caafb684b3bd64f020ccd057303cd8a7af0d8",
-        "commit": "b00caafb684b3bd64f020ccd057303cd8a7af0d8"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true,
-        "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.1 (behind). Alt: Percona repo - NO PG18 packages yet",
-          "Pinned to pre-release commit for PG18 support",
-          "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
-        ]
-      },
-      "sourceUrl": "https://github.com/percona/pg_stat_monitor",
-      "docsUrl": "https://docs.percona.com/pg-stat-monitor"
-    },
-    {
       "name": "pgmq",
       "kind": "extension",
       "category": "queueing",
@@ -163,8 +137,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.7.0",
-        "commit": "e359dc936ec5b5c746de61498b5275bebd483bcd"
+        "tag": "v1.8.0",
+        "commit": "857253160b7c25f99c21d879894235142b09e1ca"
       },
       "build": {
         "type": "pgxs",
@@ -174,8 +148,8 @@
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v1.6 (1 minor version behind)",
-          "Source build for latest v1.7.0"
+          "NOT in PGDG. Alt: Pigsty v1.5.1 (3 minor versions behind)",
+          "Source build for latest v1.8.0 with PG18 support"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
@@ -360,31 +334,6 @@
       },
       "sourceUrl": "https://github.com/timescale/timescaledb",
       "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
-    },
-    {
-      "name": "wal2json",
-      "kind": "tool",
-      "category": "cdc",
-      "description": "Logical decoding output plugin streaming JSON data for CDC.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/eulerto/wal2json.git",
-        "tag": "wal2json_2_6",
-        "commit": "75629c2e1e81a12350cc9d63782fc53252185d8d"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.6 (same version)",
-          "Requires wal_level=logical in postgresql.conf for CDC functionality."
-        ]
-      },
-      "sourceUrl": "https://github.com/eulerto/wal2json",
-      "docsUrl": "https://github.com/eulerto/wal2json#readme"
     }
   ]
 }

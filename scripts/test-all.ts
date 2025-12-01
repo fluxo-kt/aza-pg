@@ -875,7 +875,7 @@ const allChecks: Check[] = [
     timeout: 300000, // 5 minutes
   },
   {
-    name: "pgflow v0.8.1 Schema Tests",
+    name: "pgflow Schema Tests",
     category: "functional",
     command: [
       "sh",
@@ -889,14 +889,14 @@ const allChecks: Check[] = [
         "exit $RESULT",
       ].join("; "),
     ],
-    description: "pgflow v0.8.1 schema verification (table/function/type counts)",
+    description: "pgflow schema verification (table/function/type counts)",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
     timeout: 180000, // 3 minutes
   },
   {
-    name: "pgflow v0.8.1 Functional Tests",
+    name: "pgflow Functional Tests",
     category: "functional",
     command: [
       "sh",
@@ -904,20 +904,20 @@ const allChecks: Check[] = [
       [
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "bun scripts/test/test-pgflow-v081.ts --container=$CONTAINER",
+        "bun scripts/test/test-pgflow-functional.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
         "exit $RESULT",
       ].join("; "),
     ],
-    description: "Comprehensive pgflow v0.8.1 workflow orchestration functional tests",
+    description: "Comprehensive pgflow workflow orchestration functional tests",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
     timeout: 300000, // 5 minutes
   },
   {
-    name: "pgflow v0.8.1 Multi-Project Isolation",
+    name: "pgflow Multi-Project Isolation",
     category: "functional",
     command: [
       "sh",

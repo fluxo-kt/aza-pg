@@ -94,10 +94,10 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### observability
 
-| Extension                                                       | Version                                                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [b00caafb](https://github.com/percona/pg_stat_monitor/commit/b00caafb684b3bd64f020ccd057303cd8a7af0d8) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
-| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1)                                         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
+| Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.1](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.1) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
+| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
 
@@ -123,7 +123,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                 | Version                                                        | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
 | ----------------------------------------- | -------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.7.0](https://github.com/tembo-io/pgmq/releases/tag/v1.7.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.8.0](https://github.com/tembo-io/pgmq/releases/tag/v1.8.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
 | [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)       | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
@@ -173,7 +173,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.8.1](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.8.1) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.9.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.9.0) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
 
 <!-- extensions-table:end -->
 

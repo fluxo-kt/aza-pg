@@ -1,6 +1,6 @@
 # pgflow Documentation
 
-Comprehensive guide to pgflow v0.8.1, a PostgreSQL-native DAG workflow orchestration engine with task queuing, dependencies, and retry logic.
+Comprehensive guide to pgflow v0.9.0, a PostgreSQL-native DAG workflow orchestration engine with task queuing, dependencies, and retry logic.
 
 ## Table of Contents
 
@@ -73,7 +73,7 @@ pgflow is a PostgreSQL-native workflow orchestration system that runs entirely i
 
 - aza-pg container running (provides pgmq extension)
 - Database created for your project
-- PostgreSQL 17+ (pgflow 0.8.x requirement)
+- PostgreSQL 17+ (pgflow 0.9.x requirement)
 - pgmq 1.5.0+ (included in aza-pg image)
 
 ### Option 1: Using npm Packages (Recommended)
@@ -110,7 +110,7 @@ const MyWorkflow = new Flow<{ url: string }>({
 
 ```bash
 # Download combined schema
-VERSION="0.8.1"
+VERSION="0.9.0"
 curl -sL "https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas/combined.sql" \
   -o pgflow-${VERSION}.sql
 ```
@@ -119,7 +119,7 @@ curl -sL "https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION
 
 ```bash
 # Connect to your project database
-psql -d your_project_db -f pgflow-0.8.1.sql
+psql -d your_project_db -f pgflow-0.9.0.sql
 ```
 
 3. Verify installation:
@@ -149,10 +149,10 @@ CREATE DATABASE project_beta;
 
 -- Connect and install pgflow in each
 \c project_alpha
-\i pgflow-0.8.1.sql
+\i pgflow-0.9.0.sql
 
 \c project_beta
-\i pgflow-0.8.1.sql
+\i pgflow-0.9.0.sql
 ```
 
 Each database has completely independent:
@@ -165,6 +165,7 @@ Each database has completely independent:
 
 | pgflow | pgmq Required | PostgreSQL Required |
 | ------ | ------------- | ------------------- |
+| 0.9.0  | 1.5.1+        | 17+                 |
 | 0.8.1  | 1.5.0+        | 17+                 |
 | 0.7.2  | 1.4.x         | 14+                 |
 
@@ -253,7 +254,7 @@ SELECT * FROM pgflow.start_flow(
 
 ### 5. Tasks
 
-A **task** is the actual work unit queued for execution. In v0.8.1, each step creates exactly 1 task. Actual work items created when steps become ready. Processed by workers.
+A **task** is the actual work unit queued for execution. In v0.9.0, each step creates exactly 1 task (for 'single' steps) or multiple tasks (for 'map' steps). Actual work items created when steps become ready. Processed by workers.
 
 ### 6. Workers
 
@@ -394,7 +395,7 @@ Defines workflow steps with dependencies.
 | ---------------- | ----------- | --------------------------------------- |
 | flow_slug        | text        | Parent flow (FK)                        |
 | step_slug        | text        | Unique step identifier within flow (PK) |
-| step_type        | text        | Step type (always 'single' in v0.8.1)   |
+| step_type        | text        | Step type ('single' or 'map')           |
 | step_index       | integer     | Execution order hint                    |
 | deps_count       | integer     | Number of dependencies                  |
 | opt_max_attempts | integer     | Override max attempts (nullable)        |
@@ -446,7 +447,7 @@ Tracks step execution within a run.
 | run_id          | uuid        | Parent run (FK)                       |
 | step_slug       | text        | Step identifier (FK) (PK with run_id) |
 | status          | text        | created/started/completed/failed      |
-| remaining_tasks | integer     | Tasks not yet completed (always 1)    |
+| remaining_tasks | integer     | Tasks not yet completed               |
 | remaining_deps  | integer     | Dependencies not yet satisfied        |
 | created_at      | timestamptz | State creation timestamp              |
 | started_at      | timestamptz | Step start timestamp (nullable)       |
@@ -457,24 +458,24 @@ Tracks step execution within a run.
 
 #### 6. `pgflow.step_tasks`
 
-Tracks individual task executions (1 task per step in v0.8.1).
+Tracks individual task executions (1+ tasks per step).
 
-| Column         | Type        | Description                          |
-| -------------- | ----------- | ------------------------------------ |
-| flow_slug      | text        | Parent flow (FK)                     |
-| run_id         | uuid        | Parent run (FK)                      |
-| step_slug      | text        | Parent step (FK)                     |
-| message_id     | bigint      | pgmq message ID (nullable)           |
-| task_index     | integer     | Task index (always 0 in v0.8.1)      |
-| status         | text        | queued/started/completed/failed      |
-| attempts_count | integer     | Number of execution attempts         |
-| error_message  | text        | Last error message (nullable)        |
-| output         | jsonb       | Task output data (nullable)          |
-| queued_at      | timestamptz | Task creation timestamp              |
-| started_at     | timestamptz | Task start timestamp (nullable)      |
-| completed_at   | timestamptz | Task completion timestamp (nullable) |
-| failed_at      | timestamptz | Task failure timestamp (nullable)    |
-| last_worker_id | uuid        | Last worker that processed task (FK) |
+| Column         | Type        | Description                                        |
+| -------------- | ----------- | -------------------------------------------------- |
+| flow_slug      | text        | Parent flow (FK)                                   |
+| run_id         | uuid        | Parent run (FK)                                    |
+| step_slug      | text        | Parent step (FK)                                   |
+| message_id     | bigint      | pgmq message ID (nullable)                         |
+| task_index     | integer     | Task index (0 for single steps, 0-N for map steps) |
+| status         | text        | queued/started/completed/failed                    |
+| attempts_count | integer     | Number of execution attempts                       |
+| error_message  | text        | Last error message (nullable)                      |
+| output         | jsonb       | Task output data (nullable)                        |
+| queued_at      | timestamptz | Task creation timestamp                            |
+| started_at     | timestamptz | Task start timestamp (nullable)                    |
+| completed_at   | timestamptz | Task completion timestamp (nullable)               |
+| failed_at      | timestamptz | Task failure timestamp (nullable)                  |
+| last_worker_id | uuid        | Last worker that processed task (FK)               |
 
 #### 7. `pgflow.workers`
 
@@ -625,7 +626,7 @@ SELECT * FROM pgflow.start_flow(
 
 ### Task Processing (Worker Side)
 
-#### `pgflow.start_tasks()` (v0.8.1 recommended)
+#### `pgflow.start_tasks()` (v0.9.0 recommended)
 
 Marks tasks as started and returns task details.
 
@@ -690,7 +691,7 @@ FUNCTION pgflow.complete_task(
 
 - `run_id`: Run identifier
 - `step_slug`: Step identifier
-- `task_index`: Task index (always 0 in v0.8.1)
+- `task_index`: Task index (0 for single steps, 0-N for map steps)
 - `output`: Task output data (available to dependent steps)
 
 **Returns**: Updated task record
@@ -1007,7 +1008,7 @@ BEGIN
           PERFORM pgflow.complete_task(
             v_task.run_id,
             v_task.step_slug,
-            0,  -- task_index always 0 in v0.8.1
+            0,  -- task_index (0 for single steps)
             v_output
           );
         END;
@@ -1050,7 +1051,7 @@ $$;
 
 ## Real-Time Event Notifications
 
-pgflow v0.8.1 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
+pgflow v0.9.0 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
 
 ### Subscribing to Events
 
@@ -1453,13 +1454,14 @@ SELECT * FROM pgflow.complete_task(..., 'fetch_data', 0,
 
 ## Limitations
 
-### Current Version (v0.8.1)
+### Current Version (v0.9.0)
 
 The following features have limited support or workarounds:
 
 #### Missing Features
 
 1. **Map Steps (Phases 9-11)**
+   - ✅ v0.9.0 supports map steps with multiple tasks per step
    - Parallel processing of array elements
    - Dynamic task count based on input array length
    - Use case: Process 1000 records in parallel
@@ -1504,7 +1506,7 @@ END $$;
 
 ### General Limitations
 
-1. **Single task per step**: v0.8.1 only supports `task_index = 0`
+1. **Multiple tasks per step**: v0.9.0 supports map steps with multiple tasks (task_index 0-N)
 2. **No cancellation**: No built-in workflow cancellation (must implement manually)
 3. **No pause/resume**: Workflows cannot be paused
 4. **No workflow versioning**: Schema changes affect all runs
@@ -1516,9 +1518,9 @@ END $$;
 
 This section documents how to update the pgflow test schema and verify compatibility with aza-pg.
 
-### Architecture Change (v0.8.1)
+### Architecture Change (v0.9.0)
 
-**Important**: As of v0.8.1, pgflow is NO LONGER bundled in the Docker image.
+**Important**: As of v0.9.0, pgflow is NO LONGER bundled in the Docker image.
 
 | Before               | After                    |
 | -------------------- | ------------------------ |
@@ -1532,7 +1534,7 @@ The pgflow schema is maintained in test fixtures for validation:
 
 ```
 tests/fixtures/pgflow/
-├── schema-v0.8.1.sql   # Combined schema for testing
+├── schema-v0.9.0.sql   # Combined schema for testing
 ├── install.ts          # Installation helper
 └── README.md           # Update instructions
 ```
@@ -1550,65 +1552,39 @@ npm view @pgflow/client version
 open https://github.com/pgflow-dev/pgflow/releases
 ```
 
-#### 2. Download Schema Files
+#### 2. Generate Schema (Automated)
 
-pgflow uses 21 numbered SQL files in `pkgs/core/schemas/`:
+Use the schema generation script to fetch and validate all 21 schema files:
 
 ```bash
-VERSION="0.9.0"  # Update to target version
-BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
+# Generate schema for a specific version
+bun run pgflow:generate 0.9.0
 
-# Create combined schema
-echo "-- pgflow v${VERSION} Schema" > tests/fixtures/pgflow/schema-v${VERSION}.sql
-echo "-- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@${VERSION}/pkgs/core/schemas/" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-
-FILES=(
-  0010_extensions.sql
-  0020_schemas.sql
-  0030_utilities.sql
-  0040_types.sql
-  0050_tables_definitions.sql
-  0055_tables_workers.sql
-  0060_tables_runtime.sql
-  0090_function_poll_for_tasks.sql
-  0100_function_add_step.sql
-  0100_function_cascade_complete_taskless_steps.sql
-  0100_function_complete_task.sql
-  0100_function_create_flow.sql
-  0100_function_fail_task.sql
-  0100_function_maybe_complete_run.sql
-  0100_function_start_flow.sql
-  0100_function_start_ready_steps.sql
-  0105_function_get_run_with_states.sql
-  0110_function_set_vt_batch.sql
-  0110_function_start_flow_with_states.sql
-  0120_function_start_tasks.sql
-  0200_grants_and_revokes.sql
-)
-
-for file in "${FILES[@]}"; do
-  echo -e "\n-- ============================================================================" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  echo "-- Source: ${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  echo -e "-- ============================================================================\n" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  curl -sS "${BASE_URL}/${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-done
+# With options
+bun run pgflow:generate 0.9.0 --update-install  # Also update install.ts
+bun run pgflow:generate 0.9.0 --dry-run         # Preview without writing
+bun run pgflow:generate 0.9.0 --verbose         # Show detailed progress
 ```
+
+The script:
+
+- Fetches all 21 schema files from the `pgflow@{version}` GitHub tag
+- Concatenates them in the correct order with source comments
+- Validates v0.9.0+ indicators (read_with_poll removed, set_vt_batch format, headers column)
+- Writes to `tests/fixtures/pgflow/schema-v{version}.sql`
 
 #### 3. Update References
 
-Update these files:
+After generating the schema:
 
-1. **`tests/fixtures/pgflow/install.ts`**:
+1. **`tests/fixtures/pgflow/install.ts`** (if not using `--update-install`):
    - Update `PGFLOW_VERSION` constant
-   - Update schema file path if version changed
+   - Update schema file path
 
 2. **`scripts/extensions/manifest-data.ts`**:
    - Update `tag: "pgflow@X.Y.Z"`
 
-3. **`examples/pgflow/10-pgflow.sql`**:
-   - Copy new schema for documentation
-
-4. **npm packages** (if using):
+3. **npm packages**:
    ```bash
    bun add -d @pgflow/dsl@X.Y.Z @pgflow/client@X.Y.Z
    ```
@@ -1616,13 +1592,12 @@ Update these files:
 #### 4. Run Tests
 
 ```bash
-# Validate schema completeness
+# All pgflow tests
+bun run test:pgflow
+
+# Or individually:
 bun scripts/test/test-pgflow-schema.ts --image=aza-pg:latest
-
-# Full functional tests
-bun scripts/test/test-pgflow-v081.ts --image=aza-pg:latest
-
-# Multi-project isolation
+bun scripts/test/test-pgflow-functional.ts --image=aza-pg:latest
 bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
 ```
 
@@ -1634,7 +1609,7 @@ bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
 #### 6. Commit Changes
 
 ```bash
-git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts examples/pgflow/
+git add tests/fixtures/pgflow/ scripts/extensions/manifest-data.ts
 git commit -m "feat(pgflow): update test schema to v${VERSION}
 
 Update pgflow test fixtures to v${VERSION}.
@@ -1651,6 +1626,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ### Breaking Changes Log
 
+#### v0.8.1 → v0.9.0
+
+**Changes:**
+
+- Fixed broadcast ordering and timestamp handling
+- Improved empty map step handling (initial_tasks = 0)
+- Updated `set_vt_batch` for pgmq 1.5.1 compatibility
+- Removed deprecated `read_with_poll` function
+- Better atomic event broadcasting patterns
+
 #### v0.8.0 → v0.8.1
 
 - Fixed Supabase CLI version requirement (2.50.3+)
@@ -1666,9 +1651,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ### Maintenance Notes
 
-**Last Updated**: 2025-11-26
-**Current Version**: v0.8.1
-**Schema Location**: `tests/fixtures/pgflow/schema-v0.8.1.sql`
+**Last Updated**: 2025-11-30
+**Current Version**: v0.9.0
+**Schema Location**: `tests/fixtures/pgflow/schema-v0.9.0.sql`
 
 ---
 

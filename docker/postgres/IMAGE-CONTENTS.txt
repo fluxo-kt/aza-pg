@@ -19,11 +19,11 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_net                       v0.20.2        integration
   pg_partman                   v5.3.1         maintenance
   pg_repack                    v1.5.3         maintenance
-  pg_stat_monitor              builtin        observability
+  pg_stat_monitor              v2.3.1         observability
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
-  pgmq                         v1.7.0         queueing
+  pgmq                         v1.8.0         queueing
   pgroonga                     v4.0.4         search
   pgsodium                     v3.1.9         security
   plpgsql                      builtin        language

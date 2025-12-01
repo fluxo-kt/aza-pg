@@ -1,24 +1,28 @@
 # pgflow Example
 
-This directory contains the pgflow v0.8.1 SQL schema for reference and documentation.
+Reference for pgflow SQL schema and installation.
 
 ## Important: Per-Project Installation
 
-As of v0.8.1, pgflow is **NOT bundled** in the aza-pg Docker image. You must install it per-project.
+As of v0.9.0, pgflow is **NOT bundled** in the aza-pg Docker image. You must install it per-project.
 
 See the following documentation:
 
 - **[PGFLOW.md](../../docs/PGFLOW.md)** - Complete guide (installation, usage, update procedures)
 
-## Files
+## Schema Location
 
-- `10-pgflow.sql` - Complete pgflow v0.8.1 schema (for reference)
+The pgflow schema is maintained in test fixtures:
+
+```text
+tests/fixtures/pgflow/schema-v0.9.0.sql
+```
 
 ## Quick Install
 
 ```bash
 # Download and install in your database
-psql -d your_project_db -f examples/pgflow/10-pgflow.sql
+psql -d your_project_db -f tests/fixtures/pgflow/schema-v0.9.0.sql
 ```
 
 ## Using npm Packages

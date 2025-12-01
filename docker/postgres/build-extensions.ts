@@ -78,7 +78,9 @@ interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
-  install_via?: "pgdg";
+  install_via?: "pgdg" | "percona" | "source";
+  perconaVersion?: string;
+  perconaPackage?: string;
   enabled?: boolean;
   disabledReason?: string;
 }
@@ -127,14 +129,15 @@ async function ensureCleanDir(dir: string): Promise<void> {
 function validateGitUrl(url: string): void {
   const allowedDomains = ["github.com", "gitlab.com"];
 
-  let domain = "";
-  const httpsMatch = url.match(/^https?:\/\/([^/]+)/);
-  const gitMatch = url.match(/^git@([^:]+):/);
+  // Extract domain from URL
+  const httpsDomain = url.match(/^https?:\/\/([^/]+)/)?.[1];
+  const gitDomain = url.match(/^git@([^:]+):/)?.[1];
 
-  if (httpsMatch) {
-    domain = httpsMatch[1];
-  } else if (gitMatch) {
-    domain = gitMatch[1];
+  let domain: string;
+  if (httpsDomain) {
+    domain = httpsDomain;
+  } else if (gitDomain) {
+    domain = gitDomain;
   } else {
     log(`ERROR: Invalid git URL format: ${url}`);
     process.exit(1);
@@ -243,23 +246,15 @@ async function getPgrxVersion(dir: string): Promise<string> {
 
       if (inDependencies && line.includes("pgrx")) {
         // Handle: pgrx = "0.16.1" or pgrx = { version = "0.16.1", ... }
-        const versionMatch = line.match(/version\s*=\s*["']([^"']+)["']/);
-        if (versionMatch) {
-          let version = versionMatch[1];
-          if (version.startsWith("=")) {
-            version = version.substring(1);
-          }
-          return version;
+        const version = line.match(/version\s*=\s*["']([^"']+)["']/)?.[1];
+        if (version) {
+          return version.startsWith("=") ? version.substring(1) : version;
         }
 
         // Handle simple string version: pgrx = "0.16.1"
-        const simpleMatch = line.match(/pgrx\s*=\s*["']([^"']+)["']/);
-        if (simpleMatch) {
-          let version = simpleMatch[1];
-          if (version.startsWith("=")) {
-            version = version.substring(1);
-          }
-          return version;
+        const simpleVersion = line.match(/pgrx\s*=\s*["']([^"']+)["']/)?.[1];
+        if (simpleVersion) {
+          return simpleVersion.startsWith("=") ? simpleVersion.substring(1) : simpleVersion;
         }
       }
     }
@@ -438,6 +433,8 @@ async function validateDependencies(
           // Dependency exists and is enabled - accept regardless of how it's built
           if (depEntryFull.install_via === "pgdg") {
             log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
+          } else if (depEntryFull.install_via === "percona") {
+            log(`  ✓ Dependency '${depName}' will be installed via Percona`);
           } else if (depEntryFull.install_via === "source") {
             log(`  ✓ Dependency '${depName}' will be built from source (different build phase)`);
           } else if (depEntryFull.kind === "builtin") {
@@ -482,6 +479,9 @@ function parseSedPattern(sedPattern: string): { pattern: RegExp; replacement: st
   }
 
   const [, pattern, replacement, flags] = match;
+  if (pattern === undefined || replacement === undefined) {
+    return null;
+  }
 
   // Convert sed regex to JavaScript regex
   let jsPattern = pattern
@@ -547,8 +547,8 @@ async function applyPatches(entry: ManifestEntry, dest: string, name: string): P
   // Track modification timestamps for each file before patching
   const modificationTimes = new Map<string, number>();
 
-  for (let i = 0; i < patches.length; i++) {
-    const patch = patches[i];
+  // Use for...of with entries() for proper type safety
+  for (const [i, patch] of patches.entries()) {
     log(`  Patch ${i + 1}: ${patch}`);
 
     // Find all files to patch based on extension type
@@ -636,12 +636,16 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // GATE 1: PGDG SKIP CHECK (Phase 4.4 - moved after enabled check)
+  // GATE 1: PGDG/PERCONA SKIP CHECK (Phase 4.4 - moved after enabled check)
   // ────────────────────────────────────────────────────────────────────────────
-  // Skip PGDG extensions here because they're installed via apt-get in Dockerfile
-  // Note: This happens AFTER enabled check so disabled PGDG extensions are tracked
+  // Skip PGDG/Percona extensions here because they're installed via apt-get in Dockerfile
+  // Note: This happens AFTER enabled check so disabled extensions are tracked
   if (entry.install_via === "pgdg") {
     log(`Skipping ${name} (installed via PGDG)`);
+    return;
+  }
+  if (entry.install_via === "percona") {
+    log(`Skipping ${name} (installed via Percona)`);
     return;
   }
 

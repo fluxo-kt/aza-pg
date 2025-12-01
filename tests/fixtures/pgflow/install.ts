@@ -1,10 +1,10 @@
 /**
  * pgflow Schema Installation Helper
  *
- * Provides utilities for installing the pgflow v0.8.1 schema into PostgreSQL databases.
+ * Provides utilities for installing the pgflow schema into PostgreSQL databases.
  * Used for testing pgflow functionality without bundling it in the Docker image.
  *
- * NOTE: pgflow v0.8.1 integrates with Supabase Realtime. For non-Supabase deployments,
+ * NOTE: pgflow integrates with Supabase Realtime. For non-Supabase deployments,
  * this helper creates a multi-layer replacement for `realtime.send()` that provides:
  *
  * 1. **pg_notify** (immediate): Fire-and-forget notifications via LISTEN/NOTIFY
@@ -26,11 +26,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FILE = join(__dirname, "schema-v0.8.1.sql");
+const SCHEMA_FILE = join(__dirname, "schema-v0.9.0.sql");
 
 /**
  * SQL to create a multi-layer replacement for Supabase Realtime.
- * pgflow v0.8.1 calls realtime.send() for event broadcasting.
+ * pgflow calls realtime.send() for event broadcasting.
  *
  * This implementation provides three delivery mechanisms:
  *
@@ -161,7 +161,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION realtime.send IS 'Multi-layer event broadcaster for pgflow v0.8.1: pg_notify (immediate) + pgmq (reliable) + pg_net (webhooks)';
+COMMENT ON FUNCTION realtime.send IS 'Multi-layer event broadcaster for pgflow: pg_notify (immediate) + pgmq (reliable) + pg_net (webhooks)';
 COMMENT ON FUNCTION realtime._ensure_pgmq_queue IS 'Helper to idempotently create pgmq queue';
 COMMENT ON FUNCTION realtime._pg_net_available IS 'Check if pg_net extension is available';
 `;
@@ -184,7 +184,7 @@ export async function installPgflowSchema(
   user: string = "postgres"
 ): Promise<InstallResult> {
   try {
-    // Step 1: Install realtime stub (required for pgflow v0.8.1)
+    // Step 1: Install realtime stub (required for pgflow)
     const stubProc = Bun.spawn(
       [
         "docker",
@@ -401,4 +401,4 @@ export async function runSQL(
 
 // Export schema file path for direct access if needed
 export const PGFLOW_SCHEMA_PATH = SCHEMA_FILE;
-export const PGFLOW_VERSION = "0.8.1";
+export const PGFLOW_VERSION = "0.9.0";

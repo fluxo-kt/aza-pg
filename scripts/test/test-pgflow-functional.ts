@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * pgflow v0.8.1 Functional Tests
+ * pgflow Functional Tests
  *
  * Tests pgflow workflow functionality using the official @pgflow/dsl package.
  * This test validates that:
@@ -11,13 +11,13 @@
  *
  * Usage:
  *   # Start new container from image
- *   bun scripts/test/test-pgflow-v081.ts --image=aza-pg:latest
+ *   bun scripts/test/test-pgflow-functional.ts --image=aza-pg:latest
  *
  *   # Use existing container
- *   bun scripts/test/test-pgflow-v081.ts --container=my-postgres
+ *   bun scripts/test/test-pgflow-functional.ts --container=my-postgres
  *
  *   # Specify database
- *   bun scripts/test/test-pgflow-v081.ts --container=my-postgres --database=pgflow_test
+ *   bun scripts/test/test-pgflow-functional.ts --container=my-postgres --database=pgflow_test
  */
 
 import { $ } from "bun";
@@ -39,7 +39,7 @@ const useExistingContainer = Boolean(existingContainer);
 
 const CONTAINER = useExistingContainer
   ? existingContainer!
-  : `test-pgflow-v081-${Date.now()}-${process.pid}`;
+  : `test-pgflow-func-${Date.now()}-${process.pid}`;
 
 const DATABASE =
   process.env.TEST_DATABASE ||
@@ -403,7 +403,7 @@ async function runTests(): Promise<void> {
     );
   });
 
-  // Test task completion using two-phase polling (pgflow v0.8.1 requirement)
+  // Test task completion using two-phase polling (pgflow requirement)
   // Note: pgflow uses pgmq queues for task distribution - we simulate worker behavior
   await test("TEST 10: Complete first task", async () => {
     // Step 1: Get message_id and check initial state

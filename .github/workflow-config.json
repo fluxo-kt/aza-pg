@@ -13,12 +13,5 @@
     "preloaded": 11,
     "autoCreated": 7
   },
-  "featuredExtensions": [
-    "vector",
-    "timescaledb",
-    "postgis",
-    "pg_cron",
-    "pgaudit",
-    "pgsodium"
-  ]
+  "featuredExtensions": ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"]
 }

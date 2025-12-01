@@ -78,7 +78,9 @@ interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
-  install_via?: "pgdg";
+  install_via?: "pgdg" | "percona" | "source";
+  perconaVersion?: string;
+  perconaPackage?: string;
   enabled?: boolean;
   disabledReason?: string;
 }

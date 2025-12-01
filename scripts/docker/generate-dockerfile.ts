@@ -307,13 +307,15 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
     // Validate package name for shell safety
     validatePackageName(entry.perconaPackage, `Percona package name (${entry.name})`);
 
-    // perconaVersion is optional - if provided, pin to that version; otherwise install latest
-    if (entry.perconaVersion) {
-      validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
-      packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
-    } else {
-      packages.push(entry.perconaPackage);
+    // perconaVersion is REQUIRED for reproducible builds (same as PGDG pattern)
+    if (!entry.perconaVersion) {
+      throw new Error(
+        `Percona entry "${entry.name}" missing required perconaVersion field.\n` +
+          `Add perconaVersion: "X.Y.Z-N.distro" to manifest entry for reproducible builds.`
+      );
     }
+    validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
+    packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
   }
 
   const packagesList = packages.join(" ");
@@ -333,7 +335,7 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
 
   return `# Percona repository setup and package installation
 # Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
-# Note: Percona packages use floating versions (no pinning) - intentional for latest security patches
+# Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\

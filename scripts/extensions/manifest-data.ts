@@ -850,6 +850,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     install_via: "percona",
     perconaPackage: "percona-pg-stat-monitor18",
+    perconaVersion: "1:2.3.1-1.trixie",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
@@ -950,6 +951,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     install_via: "percona",
     perconaPackage: "percona-postgresql-18-wal2json",
+    perconaVersion: "1:2.6-2.trixie",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,

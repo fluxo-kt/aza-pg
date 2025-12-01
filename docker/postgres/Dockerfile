@@ -226,7 +226,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # Provides extensions not available in PGDG: pg_stat_monitor, wal2json
 # Percona repository setup and package installation
 # Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
-# Note: Percona packages use floating versions (no pinning) - intentional for latest security patches
+# Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -238,8 +238,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     dpkg -i /tmp/percona-release.deb && \
     percona-release enable ppg-18 release && \
     apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18 percona-postgresql-18-wal2json" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18 percona-postgresql-18-wal2json && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \

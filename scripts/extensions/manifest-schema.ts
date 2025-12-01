@@ -118,7 +118,9 @@ export const ManifestEntrySchema = type({
   "provides?": "string[]",
   "aptPackages?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'source'",
+  "install_via?": "'pgdg'|'percona'|'source'",
+  "perconaVersion?": "string",
+  "perconaPackage?": "string",
   "enabled?": "boolean",
 });
 

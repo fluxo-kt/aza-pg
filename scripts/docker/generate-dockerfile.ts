@@ -136,6 +136,8 @@ interface ManifestEntry {
   kind?: "extension" | "tool" | "builtin";
   install_via?: string;
   pgdgVersion?: string;
+  perconaVersion?: string;
+  perconaPackage?: string;
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -269,6 +271,90 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
     rm -f /tmp/extensions.manifest.json && \\
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+}
+
+/**
+ * Generate Percona package installation script
+ * Percona repository provides extensions not available in PGDG (e.g., pg_stat_monitor, wal2json)
+ * Versions are hardcoded directly from manifest perconaVersion field
+ */
+function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): string {
+  // Find all entries with install_via === "percona" that are enabled
+  const enabledPerconaEntries = manifest.entries.filter(
+    (entry) => entry.install_via === "percona" && (entry.enabled ?? true)
+  );
+
+  if (enabledPerconaEntries.length === 0) {
+    return `RUN echo "No Percona packages enabled in manifest"`;
+  }
+
+  // Validate and build package list
+  const packages: string[] = [];
+  const soFileMap: Record<string, string> = {
+    pg_stat_monitor: "pg_stat_monitor.so",
+    wal2json: "wal2json.so",
+  };
+
+  for (const entry of enabledPerconaEntries) {
+    if (!entry.perconaPackage) {
+      throw new Error(
+        `Percona entry "${entry.name}" missing required perconaPackage field.\n` +
+          `Add perconaPackage: "percona-pkg-name" to manifest entry.`
+      );
+    }
+
+    // Validate package name for shell safety
+    validatePackageName(entry.perconaPackage, `Percona package name (${entry.name})`);
+
+    // perconaVersion is optional - if provided, pin to that version; otherwise install latest
+    if (entry.perconaVersion) {
+      validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
+      packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
+    } else {
+      packages.push(entry.perconaPackage);
+    }
+  }
+
+  const packagesList = packages.join(" ");
+  const expectedCount = packages.length;
+
+  // Get expected .so files for verification
+  const expectedSoFiles = enabledPerconaEntries
+    .map((entry) => soFileMap[entry.name])
+    .filter((f): f is string => f !== undefined);
+
+  const soVerificationCommands =
+    expectedSoFiles.length > 0
+      ? expectedSoFiles
+          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
+          .join(" && \\\n    ") + " && \\\n    "
+      : "";
+
+  return `# Percona repository setup and package installation
+# Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
+# Note: Percona packages use floating versions (no pinning) - intentional for latest security patches
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
+    set -euo pipefail && \\
+    echo "Setting up Percona repository for ppg-${pgMajor}..." && \\
+    apt-get update && \\
+    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \\
+    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \\
+    dpkg -i /tmp/percona-release.deb && \\
+    percona-release enable ppg-${pgMajor} release && \\
+    apt-get update && \\
+    echo "Installing Percona packages: ${packagesList}" && \\
+    apt-get install -y --no-install-recommends ${packagesList} && \\
+    echo "Installed ${expectedCount} Percona package(s)" && \\
+    # Verify .so files exist
+    echo "Verifying Percona .so files exist..." && \\
+    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Percona .so files verified" && \\
+    # Cleanup Percona release package
+    rm -f /tmp/percona-release.deb && \\
+    apt-get clean && \\
+    rm -rf /var/lib/apt/lists/* && \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -425,7 +511,10 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
   const filteredEntries = manifest.entries.filter(
     (entry) =>
-      entry.build && pgxsBuildTypes.includes(entry.build.type) && entry.install_via !== "pgdg" // Exclude PGDG-installed entries
+      entry.build &&
+      pgxsBuildTypes.includes(entry.build.type) &&
+      entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
+      entry.install_via !== "percona" // Exclude Percona-installed entries
   );
 
   return {
@@ -440,7 +529,11 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
  */
 function generateCargoManifest(manifest: Manifest): Manifest {
   const filteredEntries = manifest.entries.filter(
-    (entry) => entry.build && entry.build.type === "cargo-pgrx" && entry.install_via !== "pgdg" // Exclude PGDG-installed entries
+    (entry) =>
+      entry.build &&
+      entry.build.type === "cargo-pgrx" &&
+      entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
+      entry.install_via !== "percona" // Exclude Percona-installed entries
   );
 
   return {
@@ -501,6 +594,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating PGDG package installation script...");
   const pgdgPackagesInstall = generatePgdgPackagesInstall(manifest, pgMajor);
 
+  info("Generating Percona package installation script...");
+  const perconaPackagesInstall = generatePerconaPackagesInstall(manifest, pgMajor);
+
   info("Generating PGDG tools installation script...");
   const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
 
@@ -513,6 +609,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
+  dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 

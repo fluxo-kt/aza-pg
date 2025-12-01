@@ -4,12 +4,12 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 
 ## Repository Overview
 
-| Repository    | PG18 Support | Extensions               | Use Case                                   |
-| ------------- | ------------ | ------------------------ | ------------------------------------------ |
-| **PGDG**      | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages    |
-| **Pigsty**    | ✅ Full      | 421+                     | Alternative when PGDG lacks extension      |
-| **Timescale** | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community)   |
-| **Percona**   | ❌ No PG18   | ~10                      | Future option when PG18 packages available |
+| Repository    | PG18 Support | Extensions               | Use Case                                 |
+| ------------- | ------------ | ------------------------ | ---------------------------------------- |
+| **PGDG**      | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages  |
+| **Pigsty**    | ✅ Full      | 421+                     | Alternative when PGDG lacks extension    |
+| **Timescale** | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community) |
+| **Percona**   | ✅ Full      | ~10                      | PG18 packages NOW available (ppg-18)     |
 
 ## Decision Matrix
 
@@ -85,7 +85,7 @@ These extensions MUST be built from source (no PGDG packages):
 | **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
 | **pgmq**            | v1.8.0        | v1.5.1           | ❌          | Source for latest (PG18 support)         |
 | **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)           |
-| **wal2json**        | 2.6           | v2.6             | ❌          | Pigsty has exact match                   |
+| **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Source build; Percona apt also available |
 | **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match                   |
 | **pgq**             | v3.5.1        | v3.5.1           | ❌          | Pigsty has exact match                   |
 | **vault**           | v0.3.1        | v0.3.1           | ❌          | Supabase-specific                        |

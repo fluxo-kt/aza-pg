@@ -418,6 +418,8 @@
         "tag": "2.3.1",
         "commit": "bcd345a8738c412bb0626e34cd6c34857d5a1924"
       },
+      "install_via": "percona",
+      "perconaPackage": "percona-pg-stat-monitor18",
       "build": {
         "type": "pgxs"
       },
@@ -425,9 +427,7 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.1 (behind). Percona repo: v2.3.1 PG18 packages NOW available",
-          "v2.3.1: Stable release with full PG18 support (2025-11-28)",
-          "Source build used; Percona apt packages available as alternative (percona-pg-stat-monitor18)",
+          "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.1)",
           "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
         ]
       },
@@ -1133,6 +1133,8 @@
         "tag": "wal2json_2_6",
         "commit": "75629c2e1e81a12350cc9d63782fc53252185d8d"
       },
+      "install_via": "percona",
+      "perconaPackage": "percona-postgresql-18-wal2json",
       "build": {
         "type": "pgxs"
       },
@@ -1140,7 +1142,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.6 (same version)",
+          "NOT in PGDG. Installed via Percona ppg-18 repository (v2.6)",
           "Requires wal_level=logical in postgresql.conf for CDC functionality."
         ]
       },

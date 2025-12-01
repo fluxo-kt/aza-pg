@@ -438,6 +438,8 @@ async function validateDependencies(
           // Dependency exists and is enabled - accept regardless of how it's built
           if (depEntryFull.install_via === "pgdg") {
             log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
+          } else if (depEntryFull.install_via === "percona") {
+            log(`  ✓ Dependency '${depName}' will be installed via Percona`);
           } else if (depEntryFull.install_via === "source") {
             log(`  ✓ Dependency '${depName}' will be built from source (different build phase)`);
           } else if (depEntryFull.kind === "builtin") {
@@ -636,12 +638,16 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // GATE 1: PGDG SKIP CHECK (Phase 4.4 - moved after enabled check)
+  // GATE 1: PGDG/PERCONA SKIP CHECK (Phase 4.4 - moved after enabled check)
   // ────────────────────────────────────────────────────────────────────────────
-  // Skip PGDG extensions here because they're installed via apt-get in Dockerfile
-  // Note: This happens AFTER enabled check so disabled PGDG extensions are tracked
+  // Skip PGDG/Percona extensions here because they're installed via apt-get in Dockerfile
+  // Note: This happens AFTER enabled check so disabled extensions are tracked
   if (entry.install_via === "pgdg") {
     log(`Skipping ${name} (installed via PGDG)`);
+    return;
+  }
+  if (entry.install_via === "percona") {
+    log(`Skipping ${name} (installed via Percona)`);
     return;
   }
 

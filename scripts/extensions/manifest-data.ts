@@ -92,7 +92,7 @@ export interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
-  install_via?: "pgdg" | "source";
+  install_via?: "pgdg" | "percona" | "source";
   /**
    * Full PGDG Debian package version string for apt-installable extensions.
    * Only applicable when install_via === "pgdg".
@@ -102,6 +102,20 @@ export interface ManifestEntry {
    * The semantic version here should match the source.tag (e.g., tag "v2.8.4" → pgdgVersion "2.8.4-...")
    */
   pgdgVersion?: string;
+  /**
+   * Full Percona Debian package version string for Percona-installable extensions.
+   * Only applicable when install_via === "percona".
+   * Example: "2.3.1-1.noble" for percona-pg-stat-monitor18=2.3.1-1.noble
+   *
+   * Note: Percona package naming differs from PGDG (e.g., "percona-pg-stat-monitor18" vs "postgresql-18-...")
+   */
+  perconaVersion?: string;
+  /**
+   * Percona package name override. Required when install_via === "percona".
+   * The full package name used by apt-get install.
+   * Example: "percona-pg-stat-monitor18" or "percona-postgresql-18-wal2json"
+   */
+  perconaPackage?: string;
   enabled?: boolean;
   /**
    * Enable this extension in regression test mode even if disabled in production.
@@ -834,14 +848,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/percona/pg_stat_monitor.git",
       tag: "2.3.1",
     },
+    install_via: "percona",
+    perconaPackage: "percona-pg-stat-monitor18",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Alt: Pigsty v2.1 (behind). Percona repo: v2.3.1 PG18 packages NOW available",
-        "v2.3.1: Stable release with full PG18 support (2025-11-28)",
-        "Source build used; Percona apt packages available as alternative (percona-pg-stat-monitor18)",
+        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.1)",
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       ],
     },
@@ -934,12 +948,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/eulerto/wal2json.git",
       tag: "wal2json_2_6",
     },
+    install_via: "percona",
+    perconaPackage: "percona-postgresql-18-wal2json",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "NOT in PGDG. Alt: Pigsty v2.6 (same version)",
+        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.6)",
         "Requires wal_level=logical in postgresql.conf for CDC functionality.",
       ],
     },

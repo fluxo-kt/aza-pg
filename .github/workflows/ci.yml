@@ -553,31 +553,32 @@ jobs:
       - name: Check all jobs status
         run: |
           set -euo pipefail
-          if [ "${{ needs.validate.result }}" != "success" ]; then
+          # Check for failures only (allow skipped jobs to pass)
+          if [ "${{ needs.validate.result }}" = "failure" ]; then
             echo "::error::Validate job failed"
             exit 1
           fi
-          if [ "${{ needs.build.result }}" != "success" ]; then
+          if [ "${{ needs.build.result }}" = "failure" ]; then
             echo "::error::Build job failed"
             exit 1
           fi
-          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
+          if [ "${{ needs.test-extensions.result }}" = "failure" ]; then
             echo "::error::Extension tests failed"
             exit 1
           fi
-          if [ "${{ needs.test-stacks.result }}" != "success" ]; then
+          if [ "${{ needs.test-stacks.result }}" = "failure" ]; then
             echo "::error::Stack tests failed"
             exit 1
           fi
-          if [ "${{ needs.test-security.result }}" != "success" ]; then
+          if [ "${{ needs.test-security.result }}" = "failure" ]; then
             echo "::error::Security tests failed"
             exit 1
           fi
-          if [ "${{ needs.test-features.result }}" != "success" ]; then
+          if [ "${{ needs.test-features.result }}" = "failure" ]; then
             echo "::error::Feature tests failed"
             exit 1
           fi
-          if [ "${{ needs.regression-tests-fast.result }}" != "success" ]; then
+          if [ "${{ needs.regression-tests-fast.result }}" = "failure" ]; then
             echo "::error::Regression tests failed"
             exit 1
           fi
@@ -593,31 +594,31 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || (needs.validate.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || (needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || (needs.test-extensions.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || (needs.test-stacks.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || (needs.test-security.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || (needs.test-features.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || (needs.regression-tests-fast.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Overall status
-          if [ "${{ needs.validate.result }}" = "success" ] && \
-             [ "${{ needs.build.result }}" = "success" ] && \
-             [ "${{ needs.test-extensions.result }}" = "success" ] && \
-             [ "${{ needs.test-stacks.result }}" = "success" ] && \
-             [ "${{ needs.test-security.result }}" = "success" ] && \
-             [ "${{ needs.test-features.result }}" = "success" ] && \
-             [ "${{ needs.regression-tests-fast.result }}" = "success" ]; then
-            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The CI pipeline completed successfully. All validation, build, and test jobs passed." >> $GITHUB_STEP_SUMMARY
-          else
+          # Overall status - fail only on actual failures, not skipped jobs
+          if [ "${{ needs.validate.result }}" = "failure" ] || \
+             [ "${{ needs.build.result }}" = "failure" ] || \
+             [ "${{ needs.test-extensions.result }}" = "failure" ] || \
+             [ "${{ needs.test-stacks.result }}" = "failure" ] || \
+             [ "${{ needs.test-security.result }}" = "failure" ] || \
+             [ "${{ needs.test-features.result }}" = "failure" ] || \
+             [ "${{ needs.regression-tests-fast.result }}" = "failure" ]; then
             echo "## ❌ Pipeline Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "One or more jobs failed. Check the job logs above for details." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The CI pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
           fi

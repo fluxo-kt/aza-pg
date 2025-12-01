@@ -546,7 +546,8 @@ jobs:
         regression-tests-fast,
       ]
     timeout-minutes: 1
-    if: always()
+    # Skip if validate was skipped (intentional skip for PR from dev branch)
+    if: always() && needs.validate.result != 'skipped'
 
     steps:
       - name: Check all jobs status

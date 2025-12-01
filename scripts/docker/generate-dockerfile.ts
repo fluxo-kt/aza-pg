@@ -138,6 +138,7 @@ interface ManifestEntry {
   pgdgVersion?: string;
   perconaVersion?: string;
   perconaPackage?: string;
+  soFileName?: string;
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -291,10 +292,6 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
 
   // Validate and build package list
   const packages: string[] = [];
-  const soFileMap: Record<string, string> = {
-    pg_stat_monitor: "pg_stat_monitor.so",
-    wal2json: "wal2json.so",
-  };
 
   for (const entry of enabledPerconaEntries) {
     if (!entry.perconaPackage) {
@@ -315,15 +312,31 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
       );
     }
     validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
+
+    // soFileName is REQUIRED for .so verification (single source of truth in manifest)
+    if (!entry.soFileName) {
+      throw new Error(
+        `Percona entry "${entry.name}" missing required soFileName field.\n` +
+          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
+      );
+    }
+    // Validate soFileName format (must end with .so and be a safe filename)
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `Percona entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
+          `Must be alphanumeric with underscores/hyphens and end with .so`
+      );
+    }
+
     packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
   }
 
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
 
-  // Get expected .so files for verification
+  // Get expected .so files for verification (from manifest - single source of truth)
   const expectedSoFiles = enabledPerconaEntries
-    .map((entry) => soFileMap[entry.name])
+    .map((entry) => entry.soFileName)
     .filter((f): f is string => f !== undefined);
 
   const soVerificationCommands =

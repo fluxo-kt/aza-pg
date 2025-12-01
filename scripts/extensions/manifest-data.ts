@@ -116,6 +116,12 @@ export interface ManifestEntry {
    * Example: "percona-pg-stat-monitor18" or "percona-postgresql-18-wal2json"
    */
   perconaPackage?: string;
+  /**
+   * Shared object filename for .so file verification.
+   * Required when install_via === "percona".
+   * Example: "pg_stat_monitor.so" or "wal2json.so"
+   */
+  soFileName?: string;
   enabled?: boolean;
   /**
    * Enable this extension in regression test mode even if disabled in production.
@@ -851,6 +857,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "percona",
     perconaPackage: "percona-pg-stat-monitor18",
     perconaVersion: "1:2.3.1-1.trixie",
+    soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
@@ -952,6 +959,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "percona",
     perconaPackage: "percona-postgresql-18-wal2json",
     perconaVersion: "1:2.6-2.trixie",
+    soFileName: "wal2json.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,

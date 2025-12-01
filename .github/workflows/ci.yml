@@ -59,7 +59,7 @@ on:
       - "**/*.md"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -73,6 +73,8 @@ jobs:
     name: Validate & Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Skip pull_request events from dev branch (push trigger already handles dev)
+    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
 
     steps:
       - name: Checkout repository

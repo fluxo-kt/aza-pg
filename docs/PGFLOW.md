@@ -1552,65 +1552,39 @@ npm view @pgflow/client version
 open https://github.com/pgflow-dev/pgflow/releases
 ```
 
-#### 2. Download Schema Files
+#### 2. Generate Schema (Automated)
 
-pgflow uses 21 numbered SQL files in `pkgs/core/schemas/`:
+Use the schema generation script to fetch and validate all 21 schema files:
 
 ```bash
-VERSION="0.9.0"  # Update to target version
-BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
+# Generate schema for a specific version
+bun run pgflow:generate 0.9.0
 
-# Create combined schema
-echo "-- pgflow v${VERSION} Schema" > tests/fixtures/pgflow/schema-v${VERSION}.sql
-echo "-- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@${VERSION}/pkgs/core/schemas/" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-
-FILES=(
-  0010_extensions.sql
-  0020_schemas.sql
-  0030_utilities.sql
-  0040_types.sql
-  0050_tables_definitions.sql
-  0055_tables_workers.sql
-  0060_tables_runtime.sql
-  0090_function_poll_for_tasks.sql
-  0100_function_add_step.sql
-  0100_function_cascade_complete_taskless_steps.sql
-  0100_function_complete_task.sql
-  0100_function_create_flow.sql
-  0100_function_fail_task.sql
-  0100_function_maybe_complete_run.sql
-  0100_function_start_flow.sql
-  0100_function_start_ready_steps.sql
-  0105_function_get_run_with_states.sql
-  0110_function_set_vt_batch.sql
-  0110_function_start_flow_with_states.sql
-  0120_function_start_tasks.sql
-  0200_grants_and_revokes.sql
-)
-
-for file in "${FILES[@]}"; do
-  echo -e "\n-- ============================================================================" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  echo "-- Source: ${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  echo -e "-- ============================================================================\n" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-  curl -sS "${BASE_URL}/${file}" >> tests/fixtures/pgflow/schema-v${VERSION}.sql
-done
+# With options
+bun run pgflow:generate 0.9.0 --update-install  # Also update install.ts
+bun run pgflow:generate 0.9.0 --dry-run         # Preview without writing
+bun run pgflow:generate 0.9.0 --verbose         # Show detailed progress
 ```
+
+The script:
+
+- Fetches all 21 schema files from the `pgflow@{version}` GitHub tag
+- Concatenates them in the correct order with source comments
+- Validates v0.9.0+ indicators (read_with_poll removed, set_vt_batch format, headers column)
+- Writes to `tests/fixtures/pgflow/schema-v{version}.sql` and `examples/pgflow/10-pgflow.sql`
 
 #### 3. Update References
 
-Update these files:
+After generating the schema:
 
-1. **`tests/fixtures/pgflow/install.ts`**:
+1. **`tests/fixtures/pgflow/install.ts`** (if not using `--update-install`):
    - Update `PGFLOW_VERSION` constant
-   - Update schema file path if version changed
+   - Update schema file path
 
 2. **`scripts/extensions/manifest-data.ts`**:
    - Update `tag: "pgflow@X.Y.Z"`
 
-3. **`examples/pgflow/10-pgflow.sql`**:
-   - Copy new schema for documentation
-
-4. **npm packages** (if using):
+3. **npm packages**:
    ```bash
    bun add -d @pgflow/dsl@X.Y.Z @pgflow/client@X.Y.Z
    ```
@@ -1618,13 +1592,12 @@ Update these files:
 #### 4. Run Tests
 
 ```bash
-# Validate schema completeness
+# All pgflow tests
+bun run test:pgflow
+
+# Or individually:
 bun scripts/test/test-pgflow-schema.ts --image=aza-pg:latest
-
-# Full functional tests
 bun scripts/test/test-pgflow-functional.ts --image=aza-pg:latest
-
-# Multi-project isolation
 bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg:latest
 ```
 

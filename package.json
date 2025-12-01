@@ -18,6 +18,7 @@
     "test:all": "bun scripts/test-all.ts",
     "test:unit": "bun test ./scripts/config-generator/manifest-generator.test.ts ./scripts/test/test-auto-config-units.ts ./scripts/test/test-utils.test.ts ./scripts/docker/test-image-lib.test.ts",
     "test:pgflow": "bun scripts/test/test-pgflow-schema.ts && bun scripts/test/test-pgflow-functional.ts && bun scripts/test/test-pgflow-multiproject.ts",
+    "pgflow:generate": "bun scripts/pgflow/generate-schema.ts",
     "build": "bun scripts/build.ts",
     "generate": "bun scripts/generate-all.ts",
     "hooks:install": "bun-git-hooks",

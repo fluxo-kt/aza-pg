@@ -721,15 +721,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.7.0",
+      tag: "v1.8.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Alt: Pigsty v1.6 (1 minor version behind)",
-        "Source build for latest v1.7.0",
+        "NOT in PGDG. Alt: Pigsty v1.5.1 (3 minor versions behind)",
+        "Source build for latest v1.8.0 with PG18 support",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",

@@ -79,18 +79,18 @@ These extensions MUST be built from source (no PGDG packages):
 
 ### Other Source-Built
 
-| Extension           | Version       | Pigsty Alt       | Percona Alt  | Notes                          |
-| ------------------- | ------------- | ---------------- | ------------ | ------------------------------ |
-| **pg_stat_monitor** | git-ref       | v2.1             | ❌ (no PG18) | Pinned commit for PG18         |
-| **pgsodium**        | v3.1.9        | v3.1.9           | ❌           | Pigsty has exact match         |
-| **pgmq**            | v1.7.0        | v1.6             | ❌           | Source for latest features     |
-| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌           | Using master v1.3 (unreleased) |
-| **wal2json**        | 2.6           | v2.6             | ❌           | Pigsty has exact match         |
-| **pg_safeupdate**   | 1.5           | v1.5             | ❌           | Pigsty has exact match         |
-| **pgq**             | v3.5.1        | v3.5.1           | ❌           | Pigsty has exact match         |
-| **vault**           | v0.3.1        | v0.3.1           | ❌           | Supabase-specific              |
-| **index_advisor**   | v0.2.0        | ❌               | ❌           | Supabase-specific              |
-| **pgroonga**        | 4.0.4         | PG13-17          | ❌           | Pigsty lacks PG18              |
+| Extension           | Version       | Pigsty Alt       | Percona Alt  | Notes                            |
+| ------------------- | ------------- | ---------------- | ------------ | -------------------------------- |
+| **pg_stat_monitor** | git-ref       | v2.1             | ❌ (no PG18) | Pinned commit for PG18           |
+| **pgsodium**        | v3.1.9        | v3.1.9           | ❌           | Pigsty has exact match           |
+| **pgmq**            | v1.8.0        | v1.5.1           | ❌           | Source for latest (PG18 support) |
+| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌           | Using master v1.3 (unreleased)   |
+| **wal2json**        | 2.6           | v2.6             | ❌           | Pigsty has exact match           |
+| **pg_safeupdate**   | 1.5           | v1.5             | ❌           | Pigsty has exact match           |
+| **pgq**             | v3.5.1        | v3.5.1           | ❌           | Pigsty has exact match           |
+| **vault**           | v0.3.1        | v0.3.1           | ❌           | Supabase-specific                |
+| **index_advisor**   | v0.2.0        | ❌               | ❌           | Supabase-specific                |
+| **pgroonga**        | 4.0.4         | PG13-17          | ❌           | Pigsty lacks PG18                |
 
 ## Repository Details
 

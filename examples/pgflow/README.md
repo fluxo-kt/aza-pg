@@ -14,7 +14,7 @@ See the following documentation:
 
 The pgflow schema is maintained in test fixtures:
 
-```
+```text
 tests/fixtures/pgflow/schema-v0.9.0.sql
 ```
 

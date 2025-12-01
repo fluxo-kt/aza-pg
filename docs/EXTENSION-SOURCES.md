@@ -189,7 +189,7 @@ apt-get install percona-pg_stat_monitor18
 **Status as of Dec 2025:**
 
 - `ppg-18` packages NOW available (v2.3.1 released 2025-11-27)
-- PG18 support issue resolved: https://github.com/percona/pg_stat_monitor/issues/566 (CLOSED)
+- PG18 support issue resolved: [percona/pg_stat_monitor#566](https://github.com/percona/pg_stat_monitor/issues/566) (CLOSED)
 - Package: `percona-pg-stat-monitor18` v2.3.1
 
 **Why we use source build:**

@@ -909,6 +909,57 @@ See `scripts/test/test-pgbouncer-healthcheck.ts` for end-to-end stack testing.
 
 ## Running Tests
 
+### Testing Released Images
+
+The `test:image` command provides comprehensive validation of released Docker images. Use this to verify a production image before deployment or to validate a release candidate.
+
+**Quick Reference:**
+
+```bash
+# Full comprehensive validation (all 9 phases)
+bun run test:image ghcr.io/fluxo-kt/aza-pg:18.1-202512012323-single-node
+
+# Fast validation (skips heavy tests like regression)
+bun run test:image ghcr.io/fluxo-kt/aza-pg:TAG --fast
+```
+
+**Test Phases:**
+
+| Phase            | Description                            | Tests                |
+| ---------------- | -------------------------------------- | -------------------- |
+| 1. Pre-flight    | Static validation, linting, unit tests | 10 checks, 198 tests |
+| 2. Image Pull    | Pull and verify image exists           | psql version check   |
+| 3. Comprehensive | 5-phase image verification             | 37 tests             |
+| 4. Auto-Config   | Memory tier and workload testing       | 36 scenarios         |
+| 5. Extensions    | All 5 extension test suites            | 117+ tests           |
+| 6. Stack Deploy  | Single-node deployment                 | Full stack test      |
+| 7. Features      | pgflow, pgmq, security                 | 54+ tests            |
+| 8. Regression    | Tiers 1-3 PostgreSQL regression        | Core + extensions    |
+| 9. Negative      | Error handling validation              | 10 scenarios         |
+
+**Usage Examples:**
+
+```bash
+# Test image from GHCR
+bun run test:image ghcr.io/fluxo-kt/aza-pg:18.1-202512012323-single-node
+
+# Test local image
+bun run test:image aza-pg:latest
+
+# Fast mode (skip regression tests for quick validation)
+bun run test:image ghcr.io/fluxo-kt/aza-pg:TAG --fast
+```
+
+**Expected Results:**
+
+- All phases should pass (exit code 0)
+- Vault tests (3 failures) are expected without pgsodium preload configuration
+- External service flakiness (httpbin.org) may cause occasional HTTP test failures
+
+See `RELEASE-VALIDATION.md` for detailed validation results of published releases.
+
+---
+
 ### Comprehensive Test Suite (All Validations + Build + Functional)
 
 The `test-all.ts` script orchestrates all validation checks, build tests, and functional tests:

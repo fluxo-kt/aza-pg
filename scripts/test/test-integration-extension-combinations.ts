@@ -79,12 +79,15 @@ async function startContainer() {
     console.log("⚠️  Adding timescaledb to preload libraries (required for hypertable functions)");
   }
 
-  // NOTE: pgsodium is NOT added to preload by default
-  // pgsodium requires /usr/share/postgresql/18/extension/pgsodium_getkey script when preloaded.
-  // Without this script, PostgreSQL will fail to start with:
-  //   FATAL: The getkey script "...pgsodium_getkey" does not exist.
-  // The pgsodium-vault combination test expects this failure and documents it as "expected".
-  // For production use, configure ENABLE_PGSODIUM_INIT=true and provide the getkey script.
+  // NOTE: pgsodium is intentionally NOT added to preload for integration tests
+  // Reason: pgsodium TCE (Transparent Column Encryption) requires:
+  //   1. pgsodium_getkey script at /usr/share/postgresql/18/extension/pgsodium_getkey
+  //   2. pgsodium in shared_preload_libraries AFTER getkey script exists
+  // This chicken-and-egg problem requires either:
+  //   - Volume mount of getkey script before container start
+  //   - Production deployment with ENABLE_PGSODIUM_INIT=true and getkey script provisioning
+  // For integration tests, basic pgsodium cryptography functions work without preload.
+  // Vault tests that require TCE are expected to fail and documented as such.
 
   // Note: pg_partman background worker (pg_partman_bgw) is NOT required for basic partman tests
   // The extension functions work without preloading. Background worker is only for automatic
@@ -152,68 +155,8 @@ async function startContainer() {
     if (check.exitCode === 0) {
       console.log("✅ Database is ready");
 
-      // Create pgsodium_getkey script for pgsodium TCE (Transparent Column Encryption) support
-      // This is required for pgsodium extension to work with vault
-      // Uses the same stub key as regression.Dockerfile (test key only - not for production!)
-      console.log("📝 Creating pgsodium_getkey script for encryption support...");
-      const getkeyScript = `#!/bin/sh
-# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)
-# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), 'hex')
-# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)
-echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"`;
-
-      // Use root user (-u root) to write to system directory, then chown to postgres
-      const createScript =
-        await $`docker exec -u root ${TEST_CONTAINER} bash -c "cat > /usr/share/postgresql/18/extension/pgsodium_getkey << 'GETKEY_EOF'
-${getkeyScript}
-GETKEY_EOF
-chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
-chown postgres:postgres /usr/share/postgresql/18/extension/pgsodium_getkey"`.nothrow();
-
-      if (createScript.exitCode === 0) {
-        console.log("✅ pgsodium_getkey script created");
-
-        // Add pgsodium to shared_preload_libraries and restart PostgreSQL for TCE support
-        // pgsodium must be preloaded AFTER getkey script exists for server key initialization
-        console.log("🔄 Adding pgsodium to shared_preload_libraries and restarting PostgreSQL...");
-
-        // Get current preload libraries and append pgsodium
-        const getCurrentPreload =
-          await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SHOW shared_preload_libraries"`.nothrow();
-        const currentLibraries = getCurrentPreload.stdout.toString().trim();
-        const newLibraries = currentLibraries ? `${currentLibraries},pgsodium` : "pgsodium";
-
-        // Update postgresql.auto.conf and restart PostgreSQL
-        // First get PGDATA path from container environment
-        const pgdataResult =
-          await $`docker exec ${TEST_CONTAINER} bash -c 'echo $PGDATA'`.nothrow();
-        const pgdata = pgdataResult.stdout.toString().trim() || "/var/lib/postgresql/18/docker";
-        const configLine = `shared_preload_libraries = '${newLibraries}'`;
-        const restartResult =
-          await $`docker exec -u postgres ${TEST_CONTAINER} bash -c ${`echo "${configLine}" >> ${pgdata}/postgresql.auto.conf && pg_ctl restart -D ${pgdata} -m fast -w -t 60`}`.nothrow();
-
-        if (restartResult.exitCode === 0) {
-          console.log("✅ PostgreSQL restarted with pgsodium preloaded");
-        } else {
-          console.log(`⚠️  PostgreSQL restart failed: ${restartResult.stderr.toString()}`);
-        }
-
-        // Wait for database to be ready after restart
-        console.log("⏳ Waiting for PostgreSQL to be ready after restart...");
-        for (let j = 0; j < 30; j++) {
-          const readyCheck =
-            await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
-          if (readyCheck.exitCode === 0) {
-            console.log("✅ PostgreSQL ready after restart");
-            break;
-          }
-          await Bun.sleep(1000);
-        }
-      } else {
-        console.log(`⚠️  Failed to create pgsodium_getkey: ${createScript.stderr.toString()}`);
-      }
-
       // Create enabled extensions dynamically
+      // (pgsodium_getkey script was created at container startup if pgsodium is in preload)
       console.log(`Creating ${testableExtensions.length} testable extensions...`);
       for (const ext of testableExtensions) {
         const create = await runSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name}`);

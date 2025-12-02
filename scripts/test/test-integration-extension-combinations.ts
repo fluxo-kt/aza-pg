@@ -184,10 +184,13 @@ chown postgres:postgres /usr/share/postgresql/18/extension/pgsodium_getkey"`.not
         const newLibraries = currentLibraries ? `${currentLibraries},pgsodium` : "pgsodium";
 
         // Update postgresql.auto.conf and restart PostgreSQL
-        const restartResult = await $`docker exec -u postgres ${TEST_CONTAINER} bash -c "
-          echo \"shared_preload_libraries = '${newLibraries}'\" >> /var/lib/postgresql/data/postgresql.auto.conf
-          pg_ctl restart -D /var/lib/postgresql/data -m fast -w -t 60
-        "`.nothrow();
+        // First get PGDATA path from container environment
+        const pgdataResult =
+          await $`docker exec ${TEST_CONTAINER} bash -c 'echo $PGDATA'`.nothrow();
+        const pgdata = pgdataResult.stdout.toString().trim() || "/var/lib/postgresql/18/docker";
+        const configLine = `shared_preload_libraries = '${newLibraries}'`;
+        const restartResult =
+          await $`docker exec -u postgres ${TEST_CONTAINER} bash -c ${`echo "${configLine}" >> ${pgdata}/postgresql.auto.conf && pg_ctl restart -D ${pgdata} -m fast -w -t 60`}`.nothrow();
 
         if (restartResult.exitCode === 0) {
           console.log("✅ PostgreSQL restarted with pgsodium preloaded");

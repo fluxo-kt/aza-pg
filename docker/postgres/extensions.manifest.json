@@ -1088,6 +1088,11 @@
       "name": "vectorscale",
       "displayName": "pgvectorscale",
       "kind": "extension",
+      "install_via": "github-release",
+      "githubRepo": "timescale/pgvectorscale",
+      "githubReleaseTag": "0.9.0",
+      "githubAssetPattern": "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
+      "soFileName": "vectorscale.so",
       "category": "ai",
       "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
       "source": {
@@ -1096,19 +1101,6 @@
         "tag": "0.9.0",
         "commit": "c66cae4b621664b68546587da9fafd80b791e643"
       },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "pgvectorscale",
-        "features": [
-          "pg18"
-        ]
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
       "dependencies": [
         "vector"
       ],
@@ -1116,9 +1108,11 @@
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.7.1 (2 versions behind)",
-          "Alt: Timescale repo - NO PG18 packages available",
-          "Source build required for v0.9.0"
+          "Installed from GitHub release binaries (v0.9.0)",
+          "Supports both amd64 and arm64 architectures",
+          "Alt: Pigsty v0.7.1 (2 versions behind, checked 2025-01)",
+          "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
+          "Alt: PGDG has no package (Rust pgrx extension)"
         ]
       },
       "sourceUrl": "https://github.com/timescale/pgvectorscale",

@@ -4,12 +4,13 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 
 ## Repository Overview
 
-| Repository    | PG18 Support | Extensions               | Use Case                                 |
-| ------------- | ------------ | ------------------------ | ---------------------------------------- |
-| **PGDG**      | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages  |
-| **Pigsty**    | ✅ Full      | 421+                     | Alternative when PGDG lacks extension    |
-| **Timescale** | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community) |
-| **Percona**   | ✅ Full      | ~10                      | PG18 packages NOW available (ppg-18)     |
+| Repository         | PG18 Support | Extensions               | Use Case                                 |
+| ------------------ | ------------ | ------------------------ | ---------------------------------------- |
+| **PGDG**           | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages  |
+| **Pigsty**         | ✅ Full      | 421+                     | Alternative when PGDG lacks extension    |
+| **Timescale**      | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community) |
+| **Percona**        | ✅ Full      | ~10                      | PG18 packages NOW available (ppg-18)     |
+| **GitHub Release** | ✅ Full      | 1 (vectorscale)          | Pre-built binaries when apt unavailable  |
 
 ## Decision Matrix
 
@@ -67,9 +68,14 @@ These extensions MUST be built from source (no PGDG packages):
 | Extension               | Version | Pigsty Alt | Timescale Alt | Notes                          |
 | ----------------------- | ------- | ---------- | ------------- | ------------------------------ |
 | **wrappers**            | v0.5.7  | v0.5.0     | ❌            | Pigsty 2 versions behind       |
-| **vectorscale**         | 0.9.0   | v0.7.1     | ❌ (no PG18)  | Source required for latest     |
 | **pg_jsonschema**       | commit  | v0.3.3     | ❌            | Source required for latest     |
 | **timescaledb_toolkit** | 1.22.0  | v1.21.0    | v1.22.0       | Timescale repo has exact match |
+
+### GitHub Release Binaries
+
+| Extension       | Version | Architectures | Notes                                |
+| --------------- | ------- | ------------- | ------------------------------------ |
+| **vectorscale** | 0.9.0   | amd64, arm64  | GitHub release binaries (not source) |
 
 ### TimescaleDB (Special Case)
 
@@ -167,7 +173,7 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 | timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
 
 - **License:** Timescale License (TSL) - not Apache 2.0
-- **Note:** NO vectorscale PG18 packages available in Timescale repo
+- **Note:** NO vectorscale (pgvectorscale) packages in Timescale repo - use GitHub release binaries
 - **Loader:** timescaledb-2-loader-postgresql-18 also available
 
 ### Percona (repo.percona.com)
@@ -197,6 +203,33 @@ apt-get install percona-pg_stat_monitor18
 - pg_stat_monitor official repo is Percona
 - Source build gives same version (v2.3.1) with full control
 - Percona apt packages available as alternative
+
+### GitHub Release (github.com)
+
+For extensions where apt packages aren't available for Debian Trixie, pre-built binaries from GitHub releases provide an alternative to source compilation.
+
+**Current GitHub release extensions:**
+
+| Extension       | Version | Repo                    | Assets                                |
+| --------------- | ------- | ----------------------- | ------------------------------------- |
+| **vectorscale** | 0.9.0   | timescale/pgvectorscale | `pgvectorscale-{ver}-pg18-{arch}.zip` |
+
+- **Pros:** Pre-built binaries, no compilation time (~10 min savings), official releases
+- **Cons:** Limited to extensions that publish GitHub release binaries
+- **Use case:** Rust/pgrx extensions where apt packages unavailable for Debian Trixie
+
+**Manifest configuration:**
+
+```typescript
+{
+  name: "vectorscale",
+  install_via: "github-release",
+  githubRepo: "timescale/pgvectorscale",
+  githubReleaseTag: "0.9.0",
+  githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
+  soFileName: "vectorscale.so",
+}
+```
 
 ## Version Management
 

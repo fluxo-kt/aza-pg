@@ -139,6 +139,12 @@ interface ManifestEntry {
   perconaVersion?: string;
   perconaPackage?: string;
   soFileName?: string;
+  /** GitHub repository in owner/repo format for github-release installations */
+  githubRepo?: string;
+  /** GitHub release tag for downloading assets */
+  githubReleaseTag?: string;
+  /** Asset filename pattern with {version}, {pgMajor}, {arch} placeholders */
+  githubAssetPattern?: string;
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -518,9 +524,102 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
 }
 
 /**
+ * Generate GitHub release binary installation script.
+ * Downloads pre-built binaries from GitHub releases for extensions not available via apt.
+ * Supports multi-architecture builds (amd64, arm64) via runtime detection.
+ */
+function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): string {
+  const enabledEntries = manifest.entries.filter(
+    (entry) => entry.install_via === "github-release" && (entry.enabled ?? true)
+  );
+
+  if (enabledEntries.length === 0) {
+    return `RUN echo "No GitHub release packages enabled in manifest"`;
+  }
+
+  // Validate required fields for each entry
+  for (const entry of enabledEntries) {
+    if (!entry.githubRepo) {
+      throw new Error(`GitHub release entry "${entry.name}" missing required githubRepo field.`);
+    }
+    if (!entry.githubReleaseTag) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" missing required githubReleaseTag field.`
+      );
+    }
+    if (!entry.githubAssetPattern) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" missing required githubAssetPattern field.`
+      );
+    }
+    if (!entry.soFileName) {
+      throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
+    }
+    // Validate soFileName format
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
+      );
+    }
+  }
+
+  // Build installation commands for each extension
+  // pgvectorscale releases contain .deb packages inside the zip, not raw .so files
+  const installCommands = enabledEntries
+    .map((entry) => {
+      // Pattern uses {version}, {pgMajor}, {arch} placeholders
+      // {arch} is resolved at runtime using dpkg --print-architecture
+      const assetPattern = entry
+        .githubAssetPattern!.replace("{version}", entry.githubReleaseTag!)
+        .replace("{pgMajor}", pgMajor);
+      // {arch} will be resolved at runtime in the shell
+
+      const url = `https://github.com/${entry.githubRepo}/releases/download/${entry.githubReleaseTag}`;
+
+      // The zip contains .deb packages. We extract and install the non-dbgsym one.
+      // File pattern in zip: pgvectorscale-postgresql-18_0.9.0-Linux_arm64.deb
+      return `    # Install ${entry.name} from GitHub release (.deb package inside zip)
+    ARCH=$(dpkg --print-architecture) && \\
+    ASSET="${assetPattern.replace("{arch}", "${ARCH}")}" && \\
+    echo "Downloading ${entry.name} v${entry.githubReleaseTag} for $ARCH..." && \\
+    curl -fsSL "${url}/$ASSET" -o /tmp/${entry.name}.zip && \\
+    unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
+    # Install the .deb package (skip debug symbols package)
+    DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\
+    echo "Installing $DEB_FILE..." && \\
+    dpkg -i "$DEB_FILE" && \\
+    rm -rf /tmp/${entry.name}* && \\
+    echo "✓ Installed ${entry.name} v${entry.githubReleaseTag}"`;
+    })
+    .join(" && \\\n");
+
+  // .so verification
+  const soVerification = enabledEntries
+    .map((e) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${e.soFileName}`)
+    .join(" && \\\n    ");
+
+  return `# GitHub release binary installation
+# Provides pre-built extensions not available via apt for Debian Trixie
+# Architecture detected at build time (supports amd64, arm64)
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
+    set -euo pipefail && \\
+    apt-get update && \\
+    apt-get install -y --no-install-recommends curl unzip && \\
+${installCommands} && \\
+    # Verify .so files exist
+    echo "Verifying GitHub release .so files..." && \\
+    ${soVerification} && \\
+    echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
+    # Strip debug symbols from newly installed .so files
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+}
+
+/**
  * Generate filtered manifest for PGXS-style builds
  * Includes: pgxs, autotools, cmake, meson, make, timescaledb
- * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
+ * Excludes: entries with install_via === "pgdg", "percona", or "github-release"
  */
 function generatePgxsManifest(manifest: Manifest): Manifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
@@ -529,7 +628,8 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
       entry.build &&
       pgxsBuildTypes.includes(entry.build.type) &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
-      entry.install_via !== "percona" // Exclude Percona-installed entries
+      entry.install_via !== "percona" && // Exclude Percona-installed entries
+      entry.install_via !== "github-release" // Exclude GitHub release entries
   );
 
   return {
@@ -540,7 +640,7 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
 /**
  * Generate filtered manifest for Cargo builds
  * Includes: cargo-pgrx
- * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
+ * Excludes: entries with install_via === "pgdg", "percona", or "github-release"
  */
 function generateCargoManifest(manifest: Manifest): Manifest {
   const filteredEntries = manifest.entries.filter(
@@ -548,7 +648,8 @@ function generateCargoManifest(manifest: Manifest): Manifest {
       entry.build &&
       entry.build.type === "cargo-pgrx" &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
-      entry.install_via !== "percona" // Exclude Percona-installed entries
+      entry.install_via !== "percona" && // Exclude Percona-installed entries
+      entry.install_via !== "github-release" // Exclude GitHub release-installed entries
   );
 
   return {
@@ -615,6 +716,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating PGDG tools installation script...");
   const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
 
+  info("Generating GitHub release installation script...");
+  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
+
   info("Generating version info generation script...");
   const versionInfoGeneration = generateVersionInfoGeneration(manifest);
 
@@ -626,6 +730,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
+  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 
   // Add generation header
@@ -662,6 +767,9 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating regression PGDG package installation script...");
   const pgdgPackagesInstallRegression = generatePgdgPackagesInstallRegression(manifest, pgMajor);
 
+  info("Generating GitHub release installation script...");
+  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
+
   info("Generating regression preload libraries list...");
   const regressionPreloadLibs = generateRegressionPreloadLibraries(manifest);
 
@@ -674,6 +782,7 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
     "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
     pgdgPackagesInstallRegression
   );
+  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
   dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
 
   // Add generation header

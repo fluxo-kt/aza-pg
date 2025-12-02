@@ -92,7 +92,7 @@ export interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   notes?: string[];
-  install_via?: "pgdg" | "percona" | "source";
+  install_via?: "pgdg" | "percona" | "source" | "github-release";
   /**
    * Full PGDG Debian package version string for apt-installable extensions.
    * Only applicable when install_via === "pgdg".
@@ -118,10 +118,28 @@ export interface ManifestEntry {
   perconaPackage?: string;
   /**
    * Shared object filename for .so file verification.
-   * Required when install_via === "percona".
-   * Example: "pg_stat_monitor.so" or "wal2json.so"
+   * Required when install_via === "percona" or "github-release".
+   * Example: "pg_stat_monitor.so" or "vectorscale.so"
    */
   soFileName?: string;
+  /**
+   * GitHub repository in owner/repo format for github-release installations.
+   * Required when install_via === "github-release".
+   * Example: "timescale/pgvectorscale"
+   */
+  githubRepo?: string;
+  /**
+   * GitHub release tag for downloading assets.
+   * Required when install_via === "github-release".
+   * Example: "0.9.0"
+   */
+  githubReleaseTag?: string;
+  /**
+   * Asset filename pattern with placeholders: {version}, {pgMajor}, {arch}.
+   * Required when install_via === "github-release".
+   * Example: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip"
+   */
+  githubAssetPattern?: string;
   enabled?: boolean;
   /**
    * Enable this extension in regression test mode even if disabled in production.
@@ -1003,6 +1021,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "vectorscale",
     displayName: "pgvectorscale",
     kind: "extension",
+    install_via: "github-release",
+    githubRepo: "timescale/pgvectorscale",
+    githubReleaseTag: "0.9.0",
+    githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
+    soFileName: "vectorscale.so",
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
     source: {
@@ -1010,16 +1033,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/timescale/pgvectorscale.git",
       tag: "0.9.0",
     },
-    build: { type: "cargo-pgrx", subdir: "pgvectorscale", features: ["pg18"] },
-    aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["vector"],
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.7.1 (2 versions behind)",
-        "Alt: Timescale repo - NO PG18 packages available",
-        "Source build required for v0.9.0",
+        "Installed from GitHub release binaries (v0.9.0)",
+        "Supports both amd64 and arm64 architectures",
+        "Alt: Pigsty v0.7.1 (2 versions behind, checked 2025-01)",
+        "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
+        "Alt: PGDG has no package (Rust pgrx extension)",
       ],
     },
     sourceUrl: "https://github.com/timescale/pgvectorscale",

@@ -198,6 +198,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 
+# Pre-compiled extensions from GitHub releases (for packages not available in apt)
+# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
+{{GITHUB_RELEASE_PACKAGES_INSTALL}}
+
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
 # This stub script returns a test key in hex format (64 hex characters = 32 bytes).

@@ -63,6 +63,8 @@ bun run generate            # Regenerate all files from manifest
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
+**Install methods** (`install_via`): `pgdg` (apt) | `percona` (apt) | `github-release` (pre-built binaries) | `source` (build from git)
+
 **Counts**: See `docs/.generated/docs-data.json` for live module/preload/tool counts
 
 **Default preload**: auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb

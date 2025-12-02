@@ -13,6 +13,8 @@ interface ManifestCounts {
   total: number;
   builtin: number;
   pgdg: number;
+  percona: number;
+  githubRelease: number;
   compiled: number;
   enabled: number;
   disabled: number;
@@ -40,7 +42,11 @@ interface ManifestEntry {
   name: string;
   displayName?: string;
   kind: "extension" | "builtin" | "tool";
-  install_via?: "pgdg";
+  install_via?: "pgdg" | "percona" | "source" | "github-release";
+  githubRepo?: string;
+  githubReleaseTag?: string;
+  githubAssetPattern?: string;
+  soFileName?: string;
   runtime?: RuntimeSpec;
   dependencies?: string[];
   enabled?: boolean;
@@ -95,10 +101,16 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   const total = manifest.entries.length;
   const builtin = manifest.entries.filter((e) => e.kind === "builtin").length;
   const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
+  const percona = manifest.entries.filter((e) => e.install_via === "percona").length;
+  const githubRelease = manifest.entries.filter((e) => e.install_via === "github-release").length;
 
-  // Compiled = extensions built from source (not PGDG, not builtin)
+  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not github-release)
   const compiled = manifest.entries.filter(
-    (e) => e.kind !== "builtin" && e.install_via !== "pgdg"
+    (e) =>
+      e.kind !== "builtin" &&
+      e.install_via !== "pgdg" &&
+      e.install_via !== "percona" &&
+      e.install_via !== "github-release"
   ).length;
 
   const enabled = manifest.entries.filter((e) => e.enabled !== false).length;
@@ -108,14 +120,16 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   console.log(`  Total: ${total}`);
   console.log(`  Builtin: ${builtin}`);
   console.log(`  PGDG: ${pgdg}`);
+  console.log(`  Percona: ${percona}`);
+  console.log(`  GitHub Release: ${githubRelease}`);
   console.log(`  Compiled: ${compiled}`);
   console.log(`  Enabled: ${enabled}`);
   console.log(`  Disabled: ${disabled}`);
 
   // Sanity check: counts should sum correctly
-  if (builtin + pgdg + compiled !== total) {
+  if (builtin + pgdg + percona + githubRelease + compiled !== total) {
     error(
-      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + compiled(${compiled}) = ${builtin + pgdg + compiled}, but total = ${total}`
+      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + githubRelease(${githubRelease}) + compiled(${compiled}) = ${builtin + pgdg + percona + githubRelease + compiled}, but total = ${total}`
     );
   }
 
@@ -125,7 +139,7 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
     );
   }
 
-  return { total, builtin, pgdg, compiled, enabled, disabled };
+  return { total, builtin, pgdg, percona, githubRelease, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -368,6 +382,72 @@ function validateDependencies(manifest: Manifest): void {
   }
 }
 
+// 7. GitHub release entry validation
+function validateGithubReleaseEntries(manifest: Manifest): void {
+  console.log(); // Empty line for spacing
+  logger.info("[GITHUB RELEASE VALIDATION]");
+
+  const githubReleaseEntries = manifest.entries.filter(
+    (e) => e.install_via === "github-release" && e.enabled !== false
+  );
+
+  if (githubReleaseEntries.length === 0) {
+    console.log("  No enabled GitHub release entries to validate");
+    return;
+  }
+
+  for (const entry of githubReleaseEntries) {
+    // Check required fields
+    if (!entry.githubRepo) {
+      error(`GitHub release entry '${entry.name}' is missing required 'githubRepo' field`);
+    }
+    if (!entry.githubReleaseTag) {
+      error(`GitHub release entry '${entry.name}' is missing required 'githubReleaseTag' field`);
+    }
+    if (!entry.githubAssetPattern) {
+      error(`GitHub release entry '${entry.name}' is missing required 'githubAssetPattern' field`);
+    }
+    if (!entry.soFileName) {
+      error(`GitHub release entry '${entry.name}' is missing required 'soFileName' field`);
+    }
+
+    // Validate githubRepo format (owner/repo)
+    if (entry.githubRepo && !/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(entry.githubRepo)) {
+      error(
+        `GitHub release entry '${entry.name}' has invalid githubRepo format: '${entry.githubRepo}'. Expected: owner/repo`
+      );
+    }
+
+    // Validate soFileName format
+    if (entry.soFileName && !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+      error(
+        `GitHub release entry '${entry.name}' has invalid soFileName: '${entry.soFileName}'. Expected: name.so`
+      );
+    }
+
+    // Validate asset pattern has required placeholders
+    if (entry.githubAssetPattern) {
+      const hasVersion =
+        entry.githubAssetPattern.includes("{version}") ||
+        entry.githubAssetPattern.includes(entry.githubReleaseTag || "");
+      const hasArch = entry.githubAssetPattern.includes("{arch}");
+
+      if (!hasArch) {
+        warn(
+          `GitHub release entry '${entry.name}' asset pattern may not support multi-arch (missing {arch} placeholder)`
+        );
+      }
+      if (!hasVersion) {
+        warn(
+          `GitHub release entry '${entry.name}' asset pattern may not include version information`
+        );
+      }
+    }
+  }
+
+  console.log(`  Validated ${githubReleaseEntries.length} GitHub release entries`);
+}
+
 // Main validation
 async function main(): Promise<void> {
   logger.separator();
@@ -384,6 +464,7 @@ async function main(): Promise<void> {
     await validatePgdgConsistency(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
+    validateGithubReleaseEntries(manifest);
 
     // Store counts for success message
     const manifestCounts = counts;
@@ -410,7 +491,8 @@ async function main(): Promise<void> {
       console.log();
       logger.success(
         `Manifest validation passed (${manifestCounts.total} extensions: ` +
-          `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.percona} Percona + ` +
+          `${manifestCounts.githubRelease} GitHub + ${manifestCounts.compiled} compiled, ` +
           `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);

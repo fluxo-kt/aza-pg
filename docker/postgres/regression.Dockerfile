@@ -218,6 +218,36 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
 
+# Pre-compiled extensions from GitHub releases (for packages not available in apt)
+# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
+# GitHub release binary installation
+# Provides pre-built extensions not available via apt for Debian Trixie
+# Architecture detected at build time (supports amd64, arm64)
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends curl unzip && \
+    # Install vectorscale from GitHub release (.deb package inside zip)
+    ARCH=$(dpkg --print-architecture) && \
+    ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
+    echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
+    curl -fsSL "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip && \
+    unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
+    # Install the .deb package (skip debug symbols package)
+    DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
+    echo "Installing $DEB_FILE..." && \
+    dpkg -i "$DEB_FILE" && \
+    rm -rf /tmp/vectorscale* && \
+    echo "✓ Installed vectorscale v0.9.0" && \
+    # Verify .so files exist
+    echo "Verifying GitHub release .so files..." && \
+    test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
+    echo "All 1 GitHub release .so file(s) verified" && \
+    # Strip debug symbols from newly installed .so files
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true
+
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003
 RUN set -euo pipefail && \

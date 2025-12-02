@@ -187,6 +187,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 
+# Pre-compiled extensions from GitHub releases (for packages not available in apt)
+# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
+{{GITHUB_RELEASE_PACKAGES_INSTALL}}
+
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003
 RUN set -euo pipefail && \

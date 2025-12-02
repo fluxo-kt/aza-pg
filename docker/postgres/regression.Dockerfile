@@ -237,6 +237,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
+    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in vectorscale zip"; exit 1; } && \
     echo "Installing $DEB_FILE..." && \
     dpkg -i "$DEB_FILE" && \
     rm -rf /tmp/vectorscale* && \

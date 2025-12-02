@@ -586,6 +586,7 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
     unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\
+    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in ${entry.name} zip"; exit 1; } && \\
     echo "Installing $DEB_FILE..." && \\
     dpkg -i "$DEB_FILE" && \\
     rm -rf /tmp/${entry.name}* && \\

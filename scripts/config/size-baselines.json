@@ -42,6 +42,6 @@
   "vectorscale": {
     "min": 1.0,
     "max": 2.5,
-    "description": "pgvectorscale DiskANN index (Rust/pgrx)"
+    "description": "pgvectorscale DiskANN index (prebuilt GitHub release binary)"
   }
 }

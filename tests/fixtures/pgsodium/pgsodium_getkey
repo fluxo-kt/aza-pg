@@ -1,0 +1,12 @@
+#!/bin/sh
+# pgsodium_getkey - Test key for integration tests
+# DO NOT USE IN PRODUCTION - Use a secure key management solution (AWS KMS, Vault, etc.)
+#
+# Format: 64 hex characters (32 bytes / 256 bits)
+# Generate new key: SELECT encode(pgsodium.randombytes_buf(32), 'hex');
+#
+# This script is volume-mounted into the container at:
+#   /usr/share/postgresql/18/extension/pgsodium_getkey
+#
+# For production, see: docs/PGSODIUM-SETUP.md
+echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"

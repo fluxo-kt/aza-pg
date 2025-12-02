@@ -16,8 +16,8 @@
  */
 
 import { $ } from "bun";
+import path from "node:path";
 import {
-  buildPreloadLibraries,
   findExtension,
   getInitializationEnv,
   getPreloadExtensions,
@@ -27,6 +27,13 @@ import {
   validateNoTools,
 } from "./manifest-test-utils";
 import { resolveImageTag } from "./image-resolver";
+
+// Path to the pgsodium_getkey script fixture for volume mounting
+const PGSODIUM_GETKEY_FIXTURE = path.join(
+  import.meta.dirname,
+  "../../tests/fixtures/pgsodium/pgsodium_getkey"
+);
+const PGSODIUM_GETKEY_TARGET = "/usr/share/postgresql/18/extension/pgsodium_getkey";
 
 interface TestResult {
   name: string;
@@ -79,15 +86,29 @@ async function startContainer() {
     console.log("⚠️  Adding timescaledb to preload libraries (required for hypertable functions)");
   }
 
-  // NOTE: pgsodium is intentionally NOT added to preload for integration tests
-  // Reason: pgsodium TCE (Transparent Column Encryption) requires:
-  //   1. pgsodium_getkey script at /usr/share/postgresql/18/extension/pgsodium_getkey
-  //   2. pgsodium in shared_preload_libraries AFTER getkey script exists
-  // This chicken-and-egg problem requires either:
-  //   - Volume mount of getkey script before container start
-  //   - Production deployment with ENABLE_PGSODIUM_INIT=true and getkey script provisioning
-  // For integration tests, basic pgsodium cryptography functions work without preload.
-  // Vault tests that require TCE are expected to fail and documented as such.
+  // ⭐ Add pgsodium to preload for full TCE (Transparent Column Encryption) support
+  // The pgsodium_getkey script is volume-mounted before container start
+  const pgsodium = findExtension("pgsodium", manifest);
+  const pgsodiumAlreadyInList = preloadExtensions.some((e) => e.name === "pgsodium");
+  if (
+    pgsodium &&
+    !shouldSkipExtension(pgsodium) &&
+    pgsodium.runtime?.sharedPreload &&
+    !pgsodiumAlreadyInList
+  ) {
+    preloadExtensions.push(pgsodium);
+    console.log("⚠️  Adding pgsodium to preload libraries (required for TCE)");
+  }
+
+  // ⭐ Add supabase_vault to preload for vault encryption support
+  // Vault has its own _PG_init() that loads server key from pgsodium_getkey script
+  // Without preloading, vault._crypto_aead_det_encrypt fails with "no server secret key"
+  const supabaseVault = findExtension("supabase_vault", manifest);
+  const vaultAlreadyInList = preloadExtensions.some((e) => e.name === "supabase_vault");
+  if (supabaseVault && !shouldSkipExtension(supabaseVault) && !vaultAlreadyInList) {
+    preloadExtensions.push(supabaseVault);
+    console.log("⚠️  Adding supabase_vault to preload libraries (required for vault encryption)");
+  }
 
   // Note: pg_partman background worker (pg_partman_bgw) is NOT required for basic partman tests
   // The extension functions work without preloading. Background worker is only for automatic
@@ -100,18 +121,17 @@ async function startContainer() {
   validateNoTools(preloadExtensions, "Preload extensions");
   validateNoTools(testableExtensions, "Testable extensions");
 
-  // Build shared_preload_libraries string from manifest
-  const preloadLibraries = buildPreloadLibraries(preloadExtensions);
+  // Build shared_preload_libraries string
+  // Note: We use a custom build here because some extensions we add (like supabase_vault)
+  // have sharedPreload: false in manifest but need preloading for full functionality
+  const preloadLibraries = preloadExtensions.map((e) => e.name).join(",");
   console.log(`Preload libraries: ${preloadLibraries}`);
 
   // Collect initialization env vars for enabled extensions
-  // NOTE: We exclude pgsodium from auto-init because it requires getkey script setup
-  // We'll create the getkey script manually after container starts
+  // pgsodium init is enabled - getkey script is volume-mounted before container start
   const initEnv: Record<string, string> = {};
   for (const ext of testableExtensions) {
-    if (ext.name !== "pgsodium") {
-      Object.assign(initEnv, getInitializationEnv(ext));
-    }
+    Object.assign(initEnv, getInitializationEnv(ext));
   }
 
   // Clean up any existing container
@@ -134,14 +154,19 @@ async function startContainer() {
     `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preloadLibraries}`,
   ];
 
+  // Volume mount for pgsodium_getkey script (required for TCE before container start)
+  const volumeArgs = ["-v", `${PGSODIUM_GETKEY_FIXTURE}:${PGSODIUM_GETKEY_TARGET}:ro`];
+  console.log(`Volume mount: ${PGSODIUM_GETKEY_FIXTURE} -> ${PGSODIUM_GETKEY_TARGET}`);
+
   // Add initialization env vars
   for (const [key, value] of Object.entries(initEnv)) {
     envArgs.push("-e", `${key}=${value}`);
     console.log(`Init env: ${key}=${value}`);
   }
 
-  // Start container
-  const result = await $`docker run --name ${TEST_CONTAINER} ${envArgs} -d ${testImage}`.nothrow();
+  // Start container with volume mount for pgsodium_getkey
+  const result =
+    await $`docker run --name ${TEST_CONTAINER} ${volumeArgs} ${envArgs} -d ${testImage}`.nothrow();
 
   if (result.exitCode !== 0) {
     console.error(`Failed to start container: ${result.stderr.toString()}`);
@@ -153,10 +178,36 @@ async function startContainer() {
     const check =
       await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
     if (check.exitCode === 0) {
-      console.log("✅ Database is ready");
+      console.log("✅ Database responding");
+
+      // Wait for init scripts to complete (pgsodium-init, etc.)
+      // Init scripts run in parallel with our check and may restart services
+      console.log("⏳ Waiting for init scripts to complete...");
+      await Bun.sleep(5000);
+
+      // Verify database is stable (check multiple times)
+      let stable = true;
+      for (let j = 0; j < 3; j++) {
+        const verify =
+          await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
+        if (verify.exitCode !== 0) {
+          stable = false;
+          console.log("⚠️  Database not yet stable, waiting...");
+          await Bun.sleep(2000);
+          break;
+        }
+        await Bun.sleep(500);
+      }
+
+      if (!stable) {
+        // Database was restarting, continue waiting
+        continue;
+      }
+
+      console.log("✅ Database is stable");
 
       // Create enabled extensions dynamically
-      // (pgsodium_getkey script was created at container startup if pgsodium is in preload)
+      // pgsodium_getkey script is volume-mounted, so pgsodium TCE is fully functional
       console.log(`Creating ${testableExtensions.length} testable extensions...`);
       for (const ext of testableExtensions) {
         const create = await runSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name}`);
@@ -448,13 +499,13 @@ async function main() {
     });
 
     await test("pgsodium+vault: Store encrypted secret in vault", async () => {
-      // Insert encrypted secret
+      // Use vault.create_secret() function to properly create encrypted secret
+      // First delete any existing test secret, then create new one
+      await runSQL("DELETE FROM vault.secrets WHERE name = 'test_api_key'");
       const insert = await runSQL(`
-    INSERT INTO vault.secrets (name, secret, description)
-    VALUES ('test_api_key', 'sk_test_1234567890abcdef', 'Test API key for integration test')
-    ON CONFLICT (name) DO UPDATE SET secret = EXCLUDED.secret
+    SELECT vault.create_secret('sk_test_1234567890abcdef', 'test_api_key', 'Test API key for integration test')
   `);
-      assert(insert.success, "Failed to insert encrypted secret into vault");
+      assert(insert.success, `Failed to insert encrypted secret into vault: ${insert.stderr}`);
     });
 
     await test("pgsodium+vault: Retrieve and decrypt secret", async () => {
@@ -611,30 +662,12 @@ async function main() {
   // Clean up container
   await stopContainer();
 
-  // Check if failures are ONLY from pgsodium vault tests (which are expected to fail)
-  const vaultTestNames = [
-    "pgsodium+vault: Verify pgsodium server secret exists",
-    "pgsodium+vault: Store encrypted secret in vault",
-    "pgsodium+vault: Retrieve and decrypt secret",
-  ];
-
-  const failedTests = results.filter((r) => !r.passed);
-  const vaultFailures = failedTests.filter((r) => vaultTestNames.includes(r.name));
-  const nonVaultFailures = failedTests.filter((r) => !vaultTestNames.includes(r.name));
-
-  if (nonVaultFailures.length > 0) {
-    // Real failures - exit with error
-    console.log(`\n❌ ${nonVaultFailures.length} non-vault test(s) failed (critical)`);
+  // Exit with appropriate code based on test results
+  if (failed > 0) {
+    console.log(`\n❌ ${failed} test(s) failed`);
     process.exit(1);
-  } else if (vaultFailures.length > 0) {
-    // Only vault failures (expected) - exit success
-    console.log(
-      `\n✅ All non-vault tests passed (${vaultFailures.length} expected vault failures)`
-    );
-    console.log("Note: pgsodium vault tests fail without manual pgsodium_getkey script setup");
-    process.exit(0);
   } else {
-    // All tests passed
+    console.log(`\n✅ All ${passed} tests passed`);
     process.exit(0);
   }
 }

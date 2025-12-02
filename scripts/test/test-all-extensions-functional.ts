@@ -1704,6 +1704,11 @@ if (!pgflowInstall.available) {
 
 await test("pgflow - Verify schema exists (SQL-only, not extension)", "workflow", async () => {
   // pgflow is a SQL-only schema initialized at startup, not a traditional extension
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   // Verify pgflow schema exists
   const schema = await runSQL(
     "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'"
@@ -1712,6 +1717,11 @@ await test("pgflow - Verify schema exists (SQL-only, not extension)", "workflow"
 });
 
 await test("pgflow - Verify core tables exist", "workflow", async () => {
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   const tables = await runSQL(`
     SELECT count(*) FROM information_schema.tables
     WHERE table_schema = 'pgflow'
@@ -1721,6 +1731,11 @@ await test("pgflow - Verify core tables exist", "workflow", async () => {
 });
 
 await test("pgflow - Create simple workflow", "workflow", async () => {
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   // Create a simple flow (using flow_slug as primary key, must use underscores not hyphens)
   const flowSlug = "test_flow_simple";
   const flow = await runSQL(`
@@ -1751,6 +1766,11 @@ await test("pgflow - Create simple workflow", "workflow", async () => {
 });
 
 await test("pgflow - Create workflow with dependencies", "workflow", async () => {
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   // Create flow with dependent steps (use underscores in slugs, not hyphens)
   const flowSlug = "test_flow_deps";
   await runSQL(`
@@ -1794,6 +1814,11 @@ await test("pgflow - Create workflow with dependencies", "workflow", async () =>
 });
 
 await test("pgflow - Verify map step support (Phase 10)", "workflow", async () => {
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   // Verify step_type column exists and supports 'map' type
   const column = await runSQL(`
     SELECT column_name, data_type
@@ -1815,6 +1840,11 @@ await test("pgflow - Verify map step support (Phase 10)", "workflow", async () =
 });
 
 await test("pgflow - Verify worker deprecation support (Phase 9)", "workflow", async () => {
+  if (!pgflowInstall.available) {
+    throw new Error(
+      "SKIPPED: pgflow schema unavailable (pg_net or pgsodium not in shared_preload_libraries)"
+    );
+  }
   // Verify deprecated_at column exists in workers table
   const column = await runSQL(`
     SELECT column_name, data_type

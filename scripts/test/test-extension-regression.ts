@@ -29,7 +29,7 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import { detectTestMode, type TestMode } from "./lib/test-mode.ts";
+import { detectTestMode, getSharedPreloadLibraries, type TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import {
   runRegressionTests,
@@ -57,12 +57,15 @@ const TOP_10_EXTENSIONS = [
 
 /**
  * Comprehensive-only extensions (disabled in production, tested in regression mode).
+ *
+ * NOTE: Only include extensions that are actually COMPILED into the image.
+ * Extensions with `enabled: false` in manifest are NOT built and cannot be tested.
+ * - postgis: NOT built (enabled: false, too large)
+ * - pgrouting: NOT built (depends on postgis)
+ * - pgq: NOT built (enabled: false)
  */
 const COMPREHENSIVE_ONLY_EXTENSIONS = [
-  "postgis", // spatial data (large, disabled by default)
-  "pgrouting", // routing algorithms (depends on postgis)
-  "pgq", // high-performance queue (disabled by default)
-  "wrappers", // FDW framework (integration tests)
+  "wrappers", // FDW framework - compiled but not auto-enabled (defaultEnable: false)
 ];
 
 interface TestOptions {
@@ -219,11 +222,8 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
   console.log(`  Mode:  ${mode}`);
 
   try {
-    // Start container with appropriate shared_preload_libraries for mode
-    const sharedPreload =
-      mode === "regression"
-        ? "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,pgsodium,pg_partman,set_user"
-        : "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb";
+    // Get shared_preload_libraries from manifest (ensures all required extensions like pg_net are included)
+    const sharedPreload = getSharedPreloadLibraries(mode);
 
     await $`docker run -d --name ${containerName} \
       -e POSTGRES_PASSWORD=postgres \

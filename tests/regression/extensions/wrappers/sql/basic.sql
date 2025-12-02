@@ -3,6 +3,10 @@
 -- Tests Supabase FDW framework infrastructure (no external connections)
 --
 
+-- Create extension (uses CASCADE to automatically create pg_stat_statements dependency)
+CREATE EXTENSION IF NOT EXISTS wrappers CASCADE;
+
+
 -- Verify extension is installed
 SELECT
   extname,

@@ -333,6 +333,7 @@ async function main(): Promise<void> {
 
   // Test 2: pg_safeupdate override (user can disable)
   // Use explicit POSTGRES_SHARED_PRELOAD_LIBRARIES without safeupdate
+  // IMPORTANT: Must include pg_net and pgsodium since they're required by default-enabled extensions
   await runCase(
     "Test 2: pg_safeupdate override (user can disable via env)",
     testPgSafeupdateOverride,
@@ -341,9 +342,9 @@ async function main(): Promise<void> {
       memory: "2g",
       env: {
         POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
-        // Explicitly omit safeupdate from preload libraries
+        // Explicitly omit safeupdate from preload libraries, but keep pg_net and pgsodium for pgflow
         POSTGRES_SHARED_PRELOAD_LIBRARIES:
-          "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb",
+          "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,pg_net,pgsodium",
       },
     }
   );

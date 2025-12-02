@@ -7,7 +7,7 @@
 # PostgreSQL 18.1 Regression Test Image
 # Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
-FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f AS builder-base
+FROM postgres:18.1-trixie@sha256:38d5c9d522037d8bf0864c9068e4df2f8a60127c6489ab06f98fdeda535560f9 AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -149,7 +149,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final regression test image
-FROM postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
+FROM postgres:18.1-trixie@sha256:38d5c9d522037d8bf0864c9068e4df2f8a60127c6489ab06f98fdeda535560f9
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -200,7 +200,7 @@ RUN set -euo pipefail && \
     (apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.0-1.pgdg12+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.0-1.pgdg12+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.0-1.pgdg12+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-partman=5.3.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.3.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.3.1-2.pgdg13+1" && \
     # Report what was installed
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \
@@ -217,6 +217,37 @@ COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
+
+# Pre-compiled extensions from GitHub releases (for packages not available in apt)
+# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
+# GitHub release binary installation
+# Provides pre-built extensions not available via apt for Debian Trixie
+# Architecture detected at build time (supports amd64, arm64)
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends curl unzip && \
+    # Install vectorscale from GitHub release (.deb package inside zip)
+    ARCH=$(dpkg --print-architecture) && \
+    ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
+    echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
+    curl -fsSL "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip && \
+    unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
+    # Install the .deb package (skip debug symbols package)
+    DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
+    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in vectorscale zip"; exit 1; } && \
+    echo "Installing $DEB_FILE..." && \
+    dpkg -i "$DEB_FILE" && \
+    rm -rf /tmp/vectorscale* && \
+    echo "✓ Installed vectorscale v0.9.0" && \
+    # Verify .so files exist
+    echo "Verifying GitHub release .so files..." && \
+    test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
+    echo "All 1 GitHub release .so file(s) verified" && \
+    # Strip debug symbols from newly installed .so files
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

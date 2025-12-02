@@ -163,6 +163,7 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
   // Stage 1: Start container
   info("Stage 1: Starting container...");
+  // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
   const startResult = await $`docker run -d \
     --name ${options.name} \
     -e POSTGRES_PASSWORD=${options.password} \

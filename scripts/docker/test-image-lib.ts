@@ -83,7 +83,7 @@ export async function startContainer(image: string, containerName: string): Prom
   await dockerCleanup(containerName);
 
   // Start container with test environment
-  // Include optional preload modules for comprehensive testing (timescaledb, pg_safeupdate)
+  // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES from entrypoint
   const exitCode = await dockerRunLive([
     "run",
     "-d",
@@ -93,8 +93,6 @@ export async function startContainer(image: string, containerName: string): Prom
     "POSTGRES_PASSWORD=test123",
     "-e",
     "POSTGRES_DB=postgres",
-    "-e",
-    "POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate",
     image,
   ]);
 

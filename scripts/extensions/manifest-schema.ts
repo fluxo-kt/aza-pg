@@ -102,10 +102,15 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - provides: List of features/extensions provided
  * - aptPackages: System packages required for building
  * - notes: General notes about the extension
- * - install_via: Installation method override ("pgdg" or "percona" for package, "source" to build from source)
+ * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build, "github-release" for GitHub binaries)
+ * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
+ * - githubReleaseTag: GitHub release tag for downloading assets (required when install_via="github-release")
+ * - githubAssetPattern: Asset filename pattern with {version}, {pgMajor}, {arch} placeholders (required when install_via="github-release")
  * - perconaVersion: Version string for Percona packages (required when install_via="percona")
  * - perconaPackage: Package name for Percona packages (required when install_via="percona")
- * - soFileName: Shared object filename for verification (required when install_via="percona")
+ * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
+ * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
+ * - soFileName: Shared object filename for verification (required when install_via="percona", "timescale", or "github-release")
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -121,9 +126,14 @@ export const ManifestEntrySchema = type({
   "provides?": "string[]",
   "aptPackages?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'percona'|'source'",
+  "install_via?": "'pgdg'|'percona'|'timescale'|'source'|'github-release'",
+  "githubRepo?": "string",
+  "githubReleaseTag?": "string",
+  "githubAssetPattern?": "string",
   "perconaVersion?": "string",
   "perconaPackage?": "string",
+  "timescaleVersion?": "string",
+  "timescalePackage?": "string",
   "soFileName?": "string",
   "enabled?": "boolean",
 });

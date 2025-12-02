@@ -10,9 +10,9 @@
 set -euo pipefail
 
 # Expected extensions for this aza-pg version (from manifest)
-EXPECTED_EXTENSIONS=("pg_cron" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "plpgsql" "timescaledb" "vector" "vectorscale")
-EXPECTED_COUNT=10
-EXPECTED_PRELOAD="auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,safeupdate,timescaledb"
+EXPECTED_EXTENSIONS=("pg_cron" "pg_net" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "pgsodium" "plpgsql" "supabase_vault" "timescaledb" "vector" "vectorscale")
+EXPECTED_COUNT=13
+EXPECTED_PRELOAD="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb"
 
 # Tier 1: Connection Test
 if ! pg_isready -U postgres --timeout=3 >/dev/null 2>&1; then

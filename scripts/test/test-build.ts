@@ -10,7 +10,12 @@
 
 import { $ } from "bun";
 import { resolve, dirname } from "node:path";
-import { checkCommand, checkDockerDaemon, dockerCleanup, waitForPostgres } from "../utils/docker";
+import {
+  checkCommand,
+  checkDockerDaemon,
+  dockerCleanup,
+  waitForPostgresStable,
+} from "../utils/docker";
 import { error } from "../utils/logger";
 
 /**
@@ -160,12 +165,15 @@ async function startTestContainer(config: BuildTestConfig): Promise<void> {
  */
 async function waitForPostgresReady(config: BuildTestConfig): Promise<void> {
   try {
-    await waitForPostgres({
+    // Use waitForPostgresStable to avoid race condition during initdb restart
+    // pg_isready returns true during initdb, but PostgreSQL restarts after initdb completes
+    await waitForPostgresStable({
       host: "localhost",
       port: 5432,
       user: "postgres",
-      timeout: 60,
+      timeout: 90, // Increased timeout to allow for initdb + stability checks
       container: config.containerName,
+      requiredSuccesses: 3,
     });
     console.log();
   } catch {

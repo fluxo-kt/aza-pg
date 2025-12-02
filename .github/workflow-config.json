@@ -9,9 +9,9 @@
   "defaultTestingTag": "testing-main",
   "counts": {
     "total": 40,
-    "enabled": 34,
-    "preloaded": 11,
-    "autoCreated": 7
+    "enabled": 36,
+    "preloaded": 12,
+    "autoCreated": 11
   },
   "featuredExtensions": ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"]
 }

@@ -188,6 +188,10 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 # Provides extensions not available in PGDG: pg_stat_monitor, wal2json
 {{PERCONA_PACKAGES_INSTALL}}
 
+# Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
+# Provides TimescaleDB with full TSL license (not available in PGDG)
+{{TIMESCALE_PACKAGES_INSTALL}}
+
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
 {{PGDG_TOOLS_INSTALL}}
 
@@ -197,6 +201,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
+
+# Pre-compiled extensions from GitHub releases (for packages not available in apt)
+# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
+{{GITHUB_RELEASE_PACKAGES_INSTALL}}
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
@@ -230,6 +238,10 @@ COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto
 
 # Runtime init scripts
 COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
+
+# pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
+RUN mkdir -p /opt/pgflow
+COPY tests/fixtures/pgflow/schema-v0.11.0.sql /opt/pgflow/schema.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)
 RUN set -euo pipefail && \

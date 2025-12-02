@@ -497,7 +497,7 @@ The following optimizations have been identified for potential implementation ba
 
 **Long-term Considerations:**
 
-- **Rust compilation optimization:** Apply similar optimization flags to all cargo-pgrx extensions (pg_jsonschema, vectorscale, pgmq, pg_stat_monitor)
+- **Rust compilation optimization:** Apply similar optimization flags to remaining cargo-pgrx extensions (pg_jsonschema, pgmq) — vectorscale now uses prebuilt GitHub release binaries
 - **Conditional builds:** Build-time arguments to skip large optional extensions for specific use cases
 - **Alpine base evaluation:** Potential 40% size reduction but requires extensive glibc vs musl compatibility testing
 

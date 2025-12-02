@@ -32,7 +32,9 @@ const CONTAINER = useExistingContainer
   ? existingContainer!
   : `test-pgflow-schema-${Date.now()}-${process.pid}`;
 
-const DATABASE = "pgflow_schema_test";
+// pg_cron can only be created in the database configured in cron.database_name (default: postgres)
+// So we use the postgres database for testing
+const DATABASE = "postgres";
 const imageTag = !useExistingContainer ? resolveImageTag() : null;
 
 // ============================================================================
@@ -81,6 +83,7 @@ async function startContainer(): Promise<void> {
   }
 
   console.log(`Starting container ${CONTAINER}...`);
+  // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
   await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=test -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`.quiet();
 
   const start = Date.now();
@@ -97,7 +100,12 @@ async function startContainer(): Promise<void> {
 
 async function cleanup(): Promise<void> {
   if (useExistingContainer) {
-    await dropDatabase(CONTAINER, DATABASE);
+    // When using postgres database, just drop the pgflow schema instead of the database
+    if (DATABASE === "postgres") {
+      await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
+    } else {
+      await dropDatabase(CONTAINER, DATABASE);
+    }
     return;
   }
   await $`docker stop ${CONTAINER}`.quiet().nothrow();
@@ -150,12 +158,19 @@ async function runTests(): Promise<void> {
 
   await startContainer();
 
-  // Setup
-  await test("Create test database", async () => {
-    await dropDatabase(CONTAINER, DATABASE);
-    const created = await createDatabase(CONTAINER, DATABASE);
-    assert(created, "Failed to create database");
-  });
+  // Setup - when using postgres database, just clean up existing pgflow schema
+  if (DATABASE === "postgres") {
+    await test("Clean existing pgflow schema", async () => {
+      // Drop pgflow schema if it exists from previous test runs
+      await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
+    });
+  } else {
+    await test("Create test database", async () => {
+      await dropDatabase(CONTAINER, DATABASE);
+      const created = await createDatabase(CONTAINER, DATABASE);
+      assert(created, "Failed to create database");
+    });
+  }
 
   await test("Install pgflow schema", async () => {
     const result = await installPgflowSchema(CONTAINER, DATABASE);

@@ -66,13 +66,14 @@
       "aptPackages": ["libcurl4-openssl-dev"],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
+        "defaultEnable": true,
+        "defaultPreload": true,
         "notes": [
           "NOT in PGDG (Supabase-specific). Source build required.",
           "Requires shared_preload_libraries for background worker",
           "Powers async HTTP webhooks from triggers",
-          "Use net.http_post() for outbound API calls"
+          "Use net.http_post() for outbound API calls",
+          "Required for pgflow workflow orchestration"
         ]
       },
       "sourceUrl": "https://github.com/supabase/pg_net",
@@ -193,8 +194,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.4",
-        "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
+        "tag": "4.0.5",
+        "commit": "15c8ed3e00c65577e71071a9f1e408c9237f39e3"
       },
       "build": {
         "type": "pgxs"
@@ -214,7 +215,7 @@
       },
       "notes": [
         "NOT available in PGDG for PostgreSQL 18",
-        "Alt: Pigsty v4.0.0 - PG13-17 only, NO PG18 packages",
+        "v4.0.5: Fix LIKE/ILIKE with OR clause returning no results (GH-916)",
         "Source build required for PG18"
       ],
       "sourceUrl": "https://github.com/pgroonga/pgroonga",
@@ -237,14 +238,14 @@
       "aptPackages": ["libsodium-dev"],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
+        "defaultEnable": true,
+        "defaultPreload": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
-          "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+          "Preloaded by default for pgflow and supabase_vault support",
           "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
           "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
-          "Basic cryptography functions work without preload or getkey script"
+          "Basic cryptography functions work without getkey script"
         ]
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
@@ -268,10 +269,11 @@
       "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
+        "defaultEnable": true,
         "notes": [
           "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
-          "Source build required"
+          "Source build required",
+          "Required for pgflow workflow orchestration"
         ]
       },
       "sourceUrl": "https://github.com/supabase/vault",
@@ -279,61 +281,31 @@
     },
     {
       "name": "supautils",
-      "enabled": false,
-      "enabledInComprehensiveTest": false,
-      "disabledReason": "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
+      "enabled": true,
+      "enabledInComprehensiveTest": true,
       "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.0.2",
-        "commit": "2b8c31182da2f1df3fdd204fd5d1d66dbaf71ff1"
+        "tag": "v3.0.6",
+        "commit": "92c7c487d957dad1331ac812b6bad0771902ac8c"
       },
       "build": {
-        "type": "pgxs",
-        "patches": ["s/bool +log_skipped_evtrigs/static bool log_skipped_evtrigs/"]
+        "type": "pgxs"
       },
       "runtime": {
         "sharedPreload": true,
         "preloadOnly": true,
         "defaultEnable": false,
-        "notes": ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."]
+        "notes": [
+          "v3.0.6: PG18 fixed upstream (str_tolower migration in v2.10.0)",
+          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
+        ]
       },
       "sourceUrl": "https://github.com/supabase/supautils",
       "docsUrl": "https://github.com/supabase/supautils#readme"
-    },
-    {
-      "name": "timescaledb",
-      "kind": "extension",
-      "install_via": "source",
-      "category": "timeseries",
-      "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.23.1",
-        "commit": "9cec3ac3211e340097ae3605b62cfd73130bb6b7"
-      },
-      "build": {
-        "type": "timescaledb"
-      },
-      "aptPackages": ["cmake", "ninja-build", "llvm", "clang", "perl", "python3"],
-      "runtime": {
-        "sharedPreload": true,
-        "defaultEnable": true,
-        "excludeFromAutoTests": false,
-        "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.20.0 (Apache 2.0 only, no TSL features)",
-          "Alt: Timescale repo v2.23.1 (full TSL license) - timescaledb-2-postgresql-18",
-          "Source build for TSL-licensed v2.23.1",
-          "Preloaded for optimal hypertable performance",
-          "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
-        ]
-      },
-      "sourceUrl": "https://github.com/timescale/timescaledb",
-      "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
     }
   ]
 }

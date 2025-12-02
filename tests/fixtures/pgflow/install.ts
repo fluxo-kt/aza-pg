@@ -26,7 +26,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FILE = join(__dirname, "schema-v0.9.0.sql");
+const SCHEMA_FILE = join(__dirname, "schema-v0.11.0.sql");
 
 /**
  * SQL to create a multi-layer replacement for Supabase Realtime.
@@ -165,6 +165,43 @@ COMMENT ON FUNCTION realtime.send IS 'Multi-layer event broadcaster for pgflow: 
 COMMENT ON FUNCTION realtime._ensure_pgmq_queue IS 'Helper to idempotently create pgmq queue';
 COMMENT ON FUNCTION realtime._pg_net_available IS 'Check if pg_net extension is available';
 `;
+
+/**
+ * Install only the realtime stub (idempotent).
+ * Use this to ensure realtime.send() exists even when pgflow schema is already installed.
+ */
+export async function installRealtimeStub(
+  container: string,
+  database: string = "postgres",
+  user: string = "postgres"
+): Promise<{ success: boolean; stderr: string }> {
+  const proc = Bun.spawn(
+    [
+      "docker",
+      "exec",
+      "-i",
+      "-u",
+      user,
+      container,
+      "psql",
+      "-d",
+      database,
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
+  );
+  proc.stdin.write(REALTIME_STUB_SQL);
+  proc.stdin.end();
+
+  const exitCode = await proc.exited;
+  const stderr = await new Response(proc.stderr).text();
+
+  return {
+    success: exitCode === 0,
+    stderr: stderr.trim(),
+  };
+}
 
 export interface InstallResult {
   success: boolean;
@@ -401,4 +438,4 @@ export async function runSQL(
 
 // Export schema file path for direct access if needed
 export const PGFLOW_SCHEMA_PATH = SCHEMA_FILE;
-export const PGFLOW_VERSION = "0.9.0";
+export const PGFLOW_VERSION = "0.11.0";

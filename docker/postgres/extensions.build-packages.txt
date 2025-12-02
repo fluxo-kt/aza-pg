@@ -34,4 +34,3 @@ ninja-build
 perl
 pkg-config
 protobuf-c-compiler
-python3

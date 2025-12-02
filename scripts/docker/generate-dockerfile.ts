@@ -138,7 +138,17 @@ interface ManifestEntry {
   pgdgVersion?: string;
   perconaVersion?: string;
   perconaPackage?: string;
+  /** Timescale repository package name (e.g., timescaledb-2-postgresql-18) */
+  timescalePackage?: string;
+  /** Timescale repository package version (e.g., 2.24.0~debian13-1801) */
+  timescaleVersion?: string;
   soFileName?: string;
+  /** GitHub repository in owner/repo format for github-release installations */
+  githubRepo?: string;
+  /** GitHub release tag for downloading assets */
+  githubReleaseTag?: string;
+  /** Asset filename pattern with {version}, {pgMajor}, {arch} placeholders */
+  githubAssetPattern?: string;
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -163,14 +173,15 @@ interface Manifest {
  * This prevents shell injection via SC2046/SC2086 word-splitting patterns
  */
 function validatePackageName(packageName: string, context: string): void {
-  // Safe characters: alphanumeric, hyphen, underscore, equals, dot, plus, colon
+  // Safe characters: alphanumeric, hyphen, underscore, equals, dot, plus, colon, tilde
+  // Tilde (~) is standard Debian version character for version ordering (e.g., 2.24.0~debian13)
   // This regex matches the intentional word-splitting pattern in Dockerfile
-  const SAFE_PACKAGE_REGEX = /^[a-zA-Z0-9\-_=.+:]*$/;
+  const SAFE_PACKAGE_REGEX = /^[a-zA-Z0-9\-_=.+:~]*$/;
 
   if (!SAFE_PACKAGE_REGEX.test(packageName)) {
     throw new Error(
       `SECURITY: Unsafe characters in ${context}: "${packageName}"\n` +
-        `Only alphanumeric and [-_=.+:] are allowed.\n` +
+        `Only alphanumeric and [-_=.+:~] are allowed.\n` +
         `This validation protects against shell injection in Dockerfile word-splitting patterns.`
     );
   }
@@ -374,6 +385,99 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
 }
 
 /**
+ * Generate Timescale repository package installation script
+ * Timescale repository provides TimescaleDB (TSL) not available in PGDG
+ * Versions are hardcoded directly from manifest timescaleVersion field
+ */
+function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): string {
+  // Find all entries with install_via === "timescale" that are enabled
+  const enabledTimescaleEntries = manifest.entries.filter(
+    (entry) => entry.install_via === "timescale" && (entry.enabled ?? true)
+  );
+
+  if (enabledTimescaleEntries.length === 0) {
+    return `RUN echo "No Timescale packages enabled in manifest"`;
+  }
+
+  // Validate and build package list
+  const packages: string[] = [];
+
+  for (const entry of enabledTimescaleEntries) {
+    if (!entry.timescalePackage) {
+      throw new Error(
+        `Timescale entry "${entry.name}" missing required timescalePackage field.\n` +
+          `Add timescalePackage: "timescaledb-2-postgresql-${pgMajor}" to manifest entry.`
+      );
+    }
+
+    // Validate package name for shell safety
+    validatePackageName(entry.timescalePackage, `Timescale package name (${entry.name})`);
+
+    // timescaleVersion is REQUIRED for reproducible builds
+    if (!entry.timescaleVersion) {
+      throw new Error(
+        `Timescale entry "${entry.name}" missing required timescaleVersion field.\n` +
+          `Add timescaleVersion: "X.Y.Z~debianNN-NNNN" to manifest entry for reproducible builds.`
+      );
+    }
+    validatePackageName(entry.timescaleVersion, `Timescale version (${entry.name})`);
+
+    // soFileName is REQUIRED for .so verification
+    if (!entry.soFileName) {
+      throw new Error(
+        `Timescale entry "${entry.name}" missing required soFileName field.\n` +
+          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
+      );
+    }
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `Timescale entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
+          `Must be alphanumeric with underscores/hyphens and end with .so`
+      );
+    }
+
+    packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
+  }
+
+  const packagesList = packages.join(" ");
+  const expectedCount = packages.length;
+
+  // Get expected .so files for verification
+  const expectedSoFiles = enabledTimescaleEntries
+    .map((entry) => entry.soFileName)
+    .filter((f): f is string => f !== undefined);
+
+  const soVerificationCommands =
+    expectedSoFiles.length > 0
+      ? expectedSoFiles
+          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
+          .join(" && \\\n    ") + " && \\\n    "
+      : "";
+
+  return `# Timescale repository setup and package installation
+# Provides: TimescaleDB with full TSL license (not available in PGDG)
+# Note: Timescale packages are pinned via timescaleVersion in manifest for reproducible builds
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
+    set -euo pipefail && \\
+    echo "Setting up Timescale repository for PostgreSQL ${pgMajor}..." && \\
+    apt-get update && \\
+    apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \\
+    curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \\
+    apt-get update && \\
+    echo "Installing Timescale packages: ${packagesList}" && \\
+    apt-get install -y --no-install-recommends ${packagesList} && \\
+    echo "Installed ${expectedCount} Timescale package(s)" && \\
+    # Verify .so files exist
+    echo "Verifying Timescale .so files exist..." && \\
+    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Timescale .so files verified" && \\
+    apt-get clean && \\
+    rm -rf /var/lib/apt/lists/* && \\
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+}
+
+/**
  * Generate regression mode shared preload libraries list
  * Includes ALL preload libraries (default + optional) for maximum test coverage
  */
@@ -518,9 +622,103 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
 }
 
 /**
+ * Generate GitHub release binary installation script.
+ * Downloads pre-built binaries from GitHub releases for extensions not available via apt.
+ * Supports multi-architecture builds (amd64, arm64) via runtime detection.
+ */
+function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): string {
+  const enabledEntries = manifest.entries.filter(
+    (entry) => entry.install_via === "github-release" && (entry.enabled ?? true)
+  );
+
+  if (enabledEntries.length === 0) {
+    return `RUN echo "No GitHub release packages enabled in manifest"`;
+  }
+
+  // Validate required fields for each entry
+  for (const entry of enabledEntries) {
+    if (!entry.githubRepo) {
+      throw new Error(`GitHub release entry "${entry.name}" missing required githubRepo field.`);
+    }
+    if (!entry.githubReleaseTag) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" missing required githubReleaseTag field.`
+      );
+    }
+    if (!entry.githubAssetPattern) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" missing required githubAssetPattern field.`
+      );
+    }
+    if (!entry.soFileName) {
+      throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
+    }
+    // Validate soFileName format
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
+      );
+    }
+  }
+
+  // Build installation commands for each extension
+  // pgvectorscale releases contain .deb packages inside the zip, not raw .so files
+  const installCommands = enabledEntries
+    .map((entry) => {
+      // Pattern uses {version}, {pgMajor}, {arch} placeholders
+      // {arch} is resolved at runtime using dpkg --print-architecture
+      const assetPattern = entry
+        .githubAssetPattern!.replace("{version}", entry.githubReleaseTag!)
+        .replace("{pgMajor}", pgMajor);
+      // {arch} will be resolved at runtime in the shell
+
+      const url = `https://github.com/${entry.githubRepo}/releases/download/${entry.githubReleaseTag}`;
+
+      // The zip contains .deb packages. We extract and install the non-dbgsym one.
+      // File pattern in zip: pgvectorscale-postgresql-18_0.9.0-Linux_arm64.deb
+      return `    # Install ${entry.name} from GitHub release (.deb package inside zip)
+    ARCH=$(dpkg --print-architecture) && \\
+    ASSET="${assetPattern.replace("{arch}", "${ARCH}")}" && \\
+    echo "Downloading ${entry.name} v${entry.githubReleaseTag} for $ARCH..." && \\
+    curl -fsSL "${url}/$ASSET" -o /tmp/${entry.name}.zip && \\
+    unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
+    # Install the .deb package (skip debug symbols package)
+    DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\
+    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in ${entry.name} zip"; exit 1; } && \\
+    echo "Installing $DEB_FILE..." && \\
+    dpkg -i "$DEB_FILE" && \\
+    rm -rf /tmp/${entry.name}* && \\
+    echo "✓ Installed ${entry.name} v${entry.githubReleaseTag}"`;
+    })
+    .join(" && \\\n");
+
+  // .so verification
+  const soVerification = enabledEntries
+    .map((e) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${e.soFileName}`)
+    .join(" && \\\n    ");
+
+  return `# GitHub release binary installation
+# Provides pre-built extensions not available via apt for Debian Trixie
+# Architecture detected at build time (supports amd64, arm64)
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
+    set -euo pipefail && \\
+    apt-get update && \\
+    apt-get install -y --no-install-recommends curl unzip && \\
+${installCommands} && \\
+    # Verify .so files exist
+    echo "Verifying GitHub release .so files..." && \\
+    ${soVerification} && \\
+    echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
+    # Strip debug symbols from newly installed .so files
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+}
+
+/**
  * Generate filtered manifest for PGXS-style builds
- * Includes: pgxs, autotools, cmake, meson, make, timescaledb
- * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
+ * Includes: pgxs, autotools, cmake, meson, make, timescaledb (build type)
+ * Excludes: entries with install_via === "pgdg", "percona", "timescale", or "github-release"
  */
 function generatePgxsManifest(manifest: Manifest): Manifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
@@ -529,7 +727,9 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
       entry.build &&
       pgxsBuildTypes.includes(entry.build.type) &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
-      entry.install_via !== "percona" // Exclude Percona-installed entries
+      entry.install_via !== "percona" && // Exclude Percona-installed entries
+      entry.install_via !== "timescale" && // Exclude Timescale repo entries
+      entry.install_via !== "github-release" // Exclude GitHub release entries
   );
 
   return {
@@ -540,7 +740,7 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
 /**
  * Generate filtered manifest for Cargo builds
  * Includes: cargo-pgrx
- * Excludes: entries with install_via === "pgdg" (those use pre-built packages)
+ * Excludes: entries with install_via === "pgdg", "percona", "timescale", or "github-release"
  */
 function generateCargoManifest(manifest: Manifest): Manifest {
   const filteredEntries = manifest.entries.filter(
@@ -548,7 +748,9 @@ function generateCargoManifest(manifest: Manifest): Manifest {
       entry.build &&
       entry.build.type === "cargo-pgrx" &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
-      entry.install_via !== "percona" // Exclude Percona-installed entries
+      entry.install_via !== "percona" && // Exclude Percona-installed entries
+      entry.install_via !== "timescale" && // Exclude Timescale repo entries
+      entry.install_via !== "github-release" // Exclude GitHub release-installed entries
   );
 
   return {
@@ -612,8 +814,14 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating Percona package installation script...");
   const perconaPackagesInstall = generatePerconaPackagesInstall(manifest, pgMajor);
 
+  info("Generating Timescale package installation script...");
+  const timescalePackagesInstall = generateTimescalePackagesInstall(manifest, pgMajor);
+
   info("Generating PGDG tools installation script...");
   const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
+
+  info("Generating GitHub release installation script...");
+  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
 
   info("Generating version info generation script...");
   const versionInfoGeneration = generateVersionInfoGeneration(manifest);
@@ -625,7 +833,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
+  dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
+  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
 
   // Add generation header
@@ -662,6 +872,9 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating regression PGDG package installation script...");
   const pgdgPackagesInstallRegression = generatePgdgPackagesInstallRegression(manifest, pgMajor);
 
+  info("Generating GitHub release installation script...");
+  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
+
   info("Generating regression preload libraries list...");
   const regressionPreloadLibs = generateRegressionPreloadLibraries(manifest);
 
@@ -674,6 +887,7 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
     "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
     pgdgPackagesInstallRegression
   );
+  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
   dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
 
   // Add generation header

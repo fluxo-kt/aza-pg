@@ -792,16 +792,18 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        // Include optional preload modules for comprehensive testing (timescaledb, pg_safeupdate)
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
+        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
         "cd scripts/test && bun run test-all-extensions-functional.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
         "exit $RESULT",
       ].join("; "),
     ],
-    description: "Test all enabled extensions comprehensively",
+    description: "Test all enabled extensions comprehensively including pgflow workflow",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,
@@ -881,8 +883,11 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
+        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
         "bun scripts/test/test-pgflow-schema.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
@@ -902,8 +907,11 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
+        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
         "bun scripts/test/test-pgflow-functional.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",
@@ -923,8 +931,11 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
         "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
+        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
+        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
         "bun scripts/test/test-pgflow-multiproject.ts --container=$CONTAINER",
         "RESULT=$?",
         "docker rm -f $CONTAINER >/dev/null",

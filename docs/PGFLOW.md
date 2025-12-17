@@ -1534,7 +1534,7 @@ The pgflow schema is maintained in test fixtures for validation:
 
 ```
 tests/fixtures/pgflow/
-├── schema-v0.9.0.sql   # Combined schema for testing
+├── schema-v0.11.0.sql   # Combined schema for testing
 ├── install.ts          # Installation helper
 └── README.md           # Update instructions
 ```
@@ -1653,7 +1653,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 **Last Updated**: 2025-11-30
 **Current Version**: v0.9.0
-**Schema Location**: `tests/fixtures/pgflow/schema-v0.9.0.sql`
+**Schema Location**: `tests/fixtures/pgflow/schema-v0.11.0.sql`
 
 ---
 

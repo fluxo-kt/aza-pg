@@ -4,7 +4,7 @@ This directory contains the pgflow SQL schema for testing purposes.
 
 ## Contents
 
-- `schema-v0.9.0.sql` - Complete pgflow schema (21 combined SQL files)
+- `schema-v0.11.0.sql` - Complete pgflow schema (21 combined SQL files)
 - `install.ts` - TypeScript helper for installing schema into containers
 
 ## Usage

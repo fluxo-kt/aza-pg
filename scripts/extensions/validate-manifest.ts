@@ -14,6 +14,7 @@ interface ManifestCounts {
   builtin: number;
   pgdg: number;
   percona: number;
+  timescale: number;
   githubRelease: number;
   compiled: number;
   enabled: number;
@@ -42,7 +43,7 @@ interface ManifestEntry {
   name: string;
   displayName?: string;
   kind: "extension" | "builtin" | "tool";
-  install_via?: "pgdg" | "percona" | "source" | "github-release";
+  install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
   githubRepo?: string;
   githubReleaseTag?: string;
   githubAssetPattern?: string;
@@ -102,14 +103,16 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   const builtin = manifest.entries.filter((e) => e.kind === "builtin").length;
   const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
   const percona = manifest.entries.filter((e) => e.install_via === "percona").length;
+  const timescale = manifest.entries.filter((e) => e.install_via === "timescale").length;
   const githubRelease = manifest.entries.filter((e) => e.install_via === "github-release").length;
 
-  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not github-release)
+  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale, not github-release)
   const compiled = manifest.entries.filter(
     (e) =>
       e.kind !== "builtin" &&
       e.install_via !== "pgdg" &&
       e.install_via !== "percona" &&
+      e.install_via !== "timescale" &&
       e.install_via !== "github-release"
   ).length;
 
@@ -121,15 +124,16 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   console.log(`  Builtin: ${builtin}`);
   console.log(`  PGDG: ${pgdg}`);
   console.log(`  Percona: ${percona}`);
+  console.log(`  Timescale: ${timescale}`);
   console.log(`  GitHub Release: ${githubRelease}`);
   console.log(`  Compiled: ${compiled}`);
   console.log(`  Enabled: ${enabled}`);
   console.log(`  Disabled: ${disabled}`);
 
   // Sanity check: counts should sum correctly
-  if (builtin + pgdg + percona + githubRelease + compiled !== total) {
+  if (builtin + pgdg + percona + timescale + githubRelease + compiled !== total) {
     error(
-      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + githubRelease(${githubRelease}) + compiled(${compiled}) = ${builtin + pgdg + percona + githubRelease + compiled}, but total = ${total}`
+      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + githubRelease(${githubRelease}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + githubRelease + compiled}, but total = ${total}`
     );
   }
 
@@ -139,7 +143,7 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
     );
   }
 
-  return { total, builtin, pgdg, percona, githubRelease, compiled, enabled, disabled };
+  return { total, builtin, pgdg, percona, timescale, githubRelease, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -492,7 +496,7 @@ async function main(): Promise<void> {
       logger.success(
         `Manifest validation passed (${manifestCounts.total} extensions: ` +
           `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.percona} Percona + ` +
-          `${manifestCounts.githubRelease} GitHub + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.timescale} Timescale + ${manifestCounts.githubRelease} GitHub + ${manifestCounts.compiled} compiled, ` +
           `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);

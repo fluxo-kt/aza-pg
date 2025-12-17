@@ -1,12 +1,12 @@
 {
   "catalog": {
     "total": 40,
-    "enabled": 34,
-    "disabled": 6
+    "enabled": 35,
+    "disabled": 5
   },
   "byKind": {
     "builtin": 6,
-    "extension": 24,
+    "extension": 25,
     "tool": 4
   },
   "builtins": [
@@ -37,6 +37,7 @@
     "rum",
     "set_user",
     "supabase_vault",
+    "supautils",
     "timescaledb",
     "timescaledb_toolkit",
     "vector",
@@ -45,7 +46,7 @@
   ],
   "tools": ["pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgflow", "pgq", "pgrouting", "postgis", "supautils"],
+    "extensions": ["pgflow", "pgq", "pgrouting", "postgis"],
     "tools": ["pg_plan_filter"]
   },
   "preloaded": {
@@ -82,7 +83,7 @@
     "utilities": ["pg_hashids"],
     "validation": ["pg_jsonschema"],
     "maintenance": ["pg_partman", "pg_repack"],
-    "safety": ["pg_safeupdate"],
+    "safety": ["pg_safeupdate", "supautils"],
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
     "queueing": ["pgmq"],

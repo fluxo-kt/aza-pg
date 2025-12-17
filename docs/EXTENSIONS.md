@@ -117,7 +117,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
 | --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.4](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.4) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.5](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.5) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
@@ -132,13 +132,13 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [5081a7b5](https://github.com/pgexperts/pg_plan_filter/commit/5081a7b5cb890876e67d8e7486b6a64c38c9a492) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
 | [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.5](https://github.com/eradman/pg-safeupdate/releases/tag/1.5)                                        | Yes                | Yes            | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| [`supautils`](https://github.com/supabase/supautils)            | [v3.0.2](https://github.com/supabase/supautils/releases/tag/v3.0.2)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
+| [`supautils`](https://github.com/supabase/supautils)            | [v3.0.6](https://github.com/supabase/supautils/releases/tag/v3.0.6)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
 | Extension                                          | Version                                                          | Enabled by Default | Shared Preload | Documentation                                     | Notes                                                           |
 | -------------------------------------------------- | ---------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------- | --------------------------------------------------------------- |
-| [`pgroonga`](https://github.com/pgroonga/pgroonga) | [4.0.4](https://github.com/pgroonga/pgroonga/releases/tag/4.0.4) | No                 | No             | [Docs](https://pgroonga.github.io)                | Full-text search powered by Groonga for multilingual workloads. |
+| [`pgroonga`](https://github.com/pgroonga/pgroonga) | [4.0.5](https://github.com/pgroonga/pgroonga/releases/tag/4.0.5) | No                 | No             | [Docs](https://pgroonga.github.io)                | Full-text search powered by Groonga for multilingual workloads. |
 | [`rum`](https://github.com/postgrespro/rum)        | [1.3.15](https://github.com/postgrespro/rum/releases/tag/1.3.15) | No                 | No             | [Docs](https://github.com/postgrespro/rum#readme) | RUM GiST access method for ranked full-text search.             |
 
 ### security
@@ -154,7 +154,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                                                                 |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.23.1](https://github.com/timescale/timescaledb/releases/tag/2.23.1)         | Yes                | Yes            | [Docs](https://docs.tigerdata.com/use-timescale/latest/)                | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.24.0](https://github.com/timescale/timescaledb/releases/tag/2.24.0)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
 
 ### utilities
@@ -171,9 +171,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### workflow
 
-| Extension                                        | Version                                                                        | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.9.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.9.0) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
+| Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.11.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.11.0) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
 
 <!-- extensions-table:end -->
 

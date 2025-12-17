@@ -29,37 +29,6 @@
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
     },
     {
-      "name": "timescaledb_toolkit",
-      "kind": "extension",
-      "category": "timeseries",
-      "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/timescale/timescaledb-toolkit.git",
-        "tag": "1.22.0",
-        "commit": "af5519c282fa2716fd87c4d9b8a15b0d857e9f29"
-      },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "extension",
-        "features": ["pg18"],
-        "noDefaultFeatures": true
-      },
-      "aptPackages": ["clang", "llvm", "pkg-config", "make"],
-      "dependencies": ["timescaledb"],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v1.21.0 (1 version behind)",
-          "Alt: Timescale repo v1.22.0 - timescaledb-toolkit-postgresql-18",
-          "Source build for latest v1.22.0"
-        ]
-      },
-      "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
-      "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
-    },
-    {
       "name": "wrappers",
       "displayName": "supabase-wrappers",
       "kind": "extension",

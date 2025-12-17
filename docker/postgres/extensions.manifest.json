@@ -582,8 +582,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.9.0",
-        "commit": "43a6de02fba7eec2397124de1431a3f865a2c9cc"
+        "tag": "pgflow@0.11.0",
+        "commit": "03a3b6acfde9357a8719d3e08c00c6249100c764"
       },
       "runtime": {
         "sharedPreload": false,
@@ -672,8 +672,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.4",
-        "commit": "ce46bfe8d1f0803574e1a14998821f06e0bec4de"
+        "tag": "4.0.5",
+        "commit": "15c8ed3e00c65577e71071a9f1e408c9237f39e3"
       },
       "build": {
         "type": "pgxs"
@@ -693,7 +693,7 @@
       },
       "notes": [
         "NOT available in PGDG for PostgreSQL 18",
-        "Alt: Pigsty v4.0.0 - PG13-17 only, NO PG18 packages",
+        "v4.0.5: Fix LIKE/ILIKE with OR clause returning no results (GH-916)",
         "Source build required for PG18"
       ],
       "sourceUrl": "https://github.com/pgroonga/pgroonga",
@@ -790,14 +790,14 @@
       "name": "plpgsql_check",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "2.8.4-1.pgdg13+1",
+      "pgdgVersion": "2.8.5-1.pgdg13+1",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.4",
-        "commit": "1482592c208989e87e7026946d47ded51318c503"
+        "tag": "v2.8.5",
+        "commit": "c6984b9dd0b46d855256420ccb606172c8cbf512"
       },
       "build": {
         "type": "pgxs"
@@ -806,8 +806,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-plpgsql-check (v2.8.4-1.pgdg13+1)",
-          "Alt: Pigsty v2.8.4 (same version)"
+          "PGDG: postgresql-18-plpgsql-check (v2.8.5-1.pgdg13+1)",
+          "v2.8.5: Fix for released tracked const string bug"
         ]
       },
       "sourceUrl": "https://github.com/okbob/plpgsql_check",
@@ -947,29 +947,26 @@
     },
     {
       "name": "supautils",
-      "enabled": false,
-      "enabledInComprehensiveTest": false,
-      "disabledReason": "Compilation requires patching for PG18 compatibility. Patch application system unable to apply sed-style patches reliably in Docker build environment despite multiple pattern attempts (POSIX [[:space:]], JS \\s+, literal space+). Issue requires investigation of patch application mechanism or upstream fix.",
+      "enabled": true,
+      "enabledInComprehensiveTest": true,
       "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.0.2",
-        "commit": "2b8c31182da2f1df3fdd204fd5d1d66dbaf71ff1"
+        "tag": "v3.0.6",
+        "commit": "92c7c487d957dad1331ac812b6bad0771902ac8c"
       },
       "build": {
-        "type": "pgxs",
-        "patches": [
-          "s/bool +log_skipped_evtrigs/static bool log_skipped_evtrigs/"
-        ]
+        "type": "pgxs"
       },
       "runtime": {
         "sharedPreload": true,
         "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
+          "v3.0.6: PG18 fixed upstream (str_tolower migration in v2.10.0)",
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },
@@ -979,44 +976,40 @@
     {
       "name": "timescaledb",
       "kind": "extension",
-      "install_via": "source",
+      "install_via": "timescale",
+      "timescalePackage": "timescaledb-2-postgresql-18",
+      "timescaleVersion": "2.24.0~debian13-1801",
+      "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.23.1",
-        "commit": "9cec3ac3211e340097ae3605b62cfd73130bb6b7"
+        "tag": "2.24.0",
+        "commit": "119c8dca6c442c4d86ad1ddb3c863be9e6fac205"
       },
-      "build": {
-        "type": "timescaledb"
-      },
-      "aptPackages": [
-        "cmake",
-        "ninja-build",
-        "llvm",
-        "clang",
-        "perl",
-        "python3"
-      ],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v2.20.0 (Apache 2.0 only, no TSL features)",
-          "Alt: Timescale repo v2.23.1 (full TSL license) - timescaledb-2-postgresql-18",
-          "Source build for TSL-licensed v2.23.1",
+          "Timescale repo: timescaledb-2-postgresql-18 (v2.24.0 TSL)",
+          "v2.24.0: 4-5× faster recompression, improved chunk management",
+          "⚠️ ARM: Rebuild bloom filter indexes after upgrade to 2.24.0",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
       },
       "sourceUrl": "https://github.com/timescale/timescaledb",
-      "docsUrl": "https://docs.tigerdata.com/use-timescale/latest/"
+      "docsUrl": "https://docs.timescale.com/"
     },
     {
       "name": "timescaledb_toolkit",
       "kind": "extension",
+      "install_via": "timescale",
+      "timescalePackage": "timescaledb-toolkit-postgresql-18",
+      "timescaleVersion": "1:1.22.0~debian13",
+      "soFileName": "timescaledb_toolkit.so",
       "category": "timeseries",
       "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
       "source": {
@@ -1025,20 +1018,6 @@
         "tag": "1.22.0",
         "commit": "af5519c282fa2716fd87c4d9b8a15b0d857e9f29"
       },
-      "build": {
-        "type": "cargo-pgrx",
-        "subdir": "extension",
-        "features": [
-          "pg18"
-        ],
-        "noDefaultFeatures": true
-      },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
       "dependencies": [
         "timescaledb"
       ],
@@ -1046,9 +1025,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v1.21.0 (1 version behind)",
-          "Alt: Timescale repo v1.22.0 - timescaledb-toolkit-postgresql-18",
-          "Source build for latest v1.22.0"
+          "Timescale repo: timescaledb-toolkit-postgresql-18 (v1.22.0)",
+          "Switched from cargo-pgrx source build to Timescale apt (faster install)"
         ]
       },
       "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",

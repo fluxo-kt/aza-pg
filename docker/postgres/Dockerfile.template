@@ -188,6 +188,10 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 # Provides extensions not available in PGDG: pg_stat_monitor, wal2json
 {{PERCONA_PACKAGES_INSTALL}}
 
+# Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
+# Provides TimescaleDB with full TSL license (not available in PGDG)
+{{TIMESCALE_PACKAGES_INSTALL}}
+
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
 {{PGDG_TOOLS_INSTALL}}
 

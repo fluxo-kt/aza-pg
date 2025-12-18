@@ -149,6 +149,9 @@ Container publication
 
 ### Refs
 
+- Docker Hardened Images?
+  - https://hub.docker.com/hardened-images/catalog/dhi/postgres/images
+  - https://www.docker.com/blog/docker-hardened-images-for-every-developer/
 - Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - https://github.com/percona/postgres-packaging
 - https://github.com/supabase/postgres

@@ -142,14 +142,17 @@ Production Mode Tests (4):
   - pgsodium-vault:             Encryption stack
   - all-default-preloads:       Conflict detection with all default preloads
 
-Comprehensive Mode Tests (10+):
+Regression Mode Tests (8):
   - All production tests plus:
   - all-optional-preloads: Maximum preload testing
   - pg_partman-timescaledb: Partition compatibility
   - pgaudit-pg_stat_monitor: Audit + monitoring stack
-  - postgis-pgrouting:     GIS + routing stack
   - encryption-audit:      pgsodium + pgaudit
-  - gis-extensions:        PostGIS + h3 + h3_postgis
+
+DISABLED (extensions not built - enabled: false in manifest):
+  - postgis-pg_trgm:       PostGIS + pg_trgm (PostGIS not built)
+  - postgis-pgrouting:     GIS + routing stack (PostGIS, pgrouting not built)
+  - gis-extensions:        PostGIS + h3 + h3_postgis (none built)
 
 Examples:
   bun scripts/test/test-extension-interactions.ts
@@ -296,7 +299,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "postgis-pg_trgm",
     displayName: "PostGIS + pg_trgm: Spatial + fuzzy text search",
     extensions: ["postgis", "pg_trgm"],
-    modes: ["regression"], // PostGIS is disabled in production mode
+    modes: [], // DISABLED: PostGIS is NOT BUILT (enabled: false in manifest)
     test: async (runSQL) => {
       // Create extension postgis if not exists
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
@@ -536,11 +539,12 @@ const INTERACTION_TESTS: InteractionTest[] = [
       if (!partmanTable.success)
         throw new Error(`Create partman table failed: ${partmanTable.stderr}`);
 
+      // pg_partman 5.x: functions in public schema, 'range' type replaces 'native'
       const partmanSetup = await runSQL(`
-        SELECT partman.create_parent(
+        SELECT create_parent(
           p_parent_table => 'public.test_partman',
           p_control => 'created_at',
-          p_type => 'native',
+          p_type => 'range',
           p_interval => '1 day',
           p_premake => 1
         )
@@ -611,10 +615,11 @@ const INTERACTION_TESTS: InteractionTest[] = [
       }
 
       // pgaudit logs to PostgreSQL log file, not queryable directly
-      // Verify configuration is active
-      const auditConfig = await runSQL("SHOW pgaudit.log");
-      if (!auditConfig.success || auditConfig.stdout.trim() !== "all") {
-        throw new Error("pgaudit configuration not active");
+      // Verify pgaudit GUC is available (each runSQL is a separate session, so SET doesn't persist)
+      // We verify it works by: 1) SET succeeded above, 2) SHOW returns valid value
+      const auditConfig = await runSQL("SET pgaudit.log = 'all'; SHOW pgaudit.log");
+      if (!auditConfig.success || !auditConfig.stdout.includes("all")) {
+        throw new Error("pgaudit configuration not working");
       }
 
       // Cleanup
@@ -626,7 +631,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "postgis-pgrouting",
     displayName: "PostGIS + pgrouting: GIS + routing stack",
     extensions: ["postgis", "pgrouting"],
-    modes: ["regression"],
+    modes: [], // DISABLED: PostGIS and pgrouting NOT BUILT (enabled: false in manifest)
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
       await runSQL("CREATE EXTENSION IF NOT EXISTS pgrouting");
@@ -739,7 +744,7 @@ const INTERACTION_TESTS: InteractionTest[] = [
     name: "gis-extensions",
     displayName: "All GIS extensions: PostGIS + h3 + h3_postgis",
     extensions: ["postgis", "h3", "h3_postgis"],
-    modes: ["regression"],
+    modes: [], // DISABLED: PostGIS NOT BUILT (enabled: false), h3/h3_postgis NOT in manifest
     test: async (runSQL) => {
       await runSQL("CREATE EXTENSION IF NOT EXISTS postgis");
       await runSQL("CREATE EXTENSION IF NOT EXISTS h3");

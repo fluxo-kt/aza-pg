@@ -57,12 +57,15 @@ const TOP_10_EXTENSIONS = [
 
 /**
  * Comprehensive-only extensions (disabled in production, tested in regression mode).
+ *
+ * NOTE: Only include extensions that are actually COMPILED into the image.
+ * Extensions with `enabled: false` in manifest are NOT built and cannot be tested.
+ * - postgis: NOT built (enabled: false, too large)
+ * - pgrouting: NOT built (depends on postgis)
+ * - pgq: NOT built (enabled: false)
  */
 const COMPREHENSIVE_ONLY_EXTENSIONS = [
-  "postgis", // spatial data (large, disabled by default)
-  "pgrouting", // routing algorithms (depends on postgis)
-  "pgq", // high-performance queue (disabled by default)
-  "wrappers", // FDW framework (integration tests)
+  "wrappers", // FDW framework - compiled but not auto-enabled (defaultEnable: false)
 ];
 
 interface TestOptions {

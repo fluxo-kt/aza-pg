@@ -221,6 +221,18 @@ export async function installPgflowSchema(
   user: string = "postgres"
 ): Promise<InstallResult> {
   try {
+    // CHECK FIRST: If already installed, return early with existing counts
+    if (await isPgflowInstalled(container, database, user)) {
+      const verification = await verifyInstallation(container, database, user);
+      return {
+        success: true,
+        stdout: "",
+        stderr: "",
+        tablesCreated: verification.tables,
+        functionsCreated: verification.functions,
+      };
+    }
+
     // Step 1: Install realtime stub (required for pgflow)
     const stubProc = Bun.spawn(
       [

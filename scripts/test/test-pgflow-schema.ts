@@ -163,13 +163,16 @@ async function runTests(): Promise<void> {
 
   await startContainer();
 
-  // Setup - when using postgres database, just clean up existing pgflow schema
-  if (DATABASE === "postgres") {
+  // Setup - clean existing pgflow schema or create database
+  if (DATABASE === "postgres" || useExistingContainer) {
+    // When using postgres OR existing container, just clean schema
+    // (can't drop database you're connected to or container's default database)
     await test("Clean existing pgflow schema", async () => {
       // Drop pgflow schema if it exists from previous test runs
       await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
     });
   } else {
+    // When creating own container with non-postgres database, fully recreate it
     await test("Create test database", async () => {
       await dropDatabase(CONTAINER, DATABASE);
       const created = await createDatabase(CONTAINER, DATABASE);

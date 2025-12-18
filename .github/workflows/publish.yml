@@ -634,6 +634,15 @@ jobs:
             --timeout 120 \
             --diagnostic-dir ${{ runner.temp }}/pgflow-setup-logs
 
+      - name: Upload pgflow setup logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgflow-setup-logs-${{ github.sha }}
+          path: ${{ runner.temp }}/pgflow-setup-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Test pgflow
         run: |
           set -euo pipefail

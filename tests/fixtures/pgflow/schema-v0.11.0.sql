@@ -20,9 +20,9 @@ CREATE EXTENSION if NOT EXISTS supabase_vault;
 
 
 -- pg_cron: Scheduled job execution (ensure_workers cron)
-CREATE EXTENSION if NOT EXISTS pg_cron;
-
-
+-- NOTE: pg_cron is created by 01b-pg_cron.sh in POSTGRES_DB
+-- 05-pgflow-init.sh verifies pg_cron exists before installing this schema
+-- Skip creation here to avoid database mismatch issues
 -- ============================================================================
 -- Source: 0020_schemas.sql
 -- ============================================================================

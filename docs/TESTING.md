@@ -694,6 +694,47 @@ sudo pacman -S docker-credential-helpers
 
 **Automatic Fallback**: Test scripts automatically detect missing credential helpers and create isolated test configurations. No manual intervention required unless you want to fix the system-level configuration.
 
+### 9. Overriding Image Default Preload
+
+**Symptom**: Extension tests fail with "extension requires preload" errors even though extension works in production.
+
+**Cause**: Test script hardcodes `POSTGRES_SHARED_PRELOAD_LIBRARIES` with incomplete list.
+
+**Why This Happens**: The image has a built-in `DEFAULT_SHARED_PRELOAD_LIBRARIES` in the entrypoint (auto-generated from manifest). When tests override this env var, they may miss required modules.
+
+**Image Default** (auto-generated from manifest):
+
+```
+auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb
+```
+
+**Fix**: Don't override unless testing override behavior:
+
+```typescript
+// ❌ WRONG - Hardcoded list gets out of sync
+const exitCode = await dockerRunLive([
+  "run",
+  "-d",
+  "-e",
+  "POSTGRES_PASSWORD=test",
+  "-e",
+  "POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pgaudit", // Missing modules!
+  image,
+]);
+
+// ✅ CORRECT - Use image default
+const exitCode = await dockerRunLive([
+  "run",
+  "-d",
+  "-e",
+  "POSTGRES_PASSWORD=test",
+  // No POSTGRES_SHARED_PRELOAD_LIBRARIES - uses image built-in default
+  image,
+]);
+```
+
+**Exception**: Only override when explicitly testing preload behavior (e.g., testing what happens when a module is NOT loaded).
+
 ## Test Categories
 
 ### Core Extensions (5)

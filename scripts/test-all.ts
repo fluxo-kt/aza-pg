@@ -792,8 +792,8 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        // Include all default preload modules including pg_net and pgsodium for pgflow support
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=4g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
         "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
@@ -883,8 +883,8 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
         "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
@@ -907,8 +907,8 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
         "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
@@ -931,8 +931,8 @@ const allChecks: Check[] = [
       "sh",
       "-c",
       [
-        // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test -e POSTGRES_SHARED_PRELOAD_LIBRARIES=auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
+        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
         // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
         "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
         "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",

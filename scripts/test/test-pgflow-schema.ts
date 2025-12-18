@@ -32,9 +32,14 @@ const CONTAINER = useExistingContainer
   ? existingContainer!
   : `test-pgflow-schema-${Date.now()}-${process.pid}`;
 
-// pg_cron can only be created in the database configured in cron.database_name (default: postgres)
-// So we use the postgres database for testing
-const DATABASE = "postgres";
+// pg_cron can only be created in cron.database_name, which follows POSTGRES_DB
+// We default to 'postgres' (PostgreSQL default) unless a specific database is requested
+// Both pg_cron and pgflow schema are installed in the same database (POSTGRES_DB)
+const DATABASE =
+  process.env.TEST_DATABASE ||
+  Bun.argv.find((a) => a.startsWith("--database="))?.split("=")[1] ||
+  "postgres";
+
 const imageTag = !useExistingContainer ? resolveImageTag() : null;
 
 // ============================================================================

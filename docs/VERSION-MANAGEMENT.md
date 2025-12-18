@@ -571,7 +571,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
 **File:** `.tool-versions` (asdf/mise format)
 
 ```
-bun 1.3.3
+bun 1.3.5
 ```
 
 **Other build tools** (not pinned, use system packages):

@@ -27,6 +27,7 @@
  */
 
 import { $ } from "bun";
+import { getSharedPreloadLibraries } from "./test-mode.ts";
 
 export interface PoolConfig {
   /** Number of containers to pre-warm (default: 2) */
@@ -77,8 +78,7 @@ export class ContainerPool {
       password: config.password ?? `test_pool_${Date.now()}`,
       env: config.env ?? {},
       sharedPreloadLibraries:
-        config.sharedPreloadLibraries ??
-        "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,safeupdate,timescaledb",
+        config.sharedPreloadLibraries ?? getSharedPreloadLibraries("production"),
     };
   }
 

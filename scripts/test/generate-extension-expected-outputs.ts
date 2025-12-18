@@ -24,7 +24,7 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import type { TestMode } from "./lib/test-mode.ts";
+import { getSharedPreloadLibraries, type TestMode } from "./lib/test-mode.ts";
 import { resolveImageTag } from "./image-resolver.ts";
 import { cleanPsqlOutput } from "./lib/output-normalizer.ts";
 
@@ -197,11 +197,8 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
   console.log(`  Mode:  ${mode}`);
 
   try {
-    // Start container with appropriate shared_preload_libraries for mode
-    const sharedPreload =
-      mode === "regression"
-        ? "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,pgsodium,pg_partman,set_user"
-        : "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb";
+    // Get shared_preload_libraries from manifest (ensures all required extensions like pg_net are included)
+    const sharedPreload = getSharedPreloadLibraries(mode);
 
     await $`docker run -d --name ${containerName} \
       -e POSTGRES_PASSWORD=postgres \

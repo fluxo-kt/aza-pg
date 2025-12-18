@@ -60,7 +60,12 @@ export async function generateExtensionsInitScript(
   );
   lines.push("");
 
-  const extensionNames = extensionsToEnable.map((e) => e.name);
+  // Skip pg_cron here - it will be created by 01b-pg_cron.sh in POSTGRES_DB
+  // pg_cron can only be created in cron.database_name, which follows POSTGRES_DB
+  // Remove it from expected_extensions since it's handled separately
+  const extensionsToCreate = extensionsToEnable.filter((e) => e.name !== "pg_cron");
+  const extensionNames = extensionsToCreate.map((e) => e.name);
+
   // Content-based version: deterministic hash of enabled extensions (same input → same output)
   const extHash = createHash("sha256")
     .update(extensionNames.slice().sort().join(","))
@@ -87,9 +92,10 @@ export async function generateExtensionsInitScript(
   lines.push("    RETURNING id INTO v_status_id;");
   lines.push("");
 
-  if (extensionsToEnable.length > 0) {
+  if (extensionsToCreate.length > 0) {
     lines.push("    -- Attempt to create each extension with error handling");
-    for (const entry of extensionsToEnable) {
+    lines.push("    -- NOTE: pg_cron is skipped here and created by 01b-pg_cron.sh in POSTGRES_DB");
+    for (const entry of extensionsToCreate) {
       const displayName = entry.displayName ?? entry.name;
       const category = entry.category ?? "misc";
       lines.push("");
@@ -122,7 +128,7 @@ export async function generateExtensionsInitScript(
     lines.push("        notes = CASE");
     lines.push("            WHEN array_length(v_failed_exts, 1) IS NULL THEN");
     lines.push(
-      `                'All ${extensionsToEnable.length} baseline extensions created successfully'`
+      `                'All ${extensionsToCreate.length} baseline extensions created successfully (pg_cron handled separately by 01b-pg_cron.sh)'`
     );
     lines.push("            ELSE");
     lines.push(
@@ -134,9 +140,10 @@ export async function generateExtensionsInitScript(
 
     // Final notice - FAIL container if any enabled extensions are missing
     lines.push("    -- Log final status and fail if any enabled extensions are missing");
+    lines.push("    -- NOTE: pg_cron is handled by 01b-pg_cron.sh to target POSTGRES_DB");
     lines.push("    IF array_length(v_failed_exts, 1) IS NULL THEN");
     lines.push(
-      `        RAISE NOTICE 'Baseline extensions enabled (${extensionNames.join(", ")}). Additional extensions are available but disabled by default.';`
+      `        RAISE NOTICE 'Baseline extensions enabled (${extensionNames.join(", ")}). pg_cron will be created by 01b-pg_cron.sh in POSTGRES_DB. Additional extensions are available but disabled by default.';`
     );
     lines.push("    ELSE");
     lines.push(

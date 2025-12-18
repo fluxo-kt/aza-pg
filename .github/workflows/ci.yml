@@ -447,6 +447,19 @@ jobs:
           export POSTGRES_IMAGE=aza-pg-ci:test
           bun scripts/test/test-pgflow-multiproject.ts --image=aza-pg-ci:test
 
+      - name: Test pgflow setup-container (publish.yml parity)
+        run: |
+          set -euo pipefail
+          echo "Testing pgflow setup-container script (ensures idempotency for publish workflow)..."
+          bun scripts/docker/setup-pgflow-container.ts \
+            --name ci-pgflow-setup-test \
+            --image aza-pg-ci:test \
+            --password test_pass \
+            --database pgflow_test \
+            --memory 2048 \
+            --timeout 120
+          bun scripts/docker/setup-pgflow-container.ts --name ci-pgflow-setup-test --cleanup-only
+
       # Disabled: pgbouncer healthcheck test requires Docker Compose stack deployment in CI environment
       # Path resolution (stacks/primary) not available in CI runner context
       # This test validates Docker Compose orchestration but has environmental requirements not suitable for CI

@@ -163,12 +163,16 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
   // Stage 1: Start container
   info("Stage 1: Starting container...");
+  // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
+  const preload =
+    "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium";
   const startResult = await $`docker run -d \
     --name ${options.name} \
     -e POSTGRES_PASSWORD=${options.password} \
     -e POSTGRES_DB=${options.database} \
     -e POSTGRES_MEMORY=${options.memory} \
     -e POSTGRES_WORKLOAD_TYPE=${options.workloadType} \
+    -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} \
     ${options.image}`.nothrow();
 
   if (startResult.exitCode !== 0) {

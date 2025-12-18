@@ -648,7 +648,7 @@ jobs:
           set -euo pipefail
           echo "Testing pgflow (per-project installation)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
-          bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test
+          bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test --database=pgflow_test
           bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test --database=pgflow_test
 
       - name: Test PgBouncer healthcheck

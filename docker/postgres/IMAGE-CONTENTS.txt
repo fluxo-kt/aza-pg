@@ -23,6 +23,7 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
+  pgflow                       vpgflow@0.11.0 workflow
   pgmq                         v1.8.0         queueing
   pgroonga                     v4.0.5         search
   pgsodium                     v3.1.9         security
@@ -38,7 +39,7 @@ EXTENSIONS (CREATE EXTENSION available)
   vectorscale                  v0.9.0         ai
   wrappers                     v0.5.7         integration
 
-Total: 30 extensions
+Total: 31 extensions
 
 ═══════════════════════════════════════════════════════════════
 TOOLS (command-line utilities)
@@ -53,7 +54,7 @@ TOOLS (command-line utilities)
 PRELOADED MODULES (shared_preload_libraries default)
 ═══════════════════════════════════════════════════════════════
 
-  auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb
+  auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb
 
   Configure via POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable.
 

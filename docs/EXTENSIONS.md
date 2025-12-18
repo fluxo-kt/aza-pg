@@ -82,7 +82,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                                              | Version                                                             | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
 | [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl.              |
-| [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.2](https://github.com/supabase/pg_net/releases/tag/v0.20.2)  | No                 | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
+| [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.2](https://github.com/supabase/pg_net/releases/tag/v0.20.2)  | Yes                | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
 | [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.5.7](https://github.com/supabase/wrappers/releases/tag/v0.5.7)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.                |
 
 ### maintenance
@@ -146,9 +146,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                                            | Version                                                               | Enabled by Default | Shared Preload | Documentation                                           | Notes                                                                |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`pgaudit`](https://github.com/pgaudit/pgaudit)                      | [18.0](https://github.com/pgaudit/pgaudit/releases/tag/18.0)          | Yes                | Yes            | [Docs](https://www.pgaudit.org)                         | Detailed auditing for DDL/DML activity with class-level granularity. |
-| [`pgsodium`](https://github.com/michelp/pgsodium)                    | [v3.1.9](https://github.com/michelp/pgsodium/releases/tag/v3.1.9)     | No                 | Yes            | [Docs](https://michelp.github.io/pgsodium)              | Modern cryptography and envelope encryption with libsodium.          |
+| [`pgsodium`](https://github.com/michelp/pgsodium)                    | [v3.1.9](https://github.com/michelp/pgsodium/releases/tag/v3.1.9)     | Yes                | Yes            | [Docs](https://michelp.github.io/pgsodium)              | Modern cryptography and envelope encryption with libsodium.          |
 | [`set_user (pgaudit_set_user)`](https://github.com/pgaudit/set_user) | [REL4_2_0](https://github.com/pgaudit/set_user/releases/tag/REL4_2_0) | No                 | Yes            | [Docs](https://github.com/pgaudit/set_user#readme)      | Audited SET ROLE helper complementing pgaudit.                       |
-| [`supabase_vault (vault)`](https://github.com/supabase/vault)        | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1)       | No                 | No             | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials.         |
+| [`supabase_vault (vault)`](https://github.com/supabase/vault)        | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1)       | Yes                | No             | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials.         |
 
 ### timeseries
 
@@ -171,9 +171,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### workflow
 
-| Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                       |
-| ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | --------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.11.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.11.0) | No                 | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine. Per-project installation required. |
+| Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.11.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.11.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 

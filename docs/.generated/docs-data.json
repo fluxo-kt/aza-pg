@@ -1,12 +1,12 @@
 {
   "catalog": {
     "total": 40,
-    "enabled": 35,
-    "disabled": 5
+    "enabled": 36,
+    "disabled": 4
   },
   "byKind": {
     "builtin": 6,
-    "extension": 25,
+    "extension": 26,
     "tool": 4
   },
   "builtins": [
@@ -30,6 +30,7 @@
     "pg_repack",
     "pg_stat_monitor",
     "pgaudit",
+    "pgflow",
     "pgmq",
     "pgroonga",
     "pgsodium",
@@ -46,29 +47,34 @@
   ],
   "tools": ["pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
   "disabled": {
-    "extensions": ["pgflow", "pgq", "pgrouting", "postgis"],
+    "extensions": ["pgq", "pgrouting", "postgis"],
     "tools": ["pg_plan_filter"]
   },
   "preloaded": {
     "modules": ["auto_explain"],
     "extensions": [
       "pg_cron",
+      "pg_net",
       "pg_safeupdate",
       "pg_stat_monitor",
       "pg_stat_statements",
       "pgaudit",
+      "pgsodium",
       "timescaledb"
     ]
   },
   "autoCreated": [
     "pg_cron",
+    "pg_net",
     "pg_safeupdate",
     "pg_stat_monitor",
     "pg_stat_statements",
     "pg_trgm",
     "pgaudit",
     "pgmq",
+    "pgsodium",
     "plpgsql",
+    "supabase_vault",
     "timescaledb",
     "vector",
     "vectorscale"
@@ -86,6 +92,7 @@
     "safety": ["pg_safeupdate", "supautils"],
     "search": ["pg_trgm", "pgroonga", "rum"],
     "security": ["pgaudit", "pgsodium", "set_user", "supabase_vault"],
+    "workflow": ["pgflow"],
     "queueing": ["pgmq"],
     "language": ["plpgsql"],
     "quality": ["plpgsql_check"],

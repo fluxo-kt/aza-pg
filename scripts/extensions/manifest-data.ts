@@ -62,6 +62,11 @@ export interface BuildSpec {
 
 export interface RuntimeSpec {
   sharedPreload?: boolean;
+  /**
+   * If true, include this extension in the default shared_preload_libraries.
+   * Only applicable when sharedPreload: true.
+   */
+  defaultPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
   excludeFromAutoTests?: boolean; // Exclude from automated test suite
@@ -492,13 +497,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["libcurl4-openssl-dev"],
     runtime: {
       sharedPreload: true,
-      defaultEnable: false,
-      preloadInComprehensiveTest: true,
+      defaultEnable: true,
+      defaultPreload: true,
       notes: [
         "NOT in PGDG (Supabase-specific). Source build required.",
         "Requires shared_preload_libraries for background worker",
         "Powers async HTTP webhooks from triggers",
         "Use net.http_post() for outbound API calls",
+        "Required for pgflow workflow orchestration",
       ],
     },
     sourceUrl: "https://github.com/supabase/pg_net",
@@ -671,14 +677,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     aptPackages: ["libsodium-dev"],
     runtime: {
       sharedPreload: true,
-      defaultEnable: false,
-      preloadInComprehensiveTest: true,
+      defaultEnable: true,
+      defaultPreload: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
-        "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+        "Preloaded by default for pgflow and supabase_vault support",
         "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
         "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
-        "Basic cryptography functions work without preload or getkey script",
+        "Basic cryptography functions work without getkey script",
       ],
     },
     sourceUrl: "https://github.com/michelp/pgsodium",
@@ -699,10 +705,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgsodium"],
     runtime: {
       sharedPreload: false,
-      defaultEnable: false,
+      defaultEnable: true,
       notes: [
         "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
         "Source build required",
+        "Required for pgflow workflow orchestration",
       ],
     },
     sourceUrl: "https://github.com/supabase/vault",
@@ -785,10 +792,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgflow",
     kind: "extension",
     category: "workflow",
-    description: "DAG-based workflow orchestration engine. Per-project installation required.",
-    enabled: false,
-    enabledInComprehensiveTest: false, // SQL-only schema, per-project installation
-    disabledReason: "Per-project installation - see docs/PGFLOW.md for instructions",
+    description: "DAG-based workflow orchestration engine with step-by-step task execution.",
+    enabled: true,
+    enabledInComprehensiveTest: true,
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
@@ -796,21 +802,21 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     runtime: {
       sharedPreload: false,
-      defaultEnable: false,
+      defaultEnable: true,
       preloadOnly: true, // SQL-only schema, no .control file
       notes: [
-        "NOT bundled in image - install per-project",
-        "Requires pgmq 1.5.0+ (included in image)",
-        "See docs/PGFLOW.md for installation",
-        "v0.9.0 includes broadcast fixes, pgmq 1.5.1 compatibility, empty map handling",
+        "SQL-only schema installed in postgres database during initdb",
+        "For multi-database: reinstall schema in each database",
+        "pg_cron schedules limited to postgres database by default",
+        "Use @pgflow/dsl and @pgflow/client npm packages for TypeScript integration",
       ],
     },
-    dependencies: ["pgmq"],
+    dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
-      "Use @pgflow/dsl and @pgflow/client npm packages",
-      "Multi-project: Use separate databases for isolation",
-      "Schema available in tests/fixtures/pgflow/ for testing",
+      "v0.11.0: Phase 10 (map steps) and Phase 9 (worker deprecation) support",
+      "Schema installed by default in postgres database",
+      "Multi-database: Use separate database installations for workflow isolation",
     ],
     sourceUrl: "https://github.com/pgflow-dev/pgflow",
     docsUrl: "https://pgflow.dev",

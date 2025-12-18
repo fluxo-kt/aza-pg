@@ -27,14 +27,14 @@ CREATE INDEX IF NOT EXISTS idx_pg_aza_status_timestamp ON pg_aza_status (init_ti
 DO $$
 DECLARE
     v_status_id INTEGER;
-    v_expected_exts TEXT[] := ARRAY['pg_cron', 'pg_stat_monitor', 'pg_stat_statements', 'pg_trgm', 'pgaudit', 'pgmq', 'plpgsql', 'timescaledb', 'vector', 'vectorscale'];
+    v_expected_exts TEXT[] := ARRAY['pg_cron', 'pg_net', 'pg_stat_monitor', 'pg_stat_statements', 'pg_trgm', 'pgaudit', 'pgmq', 'pgsodium', 'plpgsql', 'supabase_vault', 'timescaledb', 'vector', 'vectorscale'];
     v_created_exts TEXT[] := ARRAY[]::TEXT[];
     v_failed_exts TEXT[] := ARRAY[]::TEXT[];
     v_error_msg TEXT;
 BEGIN
     -- Record initialization start
     INSERT INTO pg_aza_status (script_version, expected_extensions, status, notes)
-    VALUES ('18.1-3fc8a8c', v_expected_exts, 'in_progress', 'Baseline extension initialization started')
+    VALUES ('18.1-e1af353', v_expected_exts, 'in_progress', 'Baseline extension initialization started')
     RETURNING id INTO v_status_id;
 
     -- Attempt to create each extension with error handling
@@ -48,6 +48,17 @@ BEGIN
         v_failed_exts := array_append(v_failed_exts, 'pg_cron');
         GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
         RAISE WARNING 'Failed to create extension pg_cron: %', v_error_msg;
+    END;
+
+    -- pg_net (integration)
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS "pg_net";
+        v_created_exts := array_append(v_created_exts, 'pg_net');
+        RAISE NOTICE 'Created extension: pg_net';
+    EXCEPTION WHEN OTHERS THEN
+        v_failed_exts := array_append(v_failed_exts, 'pg_net');
+        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
+        RAISE WARNING 'Failed to create extension pg_net: %', v_error_msg;
     END;
 
     -- pg_stat_monitor (observability)
@@ -105,6 +116,17 @@ BEGIN
         RAISE WARNING 'Failed to create extension pgmq: %', v_error_msg;
     END;
 
+    -- pgsodium (security)
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS "pgsodium";
+        v_created_exts := array_append(v_created_exts, 'pgsodium');
+        RAISE NOTICE 'Created extension: pgsodium';
+    EXCEPTION WHEN OTHERS THEN
+        v_failed_exts := array_append(v_failed_exts, 'pgsodium');
+        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
+        RAISE WARNING 'Failed to create extension pgsodium: %', v_error_msg;
+    END;
+
     -- plpgsql (language)
     BEGIN
         CREATE EXTENSION IF NOT EXISTS "plpgsql";
@@ -114,6 +136,17 @@ BEGIN
         v_failed_exts := array_append(v_failed_exts, 'plpgsql');
         GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
         RAISE WARNING 'Failed to create extension plpgsql: %', v_error_msg;
+    END;
+
+    -- vault (security)
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS "supabase_vault";
+        v_created_exts := array_append(v_created_exts, 'supabase_vault');
+        RAISE NOTICE 'Created extension: supabase_vault';
+    EXCEPTION WHEN OTHERS THEN
+        v_failed_exts := array_append(v_failed_exts, 'supabase_vault');
+        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
+        RAISE WARNING 'Failed to create extension supabase_vault: %', v_error_msg;
     END;
 
     -- timescaledb (timeseries)
@@ -161,7 +194,7 @@ BEGIN
         END,
         notes = CASE
             WHEN array_length(v_failed_exts, 1) IS NULL THEN
-                'All 10 baseline extensions created successfully'
+                'All 13 baseline extensions created successfully'
             ELSE
                 'Initialization completed with ' || array_length(v_failed_exts, 1)::TEXT || ' failure(s)'
         END
@@ -169,7 +202,7 @@ BEGIN
 
     -- Log final status and fail if any enabled extensions are missing
     IF array_length(v_failed_exts, 1) IS NULL THEN
-        RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, plpgsql, timescaledb, vector, vectorscale). Additional extensions are available but disabled by default.';
+        RAISE NOTICE 'Baseline extensions enabled (pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, pgsodium, plpgsql, supabase_vault, timescaledb, vector, vectorscale). Additional extensions are available but disabled by default.';
     ELSE
         RAISE EXCEPTION 'Extension initialization FAILED. Required extensions not available: %. Successfully created: %', v_failed_exts, v_created_exts
             USING HINT = 'Check that all required extensions are compiled into the Docker image. See docker/postgres/extensions.manifest.json for enabled extensions.';

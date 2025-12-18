@@ -87,10 +87,8 @@ async function startContainer(): Promise<void> {
   }
 
   console.log(`Starting container ${CONTAINER}...`);
-  // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
-  const preload =
-    "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium";
-  await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=test -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${imageTag}`.quiet();
+  // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
+  await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=test -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`.quiet();
 
   const start = Date.now();
   while (Date.now() - start < 60000) {

@@ -135,9 +135,10 @@ describe("Preload Libraries Detection", () => {
     );
     expect(optionalPreload.length).toBeGreaterThan(0);
 
-    // Should include pgsodium, pg_partman, set_user (pg_safeupdate is now default-enabled)
+    // Should include pg_partman, set_user (pgsodium is now default-enabled for pgflow)
     const optionalNames = optionalPreload.map((e) => e.name);
-    expect(optionalNames).toContain("pgsodium");
+    expect(optionalNames).toContain("pg_partman");
+    expect(optionalNames).toContain("set_user");
   });
 
   test("Identifies preload-only extensions", () => {

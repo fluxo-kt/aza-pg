@@ -66,13 +66,14 @@
       "aptPackages": ["libcurl4-openssl-dev"],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
+        "defaultEnable": true,
+        "defaultPreload": true,
         "notes": [
           "NOT in PGDG (Supabase-specific). Source build required.",
           "Requires shared_preload_libraries for background worker",
           "Powers async HTTP webhooks from triggers",
-          "Use net.http_post() for outbound API calls"
+          "Use net.http_post() for outbound API calls",
+          "Required for pgflow workflow orchestration"
         ]
       },
       "sourceUrl": "https://github.com/supabase/pg_net",
@@ -237,14 +238,14 @@
       "aptPackages": ["libsodium-dev"],
       "runtime": {
         "sharedPreload": true,
-        "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
+        "defaultEnable": true,
+        "defaultPreload": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
-          "Optional preload module - enable via POSTGRES_SHARED_PRELOAD_LIBRARIES",
+          "Preloaded by default for pgflow and supabase_vault support",
           "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
           "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
-          "Basic cryptography functions work without preload or getkey script"
+          "Basic cryptography functions work without getkey script"
         ]
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
@@ -268,10 +269,11 @@
       "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
+        "defaultEnable": true,
         "notes": [
           "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
-          "Source build required"
+          "Source build required",
+          "Required for pgflow workflow orchestration"
         ]
       },
       "sourceUrl": "https://github.com/supabase/vault",

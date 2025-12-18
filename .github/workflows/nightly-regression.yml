@@ -165,14 +165,14 @@ jobs:
         run: |
           set -euo pipefail
           echo "Exporting image to tarball..."
-          docker save aza-pg-comprehensive:test | gzip > /tmp/aza-pg-comprehensive-image.tar.gz
-          ls -lh /tmp/aza-pg-comprehensive-image.tar.gz
+          docker save aza-pg-comprehensive:test | gzip > /tmp/aza-pg-ci-image.tar.gz
+          ls -lh /tmp/aza-pg-ci-image.tar.gz
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
           name: comprehensive-image
-          path: /tmp/aza-pg-comprehensive-image.tar.gz
+          path: /tmp/aza-pg-ci-image.tar.gz
           retention-days: 1
           compression-level: 0 # Already compressed with gzip
 

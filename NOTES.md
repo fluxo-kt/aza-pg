@@ -149,7 +149,8 @@ Container publication
 
 ### Refs
 
-- Docker Hardened Images?
+- Docker Hardened Images — **NOT RECOMMENDED** (PG 18 unavailable, high migration cost)
+  - See comprehensive assessment: [docs/DOCKER-HARDENED-IMAGES.md](docs/DOCKER-HARDENED-IMAGES.md)
   - https://hub.docker.com/hardened-images/catalog/dhi/postgres/images
   - https://www.docker.com/blog/docker-hardened-images-for-every-developer/
 - Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw

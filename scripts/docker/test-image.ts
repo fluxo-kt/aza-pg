@@ -122,26 +122,77 @@ async function startContainer(image: string): Promise<boolean> {
 }
 
 /**
- * Wait for PostgreSQL to be ready
+ * Wait for PostgreSQL to be ready and stable
+ * IMPORTANT: pg_isready returns true during initdb phase, but PostgreSQL restarts after
+ * initdb completes. This causes a race condition where tests try to connect during shutdown.
+ * We require multiple consecutive successful SQL queries to verify stability.
  */
-async function waitForPostgres(timeoutSeconds: number = 60): Promise<boolean> {
+async function waitForPostgres(timeoutSeconds: number = 90): Promise<boolean> {
   info(`Waiting for PostgreSQL to be ready (timeout: ${timeoutSeconds}s)...`);
 
   const startTime = Date.now();
   const timeoutMs = timeoutSeconds * 1000;
+  const requiredSuccesses = 3;
 
+  // Phase 1: Wait for basic readiness
   while (Date.now() - startTime < timeoutMs) {
     const result = await dockerRun(["exec", CONTAINER_NAME, "pg_isready", "-U", "postgres"]);
 
     if (result.success) {
-      success(`PostgreSQL ready in ${formatDuration(Date.now() - startTime)}`);
+      break;
+    }
+
+    await Bun.sleep(2000);
+  }
+
+  if (Date.now() - startTime >= timeoutMs) {
+    error(`PostgreSQL not ready after ${timeoutSeconds}s`);
+    return false;
+  }
+
+  // Give PostgreSQL time to complete initdb restart if needed
+  // pg_isready returns true during initdb, but PG restarts after initdb completes
+  await Bun.sleep(3000);
+
+  // Phase 2: Wait for stability (consecutive successful queries)
+  info(`Waiting for PostgreSQL stability (${requiredSuccesses} consecutive successful queries)...`);
+
+  while (Date.now() - startTime < timeoutMs) {
+    let consecutiveSuccesses = 0;
+
+    for (let i = 0; i < requiredSuccesses; i++) {
+      const result = await dockerRun([
+        "exec",
+        CONTAINER_NAME,
+        "psql",
+        "-U",
+        "postgres",
+        "-c",
+        "SELECT 1",
+        "-t",
+      ]);
+
+      if (result.success) {
+        consecutiveSuccesses++;
+      } else {
+        consecutiveSuccesses = 0;
+        break;
+      }
+
+      if (i < requiredSuccesses - 1) {
+        await Bun.sleep(1000);
+      }
+    }
+
+    if (consecutiveSuccesses >= requiredSuccesses) {
+      success(`PostgreSQL stable in ${formatDuration(Date.now() - startTime)}`);
       return true;
     }
 
     await Bun.sleep(2000);
   }
 
-  error(`PostgreSQL not ready after ${timeoutSeconds}s`);
+  error(`PostgreSQL not stable after ${timeoutSeconds}s`);
   return false;
 }
 
@@ -2389,7 +2440,8 @@ async function main(): Promise<void> {
 
   try {
     // Wait for PostgreSQL
-    const ready = await waitForPostgres(60);
+    // Increased timeout to 120s to handle initdb phase restart race condition
+    const ready = await waitForPostgres(120);
     if (!ready) {
       if (!noCleanup) {
         await cleanup();

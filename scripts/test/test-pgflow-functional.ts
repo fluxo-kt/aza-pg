@@ -24,6 +24,7 @@ import { $ } from "bun";
 import { resolveImageTag, parseContainerName } from "./image-resolver";
 import {
   installPgflowSchema,
+  installRealtimeStub,
   runSQL,
   createDatabase,
   dropDatabase,
@@ -41,10 +42,12 @@ const CONTAINER = useExistingContainer
   ? existingContainer!
   : `test-pgflow-func-${Date.now()}-${process.pid}`;
 
+// pg_cron can only be created in cron.database_name (default: postgres)
+// so we default to postgres unless a specific database is requested
 const DATABASE =
   process.env.TEST_DATABASE ||
   Bun.argv.find((a) => a.startsWith("--database="))?.split("=")[1] ||
-  "pgflow_test";
+  "postgres";
 
 const imageTag = !useExistingContainer ? resolveImageTag() : null;
 
@@ -95,9 +98,13 @@ async function startContainer(): Promise<void> {
 
   console.log(`Starting container ${CONTAINER} with image ${imageTag}...`);
 
+  // pgflow requires pg_net and supabase_vault (which needs pgsodium) in shared_preload_libraries
+  const preload =
+    "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate,pg_net,pgsodium";
   await $`docker run -d --name ${CONTAINER} \
     -e POSTGRES_PASSWORD=test \
     -e POSTGRES_HOST_AUTH_METHOD=trust \
+    -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} \
     ${imageTag}`.quiet();
 
   // Wait for PostgreSQL to be ready
@@ -120,9 +127,15 @@ async function startContainer(): Promise<void> {
 
 async function cleanup(): Promise<void> {
   if (useExistingContainer) {
-    // Only drop test database, don't stop container
-    console.log(`Cleaning up test database ${DATABASE}...`);
-    await dropDatabase(CONTAINER, DATABASE);
+    // When using postgres database, just drop the pgflow schema
+    console.log(
+      `Cleaning up ${DATABASE === "postgres" ? "pgflow schema" : `test database ${DATABASE}`}...`
+    );
+    if (DATABASE === "postgres") {
+      await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
+    } else {
+      await dropDatabase(CONTAINER, DATABASE);
+    }
     return;
   }
 
@@ -161,6 +174,17 @@ async function runTests(): Promise<void> {
   // Setup
   await startContainer();
 
+  // ALWAYS install realtime stub first (idempotent) - required for pgflow.start_flow()
+  // This must happen before any pgflow operations, even if schema already exists
+  console.log("📦 Ensuring realtime.send() stub is installed...");
+  const stubResult = await installRealtimeStub(CONTAINER, DATABASE);
+  if (!stubResult.success) {
+    console.log(`❌ Failed to install realtime stub: ${stubResult.stderr}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log("✅ realtime.send() stub ready\n");
+
   // Check if pgflow schema already exists (e.g., installed by setup-pgflow-container)
   const schemaExists = await runSQL(
     CONTAINER,
@@ -171,24 +195,29 @@ async function runTests(): Promise<void> {
 
   if (pgflowAlreadyInstalled) {
     console.log("ℹ️  pgflow schema already installed, skipping setup tests");
-    results.push({ name: "TEST 1: Create test database", passed: true, duration: 0 });
+    results.push({ name: "TEST 1: Setup database", passed: true, duration: 0 });
     results.push({ name: "TEST 2: Install pgflow schema", passed: true, duration: 0 });
-    console.log("✅ TEST 1: Create test database (0ms) [SKIPPED - already exists]");
+    console.log("✅ TEST 1: Setup database (0ms) [SKIPPED - already exists]");
     console.log("✅ TEST 2: Install pgflow schema (0ms) [SKIPPED - already exists]");
   } else {
-    // Create test database
-    await test("TEST 1: Create test database", async () => {
-      const exists = await runSQL(
-        CONTAINER,
-        "postgres",
-        `SELECT 1 FROM pg_database WHERE datname = '${DATABASE}'`
-      );
-      if (exists.success && exists.stdout.trim() === "1") {
-        // Database exists, drop and recreate for clean state
-        await dropDatabase(CONTAINER, DATABASE);
+    // Setup database - for postgres, just clean the schema; for others, create fresh database
+    await test("TEST 1: Setup database", async () => {
+      if (DATABASE === "postgres") {
+        // For postgres database, just drop existing pgflow schema
+        await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
+      } else {
+        // For other databases, drop and recreate
+        const exists = await runSQL(
+          CONTAINER,
+          "postgres",
+          `SELECT 1 FROM pg_database WHERE datname = '${DATABASE}'`
+        );
+        if (exists.success && exists.stdout.trim() === "1") {
+          await dropDatabase(CONTAINER, DATABASE);
+        }
+        const created = await createDatabase(CONTAINER, DATABASE);
+        assert(created, "Failed to create test database");
       }
-      const created = await createDatabase(CONTAINER, DATABASE);
-      assert(created, "Failed to create test database");
     });
 
     // Install pgflow schema

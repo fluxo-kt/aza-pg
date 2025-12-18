@@ -166,6 +166,43 @@ COMMENT ON FUNCTION realtime._ensure_pgmq_queue IS 'Helper to idempotently creat
 COMMENT ON FUNCTION realtime._pg_net_available IS 'Check if pg_net extension is available';
 `;
 
+/**
+ * Install only the realtime stub (idempotent).
+ * Use this to ensure realtime.send() exists even when pgflow schema is already installed.
+ */
+export async function installRealtimeStub(
+  container: string,
+  database: string = "postgres",
+  user: string = "postgres"
+): Promise<{ success: boolean; stderr: string }> {
+  const proc = Bun.spawn(
+    [
+      "docker",
+      "exec",
+      "-i",
+      "-u",
+      user,
+      container,
+      "psql",
+      "-d",
+      database,
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
+  );
+  proc.stdin.write(REALTIME_STUB_SQL);
+  proc.stdin.end();
+
+  const exitCode = await proc.exited;
+  const stderr = await new Response(proc.stderr).text();
+
+  return {
+    success: exitCode === 0,
+    stderr: stderr.trim(),
+  };
+}
+
 export interface InstallResult {
   success: boolean;
   stdout: string;

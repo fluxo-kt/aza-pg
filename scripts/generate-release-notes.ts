@@ -477,6 +477,10 @@ function generateConfigurationSection(): string[] {
   lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
   lines.push("| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web`/`oltp`/`dw`/`mixed` |");
   lines.push("| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd`/`hdd`/`san` |");
+  lines.push(
+    "| `POSTGRES_SHARED_PRELOAD_LIBRARIES` | No | [see docs](https://github.com/fluxo-kt/aza-pg/blob/main/docs/ENVIRONMENT-VARIABLES.md) | Override default preloaded extensions |"
+  );
+  lines.push("| `ENABLE_PGSODIUM_INIT` | No | `false` | Enable pgsodium TCE initialization |");
   lines.push("");
   lines.push("</details>");
   lines.push("");
@@ -551,6 +555,13 @@ function generateConfigurationSection(): string[] {
   lines.push("- Localhost-only binding");
   lines.push("");
   lines.push("</details>");
+  lines.push("");
+
+  // pgsodium TCE callout
+  lines.push("> ⚠️ **pgsodium TCE Setup**");
+  lines.push(
+    `> For Transparent Column Encryption, set \`ENABLE_PGSODIUM_INIT=true\` and mount \`pgsodium_getkey\` script. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
+  );
   lines.push("");
 
   // Link to full docs
@@ -764,6 +775,12 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   );
   lines.push(
     `- [Testing](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/TESTING.md) — Validation & test suite`
+  );
+  lines.push(
+    `- [Environment Variables](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/ENVIRONMENT-VARIABLES.md) — Complete variable reference`
+  );
+  lines.push(
+    `- [pgsodium Setup](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md) — TCE & vault configuration`
   );
 
   return lines.join("\n");

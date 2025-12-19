@@ -225,9 +225,10 @@ async function validate(
       required: true,
     },
     {
-      name: "PGDG Version Validation",
+      name: "Vendor Version Validation",
       command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
-      description: "PGDG version consistency (pgdgVersion matches source.tag)",
+      description:
+        "Vendor version consistency (PGDG, Percona, Timescale versions match source.tag)",
       required: true,
     },
     {

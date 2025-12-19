@@ -230,10 +230,57 @@ async function testPgpassEntries(containerId: string): Promise<void> {
 }
 
 /**
- * Test 4: Test authentication via localhost:6432
+ * Test 4: Verify auth_user exists in BOTH userlist.txt AND .pgpass
+ */
+async function testAuthUserDualFile(containerId: string): Promise<void> {
+  info("Test 4: Verifying auth_user exists in both userlist.txt and .pgpass...");
+
+  // Check userlist.txt exists and contains pgbouncer_auth
+  try {
+    const userlistContent = await $`docker exec ${containerId} cat /tmp/userlist.txt`.text();
+
+    if (!userlistContent.includes("pgbouncer_auth")) {
+      error("pgbouncer_auth not found in /tmp/userlist.txt");
+      console.log("Userlist content:");
+      console.log(userlistContent);
+      throw new Error("pgbouncer_auth missing from userlist.txt");
+    }
+    success("pgbouncer_auth found in userlist.txt");
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("missing from userlist.txt")) {
+      throw err;
+    }
+    error("/tmp/userlist.txt not found or not readable");
+    throw new Error("userlist.txt not accessible");
+  }
+
+  // Check .pgpass contains pgbouncer_auth (already verified file exists in Test 1)
+  try {
+    const pgpassContent = await $`docker exec ${containerId} cat /tmp/.pgpass`.text();
+
+    if (!pgpassContent.includes("pgbouncer_auth")) {
+      error("pgbouncer_auth not found in /tmp/.pgpass");
+      console.log(".pgpass content:");
+      console.log(pgpassContent);
+      throw new Error("pgbouncer_auth missing from .pgpass");
+    }
+    success("pgbouncer_auth found in .pgpass");
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("missing from .pgpass")) {
+      throw err;
+    }
+    error("/tmp/.pgpass not readable");
+    throw new Error(".pgpass not accessible");
+  }
+
+  success("auth_user (pgbouncer_auth) exists in BOTH userlist.txt and .pgpass");
+}
+
+/**
+ * Test 5: Test authentication via localhost:6432
  */
 async function testAuthLocalhost(containerId: string): Promise<void> {
-  info("Test 4: Testing authentication via localhost:6432...");
+  info("Test 5: Testing authentication via localhost:6432...");
 
   try {
     await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"`.quiet();
@@ -245,7 +292,7 @@ async function testAuthLocalhost(containerId: string): Promise<void> {
 }
 
 /**
- * Test 5: Test authentication via pgbouncer:6432 from postgres container
+ * Test 6: Test authentication via pgbouncer:6432 from postgres container
  */
 async function testAuthHostname(
   postgresContainerId: string,
@@ -253,7 +300,7 @@ async function testAuthHostname(
   stackPath: string,
   dockerEnv?: Record<string, string>
 ): Promise<void> {
-  info("Test 5: Testing authentication via pgbouncer:6432...");
+  info("Test 6: Testing authentication via pgbouncer:6432...");
 
   try {
     await $`docker exec ${postgresContainerId} sh -c PGPASSWORD=${pgbouncerPassword} psql -h pgbouncer -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
@@ -267,10 +314,10 @@ async function testAuthHostname(
 }
 
 /**
- * Test 6: Verify SHOW POOLS works
+ * Test 7: Verify SHOW POOLS works
  */
 async function testShowPools(containerId: string, pgbouncerPassword: string): Promise<void> {
-  info("Test 6: Testing SHOW POOLS command...");
+  info("Test 7: Testing SHOW POOLS command...");
 
   // First, make a connection to postgres database to ensure pool exists
   await $`docker exec ${containerId} sh -c PGPASSWORD=${pgbouncerPassword} psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
@@ -298,10 +345,10 @@ async function testShowPools(containerId: string, pgbouncerPassword: string): Pr
 }
 
 /**
- * Test 7: Verify healthcheck command works
+ * Test 8: Verify healthcheck command works
  */
 async function testHealthcheckCommand(containerId: string): Promise<void> {
-  info("Test 7: Testing healthcheck command...");
+  info("Test 8: Testing healthcheck command...");
 
   try {
     await $`docker exec ${containerId} sh -c HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c 'SELECT 1'`.quiet();
@@ -313,10 +360,10 @@ async function testHealthcheckCommand(containerId: string): Promise<void> {
 }
 
 /**
- * Test 8: Verify connection from host machine (if psql available)
+ * Test 9: Verify connection from host machine (if psql available)
  */
 async function testHostConnection(pgbouncerPassword: string): Promise<void> {
-  info("Test 8: Testing connection from host machine...");
+  info("Test 9: Testing connection from host machine...");
 
   try {
     await $`command -v psql`.quiet();
@@ -533,6 +580,7 @@ async function main(): Promise<void> {
     await testPgpassExists(pgbouncerContainerId);
     await testPgpassPermissions(pgbouncerContainerId);
     await testPgpassEntries(pgbouncerContainerId);
+    await testAuthUserDualFile(pgbouncerContainerId);
     await testAuthLocalhost(pgbouncerContainerId);
     await testAuthHostname(
       postgresContainerId,
@@ -553,6 +601,7 @@ async function main(): Promise<void> {
     console.log("Summary:");
     console.log("  ✅ .pgpass file exists with correct permissions");
     console.log("  ✅ .pgpass contains entries for localhost:6432 and pgbouncer:6432");
+    console.log("  ✅ auth_user (pgbouncer_auth) exists in BOTH userlist.txt and .pgpass");
     console.log("  ✅ Authentication works via localhost:6432");
     console.log("  ✅ Authentication works via pgbouncer:6432");
     console.log("  ✅ SHOW POOLS command works");

@@ -1,11 +1,22 @@
 #!/usr/bin/env bun
 /**
- * Validate PGDG version consistency in manifest-data.ts
+ * Validate vendor version consistency in manifest-data.ts
  *
  * This script ensures:
+ * PGDG:
  * 1. All extensions with install_via: "pgdg" have a pgdgVersion field
  * 2. pgdgVersion follows the expected Debian package format
  * 3. Semantic version from pgdgVersion matches the source.tag
+ *
+ * Percona:
+ * 1. All extensions with install_via: "percona" have a perconaVersion field
+ * 2. perconaVersion follows the expected Debian package format
+ * 3. Semantic version from perconaVersion matches the source.tag
+ *
+ * Timescale:
+ * 1. All extensions with install_via: "timescale" have a timescaleVersion field
+ * 2. timescaleVersion follows the expected Debian package format
+ * 3. Semantic version from timescaleVersion matches the source.tag
  *
  * Usage:
  *   bun scripts/extensions/validate-pgdg-versions.ts
@@ -86,6 +97,32 @@ function extractSemanticVersionFromPgdg(pgdgVersion: string): string {
   return match?.[1] ?? pgdgVersion;
 }
 
+/**
+ * Extract semantic version from Percona version string
+ * Examples:
+ *   "1:2.3.1-1.trixie" -> "2.3.1"
+ *   "1:2.6-2.trixie" -> "2.6"
+ */
+function extractSemanticVersionFromPercona(perconaVersion: string): string {
+  // Strip epoch prefix (1:) if present, then extract version before dash
+  const withoutEpoch = perconaVersion.replace(/^\d+:/, "");
+  const match = withoutEpoch.match(/^([\d.]+)/);
+  return match?.[1] ?? perconaVersion;
+}
+
+/**
+ * Extract semantic version from Timescale version string
+ * Examples:
+ *   "2.24.0~debian13-1801" -> "2.24.0"
+ *   "1:1.22.0~debian13" -> "1.22.0"
+ */
+function extractSemanticVersionFromTimescale(timescaleVersion: string): string {
+  // Strip epoch prefix (1:) if present, then extract version before tilde
+  const withoutEpoch = timescaleVersion.replace(/^\d+:/, "");
+  const match = withoutEpoch.match(/^([\d.]+)/);
+  return match?.[1] ?? timescaleVersion;
+}
+
 interface ValidationError {
   extension: string;
   error: string;
@@ -97,6 +134,20 @@ interface ValidationResult {
   errors: ValidationError[];
   warnings: ValidationError[];
   pgdgExtensionCount: number;
+  validatedCount: number;
+}
+
+interface PerconaValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+  perconaExtensionCount: number;
+  validatedCount: number;
+}
+
+interface TimescaleValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+  timescaleExtensionCount: number;
   validatedCount: number;
 }
 
@@ -195,21 +246,206 @@ function validatePgdgVersions(): ValidationResult {
 }
 
 /**
+ * Validate all Percona extensions in the manifest
+ */
+function validatePerconaVersions(): PerconaValidationResult {
+  const errors: ValidationError[] = [];
+  let perconaExtensionCount = 0;
+  let validatedCount = 0;
+
+  // Percona version format: [epoch:]version-build.distro
+  // Examples: "1:2.3.1-1.trixie", "1:2.6-2.trixie"
+  const perconaVersionPattern = /^(\d+:)?[\d.]+-\d+\.\w+$/;
+
+  for (const entry of MANIFEST_ENTRIES) {
+    if (entry.install_via !== "percona") continue;
+
+    perconaExtensionCount++;
+
+    // Check 1: perconaVersion must be defined
+    if (!entry.perconaVersion) {
+      errors.push({
+        extension: entry.name,
+        error: "Missing perconaVersion field",
+        details: `Extensions with install_via: "percona" MUST have a perconaVersion field`,
+      });
+      continue;
+    }
+
+    // Check 2: perconaVersion format
+    if (!perconaVersionPattern.test(entry.perconaVersion)) {
+      errors.push({
+        extension: entry.name,
+        error: "Invalid perconaVersion format",
+        details: `Got "${entry.perconaVersion}", expected format like "1:2.3.1-1.trixie"`,
+      });
+      continue;
+    }
+
+    // Check 3: Semantic version match with source.tag (only for git sources)
+    if (entry.source.type === "git" && "tag" in entry.source) {
+      const tagVersion = extractSemanticVersionFromTag(entry.source.tag);
+      const perconaSemanticVersion = extractSemanticVersionFromPercona(entry.perconaVersion);
+
+      if (tagVersion !== perconaSemanticVersion) {
+        errors.push({
+          extension: entry.name,
+          error: "Version mismatch between source.tag and perconaVersion",
+          details: `source.tag "${entry.source.tag}" (semantic: ${tagVersion}) != perconaVersion "${entry.perconaVersion}" (semantic: ${perconaSemanticVersion})`,
+        });
+        continue;
+      }
+    }
+
+    validatedCount++;
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    perconaExtensionCount,
+    validatedCount,
+  };
+}
+
+/**
+ * Validate all Timescale extensions in the manifest
+ */
+function validateTimescaleVersions(): TimescaleValidationResult {
+  const errors: ValidationError[] = [];
+  let timescaleExtensionCount = 0;
+  let validatedCount = 0;
+
+  // Timescale version format: [epoch:]version~distro[-build]
+  // Examples: "2.24.0~debian13-1801", "1:1.22.0~debian13"
+  const timescaleVersionPattern = /^(\d+:)?[\d.]+~\w+(-\d+)?$/;
+
+  for (const entry of MANIFEST_ENTRIES) {
+    if (entry.install_via !== "timescale") continue;
+
+    timescaleExtensionCount++;
+
+    // Check 1: timescaleVersion must be defined
+    if (!entry.timescaleVersion) {
+      errors.push({
+        extension: entry.name,
+        error: "Missing timescaleVersion field",
+        details: `Extensions with install_via: "timescale" MUST have a timescaleVersion field`,
+      });
+      continue;
+    }
+
+    // Check 2: timescaleVersion format
+    if (!timescaleVersionPattern.test(entry.timescaleVersion)) {
+      errors.push({
+        extension: entry.name,
+        error: "Invalid timescaleVersion format",
+        details: `Got "${entry.timescaleVersion}", expected format like "2.24.0~debian13-1801" or "1:1.22.0~debian13"`,
+      });
+      continue;
+    }
+
+    // Check 3: Semantic version match with source.tag (only for git sources)
+    if (entry.source.type === "git" && "tag" in entry.source) {
+      const tagVersion = extractSemanticVersionFromTag(entry.source.tag);
+      const timescaleSemanticVersion = extractSemanticVersionFromTimescale(entry.timescaleVersion);
+
+      if (tagVersion !== timescaleSemanticVersion) {
+        errors.push({
+          extension: entry.name,
+          error: "Version mismatch between source.tag and timescaleVersion",
+          details: `source.tag "${entry.source.tag}" (semantic: ${tagVersion}) != timescaleVersion "${entry.timescaleVersion}" (semantic: ${timescaleSemanticVersion})`,
+        });
+        continue;
+      }
+    }
+
+    validatedCount++;
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    timescaleExtensionCount,
+    validatedCount,
+  };
+}
+
+/**
  * Main execution
  */
 function main(): void {
-  console.log("Validating PGDG versions in manifest-data.ts...\n");
+  console.log("Validating vendor versions in manifest-data.ts...\n");
 
-  const result = validatePgdgVersions();
+  // Run all validations
+  const pgdgResult = validatePgdgVersions();
+  const perconaResult = validatePerconaVersions();
+  const timescaleResult = validateTimescaleVersions();
 
-  // Print results
-  console.log(`PGDG extensions found: ${result.pgdgExtensionCount}`);
-  console.log(`Successfully validated: ${result.validatedCount}`);
+  // Print PGDG results
+  console.log("[PGDG Version Validation]");
+  console.log(`PGDG extensions found: ${pgdgResult.pgdgExtensionCount}`);
+  if (pgdgResult.pgdgExtensionCount > 0) {
+    for (const entry of MANIFEST_ENTRIES) {
+      if (
+        entry.install_via === "pgdg" &&
+        entry.pgdgVersion &&
+        entry.source.type === "git" &&
+        "tag" in entry.source
+      ) {
+        const tagVersion = extractSemanticVersionFromTag(entry.source.tag);
+        const pgdgVersion = extractSemanticVersionFromPgdg(entry.pgdgVersion);
+        console.log(`✅ ${entry.name}: ${pgdgVersion} matches tag ${tagVersion}`);
+      }
+    }
+  }
   console.log("");
 
-  if (result.warnings.length > 0) {
+  // Print Percona results
+  console.log("[Percona Version Validation]");
+  console.log(`Percona extensions found: ${perconaResult.perconaExtensionCount}`);
+  if (perconaResult.perconaExtensionCount > 0) {
+    for (const entry of MANIFEST_ENTRIES) {
+      if (
+        entry.install_via === "percona" &&
+        entry.perconaVersion &&
+        entry.source.type === "git" &&
+        "tag" in entry.source
+      ) {
+        const tagVersion = extractSemanticVersionFromTag(entry.source.tag);
+        const perconaVersion = extractSemanticVersionFromPercona(entry.perconaVersion);
+        console.log(`✅ ${entry.name}: ${perconaVersion} matches tag ${tagVersion}`);
+      }
+    }
+  }
+  console.log("");
+
+  // Print Timescale results
+  console.log("[Timescale Version Validation]");
+  console.log(`Timescale extensions found: ${timescaleResult.timescaleExtensionCount}`);
+  if (timescaleResult.timescaleExtensionCount > 0) {
+    for (const entry of MANIFEST_ENTRIES) {
+      if (
+        entry.install_via === "timescale" &&
+        entry.timescaleVersion &&
+        entry.source.type === "git" &&
+        "tag" in entry.source
+      ) {
+        const tagVersion = extractSemanticVersionFromTag(entry.source.tag);
+        const timescaleVersion = extractSemanticVersionFromTimescale(entry.timescaleVersion);
+        console.log(`✅ ${entry.name}: ${timescaleVersion} matches tag ${tagVersion}`);
+      }
+    }
+  }
+  console.log("");
+
+  // Collect all errors and warnings
+  const allErrors = [...pgdgResult.errors, ...perconaResult.errors, ...timescaleResult.errors];
+  const allWarnings = [...pgdgResult.warnings];
+
+  if (allWarnings.length > 0) {
     console.log("⚠️  Warnings:");
-    for (const warning of result.warnings) {
+    for (const warning of allWarnings) {
       console.log(`   ${warning.extension}: ${warning.error}`);
       if (warning.details) {
         console.log(`      ${warning.details}`);
@@ -218,20 +454,25 @@ function main(): void {
     console.log("");
   }
 
-  if (result.errors.length > 0) {
+  if (allErrors.length > 0) {
     console.log("❌ Errors:");
-    for (const error of result.errors) {
+    for (const error of allErrors) {
       console.log(`   ${error.extension}: ${error.error}`);
       if (error.details) {
         console.log(`      ${error.details}`);
       }
     }
     console.log("");
-    console.log("PGDG version validation FAILED");
+    console.log("Vendor version validation FAILED");
     process.exit(1);
   }
 
-  console.log("✅ PGDG version validation PASSED");
+  console.log("✅ All vendor version validations PASSED");
+  console.log(`   PGDG: ${pgdgResult.validatedCount}/${pgdgResult.pgdgExtensionCount}`);
+  console.log(`   Percona: ${perconaResult.validatedCount}/${perconaResult.perconaExtensionCount}`);
+  console.log(
+    `   Timescale: ${timescaleResult.validatedCount}/${timescaleResult.timescaleExtensionCount}`
+  );
 }
 
 if (import.meta.main) {
@@ -239,4 +480,12 @@ if (import.meta.main) {
 }
 
 // Export for testing
-export { validatePgdgVersions, extractSemanticVersionFromTag, extractSemanticVersionFromPgdg };
+export {
+  validatePgdgVersions,
+  validatePerconaVersions,
+  validateTimescaleVersions,
+  extractSemanticVersionFromTag,
+  extractSemanticVersionFromPgdg,
+  extractSemanticVersionFromPercona,
+  extractSemanticVersionFromTimescale,
+};

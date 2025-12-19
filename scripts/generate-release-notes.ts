@@ -82,7 +82,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "source";
+  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "github-release" | "source";
 }
 
 // Category merge map: source → target
@@ -268,9 +268,14 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
+// Pre-compiled packages (pgdg, percona, timescale, github-release) all use 📦️
+// Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
   pgdg: "📦️",
+  percona: "📦️",
+  timescale: "📦️",
+  "github-release": "📦️",
   source: "🏗️",
 };
 
@@ -346,7 +351,9 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       docsUrl: entry.docsUrl,
       source: entry.source,
       installMethod:
-        entry.kind === "builtin" ? "builtin" : entry.install_via === "pgdg" ? "pgdg" : "source",
+        entry.kind === "builtin"
+          ? "builtin"
+          : ((entry.install_via as ExtensionInfo["installMethod"]) ?? "source"),
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -470,6 +477,10 @@ function generateConfigurationSection(): string[] {
   lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
   lines.push("| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web`/`oltp`/`dw`/`mixed` |");
   lines.push("| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd`/`hdd`/`san` |");
+  lines.push(
+    "| `POSTGRES_SHARED_PRELOAD_LIBRARIES` | No | [see docs](https://github.com/fluxo-kt/aza-pg/blob/main/docs/ENVIRONMENT-VARIABLES.md) | Override default preloaded extensions |"
+  );
+  lines.push("| `ENABLE_PGSODIUM_INIT` | No | `false` | Enable pgsodium TCE initialization |");
   lines.push("");
   lines.push("</details>");
   lines.push("");
@@ -546,6 +557,13 @@ function generateConfigurationSection(): string[] {
   lines.push("</details>");
   lines.push("");
 
+  // pgsodium TCE callout
+  lines.push("> ⚠️ **pgsodium TCE Setup**");
+  lines.push(
+    `> For Transparent Column Encryption, set \`ENABLE_PGSODIUM_INIT=true\` and mount \`pgsodium_getkey\` script. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
+  );
+  lines.push("");
+
   // Link to full docs
   lines.push(
     "[→ Full configuration guide](https://github.com/fluxo-kt/aza-pg/blob/main/docs/PRODUCTION.md)"
@@ -564,9 +582,10 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   // Extract version components
   const convenienceTags = getConvenienceTags(args.tag, args.pgVersion);
 
-  // Count special extensions
-  const preloadedCount = manifest.entries.filter((e) => e.runtime?.sharedPreload).length;
-  const autoCreatedCount = manifest.entries.filter((e) => e.runtime?.defaultEnable).length;
+  // Count special extensions (only from enabled entries)
+  const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
+  const preloadedCount = enabledEntries.filter((e) => e.runtime?.sharedPreload).length;
+  const autoCreatedCount = enabledEntries.filter((e) => e.runtime?.defaultEnable).length;
 
   // Header with improved summary
   lines.push(`# aza-pg PostgreSQL ${args.pgVersion}`);
@@ -707,7 +726,7 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("");
   lines.push("**Source:**");
   lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
-  lines.push("- 📦️ PGDG package (pre-compiled from apt.postgresql.org)");
+  lines.push("- 📦️ Package (pre-compiled from PGDG, Percona, Timescale, or GitHub releases)");
   lines.push("- 🏗️ Source build (compiled during Docker image build)");
   lines.push("");
   lines.push("**Status:**");
@@ -756,6 +775,12 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   );
   lines.push(
     `- [Testing](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/TESTING.md) — Validation & test suite`
+  );
+  lines.push(
+    `- [Environment Variables](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/ENVIRONMENT-VARIABLES.md) — Complete variable reference`
+  );
+  lines.push(
+    `- [pgsodium Setup](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md) — TCE & vault configuration`
   );
 
   return lines.join("\n");

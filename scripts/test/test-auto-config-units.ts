@@ -189,15 +189,9 @@ function calculateWalBuffers(sharedBuffersMB: number): number {
 }
 
 function calculateIoWorkers(cpuCores: number): number {
-  if (cpuCores < 12) {
-    return 3; // Default
-  }
-
-  let value = Math.floor(cpuCores / 4);
-  if (value < 3) value = 3;
-  if (value > 64) value = 64;
-
-  return value;
+  // Match bash: CPU_CORES / 4, min 1, max 64
+  const value = Math.floor(cpuCores / 4);
+  return Math.max(1, Math.min(64, value));
 }
 
 function calculateWorkerProcesses(cpuCores: number): number {
@@ -523,19 +517,19 @@ describe("wal_buffers calculation", () => {
 });
 
 describe("io_workers calculation", () => {
-  test("1 core: 3 (default)", () => {
-    expect(calculateIoWorkers(1)).toBe(3);
+  test("1 core: 1 (min 1, CPU/4=0→1)", () => {
+    expect(calculateIoWorkers(1)).toBe(1);
   });
 
-  test("4 cores: 3 (default, <12)", () => {
-    expect(calculateIoWorkers(4)).toBe(3);
+  test("4 cores: 1 (CPU/4)", () => {
+    expect(calculateIoWorkers(4)).toBe(1);
   });
 
-  test("8 cores: 3 (default, <12)", () => {
-    expect(calculateIoWorkers(8)).toBe(3);
+  test("8 cores: 2 (CPU/4)", () => {
+    expect(calculateIoWorkers(8)).toBe(2);
   });
 
-  test("12 cores: 3 (CPU/4 = 3)", () => {
+  test("12 cores: 3 (CPU/4)", () => {
     expect(calculateIoWorkers(12)).toBe(3);
   });
 

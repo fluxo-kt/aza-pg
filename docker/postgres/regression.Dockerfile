@@ -247,7 +247,9 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
     # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true && \
+    # Clean apt lists (Dockle DKL-DI-0005)
+    rm -rf /var/lib/apt/lists/*
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

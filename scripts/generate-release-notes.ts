@@ -82,7 +82,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "source";
+  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "github-release" | "source";
 }
 
 // Category merge map: source → target
@@ -268,9 +268,14 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
+// Pre-compiled packages (pgdg, percona, timescale, github-release) all use 📦️
+// Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
   pgdg: "📦️",
+  percona: "📦️",
+  timescale: "📦️",
+  "github-release": "📦️",
   source: "🏗️",
 };
 
@@ -346,7 +351,9 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       docsUrl: entry.docsUrl,
       source: entry.source,
       installMethod:
-        entry.kind === "builtin" ? "builtin" : entry.install_via === "pgdg" ? "pgdg" : "source",
+        entry.kind === "builtin"
+          ? "builtin"
+          : ((entry.install_via as ExtensionInfo["installMethod"]) ?? "source"),
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -564,9 +571,10 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   // Extract version components
   const convenienceTags = getConvenienceTags(args.tag, args.pgVersion);
 
-  // Count special extensions
-  const preloadedCount = manifest.entries.filter((e) => e.runtime?.sharedPreload).length;
-  const autoCreatedCount = manifest.entries.filter((e) => e.runtime?.defaultEnable).length;
+  // Count special extensions (only from enabled entries)
+  const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
+  const preloadedCount = enabledEntries.filter((e) => e.runtime?.sharedPreload).length;
+  const autoCreatedCount = enabledEntries.filter((e) => e.runtime?.defaultEnable).length;
 
   // Header with improved summary
   lines.push(`# aza-pg PostgreSQL ${args.pgVersion}`);
@@ -707,7 +715,7 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
   lines.push("");
   lines.push("**Source:**");
   lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
-  lines.push("- 📦️ PGDG package (pre-compiled from apt.postgresql.org)");
+  lines.push("- 📦️ Package (pre-compiled from PGDG, Percona, Timescale, or GitHub releases)");
   lines.push("- 🏗️ Source build (compiled during Docker image build)");
   lines.push("");
   lines.push("**Status:**");

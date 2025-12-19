@@ -6,6 +6,7 @@
 import { createHash } from "crypto";
 import { format } from "sql-formatter";
 import { MANIFEST_METADATA, type ManifestEntry } from "../extensions/manifest-data";
+import { resolveExtensionDependencies } from "../test/manifest-test-utils";
 
 /**
  * Generate 01-extensions.sql initialization script with state tracking
@@ -63,7 +64,11 @@ export async function generateExtensionsInitScript(
   // Skip pg_cron here - it will be created by 01b-pg_cron.sh in POSTGRES_DB
   // pg_cron can only be created in cron.database_name, which follows POSTGRES_DB
   // Remove it from expected_extensions since it's handled separately
-  const extensionsToCreate = extensionsToEnable.filter((e) => e.name !== "pg_cron");
+  const extensionsFiltered = extensionsToEnable.filter((e) => e.name !== "pg_cron");
+
+  // Sort extensions in dependency order (dependencies first) using topological sort
+  // This ensures extensions like pgvector are created before vectorscale, etc.
+  const extensionsToCreate = resolveExtensionDependencies(extensionsFiltered);
   const extensionNames = extensionsToCreate.map((e) => e.name);
 
   // Content-based version: deterministic hash of enabled extensions (same input → same output)

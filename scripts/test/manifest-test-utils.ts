@@ -427,7 +427,7 @@ export function getOptionalPreloadModules(manifest?: ManifestEntry[]): ManifestE
  * @example
  * ```typescript
  * const preloadLibs = buildOptionalPreloadLibraries(["timescaledb", "pg_safeupdate"]);
- * // Returns: "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,safeupdate"
+ * // Returns: "auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb"
  * ```
  */
 export function buildOptionalPreloadLibraries(optionalModules: string[]): string {

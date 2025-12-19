@@ -1046,6 +1046,35 @@ jobs:
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --yes
 
+      - name: Verify Cosign signatures
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          echo "🔍 Verifying signatures for all published tags..."
+
+          # Verify primary digest signature
+          echo "Verifying digest signature: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
+          # Verify each tag signature
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            echo "Verifying tag signature: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+            cosign verify \
+              --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+          done
+
+          echo "✅ All signatures verified successfully"
+
       - name: Attest container image provenance
         id: attest
         if: success()

@@ -1,0 +1,113 @@
+-- hll Extension Basic Functionality Test
+-- Tests cardinality estimation for analytics workloads
+CREATE EXTENSION IF NOT EXISTS hll;
+-- Test 1: Verify extension loaded
+SELECT extname, extversion FROM pg_extension WHERE extname = 'hll';
+extname | extversion
+---------+------------
+hll | 2.19
+(1 row)
+-- Test 2: Verify hll type exists
+SELECT typname FROM pg_type WHERE typname = 'hll';
+typname
+---------
+hll
+(1 row)
+-- Test 3: Create test table with hll column
+CREATE TABLE test_hll (
+id SERIAL PRIMARY KEY,
+users hll
+);
+-- Test 4: Insert HLL sketches
+INSERT INTO test_hll (users) VALUES
+(hll_empty()),
+(hll_add(hll_empty(), hll_hash_text('user1'))),
+(hll_add(hll_add(hll_empty(), hll_hash_text('user1')), hll_hash_text('user2')));
+-- Test 5: Test cardinality estimation
+SELECT id, hll_cardinality(users)::int AS estimated_cardinality
+FROM test_hll
+ORDER BY id;
+id | estimated_cardinality
+----+-----------------------
+1 | 0
+2 | 1
+3 | 2
+(3 rows)
+-- Test 6: Test HLL union operation
+SELECT hll_cardinality(hll_union_agg(users))::int AS total_unique
+FROM test_hll;
+total_unique
+--------------
+2
+(1 row)
+-- Test 7: Test HLL with larger dataset
+CREATE TABLE test_events (
+event_id SERIAL,
+user_id TEXT,
+day DATE
+);
+INSERT INTO test_events (user_id, day)
+SELECT
+'user_' || (i % 100),
+'2024-01-01'::date + (i % 7)
+FROM generate_series(1, 500) i;
+-- Test 8: Aggregate HLL sketches per day
+CREATE TABLE daily_users AS
+SELECT
+day,
+hll_add_agg(hll_hash_text(user_id)) AS user_sketch
+FROM test_events
+GROUP BY day;
+-- Test 9: Verify daily unique counts
+SELECT
+day,
+hll_cardinality(user_sketch)::int AS unique_users
+FROM daily_users
+ORDER BY day;
+day | unique_users
+------------+--------------
+01-01-2024 | 71
+01-02-2024 | 72
+01-03-2024 | 72
+01-04-2024 | 72
+01-05-2024 | 71
+01-06-2024 | 71
+01-07-2024 | 71
+(7 rows)
+-- Test 10: Test HLL union across days (weekly unique)
+SELECT hll_cardinality(hll_union_agg(user_sketch))::int AS weekly_unique
+FROM daily_users;
+weekly_unique
+---------------
+100
+(1 row)
+-- Test 11: Verify hll functions exist
+SELECT count(*) > 10 AS has_multiple_functions
+FROM pg_proc
+WHERE proname LIKE 'hll_%';
+has_multiple_functions
+------------------------
+t
+(1 row)
+-- Test 12: Test HLL schema_version (verify different sketch types work)
+SELECT hll_schema_version(hll_empty());
+hll_schema_version
+--------------------
+1
+(1 row)
+-- Test 13: Test hll_type for different sketches
+SELECT
+id,
+hll_type(users) AS sketch_type
+FROM test_hll
+ORDER BY id;
+id | sketch_type
+----+-------------
+1 | 1
+2 | 2
+3 | 2
+(3 rows)
+-- Cleanup
+DROP TABLE test_hll;
+DROP TABLE test_events;
+DROP TABLE daily_users;

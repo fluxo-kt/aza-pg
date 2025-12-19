@@ -370,12 +370,77 @@ jobs:
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   # ==========================================================================
-  # Job 5: Comprehensive regression tests complete
+  # Job 5: Integration tests (backup/restore, replication failover)
+  # ==========================================================================
+  integration:
+    name: Integration Tests - Backup/Restore & Replication
+    runs-on: ubuntu-latest
+    needs: [build, tier-1]
+    if: github.event.inputs.skip_tier != 'integration' && (success() || needs.tier-1.result == 'skipped')
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up test environment
+        uses: ./.github/actions/test-job-setup
+        with:
+          ghcr-login: "false"
+          image-source: artifact
+          image-name: aza-pg-comprehensive:test
+          artifact-name: comprehensive-image
+
+      - name: Run backup/restore test
+        run: |
+          set -euo pipefail
+          echo "🔄 Running backup/restore integration test..."
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          bun scripts/test/test-backup-restore.ts
+
+      - name: Run replication failover test
+        run: |
+          set -euo pipefail
+          echo "🔄 Running replication failover integration test..."
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          bun scripts/test/test-replication-failover.ts
+
+      - name: Run extension interaction test
+        run: |
+          set -euo pipefail
+          echo "🔄 Running extension interaction integration test..."
+          export POSTGRES_IMAGE=aza-pg-comprehensive:test
+          bun scripts/test/test-extension-interactions.ts
+
+      - name: Capture test diagnostics
+        if: failure()
+        uses: ./.github/actions/capture-test-diagnostics
+        with:
+          test-type: nightly-integration
+          containers: all
+          artifact-prefix: nightly-integration
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "### Integration Tests Summary :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Type:** Integration (Backup/Restore, Replication, Extension Interactions)" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests Executed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Backup/Restore cycle (pgbackrest)" >> $GITHUB_STEP_SUMMARY
+          echo "- Replication failover (primary → replica promotion)" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension cross-compatibility" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Job 6: Comprehensive regression tests complete
   # ==========================================================================
   complete:
     name: Nightly Regression Tests Complete
     runs-on: ubuntu-latest
-    needs: [tier-1, tier-2, tier-3]
+    needs: [tier-1, tier-2, tier-3, integration]
     timeout-minutes: 1
     if: always()
 
@@ -402,6 +467,11 @@ jobs:
             FAILED=1
           fi
 
+          if [ "${{ needs.integration.result }}" != "success" ] && [ "${{ needs.integration.result }}" != "skipped" ]; then
+            echo "::error::Integration tests (Backup/Restore, Replication) failed"
+            FAILED=1
+          fi
+
           if [ $FAILED -eq 1 ]; then
             echo "❌ One or more comprehensive regression test tiers failed"
             exit 1
@@ -422,6 +492,7 @@ jobs:
           echo "| Tier 1 | Core PostgreSQL (12 fast tests) | ${{ needs.tier-1.result == 'success' && '✅ Passed' || needs.tier-1.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tier 2 | ALL Extensions (comprehensive) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || needs.tier-2.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tier 3 | Extension interactions (ALL preloads) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || needs.tier-3.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration | Backup/Restore & Replication | ${{ needs.integration.result == 'success' && '✅ Passed' || needs.integration.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** Regression (comprehensive - ALL extensions and preloads)" >> $GITHUB_STEP_SUMMARY
           echo "**Schedule:** Daily at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
@@ -437,14 +508,17 @@ jobs:
           if [ "${{ needs.tier-1.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
           if [ "${{ needs.tier-2.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
           if [ "${{ needs.tier-3.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
+          if [ "${{ needs.integration.result }}" = "success" ]; then PASSED=$((PASSED + 1)); fi
 
           if [ "${{ needs.tier-1.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
           if [ "${{ needs.tier-2.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
           if [ "${{ needs.tier-3.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
+          if [ "${{ needs.integration.result }}" = "failure" ]; then FAILED=$((FAILED + 1)); fi
 
           if [ "${{ needs.tier-1.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
           if [ "${{ needs.tier-2.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
           if [ "${{ needs.tier-3.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
+          if [ "${{ needs.integration.result }}" = "skipped" ]; then SKIPPED=$((SKIPPED + 1)); fi
 
           if [ $FAILED -eq 0 ]; then
             echo "## ✅ All Comprehensive Regression Tests Passed" >> $GITHUB_STEP_SUMMARY

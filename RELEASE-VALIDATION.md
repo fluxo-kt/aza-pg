@@ -81,7 +81,7 @@ psql version: psql (PostgreSQL) 18.1 (Debian 18.1-1.pgdg130+1)
 **5-Phase Image Verification** (37/37 passed):
 
 1. **Filesystem Verification**: All extension .control files present, manifest.json exists, version-info correct
-2. **Runtime Verification**: All preloaded extensions (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb) verified
+2. **Runtime Verification**: All preloaded extensions (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb) verified
 3. **Tools Verification**: pgbackrest, pgbadger binaries present
 4. **Auto-Configuration**: shared_buffers, work_mem, connections properly tuned
 5. **Functional Tests**: 27+ tests for vector, timescaledb, postgis, pg_cron, etc.
@@ -224,7 +224,7 @@ Comprehensive validation of the published production image confirms full functio
 
 **Key Features Validated**:
 
-- ✅ All 7 preloaded extensions in shared_preload_libraries: auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, safeupdate, timescaledb
+- ✅ All 9 preloaded extensions in shared_preload_libraries: auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb
 - ✅ 25 enabled extensions can be created and are functional
 - ✅ 5 disabled extensions properly excluded from image
 - ✅ Auto-config system detects memory/CPU correctly and tunes PostgreSQL

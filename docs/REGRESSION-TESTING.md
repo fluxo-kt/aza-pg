@@ -45,7 +45,7 @@ Tests exact release image behavior with enabled extensions only.
 **Configuration:**
 
 - Extensions: Enabled extensions from manifest (runtime.defaultEnable=true)
-- Preload libraries: 6 default (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb)
+- Preload libraries: 9 default (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb)
 - Image: `aza-pg:pg18` (production Dockerfile)
 
 **Use cases:**
@@ -72,7 +72,7 @@ Tests all extensions including disabled ones for comprehensive coverage.
 **Configuration:**
 
 - Extensions: All catalog entries from manifest (both enabled and disabled for comprehensive testing)
-- Preload libraries: 10 total (6 default + 4 optional: safeupdate, pgsodium, set_user, pg_partman)
+- Preload libraries: 11 total (9 default + 2 optional: set_user, pg_partman_bgw)
 - Image: `aza-pg:pg18-regression` (separate regression.Dockerfile)
 - pgTAP: Pre-installed for SQL unit testing
 
@@ -343,7 +343,7 @@ Comprehensive nightly testing for early issue detection.
 **Image:** `aza-pg:pg18`
 **Dockerfile:** `docker/postgres/Dockerfile`
 **Extensions:** Enabled from manifest (runtime.defaultEnable=true)
-**Preloads:** 6 default
+**Preloads:** 9 default
 **pgTAP:** Not included
 
 **Build:**

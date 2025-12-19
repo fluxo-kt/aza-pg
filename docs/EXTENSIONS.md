@@ -33,12 +33,15 @@ aza-pg classifies bundled functionality into four buckets:
   - Remaining enabled entries are available on demand via `CREATE EXTENSION`
   - Some extensions are disabled by default (tracked in manifest with `disabledReason`)
 
-- **Preloaded** (6): Modules/extensions loaded by default via `shared_preload_libraries`
+- **Preloaded** (9): Modules/extensions loaded by default via `shared_preload_libraries`
   - auto_explain (module)
   - pg_cron (extension)
+  - pg_net (extension)
   - pg_stat_monitor (extension)
   - pg_stat_statements (extension)
   - pgaudit (extension)
+  - pgsodium (extension)
+  - safeupdate (tool)
   - timescaledb (extension)
 
 ## Extension Matrix
@@ -46,8 +49,8 @@ aza-pg classifies bundled functionality into four buckets:
 The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.
 
 - Default `shared_preload_libraries` (from manifest) is:
-  `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb`
-  (6 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+  `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb`
+  (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 
 <!-- extensions-table:start -->
 
@@ -184,8 +187,8 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - Baseline auto-created extensions during cluster bootstrap:
   - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pgmq`, `plpgsql`, `timescaledb`, `vector`, `vectorscale`
   - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
-- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,safeupdate,timescaledb` (7 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
-- Optional extensions can be preloaded: `pgsodium` (requires pgsodium_getkey script for TCE), `pg_partman` (background worker), `set_user`, `pg_plan_filter`.
+- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb` (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+- Optional extensions can be preloaded: `supautils`, `pg_partman_bgw` (background worker), `set_user`, `pg_plan_filter`.
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category
@@ -193,7 +196,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
 - **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
-- **Security** – `pgaudit` runs by default (preloaded) to guard operations. `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `pgsodium` and `vault` remain optional.
+- **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is auto-created but requires pgsodium preload for encryption.
 - **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest` (PGDG package); configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
 

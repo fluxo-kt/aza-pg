@@ -121,13 +121,13 @@ Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at start
 
 \*Connection limits shown for `mixed` workload (default). Set `POSTGRES_WORKLOAD_TYPE=web` (200), `oltp` (300), or `dw` (100) to change base limit. RAM-tier scaling applies: 50%/70%/85%/100% for <2GB/2-4GB/4-8GB/≥8GB.
 
-Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
+Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 
 **PgBouncer:** Set `PGBOUNCER_AUTH_PASS` in .env. Escape `:` and `\` only.
 
 ### Extension Customization
 
-Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Cannot disable preloaded (auto_explain, pg_cron, pg_stat_monitor, pg_stat_statements, pgaudit). See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Cannot disable preloaded (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb). See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
 ## Monitoring
 

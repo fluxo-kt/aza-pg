@@ -39,6 +39,11 @@ interface RuntimeSpec {
   notes?: string[];
 }
 
+type SourceSpec =
+  | { type: "builtin" }
+  | { type: "git"; repository: string; tag: string }
+  | { type: "git-ref"; repository: string; ref: string };
+
 interface ManifestEntry {
   name: string;
   displayName?: string;
@@ -48,6 +53,7 @@ interface ManifestEntry {
   githubReleaseTag?: string;
   githubAssetPattern?: string;
   soFileName?: string;
+  source?: SourceSpec;
   runtime?: RuntimeSpec;
   dependencies?: string[];
   enabled?: boolean;
@@ -444,6 +450,26 @@ function validateGithubReleaseEntries(manifest: Manifest): void {
       if (!hasVersion) {
         warn(
           `GitHub release entry '${entry.name}' asset pattern may not include version information`
+        );
+      }
+    }
+
+    // Validate consistency between githubReleaseTag and source.tag
+    if (entry.githubReleaseTag && entry.source?.type === "git" && "tag" in entry.source) {
+      const githubTag = entry.githubReleaseTag;
+      const sourceTag = entry.source.tag;
+
+      // Extract semantic versions (strip 'v' prefix if present)
+      const normalizeVersion = (v: string): string => v.replace(/^v/, "");
+      const normalizedGithubTag = normalizeVersion(githubTag);
+      const normalizedSourceTag = normalizeVersion(sourceTag);
+
+      if (normalizedGithubTag !== normalizedSourceTag) {
+        error(
+          `GitHub release entry '${entry.name}' has inconsistent version tags:\n` +
+            `  githubReleaseTag: '${githubTag}' (normalized: '${normalizedGithubTag}')\n` +
+            `  source.tag:       '${sourceTag}' (normalized: '${normalizedSourceTag}')\n` +
+            `  These should reference the same version to ensure correct asset downloads.`
         );
       }
     }

@@ -712,7 +712,9 @@ ${installCommands} && \\
     ${soVerification} && \\
     echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
     # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true && \\
+    # Clean apt lists (Dockle DKL-DI-0005)
+    rm -rf /var/lib/apt/lists/*`;
 }
 
 /**

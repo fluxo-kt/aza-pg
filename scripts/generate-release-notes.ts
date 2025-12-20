@@ -475,7 +475,9 @@ function generateConfigurationSection(): string[] {
   lines.push("| `POSTGRES_DB` | No | `postgres` | Default database |");
   lines.push("| `POSTGRES_MEMORY` | No | auto | RAM (MB) for auto-tuning |");
   lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
-  lines.push("| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web`/`oltp`/`dw`/`mixed` |");
+  lines.push(
+    "| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web` (200 conn), `oltp` (300 conn), `dw` (100 conn, analytics), `mixed` (120 conn, balanced) |"
+  );
   lines.push(
     "| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd` (local NVMe/SSD), `san` (network volumes like Hetzner Volumes), `hdd` (spinning disks) |"
   );
@@ -555,6 +557,30 @@ function generateConfigurationSection(): string[] {
   lines.push("- Data checksums enabled");
   lines.push("- pgaudit audit logging");
   lines.push("- Localhost-only binding");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Workload Type Recommendations (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Workload Type Recommendations</b></summary>");
+  lines.push("");
+  lines.push("| Workload | `POSTGRES_WORKLOAD_TYPE` | Connections | Use Case |");
+  lines.push("|----------|--------------------------|-------------|----------|");
+  lines.push(
+    "| Web applications | `web` | 200 | High-concurrency apps with short-lived connections |"
+  );
+  lines.push("| Transaction processing | `oltp` | 300 | Heavy read/write OLTP workloads |");
+  lines.push(
+    "| Analytics/reporting | `dw` | 100 | Data warehouse queries (stats_target=500, large work_mem) |"
+  );
+  lines.push(
+    "| General purpose | `mixed` (default) | 120 | Balanced configuration for varied workloads |"
+  );
+  lines.push("");
+  lines.push(
+    "**Technical details**: Connection limits scale with RAM (<2GB: 50%, 2-4GB: 70%, 4-8GB: 85%, ≥8GB: 100%). DW workload allocates larger WAL buffers (4-16GB) and work_mem (up to 256MB) for complex queries."
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");

@@ -476,7 +476,9 @@ function generateConfigurationSection(): string[] {
   lines.push("| `POSTGRES_MEMORY` | No | auto | RAM (MB) for auto-tuning |");
   lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
   lines.push("| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web`/`oltp`/`dw`/`mixed` |");
-  lines.push("| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd`/`hdd`/`san` |");
+  lines.push(
+    "| `POSTGRES_STORAGE_TYPE` | No | `ssd` | `ssd` (local NVMe/SSD), `san` (network volumes like Hetzner Volumes), `hdd` (spinning disks) |"
+  );
   lines.push(
     "| `POSTGRES_SHARED_PRELOAD_LIBRARIES` | No | [see docs](https://github.com/fluxo-kt/aza-pg/blob/main/docs/ENVIRONMENT-VARIABLES.md) | Override default preloaded extensions |"
   );
@@ -553,6 +555,29 @@ function generateConfigurationSection(): string[] {
   lines.push("- Data checksums enabled");
   lines.push("- pgaudit audit logging");
   lines.push("- Localhost-only binding");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
+  // Storage Type Recommendations (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Storage Type Recommendations</b></summary>");
+  lines.push("");
+  lines.push("| Storage | `POSTGRES_STORAGE_TYPE` | Use Case |");
+  lines.push("|---------|-------------------------|----------|");
+  lines.push(
+    "| Local NVMe/SSD (e.g., Hetzner CPX VPS) | `ssd` (default) | High-performance local storage (40k+ IOPS, <0.1ms latency) |"
+  );
+  lines.push(
+    "| Network volumes (e.g., Hetzner Volumes, AWS EBS) | `san` | Network-attached block storage (5-10k IOPS, ~0.5ms latency) |"
+  );
+  lines.push(
+    "| Traditional spinning disks | `hdd` | Legacy/archive systems (optimizes for sequential scans) |"
+  );
+  lines.push("");
+  lines.push(
+    "**Technical details**: `ssd` uses random_page_cost=1.1 (favors index scans), `san` uses random_page_cost=1.1 with higher I/O concurrency (300) for network latency compensation, `hdd` uses random_page_cost=4.0 (favors sequential scans)."
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");

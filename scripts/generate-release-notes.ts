@@ -496,7 +496,13 @@ function generateConfigurationSection(): string[] {
   lines.push("| Path | Purpose | Required |");
   lines.push("|------|---------|----------|");
   lines.push("| `/var/lib/postgresql` | Data directory | Yes |");
-  lines.push("| `/backup` | Backup storage | No |");
+  lines.push(
+    "| `/backup` | pgBackRest repository (WAL archive + backups for PITR) | Production: Yes, Dev: No |"
+  );
+  lines.push("");
+  lines.push(
+    "**Backup storage**: Required for Point-in-Time Recovery and disaster recovery. pgBackRest stores compressed backups (full/differential/incremental) with 7-day retention by default. Storage needs: ~7-10× database size for full retention cycle. Optional for dev/test environments without recovery requirements."
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");

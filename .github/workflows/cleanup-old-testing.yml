@@ -2,8 +2,8 @@ name: Cleanup Old Testing Images
 
 on:
   schedule:
-    # Daily at 02:00 UTC
-    - cron: "0 2 * * *"
+    # Weekly on Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
 
   workflow_dispatch:
     inputs:

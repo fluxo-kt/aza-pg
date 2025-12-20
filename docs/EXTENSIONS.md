@@ -170,7 +170,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                    | Version                                                                                               | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                        |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [5492c7d1](https://github.com/supabase/pg_jsonschema/commit/5492c7d1a28c5a2c85b48f89c47f258acc93d241) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [7c8603f1](https://github.com/supabase/pg_jsonschema/commit/7c8603f14d8d20ea84435b0b8409a4e1a40147b0) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 ### workflow
 

@@ -637,7 +637,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgrouting",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "4.0.0-1.pgdg12+1",
+    pgdgVersion: "4.0.0-1.pgdg13+1",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
@@ -723,7 +723,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/supabase/pg_jsonschema.git",
-      ref: "5492c7d1a28c5a2c85b48f89c47f258acc93d241",
+      ref: "7c8603f14d8d20ea84435b0b8409a4e1a40147b0",
     },
     build: {
       type: "cargo-pgrx",
@@ -887,7 +887,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     install_via: "percona",
     perconaPackage: "percona-pg-stat-monitor18",
-    perconaVersion: "1:2.3.1-1.trixie",
+    perconaVersion: "1:2.3.1-2.trixie",
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
     runtime: {

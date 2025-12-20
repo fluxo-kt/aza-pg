@@ -1,0 +1,51 @@
+[global]
+# Repository Configuration (Hetzner S3)
+repo1-type=s3
+repo1-s3-endpoint=fsn1.your-objectstorage.hetzner.cloud
+repo1-s3-bucket=aza-pg-backrest-incremental
+repo1-s3-region=fsn1
+repo1-s3-key=YOUR_ACCESS_KEY
+repo1-s3-key-secret=YOUR_SECRET_KEY
+repo1-s3-verify-tls=y
+
+# Encryption
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass=YOUR_ENCRYPTION_PASSWORD
+
+# Retention Policy
+repo1-retention-full=3
+repo1-retention-diff=7
+repo1-retention-archive=7
+
+# Performance
+repo1-block=y
+repo1-bundle=y
+process-max=4
+
+# Logging
+log-level-console=info
+log-level-file=detail
+log-path=/var/log/pgbackrest
+
+[main]
+pg1-path=/var/lib/postgresql/data
+pg1-port=5432
+pg1-socket-path=/var/run/postgresql
+
+# Recovery Options
+recovery-option=standby_mode=on
+
+# INSTRUCTIONS:
+# 1. Replace YOUR_ACCESS_KEY, YOUR_SECRET_KEY, YOUR_ENCRYPTION_PASSWORD
+# 2. Create separate S3 bucket for pgBackRest (different from Postgresus)
+# 3. Install pgBackRest: apt install pgbackrest
+# 4. Initialize stanza: pgbackrest --stanza=main stanza-create
+# 5. Test backup: pgbackrest --stanza=main --type=full backup
+#
+# HYBRID STRATEGY:
+# - Postgresus: Daily full backup at 02:00 (GUI, easy restore)
+# - pgBackRest: Incremental backups 3x/day (08:00, 14:00, 20:00)
+# - Result: Max 6-hour data loss (RPO), best of both worlds
+#
+# CRON SCHEDULE (add to crontab):
+# 0 8,14,20 * * * pgbackrest --stanza=main --type=incr backup

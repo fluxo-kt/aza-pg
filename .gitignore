@@ -62,3 +62,5 @@ build/
 .archived/
 .ai/
 /tmp/fake-config.js
+deployments/*/.env
+.env.secrets

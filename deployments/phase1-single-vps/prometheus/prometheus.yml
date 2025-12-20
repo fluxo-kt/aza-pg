@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: "aza-pg-phase1"
+    environment: "production"
+
+# Alertmanager configuration (optional - add when needed)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts/*.yml"
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          component: "prometheus"
+
+  # PostgreSQL metrics via postgres_exporter
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          component: "postgres"
+          instance: "primary"
+    metric_relabel_configs:
+      # Drop high-cardinality metrics if needed
+      - source_labels: [__name__]
+        regex: "pg_stat_statements_.*"
+        action: keep
+
+  # PgBouncer metrics
+  - job_name: "pgbouncer"
+    static_configs:
+      - targets: ["pgbouncer-exporter:9127"]
+        labels:
+          component: "pgbouncer"
+          instance: "primary"
+
+  # Grafana self-monitoring
+  - job_name: "grafana"
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          component: "grafana"

@@ -1,0 +1,27 @@
+"postgres" "SCRAM-SHA-256$<iterations>:<salt>$<storedkey>:<serverkey>"
+"monitoring" "SCRAM-SHA-256$<iterations>:<salt>$<storedkey>:<serverkey>"
+
+# === INSTRUCTIONS ===
+# This file contains PgBouncer authentication credentials in SCRAM-SHA-256 format.
+#
+# TO GENERATE:
+# Run this command in PostgreSQL container after creating users:
+#
+#   docker exec postgres psql -U postgres -Atq -c \
+#     "SELECT '\"' || usename || '\" \"' || passwd || '\"' FROM pg_shadow WHERE usename IN ('postgres', 'monitoring');" \
+#     > pgbouncer/userlist.txt
+#
+# This will automatically extract hashed passwords from PostgreSQL and format them for PgBouncer.
+#
+# SECURITY:
+# - This file contains password hashes (not plaintext)
+# - Keep file permissions: chmod 600 userlist.txt
+# - DO NOT commit this file to git (add to .gitignore)
+# - Regenerate after password changes
+#
+# FORMAT:
+# Each line: "username" "password_hash"
+# Password can be:
+# - SCRAM-SHA-256 hash (recommended, as shown above)
+# - MD5 hash (legacy, not recommended)
+# - Plaintext (DO NOT USE in production)

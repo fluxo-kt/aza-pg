@@ -96,62 +96,59 @@ hcloud server create \
 
 ### 3. Deploy Phase 1
 
-```bash
-# SSH to VPS
-ssh root@VPS_IP
+**Coolify Deployment (Recommended):**
 
-# Copy deployment files
-scp -r deployments/phase1-single-vps root@VPS_IP:/opt/aza-pg-stack
+Follow the comprehensive Coolify-first deployment guide:
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 5: Deploy PostgreSQL Stack in Coolify
 
-# Run automated setup
-cd /opt/aza-pg-stack
-./scripts/setup.sh
-```
+Key sections:
 
-**Setup script will:**
+- Step 3: Create Docker Network in Coolify
+- Step 5: Deploy PostgreSQL Stack
+- Step 6: Configure PgBouncer
+- Step 7: Deploy Monitoring Stack
 
-- Create Docker network
-- Generate PgBouncer userlist
-- Start all services
-- Create monitoring user
-- Verify auto-configuration
-- Display access information
+**Bare VPS Alternative (Without Coolify):**
+
+See the alternative method sections in:
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - "Bare VPS Alternative" subsections
+
+Both deployment methods are fully documented with step-by-step instructions.
 
 ### 4. Verify Deployment
 
-```bash
-./scripts/verify.sh
-```
+See verification procedures in:
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 8: Verify Deployment
 
-**Expected output:**
+**Expected results:**
 
-- 50+ automated tests
-- 100% pass rate
-- PostgreSQL version 18.1 confirmed
-- All extensions available
-- Connection pooling working
+- PostgreSQL 18.1 running with auto-tuned configuration
+- All extensions available (pg_stat_statements, pgvector, timescaledb, etc.)
+- Connection pooling working (2000 clients → 25 DB connections)
+- Monitoring stack accessible
 
 ### 5. Configure Backups
 
-**Option A: Postgresus (Daily Full Backups)**
+**Recommended: Postgresus via Coolify (Daily Full Backups)**
 
-1. Deploy via Coolify: One-click Postgresus service
-2. Access UI: `http://VPS_IP:3002`
-3. Add database connection
-4. Configure S3 storage (Hetzner)
-5. Set schedule: Daily 02:00 AM UTC
-6. Test backup
+See backup configuration in:
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 9: Configure Backup Strategy
 
-**Option B: Hybrid (Recommended)**
+**Optional: Hybrid Setup (6-hour RPO)**
+
+For advanced backup with incremental backups, see:
+→ [docs/BACKUP-PGBACKREST.md](docs/BACKUP-PGBACKREST.md)
+
+Architecture:
 
 - **Postgresus:** Daily full backups (GUI, easy restore)
 - **pgBackRest:** 3x incremental backups/day (08:00, 14:00, 20:00)
 - **Result:** Max 6-hour data loss (RPO)
 
-Configure pgBackRest:
+Configure pgBackRest (Bare VPS only):
 
 ```bash
-# Install
+# Install on host (not in container)
 apt install pgbackrest
 
 # Configure

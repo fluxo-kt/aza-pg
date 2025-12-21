@@ -1,0 +1,205 @@
+services:
+  # PostgreSQL 18.1 with aza-pg auto-configuration
+  postgres:
+    image: ghcr.io/${GITHUB_USERNAME:-yourusername}/aza-pg:18.1-latest
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+      POSTGRES_DB: ${POSTGRES_DB:-main}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_MEMORY: ${POSTGRES_MEMORY:-5GB}
+      POSTGRES_WORKLOAD_TYPE: ${POSTGRES_WORKLOAD_TYPE:-web}
+      POSTGRES_STORAGE_TYPE: ${POSTGRES_STORAGE_TYPE:-ssd}
+      # Enable shared_preload_libraries (already configured in aza-pg)
+      # Default: auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: mount custom postgresql.conf overrides
+      # - ./postgres-custom.conf:/etc/postgresql/postgresql.conf:ro
+    networks:
+      - aza-pg-network
+    ports:
+      # Internal only - never expose publicly
+      - "127.0.0.1:5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 5G
+        reservations:
+          cpus: "2.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PgBouncer - Connection Pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:1.24.1
+    container_name: pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: ${POSTGRES_DB:-main}
+      DATABASES_USER: ${POSTGRES_USER:-postgres}
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+      PGBOUNCER_POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
+      PGBOUNCER_STATS_USERS: ${POSTGRES_USER:-postgres}
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    volumes:
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    networks:
+      - aza-pg-network
+    ports:
+      - "127.0.0.1:6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "psql",
+          "-h",
+          "localhost",
+          "-p",
+          "6432",
+          "-U",
+          "postgres",
+          "-d",
+          "main",
+          "-c",
+          "SELECT 1;",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Prometheus PostgreSQL Exporter
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.18.1
+    container_name: postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${MONITORING_USER:-monitoring}:${MONITORING_PASSWORD:?MONITORING_PASSWORD not set}@postgres:5432/${POSTGRES_DB:-main}?sslmode=disable"
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
+    volumes:
+      - ./prometheus/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    networks:
+      - aza-pg-network
+    ports:
+      - "127.0.0.1:9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+  # PgBouncer Exporter
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.9.0
+    container_name: pgbouncer-exporter
+    restart: unless-stopped
+    environment:
+      PGBOUNCER_EXPORTER_HOST: pgbouncer
+      PGBOUNCER_EXPORTER_PORT: 6432
+      PGBOUNCER_EXPORTER_USER: ${POSTGRES_USER:-postgres}
+      PGBOUNCER_EXPORTER_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
+      PGBOUNCER_EXPORTER_DATABASE: pgbouncer
+    networks:
+      - aza-pg-network
+    ports:
+      - "127.0.0.1:9127:9127"
+    depends_on:
+      - pgbouncer
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - aza-pg-network
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - postgres-exporter
+      - pgbouncer-exporter
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD not set}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_INSTALL_PLUGINS: ""
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - aza-pg-network
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
+networks:
+  aza-pg-network:
+    external: true
+    name: aza-pg-network
+
+volumes:
+  postgres_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

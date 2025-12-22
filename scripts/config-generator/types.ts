@@ -35,6 +35,9 @@ export interface PostgreSQLSettings {
   lcTime: string;
   defaultTextSearchConfig: string;
 
+  // Character Encoding
+  clientEncoding: string;
+
   // pg_stat_statements
   pgStatStatementsMax: number;
   pgStatStatementsTrack: string;

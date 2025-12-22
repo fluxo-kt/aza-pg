@@ -216,6 +216,7 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
       "lcNumeric",
       "lcTime",
       "defaultTextSearchConfig",
+      "clientEncoding",
     ],
     pg_stat_statements: [...SHARED_CATEGORY_FIELDS.pg_stat_statements],
     auto_explain: [

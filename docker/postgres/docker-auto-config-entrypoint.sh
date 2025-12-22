@@ -93,6 +93,10 @@ if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --no-data-checksums"
 fi
 
+# Ensure UTF8 encoding and locale at cluster initialization
+# These settings are immutable after the cluster is created
+export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --encoding=UTF8 --locale=en_US.utf8"
+
 detect_ram() {
     local ram_mb=0
     local source="unknown"

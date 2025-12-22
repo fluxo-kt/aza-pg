@@ -206,6 +206,9 @@ export const BASE_CONFIG: BaseConfig = {
     lcTime: "en_US.utf8",
     defaultTextSearchConfig: "pg_catalog.english",
 
+    // Character Encoding
+    clientEncoding: "UTF8",
+
     // Extension settings
     pgStatStatementsMax: PG_STAT_STATEMENTS_MAX,
     pgStatStatementsTrack: "all",

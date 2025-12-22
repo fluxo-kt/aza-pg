@@ -567,6 +567,27 @@ function generateConfigurationSection(): string[] {
   lines.push("</details>");
   lines.push("");
 
+  // pg_safeupdate disable note (collapsible)
+  lines.push("<details>");
+  lines.push("<summary><b>Disabling pg_safeupdate per Database</b></summary>");
+  lines.push("");
+  lines.push(
+    "`pg_safeupdate` blocks UPDATE/DELETE without WHERE. Some services require disabling it:"
+  );
+  lines.push("");
+  lines.push("```sql");
+  lines.push("-- Disable for a specific database");
+  lines.push("ALTER DATABASE mydb SET safeupdate.enabled = 0;");
+  lines.push("");
+  lines.push("-- Or for current session only");
+  lines.push("SET safeupdate.enabled = 0;");
+  lines.push("```");
+  lines.push("");
+  lines.push("Connection-level: `PGOPTIONS='-c safeupdate.enabled=0' psql ...`");
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+
   // Workload Type Recommendations (collapsible)
   lines.push("<details>");
   lines.push("<summary><b>Workload Type Recommendations</b></summary>");

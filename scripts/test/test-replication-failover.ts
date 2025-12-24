@@ -406,7 +406,7 @@ async function testPromoteReplica(config: TestConfig): Promise<TestResult> {
     const replicaContainerId = await getContainerId(config.replicaStackPath, "postgres-replica");
 
     info("Promoting replica to primary...");
-    await $`docker exec ${replicaContainerId} pg_ctl promote -D /var/lib/postgresql/data`;
+    await $`docker exec ${replicaContainerId} bash -c 'pg_ctl promote -D "$PGDATA"'`;
 
     // Wait for promotion to complete
     info("Waiting for promotion to complete...");

@@ -465,11 +465,11 @@ describe("Security - SSL/TLS Configuration", () => {
     const sslSetting = await runSQL("SHOW ssl");
 
     if (sslSetting.stdout === "on") {
-      // Check for SSL certificate files
+      // Check for SSL certificate files (use $PGDATA for portability)
       const certCheck =
-        await $`docker exec ${TEST_CONTAINER} test -f /var/lib/postgresql/data/server.crt && echo exists || echo missing`.nothrow();
+        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.crt" && echo exists || echo missing'`.nothrow();
       const keyCheck =
-        await $`docker exec ${TEST_CONTAINER} test -f /var/lib/postgresql/data/server.key && echo exists || echo missing`.nothrow();
+        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.key" && echo exists || echo missing'`.nothrow();
 
       // If SSL is on, certificates should exist
       expect(certCheck.stdout.toString()).toContain("exists");

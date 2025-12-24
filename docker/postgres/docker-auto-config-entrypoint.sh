@@ -90,12 +90,12 @@ fi
 # Data checksums are enabled by default via official Debian PostgreSQL package initdb wrapper.
 # Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended - reduces corruption detection).
 if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
-    export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --no-data-checksums"
+    export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --no-data-checksums"
 fi
 
 # Ensure UTF8 encoding and locale at cluster initialization
 # These settings are immutable after the cluster is created
-export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS} --encoding=UTF8 --locale=en_US.utf8"
+export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --encoding=UTF8 --locale=en_US.utf8"
 
 detect_ram() {
     local ram_mb=0
@@ -445,7 +445,33 @@ else
     EFFECTIVE_IO_CONCURRENCY=""
 fi
 
-SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
+# Auto-detect pgsodium support: only include if getkey script exists and works
+# pgsodium v3.1.9 crashes PostgreSQL if loaded without valid getkey script
+# Use pg_config to get sharedir path (works for any PG version)
+PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
+PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
+PGSODIUM_ENABLED=""
+if [ -x "${PGSODIUM_GETKEY_PATH}" ]; then
+    # Verify script produces valid output (64 hex chars, trim whitespace)
+    GETKEY_OUTPUT=$("${PGSODIUM_GETKEY_PATH}" 2>/dev/null | tr -d '[:space:]' || echo "")
+    if [[ "${GETKEY_OUTPUT}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        PGSODIUM_ENABLED="true"
+        echo "[POSTGRES] [AUTO-CONFIG] pgsodium enabled (getkey script at ${PGSODIUM_GETKEY_PATH} validated)"
+    else
+        echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (getkey script output invalid: expected 64 hex chars)"
+    fi
+else
+    echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (no executable script at ${PGSODIUM_GETKEY_PATH})"
+fi
+
+# Build shared_preload_libraries - remove pgsodium if not enabled
+BASE_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
+if [ "${PGSODIUM_ENABLED}" != "true" ]; then
+    # Remove pgsodium from list (handles: "pgsodium,x", "x,pgsodium", "x,pgsodium,y")
+    SHARED_PRELOAD_LIBRARIES=$(echo "${BASE_PRELOAD_LIBRARIES}" | sed 's/,pgsodium//g; s/pgsodium,//g; s/^pgsodium$//g')
+else
+    SHARED_PRELOAD_LIBRARIES="${BASE_PRELOAD_LIBRARIES}"
+fi
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
 # Default: logical (safest, enables CDC extensions like wal2json)
@@ -513,5 +539,10 @@ fi
 
 # Always apply listen_addresses explicitly (prevents PostgreSQL default of '*')
 set -- "$@" -c "listen_addresses=${LISTEN_ADDR}"
+
+# pgsodium getkey_script (only if enabled - explicitly set to avoid path detection issues)
+if [ "${PGSODIUM_ENABLED}" = "true" ]; then
+    set -- "$@" -c "pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}"
+fi
 
 exec /usr/local/bin/docker-entrypoint.sh "$@"

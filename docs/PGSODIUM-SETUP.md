@@ -2,6 +2,40 @@
 
 Production setup guide for pgsodium Transparent Column Encryption (TCE) and supabase_vault.
 
+## Auto-Detection (Default Behavior)
+
+aza-pg **automatically detects** pgsodium support at container startup:
+
+| Scenario                                      | Behavior                                         |
+| --------------------------------------------- | ------------------------------------------------ |
+| Valid getkey script exists                    | pgsodium **enabled** in shared_preload_libraries |
+| Script missing or non-executable              | pgsodium **disabled** (graceful, no crash)       |
+| Script outputs invalid key (not 64 hex chars) | pgsodium **disabled** (graceful, no crash)       |
+
+**How it works:**
+
+1. Entrypoint checks for executable script at `/usr/share/postgresql/18/extension/pgsodium_getkey`
+2. If found, validates output is 64 hexadecimal characters
+3. If valid → adds pgsodium to preload + sets `pgsodium.getkey_script` GUC
+4. If invalid/missing → removes pgsodium from preload (PostgreSQL starts without it)
+
+**Logs show the detection result:**
+
+```
+# Enabled:
+[POSTGRES] [AUTO-CONFIG] pgsodium enabled (getkey script at /usr/share/.../pgsodium_getkey validated)
+
+# Disabled (no script):
+[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (no executable script at /usr/share/.../pgsodium_getkey)
+
+# Disabled (invalid output):
+[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (getkey script output invalid: expected 64 hex chars)
+```
+
+**Note:** The built-in CI/testing image includes a stub getkey script, so pgsodium is enabled by default in test environments.
+
+---
+
 ## Quick Start
 
 ### Required Configuration
@@ -471,7 +505,8 @@ SELECT pgsodium.crypto_pwhash_str_verify(
 
 | Error                                                 | Cause                   | Solution                                               |
 | ----------------------------------------------------- | ----------------------- | ------------------------------------------------------ |
-| `no server secret key defined`                        | Extension not preloaded | Add to `shared_preload_libraries`                      |
+| `no server secret key defined`                        | Extension not preloaded | Mount valid getkey script (auto-detection enables it)  |
+| `pgsodium DISABLED` in logs                           | Invalid/missing script  | Check script is executable + outputs 64 hex chars      |
 | `FATAL: getkey script not found`                      | Missing getkey script   | Volume mount the script                                |
 | `crypto_kdf_derive_from_key: context must be 8 bytes` | Wrong context parameter | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
 | `pgsodium.key table empty`                            | Init script didn't run  | Set `ENABLE_PGSODIUM_INIT=true`                        |

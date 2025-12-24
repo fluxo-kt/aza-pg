@@ -242,14 +242,14 @@ async function testVerifyReplication(config: TestConfig): Promise<TestResult> {
 
     const primaryContainerId = await getContainerId(config.primaryStackPath, "postgres");
 
-    // Check pg_stat_replication on primary
+    // Check pg_stat_replication on primary (verify any active replication connection)
     info("Checking pg_stat_replication on primary...");
     const replicationStatus =
-      await $`docker exec ${primaryContainerId} psql -U postgres -tAc "SELECT application_name, state, sync_state FROM pg_stat_replication WHERE slot_name = 'failover_test_slot';"`;
+      await $`docker exec ${primaryContainerId} psql -U postgres -tAc "SELECT application_name, state, sync_state FROM pg_stat_replication WHERE state = 'streaming';"`;
     const status = replicationStatus.text().trim();
 
     if (!status || status === "") {
-      throw new Error("No replication connection found in pg_stat_replication");
+      throw new Error("No streaming replication connection found in pg_stat_replication");
     }
 
     success(`Replication status: ${status}`);

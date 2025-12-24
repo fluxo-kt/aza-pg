@@ -281,10 +281,10 @@ async function testWalAccumulation(config: TestConfig): Promise<TestResult> {
       info(`  Batch ${i + 1}/5 inserted`);
     }
 
-    // Check WAL files
+    // Check WAL files (use $PGDATA for portability)
     info("Checking WAL files...");
     const walFilesResult =
-      await $`docker exec ${container} sh -c "ls -lh /var/lib/postgresql/data/pg_wal | wc -l"`;
+      await $`docker exec ${container} bash -c 'ls -lh "$PGDATA/pg_wal" | wc -l'`;
     const walFileCount = walFilesResult.text().trim();
     info(`WAL files count: ${walFileCount}`);
 
@@ -297,7 +297,7 @@ async function testWalAccumulation(config: TestConfig): Promise<TestResult> {
 
     // Check WAL files again
     const walFilesAfterResult =
-      await $`docker exec ${container} sh -c "ls -lh /var/lib/postgresql/data/pg_wal | wc -l"`;
+      await $`docker exec ${container} bash -c 'ls -lh "$PGDATA/pg_wal" | wc -l'`;
     const walFileCountAfter = walFilesAfterResult.text().trim();
     info(`WAL files after checkpoint: ${walFileCountAfter}`);
 

@@ -7,7 +7,7 @@
  *
  * OPTIONS:
  *   -c, --container NAME    Container name (default: postgres-replica)
- *   -d, --data-dir PATH     Data directory path (default: /var/lib/postgresql/data)
+ *   -d, --data-dir PATH     Data directory path (default: auto-detect from container's $PGDATA)
  *   -n, --no-backup         Skip backup before promotion (not recommended)
  *   -y, --yes               Skip confirmation prompt
  *   -h, --help              Show this help message
@@ -64,7 +64,7 @@ USAGE:
 
 OPTIONS:
   -c, --container NAME    Container name (default: postgres-replica)
-  -d, --data-dir PATH     Data directory path (default: /var/lib/postgresql/data)
+  -d, --data-dir PATH     Data directory path (default: auto-detect from container's $PGDATA)
   -n, --no-backup         Skip backup before promotion (not recommended)
   -y, --yes               Skip confirmation prompt
   -h, --help              Show this help message
@@ -108,7 +108,7 @@ function parseArgs(): PromoteConfig {
   const args = Bun.argv.slice(2);
   const config: PromoteConfig = {
     containerName: Bun.env.POSTGRES_CONTAINER_NAME || "postgres-replica",
-    dataDir: "/var/lib/postgresql/data",
+    dataDir: "", // Auto-detect from container's $PGDATA
     createBackup: true,
     skipConfirmation: false,
   };
@@ -331,9 +331,19 @@ async function promoteReplica(config: PromoteConfig): Promise<void> {
   // Wait for container to be ready
   await Bun.sleep(2000);
 
+  // Detect PGDATA from container if not specified
+  let dataDir = config.dataDir;
+  if (!dataDir) {
+    const pgdataResult = await $`docker exec ${config.containerName} printenv PGDATA`
+      .quiet()
+      .nothrow();
+    dataDir = pgdataResult.text().trim() || "/var/lib/postgresql";
+    info(`Detected data directory: ${dataDir}`);
+  }
+
   // Run pg_ctl promote
   try {
-    await $`docker exec ${config.containerName} su - postgres -c "pg_ctl promote -D ${config.dataDir}"`;
+    await $`docker exec ${config.containerName} su - postgres -c "pg_ctl promote -D ${dataDir}"`;
     success("Replica promoted successfully");
   } catch {
     error("Failed to promote replica");
@@ -368,12 +378,12 @@ async function promoteReplica(config: PromoteConfig): Promise<void> {
 async function updateConfiguration(config: PromoteConfig): Promise<void> {
   info("Updating configuration for primary role...");
 
-  // Remove standby.signal if it exists
+  // Remove standby.signal if it exists (use $PGDATA for portability)
   try {
     const testResult =
-      await $`docker exec ${config.containerName} test -f ${config.dataDir}/standby.signal`.quiet();
+      await $`docker exec ${config.containerName} bash -c 'test -f "$PGDATA/standby.signal"'`.quiet();
     if (testResult.exitCode === 0) {
-      await $`docker exec ${config.containerName} rm -f ${config.dataDir}/standby.signal`;
+      await $`docker exec ${config.containerName} bash -c 'rm -f "$PGDATA/standby.signal"'`;
       success("Removed standby.signal");
     }
   } catch {

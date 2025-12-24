@@ -171,6 +171,9 @@ REPLICATION_SLOT_NAME=failover_test_slot
 
     await Bun.write(resolve(config.primaryStackPath, ".env.test"), primaryEnvContent);
 
+    // Copy .env.test to .env (Docker Compose requires .env to exist for env_file directive)
+    await $`cp .env.test .env`.cwd(config.primaryStackPath);
+
     // Deploy primary
     info("Starting primary stack...");
     await $`docker compose --env-file .env.test up -d postgres`.cwd(config.primaryStackPath);
@@ -199,6 +202,9 @@ POSTGRES_EXPORTER_PORT=9188
 `;
 
     await Bun.write(resolve(config.replicaStackPath, ".env.test"), replicaEnvContent);
+
+    // Copy .env.test to .env (Docker Compose requires .env to exist for env_file directive)
+    await $`cp .env.test .env`.cwd(config.replicaStackPath);
 
     // Clear replica data volume to force fresh pg_basebackup
     try {
@@ -596,7 +602,7 @@ async function cleanup(config: TestConfig): Promise<void> {
   try {
     // Stop replica stack
     await $`docker compose --env-file .env.test down -v`.cwd(config.replicaStackPath).quiet();
-    await $`rm -f ${resolve(config.replicaStackPath, ".env.test")}`.quiet();
+    await $`rm -f ${resolve(config.replicaStackPath, ".env.test")} ${resolve(config.replicaStackPath, ".env")}`.quiet();
 
     // Verify replica containers are removed
     const replicaCheck =
@@ -618,7 +624,7 @@ async function cleanup(config: TestConfig): Promise<void> {
   try {
     // Stop primary stack
     await $`docker compose --env-file .env.test down -v`.cwd(config.primaryStackPath).quiet();
-    await $`rm -f ${resolve(config.primaryStackPath, ".env.test")}`.quiet();
+    await $`rm -f ${resolve(config.primaryStackPath, ".env.test")} ${resolve(config.primaryStackPath, ".env")}`.quiet();
 
     // Verify primary containers are removed
     const primaryCheck =

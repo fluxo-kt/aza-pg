@@ -8,8 +8,8 @@
       "source": {
         "type": "git-ref",
         "repository": "https://github.com/supabase/pg_jsonschema.git",
-        "ref": "5492c7d1a28c5a2c85b48f89c47f258acc93d241",
-        "commit": "5492c7d1a28c5a2c85b48f89c47f258acc93d241"
+        "ref": "7c8603f14d8d20ea84435b0b8409a4e1a40147b0",
+        "commit": "7c8603f14d8d20ea84435b0b8409a4e1a40147b0"
       },
       "build": {
         "type": "cargo-pgrx",

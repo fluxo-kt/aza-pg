@@ -238,8 +238,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     dpkg -i /tmp/percona-release.deb && \
     percona-release enable ppg-18 release && \
     apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \

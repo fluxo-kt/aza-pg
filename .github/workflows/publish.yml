@@ -336,7 +336,7 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Download digests
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           pattern: digests-*
           path: ${{ runner.temp }}/digests

@@ -118,7 +118,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tier1-regression-diffs
           path: /tmp/pg-regression/*.diffs
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tier2-regression-diffs
           path: /tmp/pg-regression/*.diffs
@@ -234,7 +234,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tier3-regression-diffs
           path: /tmp/pg-regression/*.diffs

@@ -169,7 +169,7 @@ jobs:
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: comprehensive-image
           path: /tmp/aza-pg-ci-image.tar.gz
@@ -229,7 +229,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nightly-tier1-regression-diffs
           path: /tmp/pg-regression/*.diffs
@@ -289,7 +289,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nightly-tier2-regression-diffs
           path: /tmp/pg-regression/*.diffs
@@ -349,7 +349,7 @@ jobs:
 
       - name: Upload regression diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nightly-tier3-regression-diffs
           path: /tmp/pg-regression/*.diffs

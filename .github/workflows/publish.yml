@@ -296,7 +296,7 @@ jobs:
           echo "Exported digest: ${digest}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: digests-${{ matrix.artifact }}
           path: ${{ runner.temp }}/digests/*
@@ -636,7 +636,7 @@ jobs:
 
       - name: Upload pgflow setup logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pgflow-setup-logs-${{ github.sha }}
           path: ${{ runner.temp }}/pgflow-setup-logs
@@ -946,7 +946,7 @@ jobs:
 
       - name: Upload security scan failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: scan-failure-diagnostics-${{ github.sha }}
           path: ${{ runner.temp }}/scan-diagnostics/*

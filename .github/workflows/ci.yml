@@ -29,7 +29,7 @@
 # --------------------
 # - build job exports image as tarball artifact
 # - test jobs download and load image from artifact
-# - Uses actions/upload-artifact@v4 and actions/download-artifact@v4
+# - Uses actions/upload-artifact@v6 and actions/download-artifact@v4
 #
 # DIFFERENCES FROM build-postgres-image.yml:
 # -----------------------------------------
@@ -200,7 +200,7 @@ jobs:
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docker-image
           path: /tmp/aza-pg-ci-image.tar.gz

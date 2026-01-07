@@ -6,7 +6,7 @@
 
 # PostgreSQL 18.1 with comprehensive extension suite
 
-FROM postgres:18.1-trixie@sha256:38d5c9d522037d8bf0864c9068e4df2f8a60127c6489ab06f98fdeda535560f9 AS builder-base
+FROM postgres:18.1-trixie@sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -149,7 +149,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.1-trixie@sha256:38d5c9d522037d8bf0864c9068e4df2f8a60127c6489ab06f98fdeda535560f9
+FROM postgres:18.1-trixie@sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -279,12 +279,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
+# hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.57.0-1.pgdg13+1 pgbadger=13.1-2.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.57.0-1.pgdg13+1 pgbadger=13.1-2.pgdg13+1 && \
+    echo "Installing PGDG tools: pgbackrest=2.57.0-1.pgdg13+1 pgbadger" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.57.0-1.pgdg13+1 pgbadger && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
@@ -365,7 +366,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.11.0.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.13.0.sql /opt/pgflow/schema.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)
 RUN set -euo pipefail && \

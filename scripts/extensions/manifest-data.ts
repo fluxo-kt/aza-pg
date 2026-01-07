@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.1",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:38d5c9d522037d8bf0864c9068e4df2f8a60127c6489ab06f98fdeda535560f9",
+  baseImageSha: "sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d",
 } as const;
 
 export type SourceSpec =
@@ -773,15 +773,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.8.0",
+      tag: "v1.8.1",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Alt: Pigsty v1.5.1 (3 minor versions behind)",
-        "Source build for latest v1.8.0 with PG18 support",
+        "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
+        "Source build for latest v1.8.1 with PG18 support",
+        "v1.8.1: Fixed time-based archive partitioning, SQL typo fixes",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",
@@ -798,7 +799,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.11.0",
+      tag: "pgflow@0.13.0",
     },
     runtime: {
       sharedPreload: false,
@@ -814,7 +815,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
-      "v0.11.0: Phase 10 (map steps) and Phase 9 (worker deprecation) support",
+      "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
+      "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
       "Schema installed by default in postgres database",
       "Multi-database: Use separate database installations for workflow isolation",
     ],
@@ -1123,7 +1125,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgbadger",
     kind: "tool",
     install_via: "pgdg",
-    pgdgVersion: "13.1-2.pgdg13+1",
+    // No pgdgVersion: On Debian Trixie, "pgbadger" is a virtual package provided by percona-pgbadger.
+    // Version pinning doesn't work for virtual packages - apt resolves to percona-pgbadger automatically.
     category: "observability",
     description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
     source: {
@@ -1137,8 +1140,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
-        "PGDG: pgbadger (v13.1-2.pgdg13+1). Alt: Pigsty binary package.",
+        "CLI tool. NOT a PostgreSQL extension.",
+        "Trixie: Virtual package 'pgbadger' resolves to percona-pgbadger (v13.1).",
         "Binary installed to /usr/bin/pgbadger.",
       ],
     },

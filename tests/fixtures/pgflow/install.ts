@@ -26,7 +26,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FILE = join(__dirname, "schema-v0.11.0.sql");
+const SCHEMA_FILE = join(__dirname, "schema-v0.13.0.sql");
 
 /**
  * SQL to create a multi-layer replacement for Supabase Realtime.
@@ -450,4 +450,4 @@ export async function runSQL(
 
 // Export schema file path for direct access if needed
 export const PGFLOW_SCHEMA_PATH = SCHEMA_FILE;
-export const PGFLOW_VERSION = "0.11.0";
+export const PGFLOW_VERSION = "0.13.0";

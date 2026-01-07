@@ -358,7 +358,45 @@ await test("Archive message", async () => {
   assert(archive.stdout === "t", `Archive returned ${archive.stdout}, expected 't'`);
 });
 
-// Test 10: Visibility Timeout Behavior
+// Test 10: Archive to partitioned queue (v1.8.1 fix for time-based archive partitioning)
+await test("Archive to partitioned queue (v1.8.1)", async () => {
+  // Send message to partitioned queue (created in Test 2)
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_partitioned', '{\"action\": \"archive_partitioned_test\"}'::jsonb)"
+  );
+  assert(send.success, `Send to partitioned queue failed: ${send.stderr}`);
+
+  const msgId = parseInt(send.stdout);
+  assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
+
+  // Archive the message (v1.8.1 fixed time-based archive partitioning)
+  const archive = await runSQL(`SELECT pgmq.archive('test_queue_partitioned', ${msgId})`);
+  assert(archive.success, `Archive to partitioned queue failed: ${archive.stderr}`);
+  assert(archive.stdout === "t", `Archive returned ${archive.stdout}, expected 't'`);
+
+  // Verify archive table exists and contains the message
+  // v1.8.1 fix: archive tables now properly support archived_at column partitioning
+  const archiveCheck = await runSQL(
+    `SELECT count(*) FROM pgmq.a_test_queue_partitioned WHERE msg_id = ${msgId}`
+  );
+  assert(archiveCheck.success, `Archive table check failed: ${archiveCheck.stderr}`);
+  assert(
+    parseInt(archiveCheck.stdout) === 1,
+    `Expected 1 archived message, got ${archiveCheck.stdout}`
+  );
+
+  // Verify archived_at column is populated (key fix in v1.8.1)
+  const archivedAt = await runSQL(
+    `SELECT archived_at IS NOT NULL as has_timestamp FROM pgmq.a_test_queue_partitioned WHERE msg_id = ${msgId}`
+  );
+  assert(archivedAt.success, `Archived_at check failed: ${archivedAt.stderr}`);
+  assert(
+    archivedAt.stdout.trim() === "t",
+    `Expected archived_at to be populated (v1.8.1 fix), got: ${archivedAt.stdout}`
+  );
+});
+
+// Test 11: Visibility Timeout Behavior
 await test("Visibility timeout behavior", async () => {
   // Create a new queue for VT testing
   await runSQL("SELECT pgmq.create('test_queue_vt')");
@@ -388,7 +426,7 @@ await test("Visibility timeout behavior", async () => {
   assert(read3.stdout.length > 0, "Message not visible after VT expiration");
 });
 
-// Test 11: Set Visibility Timeout
+// Test 12: Set Visibility Timeout
 await test("Set visibility timeout", async () => {
   // Create queue and send message
   await runSQL("SELECT pgmq.create('test_queue_setvt')");
@@ -411,7 +449,7 @@ await test("Set visibility timeout", async () => {
   assert(read.stdout.includes(String(msgId)), `Expected msg_id ${msgId}, got: ${read.stdout}`);
 });
 
-// Test 12: Queue Metrics
+// Test 13: Queue Metrics
 await test("Queue metrics", async () => {
   // Get metrics for specific queue
   const metrics = await runSQL(
@@ -431,7 +469,7 @@ await test("Queue metrics", async () => {
   assert(queueCount >= 5, `Expected at least 5 queues, got ${queueCount}`);
 });
 
-// Test 13: Purge Queue
+// Test 14: Purge Queue
 await test("Purge queue", async () => {
   // Create queue and add messages
   await runSQL("SELECT pgmq.create('test_queue_purge')");
@@ -456,7 +494,7 @@ await test("Purge queue", async () => {
   assert(lengthAfter === 0, `Expected 0 messages after purge, got ${lengthAfter}`);
 });
 
-// Test 14: Drop Queue
+// Test 15: Drop Queue
 await test("Drop queue", async () => {
   // Drop all test queues
   const queues = [
@@ -481,7 +519,7 @@ await test("Drop queue", async () => {
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
 });
 
-// Test 15: Performance Benchmark - Message Throughput
+// Test 16: Performance Benchmark - Message Throughput
 await test("Performance benchmark - message throughput", async () => {
   // Create benchmark queue
   await runSQL("SELECT pgmq.create('benchmark_queue')");

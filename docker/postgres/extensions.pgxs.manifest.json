@@ -138,8 +138,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.8.0",
-        "commit": "857253160b7c25f99c21d879894235142b09e1ca"
+        "tag": "v1.8.1",
+        "commit": "12462bd29c2e4f59e58ac4840c2dcf0872d8c5c9"
       },
       "build": {
         "type": "pgxs",
@@ -149,8 +149,9 @@
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v1.5.1 (3 minor versions behind)",
-          "Source build for latest v1.8.0 with PG18 support"
+          "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
+          "Source build for latest v1.8.1 with PG18 support",
+          "v1.8.1: Fixed time-based archive partitioning, SQL typo fixes"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",

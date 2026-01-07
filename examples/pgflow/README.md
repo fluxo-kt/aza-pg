@@ -15,14 +15,14 @@ See the following documentation:
 The pgflow schema is maintained in test fixtures:
 
 ```text
-tests/fixtures/pgflow/schema-v0.11.0.sql
+tests/fixtures/pgflow/schema-v0.13.0.sql
 ```
 
 ## Quick Install
 
 ```bash
 # Download and install in your database
-psql -d your_project_db -f tests/fixtures/pgflow/schema-v0.11.0.sql
+psql -d your_project_db -f tests/fixtures/pgflow/schema-v0.13.0.sql
 ```
 
 ## Using npm Packages

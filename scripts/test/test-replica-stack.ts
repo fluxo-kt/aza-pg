@@ -874,8 +874,12 @@ async function main(): Promise<void> {
             for (const c of usingContainers) {
               await $`docker rm -f ${c}`.nothrow().quiet();
             }
-            await $`docker volume rm ${volume}`.nothrow().quiet();
-            info(`Removed volume: ${volume}`);
+            const rmResult = await $`docker volume rm ${volume}`.nothrow().quiet();
+            if (rmResult.exitCode === 0) {
+              info(`Removed volume: ${volume}`);
+            } else {
+              warning(`Failed to remove volume ${volume} after removing containers`);
+            }
           }
         }
       }

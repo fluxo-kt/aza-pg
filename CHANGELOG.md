@@ -29,6 +29,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - Updated `@pgflow/client` and `@pgflow/dsl` devDependencies to 0.13.0
 - Added tests for pgflow v0.13.0 atomic outputs
 - Added tests for pgmq v1.8.1 archive partitioning
+- Fixed test pre-cleanup to safely handle stale volumes without affecting production containers
 
 ---
 

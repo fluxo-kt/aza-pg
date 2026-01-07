@@ -96,44 +96,110 @@ async function main(): Promise<void> {
   const envTestPath = join(singleStackPath, ".env.test");
 
   // ============================================================
-  // PRE-TEST CLEANUP: Free port 5432 and clean up volumes
+  // PRE-TEST CLEANUP: Remove only TEST containers and their volumes
+  // SAFETY: Never touch production/dev containers that aren't test-related
   // ============================================================
-  info("Pre-test cleanup: ensuring port 5432 is free and cleaning up volumes...");
+  info("Pre-test cleanup: removing TEST containers and volumes only...");
+
+  // Patterns that identify test containers (safe to remove)
+  // IMPORTANT: Only add patterns here that are EXCLUSIVELY used by tests!
+  // Production containers should NEVER match these patterns
+  const TEST_CONTAINER_PATTERNS = [
+    // Stack tests
+    "aza-pg-single-test",
+    "aza-pg-replica-test",
+    // Integration tests
+    "aza-pg-extensions-test",
+    "aza-pg-test-",
+    "aza-pg-security-test",
+    "aza-pg-negative-",
+    "aza-pg-ext-smoke",
+    // Functional tests (all start with test- or specific prefixes)
+    "test-", // Covers test-*-extensions and similar
+    "pg-test-",
+    "pg-perf-",
+    "pg-disabled-test",
+    "pg-regression-test",
+    "ext-regression-test",
+    "ext-upgrade-test",
+    "ext-expected-gen",
+    "ext-version-test",
+    "interaction-test",
+    "shutdown-test",
+    "persist-test",
+    "tsdb-tsl-verify",
+    "smoke-test",
+    "pgflow-test",
+    "pg18-test",
+  ];
+  const isTestContainer = (name: string): boolean =>
+    TEST_CONTAINER_PATTERNS.some((p) => name.includes(p));
+
   try {
-    // Kill any containers using port 5432
-    const containersOnPort = await $`docker ps --filter "publish=5432" -q`.nothrow().quiet();
-    const containerIds = containersOnPort.text().trim();
-    if (containerIds) {
-      info(`Stopping containers using port 5432: ${containerIds.split("\n").join(", ")}`);
-      await $`docker kill ${containerIds.split("\n").join(" ")}`.nothrow().quiet();
-      await Bun.sleep(2000); // Wait for port release
-    }
+    // Stop all test project containers (ONLY test containers, not production!)
+    info("Stopping test containers...");
+    const allContainers = await $`docker ps -a --format "{{.Names}}"`.nothrow().quiet();
+    const testContainers = allContainers
+      .text()
+      .trim()
+      .split("\n")
+      .filter((n) => n.trim() && isTestContainer(n));
 
-    // Stop all test project containers (single and replica)
-    info("Stopping all test project containers...");
-    const singleTestContainers = await $`docker ps -a --filter "name=aza-pg-single-test" -q`
-      .nothrow()
-      .quiet();
-    const replicaTestContainers = await $`docker ps -a --filter "name=aza-pg-replica-test" -q`
-      .nothrow()
-      .quiet();
-    const allTestContainers = [
-      ...singleTestContainers.text().trim().split("\n"),
-      ...replicaTestContainers.text().trim().split("\n"),
-    ].filter((id) => id.trim());
-
-    if (allTestContainers.length > 0) {
-      info(`Removing ${allTestContainers.length} test containers`);
-      await $`docker rm -f ${allTestContainers.join(" ")}`.nothrow().quiet();
+    if (testContainers.length > 0) {
+      info(`Removing ${testContainers.length} test containers: ${testContainers.join(", ")}`);
+      for (const container of testContainers) {
+        await $`docker rm -f ${container}`.nothrow().quiet();
+      }
       await Bun.sleep(2000);
     }
 
-    // Clean up ALL orphaned volumes from test runs (more aggressive)
-    info("Cleaning up orphaned volumes from previous test runs...");
-    await $`docker volume prune -f --filter label=com.docker.compose.project`.nothrow().quiet();
+    // Try to remove test volumes (only if not used by non-test containers)
+    info("Cleaning up test volumes...");
+    const volumesToRemove = ["postgres_data", "postgres-replica-data", "postgres_backup"];
+    for (const volume of volumesToRemove) {
+      // Check if volume exists
+      const exists = await $`docker volume inspect ${volume}`.nothrow().quiet();
+      if (exists.exitCode !== 0) continue;
 
-    // Also remove specific volume names that might conflict (now that containers are stopped)
-    await $`docker volume rm postgres_data postgres-replica-data`.nothrow().quiet();
+      // Check what's using this volume
+      const usage = await $`docker ps -a --filter volume=${volume} --format "{{.Names}}"`
+        .nothrow()
+        .quiet();
+      const usingContainers = usage
+        .text()
+        .trim()
+        .split("\n")
+        .filter((n) => n.trim());
+
+      if (usingContainers.length === 0) {
+        // No containers using it, safe to remove
+        const result = await $`docker volume rm ${volume}`.nothrow().quiet();
+        if (result.exitCode === 0) {
+          info(`Removed orphaned volume: ${volume}`);
+        }
+      } else {
+        // Check if ALL containers using this volume are test containers
+        const nonTestContainers = usingContainers.filter((c) => !isTestContainer(c));
+        if (nonTestContainers.length > 0) {
+          warning(
+            `Volume ${volume} in use by non-test container(s): ${nonTestContainers.join(", ")}. ` +
+              `Skipping to protect data. Remove manually if needed.`
+          );
+        } else {
+          // All containers are test containers, remove them first then the volume
+          info(`Volume ${volume} used by test containers: ${usingContainers.join(", ")}`);
+          for (const c of usingContainers) {
+            await $`docker rm -f ${c}`.nothrow().quiet();
+          }
+          const rmResult = await $`docker volume rm ${volume}`.nothrow().quiet();
+          if (rmResult.exitCode === 0) {
+            info(`Removed volume: ${volume}`);
+          } else {
+            warning(`Failed to remove volume ${volume} after removing containers`);
+          }
+        }
+      }
+    }
 
     success("Pre-test cleanup completed");
   } catch (err) {

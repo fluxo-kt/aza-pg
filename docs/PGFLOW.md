@@ -1,6 +1,6 @@
 # pgflow Documentation
 
-Comprehensive guide to pgflow v0.9.0, a PostgreSQL-native DAG workflow orchestration engine with task queuing, dependencies, and retry logic.
+Comprehensive guide to pgflow v0.13.0, a PostgreSQL-native DAG workflow orchestration engine with task queuing, dependencies, and retry logic.
 
 ## Table of Contents
 
@@ -110,7 +110,7 @@ const MyWorkflow = new Flow<{ url: string }>({
 
 ```bash
 # Download combined schema
-VERSION="0.9.0"
+VERSION="0.13.0"
 curl -sL "https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas/combined.sql" \
   -o pgflow-${VERSION}.sql
 ```
@@ -119,7 +119,7 @@ curl -sL "https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION
 
 ```bash
 # Connect to your project database
-psql -d your_project_db -f pgflow-0.9.0.sql
+psql -d your_project_db -f pgflow-0.13.0.sql
 ```
 
 3. Verify installation:
@@ -149,10 +149,10 @@ CREATE DATABASE project_beta;
 
 -- Connect and install pgflow in each
 \c project_alpha
-\i pgflow-0.9.0.sql
+\i pgflow-0.13.0.sql
 
 \c project_beta
-\i pgflow-0.9.0.sql
+\i pgflow-0.13.0.sql
 ```
 
 Each database has completely independent:
@@ -165,9 +165,11 @@ Each database has completely independent:
 
 | pgflow | pgmq Required | PostgreSQL Required |
 | ------ | ------------- | ------------------- |
+| 0.13.0 | 1.8.0+        | 18+                 |
+| 0.12.0 | 1.8.0+        | 18+                 |
+| 0.11.0 | 1.8.0+        | 17+                 |
+| 0.10.0 | 1.5.1+        | 17+                 |
 | 0.9.0  | 1.5.1+        | 17+                 |
-| 0.8.1  | 1.5.0+        | 17+                 |
-| 0.7.2  | 1.4.x         | 14+                 |
 
 ### Schema Files
 
@@ -254,7 +256,7 @@ SELECT * FROM pgflow.start_flow(
 
 ### 5. Tasks
 
-A **task** is the actual work unit queued for execution. In v0.9.0, each step creates exactly 1 task (for 'single' steps) or multiple tasks (for 'map' steps). Actual work items created when steps become ready. Processed by workers.
+A **task** is the actual work unit queued for execution. In v0.13.0, each step creates exactly 1 task (for 'single' steps) or multiple tasks (for 'map' steps). Actual work items created when steps become ready. Processed by workers.
 
 ### 6. Workers
 
@@ -626,7 +628,7 @@ SELECT * FROM pgflow.start_flow(
 
 ### Task Processing (Worker Side)
 
-#### `pgflow.start_tasks()` (v0.9.0 recommended)
+#### `pgflow.start_tasks()` (v0.13.0 recommended)
 
 Marks tasks as started and returns task details.
 
@@ -1051,7 +1053,7 @@ $$;
 
 ## Real-Time Event Notifications
 
-pgflow v0.9.0 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
+pgflow v0.13.0 broadcasts events for workflow state changes. In Supabase environments, this uses Supabase Realtime. For non-Supabase deployments (like aza-pg), we provide a **pg_notify-based implementation** using PostgreSQL's native LISTEN/NOTIFY mechanism.
 
 ### Subscribing to Events
 
@@ -1454,14 +1456,14 @@ SELECT * FROM pgflow.complete_task(..., 'fetch_data', 0,
 
 ## Limitations
 
-### Current Version (v0.9.0)
+### Current Version (v0.13.0)
 
 The following features have limited support or workarounds:
 
 #### Missing Features
 
 1. **Map Steps (Phases 9-11)**
-   - ✅ v0.9.0 supports map steps with multiple tasks per step
+   - ✅ v0.13.0 supports map steps with multiple tasks per step
    - Parallel processing of array elements
    - Dynamic task count based on input array length
    - Use case: Process 1000 records in parallel
@@ -1506,7 +1508,7 @@ END $$;
 
 ### General Limitations
 
-1. **Multiple tasks per step**: v0.9.0 supports map steps with multiple tasks (task_index 0-N)
+1. **Multiple tasks per step**: v0.13.0 supports map steps with multiple tasks (task_index 0-N)
 2. **No cancellation**: No built-in workflow cancellation (must implement manually)
 3. **No pause/resume**: Workflows cannot be paused
 4. **No workflow versioning**: Schema changes affect all runs
@@ -1518,7 +1520,7 @@ END $$;
 
 This section documents how to update the pgflow test schema and verify compatibility with aza-pg.
 
-### Architecture Change (v0.9.0)
+### Architecture Change (v0.9.0+)
 
 **Important**: As of v0.9.0, pgflow is NO LONGER bundled in the Docker image.
 
@@ -1534,7 +1536,7 @@ The pgflow schema is maintained in test fixtures for validation:
 
 ```
 tests/fixtures/pgflow/
-├── schema-v0.11.0.sql   # Combined schema for testing
+├── schema-v0.13.0.sql   # Combined schema for testing
 ├── install.ts          # Installation helper
 └── README.md           # Update instructions
 ```
@@ -1558,19 +1560,19 @@ Use the schema generation script to fetch and validate all 21 schema files:
 
 ```bash
 # Generate schema for a specific version
-bun run pgflow:generate 0.9.0
+bun run pgflow:generate 0.13.0
 
 # With options
-bun run pgflow:generate 0.9.0 --update-install  # Also update install.ts
-bun run pgflow:generate 0.9.0 --dry-run         # Preview without writing
-bun run pgflow:generate 0.9.0 --verbose         # Show detailed progress
+bun run pgflow:generate 0.13.0 --update-install  # Also update install.ts
+bun run pgflow:generate 0.13.0 --dry-run         # Preview without writing
+bun run pgflow:generate 0.13.0 --verbose         # Show detailed progress
 ```
 
 The script:
 
 - Fetches all 21 schema files from the `pgflow@{version}` GitHub tag
 - Concatenates them in the correct order with source comments
-- Validates v0.9.0+ indicators (read_with_poll removed, set_vt_batch format, headers column)
+- Validates v0.9.0+ schema indicators (read_with_poll removed, set_vt_batch format, headers column)
 - Writes to `tests/fixtures/pgflow/schema-v{version}.sql`
 
 #### 3. Update References
@@ -1652,8 +1654,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Maintenance Notes
 
 **Last Updated**: 2025-11-30
-**Current Version**: v0.9.0
-**Schema Location**: `tests/fixtures/pgflow/schema-v0.11.0.sql`
+**Current Version**: v0.13.0
+**Schema Location**: `tests/fixtures/pgflow/schema-v0.13.0.sql`
 
 ---
 

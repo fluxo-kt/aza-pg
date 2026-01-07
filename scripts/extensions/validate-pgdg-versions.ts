@@ -169,8 +169,15 @@ function validatePgdgVersions(): ValidationResult {
 
     pgdgExtensionCount++;
 
-    // Check 1: pgdgVersion must be defined
+    // Check 1: pgdgVersion must be defined (except for tools/virtual packages)
+    // Tools like pgbadger on Debian Trixie are virtual packages that resolve to Percona packages.
+    // Version pinning doesn't work for virtual packages - they're installed without version.
     if (!entry.pgdgVersion) {
+      if (entry.kind === "tool") {
+        // Tools can skip pgdgVersion for virtual packages
+        validatedCount++;
+        continue;
+      }
       errors.push({
         extension: entry.name,
         error: "Missing pgdgVersion field",

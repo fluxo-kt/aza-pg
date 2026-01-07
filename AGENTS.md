@@ -142,8 +142,23 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Extensions**: Modules=preload-only (auto_explain) | Tools=no CREATE EXTENSION | Standard extensions=CREATE EXTENSION flow
 
+## Changelog
+
+**File**: `CHANGELOG.md` — Keep a Changelog format, integrated with GitHub releases
+
+**Workflow**:
+
+1. Track image-affecting changes in `[Unreleased]` section
+2. Focus on: extension updates, base image changes, breaking changes
+3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[18.1-202501071430-single-node]`)
+4. Start new `[Unreleased]` section for next changes
+5. Non-image changes (tests, tooling, CI): mention briefly in "Development" subsection
+
+**Categories**: Changed (updates) | Added (new features) | Fixed (bug fixes) | Removed | Security | Breaking
+
 ## References
 
+- CHANGELOG.md — Release history (image-affecting changes)
 - ARCHITECTURE.md — System design
 - docs/TESTING.md — Test patterns
 - docs/BUILD.md — CI/CD workflows

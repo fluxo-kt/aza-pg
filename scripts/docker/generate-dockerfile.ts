@@ -568,20 +568,22 @@ const PGDG_TOOL_BINARIES: Record<string, string> = {
 /**
  * Generate PGDG tool installation script
  * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
+ *
+ * Note: Version pinning is optional. Some tools (like pgbadger on Debian Trixie) are virtual
+ * packages that resolve to Percona packages, where direct version pinning doesn't work.
+ * Omit pgdgVersion in manifest for such virtual packages.
  */
 function generatePgdgToolsInstall(manifest: Manifest): string {
-  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
+  const enabledPgdgTools: Array<{ name: string; version: string | undefined; binary: string }> = [];
 
   for (const entry of manifest.entries) {
-    if (
-      entry.kind === "tool" &&
-      entry.install_via === "pgdg" &&
-      entry.pgdgVersion &&
-      (entry.enabled ?? true)
-    ) {
-      // Validate tool name and version for shell safety
+    if (entry.kind === "tool" && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
+      // Validate tool name for shell safety
       validatePackageName(entry.name, `PGDG tool name (${entry.name})`);
-      validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+      // Version is optional - validate only if provided
+      if (entry.pgdgVersion) {
+        validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+      }
 
       const binary = PGDG_TOOL_BINARIES[entry.name];
       if (!binary) {
@@ -603,12 +605,19 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     return `RUN echo "No PGDG tools enabled in manifest"`;
   }
 
-  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
+  // Build package list - only pin version if specified (virtual packages don't support version pinning)
+  const packagesList = enabledPgdgTools
+    .map((t) => (t.version ? `${t.name}=${t.version}` : t.name))
+    .join(" ");
   const binaryVerifications = enabledPgdgTools
     .map((t) => `test -x ${t.binary}`)
     .join(" && \\\n    ");
 
-  return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+  // Add hadolint ignore if any packages are unpinned (virtual packages)
+  const hasUnpinned = enabledPgdgTools.some((t) => !t.version);
+  const hadolintIgnore = hasUnpinned ? "# hadolint ignore=DL3008\n" : "";
+
+  return `${hadolintIgnore}RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
     apt-get update && \\

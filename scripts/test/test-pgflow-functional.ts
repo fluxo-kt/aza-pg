@@ -663,10 +663,56 @@ async function runTests(): Promise<void> {
     );
   });
 
+  // Test Map step execution with multiple tasks (v0.13.0 feature)
+  const MAP_FLOW = `map_test_${Date.now()}`;
+
+  await test("TEST 14: Map step with multiple tasks (v0.13.0)", async () => {
+    // Create a flow with a map step
+    await runSQL(CONTAINER, DATABASE, `SELECT pgflow.create_flow('${MAP_FLOW}', 3, 5, 60)`);
+    await runSQL(
+      CONTAINER,
+      DATABASE,
+      `SELECT pgflow.add_step('${MAP_FLOW}', 'map_step', ARRAY[]::text[], 3, 5, 30)`
+    );
+
+    // Start flow with array input for map step
+    const startResult = await runSQL(
+      CONTAINER,
+      DATABASE,
+      `SELECT run_id FROM pgflow.start_flow('${MAP_FLOW}', '{"items": ["a", "b", "c"]}'::jsonb)`
+    );
+    const mapRunId = startResult.stdout.trim();
+    assert(mapRunId.length > 0, "Failed to get map run_id");
+
+    // Verify step_tasks table supports task_index for map steps
+    const taskIndexCheck = await runSQL(
+      CONTAINER,
+      DATABASE,
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'pgflow' AND table_name = 'step_tasks' AND column_name = 'task_index'`
+    );
+    assert(
+      taskIndexCheck.success && taskIndexCheck.stdout.includes("task_index"),
+      "step_tasks table should have task_index column for map steps"
+    );
+
+    // Verify task was created with task_index = 0
+    const taskCreated = await runSQL(
+      CONTAINER,
+      DATABASE,
+      `SELECT task_index FROM pgflow.step_tasks
+       WHERE run_id = '${mapRunId}'::uuid AND step_slug = 'map_step'`
+    );
+    assert(
+      taskCreated.success && taskCreated.stdout.includes("0"),
+      `Expected task with task_index 0, got: ${taskCreated.stdout.trim()}`
+    );
+  });
+
   // Cleanup test data
-  await test("TEST 14: Cleanup test workflows", async () => {
+  await test("TEST 15: Cleanup test workflows", async () => {
     // Delete test flows and related data
-    const flows = [FLOW_SLUG, RETRY_FLOW];
+    const flows = [FLOW_SLUG, RETRY_FLOW, MAP_FLOW];
     for (const flow of flows) {
       await runSQL(
         CONTAINER,

@@ -126,7 +126,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                 | Version                                                        | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
 | ----------------------------------------- | -------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.8.0](https://github.com/tembo-io/pgmq/releases/tag/v1.8.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.8.1](https://github.com/tembo-io/pgmq/releases/tag/v1.8.1) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
 | [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)       | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
@@ -176,7 +176,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.11.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.11.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.13.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.13.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 

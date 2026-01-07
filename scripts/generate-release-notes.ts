@@ -40,6 +40,7 @@ import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
+const CHANGELOG_PATH = join(PROJECT_ROOT, "CHANGELOG.md");
 
 // GitHub repository info
 const REPO_OWNER = "fluxo-kt";
@@ -448,6 +449,55 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
 }
 
 /**
+ * Extract [Unreleased] section from CHANGELOG.md
+ * Returns the content between ## [Unreleased] and the next ## heading (or ---)
+ */
+async function extractUnreleasedChangelog(): Promise<string | null> {
+  const changelogFile = Bun.file(CHANGELOG_PATH);
+  if (!(await changelogFile.exists())) {
+    warning("CHANGELOG.md not found, skipping changelog section in release notes");
+    return null;
+  }
+
+  const content = await changelogFile.text();
+  const lines = content.split("\n");
+
+  let inUnreleased = false;
+  const unreleasedLines: string[] = [];
+
+  for (const line of lines) {
+    // Start capturing after ## [Unreleased]
+    if (line.match(/^## \[Unreleased\]/i)) {
+      inUnreleased = true;
+      continue;
+    }
+
+    // Stop at next section (## [...] or ---)
+    if (inUnreleased && (line.match(/^## \[/) || line.match(/^---/))) {
+      break;
+    }
+
+    if (inUnreleased) {
+      unreleasedLines.push(line);
+    }
+  }
+
+  // Trim empty lines from start and end
+  while (unreleasedLines.length > 0 && unreleasedLines[0]?.trim() === "") {
+    unreleasedLines.shift();
+  }
+  while (unreleasedLines.length > 0 && unreleasedLines[unreleasedLines.length - 1]?.trim() === "") {
+    unreleasedLines.pop();
+  }
+
+  if (unreleasedLines.length === 0) {
+    return null;
+  }
+
+  return unreleasedLines.join("\n");
+}
+
+/**
  * Generate Configuration section with collapsible subsections
  */
 function generateConfigurationSection(): string[] {
@@ -654,7 +704,12 @@ function generateConfigurationSection(): string[] {
 /**
  * Generate markdown release notes
  */
-function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: CategoryGroup[]): string {
+function generateMarkdown(
+  args: Args,
+  manifest: Manifest,
+  categoryGroups: CategoryGroup[],
+  changelogContent: string | null
+): string {
   const lines: string[] = [];
 
   // Extract version components
@@ -674,6 +729,25 @@ function generateMarkdown(args: Args, manifest: Manifest, categoryGroups: Catego
       `Auto-tuned for web, OLTP, analytics, and mixed workloads.`
   );
   lines.push("");
+
+  // What's Changed section from CHANGELOG.md (if available)
+  if (changelogContent) {
+    lines.push("## 📋 What's Changed");
+    lines.push("");
+    // Add changelog content as blockquote for visual distinction
+    const changelogLines = changelogContent.split("\n");
+    for (const line of changelogLines) {
+      // Convert ### headings to bold text within the blockquote
+      if (line.startsWith("### ")) {
+        lines.push(`> **${line.slice(4)}**`);
+      } else if (line.trim() === "") {
+        lines.push(">");
+      } else {
+        lines.push(`> ${line}`);
+      }
+    }
+    lines.push("");
+  }
 
   // GHCR Package Link (prominent)
   // Use package version ID if provided, otherwise fall back to digest short (legacy)
@@ -886,8 +960,11 @@ async function main() {
   // Group extensions by category
   const categoryGroups = groupByCategory(manifest);
 
+  // Extract changelog content from [Unreleased] section
+  const changelogContent = await extractUnreleasedChangelog();
+
   // Generate markdown
-  const markdown = generateMarkdown(args, manifest, categoryGroups);
+  const markdown = generateMarkdown(args, manifest, categoryGroups, changelogContent);
 
   // Write output
   const outputPath = join(PROJECT_ROOT, args.output);
@@ -898,6 +975,7 @@ async function main() {
   console.log(`  Tag: ${args.tag}`);
   console.log(`  Enabled extensions: ${args.catalogEnabled}`);
   console.log(`  Categories: ${categoryGroups.length}`);
+  console.log(`  Changelog: ${changelogContent ? "included" : "not found"}`);
 }
 
 main().catch((err) => {

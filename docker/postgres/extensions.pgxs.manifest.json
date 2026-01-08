@@ -80,6 +80,34 @@
       "docsUrl": "https://supabase.github.io/pg_net/"
     },
     {
+      "name": "pg_partman",
+      "kind": "extension",
+      "install_via": "source",
+      "category": "maintenance",
+      "description": "Declarative partition maintenance with optional background worker.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgpartman/pg_partman.git",
+        "tag": "v5.4.0",
+        "commit": "56a81503994ec5b22eb255f0d97af9fe6d11c4b5"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": true,
+        "defaultEnable": false,
+        "preloadInComprehensiveTest": true,
+        "preloadLibraryName": "pg_partman_bgw",
+        "notes": [
+          "Built from source (PGDG package not available for PG18)",
+          "Set pg_partman_bgw.role and interval to enable background worker."
+        ]
+      },
+      "sourceUrl": "https://github.com/pgpartman/pg_partman",
+      "docsUrl": "https://github.com/pgpartman/pg_partman#readme"
+    },
+    {
       "name": "pg_plan_filter",
       "kind": "tool",
       "category": "safety",

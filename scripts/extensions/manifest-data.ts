@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.1",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d",
+  baseImageSha: "sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2",
 } as const;
 
 export type SourceSpec =
@@ -799,7 +799,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.13.0",
+      tag: "pgflow@0.13.1",
     },
     runtime: {
       sharedPreload: false,
@@ -1010,14 +1010,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgVersion: "5.3.1-2.pgdg13+1",
+    install_via: "source",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.3.1",
+      tag: "v5.4.0",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1026,8 +1025,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
-        "Alt: Pigsty v5.3.1 (same version)",
+        "Built from source (PGDG package not available for PG18)",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
     },
@@ -1070,7 +1068,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "2.19-1.pgdg13+1",
+    pgdgVersion: "2.19-2.pgdg13+2",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {
@@ -1082,7 +1080,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)", "Alt: Pigsty v2.19 (same version)"],
+      notes: ["PGDG: postgresql-18-hll (v2.19-2.pgdg13+2)", "Alt: Pigsty v2.19 (same version)"],
     },
     sourceUrl: "https://github.com/citusdata/postgresql-hll",
     docsUrl: "https://github.com/citusdata/postgresql-hll#readme",
@@ -1132,7 +1130,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/darold/pgbadger.git",
-      tag: "v13.1",
+      tag: "v13.2",
     },
     build: { type: "make" },
     aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],

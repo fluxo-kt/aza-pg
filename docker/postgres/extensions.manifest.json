@@ -60,7 +60,7 @@
       "displayName": "postgresql-hll",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "2.19-1.pgdg13+1",
+      "pgdgVersion": "2.19-2.pgdg13+2",
       "category": "analytics",
       "description": "HyperLogLog probabilistic counting data type.",
       "source": {
@@ -76,7 +76,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)",
+          "PGDG: postgresql-18-hll (v2.19-2.pgdg13+2)",
           "Alt: Pigsty v2.19 (same version)"
         ]
       },
@@ -296,15 +296,14 @@
     {
       "name": "pg_partman",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "5.3.1-2.pgdg13+1",
+      "install_via": "source",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.3.1",
-        "commit": "b5be3ddac25e809e5e23469124f7eb6463d44406"
+        "tag": "v5.4.0",
+        "commit": "56a81503994ec5b22eb255f0d97af9fe6d11c4b5"
       },
       "build": {
         "type": "pgxs"
@@ -315,8 +314,7 @@
         "preloadInComprehensiveTest": true,
         "preloadLibraryName": "pg_partman_bgw",
         "notes": [
-          "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
-          "Alt: Pigsty v5.3.1 (same version)",
+          "Built from source (PGDG package not available for PG18)",
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
       },
@@ -547,8 +545,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/darold/pgbadger.git",
-        "tag": "v13.1",
-        "commit": "8a2b87193cbf80bc426e584c238aefa581af5fe8"
+        "tag": "v13.2",
+        "commit": "4fb2ba0d2bb176c087e25224b4da337dcae0cca7"
       },
       "build": {
         "type": "make"
@@ -581,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.0",
-        "commit": "f6c8f9c4d0841d6556655b2e3300546f27aa541d"
+        "tag": "pgflow@0.13.1",
+        "commit": "b09543c2d4c2e0a0eb2e0f5162af4decb3e61c32"
       },
       "runtime": {
         "sharedPreload": false,

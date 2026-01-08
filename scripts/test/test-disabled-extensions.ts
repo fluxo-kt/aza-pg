@@ -23,21 +23,8 @@ import {
   ensureImageAvailable,
   waitForPostgres,
 } from "../utils/docker";
+import { MANIFEST_PATH, type Manifest } from "../docker/test-image-lib";
 import { error, info, success } from "../utils/logger.ts";
-
-interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  kind?: string;
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
 
 // Test counters
 let testsPassed = 0;
@@ -52,72 +39,26 @@ const TEST_POSTGRES_PASSWORD =
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 
 // Paths
-const MANIFEST_PATH = `${import.meta.dir}/../../docker/postgres/extensions.manifest.json`;
 const INIT_SQL_PATH = "/docker-entrypoint-initdb.d/01-extensions.sql";
 const PG_LIB_DIR = "/usr/lib/postgresql/18/lib";
 const PG_EXT_DIR = "/usr/share/postgresql/18/extension";
 
 /**
- * Get disabled extensions from manifest by parsing it inside a container
+ * Get disabled extensions from manifest (cached)
+ * @param manifest - Pre-loaded manifest to avoid redundant file reads
  */
-async function getDisabledExtensions(containerName: string): Promise<string[]> {
-  try {
-    // Copy manifest into container
-    await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
-
-    // Parse manifest using Python inside container
-    const pythonCode = `import json
-manifest = json.load(open('/tmp/manifest.json'))
-disabled = [e['name'] for e in manifest['entries'] if e.get('enabled') == False]
-print(' '.join(disabled))
-`;
-    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    proc.stdin.write(pythonCode);
-    proc.stdin.end();
-    const result = await new Response(proc.stdout).text();
-
-    const disabled = result.trim();
-    return disabled ? disabled.split(" ") : [];
-  } catch (err) {
-    throw new Error(`Failed to get disabled extensions: ${err}`);
-  }
+function getDisabledExtensions(manifest: Manifest): string[] {
+  return manifest.entries.filter((e) => e.enabled === false).map((e) => e.name);
 }
 
 /**
- * Get disabled extensions (excluding tools) from manifest
+ * Get disabled extensions (excluding tools) from manifest (cached)
+ * @param manifest - Pre-loaded manifest to avoid redundant file reads
  */
-async function getDisabledExtensionsExcludingTools(containerName: string): Promise<string[]> {
-  try {
-    await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
-
-    const pythonCode = `import json
-manifest = json.load(open('/tmp/manifest.json'))
-disabled = []
-for e in manifest['entries']:
-    enabled = e.get('enabled', True)
-    kind = e.get('kind', 'extension')
-    if not enabled and kind != 'tool':
-        disabled.append(e['name'])
-print(' '.join(disabled))
-`;
-    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    proc.stdin.write(pythonCode);
-    proc.stdin.end();
-    const result = await new Response(proc.stdout).text();
-
-    const disabled = result.trim();
-    return disabled ? disabled.split(" ") : [];
-  } catch (err) {
-    throw new Error(`Failed to get disabled extensions (excluding tools): ${err}`);
-  }
+function getDisabledExtensionsExcludingTools(manifest: Manifest): string[] {
+  return manifest.entries
+    .filter((e) => e.enabled === false && (e.kind ?? "extension") !== "tool")
+    .map((e) => e.name);
 }
 
 /**
@@ -127,20 +68,23 @@ async function test1(): Promise<boolean> {
   info("Test 1: Verify disabled extensions NOT in 01-extensions.sql");
   console.log("-------------------------------------------------------");
 
-  // Check manifest exists
+  // Load manifest once (cached for entire test)
   const manifestFile = Bun.file(MANIFEST_PATH);
   if (!(await manifestFile.exists())) {
     error(`Manifest not found: ${MANIFEST_PATH}`);
     return false;
   }
 
-  // Create container to parse manifest
-  const containerName = `pg-disabled-test1-${process.pid}`;
+  let manifest: Manifest;
   try {
-    await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
 
-    const disabledExts = await getDisabledExtensions(containerName);
-    await dockerCleanup(containerName);
+  try {
+    const disabledExts = getDisabledExtensions(manifest);
 
     if (disabledExts.length === 0) {
       info("No disabled extensions found in manifest (all enabled)");
@@ -174,7 +118,9 @@ async function test1(): Promise<boolean> {
     // Verify each disabled extension is NOT in init script
     let foundDisabled = false;
     for (const ext of disabledExts) {
-      const regex = new RegExp(`CREATE EXTENSION.*${ext}[; ]`);
+      // Escape special regex characters and use word boundaries
+      const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`CREATE EXTENSION[^;]*\\b${escapedExt}\\b`);
       if (regex.test(initSql)) {
         error(`Disabled extension '${ext}' found in ${INIT_SQL_PATH}`);
         foundDisabled = true;
@@ -193,7 +139,6 @@ async function test1(): Promise<boolean> {
       return false;
     }
   } catch (err) {
-    await dockerCleanup(containerName);
     error(`Test 1 failed with error: ${err}`);
     return false;
   }
@@ -206,11 +151,21 @@ async function test2(): Promise<boolean> {
   info("Test 2: Verify disabled extensions NOT in final image");
   console.log("-------------------------------------------------------");
 
+  // Load manifest once (cached for entire test)
+  const manifestFile = Bun.file(MANIFEST_PATH);
+  let manifest: Manifest;
+  try {
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
+
   const containerName = `pg-disabled-test2-${process.pid}`;
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
 
-    const disabledExts = await getDisabledExtensions(containerName);
+    const disabledExts = getDisabledExtensions(manifest);
 
     if (disabledExts.length === 0) {
       await dockerCleanup(containerName);
@@ -399,6 +354,16 @@ async function test5(): Promise<boolean> {
   info("Test 5: Manual CREATE EXTENSION fails for disabled extensions");
   console.log("-------------------------------------------------------");
 
+  // Load manifest once (cached for entire test)
+  const manifestFile = Bun.file(MANIFEST_PATH);
+  let manifest: Manifest;
+  try {
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
+
   const containerName = `pg-disabled-test5-${process.pid}`;
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
@@ -418,7 +383,7 @@ async function test5(): Promise<boolean> {
       return false;
     }
 
-    const disabledExtensions = await getDisabledExtensionsExcludingTools(containerName);
+    const disabledExtensions = getDisabledExtensionsExcludingTools(manifest);
 
     if (disabledExtensions.length === 0) {
       await dockerCleanup(containerName);
@@ -434,35 +399,51 @@ async function test5(): Promise<boolean> {
     let testPassed = true;
     for (const ext of disabledExtensions) {
       try {
-        const result =
-          await $`docker exec ${containerName} psql -U postgres -t -c "CREATE EXTENSION IF NOT EXISTS ${ext};"`.text();
+        // Use spawn to capture both stdout and stderr
+        const proc = Bun.spawn(
+          [
+            "docker",
+            "exec",
+            containerName,
+            "psql",
+            "-U",
+            "postgres",
+            "-t",
+            "-c",
+            `CREATE EXTENSION IF NOT EXISTS ${ext};`,
+          ],
+          { stdout: "pipe", stderr: "pipe" }
+        );
 
-        // Should fail with "could not open extension control file" because .control was removed
-        if (
-          result.includes("could not open extension control file") ||
-          result.includes("does not exist")
-        ) {
-          info(`✓ Extension '${ext}' correctly fails: control file removed`);
-        } else if (result.includes("ERROR")) {
-          info(`✓ Extension '${ext}' correctly fails: ${result.trim()}`);
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        // Combine stdout and stderr for checking
+        const output = stdout + stderr;
+
+        // Extension should fail because control file was removed
+        if (exitCode !== 0) {
+          // Expected failure - check error message
+          if (
+            output.includes("could not open extension control file") ||
+            output.includes("does not exist") ||
+            output.includes("ERROR")
+          ) {
+            info(`✓ Extension '${ext}' correctly fails: control file removed`);
+          } else {
+            error(`Extension '${ext}' failed with unexpected error`);
+            error(`Output: ${output.trim()}`);
+            testPassed = false;
+          }
         } else {
-          error(`Extension '${ext}' unexpectedly succeeded or gave unexpected output`);
-          error(`Output: ${result}`);
+          error(`Extension '${ext}' unexpectedly succeeded`);
+          error(`Output: ${output}`);
           testPassed = false;
         }
       } catch (err) {
-        // Command failed (expected) - check error message
-        const errorMsg = String(err);
-        if (
-          errorMsg.includes("could not open extension control file") ||
-          errorMsg.includes("does not exist") ||
-          errorMsg.includes("ERROR")
-        ) {
-          info(`✓ Extension '${ext}' correctly fails: control file removed`);
-        } else {
-          error(`Extension '${ext}' gave unexpected error: ${errorMsg}`);
-          testPassed = false;
-        }
+        error(`Failed to test extension '${ext}': ${err}`);
+        testPassed = false;
       }
     }
 

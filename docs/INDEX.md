@@ -39,11 +39,11 @@ Quick navigation for aza-pg documentation.
 
 ## Extension-Specific
 
-| Document                                     | Description                              |
-| -------------------------------------------- | ---------------------------------------- |
-| [PGFLOW.md](PGFLOW.md)                       | pgflow workflow extension                |
-| [TIMESCALEDB-TSL.md](TIMESCALEDB-TSL.md)     | TimescaleDB TSL license features         |
-| [EXTENSION-SOURCES.md](EXTENSION-SOURCES.md) | Extension source types, PGDG vs compiled |
+| Document                                     | Description                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| [PGFLOW.md](PGFLOW.md)                       | pgflow v0.13.1 workflow orchestration, Supabase compatibility layer |
+| [TIMESCALEDB-TSL.md](TIMESCALEDB-TSL.md)     | TimescaleDB TSL license features                                    |
+| [EXTENSION-SOURCES.md](EXTENSION-SOURCES.md) | Extension source types, PGDG vs compiled                            |
 
 ## Generated
 

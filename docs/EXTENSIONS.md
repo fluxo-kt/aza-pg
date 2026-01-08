@@ -92,7 +92,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.3.1](https://github.com/pgpartman/pg_partman/releases/tag/v5.3.1)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.0](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.0)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
 | [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
 
 ### observability
@@ -100,7 +100,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
 | [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.1](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.1) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
-| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.1](https://github.com/darold/pgbadger/releases/tag/v13.1)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
+| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.2](https://github.com/darold/pgbadger/releases/tag/v13.2)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
 
@@ -176,7 +176,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.13.0](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.13.0) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.13.1](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.13.1) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 

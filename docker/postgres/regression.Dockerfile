@@ -7,7 +7,7 @@
 # PostgreSQL 18.1 Regression Test Image
 # Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
-FROM postgres:18.1-trixie@sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d AS builder-base
+FROM postgres:18.1-trixie@sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2 AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -149,7 +149,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final regression test image
-FROM postgres:18.1-trixie@sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d
+FROM postgres:18.1-trixie@sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -188,9 +188,9 @@ RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
-    echo "Installing PGDG packages (regression mode): 13 packages" && \
+    echo "Installing PGDG packages (regression mode): 12 packages" && \
     (apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-hll=2.19-1.pgdg13+1 && echo "✓ Installed: postgresql-18-hll=2.19-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-hll=2.19-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-hll=2.19-2.pgdg13+2 && echo "✓ Installed: postgresql-18-hll=2.19-2.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-hll=2.19-2.pgdg13+2" && \
     (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgvector=0.8.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgvector=0.8.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgvector=0.8.1-2.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-rum=1.3.15-1.pgdg13+1 && echo "✓ Installed: postgresql-18-rum=1.3.15-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-rum=1.3.15-1.pgdg13+1" && \
@@ -201,7 +201,6 @@ RUN set -euo pipefail && \
     (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.0-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-partman=5.3.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.3.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.3.1-2.pgdg13+1" && \
     # Report what was installed
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \

@@ -3,16 +3,16 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Validation checks (parallel) - 22 checks (unit tests, linting, config validation, manifest sync, PGDG, SQL)
- * 2. Build tests (sequential) - 4 checks (build, size, extension count, build tests)
- * 3. Functional tests (sequential) - 22 checks (extension loading, auto-config, stacks, verification, integration, security)
+ * 1. Validation checks (parallel) - unit tests, linting, config validation, manifest sync, PGDG, SQL
+ * 2. Build tests (sequential) - build, size, extension count, build tests
+ * 3. Functional tests (sequential) - extension loading, auto-config, stacks, verification, integration, security, pgflow
  *
- * Total: 48 checks across validation, build, and functional categories
+ * Check counts are derived from allChecks array (see end of file for complete list)
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (48 checks)
- *   bun scripts/test-all.ts --fast       # Validation only (22 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (47 checks)
+ *   bun scripts/test-all.ts              # Full test suite (all checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (validation checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (all except build)
  *
  * Exit code: 0 only if ALL critical tests pass
  */
@@ -943,6 +943,65 @@ const allChecks: Check[] = [
       ].join("; "),
     ],
     description: "Test pgflow per-database isolation for multi-project deployments",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "pgflow Security Patches",
+    category: "functional",
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-pgflow-security.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
+    description: "Verify pgflow security patches (SET search_path on SECURITY DEFINER functions)",
+    critical: true,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "pgflow New Database Inheritance",
+    category: "functional",
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-pgflow-new-database.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
+    description:
+      "Verify pgflow and realtime.send() work in newly created databases via template1 inheritance",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "pgflow Without supabase_vault",
+    category: "functional",
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-pgflow-without-vault.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
+    description:
+      "Verify pgflow works when supabase_vault extension is not available (optional dependency)",
+    critical: false,
+    requiresDocker: true,
+    requiresBuild: true,
+    timeout: 180000, // 3 minutes
+  },
+  {
+    name: "realtime.send() Graceful Degradation",
+    category: "functional",
+    command: [
+      "sh",
+      "-c",
+      "bun scripts/test/test-realtime-send-degradation.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
+    ],
+    description:
+      "Verify realtime.send() degrades gracefully when optional extensions (pgmq, pg_net) are missing",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,

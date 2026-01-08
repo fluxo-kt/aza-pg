@@ -1,36 +1,51 @@
-# pgflow Example
+# pgflow v0.13.1 - Quick Reference
 
-Reference for pgflow SQL schema and installation.
+> **📖 Complete Documentation**: See **[docs/PGFLOW.md](../../docs/PGFLOW.md)** for the full guide
 
-## Important: Per-Project Installation
+## Status in aza-pg
 
-As of v0.9.0, pgflow is **NOT bundled** in the aza-pg Docker image. You must install it per-project.
+**pgflow v0.13.1 is bundled** and automatically installed in:
 
-See the following documentation:
+- ✅ Initial database (via `POSTGRES_DB`)
+- ✅ All new databases (via template1 inheritance)
 
-- **[PGFLOW.md](../../docs/PGFLOW.md)** - Complete guide (installation, usage, update procedures)
+## Quick Verification
 
-## Schema Location
+```sql
+-- Verify installation
+SELECT pgflow.is_local();  -- Returns: t (true)
 
-The pgflow schema is maintained in test fixtures:
-
-```text
-tests/fixtures/pgflow/schema-v0.13.0.sql
+-- List tables
+\dt pgflow.*
 ```
 
-## Quick Install
+## Usage
 
-```bash
-# Download and install in your database
-psql -d your_project_db -f tests/fixtures/pgflow/schema-v0.13.0.sql
-```
-
-## Using npm Packages
-
-For TypeScript projects, use the official packages:
+pgflow uses a TypeScript DSL for workflow definition:
 
 ```bash
 bun add @pgflow/dsl @pgflow/client
 ```
 
-See [@pgflow/dsl](https://www.npmjs.com/package/@pgflow/dsl) documentation for DSL usage.
+See:
+
+- **[docs/PGFLOW.md](../../docs/PGFLOW.md)** - Complete aza-pg integration guide
+- **[pgflow.dev](https://pgflow.dev)** - Official pgflow documentation
+- **[@pgflow/dsl](https://www.npmjs.com/package/@pgflow/dsl)** - TypeScript DSL package
+
+## Schema Files
+
+Located in `tests/fixtures/pgflow/`:
+
+- `schema-v0.13.1.sql` - pgflow schema
+- `README.md` - Schema usage notes
+
+## Compatibility Layer
+
+aza-pg provides Supabase-to-PostgreSQL compatibility:
+
+- `realtime.send()` stub (3-layer event broadcasting)
+- Security patches (search_path fixes)
+- Custom installation detection
+
+Details in [docs/PGFLOW.md](../../docs/PGFLOW.md).

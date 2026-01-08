@@ -19,6 +19,37 @@
 - **Dockerfile is auto-generated** from template + manifest (NEVER edit directly)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`) — ⚠️ NEVER use testing images in production
 
+## AI Agent Knowledge Updates (Post-Training Facts)
+
+**Critical context for AI agents with training cutoffs before 2025:**
+
+### Debian/PostgreSQL Timeline
+
+| Fact                                 | Detail                              |
+| ------------------------------------ | ----------------------------------- |
+| Debian 13 "Trixie" = STABLE LTS      | Released Aug 9, 2025 (NOT testing!) |
+| PostgreSQL 18 is RELEASED            | GA Sep 25, 2025; 18.1 Nov 13, 2025  |
+| Bookworm (Debian 12) still supported | LTS until Jun 2028                  |
+| i386 architecture DROPPED            | First time in Debian history        |
+
+### Extension Compatibility (PG18)
+
+| Extension        | Status                           |
+| ---------------- | -------------------------------- |
+| `pg_plan_filter` | INCOMPATIBLE - last updated PG13 |
+| `citus`          | FAILS TO BUILD                   |
+| `periods`        | OBSOLETE - now in PG18 core      |
+| `pgvector`       | Still 0.8.x (0.9 NOT released)   |
+| `pgrx`           | Requires Rust 1.88.0+ (v0.16.1)  |
+
+### Version String Formats
+
+| Format Type          | Example                | Notes                    |
+| -------------------- | ---------------------- | ------------------------ |
+| **Percona epochs**   | `1:2.3.1-2.trixie`     | The `1:` prefix matters! |
+| **Timescale tildes** | `2.24.0~debian13-1801` | Uses a `~` separator     |
+| **PGDG suffix**      | `0.8.1-2.pgdg13+1`     | Uses a `+` for revisions |
+
 ## Paths & Fast Commands
 
 ```bash
@@ -54,7 +85,7 @@ bun run generate            # Regenerate all files from manifest
 - **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
 - **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild
-- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically (auto-validated)
+- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime

@@ -403,7 +403,7 @@ async function runTestScenario(
     const postgresImage = Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
     const pgbouncerImage =
       Bun.env.PGBOUNCER_IMAGE ??
-      "edoburu/pgbouncer:v1.24.1-p1@sha256:05079fdfb279bd35782509ec1738932a94414c6cb06dcc4d9bb647f5b1a28a13";
+      "edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4";
     await Promise.all([
       $`docker pull ${postgresImage}`.quiet().nothrow(),
       $`docker pull ${pgbouncerImage}`.quiet().nothrow(),

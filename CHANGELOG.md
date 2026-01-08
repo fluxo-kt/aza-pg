@@ -10,16 +10,6 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-### Changed
-
-### Added
-
-### Fixed
-
-### Security
-
-### Development (non-image)
-
 ---
 
 ## [18.1-202601081823-single-node] - 2026-01-08

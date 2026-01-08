@@ -155,6 +155,7 @@ Container publication
   - https://www.docker.com/blog/docker-hardened-images-for-every-developer/
 - Available PG containers: https://www.perplexity.ai/search/NwhAMhApQAiqjQiKTlSCXw
 - https://github.com/percona/postgres-packaging
+- https://render.com/docs/postgresql-extensions
 - https://github.com/supabase/postgres
 - https://ext.pgsty.com/list/
 - https://github.com/cloudnative-pg/postgres-containers

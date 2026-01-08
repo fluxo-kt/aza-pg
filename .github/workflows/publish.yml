@@ -1365,8 +1365,33 @@ jobs:
             --verify-tag || {
               echo "⚠️ Tag v${{ needs.prep.outputs.version_tag }} does not exist yet"
               echo "Creating lightweight tag for release..."
-              git tag "v${{ needs.prep.outputs.version_tag }}"
-              git push origin "v${{ needs.prep.outputs.version_tag }}"
+
+              RELEASE_TAG="v${{ needs.prep.outputs.version_tag }}"
+              EXPECTED_COMMIT="${{ github.sha }}"
+
+              # Verify we're on the expected commit before creating tag
+              ACTUAL_COMMIT=$(git rev-parse HEAD)
+              if [ "$EXPECTED_COMMIT" != "$ACTUAL_COMMIT" ]; then
+                echo "❌ Commit mismatch: expected $EXPECTED_COMMIT, got $ACTUAL_COMMIT"
+                exit 1
+              fi
+
+              # Create and push tag atomically
+              git tag "$RELEASE_TAG" "$EXPECTED_COMMIT"
+              if ! git push origin "$RELEASE_TAG"; then
+                echo "❌ Failed to push tag $RELEASE_TAG"
+                exit 1
+              fi
+
+              # Verify push succeeded with correct commit
+              git fetch origin "$RELEASE_TAG"
+              PUSHED_COMMIT=$(git rev-parse "$RELEASE_TAG")
+              if [ "$EXPECTED_COMMIT" != "$PUSHED_COMMIT" ]; then
+                echo "❌ Tag push verification failed: expected $EXPECTED_COMMIT, got $PUSHED_COMMIT"
+                exit 1
+              fi
+
+              echo "✅ Tag created and verified: $RELEASE_TAG → $EXPECTED_COMMIT"
 
               # Retry release creation
               gh release create "v${{ needs.prep.outputs.version_tag }}" \

@@ -212,6 +212,36 @@ export interface InstallResult {
 }
 
 /**
+ * Get the configured cron.database_name setting from PostgreSQL.
+ * pg_cron can only be created in the database matching this setting.
+ */
+async function getCronDatabaseName(
+  container: string,
+  user: string = "postgres"
+): Promise<string | null> {
+  const sql = `SELECT current_setting('cron.database_name', true)`;
+  const result = await runSQL(container, "postgres", sql, user);
+  if (!result.success || !result.stdout.trim()) {
+    return null;
+  }
+  return result.stdout.trim();
+}
+
+/**
+ * Check if a specific extension exists in a database.
+ */
+async function checkExtension(
+  container: string,
+  database: string,
+  extname: string,
+  user: string = "postgres"
+): Promise<boolean> {
+  const sql = `SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '${extname}')`;
+  const result = await runSQL(container, database, sql, user);
+  return result.success && result.stdout.trim() === "t";
+}
+
+/**
  * Install pgflow schema into a PostgreSQL database via Docker container.
  * Automatically creates a pg_notify-based realtime.send() for non-Supabase deployments.
  */
@@ -263,9 +293,41 @@ export async function installPgflowSchema(
       };
     }
 
-    // Step 2: Read and install pgflow schema
-    const schemaContent = await Bun.file(SCHEMA_FILE).text();
+    // Step 2: Read and prepare pgflow schema
+    let schemaContent = await Bun.file(SCHEMA_FILE).text();
 
+    // Step 2a: Handle pg_cron database mismatch (defensive layer)
+    // pg_cron can ONLY be created in database matching cron.database_name
+    const cronDB = await getCronDatabaseName(container, user);
+
+    if (cronDB && database !== cronDB) {
+      // Target database differs from cron.database_name
+      // Filter out pg_cron creation line to prevent error
+      const originalContent = schemaContent;
+      schemaContent = schemaContent.replace(
+        /CREATE EXTENSION\s+if\s+NOT\s+EXISTS\s+pg_cron;?\s*/gi,
+        `-- pg_cron exists in database '${cronDB}' (cron.database_name)\n`
+      );
+
+      // Verify pg_cron exists where expected
+      const cronExists = await checkExtension(container, cronDB, "pg_cron", user);
+      if (!cronExists) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: `pgflow requires pg_cron extension, but it was not found in configured database '${cronDB}' (cron.database_name). Please ensure pg_cron is installed.`,
+        };
+      }
+
+      // Log filtering for diagnostics
+      if (originalContent !== schemaContent) {
+        console.warn(
+          `[pgflow] Filtered pg_cron from schema (target: ${database}, cron.database_name: ${cronDB})`
+        );
+      }
+    }
+
+    // Step 3: Install prepared schema
     const proc = Bun.spawn(
       [
         "docker",

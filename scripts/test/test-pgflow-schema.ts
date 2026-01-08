@@ -32,9 +32,14 @@ const CONTAINER = useExistingContainer
   ? existingContainer!
   : `test-pgflow-schema-${Date.now()}-${process.pid}`;
 
-// pg_cron can only be created in the database configured in cron.database_name (default: postgres)
-// So we use the postgres database for testing
-const DATABASE = "postgres";
+// pg_cron can only be created in cron.database_name, which follows POSTGRES_DB
+// We default to 'postgres' (PostgreSQL default) unless a specific database is requested
+// Both pg_cron and pgflow schema are installed in the same database (POSTGRES_DB)
+const DATABASE =
+  process.env.TEST_DATABASE ||
+  Bun.argv.find((a) => a.startsWith("--database="))?.split("=")[1] ||
+  "postgres";
+
 const imageTag = !useExistingContainer ? resolveImageTag() : null;
 
 // ============================================================================
@@ -158,13 +163,16 @@ async function runTests(): Promise<void> {
 
   await startContainer();
 
-  // Setup - when using postgres database, just clean up existing pgflow schema
-  if (DATABASE === "postgres") {
+  // Setup - clean existing pgflow schema or create database
+  if (DATABASE === "postgres" || useExistingContainer) {
+    // When using postgres OR existing container, just clean schema
+    // (can't drop database you're connected to or container's default database)
     await test("Clean existing pgflow schema", async () => {
       // Drop pgflow schema if it exists from previous test runs
       await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
     });
   } else {
+    // When creating own container with non-postgres database, fully recreate it
     await test("Create test database", async () => {
       await dropDatabase(CONTAINER, DATABASE);
       const created = await createDatabase(CONTAINER, DATABASE);

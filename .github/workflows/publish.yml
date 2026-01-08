@@ -11,7 +11,7 @@ concurrency:
 
 permissions:
   contents: write # Required for creating GitHub Releases
-  packages: write
+  packages: write # Includes read permission for GHCR operations
   id-token: write # Required for Sigstore certificate (Cosign + attestations)
   attestations: write # Required for v3 attestation persistence
   security-events: write
@@ -302,6 +302,10 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
+
+      - name: Set up Bun (for cache monitoring)
+        if: always()
+        uses: ./.github/actions/setup-bun
 
       - name: Monitor cache usage
         if: always()
@@ -648,7 +652,7 @@ jobs:
           set -euo pipefail
           echo "Testing pgflow (per-project installation)..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
-          bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test
+          bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test --database=pgflow_test
           bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test --database=pgflow_test
 
       - name: Test PgBouncer healthcheck
@@ -1361,8 +1365,33 @@ jobs:
             --verify-tag || {
               echo "⚠️ Tag v${{ needs.prep.outputs.version_tag }} does not exist yet"
               echo "Creating lightweight tag for release..."
-              git tag "v${{ needs.prep.outputs.version_tag }}"
-              git push origin "v${{ needs.prep.outputs.version_tag }}"
+
+              RELEASE_TAG="v${{ needs.prep.outputs.version_tag }}"
+              EXPECTED_COMMIT="${{ github.sha }}"
+
+              # Verify we're on the expected commit before creating tag
+              ACTUAL_COMMIT=$(git rev-parse HEAD)
+              if [ "$EXPECTED_COMMIT" != "$ACTUAL_COMMIT" ]; then
+                echo "❌ Commit mismatch: expected $EXPECTED_COMMIT, got $ACTUAL_COMMIT"
+                exit 1
+              fi
+
+              # Create and push tag atomically
+              git tag "$RELEASE_TAG" "$EXPECTED_COMMIT"
+              if ! git push origin "$RELEASE_TAG"; then
+                echo "❌ Failed to push tag $RELEASE_TAG"
+                exit 1
+              fi
+
+              # Verify push succeeded with correct commit
+              git fetch origin "$RELEASE_TAG"
+              PUSHED_COMMIT=$(git rev-parse "$RELEASE_TAG")
+              if [ "$EXPECTED_COMMIT" != "$PUSHED_COMMIT" ]; then
+                echo "❌ Tag push verification failed: expected $EXPECTED_COMMIT, got $PUSHED_COMMIT"
+                exit 1
+              fi
+
+              echo "✅ Tag created and verified: $RELEASE_TAG → $EXPECTED_COMMIT"
 
               # Retry release creation
               gh release create "v${{ needs.prep.outputs.version_tag }}" \

@@ -156,12 +156,17 @@ jobs:
           sbom: false
           provenance: false
 
+      - name: Set up Bun (for cache monitoring)
+        if: always()
+        uses: ./.github/actions/setup-bun
+
       - name: Monitor cache usage
         if: always()
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           bun scripts/ci/monitor-cache-usage.ts \
             --repository ${{ github.repository }} \
             --platform "linux/amd64" \

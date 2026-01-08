@@ -310,23 +310,54 @@ async function signImage(repository: string, tag: string, options: Options): Pro
       return;
     }
 
-    info(`Signing: ${imageRef}`);
+    // Retry configuration for transient network failures
+    const MAX_RETRIES = 3;
+    const INITIAL_DELAY_MS = 5000; // 5 seconds
 
-    const result = await $`cosign ${args}`.nothrow();
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      info(`Signing: ${imageRef} (attempt ${attempt}/${MAX_RETRIES})`);
 
-    if (result.exitCode !== 0) {
-      error(`Failed to sign image: ${imageRef}`);
-      if (Bun.env.GITHUB_ACTIONS === "true") {
-        console.log(`::error::Failed to sign image ${imageRef}`);
+      const result = await $`cosign ${args}`.nothrow();
+
+      if (result.exitCode === 0) {
+        success(`Signed: ${imageRef}`);
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          console.log(`::notice::Successfully signed image: ${imageRef}`);
+        }
+        return;
       }
-      // Fail fast on first error
+
+      // Signing failed
+      const stderr = result.stderr.toString().trim();
+      const isNetworkError =
+        stderr.includes("connect") ||
+        stderr.includes("connection refused") ||
+        stderr.includes("dial tcp") ||
+        stderr.includes("timeout");
+
+      if (attempt < MAX_RETRIES && isNetworkError) {
+        const delayMs = INITIAL_DELAY_MS * Math.pow(2, attempt - 1);
+        warning(
+          `Signing failed (network error), retrying in ${delayMs / 1000}s (attempt ${attempt}/${MAX_RETRIES})`
+        );
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          console.log(
+            `::warning::Network error signing ${imageRef}, retrying in ${delayMs / 1000}s (attempt ${attempt}/${MAX_RETRIES})`
+          );
+        }
+        await Bun.sleep(delayMs);
+        continue;
+      }
+
+      // Non-network error or max retries reached
+      error(`Failed to sign image: ${imageRef} (exit code ${result.exitCode})`);
+      if (stderr) {
+        error(`Error output: ${stderr}`);
+      }
+      if (Bun.env.GITHUB_ACTIONS === "true") {
+        console.log(`::error::Failed to sign image ${imageRef} after ${attempt} attempt(s)`);
+      }
       process.exit(1);
-    }
-
-    success(`Signed: ${imageRef}`);
-
-    if (Bun.env.GITHUB_ACTIONS === "true") {
-      console.log(`::notice::Successfully signed image: ${imageRef}`);
     }
   } catch (err) {
     error(`Failed to sign ${imageRef}: ${getErrorMessage(err)}`);

@@ -11,7 +11,7 @@ concurrency:
 
 permissions:
   contents: write # Required for creating GitHub Releases
-  packages: write
+  packages: write # Includes read permission for GHCR operations
   id-token: write # Required for Sigstore certificate (Cosign + attestations)
   attestations: write # Required for v3 attestation persistence
   security-events: write

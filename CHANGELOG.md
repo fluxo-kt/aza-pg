@@ -12,6 +12,20 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Changed
 
+### Added
+
+### Fixed
+
+### Security
+
+### Development (non-image)
+
+---
+
+## [18.1-202601081823-single-node] - 2026-01-08
+
+### Changed
+
 - **Base image**: Updated `postgres:18.1-trixie` SHA from `38d5c9d5...` to `bfe50b2b...` (security patches)
 - **pgflow**: 0.11.0 → 0.13.0
   - 2.17× faster Map→Map chains via atomic step output storage
@@ -24,12 +38,24 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - CHANGELOG.md following Keep a Changelog format
 
+### Security
+
+- **CVE-2025-13836**: Accepted Python http.client memory exhaustion vulnerability
+  - Does not affect PostgreSQL (core is C, no extensions use http.client)
+  - Debian classified as minor issue, awaiting upstream fix
+  - Added to .trivyignore and documented in SECURITY.md
+
 ### Development (non-image)
 
-- Updated `@pgflow/client` and `@pgflow/dsl` devDependencies to 0.13.0
-- Added tests for pgflow v0.13.0 atomic outputs
-- Added tests for pgmq v1.8.1 archive partitioning
-- Fixed test pre-cleanup to safely handle stale volumes without affecting production containers
+- **CI Reliability**: Added Cosign retry logic with exponential backoff for image signing
+- **CI Reliability**: Made git tag creation atomic with verification to prevent race conditions
+- **CI Reliability**: Fixed Bun cache monitoring (exit 127) by adding setup-bun to build jobs
+- **CI Reliability**: Improved cleanup script resilience for GitHub API eventual consistency
+- **Testing**: Updated `@pgflow/client` and `@pgflow/dsl` devDependencies to 0.13.0
+- **Testing**: Added tests for pgflow v0.13.0 atomic outputs
+- **Testing**: Added tests for pgmq v1.8.1 archive partitioning
+- **Testing**: Fixed test pre-cleanup to safely handle stale volumes without affecting production containers
+- **Dependencies**: Bumped GitHub Actions: checkout (4→6), upload-artifact (4→6), download-artifact (6→7), cache (4→5), attest-build-provenance (3.0.0→3.1.0)
 
 ---
 

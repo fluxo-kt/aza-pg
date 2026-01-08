@@ -1,0 +1,13 @@
+# Trivy Vulnerability Ignore List
+#
+# This file contains CVEs that are accepted as known upstream vulnerabilities
+# that do not affect PostgreSQL functionality. See SECURITY.md for detailed justifications.
+
+# CVE-2025-13836: Python http.client memory exhaustion vulnerability
+# - PostgreSQL core is written in C and doesn't use Python
+# - No enabled extensions use Python's http.client module
+# - Python is present in base image but unused by PostgreSQL
+# - Debian classified as minor issue (<no-dsa>)
+# - Fixed in Python 3.13.11, awaiting Debian Trixie backport
+# See SECURITY.md for full analysis
+CVE-2025-13836

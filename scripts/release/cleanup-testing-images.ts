@@ -386,6 +386,61 @@ async function fetchAllPackageVersions(
 }
 
 /**
+ * Fetch package versions with retry logic for tag existence verification
+ * Handles GitHub API eventual consistency when specific tags are requested
+ */
+async function fetchPackageVersionsWithTagRetry(
+  org: string,
+  packageName: string,
+  requiredTags?: string[],
+  maxRetries: number = 3
+): Promise<PackageVersion[]> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const versions = await fetchAllPackageVersions(org, packageName);
+
+    // If no specific tags required, return immediately
+    if (!requiredTags || requiredTags.length === 0) {
+      return versions;
+    }
+
+    // Check if all required tags are present
+    const foundTags = new Set<string>();
+    for (const version of versions) {
+      if (version.metadata?.container?.tags) {
+        for (const tag of version.metadata.container.tags) {
+          foundTags.add(tag);
+        }
+      }
+    }
+
+    const missingTags = requiredTags.filter((tag) => !foundTags.has(tag));
+
+    // All tags found, return immediately
+    if (missingTags.length === 0) {
+      return versions;
+    }
+
+    // Not last attempt - retry after exponential backoff
+    if (attempt < maxRetries - 1) {
+      const delaySec = 2 ** (attempt + 1);
+      warning(
+        `Tags not yet visible: ${missingTags.join(", ")} - retrying in ${delaySec}s (attempt ${attempt + 1}/${maxRetries}, API eventual consistency)`
+      );
+      await Bun.sleep(delaySec * 1000);
+    } else {
+      // Last attempt - return what we have and let caller handle missing tags
+      warning(
+        `Tags still not found after ${maxRetries} attempts: ${missingTags.join(", ")} (API eventual consistency delay)`
+      );
+      return versions;
+    }
+  }
+
+  // Should never reach here, but TypeScript requires it
+  return [];
+}
+
+/**
  * Delete a package version by ID
  */
 async function deletePackageVersion(
@@ -681,7 +736,8 @@ async function cleanup(options: CleanupOptions): Promise<void> {
 
   info(`Fetching package versions for ${org}/${packageName}...`);
 
-  const versions = await fetchAllPackageVersions(org, packageName);
+  // Use retry logic when specific tags are requested (handles API eventual consistency)
+  const versions = await fetchPackageVersionsWithTagRetry(org, packageName, options.tags);
 
   if (versions.length === 0) {
     warning(`No versions found for package ${org}/${packageName}`);

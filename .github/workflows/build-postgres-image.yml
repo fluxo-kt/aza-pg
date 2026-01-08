@@ -262,6 +262,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Set up Bun (for cache monitoring)
+        if: always()
+        uses: ./.github/actions/setup-bun
+
       - name: Monitor cache usage
         if: always()
         continue-on-error: true

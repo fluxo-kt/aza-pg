@@ -13,13 +13,20 @@ Please report security vulnerabilities via GitHub Security Advisories or by emai
 
 ## Known Upstream Vulnerabilities
 
-As of November 2025, the following HIGH severity vulnerabilities exist in upstream dependencies that we cannot directly fix:
+As of January 2026, the following vulnerabilities exist in upstream dependencies that we cannot directly fix:
 
 ### Python 3.13.5-2
 
 - **CVE-2025-8194**: Infinite loop when parsing malformed tarfiles
-- **Impact**: DoS potential if processing untrusted tar archives
-- **Status**: Awaiting upstream Debian fix
+  - **Severity**: HIGH
+  - **Impact**: DoS potential if processing untrusted tar archives
+  - **Status**: Awaiting upstream Debian fix
+
+- **CVE-2025-13836**: Memory exhaustion via malicious Content-Length header in http.client
+  - **Severity**: CRITICAL (scanner classification) / Moderate (6.3 CVSS actual impact)
+  - **Impact**: DoS potential if making HTTP requests to untrusted servers
+  - **Status**: Awaiting upstream Debian fix (fixed in Python 3.13.11, not yet in Trixie)
+  - **Note**: PostgreSQL does not use Python's http.client module - zero impact on PostgreSQL functionality
 
 ### libxml2 2.12.7
 

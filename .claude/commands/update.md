@@ -2,7 +2,6 @@
 name: /update
 description: Comprehensive dependency and extension update guide
 argument-hint: (optional additional notes)
-agent: plan
 id: p-update
 category: project
 tags: [project, update, maintenance]
@@ -227,10 +226,10 @@ bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
 # Step 3: Update npm packages in package.json
 bun update @pgflow/client @pgflow/dsl --latest
 
-# Step 4: Update Dockerfile.template line 244
+# Step 4: Update Dockerfile.template (search for `COPY tests/fixtures/pgflow`)
 # Change: COPY tests/fixtures/pgflow/schema-vX.Y.Z.sql
 
-# Step 5: Update 05-pgflow-init.sh version comments (lines 2, 60)
+# Step 5: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
 # Step 6: Delete old schema file
 rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
@@ -299,7 +298,6 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 1. Check for new edoburu/pgbouncer releases on Docker Hub
 2. Update image tag and SHA256 digest in compose.yml
 3. Update test files if needed
-4. Run pgbouncer tests: `bun run test:pgbouncer` (if exists)
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -342,7 +340,7 @@ bun run build
 # Quick test (skip rebuild)
 bun run test
 
-# Full test suite (rebuild + all 48 checks, ~45 min)
+# Full test suite (rebuild + all tests, ~45 min)
 bun run test:all
 ```
 

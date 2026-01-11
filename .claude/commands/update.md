@@ -1,8 +1,9 @@
 ---
 name: /update
 description: Comprehensive dependency and extension update guide
-argument-hint: (optional focus area description)
+argument-hint: (optional additional notes)
 agent: plan
+id: p-update
 category: project
 tags: [project, update, maintenance]
 ---
@@ -10,6 +11,8 @@ tags: [project, update, maintenance]
 You are updating dependencies and extensions in the aza-pg PostgreSQL container project.
 
 **CRITICAL**: See CLAUDE.md "AI Agent Knowledge Updates" section for surprising facts (Debian Trixie is LTS, PG18 released Sep 2025, pgrx needs Rust 1.88+, etc.)
+
+OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 # Update Process
 
@@ -88,14 +91,31 @@ SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
 
 ### Dependency Graph
 ```typescript
-// Check these before updating:
-vector → vectorscale, index_advisor
+// Check these before updating (update dependencies BEFORE their dependents):
+vector → vectorscale
+hypopg → index_advisor
+pg_stat_statements → wrappers
+postgis → pgrouting
 pgsodium → supabase_vault
 pgmq, pg_net, pg_cron, supabase_vault → pgflow
-hypopg → index_advisor
-postgis → pgrouting
 timescaledb → timescaledb_toolkit
 ```
+
+### ⚠️ CRITICAL: Dependency Compatibility
+
+**BEFORE updating any extension that has dependents, verify compatibility:**
+
+1. **Check dependent requirements** - Read dependent's docs/changelog for version requirements
+2. **Major version changes** - Breaking API changes may break dependents (e.g., vector 0.8→0.9 may break vectorscale)
+3. **Test after updates** - Run specific tests for dependent extensions after updating their dependencies
+4. **Update together** - If incompatible, update dependency + dependent together in same session
+
+**Examples:**
+- Updating `vector`: Check if `vectorscale` supports new version
+- Updating `pgsodium`: Verify `supabase_vault` compatibility
+- Updating `pgmq/pg_net/pg_cron`: Check `pgflow` requirements
+
+**If incompatible**: Either skip update OR update both dependency + dependent together.
 
 ### PGDG Extensions (14 total)
 
@@ -377,7 +397,7 @@ bun run build
 |--------|---------|
 | **GitHub latest release** | `curl -s https://api.github.com/repos/OWNER/REPO/releases/latest \| jq -r .tag_name` |
 | **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| grep -v '{}' \| tail -5` |
-| **PGDG apt** | `docker run --rm postgres:18-trixie apt-cache madison postgresql-18-EXTNAME` |
+| **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Percona apt** | Need container with `percona-release setup ppg-18` |
 | **Timescale apt** | Need container with Timescale repo configured |
 

@@ -58,30 +58,13 @@ const PG_LIB_DIR = "/usr/lib/postgresql/18/lib";
 const PG_EXT_DIR = "/usr/share/postgresql/18/extension";
 
 /**
- * Get disabled extensions from manifest by parsing it inside a container
+ * Get disabled extensions from manifest by parsing it locally with Bun
  */
 async function getDisabledExtensions(containerName: string): Promise<string[]> {
   try {
-    // Copy manifest into container
-    await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
-
-    // Parse manifest using Python inside container
-    const pythonCode = `import json
-manifest = json.load(open('/tmp/manifest.json'))
-disabled = [e['name'] for e in manifest['entries'] if e.get('enabled') == False]
-print(' '.join(disabled))
-`;
-    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    proc.stdin.write(pythonCode);
-    proc.stdin.end();
-    const result = await new Response(proc.stdout).text();
-
-    const disabled = result.trim();
-    return disabled ? disabled.split(" ") : [];
+    const manifestFile = Bun.file(MANIFEST_PATH);
+    const manifest = (await manifestFile.json()) as Manifest;
+    return manifest.entries.filter((e) => e.enabled === false).map((e) => e.name);
   } catch (err) {
     throw new Error(`Failed to get disabled extensions: ${err}`);
   }
@@ -92,29 +75,11 @@ print(' '.join(disabled))
  */
 async function getDisabledExtensionsExcludingTools(containerName: string): Promise<string[]> {
   try {
-    await $`docker cp ${MANIFEST_PATH} ${containerName}:/tmp/manifest.json`.quiet();
-
-    const pythonCode = `import json
-manifest = json.load(open('/tmp/manifest.json'))
-disabled = []
-for e in manifest['entries']:
-    enabled = e.get('enabled', True)
-    kind = e.get('kind', 'extension')
-    if not enabled and kind != 'tool':
-        disabled.append(e['name'])
-print(' '.join(disabled))
-`;
-    const proc = Bun.spawn(["docker", "exec", containerName, "python3"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    proc.stdin.write(pythonCode);
-    proc.stdin.end();
-    const result = await new Response(proc.stdout).text();
-
-    const disabled = result.trim();
-    return disabled ? disabled.split(" ") : [];
+    const manifestFile = Bun.file(MANIFEST_PATH);
+    const manifest = (await manifestFile.json()) as Manifest;
+    return manifest.entries
+      .filter((e) => e.enabled === false && (e.kind ?? "extension") !== "tool")
+      .map((e) => e.name);
   } catch (err) {
     throw new Error(`Failed to get disabled extensions (excluding tools): ${err}`);
   }
@@ -434,35 +399,51 @@ async function test5(): Promise<boolean> {
     let testPassed = true;
     for (const ext of disabledExtensions) {
       try {
-        const result =
-          await $`docker exec ${containerName} psql -U postgres -t -c "CREATE EXTENSION IF NOT EXISTS ${ext};"`.text();
+        // Use spawn to capture both stdout and stderr
+        const proc = Bun.spawn(
+          [
+            "docker",
+            "exec",
+            containerName,
+            "psql",
+            "-U",
+            "postgres",
+            "-t",
+            "-c",
+            `CREATE EXTENSION IF NOT EXISTS ${ext};`,
+          ],
+          { stdout: "pipe", stderr: "pipe" }
+        );
 
-        // Should fail with "could not open extension control file" because .control was removed
-        if (
-          result.includes("could not open extension control file") ||
-          result.includes("does not exist")
-        ) {
-          info(`✓ Extension '${ext}' correctly fails: control file removed`);
-        } else if (result.includes("ERROR")) {
-          info(`✓ Extension '${ext}' correctly fails: ${result.trim()}`);
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        // Combine stdout and stderr for checking
+        const output = stdout + stderr;
+
+        // Extension should fail because control file was removed
+        if (exitCode !== 0) {
+          // Expected failure - check error message
+          if (
+            output.includes("could not open extension control file") ||
+            output.includes("does not exist") ||
+            output.includes("ERROR")
+          ) {
+            info(`✓ Extension '${ext}' correctly fails: control file removed`);
+          } else {
+            error(`Extension '${ext}' failed with unexpected error`);
+            error(`Output: ${output.trim()}`);
+            testPassed = false;
+          }
         } else {
-          error(`Extension '${ext}' unexpectedly succeeded or gave unexpected output`);
-          error(`Output: ${result}`);
+          error(`Extension '${ext}' unexpectedly succeeded`);
+          error(`Output: ${output}`);
           testPassed = false;
         }
       } catch (err) {
-        // Command failed (expected) - check error message
-        const errorMsg = String(err);
-        if (
-          errorMsg.includes("could not open extension control file") ||
-          errorMsg.includes("does not exist") ||
-          errorMsg.includes("ERROR")
-        ) {
-          info(`✓ Extension '${ext}' correctly fails: control file removed`);
-        } else {
-          error(`Extension '${ext}' gave unexpected error: ${errorMsg}`);
-          testPassed = false;
-        }
+        error(`Failed to test extension '${ext}': ${err}`);
+        testPassed = false;
       }
     }
 

@@ -76,12 +76,28 @@ bun run validate
 ## Phase 3: Base Image (Only if PostgreSQL Version Changes)
 
 ```bash
-# Get latest base image SHA
+# Step 1: Get latest base image SHA
 docker pull postgres:18.X-trixie
 SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
+echo "New SHA: $SHA"
 
-# Update manifest-data.ts
-# Change MANIFEST_METADATA.pgVersion and baseImageSha
+# Step 2: Update manifest-data.ts (search for MANIFEST_METADATA)
+# Line ~40-50: Update TWO fields:
+
+# OLD:
+# export const MANIFEST_METADATA = {
+#   pgVersion: "18.1",
+#   baseImageSha: "postgres:18.1-trixie@sha256:38d5c9d5...",
+# }
+
+# NEW:
+# export const MANIFEST_METADATA = {
+#   pgVersion: "18.2",  # ← Update version
+#   baseImageSha: "postgres:18.2-trixie@sha256:bfe50b2b...",  # ← Update full digest
+# }
+
+# Step 3: Verify format (must include @sha256: prefix)
+grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
@@ -100,17 +116,46 @@ Extensions with `dependencies: ["extension1", "extension2"]` field must be updat
 
 **BEFORE updating any extension that has dependents, verify compatibility:**
 
-1. **Check dependent requirements** - Read dependent's docs/changelog for version requirements
-2. **Major version changes** - Breaking API changes may break dependents (e.g., vector 0.8→0.9 may break vectorscale)
-3. **Test after updates** - Run specific tests for dependent extensions after updating their dependencies
-4. **Update together** - If incompatible, update dependency + dependent together in same session
+```bash
+# Step 1: Find extensions that depend on the one you're updating
+EXTENSION="pgvector"  # Example: updating pgvector
+grep -B 3 "dependencies:.*$EXTENSION" scripts/extensions/manifest-data.ts | grep 'name:'
+# Output: vectorscale, index_advisor (both depend on pgvector)
 
-**Examples:**
-- Updating `vector`: Check if `vectorscale` supports new version
-- Updating `pgsodium`: Verify `supabase_vault` compatibility
-- Updating `pgmq/pg_net/pg_cron`: Check `pgflow` requirements
+# Step 2: Check dependent's version requirements
+# Method A: Check dependent's upstream repository
+DEPENDENT_REPO="https://github.com/timescale/pgvectorscale"
+curl -s $DEPENDENT_REPO/blob/main/Cargo.toml | grep -A 5 'dependencies'
+# Look for: pgrx = "..." and any pgvector version constraints
 
-**If incompatible**: Either skip update OR update both dependency + dependent together.
+# Method B: Check dependent's changelog for compatibility notes
+curl -s $DEPENDENT_REPO/blob/main/CHANGELOG.md | grep -i "pgvector\|breaking"
+
+# Step 3: Test compatibility after updating dependency
+# Update pgvector in manifest, then:
+bun run generate
+bun run build  # Build will fail if ABI incompatible
+# If build succeeds, test runtime interaction:
+bun run test -- --filter=vectorscale  # Run dependent's specific tests
+```
+
+**Concrete examples:**
+
+| Updating | Check | Command |
+|----------|-------|---------|
+| **pgvector** (depended on by vectorscale, index_advisor) | vectorscale's Cargo.toml for pgvector constraints | `curl -s https://raw.githubusercontent.com/timescale/pgvectorscale/main/Cargo.toml \| grep -A 3 pgvector` |
+| **pgsodium** (depended on by supabase_vault) | supabase_vault's SQL for pgsodium function calls | `grep -r "pgsodium\." scripts/test/test-extensions.ts` |
+| **pgmq** (depended on by pgflow) | pgflow's package.json or schema for pgmq version | `grep pgmq tests/fixtures/pgflow/schema-v*.sql` |
+
+**If incompatible**: Either skip update OR update both dependency + dependent together:
+
+```bash
+# Update both together in single commit:
+# 1. Update pgvector to 0.9.0 in manifest
+# 2. Update vectorscale to compatible version (check their releases)
+# 3. Test both: bun run test -- --filter="vector|vectorscale"
+# 4. Commit together: git commit -m "feat(extensions): update pgvector + vectorscale together for compatibility"
+```
 
 ### PGDG Extensions
 
@@ -183,8 +228,26 @@ Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 ```
 
 **VERIFY**: GitHub release has assets for BOTH amd64 and arm64:
-- Check release assets match expected pattern for the extension
-- Extensions may have different asset naming conventions
+
+```bash
+# List all release assets
+gh release view vX.Y.Z --repo OWNER/REPO --json assets --jq '.assets[].name'
+
+# Or with curl:
+curl -s https://api.github.com/repos/OWNER/REPO/releases/tags/vX.Y.Z | \
+  jq -r '.assets[].name'
+
+# Check for both architectures
+# Look for patterns like:
+# - extension-vX.Y.Z-amd64.deb AND extension-vX.Y.Z-arm64.deb
+# - extension-vX.Y.Z-x86_64.tar.gz AND extension-vX.Y.Z-aarch64.tar.gz
+# - extension-pg18-amd64.zip AND extension-pg18-arm64.zip
+
+# If only one arch present:
+# - Option A: Wait for upstream to release both
+# - Option B: Build missing arch from source (switch to source-built)
+# - Option C: Disable extension if both arches required
+```
 
 ### Source-Built Extensions
 
@@ -249,18 +312,40 @@ These extensions use commit SHAs instead of version tags, usually because:
 - Patches or fixes not yet tagged
 
 **Update procedure**:
-1. Check upstream for new stable tags
-2. If stable tag available, migrate from `git-ref` to `git`
-3. If no tag, verify commit is still appropriate or find newer commit
 
-**If upstream now has stable tags**, migrate from `git-ref` to `git`:
+```bash
+# Step 1: Find current ref and repository
+grep -A 5 '"EXTENSION_NAME"' scripts/extensions/manifest-data.ts | grep 'ref:\|repository:'
+
+# Step 2: Check if upstream now has stable tags
+REPO="https://github.com/OWNER/REPO"
+git ls-remote --tags $REPO | tail -20
+
+# Step 3a: If stable tags exist → migrate to git type
+# Update manifest-data.ts:
+source: { type: "git", repository: "...", tag: "vX.Y.Z" }  # Remove 'ref' field
+
+# Step 3b: If NO stable tags → find newer commit
+# Check commits since current ref
+CURRENT_REF="abc123..."
+git log --oneline --graph --decorate $CURRENT_REF..origin/main | head -20
+
+# Verify new commit is compatible with PG18
+# Check for: CI passing, mentions of PostgreSQL 18, no breaking API changes
+gh api repos/OWNER/REPO/commits/NEW_REF/status
+
+# Step 4: Update manifest with new ref
+# Change: ref: "abc123..." → ref: "def456..."
+```
+
+**Migration example** (git-ref → git with tag):
 
 ```typescript
 // FROM:
-source: { type: "git-ref", repository: "...", ref: "abc123..." }
+source: { type: "git-ref", repository: "https://github.com/supabase/pg_jsonschema", ref: "7c8603f..." }
 
 // TO:
-source: { type: "git", repository: "...", tag: "v1.0.0" }
+source: { type: "git", repository: "https://github.com/supabase/pg_jsonschema", tag: "v0.3.1" }
 ```
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
@@ -286,6 +371,33 @@ If an extension becomes incompatible (like `pg_plan_filter`):
   enabled: false,
   disabledReason: "Not compatible with PostgreSQL 18. Last updated for PG13 (2021). Maintainer inactive.",
 }
+```
+
+### 5.5: Updating Disabled Extensions
+
+**Identify disabled extensions**: `grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+
+**Decision: Should you update disabled extensions?**
+
+| Extension State | enabledInComprehensiveTest | Update? | Reason |
+|-----------------|---------------------------|---------|--------|
+| `enabled: false` | `true` | **YES** | Extension still tested in CI - keep version current |
+| `enabled: false` | `false` (or missing) | **MAYBE** | Update if maintaining option to re-enable later |
+| `enabled: false` + no `disabledReason` | any | **YES** | Temporarily disabled, keep current for re-enabling |
+| `enabled: false` + `disabledReason: "Not compatible..."` | any | **NO** | Permanently incompatible, no point updating |
+
+**Example workflow**:
+
+```bash
+# Check disabled extensions with tests
+grep -B 5 'enabledInComprehensiveTest: true' scripts/extensions/manifest-data.ts | \
+  grep 'enabled: false' -B 2 | grep 'name:'
+
+# These should be updated like enabled extensions:
+# - Update version fields (pgdgVersion, tag, etc.)
+# - Run: bun run generate
+# - Build still includes them (disabled = not loaded, not = not built)
+# - Tests verify they compile cleanly for future re-enabling
 ```
 
 ### 5.5: PgBouncer Image (Outside Manifest)
@@ -345,6 +457,59 @@ bun run test:all
 
 **NOTE**: `bun run test` (quick test) exists but should NOT be used for updates - always run full `test:all` to verify comprehensive compatibility.
 
+### Build Failure Troubleshooting
+
+**If `bun run build` fails after manifest update:**
+
+```bash
+# Step 1: Check Docker build logs for which extension failed
+bun run build 2>&1 | grep -A 10 "ERROR\|FAIL"
+
+# Step 2: Identify the failing extension
+# Look for: "Building extension: EXTENSION_NAME" before the error
+
+# Step 3: Common failure scenarios and fixes:
+```
+
+| Error Pattern | Cause | Fix |
+|---------------|-------|-----|
+| `No suitable pgrx version found` | pgrx version mismatch for PG18 | Update pgrx fallback in `docker/postgres/build-extensions.ts` (search for `getPgrxVersion`) |
+| `Python module not found` | plpython3 missing | Check Dockerfile has `python3-dev` in aptPackages |
+| `Missing build dependency` | Extension needs additional package | Add to `build.aptPackages` in manifest |
+| `ABI incompatibility` | Extension not compatible with PG18 | Disable extension (set `enabled: false`, add `disabledReason`) |
+| `Cargo build failed` | Rust version or feature flag issue | Check extension's `Cargo.toml` for Rust version requirement |
+| `configure: error` | Missing C headers/libraries | Add dev packages to aptPackages (e.g., `libssl-dev`) |
+
+**Option A: Fix and rebuild**
+```bash
+# Update manifest or Dockerfile as needed
+bun run generate
+bun run build
+```
+
+**Option B: Disable incompatible extension**
+```typescript
+// In manifest-data.ts:
+{
+  name: "problem_extension",
+  enabled: false,
+  disabledReason: "Not compatible with PostgreSQL 18. Build fails with: [error message]",
+}
+```
+
+**Option C: Add build patch** (for minor issues)
+```typescript
+// In manifest-data.ts:
+{
+  name: "extension_name",
+  build: {
+    patches: [
+      "sed -i 's/old_pattern/new_pattern/' Makefile",  // Fix Makefile
+    ],
+  },
+}
+```
+
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 
 **Rules**:
@@ -386,22 +551,61 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Rollback Procedure
 
-If update breaks:
+### Before Push (Local Only)
+
+If update breaks **before pushing to remote**:
 
 ```bash
-# Discard uncommitted changes
+# Option 1: Discard uncommitted changes
 git checkout -- .
 
-# Revert last commit
+# Option 2: Revert last commit (keeps history)
 git revert HEAD
 
-# Nuclear option: reset to known good state
+# Option 3: Hard reset to known good state (destroys history)
 git reset --hard <known-good-commit>
 
-# Rebuild
+# Then rebuild
 bun run generate
 bun run build
 ```
+
+### After Push (Remote Affected)
+
+**NOTE**: Agents DO NOT push. If update breaks **after user pushes to origin/dev**, user should:
+
+```bash
+# NEVER force-push! Use revert instead:
+
+# Step 1: Create revert commit
+git revert HEAD
+# Or revert multiple commits:
+git revert HEAD~3..HEAD  # Reverts last 3 commits
+
+# Step 2: Document the revert
+git commit --amend -m "Revert failed update: EXTENSION_NAME incompatible with PG18
+
+Original commits reverted:
+- abc123: feat(extensions): update EXTENSION_NAME to vX.Y.Z
+- def456: chore(deps): update Bun dependencies
+
+Reason: Build failed with ABI incompatibility error.
+Will investigate alternative version or disable extension.
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# Step 3: USER pushes the revert (agents never push!)
+# User runs: git push origin dev
+
+# Step 4: Rebuild from reverted state
+bun run generate
+bun run build
+bun run test:all
+```
+
+**CRITICAL**:
+- **Agents**: NEVER push - always commit locally only
+- **Users**: After push, NEVER force-push - use `git revert` instead
 
 ---
 
@@ -425,8 +629,8 @@ bun run build
 | **GitHub latest release** | `curl -s https://api.github.com/repos/OWNER/REPO/releases/latest \| jq -r .tag_name` |
 | **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
-| **Percona apt** | Need container with `percona-release setup ppg-18` |
-| **Timescale apt** | Need container with Timescale repo configured |
+| **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
+| **Timescale apt** | `docker run --rm timescale/timescaledb:latest-pg18 bash -c "apt-cache madison postgresql-18-timescaledb"` |
 
 ## Parallel Execution Opportunities
 

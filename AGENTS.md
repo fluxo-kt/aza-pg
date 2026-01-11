@@ -44,9 +44,11 @@
 
 ### Version String Formats
 
-- **Percona epochs**: `1:2.3.1-2.trixie` (the `1:` prefix matters!)
-- **Timescale tildes**: `2.24.0~debian13-1801`
-- **PGDG suffix**: `0.8.1-2.pgdg13+1`
+| Format Type          | Example                | Notes                    |
+| -------------------- | ---------------------- | ------------------------ |
+| **Percona epochs**   | `1:2.3.1-2.trixie`     | The `1:` prefix matters! |
+| **Timescale tildes** | `2.24.0~debian13-1801` | Uses a `~` separator     |
+| **PGDG suffix**      | `0.8.1-2.pgdg13+1`     | Uses a `+` for revisions |
 
 ## Paths & Fast Commands
 

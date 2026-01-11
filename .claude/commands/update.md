@@ -138,6 +138,12 @@ bun run test:all  # Verify runtime compatibility
 
 **Identify**: `grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
+**⚠️ CRITICAL**: When switching from PGDG to source build (version not in PGDG yet), update **4 files**:
+1. `manifest-data.ts`: Change `install_via: "source"`, remove `pgdgVersion`
+2. `generate-extension-defaults.ts`: Remove from `NAME_TO_KEY`
+3. `generate-dockerfile.ts`: Remove from `PGDG_MAPPINGS`
+4. `validate-manifest-integrity.ts`: Remove from both `NAME_TO_KEY` and `PGDG_MAPPING_NAMES`
+
 Update BOTH `source.tag` AND `pgdgVersion`:
 
 ```typescript
@@ -252,9 +258,10 @@ These only need updates when PostgreSQL version changes.
 ```bash
 # Step 1: Generate new schema (combines 21 SQL files from upstream)
 bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
+# ⚠️ This updates manifest-data.ts and install.ts, but NOT Dockerfile.template!
 
-# Step 2: Update manifest-data.ts
-# Change source.tag: "pgflow@X.Y.Z"
+# Step 2: Update Dockerfile.template manually (script doesn't do this)
+# Change: COPY tests/fixtures/pgflow/schema-vOLD.sql → schema-vNEW.sql
 
 # Step 3: Update npm packages in package.json
 bun update @pgflow/client @pgflow/dsl --latest

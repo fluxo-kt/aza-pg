@@ -90,16 +90,12 @@ SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
 **CRITICAL**: Update in dependency order (dependencies BEFORE dependents).
 
 ### Dependency Graph
-```typescript
-// Check these before updating (update dependencies BEFORE their dependents):
-vector → vectorscale
-hypopg → index_advisor
-pg_stat_statements → wrappers
-postgis → pgrouting
-pgsodium → supabase_vault
-pgmq, pg_net, pg_cron, supabase_vault → pgflow
-timescaledb → timescaledb_toolkit
-```
+
+**Extract from manifest**: `grep 'dependencies:' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+
+Extensions with `dependencies: ["extension1", "extension2"]` field must be updated AFTER their dependencies.
+
+**Example**: If extension B has `dependencies: ["extensionA"]`, update extensionA first, verify compatibility, then update B.
 
 ### ⚠️ CRITICAL: Dependency Compatibility
 
@@ -117,82 +113,101 @@ timescaledb → timescaledb_toolkit
 
 **If incompatible**: Either skip update OR update both dependency + dependent together.
 
-### PGDG Extensions (14 total)
+### PGDG Extensions
+
+**Identify**: `grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `pgdgVersion`:
 
 ```typescript
 {
-  name: "vector",
-  source: { type: "git", tag: "v0.9.0" },        // ← Update tag
-  pgdgVersion: "0.9.0-2.pgdg13+1",               // ← Update version string
+  name: "extension_name",
+  source: { type: "git", tag: "vX.Y.Z" },        // ← Update tag
+  pgdgVersion: "X.Y.Z-N.pgdg13+N",               // ← Update version string
 }
 ```
 
 **PGDG version format**: `{version}-{build}.pgdg{debian_ver}+{revision}`
 - Example: `0.8.1-2.pgdg13+1`
-- The `pgdg13` refers to Debian version, NOT PostgreSQL!
+- The `pgdg13` refers to Debian version (13=Trixie), NOT PostgreSQL!
+- Check available versions: `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"`
 
-### Percona Extensions (2 total: pg_stat_monitor, wal2json)
+### Percona Extensions
+
+**Identify**: `grep 'install_via: "percona"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `perconaVersion`:
 
 ```typescript
 {
-  name: "pg_stat_monitor",
-  source: { type: "git", tag: "2.4.0" },          // ← Update tag
-  perconaVersion: "1:2.4.0-2.trixie",             // ← Note epoch prefix!
+  name: "extension_name",
+  source: { type: "git", tag: "X.Y.Z" },          // ← Update tag
+  perconaVersion: "[epoch:]X.Y.Z-N.trixie",       // ← Note optional epoch prefix!
 }
 ```
 
 **Percona version format**: `[epoch:]version-build.distro`
 - Epochs matter for version comparison: `1:2.0` > `2.0`
 - Example: `1:2.3.1-2.trixie`
+- Check available versions: Requires container with `percona-release setup ppg-18`
 
-### Timescale Extensions (2 total: timescaledb, timescaledb_toolkit)
+### Timescale Extensions
+
+**Identify**: `grep 'install_via: "timescale"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `timescaleVersion`:
 
 ```typescript
 {
-  name: "timescaledb",
-  source: { type: "git", tag: "2.25.0" },         // ← Update tag
-  timescaleVersion: "2.25.0~debian13-1801",       // ← Note tilde format!
+  name: "extension_name",
+  source: { type: "git", tag: "X.Y.Z" },          // ← Update tag
+  timescaleVersion: "X.Y.Z~debian13-PGMM",        // ← Note tilde format!
 }
 ```
 
 **Timescale version format**: `version~distro-pgversion`
-- Example: `2.24.0~debian13-1801`
+- Example: `2.24.0~debian13-1801` (1801 = PostgreSQL 18.1)
+- Check available versions: Requires container with Timescale repo configured
 
-### GitHub Release Extensions (1 total: vectorscale)
+### GitHub Release Extensions
+
+**Identify**: `grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 
 ```typescript
 {
-  name: "vectorscale",
-  source: { type: "git", tag: "0.10.0" },         // ← Update tag
-  githubReleaseTag: "0.10.0",                     // ← Must match!
+  name: "extension_name",
+  source: { type: "git", tag: "X.Y.Z" },          // ← Update tag
+  githubReleaseTag: "X.Y.Z",                      // ← Must match!
 }
 ```
 
 **VERIFY**: GitHub release has assets for BOTH amd64 and arm64:
-- Pattern: `pgvectorscale-{version}-pg{pgMajor}-{arch}.zip`
+- Check release assets match expected pattern for the extension
+- Extensions may have different asset naming conventions
 
-### Source-Built Extensions (25 total)
+### Source-Built Extensions
+
+**Identify**: Extensions with `build:` field (no `install_via`, or `install_via` with `build:`)
+- `grep -B 5 'build:' scripts/extensions/manifest-data.ts | grep 'name:'`
 
 Update ONLY `source.tag`:
 
 ```typescript
 {
-  name: "pgmq",
-  source: { type: "git", tag: "v1.9.0" },         // ← Only this field
+  name: "extension_name",
+  source: { type: "git", tag: "vX.Y.Z" },         // ← Only this field
 }
 ```
 
-### Builtin Extensions (6 total)
+**These extensions are built from source** during Docker image build using PGXS, cargo-pgrx, cmake, autotools, or other build systems.
 
-**No manual updates required** - Builtin extensions (pg_stat_statements, auto_explain, pg_trgm, btree_gin, btree_gist, plpgsql) are part of PostgreSQL core and update automatically with the base image (Phase 3).
+### Builtin Extensions
+
+**Identify**: `grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
+
+**No manual updates required** - Builtin extensions are part of PostgreSQL core and update automatically with the base image (Phase 3).
 
 These only need updates when PostgreSQL version changes.
 
@@ -218,7 +233,7 @@ bun update @pgflow/client @pgflow/dsl --latest
 # Step 5: Update 05-pgflow-init.sh version comments (lines 2, 60)
 
 # Step 6: Delete old schema file
-rm tests/fixtures/pgflow/schema-v0.13.0.sql
+rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
 # Step 7: Regenerate and test
 bun run generate
@@ -227,13 +242,17 @@ bun run test:pgflow
 
 ### 5.2: git-ref Extensions (Manual Review Required)
 
-These use commit SHAs instead of tags:
+**Identify**: `grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
 
-| Extension | Current Status | Action |
-|-----------|---------------|--------|
-| `pg_jsonschema` | `7c8603f...` | Check upstream for new PG18 stable tag |
-| `pg_hashids` | `8c404dd...` | Check if v1.3 released yet |
-| `pg_plan_filter` | `5081a7b...` | DISABLED - incompatible with PG18 |
+These extensions use commit SHAs instead of version tags, usually because:
+- Upstream doesn't use semantic versioning
+- Waiting for stable release compatible with current PostgreSQL version
+- Patches or fixes not yet tagged
+
+**Update procedure**:
+1. Check upstream for new stable tags
+2. If stable tag available, migrate from `git-ref` to `git`
+3. If no tag, verify commit is still appropriate or find newer commit
 
 **If upstream now has stable tags**, migrate from `git-ref` to `git`:
 
@@ -247,16 +266,16 @@ source: { type: "git", repository: "...", tag: "v1.0.0" }
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
 
-Extensions using Rust pgrx framework:
-- `wrappers` (Supabase FDW framework)
-- `pg_jsonschema` (JSON Schema validation)
+**Identify**: `grep 'type: "cargo-pgrx"' scripts/extensions/manifest-data.ts -B 5 | grep 'name:'`
 
-**Requirements**:
-- pgrx 0.16.1 for PostgreSQL 18
-- Rust 1.88.0+
-- Feature flag: `features: ["pg18"]`
+These extensions use Rust pgrx framework for building PostgreSQL extensions in Rust.
 
-**If pgrx version changes**: Update hardcoded fallback in `docker/postgres/build-extensions.ts` line 282.
+**Version alignment**:
+1. Check pgrx version required for current PostgreSQL major version (search `docker/postgres/build-extensions.ts` for pgrx fallback version)
+2. Verify minimum Rust version (usually documented in extension's README)
+3. Ensure feature flags match PostgreSQL version (e.g., `features: ["pg18"]` for PG18)
+
+**If pgrx version changes**: Update hardcoded fallback in `docker/postgres/build-extensions.ts` (search for `getPgrxVersion` fallback).
 
 ### 5.4: Disabling Unmaintained Extensions
 
@@ -272,9 +291,15 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 
 ### 5.5: PgBouncer Image (Outside Manifest)
 
-**Not in manifest-data.ts!** Hardcoded in:
-- `stacks/primary/compose.yml` line 48: `edoburu/pgbouncer:v1.24.1-p1@sha256:...`
+**Not in manifest-data.ts!** PgBouncer version is hardcoded in:
+- `stacks/primary/compose.yml` (search for `edoburu/pgbouncer`)
 - Test files: `scripts/test/test-pgbouncer-*.ts`
+
+**Update procedure**:
+1. Check for new edoburu/pgbouncer releases on Docker Hub
+2. Update image tag and SHA256 digest in compose.yml
+3. Update test files if needed
+4. Run pgbouncer tests: `bun run test:pgbouncer` (if exists)
 
 ## Phase 6: Add Tests for New Functionality
 

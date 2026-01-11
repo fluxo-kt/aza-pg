@@ -92,7 +92,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.3.1](https://github.com/pgpartman/pg_partman/releases/tag/v5.3.1)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.0](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.0)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
 | [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
 
 ### observability

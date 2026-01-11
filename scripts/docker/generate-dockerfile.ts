@@ -114,12 +114,6 @@ const PGDG_MAPPINGS: PgdgMapping[] = [
     argName: "PLPGSQL_CHECK_VERSION",
     versionKey: "plpgsqlCheck",
   }, // score 103
-  {
-    manifestName: "pg_partman",
-    packageName: "partman",
-    argName: "PARTMAN_VERSION",
-    versionKey: "partman",
-  }, // score 118 (MOST volatile - 8 releases/year)
 ];
 
 interface BuildSpec {
@@ -241,7 +235,6 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     rum: "rum.so",
     "set-user": "set_user.so",
     "plpgsql-check": "plpgsql_check.so",
-    partman: "pg_partman_bgw.so",
   };
 
   // Get expected .so files for enabled packages

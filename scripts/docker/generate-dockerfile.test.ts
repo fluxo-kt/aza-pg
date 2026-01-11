@@ -78,8 +78,8 @@ describe("Extension Defaults Validation", () => {
     expect(versions.pgaudit).toBeDefined();
     expect(versions.pgvector).toBeDefined();
     // NOTE: timescaledb removed - uses install_via: "source" in manifest (compiled from source)
+    // NOTE: pg_partman removed - uses install_via: "source" in manifest (PGDG package not available for PG18)
     expect(versions.postgis).toBeDefined();
-    expect(versions.partman).toBeDefined();
     expect(versions.repack).toBeDefined();
     expect(versions.plpgsqlCheck).toBeDefined();
     expect(versions.hll).toBeDefined();

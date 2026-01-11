@@ -35,11 +35,11 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}'
    ```
 
-4. **PGDG apt versions** (requires Docker container with PGDG repo):
+4. **PGDG apt versions** (automated validation):
    ```bash
-   docker run --rm postgres:18-trixie apt-cache madison postgresql-18-pgvector
-   docker run --rm postgres:18-trixie apt-cache madison postgresql-18-postgis-3
+   bun run validate:pgdg
    ```
+   **CRITICAL**: This validates that all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 

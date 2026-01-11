@@ -1010,14 +1010,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgVersion: "5.3.1-2.pgdg13+1",
+    install_via: "source",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.3.1",
+      tag: "v5.4.0",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1026,8 +1025,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "PGDG: postgresql-18-partman (v5.3.1-2.pgdg13+1)",
-        "Alt: Pigsty v5.3.1 (same version)",
+        "Built from source (PGDG package not available for PG18)",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
     },
@@ -1070,7 +1068,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "2.19-1.pgdg13+1",
+    pgdgVersion: "2.19-2.pgdg13+2",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {

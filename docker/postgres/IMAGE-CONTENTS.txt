@@ -17,7 +17,7 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_hashids                   builtin        utilities
   pg_jsonschema                builtin        validation
   pg_net                       v0.20.2        integration
-  pg_partman                   v5.3.1         maintenance
+  pg_partman                   v5.4.0         maintenance
   pg_repack                    v1.5.3         maintenance
   pg_stat_monitor              v2.3.1         observability
   pg_stat_statements           builtin        observability

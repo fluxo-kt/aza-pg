@@ -24,7 +24,6 @@ const NAME_TO_KEY: Record<string, string> = {
   pgaudit: "pgaudit",
   vector: "pgvector",
   postgis: "postgis",
-  pg_partman: "partman",
   pg_repack: "repack",
   plpgsql_check: "plpgsqlCheck",
   hll: "hll",

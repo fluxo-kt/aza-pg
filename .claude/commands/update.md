@@ -324,7 +324,7 @@ scripts/test/
 # Regenerate all files from manifest
 bun run generate
 
-# Fast validation (static checks + unit tests)
+# Fast validation (REQUIRED - static checks + unit tests)
 bun run validate
 
 # Full validation (includes shellcheck, hadolint, yamllint)
@@ -337,14 +337,13 @@ bun run validate:all
 # Build image
 bun run build
 
-# Quick test (skip rebuild)
-bun run test
-
-# Full test suite (rebuild + all tests, ~45 min)
+# REQUIRED: Full test suite (rebuild + all tests, ~45 min)
 bun run test:all
 ```
 
 **Multi-arch verification**: Image builds for both amd64 and arm64 (GitHub Actions handles this).
+
+**NOTE**: `bun run test` (quick test) exists but should NOT be used for updates - always run full `test:all` to verify comprehensive compatibility.
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 

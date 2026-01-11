@@ -200,26 +200,14 @@ Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 }
 ```
 
-**VERIFY**: GitHub release has assets for BOTH amd64 and arm64:
+**VERIFY**: GitHub release has assets for BOTH amd64 and arm64.
 
 ```bash
-# List all release assets
-gh release view vX.Y.Z --repo OWNER/REPO --json assets --jq '.assets[].name'
+# List release assets
+gh release view TAG --repo OWNER/REPO --json assets --jq '.assets[].name'
 
-# Or with curl:
-curl -s https://api.github.com/repos/OWNER/REPO/releases/tags/vX.Y.Z | \
-  jq -r '.assets[].name'
-
-# Check for both architectures
-# Look for patterns like:
-# - extension-vX.Y.Z-amd64.deb AND extension-vX.Y.Z-arm64.deb
-# - extension-vX.Y.Z-x86_64.tar.gz AND extension-vX.Y.Z-aarch64.tar.gz
-# - extension-pg18-amd64.zip AND extension-pg18-arm64.zip
-
-# If only one arch present:
-# - Option A: Wait for upstream to release both
-# - Option B: Build missing arch from source (switch to source-built)
-# - Option C: Disable extension if both arches required
+# Verify both architectures present (amd64/x86_64 AND arm64/aarch64)
+# If missing: wait for upstream, build from source, or disable
 ```
 
 ### Source-Built Extensions
@@ -286,12 +274,12 @@ These use commit SHAs (no version tags). Update requires manual review:
 git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 
 # If tags exist: migrate from git-ref to git type
-# Change: type: "git-ref", ref: "abc123..."
+# Change: type: "git-ref", ref: "..."
 # To:     type: "git", tag: "vX.Y.Z"
 
 # If no tags: verify newer commit is PG18-compatible
 # Check: CI status, changelog mentions, no breaking changes
-gh api repos/OWNER/REPO/commits/NEW_REF/status
+gh api repos/OWNER/REPO/commits/COMMIT_REF/status
 ```
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
@@ -321,30 +309,11 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 
 ### 5.5: Updating Disabled Extensions
 
-**Identify disabled extensions**: `grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Identify**: `grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
 
-**Decision: Should you update disabled extensions?**
+**Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
 
-| Extension State | enabledInComprehensiveTest | Update? | Reason |
-|-----------------|---------------------------|---------|--------|
-| `enabled: false` | `true` | **YES** | Extension still tested in CI - keep version current |
-| `enabled: false` | `false` (or missing) | **MAYBE** | Update if maintaining option to re-enable later |
-| `enabled: false` + no `disabledReason` | any | **YES** | Temporarily disabled, keep current for re-enabling |
-| `enabled: false` + `disabledReason: "Not compatible..."` | any | **NO** | Permanently incompatible, no point updating |
-
-**Example workflow**:
-
-```bash
-# Check disabled extensions with tests
-grep -B 5 'enabledInComprehensiveTest: true' scripts/extensions/manifest-data.ts | \
-  grep 'enabled: false' -B 2 | grep 'name:'
-
-# These should be updated like enabled extensions:
-# - Update version fields (pgdgVersion, tag, etc.)
-# - Run: bun run generate
-# - Build still includes them (disabled = not loaded, not = not built)
-# - Tests verify they compile cleanly for future re-enabling
-```
+Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
 
 ### 5.5: PgBouncer Image (Outside Manifest)
 
@@ -405,56 +374,17 @@ bun run test:all
 
 ### Build Failure Troubleshooting
 
-**If `bun run build` fails after manifest update:**
+**Build errors name the failing extension and error type.**
 
-```bash
-# Step 1: Check Docker build logs for which extension failed
-bun run build 2>&1 | grep -A 10 "ERROR\|FAIL"
+Common causes:
+- Missing build dependencies → Add to `build.aptPackages` in manifest
+- Version incompatibility → Update pgrx fallback or disable extension
+- ABI break → Disable extension with `disabledReason`
 
-# Step 2: Identify the failing extension
-# Look for: "Building extension: EXTENSION_NAME" before the error
-
-# Step 3: Common failure scenarios and fixes:
-```
-
-| Error Pattern | Cause | Fix |
-|---------------|-------|-----|
-| `No suitable pgrx version found` | pgrx version mismatch for PG18 | Update pgrx fallback in `docker/postgres/build-extensions.ts` (search for `getPgrxVersion`) |
-| `Python module not found` | plpython3 missing | Check Dockerfile has `python3-dev` in aptPackages |
-| `Missing build dependency` | Extension needs additional package | Add to `build.aptPackages` in manifest |
-| `ABI incompatibility` | Extension not compatible with PG18 | Disable extension (set `enabled: false`, add `disabledReason`) |
-| `Cargo build failed` | Rust version or feature flag issue | Check extension's `Cargo.toml` for Rust version requirement |
-| `configure: error` | Missing C headers/libraries | Add dev packages to aptPackages (e.g., `libssl-dev`) |
-
-**Option A: Fix and rebuild**
-```bash
-# Update manifest or Dockerfile as needed
-bun run generate
-bun run build
-```
-
-**Option B: Disable incompatible extension**
-```typescript
-// In manifest-data.ts:
-{
-  name: "problem_extension",
-  enabled: false,
-  disabledReason: "Not compatible with PostgreSQL 18. Build fails with: [error message]",
-}
-```
-
-**Option C: Add build patch** (for minor issues)
-```typescript
-// In manifest-data.ts:
-{
-  name: "extension_name",
-  build: {
-    patches: [
-      "sed -i 's/old_pattern/new_pattern/' Makefile",  // Fix Makefile
-    ],
-  },
-}
-```
+Resolution options:
+1. Fix (add missing deps, update versions) → regenerate → rebuild
+2. Disable extension (set `enabled: false` + `disabledReason`)
+3. Patch build (add `build.patches` for sed fixes)
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 

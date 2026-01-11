@@ -9,7 +9,7 @@ tags: [project, update, maintenance]
 
 You are updating dependencies and extensions in the aza-pg PostgreSQL container project.
 
-**CRITICAL**: See CLAUDE.md "AI Agent Knowledge Updates" section for surprising facts (Debian Trixie is LTS, PG18 released Sep 2025, pgrx needs Rust 1.88+, etc.)
+**CRITICAL**: See AGENTS.md "AI Agent Knowledge Updates" section for surprising facts (Debian Trixie is LTS, PG18 released Sep 2025, pgrx needs Rust 1.88+, etc.)
 
 OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
@@ -26,7 +26,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 2. **Bun dependencies**:
    ```bash
-   bun update --interactive  # Check what's outdated
+   bun outdated  # Check what's outdated
    ```
 
 3. **Base image** (if upgrading PostgreSQL version):
@@ -121,7 +121,7 @@ bun run test:all  # Verify runtime compatibility
 ```
 
 **Common dependency chains:**
-- `pgvector` → vectorscale, index_advisor
+- `pgvector` → vectorscale
 - `pgsodium` → supabase_vault
 - `pgmq/pg_net/pg_cron/supabase_vault` → pgflow
 - `hypopg` → index_advisor
@@ -315,13 +315,14 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 
 Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
 
-### 5.5: PgBouncer Image (Outside Manifest)
+### 5.6: PgBouncer Image (Outside Manifest)
 
 **Not in manifest-data.ts!** PgBouncer version is hardcoded in:
 - `stacks/primary/compose.yml` (search for `edoburu/pgbouncer`)
 - Test files: `scripts/test/test-pgbouncer-*.ts`
 
 **Update procedure**:
+
 1. Check for new edoburu/pgbouncer releases on Docker Hub
 2. Update image tag and SHA256 digest in compose.yml
 3. Update test files if needed
@@ -331,13 +332,15 @@ Extensions still in test suites should stay current. Permanently broken extensio
 **REQUIRED** when upstream has breaking changes or significant new features.
 
 ### Test Creation Criteria
+
 - **API signature changed** → Add test verifying new signature works
 - **Behavior changed** → Add test verifying new behavior
 - **New feature added** → Add test if relevant to our use case
 - **Breaking change** → Update existing tests to match new behavior
 
 ### Test File Locations
-```
+
+```text
 scripts/test/
   ├── test-all-extensions-functional.ts  # Extension loading tests
   ├── test-pgflow-*.ts                   # pgflow-specific tests
@@ -407,7 +410,7 @@ Resolution options:
 ### Added
 - New extension: xyz with feature ABC
 
-### Internal (brief)
+### Development (non-image)
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
@@ -419,7 +422,8 @@ Resolution options:
 - `fix(postgres): update TimescaleDB to 2.24.0, fixes recompression perf`
 
 **Always include**:
-```
+
+```text
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 

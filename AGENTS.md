@@ -19,6 +19,35 @@
 - **Dockerfile is auto-generated** from template + manifest (NEVER edit directly)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`) — ⚠️ NEVER use testing images in production
 
+## AI Agent Knowledge Updates (Post-Training Facts)
+
+**Critical context for AI agents with training cutoffs before 2025:**
+
+### Debian/PostgreSQL Timeline
+
+| Fact                                 | Detail                              |
+| ------------------------------------ | ----------------------------------- |
+| Debian 13 "Trixie" = STABLE LTS      | Released Aug 9, 2025 (NOT testing!) |
+| PostgreSQL 18 is RELEASED            | GA Sep 25, 2025; 18.1 Nov 13, 2025  |
+| Bookworm (Debian 12) still supported | LTS until Jun 2028                  |
+| i386 architecture DROPPED            | First time in Debian history        |
+
+### Extension Compatibility (PG18)
+
+| Extension        | Status                           |
+| ---------------- | -------------------------------- |
+| `pg_plan_filter` | INCOMPATIBLE - last updated PG13 |
+| `citus`          | FAILS TO BUILD                   |
+| `periods`        | OBSOLETE - now in PG18 core      |
+| `pgvector`       | Still 0.8.x (0.9 NOT released)   |
+| `pgrx`           | Requires Rust 1.88.0+ (v0.16.1)  |
+
+### Version String Formats
+
+- **Percona epochs**: `1:2.3.1-2.trixie` (the `1:` prefix matters!)
+- **Timescale tildes**: `2.24.0~debian13-1801`
+- **PGDG suffix**: `0.8.1-2.pgdg13+1`
+
 ## Paths & Fast Commands
 
 ```bash

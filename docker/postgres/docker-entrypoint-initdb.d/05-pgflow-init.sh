@@ -1,5 +1,5 @@
 #!/bin/bash
-# pgflow v0.11.0 Schema Initialization
+# pgflow v0.13.0 Schema Initialization
 # Installs the pgflow workflow orchestration schema in POSTGRES_DB
 #
 # Prerequisites:
@@ -57,7 +57,7 @@ fi
 # The schema file is copied from tests/fixtures/pgflow/ during build
 if [ -f /opt/pgflow/schema.sql ]; then
     psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/schema.sql
-    echo "[05-pgflow] pgflow v0.11.0 schema installed successfully"
+    echo "[05-pgflow] pgflow v0.13.0 schema installed successfully"
 else
     echo "[05-pgflow] ERROR: pgflow schema file not found at /opt/pgflow/schema.sql"
     echo "[05-pgflow] Ensure the schema file is copied during image build"

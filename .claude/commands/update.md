@@ -76,27 +76,16 @@ bun run validate
 ## Phase 3: Base Image (Only if PostgreSQL Version Changes)
 
 ```bash
-# Step 1: Get latest base image SHA
+# Get latest base image SHA
 docker pull postgres:18.X-trixie
 SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
-echo "New SHA: $SHA"
 
-# Step 2: Update manifest-data.ts (search for MANIFEST_METADATA)
-# Line ~40-50: Update TWO fields:
+# Update manifest-data.ts (search for MANIFEST_METADATA)
+# Change TWO fields:
+# - pgVersion: "18.X"
+# - baseImageSha: "postgres:18.X-trixie@sha256:..."
 
-# OLD:
-# export const MANIFEST_METADATA = {
-#   pgVersion: "18.1",
-#   baseImageSha: "postgres:18.1-trixie@sha256:38d5c9d5...",
-# }
-
-# NEW:
-# export const MANIFEST_METADATA = {
-#   pgVersion: "18.2",  # ← Update version
-#   baseImageSha: "postgres:18.2-trixie@sha256:bfe50b2b...",  # ← Update full digest
-# }
-
-# Step 3: Verify format (must include @sha256: prefix)
+# Verify format includes @sha256: prefix
 grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
 
@@ -117,45 +106,29 @@ Extensions with `dependencies: ["extension1", "extension2"]` field must be updat
 **BEFORE updating any extension that has dependents, verify compatibility:**
 
 ```bash
-# Step 1: Find extensions that depend on the one you're updating
-EXTENSION="pgvector"  # Example: updating pgvector
-grep -B 3 "dependencies:.*$EXTENSION" scripts/extensions/manifest-data.ts | grep 'name:'
-# Output: vectorscale, index_advisor (both depend on pgvector)
+# Find dependents
+grep -B 3 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | grep 'name:'
 
-# Step 2: Check dependent's version requirements
-# Method A: Check dependent's upstream repository
-DEPENDENT_REPO="https://github.com/timescale/pgvectorscale"
-curl -s $DEPENDENT_REPO/blob/main/Cargo.toml | grep -A 5 'dependencies'
-# Look for: pgrx = "..." and any pgvector version constraints
+# Check compatibility:
+# - Read dependent's Cargo.toml / package.json for version constraints
+# - Check dependent's changelog/releases for breaking changes
+# - Major version changes often break dependents
 
-# Method B: Check dependent's changelog for compatibility notes
-curl -s $DEPENDENT_REPO/blob/main/CHANGELOG.md | grep -i "pgvector\|breaking"
-
-# Step 3: Test compatibility after updating dependency
-# Update pgvector in manifest, then:
+# Test after update
 bun run generate
-bun run build  # Build will fail if ABI incompatible
-# If build succeeds, test runtime interaction:
-bun run test -- --filter=vectorscale  # Run dependent's specific tests
+bun run build  # Fails if ABI incompatible
+bun run test:all  # Verify runtime compatibility
 ```
 
-**Concrete examples:**
+**Common dependency chains:**
+- `pgvector` → vectorscale, index_advisor
+- `pgsodium` → supabase_vault
+- `pgmq/pg_net/pg_cron/supabase_vault` → pgflow
+- `hypopg` → index_advisor
+- `postgis` → pgrouting
+- `timescaledb` → timescaledb_toolkit
 
-| Updating | Check | Command |
-|----------|-------|---------|
-| **pgvector** (depended on by vectorscale, index_advisor) | vectorscale's Cargo.toml for pgvector constraints | `curl -s https://raw.githubusercontent.com/timescale/pgvectorscale/main/Cargo.toml \| grep -A 3 pgvector` |
-| **pgsodium** (depended on by supabase_vault) | supabase_vault's SQL for pgsodium function calls | `grep -r "pgsodium\." scripts/test/test-extensions.ts` |
-| **pgmq** (depended on by pgflow) | pgflow's package.json or schema for pgmq version | `grep pgmq tests/fixtures/pgflow/schema-v*.sql` |
-
-**If incompatible**: Either skip update OR update both dependency + dependent together:
-
-```bash
-# Update both together in single commit:
-# 1. Update pgvector to 0.9.0 in manifest
-# 2. Update vectorscale to compatible version (check their releases)
-# 3. Test both: bun run test -- --filter="vector|vectorscale"
-# 4. Commit together: git commit -m "feat(extensions): update pgvector + vectorscale together for compatibility"
-```
+**If incompatible**: Skip update OR update both together in single commit.
 
 ### PGDG Extensions
 
@@ -306,46 +279,19 @@ bun run test:pgflow
 
 **Identify**: `grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
 
-These extensions use commit SHAs instead of version tags, usually because:
-- Upstream doesn't use semantic versioning
-- Waiting for stable release compatible with current PostgreSQL version
-- Patches or fixes not yet tagged
-
-**Update procedure**:
+These use commit SHAs (no version tags). Update requires manual review:
 
 ```bash
-# Step 1: Find current ref and repository
-grep -A 5 '"EXTENSION_NAME"' scripts/extensions/manifest-data.ts | grep 'ref:\|repository:'
+# Check if upstream now has stable tags
+git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 
-# Step 2: Check if upstream now has stable tags
-REPO="https://github.com/OWNER/REPO"
-git ls-remote --tags $REPO | tail -20
+# If tags exist: migrate from git-ref to git type
+# Change: type: "git-ref", ref: "abc123..."
+# To:     type: "git", tag: "vX.Y.Z"
 
-# Step 3a: If stable tags exist → migrate to git type
-# Update manifest-data.ts:
-source: { type: "git", repository: "...", tag: "vX.Y.Z" }  # Remove 'ref' field
-
-# Step 3b: If NO stable tags → find newer commit
-# Check commits since current ref
-CURRENT_REF="abc123..."
-git log --oneline --graph --decorate $CURRENT_REF..origin/main | head -20
-
-# Verify new commit is compatible with PG18
-# Check for: CI passing, mentions of PostgreSQL 18, no breaking API changes
+# If no tags: verify newer commit is PG18-compatible
+# Check: CI status, changelog mentions, no breaking changes
 gh api repos/OWNER/REPO/commits/NEW_REF/status
-
-# Step 4: Update manifest with new ref
-# Change: ref: "abc123..." → ref: "def456..."
-```
-
-**Migration example** (git-ref → git with tag):
-
-```typescript
-// FROM:
-source: { type: "git-ref", repository: "https://github.com/supabase/pg_jsonschema", ref: "7c8603f..." }
-
-// TO:
-source: { type: "git", repository: "https://github.com/supabase/pg_jsonschema", tag: "v0.3.1" }
 ```
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
@@ -570,42 +516,23 @@ bun run generate
 bun run build
 ```
 
-### After User Push (Remote Affected)
+### After User Pushes
 
-**CRITICAL**: Agents NEVER push. Only commit locally.
+**Agents NEVER push - only commit locally.**
 
-If update breaks **after user pushes**, create revert commit and stop:
+If update breaks after user already pushed:
 
 ```bash
-# Step 1: Create revert commit
-git revert HEAD
-# Or revert multiple commits:
-git revert HEAD~3..HEAD  # Reverts last 3 commits
+# Create revert commit (keeps history)
+git revert HEAD  # Or HEAD~N..HEAD for multiple
 
-# Step 2: Document the revert
-git commit --amend -m "Revert failed update: EXTENSION_NAME incompatible with PG18
-
-Original commits reverted:
-- abc123: feat(extensions): update EXTENSION_NAME to vX.Y.Z
-- def456: chore(deps): update Bun dependencies
-
-Reason: Build failed with ABI incompatibility error.
-Will investigate alternative version or disable extension.
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-
-# Step 3: Rebuild from reverted state
+# Rebuild
 bun run generate
 bun run build
 bun run test:all
 
-# STOP: User must push the revert themselves
+# Agent stops here - user handles remote
 ```
-
-**FORBIDDEN**:
-- `git push` (agents NEVER push)
-- `git push --force` (NEVER - destroys history)
-- `git reset --hard` after push (NEVER - requires force-push)
 
 ---
 

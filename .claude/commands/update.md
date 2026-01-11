@@ -190,6 +190,12 @@ Update ONLY `source.tag`:
 }
 ```
 
+### Builtin Extensions (6 total)
+
+**No manual updates required** - Builtin extensions (adminpack, amcheck, btree_gin, btree_gist, citext, pg_stat_statements) are part of PostgreSQL core and update automatically with the base image (Phase 3).
+
+These only need updates when PostgreSQL version changes.
+
 ## Phase 5: Special Extensions
 
 ### 5.1: pgflow (6+ Files to Update)

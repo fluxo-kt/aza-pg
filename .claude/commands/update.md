@@ -179,7 +179,7 @@ Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 **VERIFY**: GitHub release has assets for BOTH amd64 and arm64:
 - Pattern: `pgvectorscale-{version}-pg{pgMajor}-{arch}.zip`
 
-### Source-Only Extensions (17 total)
+### Source-Built Extensions (25 total)
 
 Update ONLY `source.tag`:
 
@@ -192,7 +192,7 @@ Update ONLY `source.tag`:
 
 ### Builtin Extensions (6 total)
 
-**No manual updates required** - Builtin extensions (adminpack, amcheck, btree_gin, btree_gist, citext, pg_stat_statements) are part of PostgreSQL core and update automatically with the base image (Phase 3).
+**No manual updates required** - Builtin extensions (pg_stat_statements, auto_explain, pg_trgm, btree_gin, btree_gist, plpgsql) are part of PostgreSQL core and update automatically with the base image (Phase 3).
 
 These only need updates when PostgreSQL version changes.
 
@@ -216,7 +216,6 @@ bun update @pgflow/client @pgflow/dsl --latest
 # Change: COPY tests/fixtures/pgflow/schema-vX.Y.Z.sql
 
 # Step 5: Update 05-pgflow-init.sh version comments (lines 2, 60)
-# Currently shows v0.11.0 but should be v0.13.0 (BUG!)
 
 # Step 6: Delete old schema file
 rm tests/fixtures/pgflow/schema-v0.13.0.sql
@@ -421,11 +420,3 @@ Use **general-purpose sub-agents** (sonnet model) for:
 - Specify output format (e.g., "provide as JSON" or "list as markdown table")
 
 ---
-
-# Known Bugs to Fix
-
-**BUG**: `docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh` shows `v0.11.0` but manifest has `pgflow@0.13.0`:
-- Line 2: `# pgflow v0.11.0 Schema Initialization`
-- Line 60: `echo "[05-pgflow] pgflow v0.11.0 schema installed successfully"`
-
-**Fix during next pgflow update** or separately.

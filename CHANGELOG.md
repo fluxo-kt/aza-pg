@@ -10,6 +10,40 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- **pgflow**: 0.13.0 → 0.13.1
+  - Fixed Supabase CLI local environment detection (now uses `SUPABASE_URL` check instead of API keys)
+  - Includes v0.13.0 performance improvements (2.17× faster Map→Map chains via atomic step output storage)
+- **pg_partman**: 5.3.1 → 5.4.0 (switched from PGDG to source build)
+  - New `create_partition()` and `create_sub_partition()` functions (backward-compatible aliases for `create_parent()`/`create_sub_parent()`)
+  - New `config_cleanup()` function to remove pg_partman configuration while preserving partition structure
+  - Fixed critical bug in DESC order partitioning (`p_order := 'DESC'`) causing "relation does not exist" errors
+  - Added infinity value handling via `p_ignore_infinity` parameter in `partition_data_time()`, `partition_data_proc()`, and `check_default()`
+  - PostgreSQL 17 MAINTAIN privilege now properly inherited (automatically applied when using PG17+)
+  - **Note**: PGDG repository only has v5.3.1 - building from source for latest features
+- **pgbadger**: 13.1 → 13.2
+  - **Critical fix for PostgreSQL 18**: Fixed checkpoint parsing regression
+  - Updated embedded pgFormatter to v5.9
+  - Fixed SQL normalization for escaped quotes handling
+  - Fixed PgBouncer stats parsing
+  - New `--ssh-sudo` command for remote log analysis with sudo authentication
+
+### Fixed
+
+- **CRITICAL**: Fixed hll PGDG version causing all PGDG extensions to silently fail installation
+  - **Root cause**: Docker BuildKit cached successful apt-get layer while actual package version didn't exist (2.19-1.pgdg13+1 vs 2.19-2.pgdg13+2)
+  - **Symptom**: Image built successfully but extensions missing at runtime ("No such file or directory" errors)
+  - **Impact**: Affected all 12 PGDG extensions (pg_cron, pgaudit, pgvector, postgis, pgrouting, pg_repack, hll, http, hypopg, rum, plpgsql_check, set_user)
+  - **Fix**: Updated hll pgdgVersion to correct value (2.19-2.pgdg13+2)
+  - **Prevention**: Created PGDG version validation script to catch mismatches before build
+
+### Development (non-image)
+
+- **Build system**: Removed pg_partman from PGDG package installation (now built from source)
+- **Validation**: Added PGDG version validation against actual repository (prevents silent apt-get failures)
+- **Testing**: Updated pgflow schema to v0.13.1 (test fixtures regenerated)
+
 ---
 
 ## [18.1-202601081823-single-node] - 2026-01-08

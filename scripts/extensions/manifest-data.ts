@@ -799,7 +799,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.13.0",
+      tag: "pgflow@0.13.1",
     },
     runtime: {
       sharedPreload: false,
@@ -1130,7 +1130,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/darold/pgbadger.git",
-      tag: "v13.1",
+      tag: "v13.2",
     },
     build: { type: "make" },
     aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],

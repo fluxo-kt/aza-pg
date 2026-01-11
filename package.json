@@ -12,7 +12,6 @@
     "validate": "bun scripts/validate.ts",
     "validate:all": "bun scripts/validate.ts --all",
     "validate:fix": "bun scripts/validate.ts --fix",
-    "validate:pgdg": "bun scripts/ci/validate-pgdg-versions.ts",
     "format": "bun scripts/validate.ts --fix",
     "lint": "bun scripts/validate.ts",
     "test": "bun scripts/test-all.ts --skip-build",

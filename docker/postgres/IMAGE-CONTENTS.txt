@@ -23,7 +23,7 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
-  pgflow                       vpgflow@0.13.0 workflow
+  pgflow                       vpgflow@0.13.1 workflow
   pgmq                         v1.8.1         queueing
   pgroonga                     v4.0.5         search
   pgsodium                     v3.1.9         security
@@ -47,7 +47,7 @@ TOOLS (command-line utilities)
 
   pg_safeupdate                v1.5
   pgbackrest                   v2.57.0
-  pgbadger                     v13.1
+  pgbadger                     v13.2
   wal2json                     vwal2json_2_6
 
 ═══════════════════════════════════════════════════════════════

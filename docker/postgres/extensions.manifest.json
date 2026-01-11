@@ -545,8 +545,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/darold/pgbadger.git",
-        "tag": "v13.1",
-        "commit": "8a2b87193cbf80bc426e584c238aefa581af5fe8"
+        "tag": "v13.2",
+        "commit": "4fb2ba0d2bb176c087e25224b4da337dcae0cca7"
       },
       "build": {
         "type": "make"
@@ -579,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.0",
-        "commit": "f6c8f9c4d0841d6556655b2e3300546f27aa541d"
+        "tag": "pgflow@0.13.1",
+        "commit": "b09543c2d4c2e0a0eb2e0f5162af4decb3e61c32"
       },
       "runtime": {
         "sharedPreload": false,

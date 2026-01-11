@@ -570,13 +570,13 @@ bun run generate
 bun run build
 ```
 
-### After Push (Remote Affected)
+### After User Push (Remote Affected)
 
-**NOTE**: Agents DO NOT push. If update breaks **after user pushes to origin/dev**, user should:
+**CRITICAL**: Agents NEVER push. Only commit locally.
+
+If update breaks **after user pushes**, create revert commit and stop:
 
 ```bash
-# NEVER force-push! Use revert instead:
-
 # Step 1: Create revert commit
 git revert HEAD
 # Or revert multiple commits:
@@ -594,18 +594,18 @@ Will investigate alternative version or disable extension.
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 
-# Step 3: USER pushes the revert (agents never push!)
-# User runs: git push origin dev
-
-# Step 4: Rebuild from reverted state
+# Step 3: Rebuild from reverted state
 bun run generate
 bun run build
 bun run test:all
+
+# STOP: User must push the revert themselves
 ```
 
-**CRITICAL**:
-- **Agents**: NEVER push - always commit locally only
-- **Users**: After push, NEVER force-push - use `git revert` instead
+**FORBIDDEN**:
+- `git push` (agents NEVER push)
+- `git push --force` (NEVER - destroys history)
+- `git reset --hard` after push (NEVER - requires force-push)
 
 ---
 

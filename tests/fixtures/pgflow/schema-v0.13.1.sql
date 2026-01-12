@@ -47,14 +47,14 @@ CREATE SCHEMA if NOT EXISTS pgflow;
 -- ============================================================================
 -- Utility functions that don't depend on other entities
 -- Detects if running in local Supabase CLI environment
--- by checking if JWT secret matches the known hardcoded local value.
--- Returns true only for exact match; defaults to false (production-safe).
+-- by checking if SUPABASE_URL environment variable is set.
+-- v0.13.1 changed detection method from JWT secret to SUPABASE_URL check.
+-- Returns true if SUPABASE_URL is configured; defaults to false (production-safe).
 CREATE OR REPLACE FUNCTION pgflow.is_local () returns BOOLEAN language sql stable parallel safe
 SET
   search_path = '' AS $$
   select coalesce(
-    current_setting('app.settings.jwt_secret', true)
-      = 'super-secret-jwt-token-with-at-least-32-characters-long',
+    current_setting('app.settings.supabase_url', true) is not null,
     false
   )
 $$;

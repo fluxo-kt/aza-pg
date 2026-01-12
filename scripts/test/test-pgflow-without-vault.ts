@@ -97,10 +97,11 @@ async function main(): Promise<void> {
   try {
     const isLocal =
       await $`docker exec ${containerName} psql -U postgres -d test_no_vault -tAc "SELECT pgflow.is_local()"`.text();
-    if (isLocal.trim() === "t") {
-      success("Test 5 PASSED: pgflow.is_local() returns true");
+    const result = isLocal.trim();
+    if (result === "t" || result === "true") {
+      success(`Test 5 PASSED: pgflow.is_local() returns true (value: "${result}")`);
     } else {
-      error(`Test 5 FAILED: pgflow.is_local() returned ${isLocal.trim()}, expected 't'`);
+      error(`Test 5 FAILED: pgflow.is_local() returned "${result}", expected "t" or "true"`);
       testsPassed = false;
     }
   } catch (err) {

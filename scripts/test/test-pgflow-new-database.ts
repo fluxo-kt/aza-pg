@@ -115,8 +115,11 @@ async function runTest() {
       SELECT pgflow.is_local();
     "`.text();
 
-    if (isLocalCheck.trim() !== "t") {
-      throw new Error("❌ pgflow.is_local() returned false (expected true)");
+    const result = isLocalCheck.trim();
+    if (result !== "t" && result !== "true") {
+      throw new Error(
+        `❌ pgflow.is_local() returned unexpected value: "${result}" (expected "t" or "true")`
+      );
     }
     console.log("✅ pgflow installed and working in new database");
 

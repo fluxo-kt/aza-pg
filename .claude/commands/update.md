@@ -36,6 +36,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```
 
 4. **PGDG apt versions** (automated validation):
+
    ```bash
    bun run validate
    ```

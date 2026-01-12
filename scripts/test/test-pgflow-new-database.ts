@@ -46,7 +46,7 @@ async function runTest() {
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
     "`.text();
 
-    if (!template1Check.trim().includes("1")) {
+    if (template1Check.trim() !== "1") {
       throw new Error("❌ realtime.send() NOT found in template1");
     }
     console.log("✅ realtime.send() exists in template1");
@@ -59,7 +59,7 @@ async function runTest() {
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
     "`.text();
 
-    if (!postgresCheck.trim().includes("1")) {
+    if (postgresCheck.trim() !== "1") {
       throw new Error("❌ realtime.send() NOT found in postgres database");
     }
     console.log("✅ realtime.send() exists in postgres database");
@@ -74,7 +74,7 @@ async function runTest() {
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
     "`.text();
 
-    if (!testdbCheck.trim().includes("1")) {
+    if (testdbCheck.trim() !== "1") {
       throw new Error("❌ realtime.send() NOT inherited in new database");
     }
     console.log("✅ New database inherited realtime.send() from template1");

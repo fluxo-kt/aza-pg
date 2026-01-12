@@ -24,6 +24,7 @@
 
 import { join } from "node:path";
 import { extensionDefaults } from "../extension-defaults";
+import { PGDG_MAPPINGS } from "../extensions/pgdg-mappings";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
@@ -36,85 +37,8 @@ const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json"
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
 
-/**
- * PGDG extension name mapping
- * Maps manifest name to PGDG package name and ARG variable name
- */
-interface PgdgMapping {
-  manifestName: string;
-  packageName: string;
-  argName: string;
-  versionKey: keyof typeof extensionDefaults.pgdgVersions;
-}
-
-// PGDG packages ordered by cache stability (STABLE → VOLATILE)
-// Based on comprehensive analysis: manifest history + upstream repo activity
-// Stable extensions first create cache layers that survive frequent rebuilds
-// Analysis: /tmp/combined-stability-ranking.json (2025-11-23)
-//
-// TIER 1 (STABLE - scores 24-46): Install first for foundation cache layers
-// TIER 2 (MODERATE - scores 54-84): Install middle
-// TIER 3 (VOLATILE - scores 102-118): Install LAST to prevent cache invalidation
-const PGDG_MAPPINGS: PgdgMapping[] = [
-  // STABLE tier (scores 24-46)
-  {
-    manifestName: "pg_repack",
-    packageName: "repack",
-    argName: "REPACK_VERSION",
-    versionKey: "repack",
-  }, // score 24
-  { manifestName: "hll", packageName: "hll", argName: "HLL_VERSION", versionKey: "hll" }, // score 30
-  {
-    manifestName: "postgis",
-    packageName: "postgis-3",
-    argName: "POSTGIS_VERSION",
-    versionKey: "postgis",
-  }, // score 33
-  {
-    manifestName: "vector",
-    packageName: "pgvector",
-    argName: "PGVECTOR_VERSION",
-    versionKey: "pgvector",
-  }, // score 34
-  { manifestName: "rum", packageName: "rum", argName: "RUM_VERSION", versionKey: "rum" }, // score 40
-  // NOTE: timescaledb removed - it uses install_via: "source" in manifest (compiled from source, not PGDG)
-  {
-    manifestName: "hypopg",
-    packageName: "hypopg",
-    argName: "HYPOPG_VERSION",
-    versionKey: "hypopg",
-  }, // score 46
-
-  // MODERATE tier (scores 54-84)
-  { manifestName: "http", packageName: "http", argName: "HTTP_VERSION", versionKey: "http" }, // score 54
-  { manifestName: "pg_cron", packageName: "cron", argName: "PGCRON_VERSION", versionKey: "pgcron" }, // score 54
-  {
-    manifestName: "set_user",
-    packageName: "set-user",
-    argName: "SET_USER_VERSION",
-    versionKey: "setUser",
-  }, // score 55
-  {
-    manifestName: "pgrouting",
-    packageName: "pgrouting",
-    argName: "PGROUTING_VERSION",
-    versionKey: "pgrouting",
-  }, // score 84
-
-  // VOLATILE tier (scores 102-118): Install LAST to minimize cache invalidation
-  {
-    manifestName: "pgaudit",
-    packageName: "pgaudit",
-    argName: "PGAUDIT_VERSION",
-    versionKey: "pgaudit",
-  }, // score 102
-  {
-    manifestName: "plpgsql_check",
-    packageName: "plpgsql-check",
-    argName: "PLPGSQL_CHECK_VERSION",
-    versionKey: "plpgsqlCheck",
-  }, // score 103
-];
+// PGDG_MAPPINGS imported from shared module (scripts/extensions/pgdg-mappings.ts)
+// This eliminates duplication with validate-pgdg-versions.ts
 
 interface BuildSpec {
   type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
@@ -205,7 +129,10 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     // Check if entry exists, is PGDG, and is enabled (default true)
     if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
       // Package is enabled - use hardcoded version from extensionDefaults
-      const version = extensionDefaults.pgdgVersions[mapping.versionKey];
+      const version =
+        extensionDefaults.pgdgVersions[
+          mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
+        ];
 
       // Validate package name and version for shell safety (SC2046/SC2086 protection)
       validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
@@ -510,7 +437,10 @@ function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: stri
       const shouldInclude = (entry.enabled ?? true) || entry.enabledInComprehensiveTest === true;
       if (shouldInclude) {
         // Use hardcoded version from extensionDefaults
-        const version = extensionDefaults.pgdgVersions[mapping.versionKey];
+        const version =
+          extensionDefaults.pgdgVersions[
+            mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
+          ];
 
         // Validate package name and version for shell safety
         validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);

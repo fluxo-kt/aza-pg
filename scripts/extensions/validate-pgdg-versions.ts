@@ -5,29 +5,13 @@
  */
 
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data.ts";
+import { PACKAGE_NAME_MAP } from "../extensions/pgdg-mappings.ts";
 
 interface PgdgExtension {
   name: string;
   pgdgVersion: string;
   aptPackageName: string;
 }
-
-// Map manifest extension names to PGDG apt package names
-// Must match PGDG_MAPPINGS in scripts/docker/generate-dockerfile.ts
-const PACKAGE_NAME_MAP: Record<string, string> = {
-  pg_repack: "repack",
-  hll: "hll",
-  postgis: "postgis-3",
-  vector: "pgvector",
-  rum: "rum",
-  hypopg: "hypopg",
-  http: "http",
-  pg_cron: "cron",
-  set_user: "set-user",
-  pgrouting: "pgrouting",
-  pgaudit: "pgaudit",
-  plpgsql_check: "plpgsql-check",
-};
 
 const pgdgExtensions: PgdgExtension[] = MANIFEST_ENTRIES.filter(
   (ext) => ext.install_via === "pgdg" && ext.pgdgVersion && ext.kind === "extension"
@@ -41,26 +25,48 @@ console.log(`Validating ${pgdgExtensions.length} PGDG package versions...\n`);
 
 let hasErrors = false;
 
-for (const ext of pgdgExtensions) {
-  // Check if the version exists in PGDG repository
-  const result = Bun.spawnSync([
-    "docker",
-    "run",
-    "--rm",
-    "postgres:18.1-trixie",
-    "bash",
-    "-c",
-    `apt-get update -qq 2>&1 > /dev/null && apt-cache madison ${ext.aptPackageName} 2>&1 | head -1 | awk '{print $3}'`,
-  ]);
+// Batch all apt-cache checks into a single Docker run for performance (20s → ~2s)
+// Build bash script that checks all packages and outputs "packageName:version" per line
+const checkCommands = pgdgExtensions
+  .map(
+    (ext) =>
+      `version=$(apt-cache madison ${ext.aptPackageName} 2>&1 | head -1 | awk '{print $3}'); echo "${ext.aptPackageName}:$version"`
+  )
+  .join(" && ");
 
-  if (result.exitCode !== 0) {
-    console.error(`❌ ${ext.name}: Failed to check version`);
-    console.error(`   stderr: ${result.stderr.toString()}`);
-    hasErrors = true;
-    continue;
+const bashScript = `apt-get update -qq 2>&1 > /dev/null && ${checkCommands}`;
+
+// Run single Docker container to check all package versions
+const result = Bun.spawnSync([
+  "docker",
+  "run",
+  "--rm",
+  "postgres:18.1-trixie",
+  "bash",
+  "-c",
+  bashScript,
+]);
+
+if (result.exitCode !== 0) {
+  console.error(`❌ Failed to check PGDG versions (Docker command failed)`);
+  console.error(`   stderr: ${result.stderr.toString()}`);
+  process.exit(1);
+}
+
+// Parse output: each line is "packageName:version"
+const output = result.stdout.toString().trim();
+const versionMap = new Map<string, string>();
+
+for (const line of output.split("\n")) {
+  const [pkg, version] = line.split(":");
+  if (pkg && version) {
+    versionMap.set(pkg, version);
   }
+}
 
-  const availableVersion = result.stdout.toString().trim();
+// Validate each extension against the retrieved versions
+for (const ext of pgdgExtensions) {
+  const availableVersion = versionMap.get(ext.aptPackageName);
 
   if (!availableVersion) {
     console.error(`❌ ${ext.name}: Package ${ext.aptPackageName} not found in PGDG`);

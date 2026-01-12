@@ -368,7 +368,7 @@ bun run build
 bun run test:all
 ```
 
-**Multi-arch verification**: Image builds for both amd64 and arm64 (GitHub Actions handles this).
+**Multi-arch verification**: Image builds for both amd64 and arm64 are verified in GitHub Actions after the user pushes changes. Agents should ensure local tests pass before committing.
 
 **NOTE**: `bun run test` (quick test) exists but should NOT be used for updates - always run full `test:all` to verify comprehensive compatibility.
 

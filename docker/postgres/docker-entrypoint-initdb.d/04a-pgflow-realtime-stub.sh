@@ -16,7 +16,7 @@ set -euo pipefail
 TARGET_DB="${POSTGRES_DB:-postgres}"
 
 # Only run if pgflow will be installed (check dependencies)
-PG_NET_READY=$(psql -U postgres -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" | tr -d ' ')
+PG_NET_READY=$(psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" | tr -d ' ')
 if [ "$PG_NET_READY" != "1" ]; then
     echo "[04a-realtime-stub] Skipping: pg_net not available (pgflow prerequisites not met)"
     exit 0
@@ -65,7 +65,6 @@ BEGIN
       PERFORM pgmq.create('pgflow_events');
     EXCEPTION WHEN duplicate_object THEN
       RAISE NOTICE 'Queue "pgflow_events" already exists, skipping creation';
-      NULL;
     END;
     PERFORM pgmq.send('pgflow_events', message_json);
   END IF;

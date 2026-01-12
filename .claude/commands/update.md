@@ -503,4 +503,6 @@ Use **general-purpose sub-agents** (sonnet model) for:
 - Include filtering criteria (e.g., "return only version numbers")
 - Specify output format (e.g., "provide as JSON" or "list as Markdown table")
 
+Don't blindly 100% trust the results from agents. Sometimes they could do the job in the wrong way because they often have weaker models. They could also be too-narrow-minded, so verify.
+
 ---

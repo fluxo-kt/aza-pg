@@ -29,15 +29,10 @@ async function main(): Promise<void> {
 
   info("Starting container with pgflow...");
 
-  // Start container with pgflow
-  const containerName = `pgflow-security-test-${process.pid}`;
-
-  try {
-    await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=test ${IMAGE_TAG}`.quiet();
-  } catch (err) {
-    await harness.cleanup(containerName);
-    throw new Error(`Failed to start container: ${err}`);
-  }
+  // Start container using TestHarness for consistent management
+  const containerName = await harness.startContainer("pgflow-security", {
+    POSTGRES_PASSWORD: "test",
+  });
 
   // Wait for PostgreSQL to be ready
   info("Waiting for PostgreSQL to be ready...");

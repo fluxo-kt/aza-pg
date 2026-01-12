@@ -115,7 +115,7 @@ async function runTest() {
       SELECT pgflow.is_local();
     "`.text();
 
-    if (!isLocalCheck.trim().includes("t")) {
+    if (isLocalCheck.trim() !== "t") {
       throw new Error("❌ pgflow.is_local() returned false (expected true)");
     }
     console.log("✅ pgflow installed and working in new database");

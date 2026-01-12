@@ -331,11 +331,13 @@ WHERE n.nspname = 'realtime' AND proname = 'send';
 -- Should return: 1
 ```
 
-If missing, run the script inside the container:
+If missing, the realtime stub was not installed during initialization. This script runs automatically during container startup and requires superuser privileges. To reinstall:
 
 ```bash
 docker exec <container-name> bash /docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh
 ```
+
+Note: This script modifies template1 and requires PostgreSQL superuser privileges. It's normally executed automatically during container initialization.
 
 ### Issue: is_local() returns false
 
@@ -353,11 +355,13 @@ SELECT current_setting('app.aza_pg_custom');
 -- Should return: true
 ```
 
-If not set, run the script inside the container:
+If not set, the aza-pg custom settings were not applied during initialization. This script runs automatically during container startup and requires superuser privileges. To reinstall:
 
 ```bash
 docker exec <container-name> bash /docker-entrypoint-initdb.d/00-aza-pg-settings.sh
 ```
+
+Note: This script sets custom PostgreSQL parameters and requires superuser privileges. It's normally executed automatically during container initialization.
 
 ### Issue: Permission denied on realtime.send()
 

@@ -92,9 +92,9 @@ CREATE DATABASE my_app;
 \c my_app
 
 -- 3. Install required extensions (pgflow prerequisites)
-CREATE EXTENSION IF NOT EXISTS pgmq;          -- Required: Message queue for pgflow
+CREATE EXTENSION IF NOT EXISTS pgmq;          -- Optional: Message queue for realtime.send() degradation
 CREATE EXTENSION IF NOT EXISTS pg_net;        -- Optional: HTTP webhooks via realtime.send()
-CREATE EXTENSION IF NOT EXISTS supabase_vault;  -- Optional: Credential storage (unused)
+CREATE EXTENSION IF NOT EXISTS supabase_vault;  -- Optional: Credential storage (pgflow works without it)
 
 -- 4. Install pgflow schema
 \i /opt/pgflow/schema.sql

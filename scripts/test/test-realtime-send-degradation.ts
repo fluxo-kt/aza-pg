@@ -81,6 +81,9 @@ async function main(): Promise<void> {
     }
 
     // Test 4: Verify pg_notify layer worked (check if LISTEN would receive it)
+    // NOTE: This test validates that realtime.send() executes the pg_notify function without errors.
+    // It does NOT validate LISTEN/NOTIFY event delivery (which would require separate connections).
+    // The test confirms Layer 1 (pg_notify) code path is invoked successfully.
     info("Test 4: Verify Layer 1 (pg_notify) still works...");
     try {
       // Start LISTEN in background, send event, check notification received

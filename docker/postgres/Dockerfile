@@ -366,7 +366,7 @@ COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto
 COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
-RUN mkdir -p /opt/pgflow
+RUN set -euo pipefail && mkdir -p /opt/pgflow
 COPY tests/fixtures/pgflow/schema-v0.13.1.sql /opt/pgflow/schema.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

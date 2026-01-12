@@ -98,17 +98,31 @@ async function runTest() {
 
     // Test 5: Install required extensions in new database
     console.log("\n[7/8] Installing pgflow prerequisites in new database...");
-    await $`docker exec ${containerName} psql -U postgres -d testdb -c "
+    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -c "
       CREATE EXTENSION IF NOT EXISTS pg_net;
       CREATE EXTENSION IF NOT EXISTS pgmq;
-      CREATE EXTENSION IF NOT EXISTS supabase_vault;
     "`.quiet();
+
+    // supabase_vault is optional - match production behavior with exception handling
+    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb <<'EOSQL'
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS supabase_vault;
+EXCEPTION
+  WHEN undefined_file THEN
+    RAISE NOTICE 'supabase_vault extension not available - skipping (optional)';
+END $$;
+EOSQL
+`.quiet();
     console.log("✅ Prerequisites installed");
 
     // Test 6: Install pgflow in new database
     console.log("\n[8/8] Installing pgflow schema in new database...");
-    await $`docker exec ${containerName} psql -U postgres -d testdb -f /opt/pgflow/schema.sql`.quiet();
-    await $`docker exec ${containerName} psql -U postgres -d testdb -f /opt/pgflow/security-patches.sql`.quiet();
+    // Use sed to strip supabase_vault from schema, matching production init script behavior
+    await $`docker exec ${containerName} bash -c "
+      sed '/CREATE EXTENSION.*supabase_vault/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d testdb
+    "`.quiet();
+    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -f /opt/pgflow/security-patches.sql`.quiet();
 
     // Verify pgflow.is_local() works
     const isLocalCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "

@@ -65,6 +65,7 @@ BEGIN
     BEGIN
       PERFORM pgmq.create('pgflow_events');
     EXCEPTION WHEN duplicate_object THEN
+      RAISE NOTICE 'Queue "pgflow_events" already exists, skipping creation';
       NULL;
     END;
     PERFORM pgmq.send('pgflow_events', message_json);
@@ -133,6 +134,7 @@ BEGIN
     BEGIN
       PERFORM pgmq.create('pgflow_events');
     EXCEPTION WHEN duplicate_object THEN
+      RAISE NOTICE 'Queue "pgflow_events" already exists, skipping creation';
       NULL;
     END;
     PERFORM pgmq.send('pgflow_events', message_json);

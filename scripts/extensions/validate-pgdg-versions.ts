@@ -58,7 +58,10 @@ const output = result.stdout.toString().trim();
 const versionMap = new Map<string, string>();
 
 for (const line of output.split("\n")) {
-  const [pkg, version] = line.split(":");
+  const colonIndex = line.indexOf(":");
+  if (colonIndex === -1) continue;
+  const pkg = line.slice(0, colonIndex);
+  const version = line.slice(colonIndex + 1).trim();
   if (pkg && version) {
     versionMap.set(pkg, version);
   }

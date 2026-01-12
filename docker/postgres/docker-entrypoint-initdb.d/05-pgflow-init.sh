@@ -56,13 +56,13 @@ fi
 # Install pgflow schema
 # The schema file is copied from tests/fixtures/pgflow/ during build
 if [ -f /opt/pgflow/schema.sql ]; then
-    psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/schema.sql
+    psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -f /opt/pgflow/schema.sql
     echo "[05-pgflow] pgflow v0.13.1 schema installed successfully"
 
     # Apply security patches
     if [ -f /opt/pgflow/security-patches.sql ]; then
         echo "[05-pgflow] Applying security patches (AZA-PGFLOW-001, AZA-PGFLOW-002)..."
-        psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/security-patches.sql
+        psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -f /opt/pgflow/security-patches.sql
         echo "[05-pgflow] Security patches applied successfully"
     else
         echo "[05-pgflow] WARNING: Security patch file not found - functions remain vulnerable"

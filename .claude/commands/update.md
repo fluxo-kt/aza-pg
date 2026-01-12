@@ -253,10 +253,14 @@ bun update @pgflow/client @pgflow/dsl --latest
 
 # Step 5: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
-# Step 6: Delete old schema file
+# Step 6: Review and update security-patches.sql
+# Check docker/postgres/pgflow/security-patches.sql for compatibility with new version
+# Verify patches still apply or if upstream fixed them
+
+# Step 7: Delete old schema file
 rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
-# Step 7: Regenerate and test
+# Step 8: Regenerate and test
 bun run generate
 bun run test:pgflow
 ```

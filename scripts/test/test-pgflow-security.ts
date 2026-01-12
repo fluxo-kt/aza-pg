@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       ready = true;
       break;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
     }
   }
 

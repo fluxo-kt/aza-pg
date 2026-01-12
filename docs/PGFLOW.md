@@ -325,7 +325,11 @@ WHERE n.nspname = 'realtime' AND proname = 'send';
 -- Should return: 1
 ```
 
-If missing, run `04a-pgflow-realtime-stub.sh` manually.
+If missing, run the script inside the container:
+
+```bash
+docker exec <container-name> bash /docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh
+```
 
 ### Issue: is_local() returns false
 
@@ -343,7 +347,11 @@ SELECT current_setting('app.aza_pg_custom');
 -- Should return: true
 ```
 
-If not set, run `00-aza-pg-settings.sh` manually.
+If not set, run the script inside the container:
+
+```bash
+docker exec <container-name> bash /docker-entrypoint-initdb.d/00-aza-pg-settings.sh
+```
 
 ### Issue: Permission denied on realtime.send()
 
@@ -413,6 +421,6 @@ Found a bug or have a suggestion? Please file an issue at: [aza-pg/issues](https
 When reporting pgflow issues, include:
 
 - aza-pg image version
-- pgflow version (`SELECT * FROM pgflow.migrations`)
+- pgflow version (check `/opt/pgflow/schema.sql` header or `docker/postgres/pgflow/security-patches.sql`)
 - Error message and stack trace
 - Steps to reproduce

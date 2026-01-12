@@ -1080,7 +1080,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hll (v2.19-1.pgdg13+1)", "Alt: Pigsty v2.19 (same version)"],
+      notes: ["PGDG: postgresql-18-hll (v2.19-2.pgdg13+2)", "Alt: Pigsty v2.19 (same version)"],
     },
     sourceUrl: "https://github.com/citusdata/postgresql-hll",
     docsUrl: "https://github.com/citusdata/postgresql-hll#readme",

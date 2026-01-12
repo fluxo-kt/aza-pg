@@ -58,6 +58,15 @@ fi
 if [ -f /opt/pgflow/schema.sql ]; then
     psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/schema.sql
     echo "[05-pgflow] pgflow v0.13.1 schema installed successfully"
+
+    # Apply security patches
+    if [ -f /docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql ]; then
+        echo "[05-pgflow] Applying security patches (CVE-PGFLOW-001, CVE-PGFLOW-002)..."
+        psql -U postgres -d "$TARGET_DB" -f /docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
+        echo "[05-pgflow] Security patches applied successfully"
+    else
+        echo "[05-pgflow] WARNING: Security patch file not found - functions remain vulnerable"
+    fi
 else
     echo "[05-pgflow] ERROR: pgflow schema file not found at /opt/pgflow/schema.sql"
     echo "[05-pgflow] Ensure the schema file is copied during image build"

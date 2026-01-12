@@ -4,13 +4,17 @@
 -- Generated at: 2026-01-11T23:01:40.756Z
 -- Combined from 21 individual schema files
 --
--- SECURITY NOTE: This is unmodified upstream pgflow@0.13.1 code preserved for testing.
--- Known issues exist in SECURITY DEFINER functions that lack `SET search_path = ''`:
---   - Line 1547: pgflow.get_run_with_states() (0105_function_get_run_with_states.sql)
---   - Line 1637: pgflow.start_flow_with_states() (0110_function_start_flow_with_states.sql)
--- These functions are vulnerable to search_path hijacking attacks. Do NOT modify this
--- fixture - it represents actual upstream behavior. Security fixes should be submitted
--- to: https://github.com/pgflow-dev/pgflow/issues
+-- SECURITY NOTE: This is unmodified upstream pgflow@0.13.1 code.
+-- Known vulnerabilities (CVE-PGFLOW-001, CVE-PGFLOW-002) are patched at runtime
+-- via docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
+--
+-- This fixture is preserved unmodified to:
+-- 1. Validate schema generation accuracy against upstream
+-- 2. Enable regression testing when upstream publishes fixes
+-- 3. Maintain clear separation between upstream code and local patches
+--
+-- Production deployments apply security patches automatically during init.
+-- See: docker/postgres/docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
 -- ============================================================================
 -- Source: 0010_extensions.sql
 -- ============================================================================

@@ -384,10 +384,12 @@ GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_ro
 
 ## Version Compatibility
 
-| aza-pg Version | pgflow Version | PostgreSQL | Notes                  |
-| -------------- | -------------- | ---------- | ---------------------- |
-| 18.1-202501xx  | 0.13.1         | 18.1       | Initial integration    |
-| Future         | 0.14.x         | 18.x       | Pending upstream fixes |
+| aza-pg Version  | pgflow Version | PostgreSQL | Notes                  |
+| --------------- | -------------- | ---------- | ---------------------- |
+| 18.1-202501xx\* | 0.13.1         | 18.1       | Initial integration    |
+| Future          | 0.14.x         | 18.x       | Pending upstream fixes |
+
+\* _Version format note: `xx` represents a timestamp suffix automatically generated during build (e.g., `202501121430` for Jan 12, 2:30 PM). Use the full version tag from your image._
 
 ## Performance Considerations
 

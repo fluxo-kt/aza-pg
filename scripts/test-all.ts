@@ -957,7 +957,7 @@ const allChecks: Check[] = [
       "bun scripts/test/test-pgflow-security.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
     ],
     description: "Verify pgflow security patches (SET search_path on SECURITY DEFINER functions)",
-    critical: false,
+    critical: true,
     requiresDocker: true,
     requiresBuild: true,
     timeout: 180000, // 3 minutes

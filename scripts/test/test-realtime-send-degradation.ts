@@ -35,12 +35,12 @@ async function main(): Promise<void> {
     throw new Error(`Failed to start container: ${err}`);
   }
 
-  info("Waiting for PostgreSQL to be ready...");
-  await harness.waitForReady(containerName);
-
   let testsPassed = true;
 
   try {
+    info("Waiting for PostgreSQL to be ready...");
+    await harness.waitForReady(containerName);
+
     // Test 1: Create database WITHOUT optional extensions
     info("Test 1: Create test database without pg_net or pgmq...");
     try {
@@ -88,13 +88,13 @@ async function main(): Promise<void> {
     try {
       // Start LISTEN in background, send event, check notification received
       const listenScript = `
-      psql -U postgres -d test_degradation <<'EOSQL'
-      LISTEN test_topic;
-      SELECT pg_sleep(0.1);
-      SELECT realtime.send('{"layer1": "test"}'::jsonb, 'test:layer1', 'test_topic', false);
-      SELECT pg_sleep(0.5);
+        psql -U postgres -d test_degradation <<'EOSQL'
+        LISTEN test_topic;
+        SELECT pg_sleep(0.1);
+        SELECT realtime.send('{"layer1": "test"}'::jsonb, 'test:layer1', 'test_topic', false);
+        SELECT pg_sleep(0.5);
 EOSQL
-    `;
+      `;
       await $`docker exec ${containerName} bash -c ${listenScript}`.quiet();
 
       // If pg_notify worked, the call succeeded - that's enough proof Layer 1 works
@@ -155,20 +155,20 @@ EOSQL
       error(`Test 7 FAILED: ${err}`);
       testsPassed = false;
     }
+
+    console.log();
+    console.log("========================================");
+
+    if (testsPassed) {
+      success("All degradation tests PASSED - realtime.send() degrades gracefully!");
+    } else {
+      error("Some degradation tests FAILED");
+    }
   } finally {
     await harness.cleanup(containerName);
   }
 
-  console.log();
-  console.log("========================================");
-
-  if (testsPassed) {
-    success("All degradation tests PASSED - realtime.send() degrades gracefully!");
-    process.exit(0);
-  } else {
-    error("Some degradation tests FAILED");
-    process.exit(1);
-  }
+  process.exit(testsPassed ? 0 : 1);
 }
 
 main();

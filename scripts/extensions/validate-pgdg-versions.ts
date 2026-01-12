@@ -4,7 +4,7 @@
  * Prevents build failures from incorrect version strings
  */
 
-import { MANIFEST_ENTRIES } from "../extensions/manifest-data.ts";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data.ts";
 import { PACKAGE_NAME_MAP } from "../extensions/pgdg-mappings.ts";
 
 interface PgdgExtension {
@@ -34,14 +34,14 @@ const checkCommands = pgdgExtensions
   )
   .join(" && ");
 
-const bashScript = `apt-get update -qq 2>&1 > /dev/null && ${checkCommands}`;
+const bashScript = `apt-get update -qq >/dev/null 2>&1 && ${checkCommands}`;
 
 // Run single Docker container to check all package versions
 const result = Bun.spawnSync([
   "docker",
   "run",
   "--rm",
-  "postgres:18.1-trixie",
+  `postgres:${MANIFEST_METADATA.pgVersion}-trixie`,
   "bash",
   "-c",
   bashScript,

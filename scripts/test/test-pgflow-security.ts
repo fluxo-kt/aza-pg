@@ -113,14 +113,14 @@ async function main(): Promise<void> {
     "`.text();
 
     if (result1.includes("search_path=")) {
-      success("✓ get_run_with_states: search_path protection applied");
+      success("get_run_with_states: search_path protection applied");
     } else {
-      error("✗ get_run_with_states: MISSING search_path protection (AZA-PGFLOW-001)");
+      error("get_run_with_states: MISSING search_path protection (AZA-PGFLOW-001)");
       error(`  Found: ${result1.trim() || "(no configuration)"}`);
       testsPassed = false;
     }
   } catch (err) {
-    error(`✗ get_run_with_states: Failed to check configuration - ${err}`);
+    error(`get_run_with_states: Failed to check configuration - ${err}`);
     testsPassed = false;
   }
 
@@ -134,14 +134,14 @@ async function main(): Promise<void> {
     "`.text();
 
     if (result2.includes("search_path=")) {
-      success("✓ start_flow_with_states: search_path protection applied");
+      success("start_flow_with_states: search_path protection applied");
     } else {
-      error("✗ start_flow_with_states: MISSING search_path protection (AZA-PGFLOW-002)");
+      error("start_flow_with_states: MISSING search_path protection (AZA-PGFLOW-002)");
       error(`  Found: ${result2.trim() || "(no configuration)"}`);
       testsPassed = false;
     }
   } catch (err) {
-    error(`✗ start_flow_with_states: Failed to check configuration - ${err}`);
+    error(`start_flow_with_states: Failed to check configuration - ${err}`);
     testsPassed = false;
   }
 

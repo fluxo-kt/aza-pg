@@ -13,35 +13,34 @@
  */
 
 import { $ } from "bun";
+import { TestHarness } from "./harness.ts";
 
-const IMAGE_TAG = Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
-const CONTAINER_NAME = `pgflow-newdb-test-${process.pid}`;
 const TEST_PASSWORD = "test_password_12345";
-
-async function cleanup() {
-  await $`docker rm -f ${CONTAINER_NAME} 2>/dev/null || true`.quiet();
-}
+const harness = new TestHarness();
 
 async function runTest() {
   console.log("=".repeat(70));
   console.log("PGFLOW NEW DATABASE FUNCTIONALITY TEST");
   console.log("=".repeat(70));
 
+  let containerName = "";
+
   try {
     // Start container
     console.log("\n[1/8] Starting container...");
-    await $`docker run -d --name ${CONTAINER_NAME} -e POSTGRES_PASSWORD=${TEST_PASSWORD} ${IMAGE_TAG}`.quiet();
+    containerName = await harness.startContainer("pgflow-newdb", {
+      POSTGRES_PASSWORD: TEST_PASSWORD,
+    });
 
-    // Wait for PostgreSQL to be ready
+    // Wait for PostgreSQL to be ready (with retry loop)
     console.log("[2/8] Waiting for PostgreSQL...");
-    await $`sleep 10`.quiet();
-    await $`docker exec ${CONTAINER_NAME} pg_isready -U postgres`.quiet();
+    await harness.waitForReady(containerName);
     console.log("✅ PostgreSQL ready");
 
     // Test 1: Verify realtime.send() exists in template1
     console.log("\n[3/8] Checking realtime.send() in template1...");
     const template1Check =
-      await $`docker exec ${CONTAINER_NAME} psql -U postgres -d template1 -t -c "
+      await $`docker exec ${containerName} psql -U postgres -d template1 -t -c "
       SELECT COUNT(*) FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
@@ -54,7 +53,7 @@ async function runTest() {
 
     // Test 2: Verify realtime.send() exists in initial database
     console.log("\n[4/8] Checking realtime.send() in postgres database...");
-    const postgresCheck = await $`docker exec ${CONTAINER_NAME} psql -U postgres -d postgres -t -c "
+    const postgresCheck = await $`docker exec ${containerName} psql -U postgres -d postgres -t -c "
       SELECT COUNT(*) FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
@@ -67,9 +66,9 @@ async function runTest() {
 
     // Test 3: Create new database and verify inheritance
     console.log("\n[5/8] Creating new database 'testdb' from template1...");
-    await $`docker exec ${CONTAINER_NAME} psql -U postgres -c "CREATE DATABASE testdb TEMPLATE template1"`.quiet();
+    await $`docker exec ${containerName} psql -U postgres -c "CREATE DATABASE testdb TEMPLATE template1"`.quiet();
 
-    const testdbCheck = await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -t -c "
+    const testdbCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "
       SELECT COUNT(*) FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname = 'realtime' AND p.proname = 'send'
@@ -83,7 +82,7 @@ async function runTest() {
     // Test 4: Test realtime.send() functionality in new database
     console.log("\n[6/8] Testing realtime.send() functionality in new database...");
     try {
-      await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -c "
+      await $`docker exec ${containerName} psql -U postgres -d testdb -c "
         SELECT realtime.send(
           '{\"test\": \"value\"}'::jsonb,
           'test:event',
@@ -92,13 +91,14 @@ async function runTest() {
         );
       "`.quiet();
       console.log("✅ realtime.send() works in new database");
-    } catch {
-      throw new Error("❌ realtime.send() call failed in new database");
+    } catch (err) {
+      const errorDetails = err instanceof Error ? err.message : JSON.stringify(err);
+      throw new Error(`❌ realtime.send() call failed in new database: ${errorDetails}`);
     }
 
     // Test 5: Install required extensions in new database
     console.log("\n[7/8] Installing pgflow prerequisites in new database...");
-    await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -c "
+    await $`docker exec ${containerName} psql -U postgres -d testdb -c "
       CREATE EXTENSION IF NOT EXISTS pg_net;
       CREATE EXTENSION IF NOT EXISTS pgmq;
       CREATE EXTENSION IF NOT EXISTS supabase_vault;
@@ -107,11 +107,11 @@ async function runTest() {
 
     // Test 6: Install pgflow in new database
     console.log("\n[8/8] Installing pgflow schema in new database...");
-    await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -f /opt/pgflow/schema.sql`.quiet();
-    await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -f /opt/pgflow/security-patches.sql`.quiet();
+    await $`docker exec ${containerName} psql -U postgres -d testdb -f /opt/pgflow/schema.sql`.quiet();
+    await $`docker exec ${containerName} psql -U postgres -d testdb -f /opt/pgflow/security-patches.sql`.quiet();
 
     // Verify pgflow.is_local() works
-    const isLocalCheck = await $`docker exec ${CONTAINER_NAME} psql -U postgres -d testdb -t -c "
+    const isLocalCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "
       SELECT pgflow.is_local();
     "`.text();
 
@@ -124,18 +124,18 @@ async function runTest() {
     console.log("✅ ALL TESTS PASSED - pgflow works in new databases!");
     console.log("=".repeat(70));
 
-    await cleanup();
+    await harness.cleanupAll();
     process.exit(0);
   } catch (error) {
     console.error("\n" + "=".repeat(70));
     console.error("❌ TEST FAILED");
     console.error("=".repeat(70));
     if (error instanceof Error) {
-      console.error(error.message);
+      console.error(`${error.message}\n\nOriginal error: ${error.stack || error}`);
     } else {
-      console.error(error);
+      console.error(`Error: ${JSON.stringify(error)}`);
     }
-    await cleanup();
+    await harness.cleanupAll();
     process.exit(1);
   }
 }

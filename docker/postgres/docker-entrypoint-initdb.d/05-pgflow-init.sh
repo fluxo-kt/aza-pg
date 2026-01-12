@@ -61,7 +61,7 @@ if [ -f /opt/pgflow/schema.sql ]; then
 
     # Apply security patches
     if [ -f /opt/pgflow/security-patches.sql ]; then
-        echo "[05-pgflow] Applying security patches (CVE-PGFLOW-001, CVE-PGFLOW-002)..."
+        echo "[05-pgflow] Applying security patches (AZA-PGFLOW-001, AZA-PGFLOW-002)..."
         psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/security-patches.sql
         echo "[05-pgflow] Security patches applied successfully"
     else

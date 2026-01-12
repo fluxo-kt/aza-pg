@@ -49,6 +49,7 @@ const result = Bun.spawnSync([
 
 if (result.exitCode !== 0) {
   console.error(`❌ Failed to check PGDG versions (Docker command failed)`);
+  console.error(`   stdout: ${result.stdout.toString()}`);
   console.error(`   stderr: ${result.stderr.toString()}`);
   process.exit(1);
 }

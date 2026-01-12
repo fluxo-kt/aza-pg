@@ -4,7 +4,7 @@
  * Usage: bun run scripts/test/test-pgflow-security.ts [image-tag]
  *
  * Tests that SECURITY DEFINER functions have SET search_path configured
- * to prevent search_path hijacking attacks (CVE-PGFLOW-001, CVE-PGFLOW-002).
+ * to prevent search_path hijacking attacks (AZA-PGFLOW-001, AZA-PGFLOW-002).
  *
  * Examples:
  *   bun run scripts/test/test-pgflow-security.ts                    # Use default tag
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     if (result1.includes("search_path=")) {
       success("✓ get_run_with_states: search_path protection applied");
     } else {
-      error("✗ get_run_with_states: MISSING search_path protection (CVE-PGFLOW-001)");
+      error("✗ get_run_with_states: MISSING search_path protection (AZA-PGFLOW-001)");
       error(`  Found: ${result1.trim() || "(no configuration)"}`);
       testsPassed = false;
     }
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     if (result2.includes("search_path=")) {
       success("✓ start_flow_with_states: search_path protection applied");
     } else {
-      error("✗ start_flow_with_states: MISSING search_path protection (CVE-PGFLOW-002)");
+      error("✗ start_flow_with_states: MISSING search_path protection (AZA-PGFLOW-002)");
       error(`  Found: ${result2.trim() || "(no configuration)"}`);
       testsPassed = false;
     }

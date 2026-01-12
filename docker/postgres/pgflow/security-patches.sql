@@ -2,8 +2,8 @@
 -- Applied after 05-pgflow-init.sh loads upstream schema
 --
 -- Patches applied:
--- 1. CVE-PGFLOW-001: Add SET search_path to get_run_with_states
--- 2. CVE-PGFLOW-002: Add SET search_path to start_flow_with_states
+-- 1. AZA-PGFLOW-001: Add SET search_path to get_run_with_states
+-- 2. AZA-PGFLOW-002: Add SET search_path to start_flow_with_states
 -- 3. COMPAT-AZA-PG-001: Fix is_local() for non-Supabase installations
 --
 -- Upstream tracking:
@@ -54,10 +54,10 @@ END;
 $$;
 
 
-COMMENT ON FUNCTION pgflow.get_run_with_states IS 'Patched: Added SET search_path for CVE-PGFLOW-001';
+COMMENT ON FUNCTION pgflow.get_run_with_states IS 'Patched: Added SET search_path for AZA-PGFLOW-001';
 
 
-COMMENT ON FUNCTION pgflow.start_flow_with_states IS 'Patched: Added SET search_path for CVE-PGFLOW-002';
+COMMENT ON FUNCTION pgflow.start_flow_with_states IS 'Patched: Added SET search_path for AZA-PGFLOW-002';
 
 
 -- Patch 3: pgflow.is_local() - Fix for non-Supabase installations

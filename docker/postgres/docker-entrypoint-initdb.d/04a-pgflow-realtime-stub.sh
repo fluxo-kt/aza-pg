@@ -84,6 +84,12 @@ END;
 $$;
 
 COMMENT ON FUNCTION realtime.send IS 'pgflow event broadcaster: pg_notify + optional pgmq/pg_net (aza-pg Supabase compatibility stub)';
+
+-- SECURITY: Prevent SSRF attacks via webhook_url manipulation
+-- Only trusted roles (postgres, application roles) should execute this function
+REVOKE EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) FROM PUBLIC;
+-- Grant to postgres superuser by default (other roles must be explicitly granted)
+GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO postgres;
 EOSQL
 
 # Now install in the initial database as well
@@ -146,6 +152,12 @@ END;
 $$;
 
 COMMENT ON FUNCTION realtime.send IS 'pgflow event broadcaster: pg_notify + optional pgmq/pg_net (aza-pg Supabase compatibility stub)';
+
+-- SECURITY: Prevent SSRF attacks via webhook_url manipulation
+-- Only trusted roles (postgres, application roles) should execute this function
+REVOKE EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) FROM PUBLIC;
+-- Grant to postgres superuser by default (other roles must be explicitly granted)
+GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO postgres;
 EOSQL
 
-echo "[04a-realtime-stub] ✅ realtime.send() stub created in template1 and $TARGET_DB"
+echo "[04a-realtime-stub] ✅ realtime.send() stub created in template1 and $TARGET_DB (EXECUTE revoked from PUBLIC for security)"

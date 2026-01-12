@@ -5,7 +5,7 @@
 -- Combined from 21 individual schema files
 --
 -- SECURITY NOTE: This is unmodified upstream pgflow@0.13.1 code.
--- Known vulnerabilities (CVE-PGFLOW-001, CVE-PGFLOW-002) and compatibility patches
+-- Known vulnerabilities (AZA-PGFLOW-001, AZA-PGFLOW-002) and compatibility patches
 -- (COMPAT-AZA-PG-001) are applied at runtime by 05-pgflow-init.sh
 --
 -- Patch infrastructure:

@@ -88,15 +88,22 @@ For databases created after container initialization:
 -- 1. Create new database (inherits realtime.send() from template1)
 CREATE DATABASE my_app;
 
--- 2. Connect and install pgflow schema
+-- 2. Connect to new database
 \c my_app
+
+-- 3. Install required extensions (pgflow prerequisites)
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS pgmq;
+CREATE EXTENSION IF NOT EXISTS supabase_vault;
+
+-- 4. Install pgflow schema
 \i /opt/pgflow/schema.sql
 \i /opt/pgflow/security-patches.sql
 
--- 3. Verify installation
+-- 5. Verify installation
 SELECT pgflow.is_local();  -- Returns: t (true)
 
--- 4. pgflow is now ready - use the DSL or SQL API
+-- 6. pgflow is now ready - use the DSL or SQL API
 ```
 
 ### Creating and Running Workflows

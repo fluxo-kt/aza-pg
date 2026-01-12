@@ -105,7 +105,7 @@ Extensions with `dependencies: ["extension1", "extension2"]` field must be updat
 
 ```bash
 # Find dependents
-grep -B 3 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | grep 'name:'
+grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | grep 'name:'
 
 # Check compatibility:
 # - Read dependent's Cargo.toml / package.json for version constraints
@@ -479,7 +479,7 @@ bun run test:all
 | **set_user** | `RELX_Y_Z` | `REL4_2_0` |
 | **pgbackrest** | `release/X.Y.Z` | `release/2.57.0` |
 | **wal2json** | `wal2json_X_Y` | `wal2json_2_6` |
-| **pgflow** | `pgflow@X.Y.Z` | `pgflow@0.13.0` |
+| **pgflow** | `pgflow@X.Y.Z` | `pgflow@0.13.1` |
 
 ## Version Lookup Commands
 

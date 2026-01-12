@@ -10,8 +10,7 @@
  *   bun scripts/test/test-pgflow-schema.ts --container=my-postgres
  */
 
-import { $ } from "bun";
-import { resolveImageTag, parseContainerName } from "./image-resolver";
+import { parseContainerName } from "./image-resolver";
 import { TestHarness } from "./harness";
 import {
   installPgflowSchema,

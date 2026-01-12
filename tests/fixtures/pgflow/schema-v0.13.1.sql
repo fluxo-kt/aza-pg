@@ -9,7 +9,7 @@
 -- (COMPAT-AZA-PG-001) are applied at runtime by 05-pgflow-init.sh
 --
 -- Patch infrastructure:
--- - realtime.send() stub: 05a-pgflow-realtime-stub.sh (Supabase compatibility)
+-- - realtime.send() stub: 04a-pgflow-realtime-stub.sh (Supabase compatibility)
 -- - Security patches: docker/postgres/pgflow/security-patches.sql (loaded by 05-pgflow-init.sh)
 --
 -- This fixture is preserved unmodified to:

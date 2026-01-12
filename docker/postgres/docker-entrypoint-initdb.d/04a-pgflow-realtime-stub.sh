@@ -1,6 +1,6 @@
 #!/bin/bash
 # pgflow Realtime Stub - Create before pgflow schema installation
-# This must run BEFORE 05-pgflow-init.sh (alphabetical order: 05a < 05)
+# This must run BEFORE 05-pgflow-init.sh (alphabetical order: 04a < 05)
 #
 # Context: pgflow is designed for Supabase and uses realtime.send() for event broadcasting.
 # Since aza-pg is a custom Postgres build (not Supabase), we provide a compatibility stub
@@ -18,11 +18,11 @@ TARGET_DB="${POSTGRES_DB:-postgres}"
 # Only run if pgflow will be installed (check dependencies)
 PG_NET_READY=$(psql -U postgres -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" | tr -d ' ')
 if [ "$PG_NET_READY" != "1" ]; then
-    echo "[05a-realtime-stub] Skipping: pg_net not available (pgflow prerequisites not met)"
+    echo "[04a-realtime-stub] Skipping: pg_net not available (pgflow prerequisites not met)"
     exit 0
 fi
 
-echo "[05a-realtime-stub] Creating realtime.send() stub for pgflow..."
+echo "[04a-realtime-stub] Creating realtime.send() stub for pgflow..."
 
 psql -U postgres -d "$TARGET_DB" <<'EOSQL'
 -- Create realtime schema if not exists
@@ -84,4 +84,4 @@ $$;
 COMMENT ON FUNCTION realtime.send IS 'pgflow event broadcaster: pg_notify + optional pgmq/pg_net (aza-pg Supabase compatibility stub)';
 EOSQL
 
-echo "[05a-realtime-stub] ✅ realtime.send() stub created successfully"
+echo "[04a-realtime-stub] ✅ realtime.send() stub created successfully"

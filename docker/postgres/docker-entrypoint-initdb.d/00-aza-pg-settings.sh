@@ -13,7 +13,7 @@ echo "[00-aza-pg-settings] Setting aza-pg custom installation marker..."
 
 psql -U postgres -d "$TARGET_DB" -v ON_ERROR_STOP=1 <<EOSQL
 -- Mark this as an aza-pg custom installation
-ALTER SYSTEM SET "app.settings.aza_pg_custom" = 'true';
+ALTER SYSTEM SET app.aza_pg_custom = 'true';
 
 -- Reload configuration to apply setting
 SELECT pg_reload_conf();

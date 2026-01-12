@@ -70,7 +70,7 @@ SET
   -- For aza-pg custom installations:
   -- We consider it "local" if running in a custom/non-Supabase environment
   -- Detection: Check if we're NOT in Supabase by looking for custom installation marker
-  SELECT (current_setting('app.settings.aza_pg_custom', true) = 'true')
+  SELECT (current_setting('app.aza_pg_custom', true) = 'true')
       OR (current_setting('app.settings.supabase_url', true) IS NULL)
 $$;
 

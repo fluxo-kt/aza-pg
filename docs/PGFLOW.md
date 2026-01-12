@@ -120,6 +120,12 @@ bun add @pgflow/dsl @pgflow/client
 
 ```typescript
 import { flow, step } from "@pgflow/dsl";
+import { createClient } from "@pgflow/client";
+
+// Initialize pgflow client
+const pgflowClient = createClient({
+  connectionString: "postgresql://postgres:secret@localhost:5432/postgres",
+});
 
 const welcomeFlow = flow("welcome-user").step(
   "send-email",

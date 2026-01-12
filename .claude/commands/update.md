@@ -20,16 +20,19 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 1. **Git-based extensions**:
+
    ```bash
    bun scripts/extensions/check-updates.ts
    ```
 
 2. **Bun dependencies**:
+
    ```bash
    bun outdated  # Check what's outdated
    ```
 
 3. **Base image** (if upgrading PostgreSQL version):
+
    ```bash
    docker pull postgres:18.X-trixie
    docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}'
@@ -408,6 +411,7 @@ Resolution options:
 3. **Internal changes**: One line max, or omit if trivial
 
 **Format**:
+
 ```markdown
 ## [Unreleased]
 

@@ -234,6 +234,11 @@ These only need updates when PostgreSQL version changes.
 
 ## Phase 5: Special Extensions
 
+**IMPORTANT**: When updating any extension, check for local patches/compatibility layers in `docker/postgres/`:
+- Search for files: `find docker/postgres -name "*EXTENSION_NAME*patch*" -o -name "*EXTENSION_NAME*stub*" -o -name "*EXTENSION_NAME*compat*"`
+- Review init scripts: `grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
+- Verify patches still apply with new version or if upstream fixed them
+
 ### 5.1: pgflow (6+ Files to Update)
 
 **Most complex** — requires coordinated updates across multiple files:
@@ -253,9 +258,12 @@ bun update @pgflow/client @pgflow/dsl --latest
 
 # Step 5: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
-# Step 6: Review and update security-patches.sql
-# Check docker/postgres/pgflow/security-patches.sql for compatibility with new version
+# Step 6: Review and update ALL patches and compatibility layers
+# Check ALL pgflow patches for compatibility with new version:
+#   - docker/postgres/pgflow/security-patches.sql (SET search_path protection)
+#   - docker/postgres/docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh (Supabase compatibility)
 # Verify patches still apply or if upstream fixed them
+# Check if new version introduces breaking changes requiring new patches
 
 # Step 7: Delete old schema file
 rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql

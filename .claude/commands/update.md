@@ -408,7 +408,7 @@ Resolution options:
 **Rules**:
 1. **User-facing changes**: Full detail with migration guidance
 2. **Breaking changes**: Separate section with "action required" flag
-3. **Internal changes**: One line max, or omit if trivial
+3. **Development (non-image) changes**: One line max, or omit if trivial
 
 **Format**:
 

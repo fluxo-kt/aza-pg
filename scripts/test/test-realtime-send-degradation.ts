@@ -26,14 +26,9 @@ async function main(): Promise<void> {
   console.log();
 
   info("Starting container...");
-  const containerName = `realtime-degradation-test-${Date.now()}`;
-
-  try {
-    await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=test ${IMAGE_TAG}`.quiet();
-  } catch (err) {
-    await harness.cleanup(containerName);
-    throw new Error(`Failed to start container: ${err}`);
-  }
+  const containerName = await harness.startContainer("realtime-degradation-test", {
+    POSTGRES_PASSWORD: "test",
+  });
 
   let testsPassed = true;
 

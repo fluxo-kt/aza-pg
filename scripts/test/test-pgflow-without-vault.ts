@@ -28,14 +28,9 @@ async function main(): Promise<void> {
   console.log();
 
   info("Starting container...");
-  const containerName = `pgflow-no-vault-test-${process.pid}`;
-
-  try {
-    await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=test ${IMAGE_TAG}`.quiet();
-  } catch (err) {
-    await harness.cleanup(containerName);
-    throw new Error(`Failed to start container: ${err}`);
-  }
+  const containerName = await harness.startContainer("pgflow-no-vault-test", {
+    POSTGRES_PASSWORD: "test",
+  });
 
   let testsPassed = true;
 

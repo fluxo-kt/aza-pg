@@ -7,6 +7,8 @@ category: project
 tags: [project, update, maintenance]
 ---
 
+# /update
+
 You are updating dependencies and extensions in the aza-pg PostgreSQL container project.
 
 **CRITICAL**: See AGENTS.md "AI Agent Knowledge Updates" section for surprising facts (Debian Trixie is LTS, PG18 released Sep 2025, pgrx needs Rust 1.88+, etc.)

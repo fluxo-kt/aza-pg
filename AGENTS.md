@@ -85,7 +85,7 @@ bun run generate            # Regenerate all files from manifest
 - **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
 - **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild
-- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically (auto-validated)
+- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime

@@ -41,6 +41,8 @@ docker run -e POSTGRES_PASSWORD=secret ghcr.io/fluxo-kt/aza-pg:pg18
 # pgflow schema + patches loaded automatically
 ```
 
+**Note**: `:pg18` is a convenience tag pointing to the latest PostgreSQL 18 build. For production, use specific timestamped tags (e.g., `18.1-202501142330-single-node`) for reproducible builds.
+
 ### New Databases
 
 The `realtime.send()` stub is inherited from `template1`:
@@ -119,25 +121,36 @@ bun add @pgflow/dsl @pgflow/client
 **TypeScript Example**:
 
 ```typescript
-import { flow, step } from "@pgflow/dsl";
+import { Flow } from "@pgflow/dsl";
 import { createClient } from "@pgflow/client";
+
+// Define flow with typed input
+interface WelcomeInput {
+  userId: number;
+}
+
+const welcomeFlow = new Flow<WelcomeInput>({ slug: "welcome-user" }).step(
+  { slug: "send-email" },
+  async (input) => {
+    // Call external API to send welcome email
+    const response = await fetch("https://api.example.com/send-welcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: input.userId }),
+    });
+    return await response.json();
+  }
+);
 
 // Initialize pgflow client
 const pgflowClient = createClient({
   connectionString: "postgresql://postgres:secret@localhost:5432/postgres",
 });
 
-const welcomeFlow = flow("welcome-user").step(
-  "send-email",
-  step.http({
-    url: "https://api.example.com/send-welcome",
-    method: "POST",
-  })
-);
-
-// Deploy and run
-await pgflowClient.deploy(welcomeFlow);
-await pgflowClient.run("welcome-user", { userId: 123 });
+// Start flow and wait for completion
+const run = await pgflowClient.startFlow("welcome-user", { userId: 123 });
+const result = await pgflowClient.waitForStatus(run.run_id, "completed");
+console.log("Flow completed:", result);
 ```
 
 **SQL API** (advanced usage):
@@ -433,6 +446,6 @@ Found a bug or have a suggestion? Please file an issue at: [aza-pg/issues](https
 When reporting pgflow issues, include:
 
 - aza-pg image version
-- pgflow version (check `/opt/pgflow/schema.sql` header or `docker/postgres/pgflow/security-patches.sql`)
+- pgflow version (check `/opt/pgflow/schema.sql` header or `/opt/pgflow/security-patches.sql`)
 - Error message and stack trace
 - Steps to reproduce

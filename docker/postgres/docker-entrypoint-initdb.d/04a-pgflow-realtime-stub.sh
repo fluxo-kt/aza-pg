@@ -95,8 +95,12 @@ EOSQL
 echo "[04a-realtime-stub] Installing realtime.send() in template1 (for new databases)..."
 psql -v ON_ERROR_STOP=1 -U postgres -d template1 <<<"$REALTIME_STUB_SQL"
 
+# Prevent connections to template1 after setup (required for CREATE DATABASE ... TEMPLATE template1)
+echo "[04a-realtime-stub] Disabling connections to template1 (prevents 'database is being accessed' errors)..."
+psql -v ON_ERROR_STOP=1 -U postgres -c "UPDATE pg_database SET datallowconn = false WHERE datname = 'template1'"
+
 # Now install in the initial database as well
 echo "[04a-realtime-stub] Installing realtime.send() in initial database ($TARGET_DB)..."
 psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" <<<"$REALTIME_STUB_SQL"
 
-echo "[04a-realtime-stub] ✅ realtime.send() stub created in template1 and $TARGET_DB (EXECUTE revoked from PUBLIC for security)"
+echo "[04a-realtime-stub] ✅ realtime.send() stub created in template1 (locked) and $TARGET_DB (EXECUTE revoked from PUBLIC for security)"

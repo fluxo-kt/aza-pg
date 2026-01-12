@@ -134,12 +134,13 @@ EOSQL
     // Test 7: Verify defensive programming - EXISTS checks prevent errors
     info("Test 7: Verify defensive EXISTS checks in realtime.send()...");
     try {
-      const funcDef =
-        await $`docker exec ${containerName} psql -U postgres -d test_degradation -tAc "SELECT pg_get_functiondef(oid) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'realtime' AND p.proname = 'send'"`.text();
+      // Use prosrc instead of pg_get_functiondef (simpler and more reliable)
+      const funcSource =
+        await $`docker exec ${containerName} psql -U postgres -d test_degradation -tAc "SELECT prosrc FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'realtime' AND p.proname = 'send'"`.text();
 
       if (
-        funcDef.includes("EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgmq')") &&
-        funcDef.includes("EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net')")
+        funcSource.includes("EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgmq')") &&
+        funcSource.includes("EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net')")
       ) {
         success("Test 7 PASSED: Defensive EXISTS checks present in function");
       } else {

@@ -3,17 +3,24 @@
  * Test pgflow functionality in newly created databases
  *
  * Verifies:
- * 1. realtime.send() stub exists in template1
- * 2. realtime.send() stub exists in initial database
- * 3. New databases inherit realtime.send() from template1
- * 4. pgflow can be installed in new databases
- * 5. pgflow functions work correctly in new databases
+ * 1. realtime.send() stub exists in initial database (postgres)
+ * 2. New databases inherit realtime.send() from template1 (proves template1 has it)
+ * 3. realtime.send() functionality works in new databases
+ * 4. pgflow prerequisites can be installed in new databases
+ * 5. pgflow schema can be installed and works correctly in new databases
+ *
+ * Note: template1 has datallowconn=false after initialization, so we cannot check it directly.
+ * Instead, we verify it has realtime.send() by creating a database from it and checking inheritance.
  *
  * This ensures full functionality across ALL databases, not just the default one.
  */
 
 import { $ } from "bun";
 import { TestHarness } from "./harness.ts";
+
+// Support CLI image override for consistency with other tests
+const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
+Bun.env.POSTGRES_IMAGE = IMAGE_TAG;
 
 const TEST_PASSWORD = "test_password_12345";
 const harness = new TestHarness();
@@ -37,22 +44,8 @@ async function runTest() {
     await harness.waitForReady(containerName);
     console.log("✅ PostgreSQL ready");
 
-    // Test 1: Verify realtime.send() exists in template1
-    console.log("\n[3/8] Checking realtime.send() in template1...");
-    const template1Check =
-      await $`docker exec ${containerName} psql -U postgres -d template1 -t -c "
-      SELECT COUNT(*) FROM pg_proc p
-      JOIN pg_namespace n ON p.pronamespace = n.oid
-      WHERE n.nspname = 'realtime' AND p.proname = 'send'
-    "`.text();
-
-    if (template1Check.trim() !== "1") {
-      throw new Error("❌ realtime.send() NOT found in template1");
-    }
-    console.log("✅ realtime.send() exists in template1");
-
-    // Test 2: Verify realtime.send() exists in initial database
-    console.log("\n[4/8] Checking realtime.send() in postgres database...");
+    // Test 1: Verify realtime.send() exists in initial database
+    console.log("\n[3/8] Checking realtime.send() in postgres database...");
     const postgresCheck = await $`docker exec ${containerName} psql -U postgres -d postgres -t -c "
       SELECT COUNT(*) FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
@@ -64,8 +57,10 @@ async function runTest() {
     }
     console.log("✅ realtime.send() exists in postgres database");
 
-    // Test 3: Create new database and verify inheritance
-    console.log("\n[5/8] Creating new database 'testdb' from template1...");
+    // Test 2: Create new database from template1 and verify inheritance
+    // Note: We cannot check template1 directly because datallowconn=false (prevents accidental connections)
+    // Instead, we verify template1 has realtime.send() by creating a database from it
+    console.log("\n[4/8] Creating new database 'testdb' from template1...");
     await $`docker exec ${containerName} psql -U postgres -c "CREATE DATABASE testdb TEMPLATE template1"`.quiet();
 
     const testdbCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "
@@ -75,12 +70,16 @@ async function runTest() {
     "`.text();
 
     if (testdbCheck.trim() !== "1") {
-      throw new Error("❌ realtime.send() NOT inherited in new database");
+      throw new Error(
+        "❌ realtime.send() NOT inherited in new database (proves template1 has the function)"
+      );
     }
-    console.log("✅ New database inherited realtime.send() from template1");
+    console.log(
+      "✅ New database inherited realtime.send() from template1 (proves template1 has the function)"
+    );
 
-    // Test 4: Test realtime.send() functionality in new database
-    console.log("\n[6/8] Testing realtime.send() functionality in new database...");
+    // Test 3: Test realtime.send() functionality in new database
+    console.log("\n[5/8] Testing realtime.send() functionality in new database...");
     try {
       await $`docker exec ${containerName} psql -U postgres -d testdb -c "
         SELECT realtime.send(
@@ -96,33 +95,44 @@ async function runTest() {
       throw new Error(`❌ realtime.send() call failed in new database: ${errorDetails}`);
     }
 
-    // Test 5: Install required extensions in new database
-    console.log("\n[7/8] Installing pgflow prerequisites in new database...");
+    // Test 4: Install required extensions in new database
+    console.log("\n[6/8] Installing pgflow prerequisites in new database...");
     await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -c "
       CREATE EXTENSION IF NOT EXISTS pg_net;
       CREATE EXTENSION IF NOT EXISTS pgmq;
     "`.quiet();
 
     // supabase_vault is optional - match production behavior with exception handling
-    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb <<'EOSQL'
-DO $$
-BEGIN
-  CREATE EXTENSION IF NOT EXISTS supabase_vault;
-EXCEPTION
-  WHEN undefined_file THEN
-    RAISE NOTICE 'supabase_vault extension not available - skipping (optional)';
-END $$;
-EOSQL
-`.quiet();
+    try {
+      await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -c "
+        DO \$\$
+        BEGIN
+          CREATE EXTENSION IF NOT EXISTS supabase_vault;
+        EXCEPTION
+          WHEN undefined_file THEN
+            RAISE NOTICE 'supabase_vault extension not available - skipping (optional)';
+        END \$\$;
+      "`.quiet();
+    } catch (_err) {
+      // supabase_vault is optional, ignore errors
+      console.log("⚠️  supabase_vault not available (optional)");
+    }
     console.log("✅ Prerequisites installed");
 
-    // Test 6: Install pgflow in new database
-    console.log("\n[8/8] Installing pgflow schema in new database...");
-    // Use sed to strip supabase_vault from schema, matching production init script behavior
-    await $`docker exec ${containerName} bash -c "
-      sed '/CREATE EXTENSION.*supabase_vault/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d testdb
-    "`.quiet();
-    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -f /opt/pgflow/security-patches.sql`.quiet();
+    // Test 5: Install pgflow in new database
+    console.log("\n[7/8] Installing pgflow schema in new database...");
+    // Strip extensions that can't be created in non-default databases:
+    // - supabase_vault: optional dependency, may not be available
+    // - pg_cron: can only be created in the database specified by cron.database_name (typically 'postgres')
+    try {
+      await $`docker exec ${containerName} bash -c "
+        sed -e '/CREATE EXTENSION.*supabase_vault/d' -e '/CREATE EXTENSION.*pg_cron/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d testdb
+      "`.quiet();
+    } catch (err) {
+      console.error("❌ pgflow schema installation failed:", err);
+      throw err;
+    }
+    await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -f /opt/pgflow/security-patches.sql`;
 
     // Verify pgflow.is_local() works
     const isLocalCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "

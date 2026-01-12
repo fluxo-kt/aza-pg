@@ -172,7 +172,7 @@ async function runTests(): Promise<void> {
         SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'pgflow'
       `
       );
-      const count = parseInt(result.stdout.trim());
+      const count = parseInt(result.stdout.trim(), 10);
       assert(
         count >= EXPECTED_TABLES.length,
         `Expected at least ${EXPECTED_TABLES.length} tables, got ${count}`
@@ -192,7 +192,7 @@ async function runTests(): Promise<void> {
         `
         );
         assert(
-          result.success && parseInt(result.stdout.trim()) >= 1,
+          result.success && parseInt(result.stdout.trim(), 10) >= 1,
           `Missing function: pgflow.${fn}()`
         );
       }
@@ -208,7 +208,7 @@ async function runTests(): Promise<void> {
         WHERE n.nspname = 'pgflow'
       `
       );
-      const count = parseInt(result.stdout.trim());
+      const count = parseInt(result.stdout.trim(), 10);
       assert(
         count >= EXPECTED_FUNCTIONS.length,
         `Expected at least ${EXPECTED_FUNCTIONS.length} functions, got ${count}`
@@ -344,7 +344,7 @@ async function runTests(): Promise<void> {
         WHERE constraint_schema = 'pgflow' AND constraint_type = 'FOREIGN KEY'
       `
       );
-      const count = parseInt(result.stdout.trim());
+      const count = parseInt(result.stdout.trim(), 10);
       assert(count >= 5, `Expected at least 5 foreign key constraints, got ${count}`);
     });
 
@@ -388,13 +388,10 @@ async function runTests(): Promise<void> {
     console.log("=".repeat(70) + "\n");
     process.exitCode = failed > 0 ? 1 : 0;
   } finally {
-    // Cleanup: either drop schema (existing container) or stop container (harness-managed)
+    // Cleanup: mirror setup behavior - drop schema only for existing containers
     if (useExistingContainer) {
-      if (DATABASE === "postgres") {
-        await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
-      } else {
-        await dropDatabase(CONTAINER, DATABASE);
-      }
+      // Always clean schema only when using existing container (never drop database)
+      await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
     } else if (CONTAINER) {
       await harness.cleanup(CONTAINER);
     }

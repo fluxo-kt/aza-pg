@@ -23,21 +23,8 @@ import {
   ensureImageAvailable,
   waitForPostgres,
 } from "../utils/docker";
+import { MANIFEST_PATH, type Manifest } from "../docker/test-image-lib";
 import { error, info, success } from "../utils/logger.ts";
-
-interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  kind?: string;
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
 
 // Test counters
 let testsPassed = 0;
@@ -52,7 +39,6 @@ const TEST_POSTGRES_PASSWORD =
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 
 // Paths
-const MANIFEST_PATH = `${import.meta.dir}/../../docker/postgres/extensions.manifest.json`;
 const INIT_SQL_PATH = "/docker-entrypoint-initdb.d/01-extensions.sql";
 const PG_LIB_DIR = "/usr/lib/postgresql/18/lib";
 const PG_EXT_DIR = "/usr/share/postgresql/18/extension";
@@ -99,13 +85,8 @@ async function test1(): Promise<boolean> {
     return false;
   }
 
-  // Create container to parse manifest
-  const containerName = `pg-disabled-test1-${process.pid}`;
   try {
-    await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
-
     const disabledExts = await getDisabledExtensions();
-    await dockerCleanup(containerName);
 
     if (disabledExts.length === 0) {
       info("No disabled extensions found in manifest (all enabled)");
@@ -139,7 +120,9 @@ async function test1(): Promise<boolean> {
     // Verify each disabled extension is NOT in init script
     let foundDisabled = false;
     for (const ext of disabledExts) {
-      const regex = new RegExp(`CREATE EXTENSION.*${ext}[; ]`);
+      // Escape special regex characters and use word boundaries
+      const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`CREATE EXTENSION[^;]*\\b${escapedExt}\\b`);
       if (regex.test(initSql)) {
         error(`Disabled extension '${ext}' found in ${INIT_SQL_PATH}`);
         foundDisabled = true;
@@ -158,7 +141,6 @@ async function test1(): Promise<boolean> {
       return false;
     }
   } catch (err) {
-    await dockerCleanup(containerName);
     error(`Test 1 failed with error: ${err}`);
     return false;
   }

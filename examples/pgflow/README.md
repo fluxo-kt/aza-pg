@@ -1,69 +1,51 @@
-# pgflow Example
+# pgflow v0.13.1 - Quick Reference
 
-Reference for pgflow SQL schema and usage in aza-pg.
+> **📖 Complete Documentation**: See **[docs/PGFLOW.md](../../docs/PGFLOW.md)** for the full guide
 
-## Automatic Installation
+## Status in aza-pg
 
-**pgflow v0.13.1 is bundled** in the aza-pg Docker image and automatically installed in:
+**pgflow v0.13.1 is bundled** and automatically installed in:
 
-- **Initial database** (created via `POSTGRES_DB`)
-- **All new databases** (via template1 inheritance)
+- ✅ Initial database (via `POSTGRES_DB`)
+- ✅ All new databases (via template1 inheritance)
 
-No manual installation required!
-
-## Documentation
-
-See **[PGFLOW.md](../../docs/PGFLOW.md)** for complete guide:
-
-- Architecture and compatibility layer
-- Event broadcasting (pg_notify + pgmq + pg_net)
-- Security model (SSRF protection, search_path patches)
-- Usage examples and testing
-
-## Schema Location
-
-The pgflow v0.13.1 schema is maintained in test fixtures:
-
-```text
-tests/fixtures/pgflow/schema-v0.13.1.sql
-```
-
-Automatically installed at container initialization via:
-
-```text
-docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh
-```
-
-## Manual Installation (New Databases)
-
-If you create a new database **without** using `template1`:
-
-```bash
-# Database created outside template1
-psql -d your_project_db -f /opt/pgflow/schema.sql
-psql -d your_project_db -f /opt/pgflow/security-patches.sql
-```
-
-**Note**: Using `CREATE DATABASE template1` automatically inherits pgflow support.
-
-## Verification
-
-Check pgflow is installed:
+## Quick Verification
 
 ```sql
--- Should return: t (true)
-SELECT pgflow.is_local();
+-- Verify installation
+SELECT pgflow.is_local();  -- Returns: t (true)
 
--- List pgflow tables
-SELECT tablename FROM pg_tables WHERE schemaname = 'pgflow';
+-- List tables
+\dt pgflow.*
 ```
 
-## Using npm Packages
+## Usage
 
-For TypeScript projects, use the official packages:
+pgflow uses a TypeScript DSL for workflow definition:
 
 ```bash
 bun add @pgflow/dsl @pgflow/client
 ```
 
-See [@pgflow/dsl](https://www.npmjs.com/package/@pgflow/dsl) documentation for DSL usage.
+See:
+
+- **[docs/PGFLOW.md](../../docs/PGFLOW.md)** - Complete aza-pg integration guide
+- **[pgflow.dev](https://pgflow.dev)** - Official pgflow documentation
+- **[@pgflow/dsl](https://www.npmjs.com/package/@pgflow/dsl)** - TypeScript DSL package
+
+## Schema Files
+
+Located in `tests/fixtures/pgflow/`:
+
+- `schema-v0.13.1.sql` - pgflow schema
+- `README.md` - Schema usage notes
+
+## Compatibility Layer
+
+aza-pg provides Supabase-to-PostgreSQL compatibility:
+
+- `realtime.send()` stub (3-layer event broadcasting)
+- Security patches (search_path fixes)
+- Custom installation detection
+
+Details in [docs/PGFLOW.md](../../docs/PGFLOW.md).

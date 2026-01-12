@@ -61,6 +61,92 @@ Test that it works:
 SELECT pgflow.is_local();  -- Should return: t (true)
 ```
 
+## Usage
+
+### Quick Start (Default Database)
+
+In the default database (created via `POSTGRES_DB` environment variable), pgflow is immediately available:
+
+```sql
+-- Verify pgflow is installed
+SELECT pgflow.is_local();  -- Returns: t (true)
+
+-- List available pgflow tables
+\dt pgflow.*
+
+-- Check pgflow schema version
+SELECT * FROM pgflow.flows LIMIT 0;  -- Verifies schema loaded
+```
+
+**Event Broadcasting**: pgflow workflows trigger `realtime.send()` events, broadcasting via pg_notify, pgmq (optional), and webhooks (optional).
+
+### Using pgflow in New Databases
+
+For databases created after container initialization:
+
+```sql
+-- 1. Create new database (inherits realtime.send() from template1)
+CREATE DATABASE my_app;
+
+-- 2. Connect and install pgflow schema
+\c my_app
+\i /opt/pgflow/schema.sql
+\i /opt/pgflow/security-patches.sql
+
+-- 3. Verify installation
+SELECT pgflow.is_local();  -- Returns: t (true)
+
+-- 4. pgflow is now ready - use the DSL or SQL API
+```
+
+### Creating and Running Workflows
+
+pgflow uses a **TypeScript DSL** for workflow definition. Direct SQL manipulation of pgflow tables is not recommended.
+
+**Recommended approach** - Use the official TypeScript packages:
+
+```bash
+bun add @pgflow/dsl @pgflow/client
+```
+
+**TypeScript Example**:
+
+```typescript
+import { flow, step } from "@pgflow/dsl";
+
+const welcomeFlow = flow("welcome-user").step(
+  "send-email",
+  step.http({
+    url: "https://api.example.com/send-welcome",
+    method: "POST",
+  })
+);
+
+// Deploy and run
+await pgflowClient.deploy(welcomeFlow);
+await pgflowClient.run("welcome-user", { userId: 123 });
+```
+
+**SQL API** (advanced usage):
+
+```sql
+-- Create flow
+SELECT pgflow.create_flow('my-flow', 3, 5, 60);
+
+-- View flows
+SELECT * FROM pgflow.flows;
+
+-- View runs
+SELECT * FROM pgflow.runs ORDER BY created_at DESC;
+```
+
+For complete workflow examples and DSL documentation, see:
+
+- **[pgflow Official Docs](https://pgflow.dev)** - Complete DSL guide
+- **[@pgflow/dsl](https://www.npmjs.com/package/@pgflow/dsl)** - TypeScript DSL
+- **[@pgflow/client](https://www.npmjs.com/package/@pgflow/client)** - Client library
+- **[pgflow GitHub](https://github.com/pgflow-dev/pgflow)** - Source code and examples
+
 ## Event Broadcasting
 
 ### Layer 1: PostgreSQL LISTEN/NOTIFY (Always Active)

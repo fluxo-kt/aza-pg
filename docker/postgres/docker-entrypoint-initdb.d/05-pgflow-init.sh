@@ -42,12 +42,12 @@ echo "[05-pgflow] All prerequisites available. Installing pgflow schema..."
 
 # Create required extensions if not already created
 # Note: These may already exist from 01-extensions.sql / 01b-pg_cron.sh, but CREATE EXTENSION IF NOT EXISTS is idempotent
-psql -U postgres -d "$TARGET_DB" -c "CREATE EXTENSION IF NOT EXISTS pgmq;"
-psql -U postgres -d "$TARGET_DB" -c "CREATE EXTENSION IF NOT EXISTS pg_net;"
+psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -c "CREATE EXTENSION IF NOT EXISTS pgmq;"
+psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -c "CREATE EXTENSION IF NOT EXISTS pg_net;"
 
 # supabase_vault is optional - only create if available in build
 # Use DO block to avoid failure if extension not compiled/installed
-psql -U postgres -d "$TARGET_DB" <<'EOSQL'
+psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" <<'EOSQL'
 DO $$
 BEGIN
   CREATE EXTENSION IF NOT EXISTS supabase_vault;

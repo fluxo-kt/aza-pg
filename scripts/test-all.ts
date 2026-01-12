@@ -3,16 +3,16 @@
  * Comprehensive Validation and Testing Script
  *
  * Runs ALL validation checks and tests in an orchestrated manner:
- * 1. Validation checks (parallel) - 22 checks (unit tests, linting, config validation, manifest sync, PGDG, SQL)
- * 2. Build tests (sequential) - 4 checks (build, size, extension count, build tests)
- * 3. Functional tests (sequential) - 26 checks (extension loading, auto-config, stacks, verification, integration, security, pgflow)
+ * 1. Validation checks (parallel) - unit tests, linting, config validation, manifest sync, PGDG, SQL
+ * 2. Build tests (sequential) - build, size, extension count, build tests
+ * 3. Functional tests (sequential) - extension loading, auto-config, stacks, verification, integration, security, pgflow
  *
- * Total: 52 checks across validation, build, and functional categories
+ * Check counts are derived from allChecks array (see end of file for complete list)
  *
  * Usage:
- *   bun scripts/test-all.ts              # Full test suite (52 checks)
- *   bun scripts/test-all.ts --fast       # Validation only (22 checks)
- *   bun scripts/test-all.ts --skip-build # Skip Docker build (51 checks)
+ *   bun scripts/test-all.ts              # Full test suite (all checks)
+ *   bun scripts/test-all.ts --fast       # Validation only (validation checks)
+ *   bun scripts/test-all.ts --skip-build # Skip Docker build (all except build)
  *
  * Exit code: 0 only if ALL critical tests pass
  */

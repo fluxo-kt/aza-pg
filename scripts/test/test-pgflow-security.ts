@@ -76,6 +76,30 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Wait for pgflow schema AND security patches to be applied (initdb scripts may still be running)
+  info("Waiting for pgflow initialization and security patches...");
+  let pgflowReady = false;
+  for (let i = 0; i < 45; i++) {
+    try {
+      // Check if patches are applied by looking for search_path configuration
+      const result =
+        await $`docker exec ${containerName} psql -U postgres -t -c "SELECT proconfig FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'pgflow' AND p.proname = 'get_run_with_states'"`.text();
+      if (result.trim().length > 0) {
+        pgflowReady = true;
+        break;
+      }
+    } catch {
+      // Schema or function doesn't exist yet, keep waiting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  if (!pgflowReady) {
+    await dockerCleanup(containerName);
+    error("pgflow schema or security patches not applied within timeout");
+    process.exit(1);
+  }
+
   info("PostgreSQL ready, checking security patches...");
   let testsPassed = true;
 

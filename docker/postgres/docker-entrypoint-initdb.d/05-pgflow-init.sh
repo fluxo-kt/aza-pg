@@ -60,9 +60,9 @@ if [ -f /opt/pgflow/schema.sql ]; then
     echo "[05-pgflow] pgflow v0.13.1 schema installed successfully"
 
     # Apply security patches
-    if [ -f /docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql ]; then
+    if [ -f /opt/pgflow/security-patches.sql ]; then
         echo "[05-pgflow] Applying security patches (CVE-PGFLOW-001, CVE-PGFLOW-002)..."
-        psql -U postgres -d "$TARGET_DB" -f /docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
+        psql -U postgres -d "$TARGET_DB" -f /opt/pgflow/security-patches.sql
         echo "[05-pgflow] Security patches applied successfully"
     else
         echo "[05-pgflow] WARNING: Security patch file not found - functions remain vulnerable"

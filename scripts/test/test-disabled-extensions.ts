@@ -44,31 +44,21 @@ const PG_LIB_DIR = "/usr/lib/postgresql/18/lib";
 const PG_EXT_DIR = "/usr/share/postgresql/18/extension";
 
 /**
- * Get disabled extensions from manifest by parsing it locally with Bun
+ * Get disabled extensions from manifest (cached)
+ * @param manifest - Pre-loaded manifest to avoid redundant file reads
  */
-async function getDisabledExtensions(): Promise<string[]> {
-  try {
-    const manifestFile = Bun.file(MANIFEST_PATH);
-    const manifest = (await manifestFile.json()) as Manifest;
-    return manifest.entries.filter((e) => e.enabled === false).map((e) => e.name);
-  } catch (err) {
-    throw new Error(`Failed to get disabled extensions: ${err}`);
-  }
+function getDisabledExtensions(manifest: Manifest): string[] {
+  return manifest.entries.filter((e) => e.enabled === false).map((e) => e.name);
 }
 
 /**
- * Get disabled extensions (excluding tools) from manifest
+ * Get disabled extensions (excluding tools) from manifest (cached)
+ * @param manifest - Pre-loaded manifest to avoid redundant file reads
  */
-async function getDisabledExtensionsExcludingTools(): Promise<string[]> {
-  try {
-    const manifestFile = Bun.file(MANIFEST_PATH);
-    const manifest = (await manifestFile.json()) as Manifest;
-    return manifest.entries
-      .filter((e) => e.enabled === false && (e.kind ?? "extension") !== "tool")
-      .map((e) => e.name);
-  } catch (err) {
-    throw new Error(`Failed to get disabled extensions (excluding tools): ${err}`);
-  }
+function getDisabledExtensionsExcludingTools(manifest: Manifest): string[] {
+  return manifest.entries
+    .filter((e) => e.enabled === false && (e.kind ?? "extension") !== "tool")
+    .map((e) => e.name);
 }
 
 /**
@@ -78,15 +68,23 @@ async function test1(): Promise<boolean> {
   info("Test 1: Verify disabled extensions NOT in 01-extensions.sql");
   console.log("-------------------------------------------------------");
 
-  // Check manifest exists
+  // Load manifest once (cached for entire test)
   const manifestFile = Bun.file(MANIFEST_PATH);
   if (!(await manifestFile.exists())) {
     error(`Manifest not found: ${MANIFEST_PATH}`);
     return false;
   }
 
+  let manifest: Manifest;
   try {
-    const disabledExts = await getDisabledExtensions();
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
+
+  try {
+    const disabledExts = getDisabledExtensions(manifest);
 
     if (disabledExts.length === 0) {
       info("No disabled extensions found in manifest (all enabled)");
@@ -153,11 +151,21 @@ async function test2(): Promise<boolean> {
   info("Test 2: Verify disabled extensions NOT in final image");
   console.log("-------------------------------------------------------");
 
+  // Load manifest once (cached for entire test)
+  const manifestFile = Bun.file(MANIFEST_PATH);
+  let manifest: Manifest;
+  try {
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
+
   const containerName = `pg-disabled-test2-${process.pid}`;
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
 
-    const disabledExts = await getDisabledExtensions();
+    const disabledExts = getDisabledExtensions(manifest);
 
     if (disabledExts.length === 0) {
       await dockerCleanup(containerName);
@@ -346,6 +354,16 @@ async function test5(): Promise<boolean> {
   info("Test 5: Manual CREATE EXTENSION fails for disabled extensions");
   console.log("-------------------------------------------------------");
 
+  // Load manifest once (cached for entire test)
+  const manifestFile = Bun.file(MANIFEST_PATH);
+  let manifest: Manifest;
+  try {
+    manifest = (await manifestFile.json()) as Manifest;
+  } catch (err) {
+    error(`Failed to parse manifest: ${err}`);
+    return false;
+  }
+
   const containerName = `pg-disabled-test5-${process.pid}`;
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
@@ -365,7 +383,7 @@ async function test5(): Promise<boolean> {
       return false;
     }
 
-    const disabledExtensions = await getDisabledExtensionsExcludingTools();
+    const disabledExtensions = getDisabledExtensionsExcludingTools(manifest);
 
     if (disabledExtensions.length === 0) {
       await dockerCleanup(containerName);

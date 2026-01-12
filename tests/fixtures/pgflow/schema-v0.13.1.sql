@@ -5,16 +5,19 @@
 -- Combined from 21 individual schema files
 --
 -- SECURITY NOTE: This is unmodified upstream pgflow@0.13.1 code.
--- Known vulnerabilities (CVE-PGFLOW-001, CVE-PGFLOW-002) are patched at runtime
--- via docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
+-- Known vulnerabilities (CVE-PGFLOW-001, CVE-PGFLOW-002) and compatibility patches
+-- (COMPAT-AZA-PG-001) are applied at runtime by 05-pgflow-init.sh
+--
+-- Patch infrastructure:
+-- - realtime.send() stub: 05a-pgflow-realtime-stub.sh (Supabase compatibility)
+-- - Security patches: docker/postgres/pgflow/security-patches.sql (loaded by 05-pgflow-init.sh)
 --
 -- This fixture is preserved unmodified to:
 -- 1. Validate schema generation accuracy against upstream
 -- 2. Enable regression testing when upstream publishes fixes
 -- 3. Maintain clear separation between upstream code and local patches
 --
--- Production deployments apply security patches automatically during init.
--- See: docker/postgres/docker-entrypoint-initdb.d/05b-pgflow-security-patches.sql
+-- Production deployments apply patches automatically during container initialization.
 -- ============================================================================
 -- Source: 0010_extensions.sql
 -- ============================================================================

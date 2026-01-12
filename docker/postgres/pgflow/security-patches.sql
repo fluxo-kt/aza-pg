@@ -4,6 +4,7 @@
 -- Patches applied:
 -- 1. CVE-PGFLOW-001: Add SET search_path to get_run_with_states
 -- 2. CVE-PGFLOW-002: Add SET search_path to start_flow_with_states
+-- 3. COMPAT-AZA-PG-001: Fix is_local() for non-Supabase installations
 --
 -- Upstream tracking:
 -- - Issue: https://github.com/pgflow-dev/pgflow/issues/XXX (to be filed)
@@ -57,3 +58,26 @@ COMMENT ON FUNCTION pgflow.get_run_with_states IS 'Patched: Added SET search_pat
 
 
 COMMENT ON FUNCTION pgflow.start_flow_with_states IS 'Patched: Added SET search_path for CVE-PGFLOW-002';
+
+
+-- Patch 3: pgflow.is_local() - Fix for non-Supabase installations
+-- Context: pgflow designed for Supabase, uses app.settings.supabase_url to detect local environment
+-- Problem: aza-pg is a custom Postgres build (not Supabase), this setting is never set
+-- Solution: Detect custom installation by checking for aza-pg marker setting
+CREATE OR REPLACE FUNCTION pgflow.is_local () RETURNS BOOLEAN LANGUAGE sql STABLE PARALLEL SAFE
+SET
+  search_path = '' AS $$
+  -- For aza-pg custom installations:
+  -- We consider it "local" if running in a custom/non-Supabase environment
+  -- Detection: Check if we're NOT in Supabase by looking for custom installation marker
+  SELECT COALESCE(
+    -- Custom installation detection: check for our marker setting
+    current_setting('app.settings.aza_pg_custom', true) = 'true',
+    -- Fallback: if supabase_url is not set, assume custom installation
+    current_setting('app.settings.supabase_url', true) IS NULL,
+    true  -- Default to true for custom installations
+  )
+$$;
+
+
+COMMENT ON FUNCTION pgflow.is_local IS 'Patched: Detect aza-pg custom installation (non-Supabase) - COMPAT-AZA-PG-001';

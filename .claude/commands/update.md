@@ -39,6 +39,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```bash
    bun run validate
    ```
+
    **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)

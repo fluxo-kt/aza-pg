@@ -60,7 +60,7 @@ const PG_EXT_DIR = "/usr/share/postgresql/18/extension";
 /**
  * Get disabled extensions from manifest by parsing it locally with Bun
  */
-async function getDisabledExtensions(containerName: string): Promise<string[]> {
+async function getDisabledExtensions(): Promise<string[]> {
   try {
     const manifestFile = Bun.file(MANIFEST_PATH);
     const manifest = (await manifestFile.json()) as Manifest;
@@ -73,7 +73,7 @@ async function getDisabledExtensions(containerName: string): Promise<string[]> {
 /**
  * Get disabled extensions (excluding tools) from manifest
  */
-async function getDisabledExtensionsExcludingTools(containerName: string): Promise<string[]> {
+async function getDisabledExtensionsExcludingTools(): Promise<string[]> {
   try {
     const manifestFile = Bun.file(MANIFEST_PATH);
     const manifest = (await manifestFile.json()) as Manifest;
@@ -104,7 +104,7 @@ async function test1(): Promise<boolean> {
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
 
-    const disabledExts = await getDisabledExtensions(containerName);
+    const disabledExts = await getDisabledExtensions();
     await dockerCleanup(containerName);
 
     if (disabledExts.length === 0) {
@@ -175,7 +175,7 @@ async function test2(): Promise<boolean> {
   try {
     await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD} ${IMAGE_TAG}`.quiet();
 
-    const disabledExts = await getDisabledExtensions(containerName);
+    const disabledExts = await getDisabledExtensions();
 
     if (disabledExts.length === 0) {
       await dockerCleanup(containerName);
@@ -383,7 +383,7 @@ async function test5(): Promise<boolean> {
       return false;
     }
 
-    const disabledExtensions = await getDisabledExtensionsExcludingTools(containerName);
+    const disabledExtensions = await getDisabledExtensionsExcludingTools();
 
     if (disabledExtensions.length === 0) {
       await dockerCleanup(containerName);

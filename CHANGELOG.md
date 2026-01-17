@@ -10,6 +10,12 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+_No changes yet._
+
+---
+
+## [v18.1-202601171501] - 2026-01-17
+
 ### Added
 
 - **pgflow v0.13.1 Supabase Compatibility Layer**: Full integration with Supabase-to-standalone PostgreSQL compatibility

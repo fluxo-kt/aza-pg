@@ -536,13 +536,9 @@ function extractTagsWithMetadata(versions: PackageVersion[], pattern: string): T
 
 /**
  * Find tags for deletion by exact name match (--tags mode only)
- * Note: --older-than and --keep-last are handled separately via filterVersionsByAge/filterVersionsForKeepLast
+ * Searches all versions regardless of --pattern filter (pattern is for --list only)
  */
-function selectTagsForDeletion(
-  _allTags: TagInfo[], // Unused but kept for API compatibility
-  versions: PackageVersion[],
-  options: CleanupOptions
-): TagInfo[] {
+function selectTagsForDeletion(versions: PackageVersion[], options: CleanupOptions): TagInfo[] {
   if (!options.tags) {
     return [];
   }
@@ -929,7 +925,7 @@ async function cleanup(options: CleanupOptions): Promise<void> {
 
   // Handle --tags mode (specific tag deletion)
   if (options.tags) {
-    const toDelete = selectTagsForDeletion(allTags, versions, options);
+    const toDelete = selectTagsForDeletion(versions, options);
     if (toDelete.length === 0) {
       success("No tags to delete");
       return;

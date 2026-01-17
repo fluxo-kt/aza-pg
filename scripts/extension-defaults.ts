@@ -38,7 +38,7 @@ export interface ExtensionDefaults {
  */
 export const extensionDefaults: ExtensionDefaults = {
   pgVersion: "18.1",
-  baseImageSha: "sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d",
+  baseImageSha: "sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2",
   pgdgVersions: {
     hll: "2.19-2.pgdg13+2",
     http: "1.7.0-3.pgdg13+1",

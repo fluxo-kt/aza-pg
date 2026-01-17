@@ -1408,6 +1408,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       [
+        prep,
         merge,
         test-smoke,
         test-extensions,

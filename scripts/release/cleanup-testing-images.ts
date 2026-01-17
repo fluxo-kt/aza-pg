@@ -112,7 +112,7 @@ Selection modes (mutually exclusive):
 
 Common options:
   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
-  --pattern PATTERN     Tag pattern for --tags and --list modes (default: *)
+  --pattern PATTERN     Tag pattern for --list mode only (default: *)
   --dry-run             Preview deletions without executing
   --continue-on-error   Don't stop on individual failures
   --list                Show all tags with creation dates (+ untagged count)
@@ -528,56 +528,46 @@ function extractTagsWithMetadata(versions: PackageVersion[], pattern: string): T
   return tags;
 }
 
+/**
+ * Find tags for deletion by exact name match (--tags mode only)
+ * Note: --older-than and --keep-last are handled separately via filterVersionsByAge/filterVersionsForKeepLast
+ */
 function selectTagsForDeletion(
-  allTags: TagInfo[],
+  _allTags: TagInfo[], // Unused but kept for API compatibility
   versions: PackageVersion[],
   options: CleanupOptions
 ): TagInfo[] {
-  // Mode 1: Direct deletion by name
-  if (options.tags) {
-    const requestedSet = new Set(options.tags);
-    const found: TagInfo[] = [];
+  if (!options.tags) {
+    return [];
+  }
 
-    // Find version IDs for requested tags
-    for (const version of versions) {
-      if (!version.metadata?.container?.tags) continue;
-      for (const tag of version.metadata.container.tags) {
-        if (requestedSet.has(tag)) {
-          found.push({
-            tag,
-            versionId: version.id,
-            createdAt: new Date(version.created_at),
-            ageDays: 0,
-          });
-        }
+  const requestedSet = new Set(options.tags);
+  const found: TagInfo[] = [];
+
+  // Find version IDs for requested tags (exact name match)
+  for (const version of versions) {
+    if (!version.metadata?.container?.tags) continue;
+    for (const tag of version.metadata.container.tags) {
+      if (requestedSet.has(tag)) {
+        found.push({
+          tag,
+          versionId: version.id,
+          createdAt: new Date(version.created_at),
+          ageDays: 0,
+        });
       }
     }
+  }
 
-    // Warn about missing tags
-    const foundSet = new Set(found.map((t) => t.tag));
-    for (const requested of options.tags) {
-      if (!foundSet.has(requested)) {
-        warning(`Tag not found: ${requested}`);
-      }
+  // Warn about missing tags
+  const foundSet = new Set(found.map((t) => t.tag));
+  for (const requested of options.tags) {
+    if (!foundSet.has(requested)) {
+      warning(`Tag not found: ${requested}`);
     }
-
-    return found;
   }
 
-  // Mode 2: Age-based retention
-  if (options.olderThan !== undefined) {
-    return allTags.filter((t) => t.ageDays > options.olderThan!);
-  }
-
-  // Mode 3: Count-based retention
-  if (options.keepLast !== undefined) {
-    // Sort by creation date (newest first)
-    const sorted = [...allTags].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    // Delete everything after keepLast
-    return sorted.slice(options.keepLast);
-  }
-
-  return [];
+  return found;
 }
 
 // ============================================================================
@@ -766,35 +756,47 @@ function filterVersionsByAge(versions: PackageVersion[], olderThanDays: number):
 /**
  * Filter versions for --keep-last retention mode
  *
- * Strategy:
- * 1. Sort ALL versions by creation date (newest first)
- * 2. Identify N newest TAGGED versions to keep
- * 3. Find cutoff date (creation date of oldest kept tagged version)
- * 4. Delete: tagged versions beyond N + ALL untagged versions older than cutoff
+ * Handles 4 distinct scenarios:
+ * 1. keepLast=0: Delete ALL versions (tagged + untagged)
+ * 2. No tagged versions: All untagged are orphans, delete them all
+ * 3. Fewer tags than keepLast: Keep all tagged, delete untagged older than oldest tag
+ * 4. Normal case: Delete excess tags + untagged older than oldest KEPT tag
  *
- * This handles orphaned arch-specific manifests, SBOMs, and attestations that
- * were created alongside their parent tagged manifest lists.
+ * Uses oldest KEPT tag as cutoff to avoid corrupting kept tags' dependencies.
+ * Trade-off: may leave some orphans from post-cutoff deleted tags (use --older-than for those).
  */
 function filterVersionsForKeepLast(versions: PackageVersion[], keepLast: number): PackageVersion[] {
-  // Separate tagged and untagged versions
+  // Case 1: keepLast=0 means delete everything
+  if (keepLast === 0) {
+    return versions;
+  }
+
   const taggedVersions = versions.filter((v) => v.metadata?.container?.tags?.length);
   const untaggedVersions = versions.filter((v) => !v.metadata?.container?.tags?.length);
+
+  // Case 2: No tagged versions = all untagged are orphans
+  if (taggedVersions.length === 0) {
+    return untaggedVersions;
+  }
 
   // Sort tagged versions by creation date (newest first)
   const taggedSorted = [...taggedVersions].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  // Determine cutoff date (creation date of oldest kept tagged version)
-  // If we have fewer than keepLast tagged versions, keep all (cutoff = epoch)
-  const oldestKept = taggedSorted[Math.min(keepLast - 1, taggedSorted.length - 1)];
-  const cutoffDate = oldestKept ? new Date(oldestKept.created_at) : new Date(0);
+  // Case 3: Fewer tags than keepLast - keep all tagged, delete old untagged
+  if (taggedSorted.length <= keepLast) {
+    // Safe: taggedSorted.length >= 1 (Case 2 returned for length=0)
+    const oldestTagged = taggedSorted[taggedSorted.length - 1]!;
+    const cutoffDate = new Date(oldestTagged.created_at);
+    return untaggedVersions.filter((v) => new Date(v.created_at) < cutoffDate);
+  }
 
-  // Collect versions to delete:
-  // 1. Tagged versions beyond keepLast
+  // Case 4: Normal - delete excess tags + untagged older than cutoff
+  // Safe: taggedSorted.length > keepLast >= 1, so index keepLast-1 is valid
+  const oldestKept = taggedSorted[keepLast - 1]!;
+  const cutoffDate = new Date(oldestKept.created_at);
   const taggedToDelete = taggedSorted.slice(keepLast);
-
-  // 2. Untagged versions older than the cutoff date
   const untaggedToDelete = untaggedVersions.filter((v) => new Date(v.created_at) < cutoffDate);
 
   return [...taggedToDelete, ...untaggedToDelete];

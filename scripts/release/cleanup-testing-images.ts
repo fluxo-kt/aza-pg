@@ -26,7 +26,7 @@ async function appendToGitHubSummary(content: string): Promise<void> {
  *
  * Common options:
  *   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
- *   --pattern PATTERN     Tag pattern for --tags and --list modes (default: *)
+ *   --pattern PATTERN     Tag pattern for --list mode only (default: *)
  *   --dry-run             Preview deletions without executing
  *   --continue-on-error   Don't stop on individual failures
  *   --list                Show all tags with creation dates (+ untagged count)

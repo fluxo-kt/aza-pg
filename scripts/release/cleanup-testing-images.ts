@@ -642,12 +642,18 @@ async function deleteVersions(
   versionsToDelete: PackageVersion[],
   options: CleanupOptions
 ): Promise<void> {
+  // Sort by creation date (oldest first) so if GHCR's "last version protection"
+  // kicks in, the NEWEST version is retained (more useful than keeping oldest)
+  const sortedVersions = [...versionsToDelete].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
   let successCount = 0;
   let retainedCount = 0;
   let failureCount = 0;
   const failures: Array<{ name: string; error: string }> = [];
 
-  for (const version of versionsToDelete) {
+  for (const version of sortedVersions) {
     // Use first tag as identifier, or digest/name for untagged versions
     const identifier = version.metadata?.container?.tags?.[0] || version.name;
 

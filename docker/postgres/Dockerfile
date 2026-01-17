@@ -283,8 +283,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.57.0-1.pgdg13+1 pgbadger" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.57.0-1.pgdg13+1 pgbadger && \
+    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
@@ -367,7 +367,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.13.1.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.13.2.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

@@ -72,6 +72,8 @@
     - Running on production primary instance risks starving OLTP workloads
     - Best practice: Deploy on dedicated read replicas only
     - Each PG connection spawns its own DuckDB instance (min 125 MB per-connection)
+  - Recurring dates in Postgres.
+    - https://github.com/volkanunsal/postgres-rrule
 - Reactivity
   - https://www.perplexity.ai/search/what-are-the-best-open-source-FB2dPeKCSYW7MGvxyu7SaA
     1. LISTEN/NOTIFY

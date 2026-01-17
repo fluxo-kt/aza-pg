@@ -503,14 +503,14 @@
       "name": "pgbackrest",
       "kind": "tool",
       "install_via": "pgdg",
-      "pgdgVersion": "2.57.0-1.pgdg13+1",
+      "pgdgVersion": "2.58.0-1.pgdg13+1",
       "category": "operations",
       "description": "Parallel, incremental backup and restore CLI.",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgbackrest/pgbackrest.git",
-        "tag": "release/2.57.0",
-        "commit": "d9773a31c97077761ee8e7d06e073b0b0734e26f"
+        "tag": "release/2.58.0",
+        "commit": "d50cfa9ee0b0b921fb6823165c65f23ff5fed0fc"
       },
       "build": {
         "type": "meson"
@@ -529,7 +529,7 @@
         "defaultEnable": false,
         "notes": [
           "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
-          "PGDG: pgbackrest (v2.57.0-1.pgdg13+1). Alt: Pigsty. Alt: Percona (no PG18)",
+          "PGDG: pgbackrest (v2.58.0-1.pgdg13+1). Alt: Pigsty. Alt: Percona",
           "Installs /usr/bin/pgbackrest."
         ]
       },
@@ -579,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.1",
-        "commit": "b09543c2d4c2e0a0eb2e0f5162af4decb3e61c32"
+        "tag": "pgflow@0.13.2",
+        "commit": "91fcc7b40af352af1a3071022772c968f8412290"
       },
       "runtime": {
         "sharedPreload": false,
@@ -601,6 +601,7 @@
       ],
       "notes": [
         "SQL-only schema - no compiled components",
+        "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
         "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
         "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
         "Schema installed by default in postgres database",
@@ -617,8 +618,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.8.1",
-        "commit": "12462bd29c2e4f59e58ac4840c2dcf0872d8c5c9"
+        "tag": "v1.9.0",
+        "commit": "9bb5ba79b30195e91e676d53e914fdc618ee41cd"
       },
       "build": {
         "type": "pgxs",
@@ -629,8 +630,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.8.1 with PG18 support",
-          "v1.8.1: Fixed time-based archive partitioning, SQL typo fixes"
+          "Source build for latest v1.9.0 with PG18 support",
+          "v1.9.0: FIFO queues with read_grouped, read_grouped_rr functions"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",

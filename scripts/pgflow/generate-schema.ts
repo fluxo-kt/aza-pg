@@ -18,11 +18,28 @@
 
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format as formatSql } from "sql-formatter";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "../..");
 const FIXTURES_DIR = join(ROOT_DIR, "tests/fixtures/pgflow");
 const INSTALL_TS = join(FIXTURES_DIR, "install.ts");
+const SQL_FORMATTER_CONFIG = join(ROOT_DIR, ".sql-formatter.json");
+
+async function loadSqlFormatterConfig(): Promise<Record<string, unknown>> {
+  try {
+    const configFile = Bun.file(SQL_FORMATTER_CONFIG);
+    return await configFile.json();
+  } catch {
+    // Fallback to sensible defaults matching project conventions
+    return {
+      language: "postgresql",
+      tabWidth: 2,
+      useTabs: false,
+      keywordCase: "upper",
+    };
+  }
+}
 
 // Schema files in the order they should be concatenated
 const SCHEMA_FILES = [
@@ -272,8 +289,17 @@ async function main(): Promise<void> {
     console.log("Dry run - would write:");
     console.log(`  ${outputPath}`);
   } else {
+    // Write raw schema first
     await Bun.write(outputPath, combinedSchema);
     console.log(`\n✅ Written: ${outputPath}`);
+
+    // Format the schema file with sql-formatter for consistency
+    console.log("📝 Formatting schema with sql-formatter...");
+    const sqlConfig = await loadSqlFormatterConfig();
+    const rawContent = await Bun.file(outputPath).text();
+    const formattedContent = formatSql(rawContent, sqlConfig);
+    await Bun.write(outputPath, formattedContent);
+    console.log("✅ Schema formatted");
   }
 
   // Update install.ts if requested

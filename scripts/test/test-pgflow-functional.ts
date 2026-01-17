@@ -634,11 +634,173 @@ async function runTests(): Promise<void> {
       );
     });
 
+    // Test pgflow-pgmq integration: verify pgflow creates pgmq queue
+    const QUEUE_VERIFY_FLOW = `queue_verify_${Date.now()}`;
+
+    await test("TEST 15: Verify pgflow creates pgmq queue for workflow", async () => {
+      // Create flow
+      await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.create_flow('${QUEUE_VERIFY_FLOW}', 3, 5, 60)`
+      );
+      await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.add_step('${QUEUE_VERIFY_FLOW}', 'queue_test_step', ARRAY[]::text[], 3, 5, 30)`
+      );
+
+      // Start flow (this should create the pgmq queue)
+      const startResult = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT run_id FROM pgflow.start_flow('${QUEUE_VERIFY_FLOW}', '{"test": "queue_creation"}'::jsonb)`
+      );
+      assert(startResult.success, `Failed to start flow: ${startResult.stderr}`);
+
+      // Verify pgmq queue exists with flow_slug name
+      const queueCheck = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT queue_name FROM pgmq.list_queues() WHERE queue_name = '${QUEUE_VERIFY_FLOW}'`
+      );
+      assert(
+        queueCheck.success && queueCheck.stdout.trim() === QUEUE_VERIFY_FLOW,
+        `pgflow should create pgmq queue '${QUEUE_VERIFY_FLOW}', got: '${queueCheck.stdout.trim()}'`
+      );
+
+      console.log(`   📊 Verified: pgflow.start_flow() creates pgmq queue '${QUEUE_VERIFY_FLOW}'`);
+    });
+
+    // Test pgflow-pgmq integration: verify message_id correlation
+    const MSG_CORR_FLOW = `msg_corr_${Date.now()}`;
+
+    await test("TEST 16: Verify step_tasks.message_id correlates with pgmq msg_id", async () => {
+      // Create and start a flow
+      await runSQL(CONTAINER, DATABASE, `SELECT pgflow.create_flow('${MSG_CORR_FLOW}', 3, 5, 60)`);
+      await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.add_step('${MSG_CORR_FLOW}', 'corr_step', ARRAY[]::text[], 3, 5, 30)`
+      );
+
+      const startResult = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT run_id FROM pgflow.start_flow('${MSG_CORR_FLOW}', '{"test": "correlation"}'::jsonb)`
+      );
+      const runId = startResult.stdout.trim();
+      assert(runId.length > 0, `Failed to get run_id: ${startResult.stderr}`);
+
+      // Get message_id from step_tasks
+      const taskMsgId = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT message_id FROM pgflow.step_tasks WHERE run_id = '${runId}'::uuid AND step_slug = 'corr_step'`
+      );
+      assert(taskMsgId.success, `Failed to get task message_id: ${taskMsgId.stderr}`);
+      const stepTasksMsgId = taskMsgId.stdout.trim();
+      assert(stepTasksMsgId.length > 0, "step_tasks.message_id should not be empty");
+
+      // Get msg_id from pgmq queue (read without VT to just peek)
+      const queueMsgId = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT msg_id FROM pgmq.read('${MSG_CORR_FLOW}', 0, 1)`
+      );
+      assert(queueMsgId.success, `Failed to read from pgmq: ${queueMsgId.stderr}`);
+      const pgmqMsgId = queueMsgId.stdout.trim();
+
+      // Verify correlation
+      assert(
+        stepTasksMsgId === pgmqMsgId,
+        `step_tasks.message_id (${stepTasksMsgId}) should match pgmq msg_id (${pgmqMsgId})`
+      );
+
+      console.log(
+        `   📊 Verified: step_tasks.message_id (${stepTasksMsgId}) correlates with pgmq msg_id`
+      );
+    });
+
+    // Contract test: pgmq.format_table_name() - pgflow depends on this internal API
+    await test("TEST 17: Contract - pgmq.format_table_name() returns expected format", async () => {
+      // pgflow.set_vt_batch() calls: pgmq.format_table_name(queue_name, 'q')
+      // This is an internal pgmq function that pgflow depends on
+      const result = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgmq.format_table_name('test_contract_queue', 'q')`
+      );
+      assert(result.success, `format_table_name failed: ${result.stderr}`);
+
+      // Verify the naming convention: q_<queue_name>
+      const tableName = result.stdout.trim();
+      assert(
+        tableName === "q_test_contract_queue",
+        `Expected 'q_test_contract_queue', got '${tableName}'. If this fails, pgflow.set_vt_batch() will break!`
+      );
+
+      console.log(`   📊 Contract verified: pgmq.format_table_name() returns '${tableName}'`);
+    });
+
+    // Contract test: pgflow.set_vt_batch() - uses pgmq internals directly
+    const SET_VT_FLOW = `set_vt_test_${Date.now()}`;
+
+    await test("TEST 18: Contract - pgflow.set_vt_batch() updates VT via pgmq internals", async () => {
+      // Create a flow and start it to get a queued message
+      await runSQL(CONTAINER, DATABASE, `SELECT pgflow.create_flow('${SET_VT_FLOW}', 3, 5, 60)`);
+      await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.add_step('${SET_VT_FLOW}', 'vt_step', ARRAY[]::text[], 3, 5, 30)`
+      );
+
+      const startResult = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT run_id FROM pgflow.start_flow('${SET_VT_FLOW}', '{"test": "set_vt_batch"}'::jsonb)`
+      );
+      assert(startResult.success, `Failed to start flow: ${startResult.stderr}`);
+
+      // Get the message_id from step_tasks
+      const runId = startResult.stdout.trim();
+      const msgIdResult = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT message_id FROM pgflow.step_tasks WHERE run_id = '${runId}'::uuid`
+      );
+      const msgId = msgIdResult.stdout.trim();
+      assert(msgId.length > 0, `No message_id found`);
+
+      // Call pgflow.set_vt_batch() - this uses pgmq internals
+      // set_vt_batch(queue_name, msg_ids[], vt_offsets[])
+      const setVtResult = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT msg_id, vt FROM pgflow.set_vt_batch('${SET_VT_FLOW}', ARRAY[${msgId}]::bigint[], ARRAY[60]::integer[])`
+      );
+      assert(setVtResult.success, `set_vt_batch failed: ${setVtResult.stderr}`);
+      assert(setVtResult.stdout.includes(msgId), `set_vt_batch should return the updated message`);
+
+      console.log(
+        `   📊 Contract verified: pgflow.set_vt_batch() successfully updated VT for msg_id=${msgId}`
+      );
+    });
+
     // Cleanup test data
-    await test("TEST 15: Cleanup test workflows", async () => {
-      // Delete test flows and related data
-      const flows = [FLOW_SLUG, RETRY_FLOW, MAP_FLOW];
+    await test("TEST 19: Cleanup test workflows", async () => {
+      // Delete test flows and related data (including pgmq-integration test flows)
+      const flows = [
+        FLOW_SLUG,
+        RETRY_FLOW,
+        MAP_FLOW,
+        QUEUE_VERIFY_FLOW,
+        MSG_CORR_FLOW,
+        SET_VT_FLOW,
+      ];
+
       for (const flow of flows) {
+        // First delete pgflow data
         await runSQL(
           CONTAINER,
           DATABASE,
@@ -653,14 +815,32 @@ async function runTests(): Promise<void> {
         await runSQL(CONTAINER, DATABASE, `DELETE FROM pgflow.deps WHERE flow_slug = '${flow}'`);
         await runSQL(CONTAINER, DATABASE, `DELETE FROM pgflow.steps WHERE flow_slug = '${flow}'`);
         await runSQL(CONTAINER, DATABASE, `DELETE FROM pgflow.flows WHERE flow_slug = '${flow}'`);
+
+        // Also drop the pgmq queue created by pgflow.start_flow()
+        // This prevents orphan queues if earlier tests fail
+        await runSQL(CONTAINER, DATABASE, `SELECT pgmq.drop_queue('${flow}')`).catch(() => {
+          // Ignore errors - queue may not exist if start_flow wasn't called
+        });
       }
 
-      // Verify cleanup
+      // Verify pgflow cleanup
       const remaining = await runSQL(CONTAINER, DATABASE, `SELECT COUNT(*) FROM pgflow.flows`);
       assert(
         remaining.success && remaining.stdout.trim() === "0",
         "Test flows should be cleaned up"
       );
+
+      // Verify no orphan pgmq queues from tests (check for test_ prefix patterns)
+      const orphanQueues = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT COUNT(*) FROM pgmq.list_queues() WHERE queue_name LIKE 'test_%' OR queue_name LIKE '%_test_%'`
+      );
+      if (orphanQueues.success && parseInt(orphanQueues.stdout.trim()) > 0) {
+        console.log(
+          `   ⚠️  Warning: ${orphanQueues.stdout.trim()} orphan test queues remain in pgmq`
+        );
+      }
     });
 
     // Print summary

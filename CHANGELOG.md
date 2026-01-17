@@ -10,6 +10,32 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- **pgflow 0.13.1 → 0.13.2**: Automatic stalled task recovery for worker crash resilience
+  - New: Tasks stuck in 'started' status beyond `timeout + 30s` are automatically requeued (up to 3 attempts)
+  - New: `requeued_count` and `last_requeued_at` columns in `step_tasks` table for monitoring
+  - New: Cron job (`requeue_stalled_tasks`) runs every 15 seconds
+  - Fixed: `maxPgConnections` parameter now respected in edge-worker (was ignored, default changed 10→4)
+- **pgmq 1.8.1 → 1.9.0**: FIFO queue support with message groups, `read_grouped()` functions
+  - New `read_grouped()`, `read_grouped_rr()` functions for FIFO message group ordering
+  - New `create_fifo_index()` / `create_fifo_indexes_all()` for GIN indexes on message headers
+  - ⚠️ **Breaking**: `conditional` parameter removed from FIFO-grouped read functions (violated ordering guarantees)
+- **pgbackrest 2.57.0 → 2.58.0**: Latest backup/restore tool from PGDG
+  - ⚠️ **Breaking**: Minimum `repo-storage-upload-chunk-size` increased to vendor minimums
+  - ⚠️ **Breaking**: TLS 1.2 now required (unless verification disabled)
+  - New: HTTP support for S3/GCS/Azure, Azure managed identities
+
+### Development (non-image)
+
+- Updated oxlint to 1.41.0, squawk-cli to 2.37.0, @pgflow/client and @pgflow/dsl to 0.13.2
+- Enhanced pgmq test suite with FIFO tests, error handling, batch operations, `list_queues` metadata verification
+- Added pgflow-pgmq contract tests: `pgmq.format_table_name()` and `pgflow.set_vt_batch()` internal API verification
+
+---
+
+## [v18.1-202601171501] - 2026-01-17
+
 ### Added
 
 - **pgflow v0.13.1 Supabase Compatibility Layer**: Full integration with Supabase-to-standalone PostgreSQL compatibility

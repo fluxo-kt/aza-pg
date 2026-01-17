@@ -126,7 +126,7 @@ async function runTest() {
     // - pg_cron: can only be created in the database specified by cron.database_name (typically 'postgres')
     try {
       await $`docker exec ${containerName} bash -c "
-        sed -e '/CREATE EXTENSION.*supabase_vault/d' -e '/CREATE EXTENSION.*pg_cron/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d testdb
+        sed -e '/create extension.*supabase_vault/Id' -e '/create extension.*pg_cron/Id' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d testdb
       "`.quiet();
     } catch (err) {
       console.error("❌ pgflow schema installation failed:", err);

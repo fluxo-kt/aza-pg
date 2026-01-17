@@ -212,20 +212,27 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
   }
   success("✓ PostgreSQL accepting connections");
 
-  // Stage 4: Install pgflow schema
-  info("Stage 4: Installing pgflow schema...");
-  const installResult = await installPgflowSchema(options.name, options.database);
-  if (!installResult.success) {
-    error(`Failed to install pgflow schema: ${installResult.stderr}`);
+  // Stage 4: Wait for pgflow schema (installed by initdb) or install as fallback
+  info("Stage 4: Verifying pgflow schema...");
+  const schemaReady = await waitForPgflowSchema(options.name, options.database, 60);
 
-    if (options.diagnosticDir) {
-      await captureDiagnostics(options.name, options.diagnosticDir);
+  if (!schemaReady) {
+    // Fallback: try to install if somehow not present (shouldn't happen normally)
+    warning("pgflow schema not detected after timeout, attempting installation...");
+    const installResult = await installPgflowSchema(options.name, options.database);
+    if (!installResult.success) {
+      error(`Failed to install pgflow schema: ${installResult.stderr}`);
+      if (options.diagnosticDir) {
+        await captureDiagnostics(options.name, options.diagnosticDir);
+      }
+      return 2;
     }
-    return 2;
+    success(
+      `✓ pgflow schema installed (${installResult.tablesCreated} tables, ${installResult.functionsCreated} functions)`
+    );
+  } else {
+    success("✓ pgflow schema ready");
   }
-  success(
-    `✓ pgflow schema installed (${installResult.tablesCreated} tables, ${installResult.functionsCreated} functions)`
-  );
 
   // Stage 5: Final verification
   info("Stage 5: Final verification...");

@@ -13,37 +13,39 @@ async function appendToGitHubSummary(content: string): Promise<void> {
 /**
  * Unified cleanup script for GHCR testing images
  *
- * Consolidates cleanup-testing-tags.ts and cleanup-old-testing-tags.ts into
- * a single script with multiple selection modes. Fixes pagination bug and
- * provides consistent retry logic.
+ * Consolidates cleanup functionality with proper handling of multi-arch orphans.
+ *
+ * Multi-arch builds create orphaned manifests (arch-specific images, SBOMs,
+ * attestations) that have no tags. These accumulate when parent manifest lists
+ * are deleted. This script properly cleans them up via age-based selection.
  *
  * Selection modes (mutually exclusive):
  *   --tags TAG1,TAG2      Delete specific tags by name
- *   --older-than N        Delete tags older than N days (0 = all)
- *   --keep-last N         Keep N newest tags, delete rest
+ *   --older-than N        Delete ALL versions older than N days (tagged + untagged)
+ *   --keep-last N         Keep N newest tags + clean orphaned untagged
  *
  * Common options:
  *   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
- *   --pattern PATTERN     Tag pattern for retention modes (default: *)
+ *   --pattern PATTERN     Tag pattern for --list mode only (default: *)
  *   --dry-run             Preview deletions without executing
  *   --continue-on-error   Don't stop on individual failures
- *   --list                Show all tags with creation dates
+ *   --list                Show all tags with creation dates (+ untagged count)
  *   --help                Show help
  *
  * Examples:
  *   # Delete specific tags (post-promotion cleanup)
  *   bun scripts/release/cleanup-testing-images.ts --tags testing-abc123
  *
- *   # Delete tags older than 2 days (scheduled cleanup)
+ *   # Delete ALL versions older than 2 days (includes orphaned untagged)
  *   bun scripts/release/cleanup-testing-images.ts --older-than 2
  *
- *   # Delete ALL matching tags (recovery mode)
+ *   # Delete ALL versions (full cleanup/recovery mode)
  *   bun scripts/release/cleanup-testing-images.ts --older-than 0
  *
- *   # Keep only last 10 tags
+ *   # Keep 10 newest tagged versions + clean orphaned untagged
  *   bun scripts/release/cleanup-testing-images.ts --keep-last 10
  *
- *   # List all testing tags
+ *   # List all tags (shows untagged count too)
  *   bun scripts/release/cleanup-testing-images.ts --list
  *
  * Exit codes:
@@ -104,31 +106,37 @@ Usage:
 
 Selection modes (mutually exclusive):
   --tags TAG1,TAG2      Delete specific tags by name
-  --older-than N        Delete tags older than N days (0 = delete ALL)
-  --keep-last N         Keep N newest tags, delete rest
+  --older-than N        Delete ALL versions older than N days (0 = delete ALL)
+                        Includes untagged orphans (arch manifests, SBOMs, attestations)
+  --keep-last N         Keep N newest tags + their untagged dependencies
 
 Common options:
   --repository REPO     Target repository (default: fluxo-kt/aza-pg-testing)
-  --pattern PATTERN     Tag pattern for retention modes (default: *)
+  --pattern PATTERN     Tag pattern for --list mode only (default: *)
   --dry-run             Preview deletions without executing
   --continue-on-error   Don't stop on individual failures
-  --list                Show all tags with creation dates
+  --list                Show all tags with creation dates (+ untagged count)
   --help                Show this help
+
+Multi-arch cleanup note:
+  Multi-arch builds create untagged "orphan" versions (arch-specific manifests,
+  SBOMs, attestations) that remain when parent tags are deleted. The --older-than
+  and --keep-last modes now properly clean these up based on age.
 
 Examples:
   # Delete specific tags (post-promotion cleanup)
   bun scripts/release/cleanup-testing-images.ts --tags testing-abc123
 
-  # Delete tags older than 2 days (scheduled cleanup)
+  # Delete ALL versions older than 2 days (includes orphaned untagged)
   bun scripts/release/cleanup-testing-images.ts --older-than 2
 
-  # Delete ALL matching tags (recovery mode)
+  # Delete ALL versions (full cleanup/recovery mode)
   bun scripts/release/cleanup-testing-images.ts --older-than 0
 
-  # Keep only last 10 tags
+  # Keep 10 newest tagged versions + clean orphaned untagged
   bun scripts/release/cleanup-testing-images.ts --keep-last 10
 
-  # List all testing tags
+  # List all tags (shows untagged count too)
   bun scripts/release/cleanup-testing-images.ts --list
 
 Exit codes:
@@ -364,19 +372,25 @@ async function fetchAllPackageVersions(
         // If that fails, it might be multiple JSON arrays from pagination
         // Concatenate them
         const versions: PackageVersion[] = [];
-        for (const line of stdout.split("\n")) {
-          if (line.trim()) {
-            try {
-              const parsed = JSON.parse(line);
-              if (Array.isArray(parsed)) {
-                versions.push(...parsed);
-              } else {
-                versions.push(parsed);
-              }
-            } catch {
-              // Skip malformed lines
+        let skippedLines = 0;
+        const lines = stdout.split("\n").filter((l) => l.trim());
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (Array.isArray(parsed)) {
+              versions.push(...parsed);
+            } else {
+              versions.push(parsed);
             }
+          } catch {
+            skippedLines++;
           }
+        }
+        // Warn if significant parsing failures occurred
+        if (skippedLines > 0 && versions.length === 0) {
+          warning(`Failed to parse any of ${lines.length} pagination response lines`);
+        } else if (skippedLines > 0) {
+          warning(`Skipped ${skippedLines} malformed lines during pagination parsing`);
         }
         return versions;
       }
@@ -520,56 +534,42 @@ function extractTagsWithMetadata(versions: PackageVersion[], pattern: string): T
   return tags;
 }
 
-function selectTagsForDeletion(
-  allTags: TagInfo[],
-  versions: PackageVersion[],
-  options: CleanupOptions
-): TagInfo[] {
-  // Mode 1: Direct deletion by name
-  if (options.tags) {
-    const requestedSet = new Set(options.tags);
-    const found: TagInfo[] = [];
+/**
+ * Find tags for deletion by exact name match (--tags mode only)
+ * Searches all versions regardless of --pattern filter (pattern is for --list only)
+ */
+function selectTagsForDeletion(versions: PackageVersion[], options: CleanupOptions): TagInfo[] {
+  if (!options.tags) {
+    return [];
+  }
 
-    // Find version IDs for requested tags
-    for (const version of versions) {
-      if (!version.metadata?.container?.tags) continue;
-      for (const tag of version.metadata.container.tags) {
-        if (requestedSet.has(tag)) {
-          found.push({
-            tag,
-            versionId: version.id,
-            createdAt: new Date(version.created_at),
-            ageDays: 0,
-          });
-        }
+  const requestedSet = new Set(options.tags);
+  const found: TagInfo[] = [];
+
+  // Find version IDs for requested tags (exact name match)
+  for (const version of versions) {
+    if (!version.metadata?.container?.tags) continue;
+    for (const tag of version.metadata.container.tags) {
+      if (requestedSet.has(tag)) {
+        found.push({
+          tag,
+          versionId: version.id,
+          createdAt: new Date(version.created_at),
+          ageDays: 0,
+        });
       }
     }
+  }
 
-    // Warn about missing tags
-    const foundSet = new Set(found.map((t) => t.tag));
-    for (const requested of options.tags) {
-      if (!foundSet.has(requested)) {
-        warning(`Tag not found: ${requested}`);
-      }
+  // Warn about missing tags
+  const foundSet = new Set(found.map((t) => t.tag));
+  for (const requested of options.tags) {
+    if (!foundSet.has(requested)) {
+      warning(`Tag not found: ${requested}`);
     }
-
-    return found;
   }
 
-  // Mode 2: Age-based retention
-  if (options.olderThan !== undefined) {
-    return allTags.filter((t) => t.ageDays > options.olderThan!);
-  }
-
-  // Mode 3: Count-based retention
-  if (options.keepLast !== undefined) {
-    // Sort by creation date (newest first)
-    const sorted = [...allTags].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    // Delete everything after keepLast
-    return sorted.slice(options.keepLast);
-  }
-
-  return [];
+  return found;
 }
 
 // ============================================================================
@@ -584,9 +584,14 @@ function formatAge(days: number): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-function printTagList(tags: TagInfo[]): void {
+function printTagList(tags: TagInfo[], untaggedCount: number = 0): void {
   if (tags.length === 0) {
     info("No matching tags found");
+    if (untaggedCount > 0) {
+      info(
+        `Note: ${untaggedCount} untagged version${untaggedCount !== 1 ? "s" : ""} exist (arch manifests, SBOMs, attestations)`
+      );
+    }
     return;
   }
 
@@ -605,26 +610,46 @@ function printTagList(tags: TagInfo[]): void {
 
   console.log("-".repeat(90));
   console.log(`Total: ${tags.length} tag${tags.length !== 1 ? "s" : ""}`);
+  if (untaggedCount > 0) {
+    console.log(
+      `Untagged: ${untaggedCount} version${untaggedCount !== 1 ? "s" : ""} (arch manifests, SBOMs, attestations)`
+    );
+  }
   console.log("=".repeat(90));
 }
 
 // ============================================================================
-// Delete All Versions (for --older-than 0)
+// Version-Based Deletion (handles both tagged and untagged versions)
 // ============================================================================
 
-async function deleteAllVersions(
+/**
+ * Delete a filtered set of package versions (generalized from deleteAllVersions)
+ *
+ * CRITICAL: Multi-arch builds create orphaned manifests that have no tags:
+ * - Arch-specific images (amd64, arm64) are pushed by-digest (untagged)
+ * - SBOMs and attestations are stored as separate untagged manifests
+ * - When the tagged parent manifest list is deleted, children become orphans
+ *
+ * This function handles both tagged and untagged versions for proper cleanup.
+ */
+async function deleteVersions(
   org: string,
   packageName: string,
-  versions: PackageVersion[],
+  versionsToDelete: PackageVersion[],
   options: CleanupOptions
 ): Promise<void> {
+  // Sort by creation date (oldest first) so if GHCR's "last version protection"
+  // kicks in, the NEWEST version is retained (more useful than keeping oldest)
+  const sortedVersions = [...versionsToDelete].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
   let successCount = 0;
   let retainedCount = 0;
   let failureCount = 0;
   const failures: Array<{ name: string; error: string }> = [];
-  let lastVersionProtectedCount = 0;
 
-  for (const version of versions) {
+  for (const version of sortedVersions) {
     // Use first tag as identifier, or digest/name for untagged versions
     const identifier = version.metadata?.container?.tags?.[0] || version.name;
 
@@ -634,20 +659,25 @@ async function deleteAllVersions(
     } catch (err) {
       const errMessage = getErrorMessage(err);
 
-      // Track "last version" errors separately (might be protection OR real error with >5000 downloads)
+      // GHCR returns "LAST_VERSION_PROTECTED" error in two cases:
+      // 1. Actual last-version protection (can't delete the only remaining version)
+      // 2. Package has >5000 downloads (different GHCR limitation, same error string)
+      // Detect case 1: this is the last version we're trying to delete AND all prior succeeded
       if (errMessage.includes("LAST_VERSION_PROTECTED")) {
-        lastVersionProtectedCount++;
+        const processedCount = successCount + retainedCount + failureCount;
+        const thisIsLastInList = versionsToDelete.length - processedCount === 1;
+        const allPriorSucceeded = failureCount === 0;
 
-        // If this is the first occurrence, treat as "last version" protection
-        if (lastVersionProtectedCount === 1) {
+        if (thisIsLastInList && allPriorSucceeded) {
+          // All other deletions succeeded, only this last one failed → GHCR protection
           info(`Retained: ${identifier} (last version cannot be deleted - GHCR limitation)`);
-          retainedCount++; // Track as retained, not success or failure
+          retainedCount++;
           continue;
         }
 
-        // Multiple occurrences = real error (package actually has >5000 downloads)
+        // Either not the last version OR prior failures exist → likely >5000 downloads issue
         warning(
-          `Multiple versions failing with "5000 downloads" error - likely real download limit, not last-version protection`
+          `Version ${identifier} failed with "LAST_VERSION_PROTECTED" but is not the last version - likely >5000 downloads limit`
         );
       }
 
@@ -671,7 +701,9 @@ async function deleteAllVersions(
   console.log("");
 
   if (options.dryRun) {
-    success(`[DRY RUN] Would delete ${versions.length} version${versions.length !== 1 ? "s" : ""}`);
+    success(
+      `[DRY RUN] Would delete ${versionsToDelete.length} version${versionsToDelete.length !== 1 ? "s" : ""}`
+    );
   } else if (failureCount === 0 && retainedCount > 0) {
     success(
       `Deleted ${successCount} version${successCount !== 1 ? "s" : ""} (${retainedCount} retained - GHCR limitation)`
@@ -689,10 +721,10 @@ async function deleteAllVersions(
   // Write to GitHub Actions step summary
   if (Bun.env.GITHUB_ACTIONS === "true" && Bun.env.GITHUB_STEP_SUMMARY) {
     const summary: string[] = [];
-    summary.push("### 🧹 Cleanup Results (Delete All)\n");
+    summary.push("### 🧹 Cleanup Results\n");
     summary.push(`| Metric | Count |`);
     summary.push(`|--------|-------|`);
-    summary.push(`| Versions to delete | ${versions.length} |`);
+    summary.push(`| Versions to delete | ${versionsToDelete.length} |`);
     summary.push(`| Versions deleted | ${successCount} |`);
     if (retainedCount > 0) {
       summary.push(`| Retained (GHCR limit) | ${retainedCount} |`);
@@ -721,6 +753,67 @@ async function deleteAllVersions(
   }
 }
 
+/**
+ * Filter versions by age threshold (handles both tagged and untagged)
+ */
+function filterVersionsByAge(versions: PackageVersion[], olderThanDays: number): PackageVersion[] {
+  const now = Date.now();
+  return versions.filter((v) => {
+    const createdAt = new Date(v.created_at).getTime();
+    const ageDays = (now - createdAt) / (1000 * 60 * 60 * 24);
+    return ageDays > olderThanDays;
+  });
+}
+
+/**
+ * Filter versions for --keep-last retention mode
+ *
+ * Handles 4 distinct scenarios:
+ * 1. keepLast=0: Delete ALL versions (tagged + untagged)
+ * 2. No tagged versions: All untagged are orphans, delete them all
+ * 3. Fewer tags than keepLast: Keep all tagged, delete untagged older than oldest tag
+ * 4. Normal case: Delete excess tags + untagged older than oldest KEPT tag
+ *
+ * Uses oldest KEPT tag as cutoff to avoid corrupting kept tags' dependencies.
+ * Trade-off: may leave some orphans from post-cutoff deleted tags (use --older-than for those).
+ */
+function filterVersionsForKeepLast(versions: PackageVersion[], keepLast: number): PackageVersion[] {
+  // Case 1: keepLast=0 means delete everything
+  if (keepLast === 0) {
+    return versions;
+  }
+
+  const taggedVersions = versions.filter((v) => v.metadata?.container?.tags?.length);
+  const untaggedVersions = versions.filter((v) => !v.metadata?.container?.tags?.length);
+
+  // Case 2: No tagged versions = all untagged are orphans
+  if (taggedVersions.length === 0) {
+    return untaggedVersions;
+  }
+
+  // Sort tagged versions by creation date (newest first)
+  const taggedSorted = [...taggedVersions].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  // Case 3: Fewer tags than keepLast - keep all tagged, delete old untagged
+  if (taggedSorted.length <= keepLast) {
+    // Safe: taggedSorted.length >= 1 (Case 2 returned for length=0)
+    const oldestTagged = taggedSorted[taggedSorted.length - 1]!;
+    const cutoffDate = new Date(oldestTagged.created_at);
+    return untaggedVersions.filter((v) => new Date(v.created_at) < cutoffDate);
+  }
+
+  // Case 4: Normal - delete excess tags + untagged older than cutoff
+  // Safe: taggedSorted.length > keepLast >= 1, so index keepLast-1 is valid
+  const oldestKept = taggedSorted[keepLast - 1]!;
+  const cutoffDate = new Date(oldestKept.created_at);
+  const taggedToDelete = taggedSorted.slice(keepLast);
+  const untaggedToDelete = untaggedVersions.filter((v) => new Date(v.created_at) < cutoffDate);
+
+  return [...taggedToDelete, ...untaggedToDelete];
+}
+
 // ============================================================================
 // Main Cleanup Logic
 // ============================================================================
@@ -744,18 +837,75 @@ async function cleanup(options: CleanupOptions): Promise<void> {
     return;
   }
 
-  info(`Found ${versions.length} package version${versions.length !== 1 ? "s" : ""}`);
+  // Count tagged vs untagged for display
+  const taggedCount = versions.filter((v) => v.metadata?.container?.tags?.length).length;
+  const untaggedCount = versions.length - taggedCount;
+  const countDetail =
+    untaggedCount > 0 ? ` (${taggedCount} tagged, ${untaggedCount} untagged)` : "";
 
-  // Special case: --older-than 0 means delete ALL versions (tagged + untagged)
-  if (options.olderThan === 0) {
-    info(
-      `Deleting ALL ${versions.length} version${versions.length !== 1 ? "s" : ""} (--older-than 0)`
-    );
-    await deleteAllVersions(org, packageName, versions, options);
+  info(`Found ${versions.length} package version${versions.length !== 1 ? "s" : ""}${countDetail}`);
+
+  // Handle --older-than N (includes untagged versions for proper cleanup)
+  // CRITICAL FIX: Previously only processed tagged versions, leaving orphans
+  if (options.olderThan !== undefined) {
+    if (options.olderThan === 0) {
+      // Delete ALL versions
+      info(
+        `Deleting ALL ${versions.length} version${versions.length !== 1 ? "s" : ""} (--older-than 0)`
+      );
+      await deleteVersions(org, packageName, versions, options);
+    } else {
+      // Delete versions older than N days (tagged + untagged)
+      const versionsToDelete = filterVersionsByAge(versions, options.olderThan);
+      if (versionsToDelete.length === 0) {
+        success(
+          `No versions older than ${options.olderThan} day${options.olderThan !== 1 ? "s" : ""}`
+        );
+        return;
+      }
+      const taggedDelCount = versionsToDelete.filter(
+        (v) => v.metadata?.container?.tags?.length
+      ).length;
+      const untaggedDelCount = versionsToDelete.length - taggedDelCount;
+      const delDetail =
+        untaggedDelCount > 0
+          ? ` (${taggedDelCount} tagged, ${untaggedDelCount} untagged/orphaned)`
+          : "";
+      info(
+        `Deleting ${versionsToDelete.length} version${versionsToDelete.length !== 1 ? "s" : ""} older than ${options.olderThan} day${options.olderThan !== 1 ? "s" : ""}${delDetail}`
+      );
+      await deleteVersions(org, packageName, versionsToDelete, options);
+    }
     return;
   }
 
-  // Extract tags matching pattern
+  // Handle --keep-last N (includes untagged versions for proper cleanup)
+  // CRITICAL FIX: Previously only processed tagged versions, leaving orphans
+  if (options.keepLast !== undefined) {
+    const versionsToDelete = filterVersionsForKeepLast(versions, options.keepLast);
+    if (versionsToDelete.length === 0) {
+      const tagCount = versions.filter((v) => v.metadata?.container?.tags?.length).length;
+      success(
+        `All ${tagCount} tagged version${tagCount !== 1 ? "s" : ""} within keep-last ${options.keepLast} limit`
+      );
+      return;
+    }
+    const taggedDelCount = versionsToDelete.filter(
+      (v) => v.metadata?.container?.tags?.length
+    ).length;
+    const untaggedDelCount = versionsToDelete.length - taggedDelCount;
+    const delDetail =
+      untaggedDelCount > 0
+        ? ` (${taggedDelCount} tagged, ${untaggedDelCount} untagged/orphaned)`
+        : "";
+    info(
+      `Deleting ${versionsToDelete.length} version${versionsToDelete.length !== 1 ? "s" : ""} (keeping ${options.keepLast} newest tagged)${delDetail}`
+    );
+    await deleteVersions(org, packageName, versionsToDelete, options);
+    return;
+  }
+
+  // Extract tags matching pattern (for --tags and --list modes)
   const allTags = extractTagsWithMetadata(versions, options.pattern);
 
   if (allTags.length === 0) {
@@ -769,109 +919,98 @@ async function cleanup(options: CleanupOptions): Promise<void> {
 
   // List mode - show all tags and exit
   if (options.listOnly) {
-    printTagList(allTags);
+    printTagList(allTags, untaggedCount);
     return;
   }
 
-  // Select tags for deletion
-  const toDelete = selectTagsForDeletion(allTags, versions, options);
-
-  if (toDelete.length === 0) {
-    if (options.olderThan !== undefined) {
-      success(`No tags older than ${options.olderThan} day${options.olderThan !== 1 ? "s" : ""}`);
-    } else if (options.keepLast !== undefined) {
-      success(`All ${allTags.length} tags are within keep-last ${options.keepLast} limit`);
-    } else {
+  // Handle --tags mode (specific tag deletion)
+  if (options.tags) {
+    const toDelete = selectTagsForDeletion(versions, options);
+    if (toDelete.length === 0) {
       success("No tags to delete");
+      return;
     }
-    return;
-  }
-
-  // Show what will be deleted
-  if (options.olderThan !== undefined) {
-    info(
-      `Deleting ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} older than ${options.olderThan} day${options.olderThan !== 1 ? "s" : ""}`
-    );
-  } else if (options.keepLast !== undefined) {
-    info(
-      `Deleting ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""} (keeping last ${options.keepLast})`
-    );
-  } else if (options.tags) {
     info(`Deleting ${toDelete.length} specified tag${toDelete.length !== 1 ? "s" : ""}`);
-  }
 
-  // Delete tags (pattern * includes .sig tags, so no separate signature handling needed)
-  let successCount = 0;
-  let failureCount = 0;
-  const failures: Array<{ tag: string; error: string }> = [];
+    // Delete specified tags
+    let successCount = 0;
+    let failureCount = 0;
+    const failures: Array<{ tag: string; error: string }> = [];
 
-  for (const tagInfo of toDelete) {
-    try {
-      await deletePackageVersion(org, packageName, tagInfo.versionId, tagInfo.tag, options.dryRun);
-      successCount++;
-    } catch (err) {
-      const errMessage = getErrorMessage(err);
-      error(`Failed to delete ${tagInfo.tag}: ${errMessage}`);
+    for (const tagInfo of toDelete) {
+      try {
+        await deletePackageVersion(
+          org,
+          packageName,
+          tagInfo.versionId,
+          tagInfo.tag,
+          options.dryRun
+        );
+        successCount++;
+      } catch (err) {
+        const errMessage = getErrorMessage(err);
+        error(`Failed to delete ${tagInfo.tag}: ${errMessage}`);
 
-      if (Bun.env.GITHUB_ACTIONS === "true") {
-        console.log(`::error::Failed to delete tag ${tagInfo.tag}: ${errMessage}`);
-      }
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          console.log(`::error::Failed to delete tag ${tagInfo.tag}: ${errMessage}`);
+        }
 
-      failureCount++;
-      failures.push({ tag: tagInfo.tag, error: errMessage });
+        failureCount++;
+        failures.push({ tag: tagInfo.tag, error: errMessage });
 
-      if (!options.continueOnError) {
-        process.exit(1);
+        if (!options.continueOnError) {
+          process.exit(1);
+        }
       }
     }
-  }
 
-  // Summary (pattern * includes .sig tags, counted as regular tags)
-  console.log("");
+    // Summary
+    console.log("");
 
-  const deletedCount = successCount;
-
-  if (options.dryRun) {
-    success(`[DRY RUN] Would delete ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
-  } else if (failureCount === 0) {
-    success(`Deleted ${deletedCount} tag${deletedCount !== 1 ? "s" : ""}`);
-  } else {
-    success(`Deleted ${deletedCount} of ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
-    error(`Failed to delete ${failureCount} tag${failureCount !== 1 ? "s" : ""}:`);
-    for (const f of failures) {
-      error(`  - ${f.tag}: ${f.error}`);
-    }
-  }
-
-  // Write to GitHub Actions step summary
-  if (Bun.env.GITHUB_ACTIONS === "true" && Bun.env.GITHUB_STEP_SUMMARY) {
-    const summary: string[] = [];
-    summary.push("### 🧹 Cleanup Results\n");
-    summary.push(`| Metric | Count |`);
-    summary.push(`|--------|-------|`);
-    summary.push(`| Tags to delete | ${toDelete.length} |`);
-    summary.push(`| Tags deleted | ${deletedCount} |`);
-    summary.push(`| Failed | ${failureCount} |`);
     if (options.dryRun) {
-      summary.push(`\n**Mode**: Dry run (no actual deletions)`);
-    }
-    if (failureCount > 0) {
-      summary.push(`\n**Failed tags**:`);
+      success(`[DRY RUN] Would delete ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`);
+    } else if (failureCount === 0) {
+      success(`Deleted ${successCount} tag${successCount !== 1 ? "s" : ""}`);
+    } else {
+      success(
+        `Deleted ${successCount} of ${toDelete.length} tag${toDelete.length !== 1 ? "s" : ""}`
+      );
+      error(`Failed to delete ${failureCount} tag${failureCount !== 1 ? "s" : ""}:`);
       for (const f of failures) {
-        summary.push(`- \`${f.tag}\`: ${f.error}`);
+        error(`  - ${f.tag}: ${f.error}`);
       }
     }
-    summary.push("");
 
-    try {
-      await appendToGitHubSummary(summary.join("\n") + "\n");
-    } catch {
-      // Ignore summary write errors
+    // Write to GitHub Actions step summary
+    if (Bun.env.GITHUB_ACTIONS === "true" && Bun.env.GITHUB_STEP_SUMMARY) {
+      const summary: string[] = [];
+      summary.push("### 🧹 Cleanup Results\n");
+      summary.push(`| Metric | Count |`);
+      summary.push(`|--------|-------|`);
+      summary.push(`| Tags to delete | ${toDelete.length} |`);
+      summary.push(`| Tags deleted | ${successCount} |`);
+      summary.push(`| Failed | ${failureCount} |`);
+      if (options.dryRun) {
+        summary.push(`\n**Mode**: Dry run (no actual deletions)`);
+      }
+      if (failureCount > 0) {
+        summary.push(`\n**Failed tags**:`);
+        for (const f of failures) {
+          summary.push(`- \`${f.tag}\`: ${f.error}`);
+        }
+      }
+      summary.push("");
+
+      try {
+        await appendToGitHubSummary(summary.join("\n") + "\n");
+      } catch {
+        // Ignore summary write errors
+      }
     }
-  }
 
-  if (failureCount > 0 && !options.continueOnError) {
-    process.exit(1);
+    if (failureCount > 0 && !options.continueOnError) {
+      process.exit(1);
+    }
   }
 }
 

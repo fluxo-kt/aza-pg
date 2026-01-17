@@ -1,5 +1,5 @@
 #!/bin/bash
-# pgflow v0.13.1 Schema Initialization
+# pgflow v0.13.2 Schema Initialization
 # Installs the pgflow workflow orchestration schema in POSTGRES_DB
 #
 # Prerequisites:
@@ -72,7 +72,7 @@ if [ -f /opt/pgflow/schema.sql ]; then
     # Remove supabase_vault creation from upstream schema (made optional above)
     # Upstream schema has "CREATE EXTENSION if NOT EXISTS supabase_vault;" which fails if not available
     sed '/CREATE EXTENSION.*supabase_vault/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB"
-    echo "[05-pgflow] pgflow v0.13.1 schema installed successfully"
+    echo "[05-pgflow] pgflow v0.13.2 schema installed successfully"
 
     # Apply security patches
     if [ -f /opt/pgflow/security-patches.sql ]; then

@@ -77,7 +77,7 @@ jobs:
       # Pre-flight cleanup: Remove orphaned testing tags from cancelled workflows.
       # This protects against the GitHub Actions limitation where `if: always()`
       # cleanup jobs don't run for cancelled workflows (cancel-in-progress: true).
-      # Deletes any testing-* tags older than 6 hours (current workflow's tag
+      # Deletes any testing-* tags older than 2 hours (current workflow's tag
       # won't exist yet, so can't accidentally delete it).
       - name: Cleanup orphaned testing tags from previous runs
         id: cleanup-orphans

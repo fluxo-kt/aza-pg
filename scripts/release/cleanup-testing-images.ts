@@ -372,19 +372,25 @@ async function fetchAllPackageVersions(
         // If that fails, it might be multiple JSON arrays from pagination
         // Concatenate them
         const versions: PackageVersion[] = [];
-        for (const line of stdout.split("\n")) {
-          if (line.trim()) {
-            try {
-              const parsed = JSON.parse(line);
-              if (Array.isArray(parsed)) {
-                versions.push(...parsed);
-              } else {
-                versions.push(parsed);
-              }
-            } catch {
-              // Skip malformed lines
+        let skippedLines = 0;
+        const lines = stdout.split("\n").filter((l) => l.trim());
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (Array.isArray(parsed)) {
+              versions.push(...parsed);
+            } else {
+              versions.push(parsed);
             }
+          } catch {
+            skippedLines++;
           }
+        }
+        // Warn if significant parsing failures occurred
+        if (skippedLines > 0 && versions.length === 0) {
+          warning(`Failed to parse any of ${lines.length} pagination response lines`);
+        } else if (skippedLines > 0) {
+          warning(`Skipped ${skippedLines} malformed lines during pagination parsing`);
         }
         return versions;
       }
@@ -640,7 +646,6 @@ async function deleteVersions(
   let retainedCount = 0;
   let failureCount = 0;
   const failures: Array<{ name: string; error: string }> = [];
-  let lastVersionProtectedCount = 0;
 
   for (const version of versionsToDelete) {
     // Use first tag as identifier, or digest/name for untagged versions
@@ -652,20 +657,25 @@ async function deleteVersions(
     } catch (err) {
       const errMessage = getErrorMessage(err);
 
-      // Track "last version" errors separately (might be protection OR real error with >5000 downloads)
+      // GHCR returns "LAST_VERSION_PROTECTED" error in two cases:
+      // 1. Actual last-version protection (can't delete the only remaining version)
+      // 2. Package has >5000 downloads (different GHCR limitation, same error string)
+      // Detect case 1: this is the last version we're trying to delete AND all prior succeeded
       if (errMessage.includes("LAST_VERSION_PROTECTED")) {
-        lastVersionProtectedCount++;
+        const processedCount = successCount + retainedCount + failureCount;
+        const thisIsLastInList = versionsToDelete.length - processedCount === 1;
+        const allPriorSucceeded = failureCount === 0;
 
-        // If this is the first occurrence, treat as "last version" protection
-        if (lastVersionProtectedCount === 1) {
+        if (thisIsLastInList && allPriorSucceeded) {
+          // All other deletions succeeded, only this last one failed → GHCR protection
           info(`Retained: ${identifier} (last version cannot be deleted - GHCR limitation)`);
-          retainedCount++; // Track as retained, not success or failure
+          retainedCount++;
           continue;
         }
 
-        // Multiple occurrences = real error (package actually has >5000 downloads)
+        // Either not the last version OR prior failures exist → likely >5000 downloads issue
         warning(
-          `Multiple versions failing with "5000 downloads" error - likely real download limit, not last-version protection`
+          `Version ${identifier} failed with "LAST_VERSION_PROTECTED" but is not the last version - likely >5000 downloads limit`
         );
       }
 

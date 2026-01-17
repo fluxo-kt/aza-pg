@@ -23,6 +23,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Changed
 
+- **Base image**: Updated `postgres:18.1-trixie` SHA from `bfe50b2b...` to `5773fe72...` (Debian Trixie 13.8.2→13.8.3, GnuPG CVE-2025-30258 fix)
 - **pgflow**: 0.13.0 → 0.13.1
   - Fixed Supabase CLI local environment detection (now uses `SUPABASE_URL` check instead of API keys)
   - Includes v0.13.0 performance improvements (2.17× faster Map→Map chains via atomic step output storage)
@@ -54,6 +55,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **Build system**: Removed pg_partman from PGDG package installation (now built from source)
 - **Validation**: Added PGDG version validation against actual repository (prevents silent apt-get failures)
 - **Testing**: Updated pgflow schema to v0.13.1 (test fixtures regenerated)
+- **Stacks**: Updated PgBouncer to v1.25.1-p0 in primary stack (CVE-2025-12819 fix, LDAP auth, transaction_timeout)
+- **Dependencies**: Updated dev dependencies (bun 1.3.5→1.3.6, oxlint 1.38.0→1.39.0, prettier 3.7.4→3.8.0, sql-formatter 15.6.12→15.7.0)
 
 ---
 

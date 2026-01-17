@@ -84,7 +84,7 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 | ------------------------- | ----------------------------------------------- | --------------------------------------------- |
 | `POSTGRES_IMAGE`          | `ghcr.io/fluxo-kt/aza-pg:pg18`                  | PostgreSQL image (use versioned tag for prod) |
 | `POSTGRES_EXPORTER_IMAGE` | `prometheuscommunity/postgres-exporter:v0.18.1` | Prometheus exporter                           |
-| `PGBOUNCER_IMAGE`         | `edoburu/pgbouncer:v1.24.1-p1`                  | PgBouncer (primary only)                      |
+| `PGBOUNCER_IMAGE`         | `edoburu/pgbouncer:v1.25.1-p0`                  | PgBouncer (primary only)                      |
 
 ## Stack Defaults
 

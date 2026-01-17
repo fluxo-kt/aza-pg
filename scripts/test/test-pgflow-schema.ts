@@ -388,11 +388,9 @@ async function runTests(): Promise<void> {
     console.log("=".repeat(70) + "\n");
     process.exitCode = failed > 0 ? 1 : 0;
   } finally {
-    // Cleanup: mirror setup behavior - drop schema only for existing containers
-    if (useExistingContainer) {
-      // Always clean schema only when using existing container (never drop database)
-      await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
-    } else if (CONTAINER) {
+    // Cleanup: only stop container if we started it
+    // Don't drop schema - next test handles its own setup (avoids breaking test chain)
+    if (!useExistingContainer && CONTAINER) {
       await harness.cleanup(CONTAINER);
     }
   }

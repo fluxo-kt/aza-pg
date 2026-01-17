@@ -26,7 +26,6 @@ import {
   installPgflowSchema,
   installRealtimeStub,
   runSQL,
-  createDatabase,
   dropDatabase,
   PGFLOW_VERSION,
 } from "../../tests/fixtures/pgflow/install";
@@ -137,24 +136,11 @@ async function runTests(): Promise<void> {
       console.log("✅ TEST 1: Setup database (0ms) [SKIPPED - already exists]");
       console.log("✅ TEST 2: Install pgflow schema (0ms) [SKIPPED - already exists]");
     } else {
-      // Setup database - for postgres, just clean the schema; for others, create fresh database
+      // Setup: clean existing schemas for fresh install
+      // Database must already exist (created by setup-pgflow-container.ts in CI)
       await test("TEST 1: Setup database", async () => {
-        if (DATABASE === "postgres") {
-          // For postgres database, just drop existing pgflow schema
-          await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
-        } else {
-          // For other databases, drop and recreate
-          const exists = await runSQL(
-            CONTAINER,
-            "postgres",
-            `SELECT 1 FROM pg_database WHERE datname = '${DATABASE}'`
-          );
-          if (exists.success && exists.stdout.trim() === "1") {
-            await dropDatabase(CONTAINER, DATABASE);
-          }
-          const created = await createDatabase(CONTAINER, DATABASE);
-          assert(created, "Failed to create test database");
-        }
+        await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS pgflow CASCADE");
+        await runSQL(CONTAINER, DATABASE, "DROP SCHEMA IF EXISTS realtime CASCADE");
       });
 
       // Install pgflow schema

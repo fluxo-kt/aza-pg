@@ -773,7 +773,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.8.1",
+      tag: "v1.9.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -781,8 +781,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-        "Source build for latest v1.8.1 with PG18 support",
-        "v1.8.1: Fixed time-based archive partitioning, SQL typo fixes",
+        "Source build for latest v1.9.0 with PG18 support",
+        "v1.9.0: FIFO queues with read_grouped, read_grouped_rr functions",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",
@@ -1089,13 +1089,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgbackrest",
     kind: "tool",
     install_via: "pgdg",
-    pgdgVersion: "2.57.0-1.pgdg13+1",
+    pgdgVersion: "2.58.0-1.pgdg13+1",
     category: "operations",
     description: "Parallel, incremental backup and restore CLI.",
     source: {
       type: "git",
       repository: "https://github.com/pgbackrest/pgbackrest.git",
-      tag: "release/2.57.0",
+      tag: "release/2.58.0",
     },
     build: { type: "meson" },
     aptPackages: [
@@ -1112,7 +1112,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: [
         "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
-        "PGDG: pgbackrest (v2.57.0-1.pgdg13+1). Alt: Pigsty. Alt: Percona (no PG18)",
+        "PGDG: pgbackrest (v2.58.0-1.pgdg13+1). Alt: Pigsty. Alt: Percona",
         "Installs /usr/bin/pgbackrest.",
       ],
     },

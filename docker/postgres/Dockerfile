@@ -283,8 +283,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.57.0-1.pgdg13+1 pgbadger" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.57.0-1.pgdg13+1 pgbadger && \
+    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \

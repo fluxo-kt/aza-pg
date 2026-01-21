@@ -10,7 +10,18 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-_No changes yet._
+### Changed
+
+- **pgmq 1.8.1 → 1.9.0**: FIFO queue support with message groups, `read_grouped()` functions
+  - New `read_grouped()`, `read_grouped_rr()`, `read_grouped_with_poll()`, `read_grouped_rr_with_poll()` functions
+  - New `create_fifo_index()` / `create_fifo_indexes_all()` for GIN indexes on message headers
+  - ⚠️ **Breaking**: `conditional` parameter removed from FIFO-grouped read functions (violated ordering guarantees)
+- **pgbackrest 2.57.0 → 2.58.0**: Latest backup/restore tool from PGDG
+
+### Development (non-image)
+
+- Updated oxlint to 1.41.0, squawk-cli to 2.37.0, @pgflow/client and @pgflow/dsl to 0.13.2
+- Enhanced pgmq test suite with FIFO tests, error handling, batch operations
 
 ---
 

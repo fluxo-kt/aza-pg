@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       // Strip extensions that can't be created in non-default databases:
       // - supabase_vault: optional dependency being tested
       // - pg_cron: can only be created in cron.database_name database (typically 'postgres')
-      await $`docker exec ${containerName} bash -c "sed -e '/CREATE EXTENSION.*supabase_vault/d' -e '/CREATE EXTENSION.*pg_cron/d' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d test_no_vault"`.quiet();
+      await $`docker exec ${containerName} bash -c "sed -e '/create extension.*supabase_vault/Id' -e '/create extension.*pg_cron/Id' /opt/pgflow/schema.sql | psql -v ON_ERROR_STOP=1 -U postgres -d test_no_vault"`.quiet();
       await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d test_no_vault -f /opt/pgflow/security-patches.sql`.quiet();
       success("Test 4 PASSED: pgflow schema installed without vault");
     } catch (err) {

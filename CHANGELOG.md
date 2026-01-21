@@ -12,6 +12,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Changed
 
+- **pgflow 0.13.1 → 0.13.2**: Automatic stalled task recovery for worker crash resilience
+  - New: Tasks stuck in 'started' status beyond `timeout + 30s` are automatically requeued (up to 3 attempts)
+  - New: `requeued_count` and `last_requeued_at` columns in `step_tasks` table for monitoring
+  - New: Cron job (`requeue_stalled_tasks`) runs every 15 seconds
+  - Fixed: `maxPgConnections` parameter now respected in edge-worker (was ignored, default changed 10→4)
 - **pgmq 1.8.1 → 1.9.0**: FIFO queue support with message groups, `read_grouped()` functions
   - New `read_grouped()`, `read_grouped_rr()` functions for FIFO message group ordering
   - New `create_fifo_index()` / `create_fifo_indexes_all()` for GIN indexes on message headers

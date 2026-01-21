@@ -1,4 +1,4 @@
--- pgflow v0.13.1 Security Patches
+-- pgflow v0.13.2 Security Patches
 -- Applied after 05-pgflow-init.sh loads upstream schema
 --
 -- Patches applied:

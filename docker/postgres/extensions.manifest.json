@@ -579,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.1",
-        "commit": "b09543c2d4c2e0a0eb2e0f5162af4decb3e61c32"
+        "tag": "pgflow@0.13.2",
+        "commit": "91fcc7b40af352af1a3071022772c968f8412290"
       },
       "runtime": {
         "sharedPreload": false,
@@ -601,6 +601,7 @@
       ],
       "notes": [
         "SQL-only schema - no compiled components",
+        "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
         "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
         "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
         "Schema installed by default in postgres database",

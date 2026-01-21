@@ -799,7 +799,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.13.1",
+      tag: "pgflow@0.13.2",
     },
     runtime: {
       sharedPreload: false,
@@ -815,6 +815,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
+      "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
       "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
       "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
       "Schema installed by default in postgres database",

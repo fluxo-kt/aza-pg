@@ -713,7 +713,59 @@ await test("list_queues returns all queues", async () => {
   console.log(`   📊 list_queues verified: found test_list_1 and test_list_2`);
 });
 
-// Test 23: Error - read from non-existent queue
+// Test 23: list_queues metadata verification (is_partitioned, is_unlogged)
+await test("list_queues returns correct metadata columns", async () => {
+  // Create three queue types to verify metadata columns
+  await runSQL("SELECT pgmq.create('test_meta_standard')");
+  await runSQL("SELECT pgmq.create_partitioned('test_meta_part', '1 day'::text, '7 days'::text)");
+  await runSQL("SELECT pgmq.create_unlogged('test_meta_unlogged')");
+
+  // Query list_queues with metadata columns
+  const list = await runSQL(`
+    SELECT queue_name, is_partitioned, is_unlogged
+    FROM pgmq.list_queues()
+    WHERE queue_name LIKE 'test_meta_%'
+    ORDER BY queue_name
+  `);
+  assert(list.success, `list_queues with metadata failed: ${list.stderr}`);
+
+  // Parse results (format: queue_name|is_partitioned|is_unlogged)
+  const lines = list.stdout.split("\n").filter((l) => l.length > 0);
+  assert(lines.length === 3, `Expected 3 queues, got ${lines.length}`);
+
+  // Verify each queue's metadata
+  const partLine = lines.find((l) => l.includes("test_meta_part"));
+  const stdLine = lines.find((l) => l.includes("test_meta_standard"));
+  const unlogLine = lines.find((l) => l.includes("test_meta_unlogged"));
+
+  assert(partLine !== undefined, "test_meta_part not found");
+  assert(stdLine !== undefined, "test_meta_standard not found");
+  assert(unlogLine !== undefined, "test_meta_unlogged not found");
+
+  // Standard queue: is_partitioned=f, is_unlogged=f
+  assert(
+    stdLine!.includes("|f|f"),
+    `Standard queue should have is_partitioned=f, is_unlogged=f. Got: ${stdLine}`
+  );
+
+  // Partitioned queue: is_partitioned=t, is_unlogged=f
+  assert(
+    partLine!.includes("|t|f"),
+    `Partitioned queue should have is_partitioned=t. Got: ${partLine}`
+  );
+
+  // Unlogged queue: is_partitioned=f, is_unlogged=t
+  assert(
+    unlogLine!.includes("|f|t"),
+    `Unlogged queue should have is_unlogged=t. Got: ${unlogLine}`
+  );
+
+  console.log(
+    "   📊 list_queues metadata verified: is_partitioned and is_unlogged columns correct"
+  );
+});
+
+// Test 24: Error - read from non-existent queue (renumbered from Test 23)
 await test("Error: read from non-existent queue", async () => {
   const read = await runSQL("SELECT pgmq.read('nonexistent_queue_xyz_123', 30, 1)");
   // Should error - queue doesn't exist
@@ -752,7 +804,7 @@ await test("Error: send to dropped queue fails", async () => {
   console.log("   📊 Error handling verified: send to dropped queue fails");
 });
 
-// Test 26: Drop Queue (cleanup)
+// Test 27: Drop Queue (cleanup)
 await test("Drop queue", async () => {
   // Drop all test queues
   const queues = [
@@ -771,6 +823,9 @@ await test("Drop queue", async () => {
     "test_queue_unlogged",
     "test_list_1",
     "test_list_2",
+    "test_meta_standard",
+    "test_meta_part",
+    "test_meta_unlogged",
     "test_queue_error_delete",
   ];
 
@@ -787,7 +842,7 @@ await test("Drop queue", async () => {
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
 });
 
-// Test 27: Performance Benchmark - Message Throughput
+// Test 28: Performance Benchmark - Message Throughput
 await test("Performance benchmark - message throughput", async () => {
   // Create benchmark queue
   await runSQL("SELECT pgmq.create('benchmark_queue')");

@@ -16,6 +16,7 @@ import { TestHarness } from "./harness.ts";
 import { error, info, success } from "../utils/logger.ts";
 
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
+Bun.env.POSTGRES_IMAGE = IMAGE_TAG; // Set env var for harness to use
 const harness = new TestHarness();
 
 async function main(): Promise<void> {

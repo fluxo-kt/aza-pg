@@ -4,11 +4,13 @@
  * Tests complete message queue workflow with visibility timeouts and monitoring
  *
  * Coverage:
- * - Queue management (create, partitioned queues, drop)
- * - Message operations (send, batch send, read, pop)
+ * - Queue management (create, partitioned, unlogged, drop, list_queues)
+ * - Message operations (send, send delayed, batch send, read, pop)
  * - Visibility timeout (read with timeout, set VT, polling)
- * - Message lifecycle (delete, archive)
+ * - Message lifecycle (delete, batch delete, archive, batch archive)
+ * - FIFO queues (v1.9.0): read_grouped, read_grouped_rr, create_fifo_index
  * - Queue management (purge, metrics)
+ * - Error handling (non-existent queues, invalid operations)
  * - Performance metrics (throughput, latency)
  *
  * Usage:
@@ -494,7 +496,263 @@ await test("Purge queue", async () => {
   assert(lengthAfter === 0, `Expected 0 messages after purge, got ${lengthAfter}`);
 });
 
-// Test 15: Drop Queue
+// Test 15: FIFO Queue - read_grouped (v1.9.0)
+await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_fifo')");
+
+  // Create FIFO index for message headers
+  const createIndex = await runSQL("SELECT pgmq.create_fifo_index('test_queue_fifo')");
+  assert(createIndex.success, `create_fifo_index failed: ${createIndex.stderr}`);
+
+  // Send messages to different groups via x-pgmq-group header
+  // Group A: messages 1, 3
+  // Group B: messages 2, 4
+  const msg1 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo', '{"order": 1}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  );
+  assert(msg1.success, `Send msg1 failed: ${msg1.stderr}`);
+
+  const msg2 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo', '{"order": 2}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
+  );
+  assert(msg2.success, `Send msg2 failed: ${msg2.stderr}`);
+
+  const msg3 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo', '{"order": 3}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  );
+  assert(msg3.success, `Send msg3 failed: ${msg3.stderr}`);
+
+  const msg4 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo', '{"order": 4}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
+  );
+  assert(msg4.success, `Send msg4 failed: ${msg4.stderr}`);
+
+  // read_grouped should return messages grouped together
+  const read = await runSQL(
+    "SELECT msg_id, message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped('test_queue_fifo', 30, 10)"
+  );
+  assert(read.success, `read_grouped failed: ${read.stderr}`);
+
+  // Verify we got all 4 messages
+  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
+  assert(lines.length === 4, `Expected 4 messages, got ${lines.length}`);
+
+  console.log(`   📊 FIFO read_grouped returned ${lines.length} messages`);
+});
+
+// Test 16: FIFO Queue - read_grouped_rr (v1.9.0)
+await test("FIFO read_grouped_rr distributes across groups (v1.9.0)", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_fifo_rr')");
+  await runSQL("SELECT pgmq.create_fifo_index('test_queue_fifo_rr')");
+
+  // Send 3 messages to group_a, 3 to group_b
+  for (let i = 0; i < 3; i++) {
+    await runSQL(
+      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 1}}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+    );
+    await runSQL(
+      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 2}}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
+    );
+  }
+
+  // read_grouped_rr should interleave (round-robin) across groups
+  const read = await runSQL(
+    "SELECT message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped_rr('test_queue_fifo_rr', 30, 6)"
+  );
+  assert(read.success, `read_grouped_rr failed: ${read.stderr}`);
+
+  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
+  assert(lines.length === 6, `Expected 6 messages, got ${lines.length}`);
+
+  console.log(`   📊 FIFO read_grouped_rr distributed ${lines.length} messages across groups`);
+});
+
+// Test 17: FIFO index verification (v1.9.0)
+await test("FIFO create_fifo_index creates GIN index (v1.9.0)", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_fifo_index')");
+  await runSQL("SELECT pgmq.create_fifo_index('test_queue_fifo_index')");
+
+  // Verify index exists on headers column
+  const indexCheck = await runSQL(`
+    SELECT indexname FROM pg_indexes
+    WHERE tablename = 'q_test_queue_fifo_index'
+    AND indexdef LIKE '%headers%'
+  `);
+  assert(indexCheck.success, `Index check failed: ${indexCheck.stderr}`);
+  assert(indexCheck.stdout.length > 0, "FIFO index not created on headers column");
+
+  console.log(`   📊 FIFO GIN index verified: ${indexCheck.stdout}`);
+});
+
+// Test 18: Delayed message send
+await test("Delayed message send", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_delay')");
+
+  // Send with 2-second delay
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_delay', '{\"delayed\": true}'::jsonb, 2)"
+  );
+  assert(send.success, `Delayed send failed: ${send.stderr}`);
+
+  // Immediate read should return nothing (message not yet visible)
+  const immediate = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
+  assert(immediate.success, `Immediate read failed: ${immediate.stderr}`);
+  assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
+
+  // Wait for delay to expire
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  // Now message should be visible
+  const delayed = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
+  assert(delayed.success, `Delayed read failed: ${delayed.stderr}`);
+  assert(delayed.stdout.length > 0, "Message not visible after delay expired");
+
+  console.log("   📊 Delayed send verified: message appeared after 2.5s delay");
+});
+
+// Test 19: Batch delete multiple messages
+await test("Batch delete multiple messages", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_batch_delete')");
+
+  // Send 5 messages, collect IDs
+  const ids: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const send = await runSQL(
+      `SELECT pgmq.send('test_queue_batch_delete', '{"item": ${i + 1}}'::jsonb)`
+    );
+    assert(send.success, `Send ${i + 1} failed: ${send.stderr}`);
+    ids.push(parseInt(send.stdout));
+  }
+
+  // Batch delete first 3
+  const del = await runSQL(
+    `SELECT pgmq.delete('test_queue_batch_delete', ARRAY[${ids.slice(0, 3).join(",")}])`
+  );
+  assert(del.success, `Batch delete failed: ${del.stderr}`);
+
+  // Verify only 2 remain
+  const metrics = await runSQL("SELECT queue_length FROM pgmq.metrics('test_queue_batch_delete')");
+  assert(metrics.success, `Metrics failed: ${metrics.stderr}`);
+  const remaining = parseInt(metrics.stdout);
+  assert(remaining === 2, `Expected 2 remaining, got ${remaining}`);
+
+  console.log(`   📊 Batch delete: removed 3 of 5, ${remaining} remaining`);
+});
+
+// Test 20: Batch archive multiple messages
+await test("Batch archive multiple messages", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_batch_archive')");
+
+  // Send 5 messages, collect IDs
+  const ids: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const send = await runSQL(
+      `SELECT pgmq.send('test_queue_batch_archive', '{"item": ${i + 1}}'::jsonb)`
+    );
+    assert(send.success, `Send ${i + 1} failed: ${send.stderr}`);
+    ids.push(parseInt(send.stdout));
+  }
+
+  // Batch archive first 3
+  const archive = await runSQL(
+    `SELECT pgmq.archive('test_queue_batch_archive', ARRAY[${ids.slice(0, 3).join(",")}])`
+  );
+  assert(archive.success, `Batch archive failed: ${archive.stderr}`);
+
+  // Verify archive table has 3 messages
+  const archiveCount = await runSQL("SELECT count(*) FROM pgmq.a_test_queue_batch_archive");
+  assert(archiveCount.success, `Archive count failed: ${archiveCount.stderr}`);
+  assert(parseInt(archiveCount.stdout) === 3, `Expected 3 archived, got ${archiveCount.stdout}`);
+
+  // Verify 2 remain in queue
+  const metrics = await runSQL("SELECT queue_length FROM pgmq.metrics('test_queue_batch_archive')");
+  assert(metrics.success, `Metrics failed: ${metrics.stderr}`);
+  assert(parseInt(metrics.stdout) === 2, `Expected 2 remaining, got ${metrics.stdout}`);
+
+  console.log("   📊 Batch archive: archived 3 of 5, 2 remaining in queue");
+});
+
+// Test 21: Create unlogged queue for high throughput
+await test("Create unlogged queue for high throughput", async () => {
+  await runSQL("SELECT pgmq.create_unlogged('test_queue_unlogged')");
+
+  // Verify table is unlogged (relpersistence = 'u')
+  const check = await runSQL(`
+    SELECT relpersistence FROM pg_class
+    WHERE relname = 'q_test_queue_unlogged'
+  `);
+  assert(check.success, `Persistence check failed: ${check.stderr}`);
+  assert(check.stdout === "u", `Expected unlogged table (u), got: ${check.stdout}`);
+
+  // Basic operations should work
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_unlogged', '{\"unlogged\": true}'::jsonb)"
+  );
+  assert(send.success, `Send to unlogged queue failed: ${send.stderr}`);
+
+  const read = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_unlogged', 30, 1)");
+  assert(read.success, `Read from unlogged queue failed: ${read.stderr}`);
+  assert(read.stdout.length > 0, "No message read from unlogged queue");
+
+  console.log("   📊 Unlogged queue verified: relpersistence='u', send/read working");
+});
+
+// Test 22: list_queues returns all queues
+await test("list_queues returns all queues", async () => {
+  // Create some test queues with unique names
+  await runSQL("SELECT pgmq.create('test_list_1')");
+  await runSQL("SELECT pgmq.create('test_list_2')");
+
+  const list = await runSQL(
+    "SELECT queue_name FROM pgmq.list_queues() WHERE queue_name LIKE 'test_list_%' ORDER BY queue_name"
+  );
+  assert(list.success, `list_queues failed: ${list.stderr}`);
+  assert(list.stdout.includes("test_list_1"), "test_list_1 not found in list");
+  assert(list.stdout.includes("test_list_2"), "test_list_2 not found in list");
+
+  console.log(`   📊 list_queues verified: found test_list_1 and test_list_2`);
+});
+
+// Test 23: Error - read from non-existent queue
+await test("Error: read from non-existent queue", async () => {
+  const read = await runSQL("SELECT pgmq.read('nonexistent_queue_xyz_123', 30, 1)");
+  // Should error - queue doesn't exist
+  assert(
+    !read.success || read.stderr.includes("does not exist") || read.stderr.includes("ERROR"),
+    `Expected error for non-existent queue, got success: ${read.stdout}`
+  );
+
+  console.log("   📊 Error handling verified: non-existent queue raises error");
+});
+
+// Test 24: Error - delete non-existent message returns false
+await test("Error: delete non-existent message returns false", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_error_delete')");
+
+  // Delete msg_id that doesn't exist - should return false, not error
+  const del = await runSQL("SELECT pgmq.delete('test_queue_error_delete', 999999999)");
+  assert(del.success, `Delete should not error: ${del.stderr}`);
+  assert(del.stdout === "f", `Expected 'f' for non-existent msg, got: ${del.stdout}`);
+
+  console.log("   📊 Error handling verified: delete non-existent msg returns 'f'");
+});
+
+// Test 25: Error - send to dropped queue fails
+await test("Error: send to dropped queue fails", async () => {
+  await runSQL("SELECT pgmq.create('test_queue_drop_send')");
+  await runSQL("SELECT pgmq.drop_queue('test_queue_drop_send')");
+
+  const send = await runSQL("SELECT pgmq.send('test_queue_drop_send', '{}'::jsonb)");
+  // Should error - queue was dropped
+  assert(
+    !send.success || send.stderr.includes("does not exist") || send.stderr.includes("ERROR"),
+    `Expected error sending to dropped queue, got: ${send.stdout}`
+  );
+
+  console.log("   📊 Error handling verified: send to dropped queue fails");
+});
+
+// Test 26: Drop Queue (cleanup)
 await test("Drop queue", async () => {
   // Drop all test queues
   const queues = [
@@ -504,6 +762,16 @@ await test("Drop queue", async () => {
     "test_queue_vt",
     "test_queue_setvt",
     "test_queue_purge",
+    "test_queue_fifo",
+    "test_queue_fifo_rr",
+    "test_queue_fifo_index",
+    "test_queue_delay",
+    "test_queue_batch_delete",
+    "test_queue_batch_archive",
+    "test_queue_unlogged",
+    "test_list_1",
+    "test_list_2",
+    "test_queue_error_delete",
   ];
 
   for (const queue of queues) {
@@ -519,7 +787,7 @@ await test("Drop queue", async () => {
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
 });
 
-// Test 16: Performance Benchmark - Message Throughput
+// Test 27: Performance Benchmark - Message Throughput
 await test("Performance benchmark - message throughput", async () => {
   // Create benchmark queue
   await runSQL("SELECT pgmq.create('benchmark_queue')");

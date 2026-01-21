@@ -17,6 +17,9 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
   - New `create_fifo_index()` / `create_fifo_indexes_all()` for GIN indexes on message headers
   - ⚠️ **Breaking**: `conditional` parameter removed from FIFO-grouped read functions (violated ordering guarantees)
 - **pgbackrest 2.57.0 → 2.58.0**: Latest backup/restore tool from PGDG
+  - ⚠️ **Breaking**: Minimum `repo-storage-upload-chunk-size` increased to vendor minimums
+  - ⚠️ **Breaking**: TLS 1.2 now required (unless verification disabled)
+  - New: HTTP support for S3/GCS/Azure, Azure managed identities
 
 ### Development (non-image)
 

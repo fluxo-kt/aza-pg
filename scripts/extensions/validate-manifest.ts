@@ -346,7 +346,6 @@ function getDockerfilePackageName(extensionName: string): string {
     postgis: "postgis-3",
     pg_partman: "partman",
     pg_repack: "repack",
-    plpgsql_check: "plpgsql-check",
     hll: "hll",
     http: "http",
     hypopg: "hypopg",

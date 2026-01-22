@@ -61,6 +61,7 @@
     - https://www.perplexity.ai/search/9.KYLcoRQ2.14fkjE3ss4w
   - PostGIS (geospatial)
     - https://github.com/postgis/postgis
+    - https://github.com/postgis/h3-pg
   - PartMan: Partition management
     - https://github.com/pgpartman/pg_partman
     - https://www.perplexity.ai/search/tA64IBQyRaOHfGmLFm0k8Q
@@ -74,6 +75,8 @@
     - Each PG connection spawns its own DuckDB instance (min 125 MB per-connection)
   - Recurring dates in Postgres.
     - https://github.com/volkanunsal/postgres-rrule
+  - PostgreSQL extension for BM25 relevance-ranked full-text search. Postgres OSS licensed.
+    - https://github.com/timescale/pg_textsearch
 - Reactivity
   - https://www.perplexity.ai/search/what-are-the-best-open-source-FB2dPeKCSYW7MGvxyu7SaA
     1. LISTEN/NOTIFY
@@ -159,7 +162,13 @@ Container publication
 - https://github.com/percona/postgres-packaging
 - https://render.com/docs/postgresql-extensions
 - https://github.com/supabase/postgres
+- Docker images containing TimescaleDB, Patroni to be used by developers and Kubernetes.
+  - PG, extensions (e.g., PostGIS), TimescaleDB, pgBackRest, Kubernetes Context scripts
+  - https://github.com/timescale/timescaledb-docker-ha
+  - https://hub.docker.com/r/timescale/timescaledb-ha
 - https://ext.pgsty.com/list/
+  - https://github.com/pgsty/pigsty/releases/tag/v4.0.0
+  - https://github.com/pgsty/pigsty/
 - https://github.com/cloudnative-pg/postgres-containers
   - https://github.com/cloudnative-pg/postgres-containers/issues/115#issuecomment-2563173289 (how to extend/change/add extensions)
 - https://ardentperf.com/2025/04/07/waiting-for-postgres-18-docker-containers-34-smaller/

@@ -79,9 +79,9 @@ describe("Extension Defaults Validation", () => {
     expect(versions.pgvector).toBeDefined();
     // NOTE: timescaledb removed - uses install_via: "source" in manifest (compiled from source)
     // NOTE: pg_partman removed - uses install_via: "source" in manifest (PGDG package not available for PG18)
+    // NOTE: plpgsql_check removed - uses install_via: "source" (PGDG v2.8.8 not yet available)
     expect(versions.postgis).toBeDefined();
     expect(versions.repack).toBeDefined();
-    expect(versions.plpgsqlCheck).toBeDefined();
     expect(versions.hll).toBeDefined();
     expect(versions.http).toBeDefined();
     expect(versions.hypopg).toBeDefined();
@@ -145,7 +145,6 @@ describe("Manifest File Validation", () => {
       "postgis",
       "pg_partman",
       "pg_repack",
-      "plpgsql_check",
       "hll",
       "http",
       "hypopg",

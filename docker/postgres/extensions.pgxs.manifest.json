@@ -166,8 +166,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.9.0",
-        "commit": "9bb5ba79b30195e91e676d53e914fdc618ee41cd"
+        "tag": "v1.10.0",
+        "commit": "51d7655a097d91bf05ad5ae40dd604aa067ed355"
       },
       "build": {
         "type": "pgxs",
@@ -178,8 +178,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.9.0 with PG18 support",
-          "v1.9.0: FIFO queues with read_grouped, read_grouped_rr functions"
+          "Source build for latest v1.10.0 with PG18 support",
+          "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
@@ -281,6 +281,32 @@
       "docsUrl": "https://michelp.github.io/pgsodium"
     },
     {
+      "name": "plpgsql_check",
+      "kind": "extension",
+      "install_via": "source",
+      "category": "quality",
+      "description": "Static analyzer for PL/pgSQL functions and triggers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/okbob/plpgsql_check.git",
+        "tag": "v2.8.8",
+        "commit": "3a7c22b22b5db5a76ea4538cc24d09cb4a3ce588"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "Built from source (PGDG v2.8.8 not yet available)",
+          "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings"
+        ]
+      },
+      "sourceUrl": "https://github.com/okbob/plpgsql_check",
+      "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
+    },
+    {
       "name": "supabase_vault",
       "displayName": "vault",
       "kind": "extension",
@@ -318,8 +344,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.0.6",
-        "commit": "92c7c487d957dad1331ac812b6bad0771902ac8c"
+        "tag": "v3.1.0",
+        "commit": "35e7314d9ae7891c7b094116c6db22b9c03c5da8"
       },
       "build": {
         "type": "pgxs"
@@ -329,7 +355,7 @@
         "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
-          "v3.0.6: PG18 fixed upstream (str_tolower migration in v2.10.0)",
+          "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },

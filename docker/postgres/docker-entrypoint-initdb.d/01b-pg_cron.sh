@@ -19,15 +19,23 @@ set -euo pipefail
 
 TARGET_DB="${POSTGRES_DB:-postgres}"
 
-echo "[01b-pg_cron] Creating pg_cron extension in database: $TARGET_DB"
+# Check if pg_cron is in shared_preload_libraries
+PRELOAD_LIBS=$(psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$TARGET_DB" -tAc "SHOW shared_preload_libraries;")
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$TARGET_DB" <<-EOSQL
-    -- Security: Use pg_catalog search_path to prevent schema injection attacks
-    SET LOCAL search_path = pg_catalog;
+if echo "$PRELOAD_LIBS" | grep -qw "pg_cron"; then
+    echo "[01b-pg_cron] pg_cron is preloaded, creating extension in database: $TARGET_DB"
 
-    -- Create pg_cron extension
-    -- NOTE: This must be created in the database specified by cron.database_name
-    CREATE EXTENSION IF NOT EXISTS pg_cron;
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$TARGET_DB" <<-EOSQL
+        -- Security: Use pg_catalog search_path to prevent schema injection attacks
+        SET LOCAL search_path = pg_catalog;
+
+        -- Create pg_cron extension
+        -- NOTE: This must be created in the database specified by cron.database_name
+        CREATE EXTENSION IF NOT EXISTS pg_cron;
 EOSQL
 
-echo "[01b-pg_cron] pg_cron extension created successfully in $TARGET_DB"
+    echo "[01b-pg_cron] pg_cron extension created successfully in $TARGET_DB"
+else
+    echo "[01b-pg_cron] SKIP: pg_cron not in shared_preload_libraries (found: $PRELOAD_LIBS)"
+    echo "[01b-pg_cron] To enable pg_cron, add it to POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable"
+fi

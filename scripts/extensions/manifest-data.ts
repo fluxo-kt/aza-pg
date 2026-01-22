@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.1",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2",
+  baseImageSha: "sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f",
 } as const;
 
 export type SourceSpec =
@@ -390,22 +390,21 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "plpgsql_check",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgVersion: "2.8.5-1.pgdg13+1",
+    install_via: "source",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.8.5",
+      tag: "v2.8.8",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-plpgsql-check (v2.8.5-1.pgdg13+1)",
-        "v2.8.5: Fix for released tracked const string bug",
+        "Built from source (PGDG v2.8.8 not yet available)",
+        "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings",
       ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",
@@ -445,7 +444,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
-      tag: "v3.0.6",
+      tag: "v3.1.0",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -453,7 +452,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadOnly: true,
       defaultEnable: false,
       notes: [
-        "v3.0.6: PG18 fixed upstream (str_tolower migration in v2.10.0)",
+        "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
         "Creates supabase-managed roles which expect pg_cron and pg_net to be present.",
       ],
     },
@@ -773,7 +772,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.9.0",
+      tag: "v1.10.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -781,8 +780,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-        "Source build for latest v1.9.0 with PG18 support",
-        "v1.9.0: FIFO queues with read_grouped, read_grouped_rr functions",
+        "Source build for latest v1.10.0 with PG18 support",
+        "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",
@@ -799,7 +798,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.13.2",
+      tag: "pgflow@0.13.3",
     },
     runtime: {
       sharedPreload: false,
@@ -815,6 +814,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
+      "v0.13.3: PGFLOW_AUTH_SECRET support, maxPgConnections fix (edge worker features)",
       "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
       "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
       "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
@@ -931,7 +931,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.24.0~debian13-1801",
+    timescaleVersion: "2.25.0~debian13-1801",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -939,16 +939,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.24.0",
+      tag: "2.25.0",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.24.0 TSL)",
-        "v2.24.0: 4-5× faster recompression, improved chunk management",
-        "⚠️ ARM: Rebuild bloom filter indexes after upgrade to 2.24.0",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.0 TSL)",
+        "v2.25.0: Direct compress during CA refresh, DELETE optimizations, buckets_per_batch→10",
+        "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
       ],

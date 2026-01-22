@@ -244,6 +244,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Local Action Metadata",
+      command: ["bun", "scripts/ci/validate-local-actions.ts"],
+      description: "Validate local GitHub Action metadata and local action references",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly
@@ -397,12 +403,8 @@ async function validate(
     },
     {
       name: "YAML Lint",
-      command: [
-        "sh",
-        "-c",
-        'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts',
-      ],
-      description: "YAML file linting (yamllint)",
+      command: ["bun", "scripts/ci/lint-yaml-tracked.ts"],
+      description: "YAML file linting for all tracked YAML files",
       required: true,
       requiresDocker: true,
       envOverride: "ALLOW_MISSING_YAMLLINT",

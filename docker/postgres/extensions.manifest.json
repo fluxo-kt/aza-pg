@@ -579,8 +579,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.2",
-        "commit": "91fcc7b40af352af1a3071022772c968f8412290"
+        "tag": "pgflow@0.13.3",
+        "commit": "bd742c475d32aeb20d4cebf5ab9c5594aaa3846f"
       },
       "runtime": {
         "sharedPreload": false,
@@ -601,6 +601,7 @@
       ],
       "notes": [
         "SQL-only schema - no compiled components",
+        "v0.13.3: PGFLOW_AUTH_SECRET support, maxPgConnections fix (edge worker features)",
         "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
         "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
         "v0.12.0: Breaking handler signature change (root: flowInput, dependent: deps + ctx.flowInput)",
@@ -618,8 +619,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.9.0",
-        "commit": "9bb5ba79b30195e91e676d53e914fdc618ee41cd"
+        "tag": "v1.10.0",
+        "commit": "51d7655a097d91bf05ad5ae40dd604aa067ed355"
       },
       "build": {
         "type": "pgxs",
@@ -630,8 +631,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.9.0 with PG18 support",
-          "v1.9.0: FIFO queues with read_grouped, read_grouped_rr functions"
+          "Source build for latest v1.10.0 with PG18 support",
+          "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
@@ -792,15 +793,14 @@
     {
       "name": "plpgsql_check",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgVersion": "2.8.5-1.pgdg13+1",
+      "install_via": "source",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.5",
-        "commit": "c6984b9dd0b46d855256420ccb606172c8cbf512"
+        "tag": "v2.8.8",
+        "commit": "3a7c22b22b5db5a76ea4538cc24d09cb4a3ce588"
       },
       "build": {
         "type": "pgxs"
@@ -809,8 +809,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-plpgsql-check (v2.8.5-1.pgdg13+1)",
-          "v2.8.5: Fix for released tracked const string bug"
+          "Built from source (PGDG v2.8.8 not yet available)",
+          "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings"
         ]
       },
       "sourceUrl": "https://github.com/okbob/plpgsql_check",
@@ -959,8 +959,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.0.6",
-        "commit": "92c7c487d957dad1331ac812b6bad0771902ac8c"
+        "tag": "v3.1.0",
+        "commit": "35e7314d9ae7891c7b094116c6db22b9c03c5da8"
       },
       "build": {
         "type": "pgxs"
@@ -970,7 +970,7 @@
         "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
-          "v3.0.6: PG18 fixed upstream (str_tolower migration in v2.10.0)",
+          "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },
@@ -982,24 +982,24 @@
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-2-postgresql-18",
-      "timescaleVersion": "2.24.0~debian13-1801",
+      "timescaleVersion": "2.25.0~debian13-1801",
       "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.24.0",
-        "commit": "119c8dca6c442c4d86ad1ddb3c863be9e6fac205"
+        "tag": "2.25.0",
+        "commit": "a686498674d7a6c3bc36bdf665d464e5f371bd25"
       },
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "Timescale repo: timescaledb-2-postgresql-18 (v2.24.0 TSL)",
-          "v2.24.0: 4-5× faster recompression, improved chunk management",
-          "⚠️ ARM: Rebuild bloom filter indexes after upgrade to 2.24.0",
+          "Timescale repo: timescaledb-2-postgresql-18 (v2.25.0 TSL)",
+          "v2.25.0: Direct compress during CA refresh, DELETE optimizations, buckets_per_batch→10",
+          "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]

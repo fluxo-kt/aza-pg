@@ -83,7 +83,9 @@ const results: TestResult[] = [];
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
-    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`
+      .quiet()
+      .nothrow();
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
@@ -177,7 +179,7 @@ if (isOwnContainer && imageTag) {
         ready = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       attempt++;
     }
 
@@ -197,7 +199,7 @@ if (isOwnContainer && imageTag) {
       } else {
         stableConnections = 0;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
     }
 
     if (stableConnections < requiredStable) {
@@ -420,7 +422,7 @@ await test("Visibility timeout behavior", async () => {
   assert(read2.stdout === "", `Expected no messages, got: ${read2.stdout}`);
 
   // Wait for visibility timeout to expire
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await Bun.sleep(2500);
 
   // Read again (message should be visible again)
   const read3 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
@@ -449,6 +451,56 @@ await test("Set visibility timeout", async () => {
   const read = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_setvt', 30, 1)");
   assert(read.success, `Read after set_vt failed: ${read.stderr}`);
   assert(read.stdout.includes(String(msgId)), `Expected msg_id ${msgId}, got: ${read.stdout}`);
+});
+
+// Test 12A: last_read_at tracking (v1.10.0)
+await test("last_read_at column tracks message read times (v1.10.0)", async () => {
+  // Create queue and send message
+  await runSQL("SELECT pgmq.create('test_queue_last_read')");
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_last_read', '{\"test\": \"last_read_at\"}'::jsonb)"
+  );
+  assert(send.success, `Send failed: ${send.stderr}`);
+  const msgId = parseInt(send.stdout);
+  assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
+
+  // Read message and verify last_read_at is populated
+  const read = await runSQL(
+    "SELECT msg_id, last_read_at IS NOT NULL as has_last_read FROM pgmq.read('test_queue_last_read', 30, 1)"
+  );
+  assert(read.success, `Read failed: ${read.stderr}`);
+  assert(
+    read.stdout.includes(`${msgId}|t`),
+    `Expected last_read_at to be populated, got: ${read.stdout}`
+  );
+
+  console.log("   📊 last_read_at column verified (v1.10.0 feature)");
+});
+
+// Test 12B: set_vt with TIMESTAMPTZ parameter (v1.10.0)
+await test("set_vt accepts TIMESTAMPTZ for absolute timeout (v1.10.0)", async () => {
+  // Create queue and send message
+  await runSQL("SELECT pgmq.create('test_queue_setvt_ts')");
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_setvt_ts', '{\"test\": \"set_vt_timestamptz\"}'::jsonb)"
+  );
+  assert(send.success, `Send failed: ${send.stderr}`);
+  const msgId = parseInt(send.stdout);
+  assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
+
+  // Read with 30 second VT
+  await runSQL("SELECT pgmq.read('test_queue_setvt_ts', 30, 1)");
+
+  // Set VT to NOW() (make visible immediately) using TIMESTAMPTZ
+  const setVt = await runSQL(`SELECT pgmq.set_vt('test_queue_setvt_ts', ${msgId}, NOW())`);
+  assert(setVt.success, `Set VT with TIMESTAMPTZ failed: ${setVt.stderr}`);
+
+  // Read again immediately (should be visible)
+  const read = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_setvt_ts', 30, 1)");
+  assert(read.success, `Read after set_vt failed: ${read.stderr}`);
+  assert(read.stdout.includes(String(msgId)), `Expected msg_id ${msgId}, got: ${read.stdout}`);
+
+  console.log("   📊 set_vt with TIMESTAMPTZ parameter verified (v1.10.0 feature)");
 });
 
 // Test 13: Queue Metrics
@@ -600,7 +652,7 @@ await test("Delayed message send", async () => {
   assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
 
   // Wait for delay to expire
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await Bun.sleep(2500);
 
   // Now message should be visible
   const delayed = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
@@ -777,7 +829,7 @@ await test("Error: read from non-existent queue", async () => {
   console.log("   📊 Error handling verified: non-existent queue raises error");
 });
 
-// Test 24: Error - delete non-existent message returns false
+// Test 25: Error - delete non-existent message returns false
 await test("Error: delete non-existent message returns false", async () => {
   await runSQL("SELECT pgmq.create('test_queue_error_delete')");
 
@@ -789,7 +841,7 @@ await test("Error: delete non-existent message returns false", async () => {
   console.log("   📊 Error handling verified: delete non-existent msg returns 'f'");
 });
 
-// Test 25: Error - send to dropped queue fails
+// Test 26: Error - send to dropped queue fails
 await test("Error: send to dropped queue fails", async () => {
   await runSQL("SELECT pgmq.create('test_queue_drop_send')");
   await runSQL("SELECT pgmq.drop_queue('test_queue_drop_send')");
@@ -813,6 +865,8 @@ await test("Drop queue", async () => {
     "test_queue_poll",
     "test_queue_vt",
     "test_queue_setvt",
+    "test_queue_last_read",
+    "test_queue_setvt_ts",
     "test_queue_purge",
     "test_queue_fifo",
     "test_queue_fifo_rr",

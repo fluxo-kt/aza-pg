@@ -1,0 +1,6 @@
+extends: .yamllint
+
+rules:
+  # Workflow run blocks and GitHub expressions frequently exceed 120 chars.
+  # actionlint remains the primary validator for workflow semantics.
+  line-length: disable

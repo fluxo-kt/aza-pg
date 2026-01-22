@@ -161,7 +161,6 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     hypopg: "hypopg.so",
     rum: "rum.so",
     "set-user": "set_user.so",
-    "plpgsql-check": "plpgsql_check.so",
   };
 
   // Get expected .so files for enabled packages

@@ -45,7 +45,8 @@ services:
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 
   postgres_exporter:
-    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
+    image: >-
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-single
     restart: unless-stopped
 
@@ -76,7 +77,13 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      test:
+        - "CMD"
+        - "wget"
+        - "--quiet"
+        - "--tries=1"
+        - "--spider"
+        - "http://localhost:9187/metrics"
       interval: 30s
       timeout: 5s
       retries: 3

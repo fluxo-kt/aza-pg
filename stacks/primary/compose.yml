@@ -45,7 +45,8 @@ services:
       start_period: 120s
 
   pgbouncer:
-    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4}
+    image: >-
+      ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-primary
     restart: unless-stopped
 
@@ -78,14 +79,17 @@ services:
     healthcheck:
       test:
         - "CMD-SHELL"
-        - 'PGPASSWORD="${PGBOUNCER_AUTH_PASS}" psql -U pgbouncer_auth -d postgres -h localhost -p 6432 -c "SELECT 1" || exit 1'
+        - >-
+          PGPASSWORD="${PGBOUNCER_AUTH_PASS}" psql -U pgbouncer_auth -d postgres -h localhost -p 6432 -c "SELECT 1"
+          || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
   postgres_exporter:
-    image: ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
+    image: >-
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
     restart: unless-stopped
 
@@ -117,13 +121,20 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      test:
+        - "CMD"
+        - "wget"
+        - "--quiet"
+        - "--tries=1"
+        - "--spider"
+        - "http://localhost:9187/metrics"
       interval: 30s
       timeout: 5s
       retries: 3
 
   pgbouncer_exporter:
-    image: ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0@sha256:bf9a5189cc1d8be3f5f1cd4695f4cfec267318a3d7e340b9073a0ee7bf2efb44}
+    image: >-
+      ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0@sha256:bf9a5189cc1d8be3f5f1cd4695f4cfec267318a3d7e340b9073a0ee7bf2efb44}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
     restart: unless-stopped
 

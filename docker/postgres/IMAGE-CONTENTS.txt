@@ -23,17 +23,17 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
-  pgflow                       vpgflow@0.13.2 workflow
-  pgmq                         v1.9.0         queueing
+  pgflow                       v0.13.3        workflow
+  pgmq                         v1.10.0        queueing
   pgroonga                     v4.0.5         search
   pgsodium                     v3.1.9         security
   plpgsql                      builtin        language
-  plpgsql_check                v2.8.5         quality
+  plpgsql_check                v2.8.8         quality
   rum                          v1.3.15        search
   set_user                     v4.2.0         security
   supabase_vault               v0.3.1         security
-  supautils                    v3.0.6         safety
-  timescaledb                  v2.24.0        timeseries
+  supautils                    v3.1.0         safety
+  timescaledb                  v2.25.0        timeseries
   timescaledb_toolkit          v1.22.0        timeseries
   vector                       v0.8.1         ai
   vectorscale                  v0.9.0         ai

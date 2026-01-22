@@ -6,7 +6,7 @@
 
 # PostgreSQL 18.1 with comprehensive extension suite
 
-FROM postgres:18.1-trixie@sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2 AS builder-base
+FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -149,7 +149,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.1-trixie@sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2
+FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -194,14 +194,14 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-plpgsql-check=2.8.5-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-    echo "Expected 10 enabled PGDG packages from manifest" && \
-    test "$INSTALLED_COUNT" -ge 10 || (echo "ERROR: Installed count mismatch (expected >= 10, got $INSTALLED_COUNT)" && exit 1) && \
+    echo "Expected 9 enabled PGDG packages from manifest" && \
+    test "$INSTALLED_COUNT" -ge 9 || (echo "ERROR: Installed count mismatch (expected >= 9, got $INSTALLED_COUNT)" && exit 1) && \
     rm -f /tmp/installed-pgdg-exts.log && \
     # Verify critical .so files exist (prevents silent installation failures)
     echo "Verifying PGDG .so files exist..." && \
@@ -214,8 +214,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/pg_cron.so && \
     test -f /usr/lib/postgresql/18/lib/set_user.so && \
     test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
-    test -f /usr/lib/postgresql/18/lib/plpgsql_check.so && \
-    echo "All 10 PGDG .so files verified" && \
+    echo "All 9 PGDG .so files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.manifest.json && \
@@ -265,8 +264,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.24.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.24.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
     echo "Installed 2 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
@@ -367,7 +366,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.13.2.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.13.3.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

@@ -4,18 +4,273 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 
 ## Table of Contents
 
-1. [Regression Testing](#regression-testing)
-2. [Regression Test Suites](#regression-test-suites)
+1. [Smoke Test Pattern (Critical - Read This First!)](#smoke-test-pattern-critical-read-this-first)
+2. [Regression Testing](#regression-testing)
+3. [Regression Test Suites](#regression-test-suites)
    - [PostgreSQL Official Regression Tests (Tier 1)](#postgresql-official-regression-tests-tier-1)
    - [Extension Regression Tests (Tier 2)](#extension-regression-tests-tier-2)
    - [Expected Output Generation Status](#expected-output-generation-status)
    - [pgTAP Regression Tests (Tier 4)](#pgtap-regression-tests-tier-4)
-3. [Session Isolation Pattern](#session-isolation-pattern)
-4. [Testing Extension Functionality](#testing-extension-functionality)
-5. [Common Pitfalls](#common-pitfalls)
-6. [Test Categories](#test-categories)
-7. [Testing Strategy & Coverage](#testing-strategy-coverage)
-8. [Running Tests](#running-tests)
+4. [Session Isolation Pattern](#session-isolation-pattern)
+5. [Testing Extension Functionality](#testing-extension-functionality)
+6. [Common Pitfalls](#common-pitfalls)
+7. [Test Categories](#test-categories)
+8. [Testing Strategy & Coverage](#testing-strategy-coverage)
+9. [Running Tests](#running-tests)
+
+## Smoke Test Pattern (Critical - Read This First!)
+
+**Why this matters**: Tests that skip environment validation waste hours debugging infrastructure issues instead of finding real bugs.
+
+### The Problem
+
+When writing tests for extensions or new features, it's tempting to immediately write comprehensive test cases. However, **tests can fail for two completely different reasons**:
+
+1. **Infrastructure failure**: Container won't start, extension not preloaded, missing dependencies
+2. **Functional failure**: The feature you're testing has a bug
+
+**Without smoke tests, you can't tell which is which.**
+
+### Real-World Example
+
+From recent work on extension update tests:
+
+**Original approach** (failed):
+
+- Wrote 56 tests across 4 files in parallel
+- 28/56 tests (50%) failed due to infrastructure issues:
+  - Missing `POSTGRES_PASSWORD` → container exit
+  - Missing `waitForReady()` → "connection refused" errors
+  - pg_cron not preloaded → container crash during init
+
+**Time wasted**: 2+ hours debugging infrastructure, not testing extensions.
+
+**Correct approach** (would have succeeded):
+
+- Write ONE smoke test first
+- Run it → discover `POSTGRES_PASSWORD` missing
+- Fix → discover `waitForReady()` missing
+- Fix → discover pg_cron issue
+- **Total time**: 15 minutes, then write comprehensive tests with confidence
+
+### The Smoke Test Pattern
+
+Every test file MUST start with this structure:
+
+```typescript
+describe("Feature X Tests", () => {
+  let container: string;
+
+  // PHASE 0: Environment Validation (MANDATORY)
+  beforeAll(async () => {
+    // Validate prerequisites BEFORE starting container
+    // Example: Check image exists, required files present, etc.
+  });
+
+  // PHASE 1: Smoke Test (MANDATORY - RUN THIS FIRST)
+  test("SMOKE: Container starts and PostgreSQL is ready", async () => {
+    const start = Date.now();
+
+    container = await harness.startContainer("feature-x-test", {
+      POSTGRES_PASSWORD: "test", // ALWAYS required
+      // Add other required env vars
+    });
+
+    await harness.waitForReady(container); // ALWAYS required
+
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeLessThan(120000); // 120s reasonable limit
+
+    console.log(`✓ Smoke test passed (${elapsed}ms)`);
+  });
+
+  // PHASE 2: Extension/Feature Loading (if applicable)
+  test("Extension loads successfully", async () => {
+    await harness.runSQL(container, "CREATE EXTENSION IF NOT EXISTS my_ext;");
+
+    const version = await harness.runSQL(
+      container,
+      "SELECT extversion FROM pg_extension WHERE extname = 'my_ext';"
+    );
+
+    expect(version).toBeTruthy();
+  });
+
+  // PHASE 3: Basic Functionality
+  test("Basic feature works", async () => {
+    // Test simplest use case
+  });
+
+  // PHASE 4: Edge Cases (only after Phases 1-3 pass)
+  test("Edge case 1", async () => {
+    /* ... */
+  });
+  test("Edge case 2", async () => {
+    /* ... */
+  });
+});
+```
+
+### Required Elements Checklist
+
+Before writing ANY functional tests, your test file MUST include:
+
+- [ ] `POSTGRES_PASSWORD` in startContainer() environment
+- [ ] `await harness.waitForReady(container)` after startContainer()
+- [ ] Smoke test that verifies container starts (Phase 1)
+- [ ] Extension load test if testing an extension (Phase 2)
+- [ ] At least ONE basic functionality test before edge cases (Phase 3)
+
+### Common Pitfalls (Learn from These Mistakes)
+
+| Pitfall                               | Symptom                                                            | Fix                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| **No POSTGRES_PASSWORD**              | Container exits immediately: "superuser password not specified"    | Add `POSTGRES_PASSWORD: "test"` to env                                           |
+| **No waitForReady()**                 | "connection refused" or "No such file or directory" for socket     | Add `await harness.waitForReady(container)`                                      |
+| **Override preload without defaults** | Extensions fail to load: "must be in shared_preload_libraries"     | Don't set `POSTGRES_SHARED_PRELOAD_LIBRARIES` unless you understand implications |
+| **No smoke test**                     | Spend hours debugging 50 test failures that are all infrastructure | Write smoke test FIRST                                                           |
+| **Parallel test creation**            | Multiple test files fail for same infrastructure reason            | Write ONE test file, validate, THEN parallelize                                  |
+| **Timeout cargo-culting**             | Increase timeout without understanding why it failed               | Add logging, measure actual time, understand root cause                          |
+
+### Anti-Patterns to Avoid
+
+❌ **Writing all tests first, running later**
+
+```typescript
+// DON'T DO THIS
+test("feature A", ...);
+test("feature B", ...);
+test("feature C", ...);
+// Run all at once → 3 failures, can't tell if infrastructure or logic
+```
+
+✅ **Write → Run → Pass → Next**
+
+```typescript
+test("SMOKE: container starts", ...);  // Write & run
+// ✓ Passes → confident infrastructure works
+
+test("feature A", ...);  // Write & run
+// ✓ Passes → add next test
+
+test("feature B", ...);  // Write & run
+```
+
+❌ **Assuming environment state**
+
+```typescript
+// DON'T DO THIS
+test("extension works", async () => {
+  // Assumes container started, PostgreSQL ready, extension loaded
+  await runSQL("SELECT my_extension_function()");
+});
+```
+
+✅ **Explicit validation**
+
+```typescript
+test("extension works", async () => {
+  // Explicitly verify prerequisites
+  expect(container).toBeDefined();
+
+  const loaded = await runSQL(
+    "SELECT 1 FROM pg_extension WHERE extname = 'my_ext'"
+  );
+  expect(loaded).toBe("1");
+
+  // NOW test the function
+  await runSQL("SELECT my_extension_function()");
+});
+```
+
+### Progressive Complexity Model
+
+Tests should progress through complexity levels:
+
+```text
+Level 0: Environment validated (prerequisites exist)
+         ↓
+Level 1: Container starts and PostgreSQL ready (smoke test)
+         ↓
+Level 2: Extension/feature loads (if applicable)
+         ↓
+Level 3: Basic happy-path functionality works
+         ↓
+Level 4: Edge cases, error conditions, performance
+```
+
+**Never skip to Level 4 before validating Levels 0-3.**
+
+### When to Stop and Investigate
+
+If you see these patterns, **STOP writing tests and investigate**:
+
+- Container takes >60s to start → Why? Add logging, measure phases
+- Multiple unrelated tests fail with same error → Infrastructure issue, not test logic
+- Error messages mention sockets, files, or "not running" → PostgreSQL not ready
+- Tests pass individually but fail in suite → Cleanup/isolation issue
+
+### Template for New Test Files
+
+Save this as a template when creating new test files:
+
+```typescript
+#!/usr/bin/env bun
+/**
+ * [Feature Name] Test Suite
+ *
+ * Tests [brief description of what this tests]
+ *
+ * Prerequisites:
+ * - [List any image requirements]
+ * - [List any preload requirements]
+ */
+
+import { TestHarness } from "./harness";
+
+const harness = new TestHarness();
+let container: string;
+
+// MANDATORY: Smoke test FIRST
+describe("Smoke Tests", () => {
+  test("Container starts successfully", async () => {
+    const start = Date.now();
+
+    container = await harness.startContainer("my-test", {
+      POSTGRES_PASSWORD: "test",
+    });
+
+    await harness.waitForReady(container);
+
+    const elapsed = Date.now() - start;
+    console.log(`✓ Container ready in ${elapsed}ms`);
+    expect(elapsed).toBeLessThan(120000);
+  });
+});
+
+// Feature tests (only after smoke test passes)
+describe("[Feature Name] Functional Tests", () => {
+  // Your tests here
+});
+
+// Cleanup
+afterAll(async () => {
+  await harness.cleanupAll();
+});
+```
+
+### Key Takeaway
+
+**Structure tests to make infrastructure failures impossible by design:**
+
+1. Explicit environment validation
+2. Smoke test that proves infrastructure works
+3. Progressive complexity (simple → complex)
+4. Clear error messages when assumptions violated
+
+This pattern adds 2 minutes to test writing but saves hours of debugging.
+
+---
 
 ## Regression Testing
 

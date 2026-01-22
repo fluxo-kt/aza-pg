@@ -10,6 +10,12 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+_No changes yet._
+
+---
+
+## [v18.1-202601221905] - 2026-01-22
+
 ### Changed
 
 - **pgflow 0.13.1 → 0.13.2**: Automatic stalled task recovery for worker crash resilience

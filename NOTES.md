@@ -160,6 +160,8 @@ Container publication
 - https://render.com/docs/postgresql-extensions
 - https://github.com/supabase/postgres
 - https://ext.pgsty.com/list/
+  - https://github.com/pgsty/pigsty/releases/tag/v4.0.0
+  - https://github.com/pgsty/pigsty/
 - https://github.com/cloudnative-pg/postgres-containers
   - https://github.com/cloudnative-pg/postgres-containers/issues/115#issuecomment-2563173289 (how to extend/change/add extensions)
 - https://ardentperf.com/2025/04/07/waiting-for-postgres-18-docker-containers-34-smaller/

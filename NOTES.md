@@ -61,6 +61,7 @@
     - https://www.perplexity.ai/search/9.KYLcoRQ2.14fkjE3ss4w
   - PostGIS (geospatial)
     - https://github.com/postgis/postgis
+    - https://github.com/postgis/h3-pg
   - PartMan: Partition management
     - https://github.com/pgpartman/pg_partman
     - https://www.perplexity.ai/search/tA64IBQyRaOHfGmLFm0k8Q

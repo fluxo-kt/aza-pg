@@ -167,8 +167,50 @@
   "hotPaths": [
     {
       "path": "scripts/extensions/manifest-data.ts",
-      "accessCount": 10,
-      "lastAccessed": 1770397463753,
+      "accessCount": 46,
+      "lastAccessed": 1770403542639,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 36,
+      "lastAccessed": 1770403530687,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/test-pgflow-schema-updates.ts",
+      "accessCount": 21,
+      "lastAccessed": 1770403594593,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-all-extensions-functional.ts",
+      "accessCount": 19,
+      "lastAccessed": 1770403298709,
+      "type": "file"
+    },
+    {
+      "path": "tests/fixtures/pgflow/schema-v0.13.3.sql",
+      "accessCount": 16,
+      "lastAccessed": 1770403546203,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/harness.ts",
+      "accessCount": 11,
+      "lastAccessed": 1770403586609,
+      "type": "file"
+    },
+    {
+      "path": "tests/fixtures/pgflow/install.ts",
+      "accessCount": 9,
+      "lastAccessed": 1770403777075,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-pgmq-functional.ts",
+      "accessCount": 8,
+      "lastAccessed": 1770401581649,
       "type": "file"
     },
     {
@@ -178,39 +220,93 @@
       "type": "file"
     },
     {
-      "path": "scripts/test/test-pgmq-functional.ts",
-      "accessCount": 5,
-      "lastAccessed": 1770397956229,
+      "path": "CHANGELOG.md",
+      "accessCount": 6,
+      "lastAccessed": 1770402421121,
       "type": "file"
     },
     {
-      "path": "",
-      "accessCount": 4,
-      "lastAccessed": 1770396497190,
-      "type": "directory"
+      "path": "package.json",
+      "accessCount": 6,
+      "lastAccessed": 1770402900996,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/verify-timescaledb-tsl.ts",
+      "accessCount": 6,
+      "lastAccessed": 1770403089114,
+      "type": "file"
     },
     {
       "path": "scripts/ci/validate-manifest-integrity.ts",
-      "accessCount": 4,
-      "lastAccessed": 1770397863671,
-      "type": "file"
-    },
-    {
-      "path": "docker/postgres/Dockerfile.template",
-      "accessCount": 3,
-      "lastAccessed": 1770397489492,
+      "accessCount": 5,
+      "lastAccessed": 1770400594020,
       "type": "file"
     },
     {
       "path": "scripts/extensions/pgdg-mappings.ts",
-      "accessCount": 3,
-      "lastAccessed": 1770397640997,
+      "accessCount": 5,
+      "lastAccessed": 1770401573476,
       "type": "file"
     },
     {
-      "path": "CHANGELOG.md",
+      "path": "scripts/test",
+      "accessCount": 5,
+      "lastAccessed": 1770402280131,
+      "type": "directory"
+    },
+    {
+      "path": "docker/postgres/Dockerfile.template",
+      "accessCount": 4,
+      "lastAccessed": 1770400595238,
+      "type": "file"
+    },
+    {
+      "path": "examples/pgflow/README.md",
+      "accessCount": 4,
+      "lastAccessed": 1770400691189,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extensions/generate-extension-defaults.ts",
+      "accessCount": 4,
+      "lastAccessed": 1770401573728,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres/extensions.manifest.json",
+      "accessCount": 4,
+      "lastAccessed": 1770401577435,
+      "type": "file"
+    },
+    {
+      "path": "scripts/docker/generate-dockerfile.ts",
+      "accessCount": 4,
+      "lastAccessed": 1770402460752,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-pgflow-functional.ts",
+      "accessCount": 4,
+      "lastAccessed": 1770403109265,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-pgflow-security.ts",
       "accessCount": 3,
-      "lastAccessed": 1770398013804,
+      "lastAccessed": 1770402301510,
+      "type": "file"
+    },
+    {
+      "path": "docker",
+      "accessCount": 3,
+      "lastAccessed": 1770402454085,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/test-timescaledb-breaking-changes.ts",
+      "accessCount": 3,
+      "lastAccessed": 1770403731231,
       "type": "file"
     },
     {
@@ -226,15 +322,45 @@
       "type": "file"
     },
     {
-      "path": "scripts/extensions/generate-extension-defaults.ts",
-      "accessCount": 2,
-      "lastAccessed": 1770397634041,
-      "type": "file"
-    },
-    {
       "path": "scripts/docker/generate-dockerfile.test.ts",
       "accessCount": 2,
       "lastAccessed": 1770397723455,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres",
+      "accessCount": 2,
+      "lastAccessed": 1770400605714,
+      "type": "directory"
+    },
+    {
+      "path": "tests/fixtures/pgflow/README.md",
+      "accessCount": 2,
+      "lastAccessed": 1770400687735,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extension-defaults.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770401576370,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extensions",
+      "accessCount": 2,
+      "lastAccessed": 1770402006701,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/test-hook-extensions.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770403109114,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-pg-net-functional.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770403114665,
       "type": "file"
     },
     {
@@ -242,24 +368,6 @@
       "accessCount": 1,
       "lastAccessed": 1770395845388,
       "type": "file"
-    },
-    {
-      "path": "package.json",
-      "accessCount": 1,
-      "lastAccessed": 1770396379141,
-      "type": "file"
-    },
-    {
-      "path": "scripts/test/verify-timescaledb-tsl.ts",
-      "accessCount": 1,
-      "lastAccessed": 1770396403944,
-      "type": "file"
-    },
-    {
-      "path": "docker",
-      "accessCount": 1,
-      "lastAccessed": 1770396406996,
-      "type": "directory"
     },
     {
       "path": "scripts/generate-all.ts",
@@ -274,9 +382,87 @@
       "type": "directory"
     },
     {
-      "path": "scripts/docker/generate-dockerfile.ts",
+      "path": "docker/postgres/Dockerfile",
       "accessCount": 1,
-      "lastAccessed": 1770397620643,
+      "lastAccessed": 1770400584309,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres/extensions.pgxs.manifest.json",
+      "accessCount": 1,
+      "lastAccessed": 1770400603241,
+      "type": "directory"
+    },
+    {
+      "path": "docker/postgres/IMAGE-CONTENTS.txt",
+      "accessCount": 1,
+      "lastAccessed": 1770400606130,
+      "type": "file"
+    },
+    {
+      "path": ".claude/commands/update.md",
+      "accessCount": 1,
+      "lastAccessed": 1770401577876,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-extension-regression.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770401581735,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1770401582915,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/test-disabled-extensions.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402028593,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-extensions.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402029123,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/lib/test-groups.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402029798,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-security.test.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402052066,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/image-resolver.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402302706,
+      "type": "file"
+    },
+    {
+      "path": "scripts",
+      "accessCount": 1,
+      "lastAccessed": 1770402453097,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/test/lib/test-mode.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770402459141,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/manifest-test-utils.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770403112771,
       "type": "file"
     }
   ],

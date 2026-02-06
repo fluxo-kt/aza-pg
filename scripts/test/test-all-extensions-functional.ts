@@ -1178,16 +1178,19 @@ await test(
   }
 );
 
-await test("supautils - Verify extension structure", "safety", async () => {
-  if (disabledExtensions.has("supautils")) {
-    throw new Error(
-      "SKIPPED: supautils extension disabled in manifest (compilation patching issues)"
-    );
-  }
-  // supautils is a tool, check its GUC parameters
-  const check = await runSQL("SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'");
-  const count = parseInt(check.stdout.trim());
-  assert(check.success && count >= 0, `supautils GUC parameters check failed (found: ${count})`);
+await test("supautils - Verify binary available (preload-only)", "safety", async () => {
+  // supautils is enabled: true but defaultEnable: false + preloadOnly: true
+  // The comprehensive test container does NOT preload supautils
+  // (no preloadInComprehensiveTest flag in manifest)
+  // Verify the .so file was built and installed in the image
+  const checkResult =
+    await Bun.$`docker exec ${CONTAINER} test -f /usr/lib/postgresql/18/lib/supautils.so && echo "exists" || echo "missing"`.text();
+  assert(checkResult.trim() === "exists", "supautils.so file not found in image");
+
+  // Also verify the .control file exists
+  const controlResult =
+    await Bun.$`docker exec ${CONTAINER} test -f /usr/share/postgresql/18/extension/supautils.control && echo "exists" || echo "missing"`.text();
+  assert(controlResult.trim() === "exists", "supautils.control file not found in image");
 });
 
 // ============================================================================

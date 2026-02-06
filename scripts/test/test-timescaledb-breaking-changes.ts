@@ -168,16 +168,19 @@ async function testOldCAFormatRemoval(): Promise<void> {
       }
     }
 
-    // INFORMATIONAL: Check format version
-    const formatResult = await harness.runSQL(
+    // Verify format_version column was removed (breaking change in 2.25.0)
+    const formatColumnExists = await harness.runSQL(
       container,
-      "SELECT format_version FROM _timescaledb_catalog.continuous_agg;"
+      `SELECT count(*) FROM information_schema.columns
+       WHERE table_schema = '_timescaledb_catalog'
+         AND table_name = 'continuous_agg'
+         AND column_name = 'format_version';`
     );
     recordTest(
-      "T1.2.4: CA format version check",
-      true,
-      "CA format version queried",
-      `Format version: ${formatResult}`
+      "T1.2.4: format_version column removal",
+      formatColumnExists === "0",
+      "format_version column correctly removed from catalog",
+      `Column exists count: ${formatColumnExists}`
     );
   } catch (error) {
     recordTest(
@@ -385,12 +388,16 @@ async function testDirectCompressDuringCARefresh(): Promise<void> {
 
 async function testDELETEOptimizations(): Promise<void> {
   try {
-    // Create hypertable
+    // Create hypertable with columnstore enabled (required for DELETE optimizations in 2.25.0)
     await harness.runSQL(
       container,
       "CREATE TABLE delete_opt_test (time TIMESTAMPTZ NOT NULL, val INT);"
     );
     await harness.runSQL(container, "SELECT create_hypertable('delete_opt_test', 'time');");
+    await harness.runSQL(
+      container,
+      "ALTER TABLE delete_opt_test SET (timescaledb.enable_columnstore = true);"
+    );
     await harness.runSQL(
       container,
       "INSERT INTO delete_opt_test SELECT t, i FROM generate_series(now() - interval '30 days', now(), '1 hour') t, generate_series(1,5) i;"

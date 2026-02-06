@@ -197,8 +197,14 @@
     },
     {
       "path": "scripts/test/harness.ts",
-      "accessCount": 11,
-      "lastAccessed": 1770403586609,
+      "accessCount": 16,
+      "lastAccessed": 1770406682509,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-timescaledb-breaking-changes.ts",
+      "accessCount": 14,
+      "lastAccessed": 1770406742429,
       "type": "file"
     },
     {
@@ -208,15 +214,15 @@
       "type": "file"
     },
     {
-      "path": "scripts/test/test-pgmq-functional.ts",
-      "accessCount": 8,
-      "lastAccessed": 1770401581649,
+      "path": "docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh",
+      "accessCount": 10,
+      "lastAccessed": 1770406966398,
       "type": "file"
     },
     {
-      "path": "docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh",
+      "path": "scripts/test/test-pgmq-functional.ts",
       "accessCount": 8,
-      "lastAccessed": 1770405141669,
+      "lastAccessed": 1770401581649,
       "type": "file"
     },
     {
@@ -254,12 +260,6 @@
       "accessCount": 5,
       "lastAccessed": 1770402280131,
       "type": "directory"
-    },
-    {
-      "path": "scripts/test/test-timescaledb-breaking-changes.ts",
-      "accessCount": 5,
-      "lastAccessed": 1770405440788,
-      "type": "file"
     },
     {
       "path": "docker/postgres/Dockerfile.template",

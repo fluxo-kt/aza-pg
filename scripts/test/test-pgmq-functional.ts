@@ -451,6 +451,54 @@ await test("Set visibility timeout", async () => {
   assert(read.stdout.includes(String(msgId)), `Expected msg_id ${msgId}, got: ${read.stdout}`);
 });
 
+// Test 12A: last_read_at tracking (v1.10.0)
+await test("last_read_at column tracks message read times (v1.10.0)", async () => {
+  // Create queue and send message
+  await runSQL("SELECT pgmq.create('test_queue_last_read')");
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_last_read', '{\"test\": \"last_read_at\"}'::jsonb)"
+  );
+  const msgId = parseInt(send.stdout);
+  assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
+
+  // Read message and verify last_read_at is populated
+  const read = await runSQL(
+    "SELECT msg_id, last_read_at IS NOT NULL as has_last_read FROM pgmq.read('test_queue_last_read', 30, 1)"
+  );
+  assert(read.success, `Read failed: ${read.stderr}`);
+  assert(
+    read.stdout.includes(`${msgId}|t`),
+    `Expected last_read_at to be populated, got: ${read.stdout}`
+  );
+
+  console.log("   📊 last_read_at column verified (v1.10.0 feature)");
+});
+
+// Test 12B: set_vt with TIMESTAMPTZ parameter (v1.10.0)
+await test("set_vt accepts TIMESTAMPTZ for absolute timeout (v1.10.0)", async () => {
+  // Create queue and send message
+  await runSQL("SELECT pgmq.create('test_queue_setvt_ts')");
+  const send = await runSQL(
+    "SELECT pgmq.send('test_queue_setvt_ts', '{\"test\": \"set_vt_timestamptz\"}'::jsonb)"
+  );
+  const msgId = parseInt(send.stdout);
+  assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
+
+  // Read with 30 second VT
+  await runSQL("SELECT pgmq.read('test_queue_setvt_ts', 30, 1)");
+
+  // Set VT to NOW() (make visible immediately) using TIMESTAMPTZ
+  const setVt = await runSQL(`SELECT pgmq.set_vt('test_queue_setvt_ts', ${msgId}, NOW())`);
+  assert(setVt.success, `Set VT with TIMESTAMPTZ failed: ${setVt.stderr}`);
+
+  // Read again immediately (should be visible)
+  const read = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_setvt_ts', 30, 1)");
+  assert(read.success, `Read after set_vt failed: ${read.stderr}`);
+  assert(read.stdout.includes(String(msgId)), `Expected msg_id ${msgId}, got: ${read.stdout}`);
+
+  console.log("   📊 set_vt with TIMESTAMPTZ parameter verified (v1.10.0 feature)");
+});
+
 // Test 13: Queue Metrics
 await test("Queue metrics", async () => {
   // Get metrics for specific queue
@@ -813,6 +861,8 @@ await test("Drop queue", async () => {
     "test_queue_poll",
     "test_queue_vt",
     "test_queue_setvt",
+    "test_queue_last_read",
+    "test_queue_setvt_ts",
     "test_queue_purge",
     "test_queue_fifo",
     "test_queue_fifo_rr",

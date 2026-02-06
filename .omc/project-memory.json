@@ -1,0 +1,284 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1770392030970,
+  "projectRoot": "/opt/apps/art/infra/aza-pg",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": ["package.json"]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": ["tsconfig.json"]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": null,
+    "scripts": {
+      "validate": "bun scripts/validate.ts",
+      "validate:all": "bun scripts/validate.ts --all",
+      "validate:fix": "bun scripts/validate.ts --fix",
+      "format": "bun scripts/validate.ts --fix",
+      "lint": "bun scripts/validate.ts",
+      "test": "bun scripts/test-all.ts --skip-build",
+      "test:all": "bun scripts/test-all.ts",
+      "test:unit": "bun test ./scripts/config-generator/manifest-generator.test.ts ./scripts/config-generator/sql-generator.test.ts ./scripts/test/test-auto-config-units.ts ./scripts/test/test-utils.test.ts ./scripts/docker/test-image-lib.test.ts",
+      "test:image": "bun scripts/test/test-released-image.ts",
+      "test:pgflow": "bun scripts/test/test-pgflow-schema.ts && bun scripts/test/test-pgflow-functional.ts && bun scripts/test/test-pgflow-multiproject.ts",
+      "pgflow:generate": "bun scripts/pgflow/generate-schema.ts",
+      "build": "bun scripts/build.ts",
+      "generate": "bun scripts/generate-all.ts",
+      "hooks:install": "bun-git-hooks",
+      "postinstall": "bun-git-hooks",
+      "oxlint": "oxlint",
+      "oxlint:fix": "oxlint --fix",
+      "prettier:check": "prettier --check",
+      "prettier:write": "prettier --write",
+      "squawk": "squawk",
+      "tsc": "tsc"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": ["docs", "examples", "scripts", "tests"],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "deployments": {
+      "path": "deployments",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1770392030964,
+      "keyFiles": []
+    },
+    "dev": {
+      "path": "dev",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1770392030964,
+      "keyFiles": ["stdout"]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1770392030967,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 25,
+      "lastAccessed": 1770392030967,
+      "keyFiles": [
+        "ARCHITECTURE.md",
+        "BACKUP-PGBACKREST.md",
+        "BUILD.md",
+        "COOLIFY.md",
+        "DEPLOYMENT.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1770392030967,
+      "keyFiles": []
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 21,
+      "lastAccessed": 1770392030967,
+      "keyFiles": [
+        "build.ts",
+        "check-docs-consistency.ts",
+        "check-size-regression.ts",
+        "check-sql.ts",
+        "derive-catalog-stats.ts"
+      ]
+    },
+    "stacks": {
+      "path": "stacks",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1770392030968,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1770392030968,
+      "keyFiles": []
+    },
+    "tmp": {
+      "path": "tmp",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1770392030968,
+      "keyFiles": []
+    },
+    "scripts/build": {
+      "path": "scripts/build",
+      "purpose": "Build output",
+      "fileCount": 2,
+      "lastAccessed": 1770392030968,
+      "keyFiles": ["extract-pg-version.ts", "validate-dockerfile-paths.ts"]
+    },
+    "scripts/config": {
+      "path": "scripts/config",
+      "purpose": "Configuration files",
+      "fileCount": 2,
+      "lastAccessed": 1770392030968,
+      "keyFiles": ["size-baselines.json", "test-timeouts.ts"]
+    },
+    "tests/fixtures": {
+      "path": "tests/fixtures",
+      "purpose": "Test fixtures",
+      "fileCount": 1,
+      "lastAccessed": 1770392030968,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "scripts/extensions/manifest-data.ts",
+      "accessCount": 10,
+      "lastAccessed": 1770397463753,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh",
+      "accessCount": 7,
+      "lastAccessed": 1770397500061,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/test-pgmq-functional.ts",
+      "accessCount": 5,
+      "lastAccessed": 1770397956229,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 4,
+      "lastAccessed": 1770396497190,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/ci/validate-manifest-integrity.ts",
+      "accessCount": 4,
+      "lastAccessed": 1770397863671,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres/Dockerfile.template",
+      "accessCount": 3,
+      "lastAccessed": 1770397489492,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extensions/pgdg-mappings.ts",
+      "accessCount": 3,
+      "lastAccessed": 1770397640997,
+      "type": "file"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "accessCount": 3,
+      "lastAccessed": 1770398013804,
+      "type": "file"
+    },
+    {
+      "path": "scripts/pgflow/generate-schema.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770396526058,
+      "type": "file"
+    },
+    {
+      "path": "docker/postgres/pgflow/security-patches.sql",
+      "accessCount": 2,
+      "lastAccessed": 1770397493160,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extensions/generate-extension-defaults.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770397634041,
+      "type": "file"
+    },
+    {
+      "path": "scripts/docker/generate-dockerfile.test.ts",
+      "accessCount": 2,
+      "lastAccessed": 1770397723455,
+      "type": "file"
+    },
+    {
+      "path": "scripts/extensions/validate-pgdg-versions.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770395845388,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 1,
+      "lastAccessed": 1770396379141,
+      "type": "file"
+    },
+    {
+      "path": "scripts/test/verify-timescaledb-tsl.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770396403944,
+      "type": "file"
+    },
+    {
+      "path": "docker",
+      "accessCount": 1,
+      "lastAccessed": 1770396406996,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/generate-all.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770396524722,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/config-generator",
+      "accessCount": 1,
+      "lastAccessed": 1770396525882,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/docker/generate-dockerfile.ts",
+      "accessCount": 1,
+      "lastAccessed": 1770397620643,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

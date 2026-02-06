@@ -25,7 +25,6 @@ const NAME_TO_KEY: Record<string, string> = {
   vector: "pgvector",
   postgis: "postgis",
   pg_repack: "repack",
-  plpgsql_check: "plpgsqlCheck",
   hll: "hll",
   http: "http",
   hypopg: "hypopg",
@@ -47,7 +46,6 @@ const PGDG_MAPPING_NAMES = new Set([
   "set_user",
   "pgrouting",
   "pgaudit",
-  "plpgsql_check",
 ]);
 
 interface ValidationError {

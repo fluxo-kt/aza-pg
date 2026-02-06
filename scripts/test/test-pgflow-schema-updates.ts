@@ -98,6 +98,11 @@ async function runTests(): Promise<void> {
         POSTGRES_DB: "postgres",
       });
       console.log(`✅ Started test container: ${CONTAINER}`);
+
+      // Wait for PostgreSQL to be ready
+      console.log(`⏳ Waiting for PostgreSQL to be ready...`);
+      await harness.waitForReady(CONTAINER);
+      console.log(`✅ PostgreSQL ready`);
     } else {
       console.log(`✅ Using existing container: ${CONTAINER}`);
     }
@@ -105,7 +110,18 @@ async function runTests(): Promise<void> {
     // Install pgflow schema
     console.log(`\n🔧 Installing pgflow v${PGFLOW_VERSION} schema...`);
     const installed = await installPgflowSchema(CONTAINER, DATABASE);
-    assert(installed.success, `Failed to install pgflow schema in ${DATABASE}`);
+    if (!installed.success) {
+      console.error(`\n❌ pgflow schema installation failed:`);
+      console.error(`   Database: ${DATABASE}`);
+      console.error(`   Error: ${installed.stderr || "Unknown error"}`);
+      if (installed.stdout) {
+        console.error(`   stdout: ${installed.stdout}`);
+      }
+    }
+    assert(
+      installed.success,
+      `Failed to install pgflow schema in ${DATABASE}: ${installed.stderr || "Unknown error"}`
+    );
     console.log(`✅ pgflow schema installed in ${DATABASE}`);
 
     // ========================================================================

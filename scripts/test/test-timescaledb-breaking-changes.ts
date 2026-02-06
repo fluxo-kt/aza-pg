@@ -48,7 +48,9 @@ function recordTest(name: string, success: boolean, message: string, details?: s
 
 async function setup(): Promise<void> {
   log("Starting container...");
-  container = await harness.startContainer("timescaledb-breaking");
+  container = await harness.startContainer("timescaledb-breaking", {
+    POSTGRES_PASSWORD: "test",
+  });
   await harness.waitForReady(container);
 
   // Create timescaledb extension

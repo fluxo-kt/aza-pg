@@ -167,8 +167,8 @@
   "hotPaths": [
     {
       "path": "scripts/extensions/manifest-data.ts",
-      "accessCount": 46,
-      "lastAccessed": 1770403542639,
+      "accessCount": 47,
+      "lastAccessed": 1770405278620,
       "type": "file"
     },
     {
@@ -179,8 +179,8 @@
     },
     {
       "path": "scripts/test/test-pgflow-schema-updates.ts",
-      "accessCount": 21,
-      "lastAccessed": 1770403594593,
+      "accessCount": 26,
+      "lastAccessed": 1770405525934,
       "type": "file"
     },
     {
@@ -203,8 +203,8 @@
     },
     {
       "path": "tests/fixtures/pgflow/install.ts",
-      "accessCount": 9,
-      "lastAccessed": 1770403777075,
+      "accessCount": 10,
+      "lastAccessed": 1770405101373,
       "type": "file"
     },
     {
@@ -215,8 +215,8 @@
     },
     {
       "path": "docker/postgres/docker-entrypoint-initdb.d/05-pgflow-init.sh",
-      "accessCount": 7,
-      "lastAccessed": 1770397500061,
+      "accessCount": 8,
+      "lastAccessed": 1770405141669,
       "type": "file"
     },
     {
@@ -254,6 +254,12 @@
       "accessCount": 5,
       "lastAccessed": 1770402280131,
       "type": "directory"
+    },
+    {
+      "path": "scripts/test/test-timescaledb-breaking-changes.ts",
+      "accessCount": 5,
+      "lastAccessed": 1770405440788,
+      "type": "file"
     },
     {
       "path": "docker/postgres/Dockerfile.template",
@@ -304,10 +310,10 @@
       "type": "directory"
     },
     {
-      "path": "scripts/test/test-timescaledb-breaking-changes.ts",
+      "path": "scripts/extensions",
       "accessCount": 3,
-      "lastAccessed": 1770403731231,
-      "type": "file"
+      "lastAccessed": 1770405153367,
+      "type": "directory"
     },
     {
       "path": "scripts/pgflow/generate-schema.ts",
@@ -344,12 +350,6 @@
       "accessCount": 2,
       "lastAccessed": 1770401576370,
       "type": "file"
-    },
-    {
-      "path": "scripts/extensions",
-      "accessCount": 2,
-      "lastAccessed": 1770402006701,
-      "type": "directory"
     },
     {
       "path": "scripts/test/test-hook-extensions.ts",

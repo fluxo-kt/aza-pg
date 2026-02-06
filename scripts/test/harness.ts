@@ -39,7 +39,7 @@ export class TestHarness {
     return containerName;
   }
 
-  async waitForReady(containerName: string, timeout = 60): Promise<void> {
+  async waitForReady(containerName: string, timeout = 90): Promise<void> {
     const start = Date.now();
     while ((Date.now() - start) / 1000 < timeout) {
       try {

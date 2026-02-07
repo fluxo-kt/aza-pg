@@ -100,7 +100,9 @@ interface TestResult {
 const results: TestResult[] = [];
 
 async function runSQL(sql: string): Promise<string> {
-  const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+  const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`
+    .quiet()
+    .nothrow();
   if (result.exitCode !== 0) {
     throw new Error(`SQL execution failed: ${result.stderr.toString()}`);
   }
@@ -187,7 +189,7 @@ if (isOwnContainer && imageTag) {
         ready = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       attempt++;
     }
 
@@ -199,7 +201,7 @@ if (isOwnContainer && imageTag) {
 
     // Additional wait for initialization scripts to complete
     console.log("⏳ Waiting for initialization to complete...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await Bun.sleep(3000);
 
     // Verify database is truly ready with actual query
     let dbReady = false;
@@ -211,7 +213,7 @@ if (isOwnContainer && imageTag) {
           break;
         }
       } catch {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await Bun.sleep(500);
       }
     }
 
@@ -258,7 +260,7 @@ await test("T4.1.3: Verify version is 2.8.8", async () => {
   const version = await runSQL(
     "SELECT extversion FROM pg_extension WHERE extname = 'plpgsql_check'"
   );
-  assert(version.startsWith("2.8"), `Expected version 2.8.x, got ${version}`);
+  assert(version === "2.8.8", `Expected version 2.8.8, got ${version}`);
 });
 
 await test("T4.1.4: Verify core functions exist", async () => {

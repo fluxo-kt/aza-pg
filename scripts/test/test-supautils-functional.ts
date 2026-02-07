@@ -95,15 +95,13 @@ interface TestResult {
 const results: TestResult[] = [];
 
 async function runSQL(sql: string): Promise<string> {
-  try {
-    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
-    if (result.exitCode !== 0) {
-      throw new Error(`SQL failed: ${result.stderr.toString()}`);
-    }
-    return result.stdout.toString().trim();
-  } catch (error) {
-    throw new Error(`SQL execution error: ${error}`);
+  const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`
+    .quiet()
+    .nothrow();
+  if (result.exitCode !== 0) {
+    throw new Error(`SQL failed: ${result.stderr.toString()}`);
   }
+  return result.stdout.toString().trim();
 }
 
 async function test(name: string, fn: () => Promise<void>): Promise<void> {
@@ -199,7 +197,7 @@ if (isOwnContainer && imageTag) {
         ready = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       attempt++;
     }
 
@@ -211,7 +209,7 @@ if (isOwnContainer && imageTag) {
 
     // Additional wait for initialization scripts to complete
     console.log("⏳ Waiting for initialization to complete...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await Bun.sleep(3000);
 
     // Verify database is truly ready with actual query
     let dbReady = false;
@@ -225,7 +223,7 @@ if (isOwnContainer && imageTag) {
       } catch {
         // Retry
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await Bun.sleep(500);
     }
 
     if (!dbReady) {
@@ -290,13 +288,13 @@ if (!isOwnContainer) {
           ready = true;
           break;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await Bun.sleep(1000);
       }
 
       assert(ready, "Negative test container failed to start");
 
       // Wait for init
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await Bun.sleep(3000);
 
       // Verify supautils GUCs are NOT present
       const checkResult =
@@ -483,16 +481,6 @@ if (failed > 0) {
       console.log(`   Error: ${r.error}`);
     });
 }
-
-console.log("\n" + "=".repeat(80));
-console.log("TEST COVERAGE");
-console.log("=".repeat(80));
-console.log("✅ Container startup with supautils preloaded");
-console.log("✅ PG18 PG_MODULE_MAGIC_EXT compatibility (no-crash verification)");
-console.log("✅ GUC parameter registration and configuration");
-console.log("✅ Role creation/management without guard interference");
-console.log("✅ Interaction with pg_cron and pg_net dependencies");
-console.log("✅ Spurious GUC warning verification (v3.1.0 fix)");
 
 console.log("\n" + "=".repeat(80));
 

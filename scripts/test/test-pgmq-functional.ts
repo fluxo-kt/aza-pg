@@ -83,7 +83,9 @@ const results: TestResult[] = [];
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
-    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`
+      .quiet()
+      .nothrow();
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
@@ -177,7 +179,7 @@ if (isOwnContainer && imageTag) {
         ready = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       attempt++;
     }
 
@@ -197,7 +199,7 @@ if (isOwnContainer && imageTag) {
       } else {
         stableConnections = 0;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
     }
 
     if (stableConnections < requiredStable) {
@@ -420,7 +422,7 @@ await test("Visibility timeout behavior", async () => {
   assert(read2.stdout === "", `Expected no messages, got: ${read2.stdout}`);
 
   // Wait for visibility timeout to expire
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await Bun.sleep(2500);
 
   // Read again (message should be visible again)
   const read3 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
@@ -458,6 +460,7 @@ await test("last_read_at column tracks message read times (v1.10.0)", async () =
   const send = await runSQL(
     "SELECT pgmq.send('test_queue_last_read', '{\"test\": \"last_read_at\"}'::jsonb)"
   );
+  assert(send.success, `Send failed: ${send.stderr}`);
   const msgId = parseInt(send.stdout);
   assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
 
@@ -481,6 +484,7 @@ await test("set_vt accepts TIMESTAMPTZ for absolute timeout (v1.10.0)", async ()
   const send = await runSQL(
     "SELECT pgmq.send('test_queue_setvt_ts', '{\"test\": \"set_vt_timestamptz\"}'::jsonb)"
   );
+  assert(send.success, `Send failed: ${send.stderr}`);
   const msgId = parseInt(send.stdout);
   assert(msgId > 0, `Invalid msg_id: ${send.stdout}`);
 
@@ -648,7 +652,7 @@ await test("Delayed message send", async () => {
   assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
 
   // Wait for delay to expire
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await Bun.sleep(2500);
 
   // Now message should be visible
   const delayed = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");

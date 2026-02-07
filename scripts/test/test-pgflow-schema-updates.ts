@@ -37,7 +37,7 @@ const existingContainer = parseContainerName();
 const useExistingContainer = Boolean(existingContainer);
 
 const DATABASE =
-  process.env.TEST_DATABASE ||
+  Bun.env.TEST_DATABASE ||
   Bun.argv.find((a) => a.startsWith("--database="))?.split("=")[1] ||
   "postgres";
 

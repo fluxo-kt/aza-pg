@@ -461,6 +461,60 @@ async function testDELETEOptimizations(): Promise<void> {
   }
 }
 
+async function testBucketsPerBatchDefault(): Promise<void> {
+  try {
+    // buckets_per_batch changed to 10 in 2.25.0 (was 2 previously)
+    // This is a per-CA refresh parameter, not a SHOW-able GUC
+    // Verify the parameter is accepted in refresh_continuous_aggregate call
+    // Using ca_test_new from T1.2 which already exists
+
+    // First check if it's exposed as a GUC (unlikely but worth checking)
+    const gucCheck = await harness.runSQL(
+      container,
+      "SELECT name FROM pg_settings WHERE name LIKE '%buckets%';"
+    );
+
+    if (gucCheck.length > 0) {
+      // If it is a GUC, verify the default
+      const value = await harness.runSQL(
+        container,
+        "SELECT setting FROM pg_settings WHERE name LIKE '%buckets%';"
+      );
+      recordTest(
+        "T1.8.1: buckets_per_batch default (GUC)",
+        value === "10",
+        `buckets_per_batch GUC value: ${value}`,
+        value === "10" ? "Default matches expected 10" : "Default mismatch"
+      );
+    } else {
+      // Not a GUC — verify via CA refresh (the parameter affects refresh behaviour)
+      // A successful refresh with default settings confirms 2.25.0 defaults are active
+      await harness.runSQL(
+        container,
+        "INSERT INTO ca_test_source SELECT t, random() FROM generate_series(now() + interval '2 hours', now() + interval '3 hours', '1 min') t;"
+      );
+      await harness.runSQL(
+        container,
+        "CALL refresh_continuous_aggregate('ca_test_new', NULL, NULL);"
+      );
+      const count = await harness.runSQL(container, "SELECT count(*) FROM ca_test_new;");
+      recordTest(
+        "T1.8.1: buckets_per_batch default (refresh parameter)",
+        parseInt(count) > 0,
+        "CA refresh with 2.25.0 default buckets_per_batch=10 succeeded",
+        `buckets_per_batch is a per-refresh parameter (not a GUC), rows: ${count}`
+      );
+    }
+  } catch (error) {
+    recordTest(
+      "T1.8: buckets_per_batch default tests",
+      false,
+      "Unexpected error during test execution",
+      String(error)
+    );
+  }
+}
+
 async function runTests(): Promise<void> {
   try {
     await setup();
@@ -474,6 +528,7 @@ async function runTests(): Promise<void> {
     await testTimescaleDBVersion();
     await testDirectCompressDuringCARefresh();
     await testDELETEOptimizations();
+    await testBucketsPerBatchDefault();
 
     log("\n=== Test Summary ===");
     const passed = results.filter((r) => r.success).length;

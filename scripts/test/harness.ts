@@ -75,7 +75,9 @@ export class TestHarness {
   }
 
   async runSQL(containerName: string, sql: string): Promise<string> {
-    const result = await $`docker exec ${containerName} psql -U postgres -tAc ${sql}`.nothrow();
+    const result = await $`docker exec ${containerName} psql -U postgres -tAc ${sql}`
+      .quiet()
+      .nothrow();
     if (result.exitCode !== 0) {
       // Expose actual PostgreSQL error message instead of generic ShellError
       const errorMsg = result.stderr.toString().trim() || result.stdout.toString().trim();

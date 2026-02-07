@@ -144,7 +144,9 @@ async function loadManifest(): Promise<void> {
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
-    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+    const result = await $`docker exec ${CONTAINER} psql -U postgres -t -A -c ${sql}`
+      .quiet()
+      .nothrow();
     return {
       stdout: result.stdout.toString().trim(),
       stderr: result.stderr.toString().trim(),
@@ -246,7 +248,7 @@ if (isOwnContainer && imageTag) {
         ready = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await Bun.sleep(1000);
       attempt++;
     }
 
@@ -260,7 +262,7 @@ if (isOwnContainer && imageTag) {
     // pg_isready returns success when connections are accepted, but
     // docker-entrypoint-initdb.d scripts may still be running
     console.log("⏳ Waiting for initialization to complete...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await Bun.sleep(3000);
 
     // Verify database is truly ready with actual query
     let dbReady = false;
@@ -270,7 +272,7 @@ if (isOwnContainer && imageTag) {
         dbReady = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await Bun.sleep(500);
     }
 
     if (!dbReady) {
@@ -346,7 +348,7 @@ while (!stable && stabilityAttempt < maxStabilityAttempts) {
     stable = true;
     break;
   }
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await Bun.sleep(500);
   stabilityAttempt++;
 }
 
@@ -1182,14 +1184,19 @@ await test("supautils - Verify binary available (preload-only)", "safety", async
   // supautils is enabled: true but defaultEnable: false + preloadOnly: true
   // The comprehensive test container does NOT preload supautils
   // (no preloadInComprehensiveTest flag in manifest)
+  // Derive PG major version dynamically to avoid hardcoded path breakage on upgrades
+  const versionResult = await runSQL("SHOW server_version_num");
+  assert(versionResult.success, `Failed to get server_version_num: ${versionResult.stderr}`);
+  const pgMajor = Math.floor(parseInt(versionResult.stdout.trim()) / 10000);
+
   // Verify the .so file was built and installed in the image
   const checkResult =
-    await Bun.$`docker exec ${CONTAINER} test -f /usr/lib/postgresql/18/lib/supautils.so && echo "exists" || echo "missing"`.text();
+    await Bun.$`docker exec ${CONTAINER} test -f /usr/lib/postgresql/${pgMajor}/lib/supautils.so && echo "exists" || echo "missing"`.text();
   assert(checkResult.trim() === "exists", "supautils.so file not found in image");
 
   // Also verify the .control file exists
   const controlResult =
-    await Bun.$`docker exec ${CONTAINER} test -f /usr/share/postgresql/18/extension/supautils.control && echo "exists" || echo "missing"`.text();
+    await Bun.$`docker exec ${CONTAINER} test -f /usr/share/postgresql/${pgMajor}/extension/supautils.control && echo "exists" || echo "missing"`.text();
   assert(controlResult.trim() === "exists", "supautils.control file not found in image");
 });
 

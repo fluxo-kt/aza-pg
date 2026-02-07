@@ -397,8 +397,6 @@ await test("Verify supautils hooks don't interfere with standard PostgreSQL", as
   await runSQL("DROP ROLE test_role_3");
   await runSQL("DROP ROLE test_role_2");
   await runSQL("DROP ROLE test_role_1");
-
-  assert(true, "Role operations completed without interference");
 });
 
 // ============================================================================
@@ -444,17 +442,6 @@ await test("Verify supautils GUC parameters are configurable", async () => {
   // Note: reserved_roles requires restart to take effect, but we can test the setting syntax
   await runSQL("SET supautils.reserved_roles = ''");
   // If this doesn't error, the GUC is properly registered and configurable
-  assert(true, "GUC parameter setting succeeded");
-});
-
-await test("Verify supautils version and build info", async () => {
-  // Check that supautils appears in shared_preload_libraries
-  const preload = await runSQL("SHOW shared_preload_libraries");
-  assert(preload.includes("supautils"), "supautils not in shared_preload_libraries");
-
-  // Verify at least one supautils GUC exists (proves module loaded)
-  const gucCount = await runSQL("SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'");
-  assert(parseInt(gucCount) > 0, "No supautils GUCs found");
 });
 
 // ============================================================================

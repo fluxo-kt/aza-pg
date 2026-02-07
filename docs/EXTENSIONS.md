@@ -120,14 +120,14 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
 | --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.5](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.5) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.8](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.8) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
-| Extension                                 | Version                                                        | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
-| ----------------------------------------- | -------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.9.0](https://github.com/tembo-io/pgmq/releases/tag/v1.9.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
-| [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)       | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
+| Extension                                 | Version                                                          | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.10.0](https://github.com/tembo-io/pgmq/releases/tag/v1.10.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)         | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
 
@@ -135,7 +135,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [5081a7b5](https://github.com/pgexperts/pg_plan_filter/commit/5081a7b5cb890876e67d8e7486b6a64c38c9a492) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
 | [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.5](https://github.com/eradman/pg-safeupdate/releases/tag/1.5)                                        | Yes                | Yes            | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| [`supautils`](https://github.com/supabase/supautils)            | [v3.0.6](https://github.com/supabase/supautils/releases/tag/v3.0.6)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
+| [`supautils`](https://github.com/supabase/supautils)            | [v3.1.0](https://github.com/supabase/supautils/releases/tag/v3.1.0)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
@@ -157,7 +157,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                                                                 |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.24.0](https://github.com/timescale/timescaledb/releases/tag/2.24.0)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.25.0](https://github.com/timescale/timescaledb/releases/tag/2.25.0)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
 
 ### utilities
@@ -176,7 +176,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                        | Version                                                                          | Enabled by Default | Shared Preload | Documentation              | Notes                                                                     |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.13.2](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.13.2) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
+| [`pgflow`](https://github.com/pgflow-dev/pgflow) | [pgflow@0.13.3](https://github.com/pgflow-dev/pgflow/releases/tag/pgflow@0.13.3) | Yes                | No             | [Docs](https://pgflow.dev) | DAG-based workflow orchestration engine with step-by-step task execution. |
 
 <!-- extensions-table:end -->
 
@@ -492,7 +492,7 @@ bun run build
 ### supautils (Supabase Utilities)
 
 **Status:** Disabled
-**Version:** v3.0.2
+**Version:** v3.1.0
 **Category:** safety
 
 **Why disabled:**
@@ -678,16 +678,15 @@ ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in m
 
 Some extensions have different Dockerfile package names:
 
-| Manifest Name   | Dockerfile Package                     |
-| --------------- | -------------------------------------- |
-| `vector`        | `postgresql-${PG_MAJOR}-pgvector`      |
-| `postgis`       | `postgresql-${PG_MAJOR}-postgis-3`     |
-| `pg_partman`    | `postgresql-${PG_MAJOR}-partman`       |
-| `plpgsql_check` | `postgresql-${PG_MAJOR}-plpgsql-check` |
-| `pg_repack`     | `postgresql-${PG_MAJOR}-repack`        |
-| `pgrouting`     | `postgresql-${PG_MAJOR}-pgrouting`     |
-| `set_user`      | `postgresql-${PG_MAJOR}-set-user`      |
-| `pg_cron`       | `postgresql-${PG_MAJOR}-cron`          |
+| Manifest Name | Dockerfile Package                 |
+| ------------- | ---------------------------------- |
+| `vector`      | `postgresql-${PG_MAJOR}-pgvector`  |
+| `postgis`     | `postgresql-${PG_MAJOR}-postgis-3` |
+| `pg_partman`  | `postgresql-${PG_MAJOR}-partman`   |
+| `pg_repack`   | `postgresql-${PG_MAJOR}-repack`    |
+| `pgrouting`   | `postgresql-${PG_MAJOR}-pgrouting` |
+| `set_user`    | `postgresql-${PG_MAJOR}-set-user`  |
+| `pg_cron`     | `postgresql-${PG_MAJOR}-cron`      |
 
 These mappings are defined in `getDockerfilePackageName()` function in the validation script.
 

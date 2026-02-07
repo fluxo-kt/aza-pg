@@ -39,7 +39,7 @@ export class TestHarness {
     return containerName;
   }
 
-  async waitForReady(containerName: string, timeout = 60): Promise<void> {
+  async waitForReady(containerName: string, timeout = 90): Promise<void> {
     const start = Date.now();
     while ((Date.now() - start) / 1000 < timeout) {
       try {
@@ -75,7 +75,14 @@ export class TestHarness {
   }
 
   async runSQL(containerName: string, sql: string): Promise<string> {
-    const result = await $`docker exec ${containerName} psql -U postgres -tAc ${sql}`.text();
-    return result.trim();
+    const result = await $`docker exec ${containerName} psql -U postgres -tAc ${sql}`
+      .quiet()
+      .nothrow();
+    if (result.exitCode !== 0) {
+      // Expose actual PostgreSQL error message instead of generic ShellError
+      const errorMsg = result.stderr.toString().trim() || result.stdout.toString().trim();
+      throw new Error(errorMsg);
+    }
+    return result.stdout.toString().trim();
   }
 }

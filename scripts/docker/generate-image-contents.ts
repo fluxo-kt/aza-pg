@@ -58,8 +58,9 @@ function getVersion(entry: ManifestEntry): string {
     return match?.[1] ?? entry.pgdgVersion;
   }
   if (entry.source?.tag) {
-    // Strip 'v' prefix if present
-    return entry.source.tag.replace(/^v/, "");
+    // Strip 'v' prefix if present, handle scoped tags like "pgflow@0.13.3"
+    const cleaned = entry.source.tag.replace(/^v/, "");
+    return cleaned.includes("@") ? cleaned.split("@").pop()! : cleaned;
   }
   return "builtin";
 }

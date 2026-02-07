@@ -10,7 +10,33 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-_No changes yet._
+### Changed
+
+- **TimescaleDB 2.24.0 → 2.25.0**: Major continuous aggregate performance improvements
+  - Direct compress during refresh reduces I/O significantly
+  - DELETE optimizations lower resource usage on columnstore
+  - Default `buckets_per_batch` changed to 10 (reduced WAL holding)
+  - ⚠️ **Breaking**: Old continuous aggregate format removed (deprecated since 2.10.0)
+  - ⚠️ **Breaking**: `time_bucket_ng` function removed
+  - ⚠️ **Breaking**: WAL-based invalidation removed
+  - ⚠️ **Breaking**: `_timescaledb_debug` schema removed
+- **pgmq 1.9.0 → 1.10.0**: Message read tracking and flexible visibility timeout
+  - New `last_read_at` column tracks message read times
+  - `set_vt()` now accepts `INTEGER` or `TIMESTAMPTZ` for absolute timeout
+- **supautils 3.0.6 → 3.1.0**: PostgreSQL 18 introspection improvements
+  - PG_MODULE_MAGIC_EXT support enables module visibility via `pg_get_loaded_modules()`
+  - Fixed spurious `supautils.disable_program` GUC connection warnings
+- **plpgsql_check 2.8.5 → 2.8.8**: Stability and debugging improvements (switched from PGDG to source build)
+  - Fixed memory corruption crash
+  - Rewritten pldbgapi debugging API
+  - New warnings for expression volatility and reserved keyword labels
+- **pgflow 0.13.2 → 0.13.3**: Edge worker authentication and connection improvements
+  - Optional `PGFLOW_AUTH_SECRET` support for worker authentication
+  - Fixed `maxPgConnections` parameter propagation
+
+### Development (non-image)
+
+- Updated Bun dev dependencies: @pgflow/client 0.13.3, @pgflow/dsl 0.13.3, @types/bun 1.3.8, oxlint 1.43.0, prettier 3.8.1, squawk-cli 2.40.0
 
 ---
 

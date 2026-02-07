@@ -4,7 +4,7 @@ This directory contains the pgflow SQL schema for testing purposes.
 
 ## Contents
 
-- `schema-v0.13.0.sql` - Complete pgflow schema (21 combined SQL files)
+- `schema-v0.13.3.sql` - Complete pgflow schema (21 combined SQL files)
 - `install.ts` - TypeScript helper for installing schema into containers
 
 ## Usage
@@ -61,7 +61,7 @@ if (result.success) {
 ## Schema Source
 
 The schema is combined from 21 individual files in the pgflow repository:
-https://github.com/pgflow-dev/pgflow/tree/pgflow@0.13.0/pkgs/core/schemas/
+https://github.com/pgflow-dev/pgflow/tree/pgflow@0.13.3/pkgs/core/schemas/
 
 ### Files (in order)
 
@@ -91,7 +91,7 @@ To update to a newer pgflow version:
 
 ```bash
 # Example download script
-VERSION="0.13.0"
+VERSION="0.13.3"
 BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
 FILES=(
   0010_extensions.sql
@@ -115,7 +115,7 @@ for file in "${FILES[@]}"; do
 done
 ```
 
-## Expected Counts (v0.13.0)
+## Expected Counts (v0.13.3)
 
 | Component | Count |
 | --------- | ----- |

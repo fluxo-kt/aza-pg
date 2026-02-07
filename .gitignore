@@ -65,6 +65,6 @@ build/
 deployments/*/.env
 .env.secrets
 
-# OMC state (exclude all except project memory)
-.omc/*
-!.omc/project-memory.json
+# OMC state
+.omc/
+.sisyphus/

@@ -7,8 +7,7 @@
 -- 3. COMPAT-AZA-PG-001: Fix is_local() for non-Supabase installations
 --
 -- Upstream tracking:
--- - Issue: https://github.com/pgflow-dev/pgflow/issues/XXX
--- TODO: File upstream issue and replace XXX with actual issue number
+-- - Upstream issue: Not yet filed (local patches required until then)
 -- - Status: Pending upstream fix
 -- - Local patch required until upstream resolves
 --

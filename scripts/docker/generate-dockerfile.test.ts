@@ -145,7 +145,6 @@ describe("Manifest File Validation", () => {
       "postgis",
       "pg_partman",
       "pg_repack",
-      "plpgsql_check",
       "hll",
       "http",
       "hypopg",

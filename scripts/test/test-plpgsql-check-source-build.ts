@@ -368,9 +368,8 @@ await test("T4.4.1: Parse large function with 100+ lines (no crash)", async () =
   `;
   await runSQL(largeFunc);
 
-  // This should complete without crash
+  // This should complete without crash — runSQL throws on failure
   void (await runSQL("SELECT * FROM plpgsql_check_function('test_memory_safety_large')"));
-  assert(true, "Large function parsing completed without crash");
 });
 
 await test("T4.4.2: Check nested function calls (memory safety)", async () => {
@@ -398,10 +397,9 @@ await test("T4.4.2: Check nested function calls (memory safety)", async () => {
     $$ LANGUAGE plpgsql
   `);
 
-  // Check both functions (would crash with memory corruption)
+  // Check both functions (would crash with memory corruption) — runSQL throws on failure
   await runSQL("SELECT * FROM plpgsql_check_function('test_memory_safety_outer')");
   await runSQL("SELECT * FROM plpgsql_check_function('test_memory_safety_inner(int)')");
-  assert(true, "Nested function checking completed without crash");
 });
 
 await test("T4.4.3: Check function with VARIADIC args (memory edge case)", async () => {
@@ -413,9 +411,8 @@ await test("T4.4.3: Check function with VARIADIC args (memory edge case)", async
     $$ LANGUAGE plpgsql
   `);
 
-  // This was a known memory edge case
+  // This was a known memory edge case — runSQL throws on failure
   void (await runSQL("SELECT * FROM plpgsql_check_function('test_variadic_check(int[])')"));
-  assert(true, "VARIADIC args check completed without crash");
 });
 
 // ============================================================================
@@ -438,11 +435,10 @@ await test("T4.5.1: Check trigger function (regression area for memory issues)",
     $$ LANGUAGE plpgsql
   `);
 
-  // Check with table context
+  // Check with table context — runSQL throws on crash
   void (await runSQL(
     "SELECT * FROM plpgsql_check_function('test_plcheck_trigger_fn', 'test_plcheck_trigger_tbl')"
   ));
-  assert(true, "Trigger function check completed successfully");
 });
 
 await test("T4.5.2: Verify trigger function without errors", async () => {
@@ -459,11 +455,8 @@ await test("T4.5.2: Verify trigger function without errors", async () => {
 console.log("\n📊 Profiler Mode GUC Tests");
 console.log("-".repeat(80));
 
-await test("T4.6: Profiler GUC tests (skipped - not in v2.8.8)", async () => {
-  // The profiler GUC was added in a later plpgsql_check version
-  // For v2.8.8 from source, this feature is not available
-  console.log("⚠️  Profiler GUC not available in plpgsql_check v2.8.8 - test skipped");
-});
+// T4.6: Profiler GUC — not available in plpgsql_check v2.8.8 (added in later version)
+console.log("⚠️  T4.6: Profiler GUC not available in plpgsql_check v2.8.8 — skipped");
 
 // ============================================================================
 // PRINT SUMMARY

@@ -275,6 +275,9 @@ if (!isOwnContainer) {
 
   await test("Verify supautils NOT loaded when not in preload", async () => {
     // Start a separate container WITHOUT supautils
+    if (!imageTag) {
+      throw new Error("imageTag is required for negative test container");
+    }
     const negativeContainer = `test-supautils-negative-${Date.now()}`;
     try {
       // Start without supautils in preload

@@ -678,16 +678,15 @@ ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in m
 
 Some extensions have different Dockerfile package names:
 
-| Manifest Name   | Dockerfile Package                     |
-| --------------- | -------------------------------------- |
-| `vector`        | `postgresql-${PG_MAJOR}-pgvector`      |
-| `postgis`       | `postgresql-${PG_MAJOR}-postgis-3`     |
-| `pg_partman`    | `postgresql-${PG_MAJOR}-partman`       |
-| `plpgsql_check` | `postgresql-${PG_MAJOR}-plpgsql-check` |
-| `pg_repack`     | `postgresql-${PG_MAJOR}-repack`        |
-| `pgrouting`     | `postgresql-${PG_MAJOR}-pgrouting`     |
-| `set_user`      | `postgresql-${PG_MAJOR}-set-user`      |
-| `pg_cron`       | `postgresql-${PG_MAJOR}-cron`          |
+| Manifest Name | Dockerfile Package                 |
+| ------------- | ---------------------------------- |
+| `vector`      | `postgresql-${PG_MAJOR}-pgvector`  |
+| `postgis`     | `postgresql-${PG_MAJOR}-postgis-3` |
+| `pg_partman`  | `postgresql-${PG_MAJOR}-partman`   |
+| `pg_repack`   | `postgresql-${PG_MAJOR}-repack`    |
+| `pgrouting`   | `postgresql-${PG_MAJOR}-pgrouting` |
+| `set_user`    | `postgresql-${PG_MAJOR}-set-user`  |
+| `pg_cron`     | `postgresql-${PG_MAJOR}-cron`      |
 
 These mappings are defined in `getDockerfilePackageName()` function in the validation script.
 

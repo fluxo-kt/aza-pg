@@ -393,7 +393,10 @@ async function testDELETEOptimizations(): Promise<void> {
       container,
       "CREATE TABLE delete_opt_test (time TIMESTAMPTZ NOT NULL, val INT);"
     );
-    await harness.runSQL(container, "SELECT create_hypertable('delete_opt_test', 'time');");
+    await harness.runSQL(
+      container,
+      "SELECT create_hypertable('delete_opt_test', 'time', chunk_time_interval => interval '7 days');"
+    );
     await harness.runSQL(
       container,
       "ALTER TABLE delete_opt_test SET (timescaledb.enable_columnstore = true);"
@@ -437,19 +440,28 @@ async function testDELETEOptimizations(): Promise<void> {
       `Oldest row is older than 20 days: ${oldestRow}`
     );
 
-    // EDGE CASE: DELETE on compressed chunks
-    await harness.runSQL(
+    // T1.7.4: DELETE on compressed chunks (verifies TS 2.25.0 DML-on-compressed support)
+    const countBeforeCompress = await harness.runSQL(
       container,
-      "SELECT compress_chunk(c, if_not_compressed => true) FROM show_chunks('delete_opt_test', older_than => interval '25 days') c;"
+      "SELECT count(*) FROM delete_opt_test;"
     );
     await harness.runSQL(
       container,
-      "DELETE FROM delete_opt_test WHERE time < now() - interval '25 days';"
+      "SELECT compress_chunk(c, if_not_compressed => true) FROM show_chunks('delete_opt_test', older_than => interval '10 days') c;"
+    );
+    await harness.runSQL(
+      container,
+      "DELETE FROM delete_opt_test WHERE time < now() - interval '15 days';"
+    );
+    const countAfterCompressDelete = await harness.runSQL(
+      container,
+      "SELECT count(*) FROM delete_opt_test;"
     );
     recordTest(
       "T1.7.4: DELETE on compressed chunks",
-      true,
-      "DELETE on compressed chunks succeeded (DML on compressed chunks supported)"
+      parseInt(countAfterCompressDelete) < parseInt(countBeforeCompress),
+      "DELETE on compressed chunks actually removed rows (DML on compressed chunks verified)",
+      `Before: ${countBeforeCompress}, After: ${countAfterCompressDelete}`
     );
   } catch (error) {
     recordTest(

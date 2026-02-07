@@ -829,7 +829,7 @@ await test("Error: read from non-existent queue", async () => {
   console.log("   📊 Error handling verified: non-existent queue raises error");
 });
 
-// Test 24: Error - delete non-existent message returns false
+// Test 25: Error - delete non-existent message returns false
 await test("Error: delete non-existent message returns false", async () => {
   await runSQL("SELECT pgmq.create('test_queue_error_delete')");
 
@@ -841,7 +841,7 @@ await test("Error: delete non-existent message returns false", async () => {
   console.log("   📊 Error handling verified: delete non-existent msg returns 'f'");
 });
 
-// Test 25: Error - send to dropped queue fails
+// Test 26: Error - send to dropped queue fails
 await test("Error: send to dropped queue fails", async () => {
   await runSQL("SELECT pgmq.create('test_queue_drop_send')");
   await runSQL("SELECT pgmq.drop_queue('test_queue_drop_send')");

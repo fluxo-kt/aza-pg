@@ -104,7 +104,8 @@ async function runSQL(sql: string): Promise<string> {
     .quiet()
     .nothrow();
   if (result.exitCode !== 0) {
-    throw new Error(`SQL execution failed: ${result.stderr.toString()}`);
+    const errorMsg = result.stderr.toString().trim() || result.stdout.toString().trim();
+    throw new Error(`SQL execution failed: ${errorMsg}`);
   }
   return result.stdout.toString().trim();
 }
@@ -313,9 +314,9 @@ await test("T4.2.2: Verify volatile function works without warning", async () =>
     $$ LANGUAGE plpgsql VOLATILE
   `);
 
-  void (await runSQL("SELECT * FROM plpgsql_check_function('test_volatile_ok')"));
-  // No volatility warnings expected
-  assert(true, "Volatile function check completed");
+  const result = await runSQL("SELECT * FROM plpgsql_check_function('test_volatile_ok')");
+  // No volatility warnings expected — verify empty output
+  assert(result === "", `Expected no warnings, got: ${result}`);
 });
 
 // ============================================================================
@@ -442,12 +443,11 @@ await test("T4.5.1: Check trigger function (regression area for memory issues)",
 });
 
 await test("T4.5.2: Verify trigger function without errors", async () => {
-  // The trigger function should have no errors or warnings
-  void (await runSQL(
+  // Differentiated from T4.5.1: T4.5.1 = smoke (no crash), T4.5.2 = correctness (clean output)
+  const result = await runSQL(
     "SELECT * FROM plpgsql_check_function('test_plcheck_trigger_fn', 'test_plcheck_trigger_tbl')"
-  ));
-  // Empty result or no error messages means success
-  assert(true, "Trigger function verification completed");
+  );
+  assert(result === "", `Expected no errors/warnings, got: ${result}`);
 });
 
 // ============================================================================

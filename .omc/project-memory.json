@@ -18,13 +18,13 @@
       }
     ],
     "frameworks": [],
-    "packageManager": "npm",
+    "packageManager": "bun",
     "runtime": null
   },
   "build": {
-    "buildCommand": "npm run build",
-    "testCommand": "npm test",
-    "lintCommand": "npm run lint",
+    "buildCommand": "bun run build",
+    "testCommand": "bun test",
+    "lintCommand": "bun run lint",
     "devCommand": null,
     "scripts": {
       "validate": "bun scripts/validate.ts",

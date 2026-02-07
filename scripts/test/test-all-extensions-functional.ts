@@ -104,7 +104,6 @@ interface TestResult {
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: Record<string, any>;
   skipped?: boolean;
 }
 
@@ -1406,7 +1405,6 @@ await test("set_user - Verify function exists and extension created", "security"
   // Note: set_user() cannot be tested in transaction block (psql -c wraps in transaction)
   // In production, use: psql -U postgres -c "SELECT set_user('role_name')" (outside transaction)
   // This function logs role switches for security auditing when used
-  assert(true, "set_user extension created and function available");
 });
 
 await test("set_user - Verify audit logging of role changes", "security", async () => {
@@ -1432,7 +1430,6 @@ await test("set_user - Verify audit logging of role changes", "security", async 
 
   // Note: In production, set_user logs are captured in PostgreSQL logs
   // for compliance and security auditing (tracks privilege escalation)
-  assert(true, "Audit logging setup verified");
 });
 
 await test("supabase_vault - Create extension and secret", "security", async () => {

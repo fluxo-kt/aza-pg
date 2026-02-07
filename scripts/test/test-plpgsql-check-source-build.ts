@@ -94,7 +94,6 @@ interface TestResult {
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: Record<string, any>;
 }
 
 const results: TestResult[] = [];

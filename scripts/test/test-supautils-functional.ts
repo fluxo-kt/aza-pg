@@ -389,16 +389,18 @@ await test("Verify supautils hooks don't interfere with standard PostgreSQL", as
   await runSQL("CREATE ROLE test_role_2");
   await runSQL("CREATE ROLE test_role_3");
 
-  // Grant membership
-  await runSQL("GRANT test_role_1 TO test_role_2");
+  try {
+    // Grant membership
+    await runSQL("GRANT test_role_1 TO test_role_2");
 
-  // Revoke membership
-  await runSQL("REVOKE test_role_1 FROM test_role_2");
-
-  // Cleanup
-  await runSQL("DROP ROLE test_role_3");
-  await runSQL("DROP ROLE test_role_2");
-  await runSQL("DROP ROLE test_role_1");
+    // Revoke membership
+    await runSQL("REVOKE test_role_1 FROM test_role_2");
+  } finally {
+    // Cleanup — IF EXISTS guards against stale roles in --container reuse mode
+    await runSQL("DROP ROLE IF EXISTS test_role_3");
+    await runSQL("DROP ROLE IF EXISTS test_role_2");
+    await runSQL("DROP ROLE IF EXISTS test_role_1");
+  }
 });
 
 // ============================================================================

@@ -73,7 +73,7 @@ if (imageTag) {
 }
 
 // Container name (either user-provided or auto-generated)
-let CONTAINER: string;
+let CONTAINER!: string;
 let isOwnContainer = false;
 
 if (containerName) {
@@ -84,9 +84,6 @@ if (containerName) {
   isOwnContainer = true;
   console.log(`Starting new container: ${CONTAINER}`);
   console.log(`Using image: ${imageTag}\n`);
-} else {
-  console.error("Error: Either --image or --container must be specified");
-  process.exit(1);
 }
 
 interface TestResult {

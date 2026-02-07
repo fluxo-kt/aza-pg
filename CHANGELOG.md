@@ -36,7 +36,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Development (non-image)
 
-- Updated Bun dev dependencies: @pgflow/client 0.13.3, @pgflow/dsl 0.13.3, @types/bun 1.3.8, oxlint 1.43.0, prettier 3.8.1, squawk-cli 2.39.0
+- Updated Bun dev dependencies: @pgflow/client 0.13.3, @pgflow/dsl 0.13.3, @types/bun 1.3.8, oxlint 1.43.0, prettier 3.8.1, squawk-cli 2.40.0
 
 ---
 

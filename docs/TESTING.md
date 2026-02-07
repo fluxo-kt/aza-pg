@@ -187,7 +187,7 @@ test("extension works", async () => {
 
 Tests should progress through complexity levels:
 
-```
+```text
 Level 0: Environment validated (prerequisites exist)
          ↓
 Level 1: Container starts and PostgreSQL ready (smoke test)

@@ -492,7 +492,7 @@ bun run build
 ### supautils (Supabase Utilities)
 
 **Status:** Disabled
-**Version:** v3.0.2
+**Version:** v3.1.0
 **Category:** safety
 
 **Why disabled:**

@@ -41,7 +41,7 @@
     "oxlint": "^1.43.0",
     "prettier": "^3.8.1",
     "sql-formatter": "^15.7.0",
-    "squawk-cli": "^2.39.0",
+    "squawk-cli": "^2.40.0",
     "typescript": "^5.9.3"
   },
   "engines": {

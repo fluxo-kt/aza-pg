@@ -14,7 +14,7 @@
         "oxlint": "^1.43.0",
         "prettier": "^3.8.1",
         "sql-formatter": "^15.7.0",
-        "squawk-cli": "^2.39.0",
+        "squawk-cli": "^2.40.0",
         "typescript": "^5.9.3",
       },
     },
@@ -107,7 +107,7 @@
 
     "sql-formatter": ["sql-formatter@15.7.0", "", { "dependencies": { "argparse": "^2.0.1", "nearley": "^2.20.1" }, "bin": { "sql-formatter": "bin/sql-formatter-cli.cjs" } }, "sha512-o2yiy7fYXK1HvzA8P6wwj8QSuwG3e/XcpWht/jIxkQX99c0SVPw0OXdLSV9fHASPiYB09HLA0uq8hokGydi/QA=="],
 
-    "squawk-cli": ["squawk-cli@2.39.0", "", { "dependencies": { "node-fetch": "2.6.7" }, "bin": { "squawk": "js/bin/squawk" } }, "sha512-/VWuYsf2nRzX0JU7ByrCaIZETFUxZVOcaO2BUOlPaWWqfEVjpSjcCk750s0YHMl31r35snsEexlH3riE4znF8w=="],
+    "squawk-cli": ["squawk-cli@2.40.0", "", { "dependencies": { "node-fetch": "2.6.7" }, "bin": { "squawk": "js/bin/squawk" } }, "sha512-noQ6AB9BDW/C2M76Iqc7pOVuh6dNVDCp2sFbJ5WJQl2iBS3ZMvIHZ+WAq+mVBnSb9OE9ftNmCtDtpgkKxiaK4A=="],
 
     "tr46": ["tr46@0.0.3", "", {}, "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="],
 

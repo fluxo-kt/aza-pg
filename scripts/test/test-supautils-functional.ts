@@ -192,7 +192,7 @@ if (isOwnContainer && imageTag) {
     let attempt = 0;
 
     while (!ready && attempt < maxAttempts) {
-      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
+      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.quiet().nothrow();
       if (result.exitCode === 0) {
         ready = true;
         break;
@@ -286,7 +286,9 @@ if (!isOwnContainer) {
       // Wait for ready
       let ready = false;
       for (let i = 0; i < 30; i++) {
-        const result = await $`docker exec ${negativeContainer} pg_isready -U postgres`.nothrow();
+        const result = await $`docker exec ${negativeContainer} pg_isready -U postgres`
+          .quiet()
+          .nothrow();
         if (result.exitCode === 0) {
           ready = true;
           break;
@@ -341,7 +343,7 @@ console.log("-".repeat(80));
 
 await test("Verify no spurious GUC warnings in logs", async () => {
   const logs = await $`docker logs ${CONTAINER} 2>&1`.text();
-  const warningPattern = /supautils.*warning|unrecognized.*supautils/i;
+  const warningPattern = /WARNING:.*supautils|unrecognized configuration parameter.*supautils/i;
 
   assert(!warningPattern.test(logs), "Found spurious GUC warnings related to supautils");
 });

@@ -236,6 +236,9 @@ console.log("=".repeat(80));
 console.log(`Container: ${CONTAINER}`);
 console.log("");
 
+// Derive PG major version dynamically to avoid hardcoded path breakage on upgrades
+const pgMajor = (await runSQL("SHOW server_version")).split(".")[0];
+
 // ============================================================================
 // T4.1: Source Build Verification
 // ============================================================================
@@ -244,14 +247,14 @@ console.log("-".repeat(80));
 
 await test("T4.1.1: Verify .so file exists at expected path", async () => {
   const result =
-    await $`docker exec ${CONTAINER} ls -la /usr/lib/postgresql/18/lib/plpgsql_check.so`.nothrow();
+    await $`docker exec ${CONTAINER} ls -la /usr/lib/postgresql/${pgMajor}/lib/plpgsql_check.so`.nothrow();
   assert(result.exitCode === 0, ".so file not found at expected path");
   assert(result.stdout.toString().includes("plpgsql_check.so"), "Incorrect .so file");
 });
 
 await test("T4.1.2: Verify .control file exists", async () => {
   const result =
-    await $`docker exec ${CONTAINER} ls -la /usr/share/postgresql/18/extension/plpgsql_check.control`.nothrow();
+    await $`docker exec ${CONTAINER} ls -la /usr/share/postgresql/${pgMajor}/extension/plpgsql_check.control`.nothrow();
   assert(result.exitCode === 0, ".control file not found");
   assert(result.stdout.toString().includes("plpgsql_check.control"), "Incorrect .control file");
 });

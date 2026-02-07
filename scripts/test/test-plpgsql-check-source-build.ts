@@ -184,7 +184,7 @@ if (isOwnContainer && imageTag) {
     let attempt = 0;
 
     while (!ready && attempt < maxAttempts) {
-      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
+      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.quiet().nothrow();
       if (result.exitCode === 0) {
         ready = true;
         break;

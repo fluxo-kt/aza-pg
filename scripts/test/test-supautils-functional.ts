@@ -303,7 +303,9 @@ if (!isOwnContainer) {
 
       // Verify supautils GUCs are NOT present
       const checkResult =
-        await $`docker exec ${negativeContainer} psql -U postgres -t -A -c "SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'"`.nothrow();
+        await $`docker exec ${negativeContainer} psql -U postgres -t -A -c "SELECT count(*) FROM pg_settings WHERE name LIKE 'supautils.%'"`
+          .quiet()
+          .nothrow();
       const count = parseInt(checkResult.stdout.toString().trim());
 
       assert(count === 0, `Expected 0 supautils GUCs without preload, found ${count}`);

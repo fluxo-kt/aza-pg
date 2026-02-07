@@ -503,7 +503,7 @@ async function testBucketsPerBatchDefault(): Promise<void> {
       // If it is a GUC, verify the default
       const value = await harness.runSQL(
         container,
-        "SELECT setting FROM pg_settings WHERE name LIKE '%buckets%';"
+        "SELECT setting FROM pg_settings WHERE name LIKE '%buckets_per_batch%';"
       );
       recordTest(
         "T1.8.1: buckets_per_batch default (GUC)",

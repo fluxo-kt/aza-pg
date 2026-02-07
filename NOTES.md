@@ -162,6 +162,10 @@ Container publication
 - https://github.com/percona/postgres-packaging
 - https://render.com/docs/postgresql-extensions
 - https://github.com/supabase/postgres
+- Docker images containing TimescaleDB, Patroni to be used by developers and Kubernetes.
+  - PG, extensions (e.g., PostGIS), TimescaleDB, pgBackRest, Kubernetes Context scripts
+  - https://github.com/timescale/timescaledb-docker-ha
+  - https://hub.docker.com/r/timescale/timescaledb-ha
 - https://ext.pgsty.com/list/
   - https://github.com/pgsty/pigsty/releases/tag/v4.0.0
   - https://github.com/pgsty/pigsty/

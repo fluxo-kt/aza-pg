@@ -38,6 +38,23 @@ interface BaseImageInfo {
   image: string;
 }
 
+interface ShaValidationResult {
+  exists: boolean;
+  rateLimited: boolean;
+  output: string;
+}
+
+function isDockerHubRateLimitError(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("toomanyrequests") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("you have reached your pull rate limit") ||
+    normalized.includes("429")
+  );
+}
+
 /**
  * Extract PG_VERSION and PG_BASE_IMAGE_SHA from Dockerfile
  * Now parses hardcoded FROM statements instead of ARG declarations
@@ -66,19 +83,25 @@ async function extractDockerfileInfo(): Promise<BaseImageInfo> {
 /**
  * Verify SHA exists using docker manifest inspect
  */
-async function verifyShaExists(image: string, sha: string): Promise<boolean> {
+async function verifyShaExists(image: string, sha: string): Promise<ShaValidationResult> {
   info(`Verifying SHA exists: ${image}@${sha}`);
 
   const fullImage = `${image}@${sha}`;
   const result = await dockerRun(["manifest", "inspect", fullImage]);
 
   if (!result.success) {
+    if (isDockerHubRateLimitError(result.output)) {
+      warning("Docker Hub rate limit hit while validating base image SHA");
+      warning("Unable to verify digest existence in this run");
+      return { exists: false, rateLimited: true, output: result.output };
+    }
+
     error(`SHA validation failed: ${result.output}`);
-    return false;
+    return { exists: false, rateLimited: false, output: result.output };
   }
 
   success("SHA is valid and exists on Docker Hub");
-  return true;
+  return { exists: true, rateLimited: false, output: result.output };
 }
 
 /**
@@ -179,6 +202,7 @@ function compareShas(currentSha: string, latestSha: string | null, image: string
  */
 async function validate(checkMode: boolean): Promise<void> {
   const startTime = Date.now();
+  const allowStale = checkMode || Bun.env.ALLOW_STALE_BASE_IMAGE === "1";
 
   section("Base Image SHA Validation");
 
@@ -199,10 +223,18 @@ async function validate(checkMode: boolean): Promise<void> {
   console.log("");
 
   // Verify SHA exists
-  const shaExists = await verifyShaExists(imageInfo.image, imageInfo.sha);
+  const shaValidation = await verifyShaExists(imageInfo.image, imageInfo.sha);
   console.log("");
 
-  if (!shaExists) {
+  if (!shaValidation.exists) {
+    if (shaValidation.rateLimited && allowStale) {
+      warning(
+        "Skipping base image SHA existence check due to Docker Hub rate limit in check/warn mode"
+      );
+      success("Validation completed with rate-limit fallback");
+      return;
+    }
+
     error("SHA validation FAILED: The hardcoded SHA does not exist");
     error("This likely means the SHA is invalid or the image was removed from Docker Hub");
     error("");
@@ -217,9 +249,6 @@ async function validate(checkMode: boolean): Promise<void> {
   const latestSha = await getLatestSha(imageInfo.image);
   const isCurrent = compareShas(imageInfo.sha, latestSha, imageInfo.image);
   console.log("");
-
-  // Determine if staleness should fail the validation
-  const allowStale = checkMode || Bun.env.ALLOW_STALE_BASE_IMAGE === "1";
 
   if (!isCurrent) {
     if (allowStale) {

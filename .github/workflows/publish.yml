@@ -9,9 +9,6 @@ on:
       release_sha:
         description: "Commit SHA to publish (optional override)"
         required: false
-      release_branch:
-        description: "Branch name for cache key/tag context (optional override)"
-        required: false
 
 concurrency:
   group: publish-single-node
@@ -28,7 +25,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   RELEASE_SHA: ${{ github.event.inputs.release_sha || github.sha }}
-  RELEASE_REF_NAME: ${{ github.event.inputs.release_branch || github.ref_name }}
+  RELEASE_REF_NAME: ${{ github.ref_name }}
 
 jobs:
   prep:
@@ -66,6 +63,13 @@ jobs:
       testing_image_name: ${{ steps.config.outputs.testing_image_name }}
 
     steps:
+      - name: Enforce release branch for manual dispatch
+        if: github.event_name == 'workflow_dispatch' && github.ref_name != 'release'
+        run: |
+          set -euo pipefail
+          echo "::error::Manual publish is restricted to the release branch. Current branch: ${GITHUB_REF_NAME}"
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:

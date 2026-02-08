@@ -37,7 +37,7 @@ jobs:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'release')
     environment:
       name: production
     outputs:

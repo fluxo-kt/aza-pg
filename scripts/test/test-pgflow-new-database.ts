@@ -113,7 +113,7 @@ async function runTest() {
             RAISE NOTICE 'supabase_vault extension not available - skipping (optional)';
         END \$\$;
       "`.quiet();
-    } catch (_err) {
+    } catch {
       // supabase_vault is optional, ignore errors
       console.log("⚠️  supabase_vault not available (optional)");
     }

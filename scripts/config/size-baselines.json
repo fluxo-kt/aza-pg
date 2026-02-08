@@ -1,8 +1,8 @@
 {
   "timescaledb": {
-    "min": 0.03,
-    "max": 0.1,
-    "description": "TimescaleDB time-series extension (optimized build)"
+    "min": 0.2,
+    "max": 0.35,
+    "description": "TimescaleDB time-series extension (current optimized build)"
   },
   "pg_stat_monitor": {
     "min": 0.05,
@@ -30,9 +30,9 @@
     "description": "TimescaleDB analytical hyperfunctions"
   },
   "pg_jsonschema": {
-    "min": 2.5,
-    "max": 3.5,
-    "description": "JSON Schema validation (Rust/pgrx, optimized build)"
+    "min": 3.8,
+    "max": 4.0,
+    "description": "JSON Schema validation (Rust/pgrx, current optimized build)"
   },
   "wrappers": {
     "min": 1.5,

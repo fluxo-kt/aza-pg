@@ -244,6 +244,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Local Action Metadata",
+      command: ["bun", "scripts/ci/validate-local-actions.ts"],
+      description: "Validate local GitHub Action metadata and local action references",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly

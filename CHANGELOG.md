@@ -10,6 +10,12 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+_No changes yet._
+
+---
+
+## [v18.1-202602082259] - 2026-02-08
+
 ### Changed
 
 - **TimescaleDB 2.24.0 → 2.25.0**: Major continuous aggregate performance improvements

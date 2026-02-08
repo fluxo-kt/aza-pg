@@ -48,15 +48,9 @@ on:
     branches:
       - main
       - dev
-    paths-ignore:
-      - "*.md"
-      - "**/*.md"
   pull_request:
     branches:
       - "**"
-    paths-ignore:
-      - "*.md"
-      - "**/*.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -83,10 +77,13 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Run fast validation
-        run: bun run validate
+      - name: Run full validation
+        run: bun run validate:all
         env:
           CI: "true"
+
+      - name: Validate pinned base image digest is resolvable
+        run: bun scripts/validate-base-image-sha.ts --check
 
       - name: Run unit tests
         run: |
@@ -114,7 +111,8 @@ jobs:
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Fast validation (oxlint, prettier, tsc)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Full validation (lint, formatting, type-checking, docs links, shell/yaml/docker checks)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Base image digest resolvability check" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Unit tests (auto-config, utils)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Generated files sync (Dockerfile, configs, docs)" >> $GITHUB_STEP_SUMMARY

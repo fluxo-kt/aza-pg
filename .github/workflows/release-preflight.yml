@@ -1,0 +1,58 @@
+name: Release Preflight
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Commit SHA to preflight (optional override)"
+        required: false
+
+concurrency:
+  group: release-preflight-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  preflight:
+    name: Release Preflight Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Verify Dockerfile generation is current
+        run: bun scripts/verify-generated.ts
+
+      - name: Run full validation suite
+        run: bun run validate:all
+
+      - name: Validate pinned base image digest is resolvable
+        run: bun scripts/validate-base-image-sha.ts --check
+
+      - name: Summarize preflight
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "# Release Preflight" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ inputs.release_sha || github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY

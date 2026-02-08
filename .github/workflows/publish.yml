@@ -1,9 +1,19 @@
 name: Publish Single-Node Image
 
 on:
-  push:
-    branches:
-      - release
+  workflow_run:
+    workflows:
+      - Release Preflight
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Commit SHA to publish (optional override)"
+        required: false
+      release_branch:
+        description: "Branch name for cache key/tag context (optional override)"
+        required: false
 
 concurrency:
   group: publish-single-node
@@ -19,12 +29,15 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
+  RELEASE_REF_NAME: ${{ inputs.release_branch || github.event.workflow_run.head_branch || github.ref_name }}
 
 jobs:
   prep:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: production
     outputs:
@@ -58,6 +71,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Load workflow config
         id: config
@@ -112,6 +127,9 @@ jobs:
 
       - name: Validate manifest and full checks
         run: bun run validate:all
+
+      - name: Validate pinned base image digest is resolvable
+        run: bun scripts/validate-base-image-sha.ts --check
 
       - name: Derive catalog statistics
         id: catalog
@@ -188,7 +206,7 @@ jobs:
             org.opencontainers.image.vendor=fluxo-kt
             org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
             org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ env.RELEASE_SHA }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
             org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
@@ -203,7 +221,7 @@ jobs:
             index,manifest:org.opencontainers.image.vendor=fluxo-kt
             index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
             index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
-            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.revision=${{ env.RELEASE_SHA }}
             index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
@@ -219,7 +237,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/release/generate-cache-key.ts \
-            --branch="${{ github.ref_name }}" \
+            --branch="${{ env.RELEASE_REF_NAME }}" \
             --content-hash="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}" \
             --github-output
 
@@ -252,6 +270,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up Docker Buildx
         uses: ./.github/actions/setup-buildx
@@ -273,7 +293,7 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           build-args: |
             BUILD_DATE=${{ needs.prep.outputs.timestamp }}
-            VCS_REF=${{ github.sha }}
+            VCS_REF=${{ env.RELEASE_SHA }}
           cache-from: |
             type=gha,scope=aza-pg-${{ matrix.artifact }}
             type=gha,scope=aza-pg-base
@@ -330,6 +350,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -382,7 +404,7 @@ jobs:
 
           # Create manifest using TypeScript script (now runs from repo root)
           bun scripts/docker/create-manifest.ts \
-            --tag "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
+            --tag "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --sources "$SOURCES" \
             --title "aza-pg Single-Node PostgreSQL" \
             --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
@@ -397,7 +419,7 @@ jobs:
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
             --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
             --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
-            --revision "${{ github.sha }}" \
+            --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}" \
             --github-output
 
@@ -405,7 +427,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/validate-manifest.ts \
-            --manifest "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
+            --manifest "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --platforms "linux/amd64,linux/arm64" \
             --require-annotations
 
@@ -413,12 +435,12 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --max-retries 3
 
           # Extract PostgreSQL version from built image
           PG_VERSION_OUTPUT=$(docker run --rm \
-            ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }} \
+            ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }} \
             psql --version)
           echo "PostgreSQL version output: ${PG_VERSION_OUTPUT}"
 
@@ -442,7 +464,7 @@ jobs:
           bun scripts/check-size-regression.ts
         env:
           # Point to the testing image we just pulled
-          POSTGRES_IMAGE: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          POSTGRES_IMAGE: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
           # REQUIRE_DOCKER=true makes this check FAIL instead of skip if Docker/image unavailable
           # This ensures size regression checks actually run in the publish workflow
           REQUIRE_DOCKER: "true"
@@ -465,6 +487,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -472,8 +496,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -490,7 +514,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running basic smoke tests on multi-arch image..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/docker/test-image.ts "${POSTGRES_IMAGE}" --fast
 
       - name: Capture test diagnostics
@@ -508,7 +532,7 @@ jobs:
           set -euo pipefail
           echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
 
   test-extensions:
@@ -520,6 +544,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -527,8 +553,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -539,35 +565,35 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing core extension loading..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
-          bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
+          bun scripts/test/test-extensions.ts --image="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
 
       - name: Run extension smoke tests
         run: |
           set -euo pipefail
           echo "Running extension functional validation..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/run-extension-smoke.ts
 
       - name: Test disabled extensions
         run: |
           set -euo pipefail
           echo "Verifying disabled extensions are not available..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/test-disabled-extensions.ts
 
       - name: Test hook extensions
         run: |
           set -euo pipefail
           echo "Testing hook-based extensions..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun test ./scripts/test/test-hook-extensions.ts
 
       - name: Test extension combinations
         run: |
           set -euo pipefail
           echo "Testing extension combinations..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/test-integration-extension-combinations.ts
 
       - name: Capture test diagnostics
@@ -603,6 +629,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -610,8 +638,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -622,7 +650,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing auto-config functionality..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/test-auto-config.ts
 
       - name: Setup pgflow test container
@@ -631,7 +659,7 @@ jobs:
           # Setup container for pgflow tests (per-project installation)
           bun scripts/docker/setup-pgflow-container.ts \
             --name publish-pgflow-test \
-            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --password test_pgflow_pass \
             --database pgflow_test \
             --memory 2048 \
@@ -642,7 +670,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: pgflow-setup-logs-${{ github.sha }}
+          name: pgflow-setup-logs-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/pgflow-setup-logs
           retention-days: 7
           if-no-files-found: ignore
@@ -651,7 +679,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing pgflow (per-project installation)..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/test-pgflow-schema.ts --container=publish-pgflow-test --database=pgflow_test
           bun scripts/test/test-pgflow-functional.ts --container=publish-pgflow-test --database=pgflow_test
 
@@ -660,14 +688,14 @@ jobs:
         run: |
           set -euo pipefail
           echo "Testing PgBouncer health check..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun scripts/test/test-pgbouncer-healthcheck.ts
 
       - name: Test negative scenarios
         run: |
           set -euo pipefail
           echo "Testing negative scenarios (error handling)..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun test ./scripts/test/test-negative-scenarios.ts
 
       - name: Cleanup pgflow test containers
@@ -708,6 +736,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -715,8 +745,8 @@ jobs:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
-          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
-          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+          image-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -727,7 +757,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running security hardening tests..."
-          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}"
+          export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
           bun test scripts/test/test-security.test.ts
 
       - name: Capture test diagnostics
@@ -758,13 +788,14 @@ jobs:
     uses: ./.github/workflows/regression-tests.yml
     needs: [prep, merge, test-smoke]
     with:
-      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.sha }}
+      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
     secrets: inherit
 
   test-complete:
     name: All Tests Complete
     runs-on: ubuntu-latest
-    needs: [test-smoke, test-extensions, test-features, test-security, regression-tests]
+    needs:
+      [prep, merge, test-smoke, test-extensions, test-features, test-security, regression-tests]
     timeout-minutes: 1
     if: always()
 
@@ -774,30 +805,36 @@ jobs:
           set -euo pipefail
           echo "Checking comprehensive test results..."
 
+          if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
+            echo "::notice::Comprehensive tests were not executed because upstream prep/merge did not complete successfully."
+            echo "prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}"
+            exit 0
+          fi
+
           FAILED=0
 
-          if [ "${{ needs.test-smoke.result }}" != "success" ]; then
-            echo "::error::Smoke tests failed"
+          if [ "${{ needs.test-smoke.result }}" = "failure" ] || [ "${{ needs.test-smoke.result }}" = "cancelled" ]; then
+            echo "::error::Smoke tests ended with ${{ needs.test-smoke.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
-            echo "::error::Extension tests failed"
+          if [ "${{ needs.test-extensions.result }}" = "failure" ] || [ "${{ needs.test-extensions.result }}" = "cancelled" ]; then
+            echo "::error::Extension tests ended with ${{ needs.test-extensions.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-features.result }}" != "success" ]; then
-            echo "::error::Feature tests failed"
+          if [ "${{ needs.test-features.result }}" = "failure" ] || [ "${{ needs.test-features.result }}" = "cancelled" ]; then
+            echo "::error::Feature tests ended with ${{ needs.test-features.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-security.result }}" != "success" ]; then
-            echo "::error::Security tests failed"
+          if [ "${{ needs.test-security.result }}" = "failure" ] || [ "${{ needs.test-security.result }}" = "cancelled" ]; then
+            echo "::error::Security tests ended with ${{ needs.test-security.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.regression-tests.result }}" != "success" ]; then
-            echo "::error::Regression tests failed"
+          if [ "${{ needs.regression-tests.result }}" = "failure" ] || [ "${{ needs.regression-tests.result }}" = "cancelled" ]; then
+            echo "::error::Regression tests ended with ${{ needs.regression-tests.result }}"
             FAILED=1
           fi
 
@@ -816,16 +853,25 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Upstream Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Prepare Build Metadata | \`${{ needs.prep.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Create Multi-Platform Manifest | \`${{ needs.merge.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Smoke Tests | ${{ needs.test-smoke.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Extension Tests | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Feature Tests | ${{ needs.test-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Tests | ${{ needs.test-security.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Regression Tests | ${{ needs.regression-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | \`${{ needs.test-smoke.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extension Tests | \`${{ needs.test-extensions.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Feature Tests | \`${{ needs.test-features.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Tests | \`${{ needs.test-security.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Tests | \`${{ needs.regression-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.test-smoke.result }}" = "success" ] && \
+          if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
+            echo "## ⏭️ Test Gate: BLOCKED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Comprehensive suites were skipped because upstream build stages did not complete successfully." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.test-smoke.result }}" = "success" ] && \
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-features.result }}" = "success" ] && \
              [ "${{ needs.test-security.result }}" = "success" ] && \
@@ -850,6 +896,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Validate merge digest
         run: |
@@ -952,7 +1000,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: scan-failure-diagnostics-${{ github.sha }}
+          name: scan-failure-diagnostics-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/scan-diagnostics/*
           if-no-files-found: warn
           retention-days: 7
@@ -962,7 +1010,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "⚠️ Security scan failed - marking for cleanup"
-          echo "The testing tag 'testing-${{ github.sha }}' will be removed by the cleanup job"
+          echo "The testing tag 'testing-${{ env.RELEASE_SHA }}' will be removed by the cleanup job"
           # The dedicated cleanup job will handle the actual deletion
           # This avoids redundant tool installations and ensures consistent cleanup
 
@@ -981,6 +1029,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -1037,7 +1087,7 @@ jobs:
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
             --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
             --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
-            --revision "${{ github.sha }}" \
+            --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
       - name: Sign all convenience tags
@@ -1288,6 +1338,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -1367,7 +1419,7 @@ jobs:
               echo "Creating lightweight tag for release..."
 
               RELEASE_TAG="v${{ needs.prep.outputs.version_tag }}"
-              EXPECTED_COMMIT="${{ github.sha }}"
+              EXPECTED_COMMIT="${{ env.RELEASE_SHA }}"
 
               # Verify we're on the expected commit before creating tag
               ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -1427,6 +1479,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun

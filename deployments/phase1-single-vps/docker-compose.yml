@@ -95,7 +95,9 @@ services:
     container_name: postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${MONITORING_USER:-monitoring}:${MONITORING_PASSWORD:?MONITORING_PASSWORD not set}@postgres:5432/${POSTGRES_DB:-main}?sslmode=disable"
+      DATA_SOURCE_NAME: >-
+        postgresql://${MONITORING_USER:-monitoring}:${MONITORING_PASSWORD:?MONITORING_PASSWORD not
+        set}@postgres:5432/${POSTGRES_DB:-main}?sslmode=disable
       PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
       PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
     volumes:

@@ -1044,14 +1044,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
         with:
-          cosign-release: "v2.4.1"
+          cosign-release: "v3.0.4"
 
       - name: Sign container image with Cosign (keyless OIDC)
         env:
           DIGEST: ${{ needs.merge.outputs.image_digest }}
-          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
         run: |
           set -euo pipefail  # Exit on any error
           # Sign by digest using testing repository reference (immutable reference)
@@ -1086,8 +1085,6 @@ jobs:
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
       - name: Sign all convenience tags
-        env:
-          COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
           bun scripts/release/sign-tags.ts \
@@ -1096,8 +1093,6 @@ jobs:
             --yes
 
       - name: Verify Cosign signatures
-        env:
-          COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
           echo "🔍 Verifying signatures for all published tags..."

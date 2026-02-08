@@ -44,8 +44,6 @@
  *
  *   # Usage in publish.yml workflow
  *   - name: Sign production tags
- *     env:
- *       COSIGN_EXPERIMENTAL: "1"
  *     run: |
  *       bun scripts/release/sign-tags.ts \
  *         --repository ghcr.io/fluxo-kt/aza-pg \
@@ -53,7 +51,7 @@
  *         --yes
  *
  * Cosign Keyless OIDC Details:
- *   - COSIGN_EXPERIMENTAL=1 enables keyless mode
+ *   - Keyless signing is default in Cosign v3+
  *   - Uses GitHub OIDC token for signing (no private key needed)
  *   - Signature stored in Rekor transparency log (sigstore.dev)
  *   - Verification: cosign verify --certificate-identity=... --certificate-oidc-issuer=... <image>
@@ -126,8 +124,6 @@ Examples:
 
   # Usage in publish.yml workflow
   - name: Sign production tags
-    env:
-      COSIGN_EXPERIMENTAL: "1"
     run: |
       bun scripts/release/sign-tags.ts \\
         --repository ghcr.io/fluxo-kt/aza-pg \\
@@ -135,7 +131,7 @@ Examples:
         --yes
 
 Cosign Keyless OIDC Details:
-  - COSIGN_EXPERIMENTAL=1 enables keyless mode
+  - Keyless signing is default in Cosign v3+
   - Uses GitHub OIDC token for signing (no private key needed)
   - Signature stored in Rekor transparency log (sigstore.dev)
   - Verification: cosign verify --certificate-identity=... --certificate-oidc-issuer=... <image>
@@ -274,15 +270,6 @@ async function checkOIDCToken(): Promise<void> {
       if (Bun.env.GITHUB_ACTIONS === "true") {
         console.log("::warning::OIDC token not available - ensure 'id-token: write' permission");
       }
-    }
-  }
-
-  // Check if COSIGN_EXPERIMENTAL is set
-  if (Bun.env.COSIGN_EXPERIMENTAL !== "1") {
-    warning("COSIGN_EXPERIMENTAL is not set to 1 - keyless signing may not work");
-    warning("Set 'COSIGN_EXPERIMENTAL=1' environment variable for keyless mode");
-    if (Bun.env.GITHUB_ACTIONS === "true") {
-      console.log("::warning::COSIGN_EXPERIMENTAL not set - keyless signing may fail");
     }
   }
 }

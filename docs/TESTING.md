@@ -4,7 +4,7 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 
 ## Table of Contents
 
-1. [Smoke Test Pattern (Critical - Read This First!)](#smoke-test-pattern-critical---read-this-first)
+1. [Smoke Test Pattern (Critical - Read This First!)](#smoke-test-pattern-critical-read-this-first)
 2. [Regression Testing](#regression-testing)
 3. [Regression Test Suites](#regression-test-suites)
    - [PostgreSQL Official Regression Tests (Tier 1)](#postgresql-official-regression-tests-tier-1)

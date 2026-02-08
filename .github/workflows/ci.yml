@@ -78,9 +78,7 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD:/work" -w /work rhysd/actionlint:1.7.8 \
             -shellcheck= -pyflakes= \
-            .github/workflows/ci.yml \
-            .github/workflows/publish.yml \
-            .github/workflows/regression-tests.yml
+            .github/workflows/*.yml
 
   # ==========================================================================
   # Job 2: Validate (fast checks + unit tests)

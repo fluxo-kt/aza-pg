@@ -29,8 +29,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
-  RELEASE_REF_NAME: ${{ inputs.release_branch || github.event.workflow_run.head_branch || github.ref_name }}
+  RELEASE_SHA: ${{ github.event.inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
+  RELEASE_REF_NAME: ${{ github.event.inputs.release_branch || github.event.workflow_run.head_branch || github.ref_name }}
 
 jobs:
   prep:

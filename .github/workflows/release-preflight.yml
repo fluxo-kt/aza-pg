@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_sha || github.sha }}
+          ref: ${{ github.event.inputs.release_sha || github.sha }}
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -54,5 +54,5 @@ jobs:
           echo "# Release Preflight" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: \`${{ inputs.release_sha || github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.event.inputs.release_sha || github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Status: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY

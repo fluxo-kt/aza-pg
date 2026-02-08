@@ -542,12 +542,8 @@ const allChecks: Check[] = [
   {
     name: "YAML Lint",
     category: "validation",
-    command: [
-      "sh",
-      "-c",
-      'docker run --rm -v "$(pwd):/work:ro" cytopia/yamllint -c /work/.yamllint /work/.github /work/stacks /work/docker /work/examples /work/scripts',
-    ],
-    description: "YAML file linting (yamllint)",
+    command: ["bun", "scripts/ci/lint-yaml-tracked.ts"],
+    description: "YAML file linting for all tracked YAML files",
     critical: true,
     requiresDocker: true,
     envOverride: "ALLOW_MISSING_YAMLLINT",

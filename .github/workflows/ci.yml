@@ -63,6 +63,7 @@ permissions:
 jobs:
   # ==========================================================================
   # Job 1: Lint workflows (fail fast on invalid GitHub Actions expressions)
+  # Note: local action metadata is validated in validate:all via validate-local-actions.ts
   # ==========================================================================
   lint-workflows:
     name: Lint Workflows
@@ -73,7 +74,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Validate workflow syntax and expressions
+      - name: Validate workflow syntax and expressions (workflows only)
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/work" -w /work rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36 \

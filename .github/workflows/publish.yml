@@ -1,14 +1,13 @@
 name: Publish Single-Node Image
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - release
-  workflow_dispatch:
-    inputs:
-      release_sha:
-        description: "Commit SHA to publish (optional override)"
-        required: false
 
 concurrency:
   group: publish-single-node
@@ -24,14 +23,18 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  RELEASE_SHA: ${{ github.event.inputs.release_sha || github.sha }}
-  RELEASE_REF_NAME: ${{ github.ref_name }}
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+  RELEASE_REF_NAME: ${{ github.event.workflow_run.head_branch }}
 
 jobs:
   prep:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'release' &&
+      github.event.workflow_run.event == 'push'
     environment:
       name: production
     outputs:
@@ -63,13 +66,6 @@ jobs:
       testing_image_name: ${{ steps.config.outputs.testing_image_name }}
 
     steps:
-      - name: Enforce release branch for manual dispatch
-        if: github.event_name == 'workflow_dispatch' && github.ref_name != 'release'
-        run: |
-          set -euo pipefail
-          echo "::error::Manual publish is restricted to the release branch. Current branch: ${GITHUB_REF_NAME}"
-          exit 1
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
@@ -789,7 +785,7 @@ jobs:
     uses: ./.github/workflows/regression-tests.yml
     needs: [prep, merge, test-smoke]
     with:
-      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.event.inputs.release_sha || github.sha }}
+      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.event.workflow_run.head_sha }}
     secrets: inherit
 
   test-complete:

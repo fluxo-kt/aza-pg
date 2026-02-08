@@ -7,16 +7,17 @@
 # Comprehensive test suite for all PRs and commits to main/dev branches.
 # Validates code quality, builds Docker image, and runs extensive test suite.
 #
-# PIPELINE STRUCTURE (8 jobs, ~38min total):
+# PIPELINE STRUCTURE (9 jobs, ~39min total):
 # ------------------------------------------
-# 1. validate              (~2min)  - Fast validation, unit tests, manifest checks
-# 2. build                 (~15min) - Build Docker image, export as artifact
-# 3. test-extensions        (~15min) - Extension loading, smoke tests, combinations
-# 4. test-stacks           (~10min) - Single stack deployment tests
-# 5. test-security         (~5min)  - Security hardening tests
-# 6. test-features         (~15min) - Auto-config, pgflow, pgbouncer, negative tests
-# 7. regression-tests-fast (~3min)  - Tier 1 regression tests (4 tests, production mode)
-# 8. ci-complete           (~10s)   - Final gate, summary
+# 1. lint-workflows        (~1min)  - Workflow syntax/expression validation
+# 2. validate              (~2min)  - Fast validation, unit tests, manifest checks
+# 3. build                 (~15min) - Build Docker image, export as artifact
+# 4. test-extensions       (~15min) - Extension loading, smoke tests, combinations
+# 5. test-stacks           (~10min) - Single stack deployment tests
+# 6. test-security         (~5min)  - Security hardening tests
+# 7. test-features         (~15min) - Auto-config, pgflow, pgbouncer, negative tests
+# 8. regression-tests-fast (~3min)  - Tier 1 regression tests (4 tests, production mode)
+# 9. ci-complete           (~10s)   - Final gate, summary
 #
 # PARALLELIZATION:
 # ---------------
@@ -61,11 +62,33 @@ permissions:
 
 jobs:
   # ==========================================================================
-  # Job 1: Validate (fast checks + unit tests)
+  # Job 1: Lint workflows (fail fast on invalid GitHub Actions expressions)
+  # ==========================================================================
+  lint-workflows:
+    name: Lint Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate workflow syntax and expressions
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work rhysd/actionlint:1.7.8 \
+            -shellcheck= -pyflakes= \
+            .github/workflows/ci.yml \
+            .github/workflows/publish.yml \
+            .github/workflows/regression-tests.yml
+
+  # ==========================================================================
+  # Job 2: Validate (fast checks + unit tests)
   # ==========================================================================
   validate:
     name: Validate & Unit Tests
     runs-on: ubuntu-latest
+    needs: lint-workflows
     timeout-minutes: 10
     # Skip pull_request events from dev branch (push trigger already handles dev)
     if: github.event_name != 'pull_request' || github.head_ref != 'dev'

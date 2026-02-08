@@ -63,6 +63,20 @@ async function main() {
 
   info("Extracting workflow input defaults...");
 
+  const tracksVersionInputs =
+    /\n\s+pg_version:\s*\n/.test(workflowContent) ||
+    /\n\s+pgvector_version:\s*\n/.test(workflowContent) ||
+    /\n\s+pg_cron_version:\s*\n/.test(workflowContent) ||
+    /\n\s+pgaudit_version:\s*\n/.test(workflowContent);
+
+  if (!tracksVersionInputs) {
+    info("Workflow no longer defines version override defaults in workflow_dispatch inputs.");
+    info("Version sources are managed from manifest data and generated defaults.");
+    success("No workflow version defaults to validate.");
+    console.log("");
+    process.exit(0);
+  }
+
   // Extract defaults from workflow YAML
   // Format: default: "0.8.1"
   const pgVersionMatch = workflowContent.match(/pg_version:[\s\S]*?default:\s*["']?(\d+)["']?/);

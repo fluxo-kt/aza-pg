@@ -1,11 +1,9 @@
 name: Publish Single-Node Image
 
 on:
-  workflow_run:
-    workflows:
-      - Release Preflight
-    types:
-      - completed
+  push:
+    branches:
+      - release
   workflow_dispatch:
     inputs:
       release_sha:
@@ -29,15 +27,14 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  RELEASE_SHA: ${{ github.event.inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
-  RELEASE_REF_NAME: ${{ github.event.inputs.release_branch || github.event.workflow_run.head_branch || github.ref_name }}
+  RELEASE_SHA: ${{ github.event.inputs.release_sha || github.sha }}
+  RELEASE_REF_NAME: ${{ github.event.inputs.release_branch || github.ref_name }}
 
 jobs:
   prep:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'release')
     environment:
       name: production
     outputs:
@@ -65,7 +62,7 @@ jobs:
       content_hash: ${{ steps.cache-key.outputs.content_hash }}
       meta_labels: ${{ steps.meta.outputs.labels }}
       meta_annotations: ${{ steps.meta.outputs.annotations }}
-      bun_version: ${{ steps.bun-version.outputs.version }}
+      bun_version: ${{ steps.bun-version.outputs.bun-version }}
       testing_image_name: ${{ steps.config.outputs.testing_image_name }}
 
     steps:
@@ -788,7 +785,7 @@ jobs:
     uses: ./.github/workflows/regression-tests.yml
     needs: [prep, merge, test-smoke]
     with:
-      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
+      image_ref: ghcr.io/${{ needs.prep.outputs.testing_image_name }}:testing-${{ github.event.inputs.release_sha || github.sha }}
     secrets: inherit
 
   test-complete:

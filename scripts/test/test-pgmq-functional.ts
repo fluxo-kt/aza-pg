@@ -9,6 +9,7 @@
  * - Visibility timeout (read with timeout, set VT, polling)
  * - Message lifecycle (delete, batch delete, archive, batch archive)
  * - FIFO queues (v1.9.0): read_grouped, read_grouped_rr, create_fifo_index
+ * - Topic routing (v1.11.0): bind_topic, send_topic, unbind_topic, list_topic_bindings
  * - Queue management (purge, metrics)
  * - Error handling (non-existent queues, invalid operations)
  * - Performance metrics (throughput, latency)
@@ -856,6 +857,97 @@ await test("Error: send to dropped queue fails", async () => {
   console.log("   📊 Error handling verified: send to dropped queue fails");
 });
 
+// Test 27a: Topic routing - bind patterns and fan-out (v1.11.0)
+await test("Topic routing - bind_topic and send_topic fan-out (v1.11.0)", async () => {
+  // Create two queues that will receive topic messages
+  await runSQL("SELECT pgmq.create('topic_queue_all_logs')");
+  await runSQL("SELECT pgmq.create('topic_queue_errors')");
+
+  // Bind AMQP-style wildcard patterns:
+  // '#' matches zero or more dot-separated segments
+  // '*' matches exactly one segment
+  const bindAll = await runSQL("SELECT pgmq.bind_topic('logs.#', 'topic_queue_all_logs')");
+  assert(bindAll.success, `bind_topic failed: ${bindAll.stderr}`);
+
+  const bindErrors = await runSQL("SELECT pgmq.bind_topic('logs.*.error', 'topic_queue_errors')");
+  assert(bindErrors.success, `bind_topic for errors failed: ${bindErrors.stderr}`);
+
+  // Send to 'logs.api.error' — matches both patterns
+  const send = await runSQL(
+    `SELECT pgmq.send_topic('logs.api.error', '{"message": "API failed"}'::jsonb)`
+  );
+  assert(send.success, `send_topic failed: ${send.stderr}`);
+  // Returns the count of queues the message was fanned out to (should be 2)
+  const fanOutCount = parseInt(send.stdout);
+  assert(fanOutCount === 2, `Expected fan-out to 2 queues, got ${fanOutCount}`);
+
+  // Verify both queues received the message
+  const allLogs = await runSQL("SELECT count(*) FROM pgmq.read('topic_queue_all_logs', 30, 10)");
+  assert(
+    allLogs.success && parseInt(allLogs.stdout) === 1,
+    "topic_queue_all_logs should have 1 message"
+  );
+
+  const errors = await runSQL("SELECT count(*) FROM pgmq.read('topic_queue_errors', 30, 10)");
+  assert(
+    errors.success && parseInt(errors.stdout) === 1,
+    "topic_queue_errors should have 1 message"
+  );
+
+  console.log(`   📊 Topic fan-out verified: 1 message → ${fanOutCount} queues`);
+});
+
+// Test 27b: Topic routing - pattern selectivity (v1.11.0)
+await test("Topic routing - pattern selectivity (* vs #) (v1.11.0)", async () => {
+  await runSQL("SELECT pgmq.create('topic_queue_deep')");
+  // 'logs.#' matches anything under logs (already bound above to topic_queue_all_logs)
+  await runSQL("SELECT pgmq.bind_topic('logs.#', 'topic_queue_deep')");
+
+  // 'logs.info' — matches 'logs.*' (one segment) but NOT 'logs.*.error'
+  const sendInfo = await runSQL(`SELECT pgmq.send_topic('logs.info', '{"level": "info"}'::jsonb)`);
+  assert(sendInfo.success, `send_topic info failed: ${sendInfo.stderr}`);
+  // Should reach topic_queue_all_logs and topic_queue_deep, but NOT topic_queue_errors
+  const infoCount = parseInt(sendInfo.stdout);
+  assert(infoCount === 2, `Expected info to reach 2 queues (not errors), got ${infoCount}`);
+
+  // Verify validate helpers work
+  const validKey = await runSQL("SELECT pgmq.validate_routing_key('logs.api.error')");
+  assert(validKey.success && validKey.stdout === "t", "Valid routing key should return true");
+
+  const validPattern = await runSQL("SELECT pgmq.validate_topic_pattern('logs.#')");
+  assert(validPattern.success && validPattern.stdout === "t", "Valid pattern should return true");
+
+  console.log(
+    `   📊 Pattern selectivity verified: info reached ${infoCount} queues (not error queue)`
+  );
+});
+
+// Test 27c: Topic routing - list and unbind (v1.11.0)
+await test("Topic routing - list_topic_bindings and unbind_topic (v1.11.0)", async () => {
+  // List all bindings — should see our bound patterns
+  const bindings = await runSQL(
+    "SELECT pattern, queue_name FROM pgmq.list_topic_bindings() WHERE queue_name LIKE 'topic_queue_%' ORDER BY queue_name, pattern"
+  );
+  assert(bindings.success, `list_topic_bindings failed: ${bindings.stderr}`);
+  assert(bindings.stdout.length > 0, "Should have topic bindings");
+
+  // Unbind the error pattern
+  const unbind = await runSQL("SELECT pgmq.unbind_topic('logs.*.error', 'topic_queue_errors')");
+  assert(unbind.success, `unbind_topic failed: ${unbind.stderr}`);
+  assert(unbind.stdout === "t", `unbind_topic should return true, got: ${unbind.stdout}`);
+
+  // After unbinding, send should no longer reach errors queue
+  const sendAfter = await runSQL(
+    `SELECT pgmq.send_topic('logs.api.error', '{"after": "unbind"}'::jsonb)`
+  );
+  assert(sendAfter.success, `send_topic after unbind failed: ${sendAfter.stderr}`);
+  // Now only reaches topic_queue_all_logs and topic_queue_deep (not topic_queue_errors)
+  const afterCount = parseInt(sendAfter.stdout);
+  assert(afterCount === 2, `Expected 2 queues after unbind (not 3), got ${afterCount}`);
+
+  console.log(`   📊 Unbind verified: after unbind, message reaches ${afterCount} queues`);
+});
+
 // Test 27: Drop Queue (cleanup)
 await test("Drop queue", async () => {
   // Drop all test queues
@@ -881,6 +973,9 @@ await test("Drop queue", async () => {
     "test_meta_part",
     "test_meta_unlogged",
     "test_queue_error_delete",
+    "topic_queue_all_logs",
+    "topic_queue_errors",
+    "topic_queue_deep",
   ];
 
   for (const queue of queues) {

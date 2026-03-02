@@ -167,8 +167,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.10.0",
-        "commit": "51d7655a097d91bf05ad5ae40dd604aa067ed355"
+        "tag": "v1.11.0",
+        "commit": "ae5d34e096608666816d207d0c4b0342e0d58b64"
       },
       "build": {
         "type": "pgxs",
@@ -179,8 +179,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.10.0 with PG18 support",
-          "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support"
+          "Source build for latest v1.11.0 with PG18 support",
+          "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",

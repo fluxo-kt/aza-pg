@@ -772,7 +772,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.10.0",
+      tag: "v1.11.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -780,8 +780,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-        "Source build for latest v1.10.0 with PG18 support",
-        "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support",
+        "Source build for latest v1.11.0 with PG18 support",
+        "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",

@@ -390,21 +390,21 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "plpgsql_check",
     kind: "extension",
-    install_via: "source",
+    install_via: "pgdg",
+    pgdgVersion: "2.8.11-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.8.8",
+      tag: "v2.8.11",
     },
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "Built from source (PGDG v2.8.8 not yet available)",
-        "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings",
+        "PGDG: postgresql-18-plpgsql-check (v2.8.11-1.pgdg13+1)",
+        "v2.8.11: Fixed false errors on composite constants and domain types",
       ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",

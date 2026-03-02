@@ -118,9 +118,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### quality
 
-| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.8](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.8) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 

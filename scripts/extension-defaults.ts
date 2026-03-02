@@ -24,6 +24,7 @@ export interface ExtensionDefaults {
     pgcron: string;
     pgrouting: string;
     pgvector: string;
+    plpgsqlCheck: string;
     postgis: string;
     repack: string;
     rum: string;
@@ -46,6 +47,7 @@ export const extensionDefaults: ExtensionDefaults = {
     pgcron: "1.6.7-2.pgdg13+1",
     pgrouting: "4.0.1-1.pgdg13+1",
     pgvector: "0.8.2-1.pgdg13+1",
+    plpgsqlCheck: "2.8.11-1.pgdg13+1",
     postgis: "3.6.2+dfsg-1.pgdg13+1",
     repack: "1.5.3-1.pgdg13+1",
     rum: "1.3.15-1.pgdg13+1",
@@ -80,6 +82,7 @@ if (import.meta.main) {
     console.log(`PGCRON_VERSION="${extensionDefaults.pgdgVersions.pgcron}"`);
     console.log(`PGROUTING_VERSION="${extensionDefaults.pgdgVersions.pgrouting}"`);
     console.log(`PGVECTOR_VERSION="${extensionDefaults.pgdgVersions.pgvector}"`);
+    console.log(`PLPGSQL_CHECK_VERSION="${extensionDefaults.pgdgVersions.plpgsqlCheck}"`);
     console.log(`POSTGIS_VERSION="${extensionDefaults.pgdgVersions.postgis}"`);
     console.log(`REPACK_VERSION="${extensionDefaults.pgdgVersions.repack}"`);
     console.log(`RUM_VERSION="${extensionDefaults.pgdgVersions.rum}"`);

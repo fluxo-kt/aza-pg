@@ -28,7 +28,7 @@ EXTENSIONS (CREATE EXTENSION available)
   pgroonga                     v4.0.5         search
   pgsodium                     v3.1.9         security
   plpgsql                      builtin        language
-  plpgsql_check                v2.8.8         quality
+  plpgsql_check                v2.8.11        quality
   rum                          v1.3.15        search
   set_user                     v4.2.0         security
   supabase_vault               v0.3.1         security

@@ -281,32 +281,6 @@
       "docsUrl": "https://michelp.github.io/pgsodium"
     },
     {
-      "name": "plpgsql_check",
-      "kind": "extension",
-      "install_via": "source",
-      "category": "quality",
-      "description": "Static analyzer for PL/pgSQL functions and triggers.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.8",
-        "commit": "3a7c22b22b5db5a76ea4538cc24d09cb4a3ce588"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "Built from source (PGDG v2.8.8 not yet available)",
-          "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings"
-        ]
-      },
-      "sourceUrl": "https://github.com/okbob/plpgsql_check",
-      "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
-    },
-    {
       "name": "supabase_vault",
       "displayName": "vault",
       "kind": "extension",

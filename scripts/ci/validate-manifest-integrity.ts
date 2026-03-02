@@ -28,6 +28,7 @@ const NAME_TO_KEY: Record<string, string> = {
   hll: "hll",
   http: "http",
   hypopg: "hypopg",
+  plpgsql_check: "plpgsqlCheck",
   pgrouting: "pgrouting",
   rum: "rum",
   set_user: "setUser",
@@ -46,6 +47,7 @@ const PGDG_MAPPING_NAMES = new Set([
   "set_user",
   "pgrouting",
   "pgaudit",
+  "plpgsql_check",
 ]);
 
 interface ValidationError {

@@ -37,7 +37,7 @@ EXTENSIONS (CREATE EXTENSION available)
   timescaledb_toolkit          v1.22.0        timeseries
   vector                       v0.8.2         ai
   vectorscale                  v0.9.0         ai
-  wrappers                     v0.5.7         integration
+  wrappers                     v0.6.0         integration
 
 Total: 31 extensions
 

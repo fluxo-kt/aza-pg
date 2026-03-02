@@ -518,7 +518,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/wrappers.git",
-      tag: "v0.5.7",
+      tag: "v0.6.0",
     },
     build: {
       type: "cargo-pgrx",
@@ -531,8 +531,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
       "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-      "v0.5.7: MotherDuck FDW, ClickHouse stream_buffer_size, Iceberg batch_size, S3 vectors embd→s3vec rename.",
-      "NOT available in PGDG. Pigsty has v0.5.0 (2 versions behind). Building from source for latest.",
+      "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+      "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest.",
     ],
     sourceUrl: "https://github.com/supabase/wrappers",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/wrappers/overview",

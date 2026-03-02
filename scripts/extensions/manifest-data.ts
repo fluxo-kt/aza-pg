@@ -1017,7 +1017,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.4.0",
+      tag: "v5.4.2",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1027,6 +1027,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadLibraryName: "pg_partman_bgw",
       notes: [
         "Built from source (PGDG package not available for PG18)",
+        "v5.4.2: search_path injection hardening (v5.4.1) + regression fix for non-default schemas",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
     },

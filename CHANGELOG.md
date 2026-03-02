@@ -10,7 +10,20 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-_No changes yet._
+### Changed
+
+- **PostgreSQL 18.1 → 18.3**: 5 CVEs fixed (including CVSS 8.8 intarray arbitrary code execution), emergency regression fixes from 18.2. ⚠️ If upgrading from pre-18.2: ltree column indexes may need `REINDEX`
+- **pgvector 0.8.1 → 0.8.2**: Fixed buffer overflow in parallel HNSW builds; fixed Index Searches in EXPLAIN output for PG18
+- **plpgsql_check 2.8.8 → 2.8.11**: Switched from source build to PGDG apt (faster builds); fixed false errors on composite constants and domain types
+- **pg_partman 5.4.0 → 5.4.2**: Security hardening against search_path injection (v5.4.1); regression fix for non-default schemas (v5.4.2)
+- **wrappers 0.5.7 → 0.6.0**: New Infura and OpenAPI FDWs; ClickHouse fixes; memory context fixes
+- **pgmq 1.10.0 → 1.11.0**: AMQP-style topic routing (`bind_topic`/`send_topic` with `*` and `#` wildcards for fan-out messaging)
+- **TimescaleDB 2.25.0 → 2.25.1**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching
+
+### Development
+
+- Updated Bun dev dependencies: oxlint 1.51.0, squawk-cli 2.43.0, sql-formatter 15.7.2, @types/bun 1.3.10
+- Synced disabled extension PGDG versions to actual apt repo: PostGIS 3.6.2, pgRouting 4.0.1
 
 ---
 

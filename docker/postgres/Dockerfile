@@ -4,9 +4,9 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.1 with comprehensive extension suite
+# PostgreSQL 18.3 with comprehensive extension suite
 
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f AS builder-base
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -143,13 +143,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.1..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.3..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.3" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.3" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -264,8 +264,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.1~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.1~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
     echo "Installed 2 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
@@ -391,9 +391,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1"
-LABEL org.opencontainers.image.description="PostgreSQL 18.1 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.1"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.3"
+LABEL org.opencontainers.image.description="PostgreSQL 18.3 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.3"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

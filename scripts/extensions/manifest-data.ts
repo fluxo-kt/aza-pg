@@ -17,9 +17,9 @@
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
-  pgVersion: "18.1",
+  pgVersion: "18.3",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f",
+  baseImageSha: "sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d",
 } as const;
 
 export type SourceSpec =
@@ -931,7 +931,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.25.0~debian13-1801",
+    timescaleVersion: "2.25.1~debian13-1803",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -939,15 +939,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.25.0",
+      tag: "2.25.1",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.0 TSL)",
-        "v2.25.0: Direct compress during CA refresh, DELETE optimizations, buckets_per_batch→10",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.1 TSL)",
+        "v2.25.1: Fixed continuous aggregate invalidation log cleanup and variable bucket batching",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",

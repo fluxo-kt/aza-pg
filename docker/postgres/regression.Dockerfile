@@ -4,10 +4,10 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.1 Regression Test Image
+# PostgreSQL 18.3 Regression Test Image
 # Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f AS builder-base
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -143,13 +143,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.1..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.3..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.3" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.3" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final regression test image
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -314,9 +314,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1 (Regression Test)"
-LABEL org.opencontainers.image.description="PostgreSQL 18.1 with ALL extensions enabled for comprehensive regression testing"
-LABEL org.opencontainers.image.version="18.1-regression"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.3 (Regression Test)"
+LABEL org.opencontainers.image.description="PostgreSQL 18.3 with ALL extensions enabled for comprehensive regression testing"
+LABEL org.opencontainers.image.version="18.3-regression"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

@@ -58,7 +58,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                   | Version                                                                | Enabled by Default | Shared Preload | Documentation                                             | Notes                                                                  |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.1](https://github.com/pgvector/pgvector/releases/tag/v0.8.1)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.2](https://github.com/pgvector/pgvector/releases/tag/v0.8.2)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
 | [`vectorscale (pgvectorscale)`](https://github.com/timescale/pgvectorscale) | [0.9.0](https://github.com/timescale/pgvectorscale/releases/tag/0.9.0) | Yes                | No             | [Docs](https://github.com/timescale/pgvectorscale#readme) | DiskANN-inspired ANN index and quantization for pgvector embeddings.   |
 
 ### analytics
@@ -77,8 +77,8 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.0](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.0) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.1](https://github.com/postgis/postgis/releases/tag/3.6.1)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
+| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.1](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.1) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
+| [`postgis`](https://github.com/postgis/postgis)       | [3.6.2](https://github.com/postgis/postgis/releases/tag/3.6.2)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
 
 ### integration
 

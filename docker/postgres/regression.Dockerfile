@@ -191,14 +191,14 @@ RUN set -euo pipefail && \
     echo "Installing PGDG packages (regression mode): 11 packages" && \
     (apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-hll=2.19-2.pgdg13+2 && echo "✓ Installed: postgresql-18-hll=2.19-2.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-hll=2.19-2.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.1+dfsg-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-pgvector=0.8.1-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgvector=0.8.1-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgvector=0.8.1-2.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.2+dfsg-1.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.2+dfsg-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.2+dfsg-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-pgvector=0.8.2-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgvector=0.8.2-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgvector=0.8.2-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-rum=1.3.15-1.pgdg13+1 && echo "✓ Installed: postgresql-18-rum=1.3.15-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-rum=1.3.15-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-hypopg=1.4.2-2.pgdg13+1 && echo "✓ Installed: postgresql-18-hypopg=1.4.2-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-hypopg=1.4.2-2.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-http=1.7.0-3.pgdg13+1 && echo "✓ Installed: postgresql-18-http=1.7.0-3.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-http=1.7.0-3.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-cron=1.6.7-2.pgdg13+1 && echo "✓ Installed: postgresql-18-cron=1.6.7-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-cron=1.6.7-2.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.0-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.1-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.1-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.1-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-2.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
     # Report what was installed
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \

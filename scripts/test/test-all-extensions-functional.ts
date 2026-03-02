@@ -392,6 +392,59 @@ await test("vector (pgvector) - Similarity search with <-> operator", "ai", asyn
   assert(search.success && search.stdout.length > 0, "Similarity search failed");
 });
 
+// v0.8.2: Fixed Index Searches in EXPLAIN output for PG18
+await test(
+  "vector (pgvector) - EXPLAIN on similarity query returns valid JSON (v0.8.2)",
+  "ai",
+  async () => {
+    const explain = await runSQL(
+      "EXPLAIN (FORMAT JSON) SELECT id, embedding <-> '[1,2,3]' AS distance FROM test_vectors ORDER BY embedding <-> '[1,2,3]' LIMIT 5"
+    );
+    assert(explain.success, `EXPLAIN failed: ${explain.stderr}`);
+    // JSON output must parse without error — validates the PG18 EXPLAIN fix
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(explain.stdout);
+    } catch {
+      throw new Error(`EXPLAIN (FORMAT JSON) produced invalid JSON: ${explain.stdout}`);
+    }
+    assert(Array.isArray(parsed) && parsed.length > 0, "EXPLAIN JSON output empty or not an array");
+  }
+);
+
+// v0.8.2: Fixed buffer overflow in parallel HNSW builds
+await test(
+  "vector (pgvector) - Parallel HNSW index build (v0.8.2 buffer overflow fix)",
+  "ai",
+  async () => {
+    // Insert enough rows to trigger parallel build path
+    const values = Array.from(
+      { length: 50 },
+      () =>
+        `('[${Math.random().toFixed(4)},${Math.random().toFixed(4)},${Math.random().toFixed(4)}]')`
+    ).join(",");
+    await runSQL(`INSERT INTO test_vectors (embedding) VALUES ${values}`);
+
+    // Drop existing HNSW index to rebuild with parallel workers
+    await runSQL("DROP INDEX IF EXISTS test_vectors_embedding_idx");
+    await runSQL("SET max_parallel_maintenance_workers = 2");
+    const index = await runSQL(
+      "CREATE INDEX test_vectors_hnsw_parallel ON test_vectors USING hnsw (embedding vector_l2_ops)"
+    );
+    assert(index.success, `Parallel HNSW build failed: ${index.stderr}`);
+
+    // Verify the index is usable for similarity search
+    const search = await runSQL(
+      "SELECT id FROM test_vectors ORDER BY embedding <-> '[1,1,1]' LIMIT 3"
+    );
+    assert(
+      search.success && search.stdout.length > 0,
+      "Search via parallel-built HNSW index failed"
+    );
+    await runSQL("RESET max_parallel_maintenance_workers");
+  }
+);
+
 await test("vectorscale - Create extension and diskann index", "ai", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE");
   const create = await runSQL(

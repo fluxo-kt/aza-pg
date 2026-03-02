@@ -35,7 +35,7 @@ EXTENSIONS (CREATE EXTENSION available)
   supautils                    v3.1.0         safety
   timescaledb                  v2.25.1        timeseries
   timescaledb_toolkit          v1.22.0        timeseries
-  vector                       v0.8.1         ai
+  vector                       v0.8.2         ai
   vectorscale                  v0.9.0         ai
   wrappers                     v0.5.7         integration
 

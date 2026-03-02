@@ -707,7 +707,7 @@
       "name": "pgrouting",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "4.0.0-1.pgdg13+1",
+      "pgdgVersion": "4.0.1-1.pgdg13+1",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "enabled": false,
@@ -716,8 +716,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgRouting/pgrouting.git",
-        "tag": "v4.0.0",
-        "commit": "4f0eec583f0c9e6a82a5b3356ff300029d11ed53"
+        "tag": "v4.0.1",
+        "commit": "8988eebdff0e01327c9d48fe7c80b437dc9bc992"
       },
       "build": {
         "type": "cmake"
@@ -733,8 +733,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)",
-          "Alt: Pigsty v4.0.0 (same version)"
+          "PGDG: postgresql-18-pgrouting (v4.0.1-1.pgdg13+1)",
+          "Alt: Pigsty v4.0.0 (1 version behind)"
         ]
       },
       "sourceUrl": "https://github.com/pgRouting/pgrouting",
@@ -820,7 +820,7 @@
       "name": "postgis",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "3.6.1+dfsg-1.pgdg13+1",
+      "pgdgVersion": "3.6.2+dfsg-1.pgdg13+1",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
@@ -829,8 +829,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.1",
-        "commit": "f533623505f73939a2d25d66ff252fb6619c4ac7"
+        "tag": "3.6.2",
+        "commit": "08d9b9f749fa3531591055db2a736bfb6df47006"
       },
       "build": {
         "type": "autotools"
@@ -856,8 +856,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)",
-          "Alt: Pigsty v3.6.1 (same version)"
+          "PGDG: postgresql-18-postgis-3 (v3.6.2+dfsg-1.pgdg13+1)",
+          "Alt: Pigsty v3.6.1 (1 version behind)"
         ]
       },
       "sourceUrl": "https://github.com/postgis/postgis",
@@ -1041,14 +1041,14 @@
       "displayName": "pgvector",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "0.8.1-2.pgdg13+1",
+      "pgdgVersion": "0.8.2-1.pgdg13+1",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgvector/pgvector.git",
-        "tag": "v0.8.1",
-        "commit": "778dacf20c07caf904557a88705142631818d8cb"
+        "tag": "v0.8.2",
+        "commit": "cab9da72c04353f143bb06b42ab70a403daac64a"
       },
       "build": {
         "type": "pgxs"
@@ -1058,9 +1058,9 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
-          "Alt: Pigsty v0.8.0 (1 patch behind)",
-          "Regression test coverage includes vector columns, HNSW indexing, and similarity search"
+          "PGDG: postgresql-18-pgvector (v0.8.2-1.pgdg13+1)",
+          "v0.8.2: Fixed buffer overflow in parallel HNSW builds, fixed Index Searches in EXPLAIN for PG18",
+          "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search"
         ]
       },
       "sourceUrl": "https://github.com/pgvector/pgvector",

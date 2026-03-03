@@ -187,6 +187,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **SHA Pin Accuracy**: GitHub Actions SHA comments (`# v1.2.3`) rot silently — the resolved tag in CI logs may differ from the comment. Run `actions-up` (see `/update` skill) to keep all SHA pins current. Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
+**Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
+
 ## Changelog
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, integrated with GitHub releases

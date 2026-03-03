@@ -44,9 +44,19 @@ Run each check in sequence; abort on first failure.
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-[[ "$BRANCH" == "main" || "$BRANCH" == "release" ]] || \
-  { echo "ABORT: Switch to main or release first (currently: $BRANCH)"; exit 1; }
 ```
+
+If `$BRANCH` is not `main` or `release`, **do not abort** — instead output this message to the user and wait for them to confirm before continuing:
+
+```
+Currently on branch: <BRANCH>
+/release must run from main or release. Please run:
+  git checkout main
+  (or: git checkout release)
+Then confirm you are on the correct branch.
+```
+
+Once the user confirms, re-capture `BRANCH=$(git rev-parse --abbrev-ref HEAD)` and verify before proceeding.
 
 ### 0.2 — Clean working tree
 
@@ -386,12 +396,20 @@ Note: `bun.lock` diff is normal if bun's format changed across versions.
 
 ### 4.7 — Commit
 
-**IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from Phase 1 and 3:
+First, capture the exact dev tip that was squashed. This is recorded in the commit message so Appendix A can verify dev hasn't advanced beyond it before anchoring:
+
+```bash
+DEV_SQUASH_TIP=$(git rev-parse dev)
+echo "Dev squash tip: $DEV_SQUASH_TIP"
+```
+
+**IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from Phase 1, 3, and the echo above:
 - `TYPE` → actual type from Phase 3.1 (e.g., `feat`)
 - `SCOPE` → actual scope (e.g., `postgres`)
 - `title here` → actual title from Phase 3.2 (max 72 chars including `TYPE(SCOPE): `)
 - `change 1`, `change 2` → actual body bullets from Phase 3.2
 - `FIRST_SHORT..LAST_SHORT` → actual hashes from Phase 1.4 (e.g., `6a979fa..b111f5a`)
+- `DEV_SQUASH_TIP` → full hash from the echo above (e.g., `abc1234def5678...`)
 - `Co-Authored-By: Name <email>` → actual co-authors from Phase 1.3 (one line per author)
 
 ```bash
@@ -404,6 +422,7 @@ TYPE(SCOPE): title here
 
 FIRST_SHORT..LAST_SHORT
 
+Dev-Squash-Tip: DEV_SQUASH_TIP
 Co-Authored-By: Name <email>
 Co-Authored-By: Claude <noreply@anthropic.com>
 COMMIT_EOF
@@ -525,6 +544,32 @@ git fetch --tags origin
 TARGET=$(git tag --sort=-creatordate | head -1)
 [[ -n "$TARGET" ]] || { echo "ABORT: No tags found after fetch."; exit 1; }
 echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
+
+# Safety check: verify dev has not advanced beyond what was squashed.
+# The squash commit embeds the exact dev tip it captured as a Dev-Squash-Tip trailer.
+# If new commits landed on dev AFTER the squash, forcing the anchor merge tree to
+# the release tree would silently overwrite their file content — they'd remain as
+# git ancestors but their changes would disappear from the working tree.
+DEV_SQUASH_TIP=$(git log -1 --format="%B" "$TARGET" | grep "^Dev-Squash-Tip:" | awk '{print $2}')
+if [[ -n "$DEV_SQUASH_TIP" ]]; then
+  NEW_COMMITS=$(git rev-list "$DEV_SQUASH_TIP"..HEAD --oneline 2>/dev/null)
+  if [[ -n "$NEW_COMMITS" ]]; then
+    echo "🚨 ABORT: dev has commits AFTER the squash whose content would be LOST:"
+    echo "$NEW_COMMITS"
+    echo ""
+    echo "The anchor merge forces dev's tree to the release tree."
+    echo "These commits exist in git history but their file changes would be overwritten."
+    echo ""
+    echo "Options:"
+    echo "  A) Do another squash release to include these commits first, then anchor."
+    echo "  B) Note the hashes above, proceed with anchor merge, then cherry-pick"
+    echo "     them back onto dev afterwards."
+    exit 1
+  fi
+  echo "✓ dev has not advanced since squash (tip: $(git rev-parse --short "$DEV_SQUASH_TIP")). Safe to anchor."
+else
+  echo "⚠️ No Dev-Squash-Tip trailer in $TARGET — cannot verify dev safety. Inspect manually."
+fi
 ```
 
 **Show the detected tag to the user and ask them to confirm it is correct before continuing.** Output:

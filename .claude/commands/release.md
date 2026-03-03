@@ -44,9 +44,10 @@ Run each check in sequence; abort on first failure.
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Current branch: $BRANCH"
 ```
 
-If `$BRANCH` is not `main` or `release`, **do not abort** — instead output this message to the user and wait for them to confirm before continuing:
+If `$BRANCH` is not `main` or `release`, **do not abort** — output this message to the user and wait for them to confirm before continuing:
 
 ```
 Currently on branch: <BRANCH>
@@ -56,7 +57,15 @@ Currently on branch: <BRANCH>
 Then confirm you are on the correct branch.
 ```
 
-Once the user confirms, re-capture `BRANCH=$(git rev-parse --abbrev-ref HEAD)` and verify before proceeding.
+Once the user confirms, re-run the check explicitly:
+
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Branch after switch: $BRANCH"
+[[ "$BRANCH" == "main" || "$BRANCH" == "release" ]] || \
+  { echo "ABORT: Still not on main or release (currently: $BRANCH)."; exit 1; }
+echo "Branch check passed. ✓"
+```
 
 ### 0.2 — Clean working tree
 
@@ -454,6 +463,7 @@ echo "$DIFF_FILES"
 
 **Expected to differ**: `CHANGELOG.md` (always, by design), `bun.lock` (if bun reformatted), any files edited in Phase 4.5.
 **Flag as unexpected**: source files, scripts, Docker files, generated extension lists — these should be IDENTICAL to dev after squash.
+**Note**: if dev has advanced since the squash (new commits landed after Phase 4.1), those files will also appear here. Appendix A.2's Dev-Squash-Tip check will catch this before the anchor merge.
 
 Do NOT compare tree hashes — trees intentionally diverge after CHANGELOG edits.
 
@@ -544,15 +554,33 @@ git fetch --tags origin
 TARGET=$(git tag --sort=-creatordate | head -1)
 [[ -n "$TARGET" ]] || { echo "ABORT: No tags found after fetch."; exit 1; }
 echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
+```
 
+**Ask the user to confirm the tag BEFORE proceeding.** Output:
+
+```
+Detected release tag: <TARGET>
+Is this the correct tag? (yes/no)
+```
+
+If the user says no, abort and ask them to check `git tag --sort=-creatordate | head -5`.
+
+Once the tag is confirmed, run the safety check:
+
+```bash
 # Safety check: verify dev has not advanced beyond what was squashed.
-# The squash commit embeds the exact dev tip it captured as a Dev-Squash-Tip trailer.
-# If new commits landed on dev AFTER the squash, forcing the anchor merge tree to
-# the release tree would silently overwrite their file content — they'd remain as
-# git ancestors but their changes would disappear from the working tree.
+# The squash commit embeds the exact dev tip as a Dev-Squash-Tip trailer.
+# If new commits landed on dev AFTER the squash, the anchor merge would force
+# dev's tree to the release tree, silently overwriting their file content.
 DEV_SQUASH_TIP=$(git log -1 --format="%B" "$TARGET" | grep "^Dev-Squash-Tip:" | awk '{print $2}')
 if [[ -n "$DEV_SQUASH_TIP" ]]; then
-  NEW_COMMITS=$(git rev-list "$DEV_SQUASH_TIP"..HEAD --oneline 2>/dev/null)
+  # First check DEV_SQUASH_TIP is an ancestor of HEAD — if not, histories have diverged
+  if ! git merge-base --is-ancestor "$DEV_SQUASH_TIP" HEAD 2>/dev/null; then
+    echo "⚠️ DEV_SQUASH_TIP ($DEV_SQUASH_TIP) is NOT an ancestor of dev HEAD."
+    echo "   Histories may have diverged (reset/rebase?). Inspect manually before continuing."
+    exit 1
+  fi
+  NEW_COMMITS=$(git rev-list "$DEV_SQUASH_TIP"..HEAD --oneline)
   if [[ -n "$NEW_COMMITS" ]]; then
     echo "🚨 ABORT: dev has commits AFTER the squash whose content would be LOST:"
     echo "$NEW_COMMITS"
@@ -572,23 +600,18 @@ else
 fi
 ```
 
-**Show the detected tag to the user and ask them to confirm it is correct before continuing.** Output:
-
-```
-Detected release tag: <TARGET>
-Is this the correct tag? (yes/no)
-```
-
-Wait for confirmation. If the user says no, abort and ask them to check `git tag --sort=-creatordate | head -5`.
-
-Once confirmed:
+Once safety check passes:
 
 ```bash
-git merge --ff-only $(git commit-tree "$TARGET"^{tree} \
+# Split into two steps so commit-tree failure is detectable before touching dev's ref
+ANCHOR_COMMIT=$(git commit-tree "$TARGET"^{tree} \
   -p HEAD -p "$TARGET" \
   -m "Anchor Merge: merging $(git rev-parse --short HEAD) and $TARGET ($(git rev-parse --short "$TARGET"))")
+[[ -n "$ANCHOR_COMMIT" ]] || { echo "ABORT: git commit-tree failed — ANCHOR_COMMIT is empty."; exit 1; }
 
-git push origin dev
+git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only failed."; exit 1; }
+git push origin dev || { echo "ABORT: git push origin dev failed."; exit 1; }
+echo "Anchor merge pushed. ✓"
 ```
 
 `git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).
@@ -604,13 +627,17 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 ## Appendix B: main/release Branch Sync
 
-If /release ran on `release` but `main` needs updating (or vice versa):
+If /release ran on `release` but `main` needs updating (or vice versa), the agent cannot switch branches itself. Output the following commands for the user to run:
 
-```bash
-git checkout main && git merge release --ff-only && git checkout release
+```
+Please run:
+  git checkout main
+  git merge release --ff-only
+  git checkout release
+Then confirm each step succeeded.
 ```
 
-Only works if history is perfectly linear (fast-forward). If not, investigate before forcing.
+Only works if history is perfectly linear (fast-forward). If `--ff-only` fails, investigate before forcing — do NOT use `git merge release` without `--ff-only`.
 
 ---
 

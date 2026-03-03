@@ -1,6 +1,6 @@
 ---
 name: /release
-description: Squash dev commits into a single release commit on main/release
+description: Squash dev commits into a single release commit on the release branch
 argument-hint: (optional notes or version override)
 id: p-release
 category: project
@@ -11,8 +11,10 @@ tags: [project, release]
 
 You are executing a **deterministic release squash** for the aza-pg project.
 
-The Anchor Merge pattern: granular dev commits → squashed single mega-commit on main/release.
+The Anchor Merge pattern: granular dev commits → squashed single mega-commit on `release`.
 Dev's anchor merge ensures `git merge --squash dev` applies ONLY the net delta.
+After committing, both `release` and `main` are pushed simultaneously via refspec (see Phase 6).
+**Always work from `release`, never from `main`** — `main` is kept in sync by push, not by running /release on it.
 
 OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 
@@ -65,23 +67,27 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Current branch: $BRANCH"
 ```
 
-If `$BRANCH` is not `main` or `release`, **do not abort** — output this message to the user and wait for them to confirm before continuing:
+**If `$BRANCH` is `release`**: proceed — correct branch.
+
+**If `$BRANCH` is `main`**: **do not abort** — output this message and wait for the user to confirm:
 
 ```text
-Currently on branch: <BRANCH>
-/release must run from main or release. Please run:
-  git checkout main
-  (or: git checkout release)
-Then confirm you are on the correct branch.
+Currently on branch: main
+/release must run from 'release', not 'main'. main is kept in sync via push refspec after the release commit.
+Please run:
+  git checkout release
+Then confirm you are on the release branch.
 ```
 
-Once the user confirms, re-run the check explicitly:
+**If `$BRANCH` is anything else**: same message, mutatis mutandis.
+
+Once the user confirms, re-run:
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Branch after switch: $BRANCH"
-[[ "$BRANCH" == "main" || "$BRANCH" == "release" ]] || \
-  { echo "ABORT: Still not on main or release (currently: $BRANCH)."; exit 1; }
+[[ "$BRANCH" == "release" ]] || \
+  { echo "ABORT: Not on release branch (currently: $BRANCH)."; exit 1; }
 echo "Branch check passed. ✓"
 ```
 

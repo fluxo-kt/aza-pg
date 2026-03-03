@@ -7,6 +7,7 @@
  * Coverage:
  * - Start container with current image
  * - Query extension versions from pg_extension
+ * - Assert installed versions match manifest declarations (manifest-version contract)
  * - Create test data with key extensions (pgvector, postgis, timescaledb, pg_cron)
  * - Test extension upgrade scenario (ALTER EXTENSION UPDATE)
  * - Verify data integrity after version changes
@@ -17,6 +18,7 @@
  *   bun scripts/test/test-extension-versions.ts [image-tag] [--no-cleanup]
  */
 
+import { join } from "node:path";
 import { $ } from "bun";
 import {
   checkCommand,
@@ -138,12 +140,117 @@ async function testQueryExtensions(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 2: Create Test Data with pgvector
+ * Test 2: Verify installed extension versions match manifest declarations.
+ *
+ * Reads source.tag from extensions.manifest.json and extracts a semver string via regex,
+ * then asserts that pg_extension.extversion starts with that declared version.
+ * Only extensions with defaultEnable=true are required to be present; all others
+ * that happen to be installed get opportunistic version checks.
+ * Skips entries without extractable semver (commit-hash refs, REL-style tags).
+ */
+async function testManifestVersionMatch(config: TestConfig): Promise<TestResult> {
+  const start = Date.now();
+  try {
+    section("Test 2: Verify Extension Versions Match Manifest");
+
+    const installed = await queryExtensions(config.containerName);
+    const installedMap = new Map<string, string>(installed.map((e) => [e.name, e.version]));
+
+    const manifestPath = join(import.meta.dir, "../../docker/postgres/extensions.manifest.json");
+    const manifest = await Bun.file(manifestPath).json();
+
+    interface ManifestEntry {
+      name: string;
+      kind: string;
+      runtime?: { defaultEnable?: boolean };
+      source?: { tag?: string };
+    }
+
+    // Extract semver from source.tag — handles v1.2.3, ver_1.2.3, 1.2.3.
+    // Returns null for commit hashes and tag formats without dots (REL4_2_0).
+    function extractSemver(tag: string): string | null {
+      const m = tag.match(/(\d+\.\d+(?:\.\d+)?)/);
+      return m?.[1] ?? null;
+    }
+
+    const manifestVersions = new Map<string, { version: string; required: boolean }>();
+    for (const entry of manifest.entries as ManifestEntry[]) {
+      if (entry.kind !== "extension") continue;
+      const tag = entry.source?.tag;
+      if (!tag) continue;
+      const version = extractSemver(tag);
+      if (!version) continue;
+      manifestVersions.set(entry.name, {
+        version,
+        required: entry.runtime?.defaultEnable === true,
+      });
+    }
+
+    const mismatches: string[] = [];
+    const missing: string[] = [];
+    const verified: string[] = [];
+
+    for (const [name, { version: expected, required }] of manifestVersions.entries()) {
+      const actual = installedMap.get(name);
+      if (!actual) {
+        if (required) {
+          missing.push(`${name} (expected ${expected})`);
+        }
+        continue;
+      }
+      if (!actual.startsWith(expected)) {
+        mismatches.push(`${name}: manifest=${expected} installed=${actual}`);
+      } else {
+        verified.push(`  ${name.padEnd(25)} ${expected.padEnd(12)} → ${actual} ✓`);
+      }
+    }
+
+    if (verified.length > 0) {
+      console.log(`\nVerified ${verified.length} extension versions against manifest:`);
+      console.log("-".repeat(65));
+      for (const v of verified) {
+        console.log(v);
+      }
+      console.log("");
+    }
+
+    for (const m of missing) {
+      error(`Required extension missing from pg_extension: ${m}`);
+    }
+    for (const m of mismatches) {
+      error(`Version mismatch: ${m}`);
+    }
+
+    if (missing.length > 0 || mismatches.length > 0) {
+      const parts: string[] = [];
+      if (mismatches.length > 0) parts.push(`version mismatches: ${mismatches.join("; ")}`);
+      if (missing.length > 0) parts.push(`missing required: ${missing.join("; ")}`);
+      throw new Error(parts.join(" | "));
+    }
+
+    success(`All ${verified.length} installed extension versions match manifest declarations`);
+    return {
+      name: "Verify Extension Versions Match Manifest",
+      passed: true,
+      duration: Date.now() - start,
+    };
+  } catch (err) {
+    return {
+      name: "Verify Extension Versions Match Manifest",
+      passed: false,
+      duration: Date.now() - start,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Test 3: Create Test Data with pgvector (also verifies vector extension is installed)
  */
 async function testPgvectorData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 2: Create Test Data with pgvector");
+    section("Test 3: Create Test Data with pgvector");
 
     info("Creating pgvector extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"`;
@@ -191,7 +298,7 @@ async function testPgvectorData(config: TestConfig): Promise<TestResult> {
 async function testPostgisData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 3: Create Test Data with PostGIS");
+    section("Test 4: Create Test Data with PostGIS");
 
     info("Creating postgis extension...");
     try {
@@ -245,7 +352,7 @@ async function testPostgisData(config: TestConfig): Promise<TestResult> {
 async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 4: Create Test Data with TimescaleDB");
+    section("Test 5: Create Test Data with TimescaleDB");
 
     info("Creating timescaledb extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"`;
@@ -298,7 +405,7 @@ async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
 async function testPgCronData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 5: Create Test Data with pg_cron");
+    section("Test 6: Create Test Data with pg_cron");
 
     info("Creating pg_cron extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;"`;
@@ -348,7 +455,7 @@ async function testPgCronData(config: TestConfig): Promise<TestResult> {
 async function testExtensionDependencies(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 6: Verify Extension Dependencies");
+    section("Test 7: Verify Extension Dependencies");
 
     info("Querying extension dependencies...");
     const depsResult =
@@ -396,7 +503,7 @@ async function testExtensionDependencies(config: TestConfig): Promise<TestResult
 async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 7: Verify Data Integrity After Extension Operations");
+    section("Test 8: Verify Data Integrity After Extension Operations");
 
     // Verify pgvector data
     info("Verifying pgvector data integrity...");
@@ -459,7 +566,7 @@ async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
 async function testExtensionControlFiles(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 8: Check Extension Control Files");
+    section("Test 9: Check Extension Control Files");
 
     info("Checking for extension control files...");
 
@@ -578,6 +685,7 @@ async function main(): Promise<void> {
   try {
     // Run tests
     results.push(await testQueryExtensions(config));
+    results.push(await testManifestVersionMatch(config));
     results.push(await testPgvectorData(config));
     results.push(await testPostgisData(config));
     results.push(await testTimescaledbData(config));

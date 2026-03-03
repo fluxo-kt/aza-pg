@@ -1113,8 +1113,12 @@ await test("plpgsql_check - Check function with type error", "quality", async ()
   `);
 
   const check = await runSQL("SELECT plpgsql_check_function('test_check_func')");
-  // Function should report warnings/errors
-  assert(check.success, "plpgsql_check execution failed");
+  // plpgsql_check_function() returns ROWS for warnings — success alone is a tautology.
+  // Assert actual warning output was produced.
+  assert(
+    check.success && check.stdout.length > 0,
+    "plpgsql_check failed to report type mismatch warning"
+  );
 });
 
 await test("plpgsql_check - Verify error detection", "quality", async () => {
@@ -1128,7 +1132,74 @@ await test("plpgsql_check - Verify error detection", "quality", async () => {
   `);
 
   const check = await runSQL("SELECT plpgsql_check_function('test_check_undefined')");
-  assert(check.success, "plpgsql_check should detect undefined variable");
+  // Must produce actual warning rows, not just execute successfully
+  assert(
+    check.success && check.stdout.length > 0,
+    "plpgsql_check failed to detect undefined variable"
+  );
+});
+
+await test("plpgsql_check - Clean function returns no warnings", "quality", async () => {
+  await runSQL(`
+    CREATE OR REPLACE FUNCTION test_check_clean() RETURNS int AS $$
+    DECLARE
+      v_result int := 42;
+    BEGIN
+      RETURN v_result;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  const result = await runSQL("SELECT * FROM plpgsql_check_function('test_check_clean')");
+  assert(
+    result.success && result.stdout === "",
+    `Expected no warnings for clean function, got: ${result.stdout}`
+  );
+});
+
+await test(
+  "plpgsql_check - Volatile expression in STABLE function (v2.8.8+ detection)",
+  "quality",
+  async () => {
+    // plpgsql_check warns when volatile built-ins (random()) appear in STABLE functions
+    await runSQL(`
+    CREATE OR REPLACE FUNCTION test_volatility_warning() RETURNS float AS $$
+    BEGIN
+      RETURN random();
+    END;
+    $$ LANGUAGE plpgsql STABLE
+  `);
+
+    const checkResult = await runSQL(
+      "SELECT * FROM plpgsql_check_function('test_volatility_warning')"
+    );
+    assert(
+      checkResult.success && checkResult.stdout.length > 0,
+      "plpgsql_check failed to warn about volatile expression in STABLE function"
+    );
+  }
+);
+
+await test("plpgsql_check - Trigger function static analysis", "quality", async () => {
+  await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_plcheck_trigger_tbl (id serial, name text, updated_at timestamptz)"
+  );
+
+  await runSQL(`
+    CREATE OR REPLACE FUNCTION test_plcheck_trigger_fn() RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at := now();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  // Check with table context — trigger analysis requires the table for NEW/OLD row types
+  const result = await runSQL(
+    "SELECT * FROM plpgsql_check_function('test_plcheck_trigger_fn', 'test_plcheck_trigger_tbl')"
+  );
+  assert(result.success, `plpgsql_check trigger analysis failed: ${result.stderr}`);
+  assert(result.stdout === "", `Expected clean trigger function, got: ${result.stdout}`);
 });
 
 // ============================================================================

@@ -653,6 +653,21 @@ something. Run through these checks adversarially — try to break your own work
 - Specifically: auto-generated files (`extension-defaults.ts`, `Dockerfile`,
   `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
 
+**Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
+- `docs/EXTENSION-SOURCES.md`: PGDG/source-built/Percona/Timescale version tables — update
+  every changed extension version AND verify categorisation (PGDG vs source-built) is still
+  correct. A migrated extension (source→PGDG or vice-versa) MUST move between table sections.
+  The PGDG count in the overview table must be updated if any extension changes install method.
+- `docs/ARCHITECTURE.md`: ASCII diagram at "Build Time / Runtime" section contains pgvector
+  and pg_cron version strings — update if those change.
+- **Check for orphaned test files**: When migrating an extension's install method, search for
+  dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
+  wrong install path descriptions). Delete or migrate their valuable tests.
+- **Check unit tests in `generate-dockerfile.test.ts`**: The "All PGDG versions are defined"
+  test has inline comments listing extensions NOT expected in pgdgVersions (source-built ones).
+  When migrating an extension to/from PGDG, add/remove `expect(versions.KEY).toBeDefined()` and
+  update the comments accordingly.
+
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
 what would they find?" Find it yourself first.
 

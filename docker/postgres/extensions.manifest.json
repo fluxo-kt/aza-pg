@@ -636,8 +636,8 @@
           "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
-      "sourceUrl": "https://github.com/pgmq/pgmq",
-      "docsUrl": "https://github.com/pgmq/pgmq#readme"
+      "sourceUrl": "https://github.com/tembo-io/pgmq",
+      "docsUrl": "https://github.com/tembo-io/pgmq#readme"
     },
     {
       "name": "pgq",

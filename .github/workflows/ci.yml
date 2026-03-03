@@ -30,7 +30,7 @@
 # --------------------
 # - build job exports image as tarball artifact
 # - test jobs download and load image from artifact
-# - Uses actions/upload-artifact@v6 and actions/download-artifact@v4
+# - Uses actions/upload-artifact@v7 and actions/download-artifact@v8 (via load-test-image action)
 #
 # DIFFERENCES FROM build-postgres-image.yml:
 # -----------------------------------------

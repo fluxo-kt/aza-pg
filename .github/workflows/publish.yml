@@ -297,7 +297,7 @@ jobs:
           # GitHub attestation provides superior workflow-level provenance without risk of leaking build args
           # Supply chain security layers:
           #   1. SBOM (BuildKit) - software bill of materials
-          #   2. GitHub attestation (actions/attest-build-provenance@v3) - SLSA build provenance
+          #   2. GitHub attestation (actions/attest-build-provenance@v4.1.0) - SLSA build provenance
           #   3. Cosign signatures (keyless OIDC) - image integrity verification
           provenance: false
           sbom: true

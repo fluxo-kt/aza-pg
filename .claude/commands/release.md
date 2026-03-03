@@ -514,15 +514,31 @@ Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should p
 
 ### A.2 — Once user confirms they are on dev
 
-Set `TARGET` to the git tag that was just published (e.g. `v18.1-202602082259`). Then run:
-
 ```bash
 [[ "$(git rev-parse --abbrev-ref HEAD)" == "dev" ]] || \
   { echo "ABORT: Not on dev branch. Ask user to run: git checkout dev"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
 
-TARGET="v18.1-202602082259"   # ← set to actual release tag
+# Fetch tags from origin so TARGET always reflects what CI just published
+git fetch --tags origin
 
+TARGET=$(git tag --sort=-creatordate | head -1)
+[[ -n "$TARGET" ]] || { echo "ABORT: No tags found after fetch."; exit 1; }
+echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
+```
+
+**Show the detected tag to the user and ask them to confirm it is correct before continuing.** Output:
+
+```
+Detected release tag: <TARGET>
+Is this the correct tag? (yes/no)
+```
+
+Wait for confirmation. If the user says no, abort and ask them to check `git tag --sort=-creatordate | head -5`.
+
+Once confirmed:
+
+```bash
 git merge --ff-only $(git commit-tree "$TARGET"^{tree} \
   -p HEAD -p "$TARGET" \
   -m "Anchor Merge: merging $(git rev-parse --short HEAD) and $TARGET ($(git rev-parse --short "$TARGET"))")

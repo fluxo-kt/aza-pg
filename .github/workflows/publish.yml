@@ -801,34 +801,34 @@ jobs:
           echo "Checking comprehensive test results..."
 
           if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
-            echo "::notice::Comprehensive tests were not executed because upstream prep/merge did not complete successfully."
-            echo "prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}"
-            exit 0
+            echo "::error::Upstream build stages did not complete: prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}"
+            echo "No tests were executed — cannot claim test gate success."
+            exit 1
           fi
 
           FAILED=0
 
-          if [ "${{ needs.test-smoke.result }}" = "failure" ] || [ "${{ needs.test-smoke.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-smoke.result }}" != "success" ]; then
             echo "::error::Smoke tests ended with ${{ needs.test-smoke.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-extensions.result }}" = "failure" ] || [ "${{ needs.test-extensions.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
             echo "::error::Extension tests ended with ${{ needs.test-extensions.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-features.result }}" = "failure" ] || [ "${{ needs.test-features.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
             echo "::error::Feature tests ended with ${{ needs.test-features.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-security.result }}" = "failure" ] || [ "${{ needs.test-security.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
             echo "::error::Security tests ended with ${{ needs.test-security.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.regression-tests.result }}" = "failure" ] || [ "${{ needs.regression-tests.result }}" = "cancelled" ]; then
+          if [ "${{ needs.regression-tests.result }}" != "success" ]; then
             echo "::error::Regression tests ended with ${{ needs.regression-tests.result }}"
             FAILED=1
           fi
@@ -863,9 +863,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
-            echo "## ⏭️ Test Gate: BLOCKED" >> $GITHUB_STEP_SUMMARY
+            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Comprehensive suites were skipped because upstream build stages did not complete successfully." >> $GITHUB_STEP_SUMMARY
+            echo "Upstream build stages did not complete (prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}). No tests ran — release blocked." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.test-smoke.result }}" = "success" ] && \
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-features.result }}" = "success" ] && \

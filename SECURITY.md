@@ -13,7 +13,7 @@ Please report security vulnerabilities via GitHub Security Advisories or by emai
 
 ## Known Upstream Vulnerabilities
 
-As of January 2026, the following vulnerabilities exist in upstream dependencies that we cannot directly fix:
+The following vulnerabilities exist in upstream dependencies that we cannot directly fix:
 
 ### Python 3.13.5-2
 

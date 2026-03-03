@@ -752,7 +752,7 @@ await test("wrappers - Verify FDW handler registration", "integration", async ()
 // Test 4: Verify extension version matches expected
 await test("wrappers - Verify extension version", "integration", async () => {
   const result = await runSQL("SELECT extversion FROM pg_extension WHERE extname = 'wrappers'");
-  assert(result.success && result.stdout.includes("0.6"), "Wrappers version mismatch");
+  assert(result.success && result.stdout.includes("0.6."), "Wrappers version mismatch");
 });
 
 // Test 5: Verify wrappers_fdw_stats table structure

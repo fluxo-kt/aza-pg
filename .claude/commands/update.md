@@ -80,6 +80,17 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    If a version is gone, update `perconaVersion` in `manifest-data.ts` to the new version
    and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
 
+   **⚠️ Timescale split packages**: Timescale ships TWO packages for the main extension:
+   `timescaledb-2-postgresql-18` (extension SQL+binary) and `timescaledb-2-loader-postgresql-18`
+   (preloader). If only the main package is pinned, the loader can jump to a newer version as a
+   dependency, causing "no installation script for version X.Y.Z" failures at runtime.
+   **The generator now pins the loader automatically** (via regex replacement in `generate-dockerfile.ts`).
+   When updating timescaledb, verify both packages exist at the target version:
+   ```bash
+   apt-cache madison timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
+   ```
+   Both must show the same `X.Y.Z~debianNN-NNNN` version string.
+
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
 For EACH extension to update, check upstream for breaking changes and new features:

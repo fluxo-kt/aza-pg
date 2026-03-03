@@ -181,6 +181,12 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Extensions**: Modules=preload-only (auto_explain) | Tools=no CREATE EXTENSION | Standard extensions=CREATE EXTENSION flow
 
+**CI Workflow Resilience**: Informational steps (SARIF upload, diagnostics) MUST have `continue-on-error: true` — tool infrastructure failures must never block releases. The actual security gate is a separate independent blocking step with `exit-code: 1`. Same pattern for any step that is "nice-to-have" vs "must-pass".
+
+**Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+ (immutable releases). Locally: `bun run security:scan`.
+
+**SHA Pin Accuracy**: GitHub Actions SHA comments (`# v1.2.3`) are manually maintained and rot silently. The resolved tag shown in CI logs may differ from comment if tags move. Use Renovate/Dependabot or `git ls-remote https://github.com/REPO.git refs/tags/TAG` to verify.
+
 ## Changelog
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, integrated with GitHub releases

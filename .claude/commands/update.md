@@ -88,7 +88,7 @@ curl -s https://api.github.com/repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG | jq '
 ## Phase 2: Bun Dependencies
 
 ```bash
-# Update all dependencies to latest versions
+# Update all npm/bun package dependencies to latest versions
 bun update --latest
 
 # Validate immediately
@@ -99,6 +99,25 @@ bun run validate
 existing code. Run `bun run validate` immediately and fix issues before proceeding. Do NOT blindly
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
+
+**⚠️ ALWAYS check Bun runtime version separately** — `bun update` bumps npm packages (incl.
+`@types/bun`) but does NOT update the Bun runtime pinned in `.tool-versions`. These are independent:
+
+```bash
+# Check current pinned runtime version
+cat .tool-versions            # e.g. "bun 1.3.8"
+
+# Check latest stable Bun runtime at https://bun.sh/blog (or bun upgrade --help)
+bun upgrade --dry-run 2>/dev/null | head -3
+```
+
+If a new stable runtime is available, update `.tool-versions` manually:
+```bash
+# Edit .tool-versions: bump bun X.Y.Z to latest stable
+```
+
+Note: `@types/bun` (npm package) may lag the runtime release by ~1 week — that is expected.
+Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.
 
 ## Phase 3: Base Image (ALWAYS CHECK — Security Patches!)
 
@@ -523,12 +542,18 @@ commits. TimescaleDB version suffix changes must be bundled with PG base image b
 After every update round, perform a mandatory self-reflection before closing out the work:
 
 1. **What was missed in pre-flight?** Items caught mid-implementation instead of upfront
-2. **What was assumed without verification?** Version strings, API signatures, compatibility
+2. **What was assumed without verification?** Version strings, API signatures, URLs, compatibility
 3. **What hardcoded values broke tests?** Document the pattern for future detection
 4. **What files were unexpectedly required?** (e.g., `validate-manifest-integrity.ts` has inline
    copies of mappings that must be kept in sync — not obvious from other files)
 5. **What upstream API was different from expected?** (e.g., pgmq topic API uses `bind_topic`,
    not `create_topic`/`subscribe` — always verify from actual source before writing tests)
+6. **Were all tooling version files kept in sync?** `.tool-versions` (Bun runtime), `package.json`
+   (@types/bun). These are updated separately — `bun update` does NOT touch `.tool-versions`.
+7. **Were validator error messages and fix instructions actually correct?** When editing any
+   validator script, verify that following its own fix instructions would resolve the error it
+   reports. Validators with inline data copies (like `validate-manifest-integrity.ts`) are
+   especially prone to self-defeating instructions.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

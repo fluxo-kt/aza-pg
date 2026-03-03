@@ -66,6 +66,20 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    actual apt repos before writing the plan. Use the apt-cache madison command above.
    Note: `pgdg13` in version strings refers to Debian 13 (Trixie), NOT PostgreSQL 13.
 
+8. **Verify Percona/Timescale pinned versions still exist**: Third-party repos drop old versions
+   without warning. Always confirm currently pinned versions are still in the apt repo:
+   ```bash
+   docker run --rm postgres:18-trixie bash -c "
+     apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
+     curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
+     dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
+     apt-get update -qq 2>/dev/null &&
+     apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json
+   " 2>&1 | grep -E "percona-pg|percona-postgresql"
+   ```
+   If a version is gone, update `perconaVersion` in `manifest-data.ts` to the new version
+   and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
+
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
 For EACH extension to update, check upstream for breaking changes and new features:
@@ -538,19 +552,24 @@ bun run validate
 bun run validate:all
 ```
 
-## Phase 8: Build & Test
+## Phase 8: Build & Test (Intermediate Check)
 
 ```bash
 # Build image
 bun run build
 
-# REQUIRED: Full test suite (rebuild + all tests, ~45 min)
+# Full test suite (rebuild + all tests, ~45 min)
 bun run test:all
 ```
 
+**IMPORTANT**: This is an intermediate check — NOT the final gate. Phases 9–11 add more commits
+(CHANGELOG, skill update). **Phase 12 is the mandatory final gate** after all commits are done.
+
 **Multi-arch verification**: Image builds for both amd64 and arm64 are verified in GitHub Actions after the user pushes changes. Agents should ensure local tests pass before committing.
 
-**NOTE**: `bun run test` (quick test) exists but should NOT be used for updates - always run full `test:all` to verify comprehensive compatibility.
+**NOTE**: `bun run test` (quick test) exists but should NOT be used for updates — always run full
+`test:all` to verify comprehensive compatibility. Build success alone is NOT sufficient: a broken
+image can build cleanly if `set -e` is bypassed by `|| true` patterns.
 
 ### Build Failure Troubleshooting
 
@@ -666,6 +685,21 @@ After every update round, perform a mandatory self-reflection before closing out
    NOT inline version comments (e.g. `# v3.0.0` that refers to the old version in a prose comment
    elsewhere in the file). After running `actions-up`, every prose comment referencing an old
    version is now silently wrong.
+9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
+   package versions from their apt repos without warning. If you pin a version that's been removed,
+   `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern
+   (now fixed), this used to produce a broken image without any error. **Always verify Percona and
+   Timescale pinned versions still exist in the repo** before finalising the update round:
+   ```bash
+   # Check Percona versions (run from a container or use the earlier docker run command)
+   bun scripts/extensions/validate-pgdg-versions.ts  # validates PGDG; Percona checked separately
+   docker run --rm postgres:18-trixie bash -c "
+     apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
+     curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
+     dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
+     apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
+   " 2>&1 | grep "percona-pg-stat-monitor"
+   ```
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items
@@ -675,6 +709,34 @@ Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improve
 
 **This is kaizen — each update round improves the next. The skill should be a living document
 that gets better with every use. Commit the skill update as the final commit of the round.**
+
+## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
+
+After ALL other phases — including CHANGELOG, skill update commit, and every other commit — run
+the full comprehensive test suite one final time:
+
+```bash
+bun run test:all
+```
+
+**This is a gate, not a formality.** Rules:
+
+- ✅ **If it passes**: Update round is **COMPLETE**. Repository is in a known-good state.
+- ❌ **If it fails**: DO NOT stop. DO NOT declare work done. Fix the issue, commit the fix,
+  and re-run `bun run test:all` from the top of Phase 12. Repeat until clean.
+
+**Why this matters**: `bun run build` succeeding is NOT sufficient — it only verifies the image
+compiles. A broken image can build successfully if `set -e` is circumvented (e.g., the `|| true`
+pattern). Only `test:all` starts PostgreSQL, loads all extensions, and runs functional tests —
+verifying the image is actually correct at runtime.
+
+**No exceptions. No "CI will catch it". No "close enough".** The only acceptable end state is
+`bun run test:all` passing clean with zero failures on the committed code.
+
+```
+test:all → pass → DONE
+test:all → fail → fix → commit fix → test:all (loop)
+```
 
 ## Rollback Procedure
 

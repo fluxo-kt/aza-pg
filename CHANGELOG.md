@@ -20,6 +20,12 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgmq 1.10.0 → 1.11.0**: AMQP-style topic routing (`bind_topic`/`send_topic` with `*` and `#` wildcards for fan-out messaging)
 - **TimescaleDB 2.25.0 → 2.25.1**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching
 
+- **pg_stat_monitor 2.3.1 → 2.3.2**: Percona dropped v2.3.1 from ppg-18 repository; updated to current release
+
+### Fixed
+
+- **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused bash `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode)
+
 ### Development
 
 - Updated Bun dev dependencies: oxlint 1.51.0, squawk-cli 2.43.0, sql-formatter 15.7.2, @types/bun 1.3.10

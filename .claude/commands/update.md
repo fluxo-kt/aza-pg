@@ -107,8 +107,10 @@ rule with a comment; if legitimate, fix the code.
 # Check current pinned runtime version
 cat .tool-versions            # e.g. "bun 1.3.8"
 
-# Check latest stable Bun runtime at https://bun.sh/blog (or bun upgrade --help)
-bun upgrade --dry-run 2>/dev/null | head -3
+# Check latest stable Bun runtime
+bun --version               # current installed
+# Then check https://github.com/oven-sh/bun/releases for latest stable tag
+# NOTE: `bun upgrade` has no --dry-run flag — it upgrades immediately; do NOT run it
 ```
 
 If a new stable runtime is available, update `.tool-versions` manually:
@@ -525,8 +527,11 @@ something. Run through these checks adversarially — try to break your own work
 
 **Tests**
 - Do any new tests pass trivially regardless of the fix they claim to cover?
-  (e.g., EXPLAIN test on a tiny table will use SeqScan, never touching the HNSW path)
-- Does `enable_seqscan = OFF` or similar forcing need to be added?
+  (e.g., EXPLAIN test on a tiny table uses SeqScan → never touches the HNSW-specific code path)
+- Does the test actually force the execution path it claims to verify?
+  Query planner optimisations, small row counts, or default settings can silently bypass the exact
+  code path being tested. Add session-level forcing (e.g. `SET enable_seqscan = OFF`) or sufficient
+  data volume to guarantee the expected path is taken.
 - Does the test verify the actual bug mode, or just that no crash occurred?
 
 **File completeness**

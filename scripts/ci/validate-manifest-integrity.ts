@@ -176,10 +176,10 @@ function main(): void {
   console.error(`\nTotal errors: ${errors.length}`);
   console.error("\nTo fix:");
   console.error(
-    "  1. For missing NAME_TO_KEY: Add to scripts/extensions/generate-extension-defaults.ts AND to NAME_TO_KEY in this file"
+    "  1. For missing NAME_TO_KEY: Add to scripts/extensions/generate-extension-defaults.ts AND to NAME_TO_KEY in scripts/ci/validate-manifest-integrity.ts"
   );
   console.error(
-    "  2. For missing PGDG_MAPPINGS: Add to scripts/extensions/pgdg-mappings.ts AND to PGDG_MAPPING_NAMES in this file"
+    "  2. For missing PGDG_MAPPINGS: Add to scripts/extensions/pgdg-mappings.ts AND to PGDG_MAPPING_NAMES in scripts/ci/validate-manifest-integrity.ts"
   );
   console.error("  3. For orphan entries: Remove from the mapping file or add to manifest");
   console.error(

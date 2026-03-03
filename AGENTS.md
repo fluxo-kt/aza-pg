@@ -185,7 +185,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+ (immutable releases). Locally: `bun run security:scan`.
 
-**SHA Pin Accuracy**: GitHub Actions SHA comments (`# v1.2.3`) are manually maintained and rot silently. The resolved tag shown in CI logs may differ from comment if tags move. Use Renovate/Dependabot or `git ls-remote https://github.com/REPO.git refs/tags/TAG` to verify.
+**SHA Pin Accuracy**: GitHub Actions SHA comments (`# v1.2.3`) rot silently — the resolved tag in CI logs may differ from the comment. Run `actions-up` (see `/update` skill) to keep all SHA pins current. Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
 ## Changelog
 

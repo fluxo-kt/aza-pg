@@ -336,7 +336,7 @@ _Performance Impact:_
 ```
 Build Time                Runtime                  Usage
 ─────────────────────────────────────────────────────────────
-pgvector 0.8.1            CREATE EXTENSION         Vector
+pgvector 0.8.2            CREATE EXTENSION         Vector
 (compiled .so) ────────► vector; ──────────────► similarity
                                                    search
 

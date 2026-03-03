@@ -142,16 +142,38 @@ async function testQueryExtensions(config: TestConfig): Promise<TestResult> {
 /**
  * Test 2: Verify installed extension versions match manifest declarations.
  *
- * Reads source.tag from extensions.manifest.json and extracts a semver string via regex,
- * then asserts that pg_extension.extversion starts with that declared version.
- * Only extensions with defaultEnable=true are required to be present; all others
- * that happen to be installed get opportunistic version checks.
- * Skips entries without extractable semver (commit-hash refs, REL-style tags).
+ * First checks pg_aza_status for any failed installations (the initdb contract table),
+ * then reads source.tag from extensions.manifest.json and extracts a semver string via
+ * regex, asserting pg_extension.extversion starts with that declared version.
+ *
+ * Only extensions with defaultEnable=true are required to be present; all others that
+ * happen to be installed get opportunistic version checks. Skips entries without
+ * extractable semver (commit-hash refs, REL-style tags).
+ *
+ * NOTE: Reads extensions.manifest.json from the HOST filesystem — authoritative when
+ * testing a locally built image, but may diverge if testing a remote/published image tag.
  */
 async function testManifestVersionMatch(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
     section("Test 2: Verify Extension Versions Match Manifest");
+
+    // === Preliminary: check pg_aza_status for failed installations ===
+    // pg_aza_status is written by initdb and records exactly which extensions failed,
+    // including the PostgreSQL error message. This catches .so absence before version checks.
+    const statusResult =
+      await $`docker exec ${config.containerName} psql -U postgres -tAc "SELECT array_to_string(failed_extensions, ',') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1;"`;
+    const failedExtStr = statusResult.text().trim();
+    if (failedExtStr.length > 0) {
+      const failedList = failedExtStr.split(",").filter(Boolean);
+      for (const ext of failedList) {
+        error(`initdb failed to install extension: ${ext}`);
+      }
+      throw new Error(
+        `pg_aza_status reports ${failedList.length} failed extension(s): ${failedList.join(", ")}`
+      );
+    }
+    info("pg_aza_status: no failed extensions ✓");
 
     const installed = await queryExtensions(config.containerName);
     const installedMap = new Map<string, string>(installed.map((e) => [e.name, e.version]));
@@ -245,7 +267,7 @@ async function testManifestVersionMatch(config: TestConfig): Promise<TestResult>
 }
 
 /**
- * Test 3: Create Test Data with pgvector (also verifies vector extension is installed)
+ * Test 3: Create Test Data with pgvector
  */
 async function testPgvectorData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -293,7 +315,7 @@ async function testPgvectorData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 3: Create Test Data with PostGIS
+ * Test 4: Create Test Data with PostGIS
  */
 async function testPostgisData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -347,7 +369,7 @@ async function testPostgisData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 4: Create Test Data with TimescaleDB
+ * Test 5: Create Test Data with TimescaleDB
  */
 async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -400,7 +422,7 @@ async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 5: Create Test Data with pg_cron
+ * Test 6: Create Test Data with pg_cron
  */
 async function testPgCronData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -450,7 +472,7 @@ async function testPgCronData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 6: Verify Extension Dependencies
+ * Test 7: Verify Extension Dependencies
  */
 async function testExtensionDependencies(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -498,7 +520,7 @@ async function testExtensionDependencies(config: TestConfig): Promise<TestResult
 }
 
 /**
- * Test 7: Verify Data Integrity After Extension Operations
+ * Test 8: Verify Data Integrity After Extension Operations
  */
 async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
@@ -561,7 +583,7 @@ async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 8: Check Extension Control Files
+ * Test 9: Check Extension Control Files
  */
 async function testExtensionControlFiles(config: TestConfig): Promise<TestResult> {
   const start = Date.now();

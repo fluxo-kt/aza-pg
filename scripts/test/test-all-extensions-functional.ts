@@ -397,11 +397,13 @@ await test(
   "vector (pgvector) - EXPLAIN on similarity query returns valid JSON (v0.8.2)",
   "ai",
   async () => {
+    // Force index scan: with few rows the planner defaults to SeqScan, which
+    // would never exercise the HNSW-specific EXPLAIN code path this test covers.
     const explain = await runSQL(
-      "EXPLAIN (FORMAT JSON) SELECT id, embedding <-> '[1,2,3]' AS distance FROM test_vectors ORDER BY embedding <-> '[1,2,3]' LIMIT 5"
+      "SET enable_seqscan = OFF; EXPLAIN (FORMAT JSON) SELECT id, embedding <-> '[1,2,3]' AS distance FROM test_vectors ORDER BY embedding <-> '[1,2,3]' LIMIT 5"
     );
     assert(explain.success, `EXPLAIN failed: ${explain.stderr}`);
-    // JSON output must parse without error — validates the PG18 EXPLAIN fix
+    // JSON output must parse without error — validates the PG18 Index Searches fix
     let parsed: unknown;
     try {
       parsed = JSON.parse(explain.stdout);

@@ -34,7 +34,7 @@ const NAME_TO_KEY: Record<string, string> = {
   set_user: "setUser",
 };
 
-// PGDG_MAPPINGS manifestNames - must match generate-dockerfile.ts
+// PGDG_MAPPINGS manifestNames - must match scripts/extensions/pgdg-mappings.ts
 const PGDG_MAPPING_NAMES = new Set([
   "pg_repack",
   "hll",
@@ -88,7 +88,7 @@ function validateManifestIntegrity(): ValidationError[] {
       errors.push({
         type: "missing_pgdg_mapping",
         extension: ext.name,
-        message: `PGDG extension "${ext.name}" missing from PGDG_MAPPINGS in generate-dockerfile.ts`,
+        message: `PGDG extension "${ext.name}" missing from PGDG_MAPPINGS in pgdg-mappings.ts`,
       });
     }
   }
@@ -178,9 +178,7 @@ function main(): void {
   console.error(
     "  1. For missing NAME_TO_KEY: Add entry to scripts/extensions/generate-extension-defaults.ts"
   );
-  console.error(
-    "  2. For missing PGDG_MAPPINGS: Add entry to scripts/docker/generate-dockerfile.ts"
-  );
+  console.error("  2. For missing PGDG_MAPPINGS: Add entry to scripts/extensions/pgdg-mappings.ts");
   console.error("  3. For orphan entries: Remove from the mapping file or add to manifest");
   console.error(
     "  4. For missing comprehensive test doc: Add enabledInComprehensiveTest to manifest entry"

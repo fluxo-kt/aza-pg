@@ -60,7 +60,7 @@
 
 import { $ } from "bun";
 import { appendFileSync } from "node:fs";
-import { error, success, info } from "../utils/logger";
+import { error, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import {
   type OCIMetadataOptions,
@@ -390,75 +390,104 @@ async function createManifest(options: Options): Promise<void> {
     return;
   }
 
-  // Execute command
+  // Execute command with retry for transient registry errors (GHCR eventual consistency)
   info("Creating multi-arch manifest...");
   info(`Tag: ${options.tag}`);
   info(`Sources: ${options.sources.length} image(s)`);
 
-  try {
-    // Execute the docker buildx imagetools create command
-    // Capture both stdout and stderr to parse the digest (buildx outputs digest to stderr)
-    const result = await Bun.spawn(cmdArray, {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+  // Retry up to 3 attempts with exponential backoff (5s, 15s).
+  // Historical failure rate is ~50% due to GHCR eventual consistency lag between
+  // the digest push in the build job and the manifest creation in the merge job.
+  const MAX_ATTEMPTS = 3;
+  const INITIAL_DELAY_MS = 5000;
 
-    // Read stdout/stderr CONCURRENTLY with process exit — sequential reads risk deadlock
-    // if pipe buffers fill before the process exits. Buildx emits progress to stderr.
-    const [exitCode, stderrText, stdoutText] = await Promise.all([
-      result.exited,
-      new Response(result.stderr).text(),
-      new Response(result.stdout).text(),
-    ]);
-
-    // Display subprocess output BEFORE exit-code check so errors are always visible
-    if (stderrText.trim()) {
-      console.log(stderrText.trim());
-    }
-    if (stdoutText.trim()) {
-      console.log(stdoutText.trim());
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      const delayMs = INITIAL_DELAY_MS * Math.pow(3, attempt - 2);
+      warning(
+        `Attempt ${attempt - 1} failed — retrying in ${delayMs / 1000}s (${attempt - 1}/${MAX_ATTEMPTS - 1})...`
+      );
+      await Bun.sleep(delayMs);
     }
 
-    if (exitCode !== 0) {
-      // GitHub Actions annotations for CI/CD
-      if (Bun.env.GITHUB_ACTIONS === "true") {
-        console.error(`::error::Manifest creation failed with exit code ${exitCode}`);
+    try {
+      // Read stdout/stderr CONCURRENTLY with process exit — sequential reads risk deadlock
+      // if pipe buffers fill before the process exits. Buildx emits progress to stderr.
+      const result = Bun.spawn(cmdArray, {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [exitCode, stderrText, stdoutText] = await Promise.all([
+        result.exited,
+        new Response(result.stderr).text(),
+        new Response(result.stdout).text(),
+      ]);
+
+      // Display subprocess output BEFORE exit-code check so errors are always visible
+      if (stderrText.trim()) {
+        console.log(stderrText.trim());
       }
-      error(`Manifest creation failed with exit code ${exitCode}`);
+      if (stdoutText.trim()) {
+        console.log(stdoutText.trim());
+      }
+
+      if (exitCode !== 0) {
+        if (attempt < MAX_ATTEMPTS) {
+          continue; // let retry loop handle the delay + next attempt
+        }
+        // Final attempt failed
+        if (Bun.env.GITHUB_ACTIONS === "true") {
+          console.error(
+            `::error::Manifest creation failed with exit code ${exitCode} (all ${MAX_ATTEMPTS} attempts exhausted)`
+          );
+        }
+        error(
+          `Manifest creation failed with exit code ${exitCode} (all ${MAX_ATTEMPTS} attempts exhausted)`
+        );
+        process.exit(1);
+      }
+
+      // Parse digest from stderr (buildx outputs: "pushing sha256:DIGEST to TAG")
+      let digest = "";
+      const digestMatch = stderrText.match(/pushing (sha256:[a-f0-9]{64})/);
+      if (digestMatch?.[1]) {
+        digest = digestMatch[1];
+      }
+
+      success(
+        `Manifest created and pushed successfully${attempt > 1 ? ` (attempt ${attempt})` : ""}`
+      );
+      info(`Tag: ${options.tag}`);
+
+      if (digest) {
+        info(`Digest: ${digest}`);
+      }
+
+      // Output for GitHub Actions workflow — MUST append to GITHUB_OUTPUT, never overwrite
+      // (it is a shared file accumulating all step outputs for the job)
+      if (options.githubOutput && Bun.env.GITHUB_OUTPUT) {
+        let outputContent = `manifest-tag=${options.tag}\n`;
+        if (digest) {
+          outputContent += `digest=${digest}\n`;
+        }
+        appendFileSync(Bun.env.GITHUB_OUTPUT, outputContent);
+        info("GitHub output written");
+      }
+
+      return; // SUCCESS — exit retry loop
+    } catch (err) {
+      if (attempt < MAX_ATTEMPTS) {
+        warning(`Attempt ${attempt} threw: ${getErrorMessage(err)} — will retry`);
+        continue;
+      }
+      // Final attempt threw
+      if (Bun.env.GITHUB_ACTIONS === "true") {
+        console.error(`::error::Failed to execute manifest creation: ${getErrorMessage(err)}`);
+      }
+      error(`Failed to execute manifest creation: ${getErrorMessage(err)}`);
       process.exit(1);
     }
-
-    // Parse digest from stderr (buildx outputs: "pushing sha256:DIGEST to TAG")
-    let digest = "";
-    const digestMatch = stderrText.match(/pushing (sha256:[a-f0-9]{64})/);
-    if (digestMatch?.[1]) {
-      digest = digestMatch[1];
-    }
-
-    success("Manifest created and pushed successfully");
-    info(`Tag: ${options.tag}`);
-
-    if (digest) {
-      info(`Digest: ${digest}`);
-    }
-
-    // Output for GitHub Actions workflow — MUST append to GITHUB_OUTPUT, never overwrite
-    // (it is a shared file accumulating all step outputs for the job)
-    if (options.githubOutput && Bun.env.GITHUB_OUTPUT) {
-      let outputContent = `manifest-tag=${options.tag}\n`;
-      if (digest) {
-        outputContent += `digest=${digest}\n`;
-      }
-      appendFileSync(Bun.env.GITHUB_OUTPUT, outputContent);
-      info("GitHub output written");
-    }
-  } catch (err) {
-    // GitHub Actions annotations for CI/CD
-    if (Bun.env.GITHUB_ACTIONS === "true") {
-      console.error(`::error::Failed to execute manifest creation: ${getErrorMessage(err)}`);
-    }
-    error(`Failed to execute manifest creation: ${getErrorMessage(err)}`);
-    process.exit(1);
   }
 }
 

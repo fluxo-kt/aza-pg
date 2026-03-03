@@ -168,8 +168,8 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 
 | Package                           | Version | License |
 | --------------------------------- | ------- | ------- |
-| timescaledb-2-postgresql-18       | 2.23.1  | TSL     |
-| timescaledb-2-oss-postgresql-18   | 2.23.1  | Apache  |
+| timescaledb-2-postgresql-18       | 2.25.2  | TSL     |
+| timescaledb-2-oss-postgresql-18   | 2.25.2  | Apache  |
 | timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
 
 - **License:** Timescale License (TSL) - not Apache 2.0

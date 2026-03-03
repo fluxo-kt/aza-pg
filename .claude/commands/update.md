@@ -518,6 +518,37 @@ Resolution options:
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
+## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE COMMITTING)
+
+**Do this after every batch of changes, without waiting to be asked.** Assume you missed
+something. Run through these checks adversarially — try to break your own work:
+
+**Tests**
+- Do any new tests pass trivially regardless of the fix they claim to cover?
+  (e.g., EXPLAIN test on a tiny table will use SeqScan, never touching the HNSW path)
+- Does `enable_seqscan = OFF` or similar forcing need to be added?
+- Does the test verify the actual bug mode, or just that no crash occurred?
+
+**File completeness**
+- When touching a file that documents required changes (README, validator error messages,
+  skill files): do the instructions in that file still work? Are any file references stale?
+- When touching any validator: do its own fix instructions actually fix the error it reports?
+  Validators with inline copies of data must point users to update BOTH the canonical file
+  AND the validator's own inline copy.
+- Are all tooling version files in sync? (`.tool-versions`, `package.json`, lock files)
+
+**Version strings and URLs**
+- Every URL, version string, and file path you wrote or modified — verify it, don't assume.
+  GitHub repository transfers happen; org names change. Check the actual URL before "fixing" it.
+
+**What you didn't look at**
+- List files that are related to your changes but that you haven't read. Read them now.
+- Specifically: auto-generated files (`extension-defaults.ts`, `Dockerfile`,
+  `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
+
+**The question to answer**: "If the user ran an adversarial audit on what I just did,
+what would they find?" Find it yourself first.
+
 ## Phase 10: Commit
 
 **Conventional commit format**:

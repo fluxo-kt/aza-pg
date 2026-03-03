@@ -403,10 +403,14 @@ await test(
       "SET enable_seqscan = OFF; EXPLAIN (FORMAT JSON) SELECT id, embedding <-> '[1,2,3]' AS distance FROM test_vectors ORDER BY embedding <-> '[1,2,3]' LIMIT 5"
     );
     assert(explain.success, `EXPLAIN failed: ${explain.stderr}`);
+    // psql outputs "SET\n" for the SET command before the EXPLAIN JSON.
+    // Extract the JSON portion starting from the first '['.
+    const jsonStart = explain.stdout.indexOf("[");
+    const jsonStr = jsonStart >= 0 ? explain.stdout.slice(jsonStart) : explain.stdout;
     // JSON output must parse without error — validates the PG18 Index Searches fix
     let parsed: unknown;
     try {
-      parsed = JSON.parse(explain.stdout);
+      parsed = JSON.parse(jsonStr);
     } catch {
       throw new Error(`EXPLAIN (FORMAT JSON) produced invalid JSON: ${explain.stdout}`);
     }
@@ -1248,10 +1252,9 @@ await test("supautils - Verify binary available (preload-only)", "safety", async
     await Bun.$`docker exec ${CONTAINER} test -f /usr/lib/postgresql/${pgMajor}/lib/supautils.so && echo "exists" || echo "missing"`.text();
   assert(checkResult.trim() === "exists", "supautils.so file not found in image");
 
-  // Also verify the .control file exists
-  const controlResult =
-    await Bun.$`docker exec ${CONTAINER} test -f /usr/share/postgresql/${pgMajor}/extension/supautils.control && echo "exists" || echo "missing"`.text();
-  assert(controlResult.trim() === "exists", "supautils.control file not found in image");
+  // supautils is a preload-only module — it has NO .control file by design.
+  // Preload-only modules load via shared_preload_libraries; they are NOT CREATE EXTENSION-able.
+  // Only verify the .so exists (checked above). Do NOT assert a .control file.
 });
 
 // ============================================================================

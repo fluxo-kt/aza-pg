@@ -54,18 +54,22 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
   { echo "ABORT: Working tree is dirty. Commit or stash changes first."; git status --short; exit 1; }
 ```
 
-### 0.3 — Fetch and compare dev
+### 0.3 — Fetch and compare dev (distinguish direction — behind is dangerous)
 
 ```bash
 git fetch origin
 LOCAL_DEV=$(git rev-parse dev)
 REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
 if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
-  echo "⚠️  WARNING: Local dev differs from origin/dev."
-  echo "   Local:  $LOCAL_DEV"
-  echo "   Remote: $REMOTE_DEV"
-  echo "   Consider: git checkout dev && git pull && git checkout $BRANCH"
-  echo "   Proceed only if you intentionally have unpushed dev commits."
+  if git merge-base --is-ancestor origin/dev dev 2>/dev/null; then
+    # local dev has commits not yet pushed (local AHEAD of remote) — normal
+    echo "⚠️  INFO: Local dev is AHEAD of origin/dev (unpushed commits). Proceeding."
+  else
+    # remote dev has commits local doesn't have (local BEHIND or diverged) — DANGEROUS
+    echo "🚨 ABORT: Local dev is BEHIND or diverged from origin/dev — you may be missing commits!"
+    echo "   Run: git checkout dev && git pull --ff-only && git checkout $BRANCH"
+    exit 1
+  fi
 fi
 ```
 
@@ -82,9 +86,12 @@ echo "Anchor message: $(git log -1 --format='%s' $ANCHOR)"
 ### 0.5 — Verify anchor merge parentage (parent2 on main lineage)
 
 ```bash
-ANCHOR_P2=$(git rev-parse $ANCHOR^2)
-git merge-base --is-ancestor $ANCHOR_P2 HEAD || \
-  { echo "ABORT: Anchor merge parent2 ($ANCHOR_P2) is NOT on main lineage."; \
+# $ANCHOR^2 fails if ANCHOR is not a real merge commit (grep may match non-merges)
+ANCHOR_P2=$(git rev-parse "$ANCHOR^2" 2>/dev/null) || \
+  { echo "ABORT: $ANCHOR has no second parent — not a merge commit. Anchor malformed."; exit 1; }
+
+git merge-base --is-ancestor "$ANCHOR_P2" HEAD || \
+  { echo "ABORT: Anchor parent2 ($ANCHOR_P2) is NOT on main/release lineage."; \
     echo "       The anchor merge may be malformed. Investigate."; exit 1; }
 echo "Anchor parent2 $ANCHOR_P2 confirmed on main lineage. ✓"
 ```
@@ -94,7 +101,7 @@ echo "Anchor parent2 $ANCHOR_P2 confirmed on main lineage. ✓"
 ```bash
 CURRENT_HEAD=$(git rev-parse HEAD)
 [[ "$ANCHOR_P2" == "$CURRENT_HEAD" ]] || {
-  echo "ABORT: Anchor merge parent2 ($ANCHOR_P2) ≠ HEAD ($CURRENT_HEAD)."
+  echo "ABORT: Anchor parent2 ($ANCHOR_P2) ≠ HEAD ($CURRENT_HEAD)."
   echo "       Main/release has moved since the anchor merge was created."
   echo "       Create a new anchor merge on dev pointing to the current HEAD."
   exit 1
@@ -114,10 +121,10 @@ echo "Commits after anchor: $COMMIT_COUNT"
 
 ```bash
 echo "=== Pre-Flight Summary ==="
-echo "Branch:         $BRANCH"
-echo "HEAD:           $(git rev-parse --short HEAD)"
-echo "Anchor:         $(git rev-parse --short $ANCHOR)"
-echo "Dev tip:        $(git rev-parse --short dev)"
+echo "Branch:            $BRANCH"
+echo "HEAD:              $(git rev-parse --short HEAD)"
+echo "Anchor:            $(git rev-parse --short $ANCHOR)"
+echo "Dev tip:           $(git rev-parse --short dev)"
 echo "Commits to squash: $COMMIT_COUNT"
 echo "=========================="
 ```
@@ -126,14 +133,14 @@ echo "=========================="
 
 ## Phase 1: Analyse Net Delta
 
-### 1.1 — Enumerate commits (anchor..dev)
+### 1.1 — Enumerate commits (anchor..dev, ALL including merges)
 
 ```bash
 # Verify count independently to guard against RTK truncation
 git rev-list $ANCHOR..dev --count  # Should match $COMMIT_COUNT from Phase 0
 
-# List commits for review
-git log $ANCHOR..dev --oneline --no-merges
+# List ALL commits including intermediate merges — full picture of what's being squashed
+git log $ANCHOR..dev --oneline
 ```
 
 ### 1.2 — Categorise changes (consumer-visible)
@@ -144,7 +151,7 @@ Scan the diff for consumer-visible changes. Look at:
 # Manifest changes (extension versions, PG version, base image)
 git diff $ANCHOR..dev -- scripts/extensions/manifest-data.ts
 
-# CHANGELOG unreleased section
+# CHANGELOG unreleased section (before squash — from dev's HEAD)
 git show dev:CHANGELOG.md | head -80
 
 # Dockerfile changes (if any)
@@ -163,16 +170,26 @@ git diff $ANCHOR..dev --stat -- scripts/test/
 ### 1.3 — Collect unique co-authors
 
 ```bash
-# grep anchored to line-start; sort -uf = case-insensitive dedup, first-occurrence casing wins
-COAUTHORS=$(git log $ANCHOR..dev --format="%b" | grep -iE "^co-authored-by:" | sort -uf)
+# Anchored grep avoids false positives from prose mentioning co-authors.
+# sort -f | awk deduplicates case-insensitively, keeping input order of first occurrence.
+COAUTHORS=$(git log $ANCHOR..dev --format="%b" \
+  | grep -iE "^co-authored-by:" \
+  | awk '!seen[tolower($0)]++')
 echo "$COAUTHORS"
 ```
 
 ### 1.4 — Determine hash range (for commit body)
 
 ```bash
-FIRST_SHORT=$(git rev-parse --short $(git rev-list $ANCHOR..dev --no-merges | tail -1))
-LAST_SHORT=$(git rev-parse --short $(git rev-list $ANCHOR..dev --no-merges | head -1))
+# --no-merges for range display: shows the actual work commits, not merge plumbing
+WORK_COMMITS=$(git rev-list $ANCHOR..dev --no-merges)
+if [[ -z "$WORK_COMMITS" ]]; then
+  # All commits are merges (rare but possible) — fall back to full range
+  echo "⚠️ All commits in range are merges — using full range for hash display"
+  WORK_COMMITS=$(git rev-list $ANCHOR..dev)
+fi
+FIRST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | tail -1)")
+LAST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | head -1)")
 echo "Range: ${FIRST_SHORT}..${LAST_SHORT}"
 ```
 
@@ -181,6 +198,10 @@ echo "Range: ${FIRST_SHORT}..${LAST_SHORT}"
 ## Phase 2: CHANGELOG Audit & Optimisation
 
 Review dev's CHANGELOG (`[Unreleased]` section) against the net delta from Phase 1.
+
+```bash
+git show dev:CHANGELOG.md | head -100
+```
 
 **Audit rules**:
 
@@ -193,7 +214,7 @@ Review dev's CHANGELOG (`[Unreleased]` section) against the net delta from Phase
 7. **Upgrade verification SQL**: For significant extension upgrades, include a SQL snippet consumers can run to verify (e.g., `SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';`)
 8. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
 
-Prepare the optimised CHANGELOG content. You will apply it as an edit in Phase 4 after the squash.
+Write down the specific CHANGELOG edits needed (which lines to change, add, or remove). You will apply them in Phase 4.4 AFTER the squash, at which point the CHANGELOG in the working tree will be dev's version.
 
 ---
 
@@ -237,7 +258,7 @@ Rules:
 - Always include `Co-Authored-By: Claude <noreply@anthropic.com>`
 - Deduplicate co-authors (case-insensitive); add Claude if not already present
 
-Save the message draft. You will use it in `git commit -m` in Phase 4.
+Write the complete message now. You will use it verbatim in Phase 4.7.
 
 ---
 
@@ -251,27 +272,32 @@ Save the message draft. You will use it in `git commit -m` in Phase 4.
 git merge --squash dev
 ```
 
-Expected output: a list of staged files (no "Already up to date." — that's caught by Phase 0.7).
-
-If "Already up to date." with empty staged index:
+Expected output: a list of staged files. Verify changes were staged:
 
 ```bash
-git diff --cached --stat
-# If empty: ABORT — pre-flight should have caught this
-echo "ABORT: git merge --squash dev produced no changes. Investigate."
+# Verify squash produced staged changes (should not be empty after passing Phase 0.7)
+STAGED_STAT=$(git diff --cached --stat)
+if [[ -z "$STAGED_STAT" ]]; then
+  echo "ABORT: git merge --squash dev produced no staged changes."
+  echo "       Run: git rev-list $ANCHOR..dev --oneline (should be non-empty)"
+  exit 1
+fi
+echo "$STAGED_STAT"
 ```
 
-If **merge conflicts** (should not happen with a proper anchor merge, but defensively):
+If **merge conflicts** (should not happen with a valid anchor merge, but defensively):
 
 ```bash
-# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort won't work here.
-# Recover with reset + checkout instead:
+# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort fails here.
+# Capture conflict info FIRST (while markers are in the working tree), THEN reset.
+echo "ABORT: Merge conflicts detected. Conflicting files:"
+git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
+echo ""
+echo "Recovering to clean state:"
 git reset HEAD
 git checkout -- .
-bun install              # Restore release branch's node_modules
-echo "ABORT: Conflicts during squash. Investigate:"
-git diff $ANCHOR..dev -- <conflicted-file>
-echo "Likely cause: anchor merge is malformed, or main has diverged."
+bun install
+echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
 exit 1
 ```
 
@@ -284,7 +310,7 @@ bun install
 This syncs `node_modules` to dev's `bun.lock` (dev may have updated oxlint, prettier, etc.).
 The `postinstall` script also installs bun-git-hooks.
 
-Re-stage `bun.lock` in case `bun install` reformatted it:
+Re-stage `bun.lock` in case `bun install` reformatted it (bun may canonicalise JSONC format):
 
 ```bash
 git add bun.lock
@@ -329,7 +355,7 @@ echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 
 ### 4.4 — Apply CHANGELOG optimisations
 
-Edit `CHANGELOG.md` to apply the optimised content prepared in Phase 2.
+Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there.
 
 After editing:
 
@@ -349,11 +375,21 @@ These changes are squashed into the same mega-commit. The anchor merge will prop
 
 ```bash
 git diff --cached --stat
-# Review: expected to see manifest changes, CHANGELOG, generated files, bun.lock, etc.
-# Flag anything unexpected.
 ```
 
+**Expected to see**: manifest changes, CHANGELOG, generated files, bun.lock (if reformatted), any Phase 4.5 edits.
+**Flag as unexpected**: any source files (`scripts/`, `docker/`) that shouldn't have changed, unrecognised config files.
+Note: `bun.lock` diff is normal if bun's format changed across versions.
+
 ### 4.7 — Commit
+
+**IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from Phase 1 and 3:
+- `TYPE` → actual type from Phase 3.1 (e.g., `feat`)
+- `SCOPE` → actual scope (e.g., `postgres`)
+- `title here` → actual title from Phase 3.2 (max 72 chars including `TYPE(SCOPE): `)
+- `change 1`, `change 2` → actual body bullets from Phase 3.2
+- `FIRST_SHORT..LAST_SHORT` → actual hashes from Phase 1.4 (e.g., `6a979fa..b111f5a`)
+- `Co-Authored-By: Name <email>` → actual co-authors from Phase 1.3 (one line per author)
 
 ```bash
 # Use HEREDOC for correct formatting; never --no-verify; never --no-gpg-sign
@@ -394,8 +430,8 @@ echo "Files differing from dev:"
 echo "$DIFF_FILES"
 ```
 
-**Expected**: Only `CHANGELOG.md` (and any other explicitly edited files from Phase 4.5).
-**Flag**: Any unexpected differences (may indicate unintended changes).
+**Expected to differ**: `CHANGELOG.md` (always, by design), `bun.lock` (if bun reformatted), any files edited in Phase 4.5.
+**Flag as unexpected**: source files, scripts, Docker files, generated extension lists — these should be IDENTICAL to dev after squash.
 
 Do NOT compare tree hashes — trees intentionally diverge after CHANGELOG edits.
 
@@ -418,15 +454,15 @@ bun run validate
 echo "=== Release Commit Summary ==="
 git log -1 --format="Hash:    %H%nShort:   %h%nAuthor:  %an%nDate:    %ai%nSubject: %s"
 echo ""
-echo "Diff from dev (should be CHANGELOG only):"
+echo "Diff from dev (CHANGELOG.md + any release-time edits):"
 git diff dev HEAD --name-only
 echo "=============================="
 echo ""
 echo "Next steps:"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push: git push origin $BRANCH"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix)"
-echo "  4. Sync main/release if needed (see Appendix)"
+echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  4. Sync main/release if needed (see Appendix B)"
 ```
 
 ---
@@ -448,20 +484,23 @@ After every execution, reflect and update this command:
 
 ## Appendix A: Anchor Merge (After Push + CI Pass)
 
-Creates a merge commit on dev whose **tree** is forced to match main's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge main --no-ff` produces the WRONG tree when release-time edits diverge from dev.
+Creates a merge commit on dev whose **tree** is forced to match the release branch's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge <branch> --no-ff` produces the WRONG tree when release-time edits diverge from dev.
 
 ```bash
+# Run from dev. The RELEASE_BRANCH is whichever branch /release was executed on.
+RELEASE_BRANCH="main"   # Change to "release" if /release ran on release branch
+
 git checkout dev
 
 # ⚠️ dev working tree MUST be clean — git reset --hard destroys uncommitted changes!
 [[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
 
-RELEASE_TAG=$(git rev-parse --short main)  # or release branch HEAD
-TREE=$(git rev-parse main^{tree})
+RELEASE_SHORT=$(git rev-parse --short $RELEASE_BRANCH)
+TREE=$(git rev-parse $RELEASE_BRANCH^{tree})
 DEV_HEAD=$(git rev-parse --short HEAD)
 
-COMMIT=$(echo "Anchor Merge: merging $DEV_HEAD and $RELEASE_TAG ($(git rev-parse --short main))" \
-  | git commit-tree $TREE -p HEAD -p main)
+COMMIT=$(echo "Anchor Merge: dev $DEV_HEAD → $RELEASE_BRANCH $RELEASE_SHORT" \
+  | git commit-tree $TREE -p HEAD -p $RELEASE_BRANCH)
 
 git reset --hard $COMMIT
 git push origin dev
@@ -469,10 +508,10 @@ git push origin dev
 
 This creates a merge commit on dev with:
 - **Parent 1**: dev HEAD (preserves dev history)
-- **Parent 2**: main HEAD (the squash commit)
-- **Tree**: main's tree (anchored — hence "anchor merge")
+- **Parent 2**: release branch HEAD (the squash commit)
+- **Tree**: release branch's tree (anchored — hence "anchor merge")
 
-The anchor merge's tree = main's tree = dev's next starting point. Clean slate.
+The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 ---
 
@@ -520,3 +559,6 @@ The file is committed to the release branch before squash. Since dev doesn't tou
 
 **Why `bun install` is mandatory after squash**:
 The squash brings dev's code (including updated `bun.lock`) into the index/working tree, but `node_modules` still reflects release branch's packages. Dev may have updated oxlint, prettier, etc. Without `bun install`, validation uses stale binaries and the pre-commit hook's `bun run generate` uses wrong packages.
+
+**Why Appendix A uses `git commit-tree` instead of `git merge`**:
+`git merge $RELEASE_BRANCH --no-ff` on dev would create a merge commit with dev's parent-1 + release's parent-2, BUT the tree would be the 3-way merge result, not release's tree — so release-time edits (e.g., CHANGELOG changes) would be REVERTED. `commit-tree` forces the tree to be exactly release's tree.

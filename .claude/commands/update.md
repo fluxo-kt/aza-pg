@@ -614,10 +614,10 @@ Resolution options:
 - **pgflow 0.13.0**: Handler signature changed - root steps now receive `(flowInput, ctx)` instead of `(input)`. Update your handler functions.
 
 ### Security
-- **pgvector**: Patched CVE-XXXX-YYYY (heap overflow in distance calculation)
+- **pg_partman**: Patched CVE-XXXX-YYYY (privilege escalation via search_path in run_maintenance())
 
 ### Fixed
-- **TimescaleDB**: Fixes incorrect decompression on ARM when bloom filters enabled
+- **pg_cron**: Fixed scheduled jobs failing silently when pg_cron.max_running_jobs limit was reached
 
 ### Changed (user-facing)
 - **pgvector 0.8.1 → 0.9.0**: New HNSW parameters (ef_search default changed from 40 to 100)

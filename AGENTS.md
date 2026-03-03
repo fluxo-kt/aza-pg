@@ -181,7 +181,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 1. Track image-affecting changes in `[Unreleased]` section
 2. Focus on: extension updates, base image changes, breaking changes
-3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[18.1-202501071430-single-node]`)
+3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[v18.1-202602082259]`)
 4. Start new `[Unreleased]` section for next changes
 5. Non-image changes (tests, tooling, CI): mention briefly in "Development" subsection
 

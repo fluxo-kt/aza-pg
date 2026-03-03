@@ -540,6 +540,8 @@ After every execution, reflect and update this command:
 
 ### Accumulated Lessons
 
+- **`workflow_run` always executes from `main` (default branch), not the triggering branch.** GitHub security restriction — prevents privilege escalation from untrusted branches. Consequence: every change to `publish.yml` on `release` is **invisible to CI** until `main` is fast-forwarded. Always push to BOTH `release` and `main` after a release commit. The Phase 6 next-steps output now makes this explicit and mandatory.
+
 - **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
 - **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
 - **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
@@ -556,9 +558,10 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo ""
 echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
-echo "  2. Push: git push origin $CURRENT_BRANCH"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
-echo "  4. Sync main/release if needed (see Appendix B)"
+echo "  2. Push release: git push origin $CURRENT_BRANCH"
+echo "  3. Sync main NOW (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
+echo "       git checkout main && git merge $CURRENT_BRANCH --ff-only && git push origin main && git checkout $CURRENT_BRANCH"
+echo "  4. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
 
 ---
@@ -665,12 +668,15 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 ## Appendix B: main/release Branch Sync
 
-If /release ran on `release` but `main` needs updating (or vice versa), the agent cannot switch branches itself. Output the following commands for the user to run:
+**This is MANDATORY, not optional.** GitHub's `workflow_run` triggered workflows always execute from the **default branch** (`main`), regardless of which branch triggered the upstream CI. If `main` lags behind `release`, the publish workflow runs the OLD `publish.yml` — all fixes on `release` are silently bypassed.
+
+Sync `main` immediately after every push to `release`. The agent cannot switch branches itself. Output:
 
 ```text
 Please run:
   git checkout main
   git merge release --ff-only
+  git push origin main
   git checkout release
 Then confirm each step succeeded.
 ```

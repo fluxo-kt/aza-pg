@@ -667,6 +667,12 @@ something. Run through these checks adversarially — try to break your own work
   test has inline comments listing extensions NOT expected in pgdgVersions (source-built ones).
   When migrating an extension to/from PGDG, add/remove `expect(versions.KEY).toBeDefined()` and
   update the comments accordingly.
+- **`scripts/test/test-timescaledb-breaking-changes.ts`**: Standalone test not in `test:all`.
+  Contains a version series check (`startsWith("2.25.")`) — **update the series prefix** when
+  TimescaleDB crosses a minor version boundary (2.25.x → 2.26.x). Also update the file title
+  and run banner.
+- **Search all test files for hardcoded version strings** that would fail after the update:
+  `grep -rn 'includes\|startsWith\|=== "' scripts/test/ | grep -E '[0-9]+\.[0-9]'`
 
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
 what would they find?" Find it yourself first.

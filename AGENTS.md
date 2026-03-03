@@ -127,7 +127,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **CI**: `ci.yml` (PRs) | `build-postgres-image.yml` (manual) | `publish.yml` (releases, Cosign signing)
 
-**Tags**: `MM.mm-TS-TYPE` (e.g., `18.1-202511142330-single-node`) — NO `latest` from dev builds
+**Tags**: `vMM.mm-TS` (e.g., `v18.1-202602082259`) — NO `latest` from dev builds
 
 ## Common Mistakes
 

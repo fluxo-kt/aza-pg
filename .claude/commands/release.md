@@ -49,7 +49,7 @@ echo "Current branch: $BRANCH"
 
 If `$BRANCH` is not `main` or `release`, **do not abort** — output this message to the user and wait for them to confirm before continuing:
 
-```
+```text
 Currently on branch: <BRANCH>
 /release must run from main or release. Please run:
   git checkout main
@@ -194,7 +194,7 @@ git diff $ANCHOR..dev --stat -- scripts/test/
 
 ```bash
 # Anchored grep avoids false positives from prose mentioning co-authors.
-# sort -f | awk deduplicates case-insensitively, keeping input order of first occurrence.
+# awk deduplicates case-insensitively while preserving first-occurrence order.
 COAUTHORS=$(git log $ANCHOR..dev --format="%b" \
   | grep -iE "^co-authored-by:" \
   | awk '!seen[tolower($0)]++')
@@ -228,7 +228,7 @@ git show dev:CHANGELOG.md
 
 **Audit rules**:
 
-1. **Consumer-first ordering within existing categories**: Use whichever categories dev's CHANGELOG already has (`Breaking`, `Changed`, `Added`, `Development` — from `update.md`). Reorder for impact: Breaking first, then Changed (security fixes go here too), then Added, then Development. Do NOT invent new categories like "Fixed" or "Security" — put bug fixes in "Changed", security fixes in "Changed" with a ⚠️ marker.
+1. **Consumer-first ordering**: Accept the standard CHANGELOG categories: `Breaking`, `Security`, `Fixed`, `Changed`, `Added`, `Deprecated`, `Removed`, `Development`. Reorder by impact: Breaking first, then Security/Fixed, then Changed, Added, Deprecated, Removed, then Development last. Do NOT invent categories beyond this set.
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
 4. **Development section**: MAX 3 brief lines, no per-file detail
@@ -259,7 +259,7 @@ Title should name the 1-2 most impactful consumer-visible changes (e.g., "upgrad
 
 Format (from reference commits `33c3c24`, `0d94637`):
 
-```
+```text
 TYPE(SCOPE): concise consumer-first title (max 72 chars)
 
 - Consumer-visible change 1 (extensions, features, security)
@@ -293,7 +293,7 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 
 ```bash
 # NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
-# If conflicts occur, recovery is: git reset HEAD && git checkout -- . && bun install
+# If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
 if ! git merge --squash dev; then
   echo "ABORT: Merge conflicts detected. Conflicting files:"
   git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
@@ -301,6 +301,7 @@ if ! git merge --squash dev; then
   echo "Recovering to clean state:"
   git reset HEAD
   git checkout -- .
+  git clean -fd          # Remove untracked files introduced by git merge --squash dev
   bun install
   echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
   exit 1
@@ -344,16 +345,21 @@ bun run validate:all
 **If validation fails** — categorise and handle:
 
 **Auto-fixable** (fix, proceed):
+
 - Prettier/formatting:
+
   ```bash
   bun run validate:fix
   git add -u
   ```
+
 - Generated files stale:
+
   ```bash
   bun run generate
   git add -u
   ```
+
 - CHANGELOG issues → edit directly, then `git add CHANGELOG.md`
 
 **Non-trivial** (ABORT — user fixes on dev, re-runs /release):
@@ -367,6 +373,7 @@ Abort sequence:
 ```bash
 git reset HEAD           # Unstage everything (index → HEAD)
 git checkout -- .        # Restore working tree to HEAD
+git clean -fd            # Remove untracked files introduced by git merge --squash dev
 bun install              # Restore release branch's node_modules
 echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 ```
@@ -411,7 +418,7 @@ echo "Dev squash tip: $DEV_SQUASH_TIP"
 **IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from Phase 1, 3, and the echo above:
 - `TYPE` → actual type from Phase 3.1 (e.g., `feat`)
 - `SCOPE` → actual scope (e.g., `postgres`)
-- `title here` → actual title from Phase 3.2 (max 72 chars including `TYPE(SCOPE): `)
+- `title here` → actual title from Phase 3.2 (max 72 chars including `TYPE(SCOPE):` prefix)
 - `change 1`, `change 2` → actual body bullets from Phase 3.2
 - `FIRST_SHORT..LAST_SHORT` → actual hashes from Phase 1.4 (e.g., `6a979fa..b111f5a`)
 - `DEV_SQUASH_TIP` → full hash from the echo above (e.g., `abc1234def5678...`)
@@ -494,13 +501,6 @@ echo ""
 echo "Diff from dev (CHANGELOG.md + any release-time edits):"
 git diff dev HEAD --name-only
 echo "=============================="
-echo ""
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "Next steps:"
-echo "  1. Review commit: git show HEAD"
-echo "  2. Push: git push origin $CURRENT_BRANCH"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
-echo "  4. Sync main/release if needed (see Appendix B)"
 ```
 
 ---
@@ -520,6 +520,18 @@ After every execution, reflect and update this command:
 
 **⚠️ Kaizen commits MUST happen BEFORE creating the Anchor Merge** (Appendix A). The anchor merge captures the release branch tree at that moment — if kaizen edits to this command file happen after the anchor merge, dev and release will drift by exactly those edits. Sequence: Phase 6 kaizen commit → push → CI → Anchor Merge.
 
+Once kaizen is committed, output next steps for the user:
+
+```bash
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo ""
+echo "Next steps (all agent work complete):"
+echo "  1. Review commit: git show HEAD"
+echo "  2. Push: git push origin $CURRENT_BRANCH"
+echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  4. Sync main/release if needed (see Appendix B)"
+```
+
 ---
 
 ## Appendix A: Anchor Merge (After Push + CI Pass)
@@ -532,7 +544,7 @@ Creates a merge commit on dev whose **tree** is forced to match the release bran
 
 The AI agent cannot switch branches itself. Output this message verbatim and **wait for the user to confirm** before proceeding:
 
-```
+```text
 Please run:
   git checkout dev
 Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should print "dev").
@@ -548,19 +560,19 @@ Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should p
 # Fetch tags from origin so TARGET always reflects what CI just published
 git fetch --tags origin
 
-TARGET=$(git tag --sort=-creatordate | head -1)
-[[ -n "$TARGET" ]] || { echo "ABORT: No tags found after fetch."; exit 1; }
+TARGET=$(git tag -l 'v*' --sort=-creatordate | head -1)
+[[ -n "$TARGET" ]] || { echo "ABORT: No release tags (v*) found after fetch."; exit 1; }
 echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
 ```
 
 **Ask the user to confirm the tag BEFORE proceeding.** Output:
 
-```
+```text
 Detected release tag: <TARGET>
 Is this the correct tag? (yes/no)
 ```
 
-If the user says no, abort and ask them to check `git tag --sort=-creatordate | head -5`.
+If the user says no, abort and ask them to check `git tag -l 'v*' --sort=-creatordate | head -5`.
 
 Once the tag is confirmed, run the safety check:
 
@@ -569,7 +581,7 @@ Once the tag is confirmed, run the safety check:
 # The squash commit embeds the exact dev tip as a Dev-Squash-Tip trailer.
 # If new commits landed on dev AFTER the squash, the anchor merge would force
 # dev's tree to the release tree, silently overwriting their file content.
-DEV_SQUASH_TIP=$(git log -1 --format="%B" "$TARGET" | grep "^Dev-Squash-Tip:" | awk '{print $2}')
+DEV_SQUASH_TIP=$(git log -1 --format='%(trailers:key=Dev-Squash-Tip,valueonly)' "$TARGET")
 if [[ -n "$DEV_SQUASH_TIP" ]]; then
   # First check DEV_SQUASH_TIP is an ancestor of HEAD — if not, histories have diverged
   if ! git merge-base --is-ancestor "$DEV_SQUASH_TIP" HEAD 2>/dev/null; then
@@ -626,7 +638,7 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 If /release ran on `release` but `main` needs updating (or vice versa), the agent cannot switch branches itself. Output the following commands for the user to run:
 
-```
+```text
 Please run:
   git checkout main
   git merge release --ff-only
@@ -652,6 +664,7 @@ git status
 # To abort from any point and return to clean state:
 git reset HEAD           # Unstage everything
 git checkout -- .        # Restore working tree to HEAD
+git clean -fd            # Remove untracked files introduced by git merge --squash dev
 bun install              # Restore release branch's node_modules
 ```
 

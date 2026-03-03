@@ -59,6 +59,7 @@
  */
 
 import { $ } from "bun";
+import { appendFileSync } from "node:fs";
 import { error, success, info } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import {
@@ -402,7 +403,21 @@ async function createManifest(options: Options): Promise<void> {
       stderr: "pipe",
     });
 
-    const exitCode = await result.exited;
+    // Read stdout/stderr CONCURRENTLY with process exit — sequential reads risk deadlock
+    // if pipe buffers fill before the process exits. Buildx emits progress to stderr.
+    const [exitCode, stderrText, stdoutText] = await Promise.all([
+      result.exited,
+      new Response(result.stderr).text(),
+      new Response(result.stdout).text(),
+    ]);
+
+    // Display subprocess output BEFORE exit-code check so errors are always visible
+    if (stderrText.trim()) {
+      console.log(stderrText.trim());
+    }
+    if (stdoutText.trim()) {
+      console.log(stdoutText.trim());
+    }
 
     if (exitCode !== 0) {
       // GitHub Actions annotations for CI/CD
@@ -413,18 +428,10 @@ async function createManifest(options: Options): Promise<void> {
       process.exit(1);
     }
 
-    // Capture stderr (buildx outputs digest and progress there)
-    const stderrText = await new Response(result.stderr).text();
-
-    // Display stderr for visibility (buildx progress logs)
-    if (stderrText.trim()) {
-      console.log(stderrText.trim());
-    }
-
     // Parse digest from stderr (buildx outputs: "pushing sha256:DIGEST to TAG")
     let digest = "";
     const digestMatch = stderrText.match(/pushing (sha256:[a-f0-9]{64})/);
-    if (digestMatch && digestMatch[1]) {
+    if (digestMatch?.[1]) {
       digest = digestMatch[1];
     }
 
@@ -435,13 +442,14 @@ async function createManifest(options: Options): Promise<void> {
       info(`Digest: ${digest}`);
     }
 
-    // Output for GitHub Actions workflow
+    // Output for GitHub Actions workflow — MUST append to GITHUB_OUTPUT, never overwrite
+    // (it is a shared file accumulating all step outputs for the job)
     if (options.githubOutput && Bun.env.GITHUB_OUTPUT) {
       let outputContent = `manifest-tag=${options.tag}\n`;
       if (digest) {
         outputContent += `digest=${digest}\n`;
       }
-      await Bun.write(Bun.env.GITHUB_OUTPUT, outputContent);
+      appendFileSync(Bun.env.GITHUB_OUTPUT, outputContent);
       info("GitHub output written");
     }
   } catch (err) {

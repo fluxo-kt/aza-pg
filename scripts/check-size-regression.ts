@@ -24,6 +24,7 @@
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
 import { error, info, section, success, warning } from "./utils/logger.ts";
+import { isDockerDaemonRunning } from "./utils/docker";
 
 // Derive project root from current file location (scripts/check-size-regression.ts)
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -94,31 +95,15 @@ function showBaselines(): void {
 }
 
 /**
- * Check if Docker is available
- */
-async function isDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(["docker", "info"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Check if Docker image exists
  */
 async function imageExists(imageName: string): Promise<boolean> {
   try {
     const proc = Bun.spawn(["docker", "images", "-q", imageName], {
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
     });
-    const output = await new Response(proc.stdout).text();
+    const [output] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     return output.trim().length > 0;
   } catch {
     return false;
@@ -140,12 +125,12 @@ async function getSoSize(imageName: string, extensionName: string): Promise<numb
     for (const path of possiblePaths) {
       const proc = Bun.spawn(["docker", "run", "--rm", imageName, "stat", "-c", "%s", path], {
         stdout: "pipe",
-        stderr: "pipe",
+        stderr: "ignore",
       });
 
-      const exitCode = await proc.exited;
+      // Read stdout concurrently with exit — sequential reads risk deadlock
+      const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
       if (exitCode === 0) {
-        const output = await new Response(proc.stdout).text();
         const bytes = parseInt(output.trim(), 10);
         if (!isNaN(bytes)) {
           return bytes / (1024 * 1024); // Convert to MB
@@ -214,7 +199,7 @@ async function main() {
   const requireDocker = Bun.env.REQUIRE_DOCKER === "true";
 
   // Check if Docker is available
-  if (!(await isDockerAvailable())) {
+  if (!(await isDockerDaemonRunning())) {
     if (requireDocker) {
       error("Docker not available - REQUIRE_DOCKER is set, failing instead of skipping");
       process.exit(1);

@@ -54,6 +54,7 @@ import { $ } from "bun";
 import { join } from "node:path";
 import { error, success, info, warning, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import { isDockerDaemonRunning } from "../utils/docker";
 
 interface Options {
   container: string;
@@ -201,9 +202,13 @@ async function execCapture(command: string[], description: string): Promise<stri
       stderr: "pipe",
     });
 
-    const output = await new Response(proc.stdout).text();
-    const errOutput = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
+    // Read stdout and stderr CONCURRENTLY with process exit — sequential reads risk deadlock
+    // when commands like `docker logs` produce large output that fills pipe buffers.
+    const [output, errOutput, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
 
     // Combine stdout and stderr (like 2>&1)
     const combined = output + errOutput;
@@ -241,33 +246,17 @@ async function writeDiagnostic(
 }
 
 /**
- * Check if docker is available
- */
-async function checkDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(["docker", "--version"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Check if container exists and is running
  */
 async function checkContainerRunning(container: string): Promise<boolean> {
   try {
     const proc = Bun.spawn(["docker", "inspect", "-f", "{{.State.Running}}", container], {
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
     });
 
-    const output = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
+    // Read stdout concurrently with exit — sequential reads risk deadlock
+    const [output, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 
     if (exitCode !== 0) {
       return false;
@@ -292,7 +281,7 @@ async function main(): Promise<void> {
   info(`Include stack logs: ${options.includeStackLogs}`);
 
   // Pre-flight checks
-  if (!(await checkDockerAvailable())) {
+  if (!(await isDockerDaemonRunning())) {
     error("Docker is not available. Please ensure Docker is installed and running.");
     process.exit(1);
   }

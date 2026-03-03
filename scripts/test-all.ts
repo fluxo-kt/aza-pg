@@ -19,6 +19,7 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
+import { isDockerDaemonRunning } from "./utils/docker";
 import {
   error,
   formatDuration,
@@ -74,31 +75,15 @@ type Stats = {
 };
 
 /**
- * Check if Docker is available
- */
-async function isDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(["docker", "info"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Check if Docker image exists
  */
 async function imageExists(imageName: string): Promise<boolean> {
   try {
     const proc = Bun.spawn(["docker", "images", "-q", imageName], {
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
     });
-    const output = await new Response(proc.stdout).text();
+    const [output] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     return output.trim().length > 0;
   } catch {
     return false;
@@ -125,7 +110,7 @@ async function runCheck(
   const effectivelyCritical = check.critical && !isOptional;
 
   // Check Docker availability if needed
-  if (check.requiresDocker && !(await isDockerAvailable())) {
+  if (check.requiresDocker && !(await isDockerDaemonRunning())) {
     const message = `Docker not available. Install Docker or set ${check.envOverride || "ALLOW_MISSING_DOCKER"}=1`;
     if (effectivelyCritical) {
       error(message);

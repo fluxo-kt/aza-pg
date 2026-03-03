@@ -112,14 +112,14 @@ async function generateFreshManifest(repoRoot: string): Promise<void> {
 
   const proc = Bun.spawn(["bun", generateScript], {
     cwd: repoRoot,
-    stdout: "pipe",
+    stdout: "ignore",
     stderr: "pipe",
   });
 
-  const exitCode = await proc.exited;
+  // Read stderr concurrently with exit — sequential reads risk deadlock
+  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
 
   if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
     throw new Error(
       `Failed to generate manifest (exit code ${exitCode})${stderr ? `:\n${stderr}` : ""}`
     );
@@ -142,9 +142,13 @@ async function readCommittedManifest(repoRoot: string): Promise<string> {
     stderr: "pipe",
   });
 
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  // Read stdout and stderr CONCURRENTLY with exit — sequential reads risk deadlock
+  // if the manifest file exceeds the pipe buffer size (~64KB).
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
 
   if (exitCode !== 0) {
     throw new Error(

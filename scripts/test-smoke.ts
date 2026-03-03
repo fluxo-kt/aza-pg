@@ -219,8 +219,8 @@ async function testEssentialStructure(): Promise<TestResult> {
         if (!stat) {
           // Try alternative check
           const proc = Bun.spawn(["test", "-d", path], {
-            stdout: "pipe",
-            stderr: "pipe",
+            stdout: "ignore",
+            stderr: "ignore",
           });
           const exitCode = await proc.exited;
           if (exitCode !== 0) {

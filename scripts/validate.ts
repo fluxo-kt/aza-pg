@@ -22,6 +22,7 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger.ts";
+import { isDockerDaemonRunning } from "./utils/docker";
 
 /**
  * Validation check configuration
@@ -34,23 +35,6 @@ type ValidationCheck = {
   requiresDocker?: boolean; // If true, check if Docker is available
   envOverride?: string; // Environment variable to make check non-critical
 };
-
-/**
- * Check if Docker is available
- */
-async function isDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(["docker", "info"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch (err) {
-    console.debug(`Docker availability check failed: ${String(err)}`);
-    return false;
-  }
-}
 
 /**
  * Validation result with optional output capture
@@ -82,7 +66,7 @@ async function runCheck(
   const effectivelyRequired = check.required && !isOptional;
 
   // Check Docker availability if needed
-  if (check.requiresDocker && !(await isDockerAvailable())) {
+  if (check.requiresDocker && !(await isDockerDaemonRunning())) {
     const message = `${check.name} skipped - Docker not available. Install Docker or set ${check.envOverride}=1`;
     if (effectivelyRequired) {
       if (!bufferOutput) error(message);

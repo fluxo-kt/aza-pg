@@ -201,7 +201,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     ${soVerificationCommands}echo "All ${expectedSoFiles.length} PGDG .so files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
-    rm -f /tmp/extensions.manifest.json && \\
+    rm -f /tmp/extensions.manifest.json; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -299,7 +299,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* && \\
+    rm -rf /var/lib/apt/lists/*; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -392,7 +392,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Verifying Timescale .so files exist..." && \\
     ${soVerificationCommands}echo "All ${expectedSoFiles.length} Timescale .so files verified" && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* && \\
+    rm -rf /var/lib/apt/lists/*; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -474,7 +474,7 @@ ${installCommands} && \\
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -642,8 +642,8 @@ ${installCommands} && \\
     echo "Verifying GitHub release .so files..." && \\
     ${soVerification} && \\
     echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
-    # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true && \\
+    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; \\
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*`;
 }

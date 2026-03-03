@@ -48,6 +48,24 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
    **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
+## Pre-Flight: Additional Checks (MANDATORY)
+
+5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
+   ```bash
+   grep -rn "0\.8\|2\.8\|0\.5" scripts/test/ | grep -i "version\|include\|assert"
+   ```
+   These WILL break tests if not updated alongside the extension. This is the #1 missed item.
+
+6. **Source→PGDG migration opportunities**: For each source-built extension, check if PGDG now has a package:
+   ```bash
+   docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"
+   ```
+   If available, migrate to PGDG for faster builds (eliminates source compilation during Docker build).
+
+7. **Verify apt version strings**: NEVER assume version strings from memory. Always verify against
+   actual apt repos before writing the plan. Use the apt-cache madison command above.
+   Note: `pgdg13` in version strings refers to Debian 13 (Trixie), NOT PostgreSQL 13.
+
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
 For EACH extension to update, check upstream for breaking changes and new features:
@@ -77,9 +95,20 @@ bun update --latest
 bun run validate
 ```
 
-## Phase 3: Base Image (Only if PostgreSQL Version Changes)
+**⚠️ Linter version jumps**: If oxlint/squawk jumps multiple minor versions, new lint rules may flag
+existing code. Run `bun run validate` immediately and fix issues before proceeding. Do NOT blindly
+disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
+rule with a comment; if legitimate, fix the code.
+
+## Phase 3: Base Image (ALWAYS CHECK — Security Patches!)
+
+PG minor releases include security patches (CVEs). ALWAYS check for a newer base image, even when
+not upgrading PG major version. Minor releases can fix critical CVEs (e.g., CVSS 8.8).
 
 ```bash
+# Check if a newer PG minor version is available (even staying on same major)
+docker run --rm postgres:18-trixie postgres --version  # check latest minor
+
 # Get latest base image SHA
 docker pull postgres:18.X-trixie
 SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
@@ -87,11 +116,14 @@ SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
 # Update manifest-data.ts (search for MANIFEST_METADATA)
 # Change TWO fields:
 # - pgVersion: "18.X"
-# - baseImageSha: "postgres:18.X-trixie@sha256:..."
+# - baseImageSha: "sha256:..."
 
-# Verify format includes @sha256: prefix
+# Verify format (baseImageSha is just the sha256:... digest, no image name prefix)
 grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
+
+**⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
+PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the same commit.
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
 
@@ -138,11 +170,21 @@ bun run test:all  # Verify runtime compatibility
 
 **Identify**: `grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
-**⚠️ CRITICAL**: When switching from PGDG to source build (version not in PGDG yet), update **4 files**:
-1. `manifest-data.ts`: Change `install_via: "source"`, remove `pgdgVersion`
-2. `generate-extension-defaults.ts`: Remove from `NAME_TO_KEY`
-3. `generate-dockerfile.ts`: Remove from `PGDG_MAPPINGS`
-4. `validate-manifest-integrity.ts`: Remove from both `NAME_TO_KEY` and `PGDG_MAPPING_NAMES`
+**⚠️ CRITICAL**: When switching between PGDG and source build, update **4 files**:
+1. `scripts/extensions/manifest-data.ts`: Change `install_via`, add/remove `pgdgVersion`, add/remove `build`
+2. `scripts/extensions/generate-extension-defaults.ts`: Add/remove from `NAME_TO_KEY`
+3. `scripts/extensions/pgdg-mappings.ts`: Add/remove from `PGDG_MAPPINGS` array
+4. `scripts/ci/validate-manifest-integrity.ts`: Add/remove from both inline `NAME_TO_KEY` AND `PGDG_MAPPING_NAMES`
+
+The manifest integrity validator (`scripts/ci/validate-manifest-integrity.ts`) has its own **inline
+copies** of NAME_TO_KEY and PGDG_MAPPING_NAMES — these are NOT imported from the other files and
+MUST be kept in sync manually. Missing this file causes integrity validation failures.
+
+**Source → PGDG migration** (extension now has PGDG package):
+- Remove `install_via: "source"`, add `install_via: "pgdg"` and `pgdgVersion`
+- Remove `build: { type: "pgxs" }` (PGDG handles compilation)
+- Add to NAME_TO_KEY, PGDG_MAPPINGS, and both sets in validate-manifest-integrity.ts
+- Place in appropriate tier in PGDG_MAPPINGS (VOLATILE for frequent releases)
 
 Update BOTH `source.tag` AND `pgdgVersion`:
 
@@ -352,6 +394,25 @@ Extensions still in test suites should stay current. Permanently broken extensio
 
 ## Phase 6: Add Tests for New Functionality
 
+### MANDATORY Pre-Test Checks
+
+Before writing tests, search for hardcoded version strings in ALL test files:
+
+```bash
+# Find any hardcoded version strings that will break after an upgrade
+grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/test/ | grep -v ".bun/"
+# Also search for specific old version patterns:
+grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/test/ | grep -v ".bun/" | grep -i "include\|assert\|version"
+```
+
+These WILL break tests if not updated alongside the extension — this is the #1 missed item in
+update rounds. Update any hardcoded version strings before running the test suite.
+
+For each extension with new features (from Phase 1 release notes): plan specific tests.
+New APIs, behavior changes — all need test coverage. **ALWAYS verify the actual SQL API** by
+reading the extension's SQL files or docs before writing tests — planned API signatures are
+frequently wrong (extension may use different function names than expected).
+
 **REQUIRED** when upstream has breaking changes or significant new features.
 
 ### Test Creation Criteria
@@ -452,6 +513,31 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Commit granularity**: One logical change per commit (e.g., one extension update, or all Bun deps).
+
+**Commit ordering**: If PGDG validation is currently failing (stale version strings for disabled
+extensions), fix PGDG versions in the FIRST commit to restore clean validation for subsequent
+commits. TimescaleDB version suffix changes must be bundled with PG base image bumps (same commit).
+
+## Phase 11: Retrospective & Skill Self-Update (MANDATORY)
+
+After every update round, perform a mandatory self-reflection before closing out the work:
+
+1. **What was missed in pre-flight?** Items caught mid-implementation instead of upfront
+2. **What was assumed without verification?** Version strings, API signatures, compatibility
+3. **What hardcoded values broke tests?** Document the pattern for future detection
+4. **What files were unexpectedly required?** (e.g., `validate-manifest-integrity.ts` has inline
+   copies of mappings that must be kept in sync — not obvious from other files)
+5. **What upstream API was different from expected?** (e.g., pgmq topic API uses `bind_topic`,
+   not `create_topic`/`subscribe` — always verify from actual source before writing tests)
+
+Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
+- Add checks that would have caught missed items
+- Strengthen wording where guidance was too weak
+- Fix any outdated file references or procedures
+- Add new edge cases discovered
+
+**This is kaizen — each update round improves the next. The skill should be a living document
+that gets better with every use. Commit the skill update as the final commit of the round.**
 
 ## Rollback Procedure
 

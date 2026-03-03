@@ -514,31 +514,23 @@ Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should p
 
 ### A.2 — Once user confirms they are on dev
 
+Set `TARGET` to the git tag that was just published (e.g. `v18.1-202602082259`). Then run:
+
 ```bash
-# ⚠️ dev working tree MUST be clean — git reset --hard destroys uncommitted changes!
 [[ "$(git rev-parse --abbrev-ref HEAD)" == "dev" ]] || \
   { echo "ABORT: Not on dev branch. Ask user to run: git checkout dev"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
 
-# Determine RELEASE_BRANCH: whichever of main/release has the squash commit as HEAD.
-# Inspect with:
-#   git log --oneline main -1
-#   git log --oneline release -1
-RELEASE_BRANCH="main"   # Change to "release" if /release ran on release branch
+TARGET="v18.1-202602082259"   # ← set to actual release tag
 
-RELEASE_SHORT=$(git rev-parse --short $RELEASE_BRANCH)
-TREE=$(git rev-parse $RELEASE_BRANCH^{tree})
-DEV_HEAD=$(git rev-parse --short HEAD)
+git merge --ff-only $(git commit-tree "$TARGET"^{tree} \
+  -p HEAD -p "$TARGET" \
+  -m "Anchor Merge: merging $(git rev-parse --short HEAD) and $TARGET ($(git rev-parse --short "$TARGET"))")
 
-COMMIT=$(echo "Anchor Merge: dev $DEV_HEAD → $RELEASE_BRANCH $RELEASE_SHORT" \
-  | git commit-tree $TREE -p HEAD -p $RELEASE_BRANCH)
-
-# Guard against commit-tree failure (empty commit hash = catastrophic reset)
-[[ -n "$COMMIT" ]] || { echo "ABORT: git commit-tree failed — COMMIT is empty. Do NOT reset."; exit 1; }
-
-git reset --hard $COMMIT
 git push origin dev
 ```
+
+`git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).
 
 This creates a merge commit on dev with:
 - **Parent 1**: dev HEAD (preserves dev history)
@@ -594,5 +586,5 @@ The file is committed to the release branch before squash. Since dev doesn't tou
 **Why `bun install` is mandatory after squash**:
 The squash brings dev's code (including updated `bun.lock`) into the index/working tree, but `node_modules` still reflects release branch's packages. Dev may have updated oxlint, prettier, etc. Without `bun install`, validation uses stale binaries and the pre-commit hook's `bun run generate` uses wrong packages.
 
-**Why Appendix A uses `git commit-tree` instead of `git merge`**:
-`git merge $RELEASE_BRANCH --no-ff` on dev would create a merge commit with dev's parent-1 + release's parent-2, BUT the tree would be the 3-way merge result, not release's tree — so release-time edits (e.g., CHANGELOG changes) would be REVERTED. `commit-tree` forces the tree to be exactly release's tree.
+**Why Appendix A uses `git commit-tree` instead of `git merge --no-ff`**:
+`git merge $TAG --no-ff` on dev creates a merge commit with dev's parent-1 + tag's parent-2, BUT the tree is the 3-way merge result — so release-time edits (e.g., CHANGELOG changes) would be REVERTED. `commit-tree` forces the tree to be exactly the tag's tree, then `git merge --ff-only` advances dev's pointer to that commit safely.

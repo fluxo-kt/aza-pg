@@ -18,13 +18,14 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pg_partman 5.4.0 → 5.4.2**: Security hardening against search_path injection (v5.4.1); regression fix for non-default schemas (v5.4.2)
 - **wrappers 0.5.7 → 0.6.0**: New Infura and OpenAPI FDWs; ClickHouse fixes; memory context fixes
 - **pgmq 1.10.0 → 1.11.0**: AMQP-style topic routing (`bind_topic`/`send_topic` with `*` and `#` wildcards for fan-out messaging)
-- **TimescaleDB 2.25.0 → 2.25.1**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching
+- **TimescaleDB 2.25.0 → 2.25.2**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching (2.25.1); bugfix release (2.25.2). Loader package now explicitly pinned to prevent version split on future releases.
 
 - **pg_stat_monitor 2.3.1 → 2.3.2**: Percona dropped v2.3.1 from ppg-18 repository; updated to current release
 
 ### Fixed
 
 - **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused bash `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode)
+- **TimescaleDB loader version split**: Timescale ships two packages — main extension and a loader. The loader was unpinned (installed as a dependency) and jumped to 2.25.2 while the main package was at 2.25.1, causing "no installation script for version 2.25.2". Fixed by explicitly pinning the loader package in the Dockerfile generator.
 
 ### Development
 

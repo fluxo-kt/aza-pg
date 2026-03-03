@@ -34,6 +34,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - GitHub Actions pins updated to specific commit hashes (supply-chain security)
 - Cosign upgraded to v3.0.4 / cosign-installer v4
 - Synced disabled extension PGDG versions to actual apt repo: PostGIS 3.6.2, pgRouting 4.0.1
+- Test coverage added: pgvector parallel HNSW build regression + EXPLAIN JSON output (covers the buffer overflow and PG18 EXPLAIN fixes); pgmq topic routing fan-out scenarios; plpgsql_check semantic assertion correctness (volatile-in-stable, volatility false-positives)
+- Version assertions hardened across test suite to be patch-release robust (no brittle exact-match failures on x.y.z+1)
 
 ---
 

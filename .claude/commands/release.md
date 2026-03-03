@@ -558,9 +558,8 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo ""
 echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
-echo "  2. Push release: git push origin $CURRENT_BRANCH"
-echo "  3. Sync main NOW (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
-echo "       git checkout main && git merge $CURRENT_BRANCH --ff-only && git push origin main && git checkout $CURRENT_BRANCH"
+echo "  2. Push both branches (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
+echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
 echo "  4. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
 
@@ -670,18 +669,14 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 **This is MANDATORY, not optional.** GitHub's `workflow_run` triggered workflows always execute from the **default branch** (`main`), regardless of which branch triggered the upstream CI. If `main` lags behind `release`, the publish workflow runs the OLD `publish.yml` — all fixes on `release` are silently bypassed.
 
-Sync `main` immediately after every push to `release`. The agent cannot switch branches itself. Output:
+Push to both branches simultaneously — no branch switch needed:
 
-```text
-Please run:
-  git checkout main
-  git merge release --ff-only
-  git push origin main
-  git checkout release
-Then confirm each step succeeded.
+```bash
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git push origin "$CURRENT_BRANCH" "$CURRENT_BRANCH:main"
 ```
 
-Only works if history is perfectly linear (fast-forward). If `--ff-only` fails, investigate before forcing — do NOT use `git merge release` without `--ff-only`.
+Only works if history is perfectly linear (fast-forward). If the push to `main` fails (rejected), investigate — do NOT force-push `main`.
 
 ---
 

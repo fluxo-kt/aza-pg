@@ -121,6 +121,78 @@ If a new stable runtime is available, update `.tool-versions` manually:
 Note: `@types/bun` (npm package) may lag the runtime release by ~1 week — that is expected.
 Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.
 
+## Phase 2.5: GitHub Actions Pins
+
+GitHub Actions use SHA-pinned `uses:` references for security. Run `actions-up` to bump all SHAs
+to the latest verified commit for each action's current tag.
+
+```bash
+# Update all GitHub Actions SHA pins to latest (respects existing pinned versions)
+actions-up --yes
+```
+
+This updates the `uses:` SHA in every workflow and composite action. It will report how many
+actions were updated and how many were **breaking** (major version bumps).
+
+### MANDATORY: Identify and Audit Breaking Changes
+
+`actions-up` reports breaking changes (major version jumps) separately. **These require manual
+review** — do NOT blindly accept without checking each one.
+
+**For every major-version bump** (e.g., `upload-artifact v6 → v7`):
+
+1. Fetch the upstream release notes:
+   ```bash
+   # Replace OWNER/REPO and vN.0.0 with the actual action and version
+   curl -s https://api.github.com/repos/OWNER/REPO/releases/tags/vN.0.0 | jq -r '.body'
+   # Or fetch the RELEASES.md directly:
+   curl -s https://raw.githubusercontent.com/OWNER/REPO/main/RELEASES.md | head -80
+   ```
+
+2. Check for each category of breaking change:
+   - **Renamed or removed inputs**: does your workflow pass an input that no longer exists?
+   - **Renamed or removed outputs**: does a subsequent step reference `steps.X.outputs.Y`?
+   - **Behaviour changes** (silent→loud defaults): new defaults may turn previously-tolerated
+     warnings into hard failures — this is the most dangerous category
+   - **New required inputs**: does the action now require a parameter you haven't set?
+   - **Runner version requirements**: Node.js 24 actions require Actions Runner ≥ v2.327.1–v2.329.0;
+     self-hosted runners below this threshold will fail with "node24 not found"
+
+3. Fix any incompatible usages before committing.
+
+### Known Breaking Patterns for Common Actions
+
+| Action | Breaking boundary | What changed | Action needed |
+|--------|------------------|--------------|---------------|
+| `actions/upload-artifact` | v6→v7 | New `archive:` param (default `true`, safe); Node.js 24 | None for normal usage |
+| `actions/download-artifact` | v7→v8 | `digest-mismatch` default changed `warn` → `error`; new `skip-decompress` | Check if your workflows relied on silent hash-mismatch tolerance |
+| `sigstore/cosign-installer` | v3→v4 | v3 cannot install cosign v3.x (bundle format changed); default cosign bumped to v3.x | If you pin `cosign-release:` explicitly, verify it still installs; verify cosign v3 CLI compat |
+| `actions/attest-build-provenance` | v3→v4 | Node.js 24 (runner req); `subject-version` input added (additive) | None unless on old self-hosted runners |
+| `actions/checkout` | v5→v6 | Credentials stored in `$RUNNER_TEMP` via `includeIf` (not `.git/config`) | None for normal git usage; breaks scripts that parse `.git/config` directly |
+| `actions/cache` | v3→v4 | Removed `save-always` input (use `cache-hit` output pattern instead) | Check for `save-always:` usage |
+
+### MANDATORY: Fix Stale Inline Version Comments
+
+**`actions-up` updates the `uses:` SHA but does NOT update inline comments.**
+
+After running `actions-up`, scan ALL workflow and composite action files for stale version comments:
+
+```bash
+# Find inline version comments that may be stale (e.g., "# v3.0.0" next to a v4 SHA)
+grep -rn "# v" .github/workflows/ .github/actions/
+# Also check for explicit version refs in prose comments:
+grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | grep "#"
+```
+
+Cross-reference each comment against the actual `# vX.Y.Z` comment that `actions-up` added to the
+`uses:` line. Update any prose comment that references an old version. This is easy to miss and
+creates actively misleading documentation.
+
+**Validate after actions-up**:
+```bash
+bun run validate:all  # catches yamllint, hadolint, workflow syntax issues
+```
+
 ## Phase 3: Base Image (ALWAYS CHECK — Security Patches!)
 
 PG minor releases include security patches (CVEs). ALWAYS check for a newer base image, even when
@@ -590,6 +662,10 @@ After every update round, perform a mandatory self-reflection before closing out
    validator script, verify that following its own fix instructions would resolve the error it
    reports. Validators with inline data copies (like `validate-manifest-integrity.ts`) are
    especially prone to self-defeating instructions.
+8. **Were GitHub Actions stale inline comments fixed?** `actions-up` updates `uses:` SHA pins but
+   NOT inline version comments (e.g. `# v3.0.0` that refers to the old version in a prose comment
+   elsewhere in the file). After running `actions-up`, every prose comment referencing an old
+   version is now silently wrong.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

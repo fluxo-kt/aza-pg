@@ -4,9 +4,9 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.1 with comprehensive extension suite
+# PostgreSQL 18.3 with comprehensive extension suite
 
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f AS builder-base
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -143,13 +143,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.1..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.1" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.1" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.3..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.3" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.3" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.1-trixie@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
+FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -194,14 +194,14 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.1-2.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-plpgsql-check=2.8.11-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.19-2.pgdg13+2 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-2.pgdg13+1 postgresql-18-plpgsql-check=2.8.11-1.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
     echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-    echo "Expected 9 enabled PGDG packages from manifest" && \
-    test "$INSTALLED_COUNT" -ge 9 || (echo "ERROR: Installed count mismatch (expected >= 9, got $INSTALLED_COUNT)" && exit 1) && \
+    echo "Expected 10 enabled PGDG packages from manifest" && \
+    test "$INSTALLED_COUNT" -ge 10 || (echo "ERROR: Installed count mismatch (expected >= 10, got $INSTALLED_COUNT)" && exit 1) && \
     rm -f /tmp/installed-pgdg-exts.log && \
     # Verify critical .so files exist (prevents silent installation failures)
     echo "Verifying PGDG .so files exist..." && \
@@ -217,7 +217,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "All 9 PGDG .so files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/extensions.manifest.json && \
+    rm -f /tmp/extensions.manifest.json; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
@@ -236,8 +236,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     dpkg -i /tmp/percona-release.deb && \
     percona-release enable ppg-18 release && \
     apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \
@@ -247,7 +247,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/*; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
@@ -264,16 +264,16 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.0~debian13-1801 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
-    echo "Installed 2 Timescale package(s)" && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/timescaledb.so && \
     test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit.so && \
     echo "All 2 Timescale .so files verified" && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/*; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
@@ -326,8 +326,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying GitHub release .so files..." && \
     test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true && \
+    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*
 
@@ -391,9 +391,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.1"
-LABEL org.opencontainers.image.description="PostgreSQL 18.1 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.1"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.3"
+LABEL org.opencontainers.image.description="PostgreSQL 18.3 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.3"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

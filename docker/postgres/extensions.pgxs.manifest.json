@@ -88,8 +88,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.4.0",
-        "commit": "56a81503994ec5b22eb255f0d97af9fe6d11c4b5"
+        "tag": "v5.4.2",
+        "commit": "aa304755620f1295d9aa863764e874e2aa88ce0e"
       },
       "build": {
         "type": "pgxs"
@@ -101,6 +101,7 @@
         "preloadLibraryName": "pg_partman_bgw",
         "notes": [
           "Built from source (PGDG package not available for PG18)",
+          "v5.4.2: search_path injection hardening (v5.4.1) + regression fix for non-default schemas",
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
       },
@@ -166,8 +167,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.10.0",
-        "commit": "51d7655a097d91bf05ad5ae40dd604aa067ed355"
+        "tag": "v1.11.0",
+        "commit": "ae5d34e096608666816d207d0c4b0342e0d58b64"
       },
       "build": {
         "type": "pgxs",
@@ -178,8 +179,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.10.0 with PG18 support",
-          "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support"
+          "Source build for latest v1.11.0 with PG18 support",
+          "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
@@ -279,32 +280,6 @@
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",
       "docsUrl": "https://michelp.github.io/pgsodium"
-    },
-    {
-      "name": "plpgsql_check",
-      "kind": "extension",
-      "install_via": "source",
-      "category": "quality",
-      "description": "Static analyzer for PL/pgSQL functions and triggers.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.8",
-        "commit": "3a7c22b22b5db5a76ea4538cc24d09cb4a3ce588"
-      },
-      "build": {
-        "type": "pgxs"
-      },
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "Built from source (PGDG v2.8.8 not yet available)",
-          "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings"
-        ]
-      },
-      "sourceUrl": "https://github.com/okbob/plpgsql_check",
-      "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
     },
     {
       "name": "supabase_vault",

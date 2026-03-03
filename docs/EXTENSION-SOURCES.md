@@ -6,7 +6,7 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 
 | Repository         | PG18 Support | Extensions               | Use Case                                 |
 | ------------------ | ------------ | ------------------------ | ---------------------------------------- |
-| **PGDG**           | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages  |
+| **PGDG**           | ✅ Full      | 12 (w/ exact versions)   | Primary source; stable, tested packages  |
 | **Pigsty**         | ✅ Full      | 421+                     | Alternative when PGDG lacks extension    |
 | **Timescale**      | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community) |
 | **Percona**        | ✅ Full      | ~10                      | PG18 packages NOW available (ppg-18)     |
@@ -45,29 +45,28 @@ Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 
 | Extension     | PGDG Version | Source Tag | Pigsty Alt     |
 | ------------- | ------------ | ---------- | -------------- |
-| pgvector      | 0.8.1        | v0.8.1     | v0.8.0         |
+| pgvector      | 0.8.2        | v0.8.2     | v0.8.0         |
 | pg_cron       | 1.6.7        | v1.6.7     | v1.6.7 (same)  |
 | pgaudit       | 18.0         | 18.0       | v18.0 (same)   |
 | hypopg        | 1.4.2        | 1.4.2      | v1.4.2 (same)  |
-| plpgsql_check | 2.8.4        | v2.8.4     | v2.8.4 (same)  |
+| plpgsql_check | 2.8.11       | v2.8.11    | v2.8.4         |
 | http          | 1.7.0        | v1.7.0     | v1.7.0 (same)  |
 | rum           | 1.3.15       | 1.3.15     | v1.3.15 (same) |
 | hll           | 2.19         | v2.19      | v2.19 (same)   |
-| postgis       | 3.6.1        | 3.6.1      | v3.6.1 (same)  |
-| pgrouting     | 4.0.0        | v4.0.0     | v4.0.0 (same)  |
-| pg_partman    | 5.3.1        | v5.3.1     | v5.3.1 (same)  |
+| postgis       | 3.6.2        | 3.6.2      | v3.6.1         |
+| pgrouting     | 4.0.1        | v4.0.1     | v4.0.0         |
 | pg_repack     | 1.5.3        | ver_1.5.3  | v1.5.3 (same)  |
 | set_user      | 4.2.0        | REL4_2_0   | v4.2.0 (same)  |
 
-## Source-Built Extensions
+## Non-PGDG Extensions
 
-These extensions MUST be built from source (no PGDG packages):
+Extensions not available in PGDG — installed via Timescale apt, Percona apt, GitHub releases, or source build:
 
-### Rust/pgrx Extensions
+### Rust/pgrx Source-Built
 
 | Extension               | Version | Pigsty Alt | Timescale Alt | Notes                          |
 | ----------------------- | ------- | ---------- | ------------- | ------------------------------ |
-| **wrappers**            | v0.5.7  | v0.5.0     | ❌            | Pigsty 2 versions behind       |
+| **wrappers**            | v0.6.0  | v0.5.0     | ❌            | Pigsty 2 versions behind       |
 | **pg_jsonschema**       | commit  | v0.3.3     | ❌            | Source required for latest     |
 | **timescaledb_toolkit** | 1.22.0  | v1.21.0    | v1.22.0       | Timescale repo has exact match |
 
@@ -77,19 +76,20 @@ These extensions MUST be built from source (no PGDG packages):
 | --------------- | ------- | ------------- | ------------------------------------ |
 | **vectorscale** | 0.9.0   | amd64, arm64  | GitHub release binaries (not source) |
 
-### TimescaleDB (Special Case)
+### Timescale Repository
 
-| Extension       | Version | Pigsty Alt            | Timescale Alt | Notes                |
-| --------------- | ------- | --------------------- | ------------- | -------------------- |
-| **timescaledb** | 2.23.1  | v2.20.0 (Apache only) | v2.23.1 (TSL) | Source build for TSL |
+| Extension       | Version | Pigsty Alt            | Timescale Alt | Notes               |
+| --------------- | ------- | --------------------- | ------------- | ------------------- |
+| **timescaledb** | 2.25.2  | v2.20.0 (Apache only) | v2.25.2 (TSL) | Timescale apt (TSL) |
 
-### Other Source-Built
+### Source-Built (Other)
 
 | Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                                    |
 | ------------------- | ------------- | ---------------- | ----------- | ---------------------------------------- |
-| **pg_stat_monitor** | v2.3.1        | v2.1             | v2.3.1 ✅   | Source build; Percona apt also available |
+| **pg_partman**      | v5.4.2        | v5.0.1           | ❌          | Source for latest (PGDG has v5.3.1 only) |
+| **pg_stat_monitor** | v2.3.2        | v2.1             | v2.3.2 ✅   | Percona apt (ppg-18); not in PGDG        |
 | **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
-| **pgmq**            | v1.8.0        | v1.5.1           | ❌          | Source for latest (PG18 support)         |
+| **pgmq**            | v1.11.0       | v1.5.1           | ❌          | Source for latest (PG18 support)         |
 | **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)           |
 | **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Source build; Percona apt also available |
 | **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match                   |
@@ -129,7 +129,7 @@ pig install pg_duckdb -v 18
 
 - **Catalog:** https://ext.pigsty.io/
 - **Pros:** 421+ extensions, fast deployment, no compilation needed
-- **Cons:** Versions may lag 1-2 behind (e.g., wrappers v0.5.0 vs v0.5.7)
+- **Cons:** Versions may lag 1-2 behind (e.g., wrappers v0.5.0 vs v0.6.0)
 - **Status:** Community-maintained, frequent updates
 
 **⚠️ PG18 Limitations (as of Nov 2025):**
@@ -168,8 +168,8 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 
 | Package                           | Version | License |
 | --------------------------------- | ------- | ------- |
-| timescaledb-2-postgresql-18       | 2.23.1  | TSL     |
-| timescaledb-2-oss-postgresql-18   | 2.23.1  | Apache  |
+| timescaledb-2-postgresql-18       | 2.25.2  | TSL     |
+| timescaledb-2-oss-postgresql-18   | 2.25.2  | Apache  |
 | timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
 
 - **License:** Timescale License (TSL) - not Apache 2.0

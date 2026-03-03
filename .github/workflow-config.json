@@ -1,5 +1,5 @@
 {
-  "pgVersion": "18.1",
+  "pgVersion": "18.3",
   "pgMajorVersion": "18",
   "registry": "ghcr.io",
   "organization": "fluxo-kt",

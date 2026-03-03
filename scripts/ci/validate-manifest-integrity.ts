@@ -28,12 +28,13 @@ const NAME_TO_KEY: Record<string, string> = {
   hll: "hll",
   http: "http",
   hypopg: "hypopg",
+  plpgsql_check: "plpgsqlCheck",
   pgrouting: "pgrouting",
   rum: "rum",
   set_user: "setUser",
 };
 
-// PGDG_MAPPINGS manifestNames - must match generate-dockerfile.ts
+// PGDG_MAPPINGS manifestNames - must match scripts/extensions/pgdg-mappings.ts
 const PGDG_MAPPING_NAMES = new Set([
   "pg_repack",
   "hll",
@@ -46,6 +47,7 @@ const PGDG_MAPPING_NAMES = new Set([
   "set_user",
   "pgrouting",
   "pgaudit",
+  "plpgsql_check",
 ]);
 
 interface ValidationError {
@@ -86,7 +88,7 @@ function validateManifestIntegrity(): ValidationError[] {
       errors.push({
         type: "missing_pgdg_mapping",
         extension: ext.name,
-        message: `PGDG extension "${ext.name}" missing from PGDG_MAPPINGS in generate-dockerfile.ts`,
+        message: `PGDG extension "${ext.name}" missing from PGDG_MAPPINGS in pgdg-mappings.ts`,
       });
     }
   }
@@ -174,10 +176,10 @@ function main(): void {
   console.error(`\nTotal errors: ${errors.length}`);
   console.error("\nTo fix:");
   console.error(
-    "  1. For missing NAME_TO_KEY: Add entry to scripts/extensions/generate-extension-defaults.ts"
+    "  1. For missing NAME_TO_KEY: Add to scripts/extensions/generate-extension-defaults.ts AND to NAME_TO_KEY in scripts/ci/validate-manifest-integrity.ts"
   );
   console.error(
-    "  2. For missing PGDG_MAPPINGS: Add entry to scripts/docker/generate-dockerfile.ts"
+    "  2. For missing PGDG_MAPPINGS: Add to scripts/extensions/pgdg-mappings.ts AND to PGDG_MAPPING_NAMES in scripts/ci/validate-manifest-integrity.ts"
   );
   console.error("  3. For orphan entries: Remove from the mapping file or add to manifest");
   console.error(

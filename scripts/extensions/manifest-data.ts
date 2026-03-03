@@ -17,9 +17,9 @@
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
-  pgVersion: "18.1",
+  pgVersion: "18.3",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f",
+  baseImageSha: "sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d",
 } as const;
 
 export type SourceSpec =
@@ -184,13 +184,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgvector",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "0.8.1-2.pgdg13+1",
+    pgdgVersion: "0.8.2-1.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
       type: "git",
       repository: "https://github.com/pgvector/pgvector.git",
-      tag: "v0.8.1",
+      tag: "v0.8.2",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -198,9 +198,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
-        "Alt: Pigsty v0.8.0 (1 patch behind)",
-        "Regression test coverage includes vector columns, HNSW indexing, and similarity search",
+        "PGDG: postgresql-18-pgvector (v0.8.2-1.pgdg13+1)",
+        "v0.8.2: Fixed buffer overflow in parallel HNSW builds, fixed Index Searches in EXPLAIN for PG18",
+        "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search",
       ],
     },
     sourceUrl: "https://github.com/pgvector/pgvector",
@@ -390,21 +390,21 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "plpgsql_check",
     kind: "extension",
-    install_via: "source",
+    install_via: "pgdg",
+    pgdgVersion: "2.8.11-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.8.8",
+      tag: "v2.8.11",
     },
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "Built from source (PGDG v2.8.8 not yet available)",
-        "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings",
+        "PGDG: postgresql-18-plpgsql-check (v2.8.11-1.pgdg13+1)",
+        "v2.8.11: Fixed false errors on composite constants and domain types",
       ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",
@@ -518,7 +518,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/wrappers.git",
-      tag: "v0.5.7",
+      tag: "v0.6.0",
     },
     build: {
       type: "cargo-pgrx",
@@ -531,8 +531,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
       "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-      "v0.5.7: MotherDuck FDW, ClickHouse stream_buffer_size, Iceberg batch_size, S3 vectors embd→s3vec rename.",
-      "NOT available in PGDG. Pigsty has v0.5.0 (2 versions behind). Building from source for latest.",
+      "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+      "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest.",
     ],
     sourceUrl: "https://github.com/supabase/wrappers",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/wrappers/overview",
@@ -591,7 +591,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "postgis",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "3.6.1+dfsg-1.pgdg13+1",
+    pgdgVersion: "3.6.2+dfsg-1.pgdg13+1",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
@@ -601,7 +601,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
-      tag: "3.6.1",
+      tag: "3.6.2",
     },
     build: { type: "autotools" },
     aptPackages: [
@@ -625,8 +625,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)",
-        "Alt: Pigsty v3.6.1 (same version)",
+        "PGDG: postgresql-18-postgis-3 (v3.6.2+dfsg-1.pgdg13+1)",
+        "Alt: Pigsty v3.6.1 (1 version behind)",
       ],
     },
     sourceUrl: "https://github.com/postgis/postgis",
@@ -636,7 +636,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgrouting",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "4.0.0-1.pgdg13+1",
+    pgdgVersion: "4.0.1-1.pgdg13+1",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
@@ -646,7 +646,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgRouting/pgrouting.git",
-      tag: "v4.0.0",
+      tag: "v4.0.1",
     },
     build: { type: "cmake" },
     dependencies: ["postgis"],
@@ -655,8 +655,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)",
-        "Alt: Pigsty v4.0.0 (same version)",
+        "PGDG: postgresql-18-pgrouting (v4.0.1-1.pgdg13+1)",
+        "Alt: Pigsty v4.0.0 (1 version behind)",
       ],
     },
     sourceUrl: "https://github.com/pgRouting/pgrouting",
@@ -772,7 +772,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.10.0",
+      tag: "v1.11.0",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -780,8 +780,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-        "Source build for latest v1.10.0 with PG18 support",
-        "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support",
+        "Source build for latest v1.11.0 with PG18 support",
+        "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)",
       ],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",
@@ -886,18 +886,18 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      tag: "2.3.1",
+      tag: "2.3.2",
     },
     install_via: "percona",
     perconaPackage: "percona-pg-stat-monitor18",
-    perconaVersion: "1:2.3.1-2.trixie",
+    perconaVersion: "1:2.3.2-1.trixie",
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.1)",
+        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.2)",
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       ],
     },
@@ -931,7 +931,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.25.0~debian13-1801",
+    timescaleVersion: "2.25.2~debian13-1803",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -939,15 +939,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.25.0",
+      tag: "2.25.2",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.0 TSL)",
-        "v2.25.0: Direct compress during CA refresh, DELETE optimizations, buckets_per_batch→10",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.2 TSL)",
+        "v2.25.2: Bugfix release for 2.25.1",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
@@ -1017,7 +1017,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgpartman/pg_partman.git",
-      tag: "v5.4.0",
+      tag: "v5.4.2",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -1027,6 +1027,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadLibraryName: "pg_partman_bgw",
       notes: [
         "Built from source (PGDG package not available for PG18)",
+        "v5.4.2: search_path injection hardening (v5.4.1) + regression fix for non-default schemas",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
     },

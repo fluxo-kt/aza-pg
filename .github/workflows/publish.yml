@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -185,7 +185,7 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -264,7 +264,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -278,7 +278,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./docker/postgres/Dockerfile
@@ -297,7 +297,7 @@ jobs:
           # GitHub attestation provides superior workflow-level provenance without risk of leaking build args
           # Supply chain security layers:
           #   1. SBOM (BuildKit) - software bill of materials
-          #   2. GitHub attestation (actions/attest-build-provenance@v3) - SLSA build provenance
+          #   2. GitHub attestation (actions/attest-build-provenance@v4.1.0) - SLSA build provenance
           #   3. Cosign signatures (keyless OIDC) - image integrity verification
           provenance: false
           sbom: true
@@ -311,7 +311,7 @@ jobs:
           echo "Exported digest: ${digest}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: digests-${{ matrix.artifact }}
           path: ${{ runner.temp }}/digests/*
@@ -344,7 +344,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -357,7 +357,7 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Download digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
           pattern: digests-*
           path: ${{ runner.temp }}/digests
@@ -481,7 +481,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -500,7 +500,7 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Set up QEMU (for arm64 testing)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: linux/arm64
 
@@ -538,7 +538,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -623,7 +623,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -663,7 +663,7 @@ jobs:
 
       - name: Upload pgflow setup logs
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: pgflow-setup-logs-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/pgflow-setup-logs
@@ -730,7 +730,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -890,7 +890,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -908,7 +908,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache Trivy vulnerability database
-        uses: actions/cache@v5
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: .trivy-cache
           key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/publish.yml') }}
@@ -916,7 +916,7 @@ jobs:
             trivy-db-${{ runner.os }}-
 
       - name: Best practices scan (Dockle)
-        uses: erzz/dockle-action@v1
+        uses: erzz/dockle-action@69369bc745ee29813f730231a821bcd4f71cd290 # v1.4.0
         with:
           image: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
@@ -925,7 +925,7 @@ jobs:
           accept-filenames: /docker-entrypoint-initdb.d
 
       - name: Security scan (SARIF for GitHub Security)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # 0.34.2
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
@@ -935,13 +935,13 @@ jobs:
           severity: "CRITICAL,HIGH"
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
 
       - name: Security scan (blocking on failures)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # 0.34.2
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
@@ -993,7 +993,7 @@ jobs:
 
       - name: Upload security scan failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: scan-failure-diagnostics-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/scan-diagnostics/*
@@ -1023,7 +1023,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
@@ -1044,14 +1044,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
         with:
-          cosign-release: "v2.4.1"
+          cosign-release: "v3.0.4"
 
       - name: Sign container image with Cosign (keyless OIDC)
         env:
           DIGEST: ${{ needs.merge.outputs.image_digest }}
-          COSIGN_EXPERIMENTAL: "1" # Enable keyless mode
         run: |
           set -euo pipefail  # Exit on any error
           # Sign by digest using testing repository reference (immutable reference)
@@ -1086,8 +1085,6 @@ jobs:
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
       - name: Sign all convenience tags
-        env:
-          COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
           bun scripts/release/sign-tags.ts \
@@ -1096,8 +1093,6 @@ jobs:
             --yes
 
       - name: Verify Cosign signatures
-        env:
-          COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
           echo "🔍 Verifying signatures for all published tags..."
@@ -1127,7 +1122,7 @@ jobs:
       - name: Attest container image provenance
         id: attest
         if: success()
-        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           # Fully-qualified production image name (no tags per README requirement)
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -1332,12 +1327,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2.1.2
         with:
           bun-version: ${{ needs.prep.outputs.bun_version }}
 
@@ -1473,7 +1468,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.RELEASE_SHA }}
 

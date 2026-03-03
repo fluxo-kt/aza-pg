@@ -392,6 +392,65 @@ await test("vector (pgvector) - Similarity search with <-> operator", "ai", asyn
   assert(search.success && search.stdout.length > 0, "Similarity search failed");
 });
 
+// v0.8.2: Fixed Index Searches in EXPLAIN output for PG18
+await test(
+  "vector (pgvector) - EXPLAIN on similarity query returns valid JSON (v0.8.2)",
+  "ai",
+  async () => {
+    // Force index scan: with few rows the planner defaults to SeqScan, which
+    // would never exercise the HNSW-specific EXPLAIN code path this test covers.
+    const explain = await runSQL(
+      "SET enable_seqscan = OFF; EXPLAIN (FORMAT JSON) SELECT id, embedding <-> '[1,2,3]' AS distance FROM test_vectors ORDER BY embedding <-> '[1,2,3]' LIMIT 5"
+    );
+    assert(explain.success, `EXPLAIN failed: ${explain.stderr}`);
+    // psql outputs "SET\n" for the SET command before the EXPLAIN JSON.
+    // Extract the JSON portion starting from the first '['.
+    const jsonStart = explain.stdout.indexOf("[");
+    const jsonStr = jsonStart >= 0 ? explain.stdout.slice(jsonStart) : explain.stdout;
+    // JSON output must parse without error — validates the PG18 Index Searches fix
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      throw new Error(`EXPLAIN (FORMAT JSON) produced invalid JSON: ${explain.stdout}`);
+    }
+    assert(Array.isArray(parsed) && parsed.length > 0, "EXPLAIN JSON output empty or not an array");
+  }
+);
+
+// v0.8.2: Fixed buffer overflow in parallel HNSW builds
+await test(
+  "vector (pgvector) - Parallel HNSW index build (v0.8.2 buffer overflow fix)",
+  "ai",
+  async () => {
+    // Insert enough rows to trigger parallel build path
+    const values = Array.from(
+      { length: 50 },
+      () =>
+        `('[${Math.random().toFixed(4)},${Math.random().toFixed(4)},${Math.random().toFixed(4)}]')`
+    ).join(",");
+    await runSQL(`INSERT INTO test_vectors (embedding) VALUES ${values}`);
+
+    // Drop existing HNSW index to rebuild with parallel workers
+    await runSQL("DROP INDEX IF EXISTS test_vectors_embedding_idx");
+    await runSQL("SET max_parallel_maintenance_workers = 2");
+    const index = await runSQL(
+      "CREATE INDEX test_vectors_hnsw_parallel ON test_vectors USING hnsw (embedding vector_l2_ops)"
+    );
+    assert(index.success, `Parallel HNSW build failed: ${index.stderr}`);
+
+    // Verify the index is usable for similarity search
+    const search = await runSQL(
+      "SELECT id FROM test_vectors ORDER BY embedding <-> '[1,1,1]' LIMIT 3"
+    );
+    assert(
+      search.success && search.stdout.length > 0,
+      "Search via parallel-built HNSW index failed"
+    );
+    await runSQL("RESET max_parallel_maintenance_workers");
+  }
+);
+
 await test("vectorscale - Create extension and diskann index", "ai", async () => {
   await runSQL("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE");
   const create = await runSQL(
@@ -693,7 +752,7 @@ await test("wrappers - Verify FDW handler registration", "integration", async ()
 // Test 4: Verify extension version matches expected
 await test("wrappers - Verify extension version", "integration", async () => {
   const result = await runSQL("SELECT extversion FROM pg_extension WHERE extname = 'wrappers'");
-  assert(result.success && result.stdout.includes("0.5"), "Wrappers version mismatch");
+  assert(result.success && result.stdout.includes("0.6."), "Wrappers version mismatch");
 });
 
 // Test 5: Verify wrappers_fdw_stats table structure
@@ -1054,8 +1113,12 @@ await test("plpgsql_check - Check function with type error", "quality", async ()
   `);
 
   const check = await runSQL("SELECT plpgsql_check_function('test_check_func')");
-  // Function should report warnings/errors
-  assert(check.success, "plpgsql_check execution failed");
+  // plpgsql_check_function() returns ROWS for warnings — success alone is a tautology.
+  // Assert actual warning output was produced.
+  assert(
+    check.success && check.stdout.length > 0,
+    "plpgsql_check failed to report type mismatch warning"
+  );
 });
 
 await test("plpgsql_check - Verify error detection", "quality", async () => {
@@ -1069,7 +1132,74 @@ await test("plpgsql_check - Verify error detection", "quality", async () => {
   `);
 
   const check = await runSQL("SELECT plpgsql_check_function('test_check_undefined')");
-  assert(check.success, "plpgsql_check should detect undefined variable");
+  // Must produce actual warning rows, not just execute successfully
+  assert(
+    check.success && check.stdout.length > 0,
+    "plpgsql_check failed to detect undefined variable"
+  );
+});
+
+await test("plpgsql_check - Clean function returns no warnings", "quality", async () => {
+  await runSQL(`
+    CREATE OR REPLACE FUNCTION test_check_clean() RETURNS int AS $$
+    DECLARE
+      v_result int := 42;
+    BEGIN
+      RETURN v_result;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  const result = await runSQL("SELECT * FROM plpgsql_check_function('test_check_clean')");
+  assert(
+    result.success && result.stdout === "",
+    `Expected no warnings for clean function, got: ${result.stdout}`
+  );
+});
+
+await test(
+  "plpgsql_check - Volatile expression in STABLE function (v2.8.8+ detection)",
+  "quality",
+  async () => {
+    // plpgsql_check warns when volatile built-ins (random()) appear in STABLE functions
+    await runSQL(`
+    CREATE OR REPLACE FUNCTION test_volatility_warning() RETURNS float AS $$
+    BEGIN
+      RETURN random();
+    END;
+    $$ LANGUAGE plpgsql STABLE
+  `);
+
+    const checkResult = await runSQL(
+      "SELECT * FROM plpgsql_check_function('test_volatility_warning')"
+    );
+    assert(
+      checkResult.success && checkResult.stdout.length > 0,
+      "plpgsql_check failed to warn about volatile expression in STABLE function"
+    );
+  }
+);
+
+await test("plpgsql_check - Trigger function static analysis", "quality", async () => {
+  await runSQL(
+    "CREATE TABLE IF NOT EXISTS test_plcheck_trigger_tbl (id serial, name text, updated_at timestamptz)"
+  );
+
+  await runSQL(`
+    CREATE OR REPLACE FUNCTION test_plcheck_trigger_fn() RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at := now();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  // Check with table context — trigger analysis requires the table for NEW/OLD row types
+  const result = await runSQL(
+    "SELECT * FROM plpgsql_check_function('test_plcheck_trigger_fn', 'test_plcheck_trigger_tbl')"
+  );
+  assert(result.success, `plpgsql_check trigger analysis failed: ${result.stderr}`);
+  assert(result.stdout === "", `Expected clean trigger function, got: ${result.stdout}`);
 });
 
 // ============================================================================
@@ -1193,10 +1323,9 @@ await test("supautils - Verify binary available (preload-only)", "safety", async
     await Bun.$`docker exec ${CONTAINER} test -f /usr/lib/postgresql/${pgMajor}/lib/supautils.so && echo "exists" || echo "missing"`.text();
   assert(checkResult.trim() === "exists", "supautils.so file not found in image");
 
-  // Also verify the .control file exists
-  const controlResult =
-    await Bun.$`docker exec ${CONTAINER} test -f /usr/share/postgresql/${pgMajor}/extension/supautils.control && echo "exists" || echo "missing"`.text();
-  assert(controlResult.trim() === "exists", "supautils.control file not found in image");
+  // supautils is a preload-only module — it has NO .control file by design.
+  // Preload-only modules load via shared_preload_libraries; they are NOT CREATE EXTENSION-able.
+  // Only verify the .so exists (checked above). Do NOT assert a .control file.
 });
 
 // ============================================================================

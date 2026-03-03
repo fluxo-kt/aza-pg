@@ -81,6 +81,12 @@ export const PGDG_MAPPINGS: readonly PgdgMapping[] = [
     argName: "PGAUDIT_VERSION",
     versionKey: "pgaudit",
   }, // score 102
+  {
+    manifestName: "plpgsql_check",
+    packageName: "plpgsql-check",
+    argName: "PLPGSQL_CHECK_VERSION",
+    versionKey: "plpgsqlCheck",
+  }, // VOLATILE: frequent patch releases
 ] as const;
 
 /**

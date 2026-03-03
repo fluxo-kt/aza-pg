@@ -77,9 +77,9 @@ describe("Extension Defaults Validation", () => {
     expect(versions.pgcron).toBeDefined();
     expect(versions.pgaudit).toBeDefined();
     expect(versions.pgvector).toBeDefined();
-    // NOTE: timescaledb removed - uses install_via: "source" in manifest (compiled from source)
-    // NOTE: pg_partman removed - uses install_via: "source" in manifest (PGDG package not available for PG18)
-    // NOTE: plpgsql_check removed - uses install_via: "source" (PGDG v2.8.8 not yet available)
+    expect(versions.plpgsqlCheck).toBeDefined(); // migrated from source → PGDG (2.8.11)
+    // timescaledb: install_via "timescale" (dedicated repo, not PGDG) — no pgdgVersion
+    // pg_partman: install_via "source" (PGDG PG18 package unavailable) — no pgdgVersion
     expect(versions.postgis).toBeDefined();
     expect(versions.repack).toBeDefined();
     expect(versions.hll).toBeDefined();
@@ -332,7 +332,7 @@ describe("PGDG Package Name Security Validation", () => {
     const safePattern = /^[a-zA-Z0-9\-_=.+:]*$/;
 
     const testCases = [
-      { name: "postgresql-18-pgvector=0.8.1-2.pgdg13+1", valid: true },
+      { name: "postgresql-18-pgvector=0.8.2-1.pgdg13+1", valid: true },
       { name: "postgresql-18-cron=1.6.7-2.pgdg13+1", valid: true },
       { name: "postgresql-18-postgis-3=3.5.1+dfsg-1.pgdg13+1", valid: true },
       { name: "bad-package;rm -rf", valid: false },

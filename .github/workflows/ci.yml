@@ -30,7 +30,7 @@
 # --------------------
 # - build job exports image as tarball artifact
 # - test jobs download and load image from artifact
-# - Uses actions/upload-artifact@v6 and actions/download-artifact@v4
+# - Uses actions/upload-artifact@v7 and actions/download-artifact@v8 (via load-test-image action)
 #
 # DIFFERENCES FROM build-postgres-image.yml:
 # -----------------------------------------
@@ -73,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Validate workflow syntax and expressions (workflows only)
         run: |
@@ -95,7 +95,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -152,17 +152,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build Docker image with layer caching
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./docker/postgres/Dockerfile
@@ -226,7 +226,7 @@ jobs:
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: docker-image
           path: /tmp/aza-pg-ci-image.tar.gz
@@ -262,7 +262,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -339,7 +339,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -389,7 +389,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -434,7 +434,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
@@ -532,7 +532,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup

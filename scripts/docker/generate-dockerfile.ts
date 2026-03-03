@@ -201,7 +201,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     ${soVerificationCommands}echo "All ${expectedSoFiles.length} PGDG .so files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
-    rm -f /tmp/extensions.manifest.json && \\
+    rm -f /tmp/extensions.manifest.json; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -299,7 +299,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* && \\
+    rm -rf /var/lib/apt/lists/*; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -356,6 +356,19 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     }
 
     packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
+
+    // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
+    // The loader is installed as a dependency and its version determines what extension version
+    // PostgreSQL tries to load — a mismatched loader version causes "no installation script for
+    // version X" failures even when the main package is correctly pinned.
+    const loaderPackage = entry.timescalePackage.replace(
+      /^(timescaledb-\d+-)(postgresql-.+)$/,
+      "$1loader-$2"
+    );
+    if (loaderPackage !== entry.timescalePackage) {
+      // Only add loader if the pattern matched (i.e., this is a timescaledb-N-postgresql-M package)
+      packages.push(`${loaderPackage}=${entry.timescaleVersion}`);
+    }
   }
 
   const packagesList = packages.join(" ");
@@ -392,7 +405,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Verifying Timescale .so files exist..." && \\
     ${soVerificationCommands}echo "All ${expectedSoFiles.length} Timescale .so files verified" && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* && \\
+    rm -rf /var/lib/apt/lists/*; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -474,7 +487,7 @@ ${installCommands} && \\
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
 }
 
@@ -642,8 +655,8 @@ ${installCommands} && \\
     echo "Verifying GitHub release .so files..." && \\
     ${soVerification} && \\
     echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
-    # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true && \\
+    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
+    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; \\
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*`;
 }

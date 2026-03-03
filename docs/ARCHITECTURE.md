@@ -123,7 +123,7 @@ _Cache Ordering Principles:_
 
 _Final Stage Layer Order:_
 
-1. Base image (postgres:18.1-trixie@sha256) - immutable
+1. Base image (postgres:18.3-trixie@sha256) - immutable
 2. Runtime package list COPY - rare changes
 3. Runtime apt-get install - only invalidates on package list changes
 4. PGDG packages (ordered by stability) - STABLE extensions first, VOLATILE last
@@ -336,7 +336,7 @@ _Performance Impact:_
 ```
 Build Time                Runtime                  Usage
 ─────────────────────────────────────────────────────────────
-pgvector 0.8.1            CREATE EXTENSION         Vector
+pgvector 0.8.2            CREATE EXTENSION         Vector
 (compiled .so) ────────► vector; ──────────────► similarity
                                                    search
 

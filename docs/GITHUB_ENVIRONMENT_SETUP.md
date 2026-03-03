@@ -61,7 +61,7 @@ permissions:
 
 The release workflow signs images using **Cosign with keyless OIDC**:
 
-- **Mode**: `COSIGN_EXPERIMENTAL=1` (keyless signing)
+- **Mode**: Keyless signing (default in Cosign v3+)
 - **Provider**: GitHub Actions OIDC (auto-configured)
 - **Attestations**: SBOM + Provenance (SLSA v0.2)
 - **Transparency log**: Rekor (public, immutable)

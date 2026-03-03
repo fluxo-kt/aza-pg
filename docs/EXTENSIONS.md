@@ -58,7 +58,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                   | Version                                                                | Enabled by Default | Shared Preload | Documentation                                             | Notes                                                                  |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.1](https://github.com/pgvector/pgvector/releases/tag/v0.8.1)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.2](https://github.com/pgvector/pgvector/releases/tag/v0.8.2)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
 | [`vectorscale (pgvectorscale)`](https://github.com/timescale/pgvectorscale) | [0.9.0](https://github.com/timescale/pgvectorscale/releases/tag/0.9.0) | Yes                | No             | [Docs](https://github.com/timescale/pgvectorscale#readme) | DiskANN-inspired ANN index and quantization for pgvector embeddings.   |
 
 ### analytics
@@ -77,8 +77,8 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.0](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.0) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.1](https://github.com/postgis/postgis/releases/tag/3.6.1)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
+| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.1](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.1) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
+| [`postgis`](https://github.com/postgis/postgis)       | [3.6.2](https://github.com/postgis/postgis/releases/tag/3.6.2)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
 
 ### integration
 
@@ -86,20 +86,20 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
 | [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl.              |
 | [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.2](https://github.com/supabase/pg_net/releases/tag/v0.20.2)  | Yes                | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
-| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.5.7](https://github.com/supabase/wrappers/releases/tag/v0.5.7)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.                |
+| [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.6.0](https://github.com/supabase/wrappers/releases/tag/v0.6.0)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.                |
 
 ### maintenance
 
 | Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.0](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.0)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.2](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.2)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
 | [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
 
 ### observability
 
 | Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.1](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.1) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.2](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.2) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
 | [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.2](https://github.com/darold/pgbadger/releases/tag/v13.2)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
@@ -118,15 +118,15 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### quality
 
-| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.8](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.8) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
 | Extension                                 | Version                                                          | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                                                             |
 | ----------------------------------------- | ---------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.10.0](https://github.com/tembo-io/pgmq/releases/tag/v1.10.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
+| [`pgmq`](https://github.com/pgmq/pgmq)    | [v1.11.0](https://github.com/tembo-io/pgmq/releases/tag/v1.11.0) | Yes                | No             | [Docs](https://github.com/pgmq/pgmq#readme)           | Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.                                  |
 | [`pgq (PgQ)`](https://github.com/pgq/pgq) | [v3.5.1](https://github.com/pgq/pgq/releases/tag/v3.5.1)         | No                 | No             | [Docs](https://wiki.postgresql.org/wiki/PGQ_Tutorial) | Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18). |
 
 ### safety
@@ -157,7 +157,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                                                                 |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.25.0](https://github.com/timescale/timescaledb/releases/tag/2.25.0)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.25.2](https://github.com/timescale/timescaledb/releases/tag/2.25.2)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
 
 ### utilities

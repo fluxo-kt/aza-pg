@@ -302,8 +302,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.4.0",
-        "commit": "56a81503994ec5b22eb255f0d97af9fe6d11c4b5"
+        "tag": "v5.4.2",
+        "commit": "aa304755620f1295d9aa863764e874e2aa88ce0e"
       },
       "build": {
         "type": "pgxs"
@@ -315,6 +315,7 @@
         "preloadLibraryName": "pg_partman_bgw",
         "notes": [
           "Built from source (PGDG package not available for PG18)",
+          "v5.4.2: search_path injection hardening (v5.4.1) + regression fix for non-default schemas",
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
       },
@@ -414,12 +415,12 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/percona/pg_stat_monitor.git",
-        "tag": "2.3.1",
-        "commit": "bcd345a8738c412bb0626e34cd6c34857d5a1924"
+        "tag": "2.3.2",
+        "commit": "fc93cb91536eda1218d840ff3572a5161aa32ded"
       },
       "install_via": "percona",
       "perconaPackage": "percona-pg-stat-monitor18",
-      "perconaVersion": "1:2.3.1-2.trixie",
+      "perconaVersion": "1:2.3.2-1.trixie",
       "soFileName": "pg_stat_monitor.so",
       "build": {
         "type": "pgxs"
@@ -428,7 +429,7 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.1)",
+          "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.2)",
           "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
         ]
       },
@@ -619,8 +620,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.10.0",
-        "commit": "51d7655a097d91bf05ad5ae40dd604aa067ed355"
+        "tag": "v1.11.0",
+        "commit": "ae5d34e096608666816d207d0c4b0342e0d58b64"
       },
       "build": {
         "type": "pgxs",
@@ -631,8 +632,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.10.0 with PG18 support",
-          "v1.10.0: last_read_at tracking, set_vt() TIMESTAMPTZ support"
+          "Source build for latest v1.11.0 with PG18 support",
+          "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
@@ -707,7 +708,7 @@
       "name": "pgrouting",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "4.0.0-1.pgdg13+1",
+      "pgdgVersion": "4.0.1-1.pgdg13+1",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "enabled": false,
@@ -716,8 +717,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgRouting/pgrouting.git",
-        "tag": "v4.0.0",
-        "commit": "4f0eec583f0c9e6a82a5b3356ff300029d11ed53"
+        "tag": "v4.0.1",
+        "commit": "8988eebdff0e01327c9d48fe7c80b437dc9bc992"
       },
       "build": {
         "type": "cmake"
@@ -733,8 +734,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-pgrouting (v4.0.0-1.pgdg12+1)",
-          "Alt: Pigsty v4.0.0 (same version)"
+          "PGDG: postgresql-18-pgrouting (v4.0.1-1.pgdg13+1)",
+          "Alt: Pigsty v4.0.0 (1 version behind)"
         ]
       },
       "sourceUrl": "https://github.com/pgRouting/pgrouting",
@@ -793,24 +794,22 @@
     {
       "name": "plpgsql_check",
       "kind": "extension",
-      "install_via": "source",
+      "install_via": "pgdg",
+      "pgdgVersion": "2.8.11-1.pgdg13+1",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.8.8",
-        "commit": "3a7c22b22b5db5a76ea4538cc24d09cb4a3ce588"
-      },
-      "build": {
-        "type": "pgxs"
+        "tag": "v2.8.11",
+        "commit": "4790a627e744273377abc7d10a2830bb26cf3881"
       },
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "Built from source (PGDG v2.8.8 not yet available)",
-          "v2.8.8: Memory corruption fix, rewritten pldbgapi, new warnings"
+          "PGDG: postgresql-18-plpgsql-check (v2.8.11-1.pgdg13+1)",
+          "v2.8.11: Fixed false errors on composite constants and domain types"
         ]
       },
       "sourceUrl": "https://github.com/okbob/plpgsql_check",
@@ -820,7 +819,7 @@
       "name": "postgis",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "3.6.1+dfsg-1.pgdg13+1",
+      "pgdgVersion": "3.6.2+dfsg-1.pgdg13+1",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
@@ -829,8 +828,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.1",
-        "commit": "f533623505f73939a2d25d66ff252fb6619c4ac7"
+        "tag": "3.6.2",
+        "commit": "08d9b9f749fa3531591055db2a736bfb6df47006"
       },
       "build": {
         "type": "autotools"
@@ -856,8 +855,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-postgis-3 (v3.6.1+dfsg-1.pgdg13+1)",
-          "Alt: Pigsty v3.6.1 (same version)"
+          "PGDG: postgresql-18-postgis-3 (v3.6.2+dfsg-1.pgdg13+1)",
+          "Alt: Pigsty v3.6.1 (1 version behind)"
         ]
       },
       "sourceUrl": "https://github.com/postgis/postgis",
@@ -982,23 +981,23 @@
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-2-postgresql-18",
-      "timescaleVersion": "2.25.0~debian13-1801",
+      "timescaleVersion": "2.25.2~debian13-1803",
       "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.25.0",
-        "commit": "a686498674d7a6c3bc36bdf665d464e5f371bd25"
+        "tag": "2.25.2",
+        "commit": "3d9e005987643878a0cd51da40abbf7d3a63d453"
       },
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "Timescale repo: timescaledb-2-postgresql-18 (v2.25.0 TSL)",
-          "v2.25.0: Direct compress during CA refresh, DELETE optimizations, buckets_per_batch→10",
+          "Timescale repo: timescaledb-2-postgresql-18 (v2.25.2 TSL)",
+          "v2.25.2: Bugfix release for 2.25.1",
           "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
@@ -1041,14 +1040,14 @@
       "displayName": "pgvector",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "0.8.1-2.pgdg13+1",
+      "pgdgVersion": "0.8.2-1.pgdg13+1",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgvector/pgvector.git",
-        "tag": "v0.8.1",
-        "commit": "778dacf20c07caf904557a88705142631818d8cb"
+        "tag": "v0.8.2",
+        "commit": "cab9da72c04353f143bb06b42ab70a403daac64a"
       },
       "build": {
         "type": "pgxs"
@@ -1058,9 +1057,9 @@
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "PGDG: postgresql-18-pgvector (v0.8.1-2.pgdg13+1)",
-          "Alt: Pigsty v0.8.0 (1 patch behind)",
-          "Regression test coverage includes vector columns, HNSW indexing, and similarity search"
+          "PGDG: postgresql-18-pgvector (v0.8.2-1.pgdg13+1)",
+          "v0.8.2: Fixed buffer overflow in parallel HNSW builds, fixed Index Searches in EXPLAIN for PG18",
+          "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search"
         ]
       },
       "sourceUrl": "https://github.com/pgvector/pgvector",
@@ -1138,8 +1137,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.5.7",
-        "commit": "374cf9fdb1cc389136570a80df9cc462a564d799"
+        "tag": "v0.6.0",
+        "commit": "77d42008540975a34f97dbc0c9a21cb25bb9b46b"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -1164,8 +1163,8 @@
       },
       "notes": [
         "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-        "v0.5.7: MotherDuck FDW, ClickHouse stream_buffer_size, Iceberg batch_size, S3 vectors embd→s3vec rename.",
-        "NOT available in PGDG. Pigsty has v0.5.0 (2 versions behind). Building from source for latest."
+        "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+        "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest."
       ],
       "sourceUrl": "https://github.com/supabase/wrappers",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"

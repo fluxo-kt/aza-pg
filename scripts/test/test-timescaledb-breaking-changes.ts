@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * TimescaleDB 2.25.0 Breaking Changes & New Defaults Test Suite
+ * TimescaleDB 2.25.x Breaking Changes & New Defaults Test Suite
  *
  * Tests:
  * - T1.1: time_bucket_ng removal (BREAKING)
@@ -308,16 +308,18 @@ async function testWALInvalidationRemoval(): Promise<void> {
 
 async function testTimescaleDBVersion(): Promise<void> {
   try {
-    // POSITIVE: Verify TimescaleDB version is 2.25.0
+    // POSITIVE: Verify TimescaleDB version is 2.25.x (breaking changes introduced in 2.25.0)
     const version = await harness.runSQL(
       container,
       "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
     );
     recordTest(
       "T1.5.1: TimescaleDB version check",
-      version === "2.25.0",
+      version.startsWith("2.25."),
       `TimescaleDB version: ${version}`,
-      version === "2.25.0" ? "Version matches expected 2.25.0" : "Version mismatch"
+      version.startsWith("2.25.")
+        ? `Version ${version} in expected 2.25.x series`
+        : "Version mismatch"
     );
 
     // POSITIVE: Verify information views are accessible
@@ -557,7 +559,7 @@ async function runTests(): Promise<void> {
   try {
     await setup();
 
-    log("\n=== Running TimescaleDB 2.25.0 Breaking Changes Tests ===\n");
+    log("\n=== Running TimescaleDB 2.25.x Breaking Changes Tests ===\n");
 
     await testTimeBucketNgRemoval();
     await testOldCAFormatRemoval();

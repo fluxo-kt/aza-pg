@@ -58,11 +58,11 @@ Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 | pg_repack     | 1.5.3        | ver_1.5.3  | v1.5.3 (same)  |
 | set_user      | 4.2.0        | REL4_2_0   | v4.2.0 (same)  |
 
-## Source-Built Extensions
+## Non-PGDG Extensions
 
-These extensions MUST be built from source (no PGDG packages):
+Extensions not available in PGDG — installed via Timescale apt, Percona apt, GitHub releases, or source build:
 
-### Rust/pgrx Extensions
+### Rust/pgrx Source-Built
 
 | Extension               | Version | Pigsty Alt | Timescale Alt | Notes                          |
 | ----------------------- | ------- | ---------- | ------------- | ------------------------------ |
@@ -76,13 +76,13 @@ These extensions MUST be built from source (no PGDG packages):
 | --------------- | ------- | ------------- | ------------------------------------ |
 | **vectorscale** | 0.9.0   | amd64, arm64  | GitHub release binaries (not source) |
 
-### TimescaleDB (Special Case)
+### Timescale Repository
 
 | Extension       | Version | Pigsty Alt            | Timescale Alt | Notes               |
 | --------------- | ------- | --------------------- | ------------- | ------------------- |
 | **timescaledb** | 2.25.2  | v2.20.0 (Apache only) | v2.25.2 (TSL) | Timescale apt (TSL) |
 
-### Other Source-Built
+### Source-Built (Other)
 
 | Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                                    |
 | ------------------- | ------------- | ---------------- | ----------- | ---------------------------------------- |

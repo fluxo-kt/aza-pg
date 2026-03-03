@@ -356,6 +356,19 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     }
 
     packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
+
+    // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
+    // The loader is installed as a dependency and its version determines what extension version
+    // PostgreSQL tries to load — a mismatched loader version causes "no installation script for
+    // version X" failures even when the main package is correctly pinned.
+    const loaderPackage = entry.timescalePackage.replace(
+      /^(timescaledb-\d+-)(postgresql-.+)$/,
+      "$1loader-$2"
+    );
+    if (loaderPackage !== entry.timescalePackage) {
+      // Only add loader if the pattern matched (i.e., this is a timescaledb-N-postgresql-M package)
+      packages.push(`${loaderPackage}=${entry.timescaleVersion}`);
+    }
   }
 
   const packagesList = packages.join(" ");

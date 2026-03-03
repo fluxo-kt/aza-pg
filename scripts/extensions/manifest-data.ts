@@ -931,7 +931,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.25.1~debian13-1803",
+    timescaleVersion: "2.25.2~debian13-1803",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -939,15 +939,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.25.1",
+      tag: "2.25.2",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.1 TSL)",
-        "v2.25.1: Fixed continuous aggregate invalidation log cleanup and variable bucket batching",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.2 TSL)",
+        "v2.25.2: Bugfix release for 2.25.1",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",

@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Security
+
+- **gosu → su-exec**: Replaced `gosu` (Go binary, `/usr/local/bin/gosu`) with [`su-exec v0.2`](https://github.com/ncopa/su-exec) — a functionally identical pure-C privilege-drop utility. gosu was compiled with Go 1.24.6 which carries CVE-2025-68121 (CRITICAL, CVSS 8.8) and five HIGH-severity Go stdlib CVEs with no upstream fix available. su-exec has zero Go stdlib dependency, permanently eliminating this CVE class. Drop-in compatible: placed at the same path, same CLI syntax.
+
 ### Fixed
 
 - **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer with missing `.so` files. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode). The `.so` verification `test -f` steps were also being silently bypassed — this fix restores them as effective guards.

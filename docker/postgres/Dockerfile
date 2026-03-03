@@ -60,6 +60,16 @@ RUN set -euo pipefail && \
     ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
     rm /tmp/.tool-versions
 
+# Build su-exec: C-based privilege-drop binary, replaces gosu in final stage.
+# gosu carries Go stdlib CVEs (CVE-2025-68121 CRITICAL + multiple HIGH) with no upstream fix.
+# su-exec is functionally identical (same CLI: user[:group] command) but pure C — no Go stdlib.
+# git/gcc/make/strip are already present from the build-essential install above.
+RUN set -euo pipefail && \
+    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    make -C /tmp/su-exec-build && \
+    strip /tmp/su-exec-build/su-exec && \
+    chmod 755 /tmp/su-exec-build/su-exec
+
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
@@ -293,6 +303,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
+
+# Replace gosu from base image with su-exec (built in builder-base).
+# The builder COPY above restores the vulnerable gosu binary via rsync of /usr/local/bin/.
+# This COPY must come AFTER builder-pgxs and builder-cargo to be the definitive version.
+# Identical CLI: postgres entrypoint calls `gosu postgres "$@"` — su-exec is a transparent drop-in.
+COPY --from=builder-base /tmp/su-exec-build/su-exec /usr/local/bin/gosu
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations

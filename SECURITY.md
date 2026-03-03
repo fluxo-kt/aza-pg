@@ -40,11 +40,11 @@ As of January 2026, the following vulnerabilities exist in upstream dependencies
 - **Impact**: Potential memory corruption
 - **Status**: Awaiting upstream Debian fix
 
-### gosu 1.17
+### gosu → su-exec replacement
 
-- **CVE-2025-58183, CVE-2025-58186, CVE-2025-58187, CVE-2025-58188**: Go stdlib vulnerabilities
-- **Impact**: Various Go standard library issues
-- **Status**: Fixed in Go 1.24.8+ and 1.25.2+ (awaiting gosu rebuild)
+- **CVE-2025-68121** (CRITICAL), **CVE-2025-58183, CVE-2025-61726, CVE-2025-61728, CVE-2025-61729, CVE-2025-61730** (HIGH): Go stdlib vulnerabilities in gosu (compiled with Go 1.24.6; no upstream fix available)
+- **Resolution**: gosu replaced with [su-exec v0.2](https://github.com/ncopa/su-exec) — a pure-C privilege-drop binary with identical CLI (`user[:group] command`). Zero Go stdlib dependency eliminates this entire CVE class permanently.
+- **Compatibility**: Transparent drop-in; binary placed at `/usr/local/bin/gosu` so base postgres entrypoint calls it unchanged.
 
 ## Security Measures
 

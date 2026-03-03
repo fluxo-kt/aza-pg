@@ -10,26 +10,29 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-### Changed
-
-- **PostgreSQL 18.1 → 18.3**: 5 CVEs fixed (including CVSS 8.8 intarray arbitrary code execution), emergency regression fixes from 18.2. ⚠️ If upgrading from pre-18.2: ltree column indexes may need `REINDEX`
-- **pgvector 0.8.1 → 0.8.2**: Fixed buffer overflow in parallel HNSW builds; fixed Index Searches in EXPLAIN output for PG18
-- **plpgsql_check 2.8.8 → 2.8.11**: Switched from source build to PGDG apt (faster builds); fixed false errors on composite constants and domain types
-- **pg_partman 5.4.0 → 5.4.2**: Security hardening against search_path injection (v5.4.1); regression fix for non-default schemas (v5.4.2)
-- **wrappers 0.5.7 → 0.6.0**: New Infura and OpenAPI FDWs; ClickHouse fixes; memory context fixes
-- **pgmq 1.10.0 → 1.11.0**: AMQP-style topic routing (`bind_topic`/`send_topic` with `*` and `#` wildcards for fan-out messaging)
-- **TimescaleDB 2.25.0 → 2.25.2**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching (2.25.1); bugfix release (2.25.2). Loader package now explicitly pinned to prevent version split on future releases.
-
-- **pg_stat_monitor 2.3.1 → 2.3.2**: Percona dropped v2.3.1 from ppg-18 repository; updated to current release
-
 ### Fixed
 
-- **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused bash `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode)
-- **TimescaleDB loader version split**: Timescale ships two packages — main extension and a loader. The loader was unpinned (installed as a dependency) and jumped to 2.25.2 while the main package was at 2.25.1, causing "no installation script for version 2.25.2". Fixed by explicitly pinning the loader package in the Dockerfile generator.
+- **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer with missing `.so` files. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode). The `.so` verification `test -f` steps were also being silently bypassed — this fix restores them as effective guards.
+- **pg_stat_monitor startup failure**: Percona removed v2.3.1 from the ppg-18 apt repository (only v2.3.2 available). Combined with the `|| true` build bug above, this caused `pg_stat_monitor.so` to be silently absent from the image, producing a PostgreSQL `FATAL: could not access file "pg_stat_monitor"` crash on startup. ⚠️ Images built while v2.3.1 was still in Percona's repo may be unaffected; images built after Percona purged it (before this release) will have the absent `.so` and must be rebuilt.
+- **TimescaleDB loader version split**: The `timescaledb-2-loader-postgresql-18` package was unpinned and jumped to v2.25.2 while the main extension was pinned to v2.25.1, causing `ERROR: extension timescaledb has no installation script for version 2.25.2` at startup. Loader package is now explicitly pinned to match the main extension in the Dockerfile generator.
+
+### Changed
+
+- **PostgreSQL 18.1 → 18.3**: 5 CVEs fixed (including CVSS 8.8 intarray arbitrary code execution via bitset operations), plus emergency regression fixes from 18.2. ⚠️ If upgrading from pre-18.2: ltree column indexes may need `REINDEX`
+- **pg_partman 5.4.0 → 5.4.2**: Security hardening against `search_path` injection in `run_maintenance()` and related functions (v5.4.1); regression fix for non-default schema partitioned tables (v5.4.2)
+- **TimescaleDB 2.25.0 → 2.25.2**: Fixed continuous aggregate invalidation log cleanup and variable bucket batching (2.25.1); bugfix release (2.25.2). Loader package explicitly pinned to prevent future version split (see Fixed).
+- **pgmq 1.10.0 → 1.11.0**: Full AMQP-style topic routing — bind queues to patterns and fan out via `send_topic()`. Uses `*` (one segment) and `#` (zero or more segments) wildcards. New SQL: `bind_topic()`, `unbind_topic()`, `send_topic()`, `send_batch_topic()`, `list_topic_bindings()`
+- **wrappers 0.5.7 → 0.6.0**: New Infura (Ethereum/IPFS) and OpenAPI FDWs; ClickHouse FDW fixes; memory context improvements
+- **pgvector 0.8.1 → 0.8.2**: Fixed buffer overflow in parallel HNSW builds; fixed Index Searches in EXPLAIN output for PG18
+- **plpgsql_check 2.8.8 → 2.8.11**: Migrated from source build to PGDG apt (~2–3 min faster Docker builds); fixed false positives on composite constants and domain types
+- **pg_stat_monitor 2.3.1 → 2.3.2**: Required version bump — see Fixed above
 
 ### Development
 
 - Updated Bun dev dependencies: oxlint 1.51.0, squawk-cli 2.43.0, sql-formatter 15.7.2, @types/bun 1.3.10
+- Bun build tool bumped to 1.3.10 in `.tool-versions` (build-time only, not in final image)
+- GitHub Actions pins updated to specific commit hashes (supply-chain security)
+- Cosign upgraded to v3.0.4 / cosign-installer v4
 - Synced disabled extension PGDG versions to actual apt repo: PostGIS 3.6.2, pgRouting 4.0.1
 
 ---

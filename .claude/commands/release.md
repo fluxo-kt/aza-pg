@@ -32,6 +32,7 @@ OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 10. **⚠️ NEVER use `--no-verify` or `--no-gpg-sign`** — fix the root cause.
 11. **⚠️ `git fetch origin` before anchor discovery** — local dev might be stale.
 12. **⚠️ Prefer `startsWith()` over `===`** for version assertions — never encode stale absolute versions.
+13. **⚠️ NEVER `git merge dev` (without `--squash`) on main/release** — this creates a merge commit and permanently pollutes the linear history. The ONLY allowed mechanism is `git merge --squash dev`.
 
 ---
 
@@ -67,7 +68,9 @@ if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
   else
     # remote dev has commits local doesn't have (local BEHIND or diverged) — DANGEROUS
     echo "🚨 ABORT: Local dev is BEHIND or diverged from origin/dev — you may be missing commits!"
-    echo "   Run: git checkout dev && git pull --ff-only && git checkout $BRANCH"
+    echo "   If BEHIND (no local-only commits): git checkout dev && git pull --ff-only && git checkout $BRANCH"
+    echo "   If DIVERGED (both sides have unique commits): investigate before proceeding — do NOT rebase blindly"
+    echo "   Verify: git log --oneline dev...origin/dev"
     exit 1
   fi
 fi
@@ -76,7 +79,7 @@ fi
 ### 0.4 — Find latest anchor merge
 
 ```bash
-ANCHOR=$(git log dev --merges --format="%H" --grep="Anchor Merge" -1)
+ANCHOR=$(git log dev --merges --format="%H" --regexp-ignore-case --grep="Anchor Merge" -1)
 [[ -n "$ANCHOR" ]] || { echo "ABORT: No anchor merge found on dev."; exit 1; }
 echo "Anchor merge: $ANCHOR"
 echo "Anchor short: $(git rev-parse --short $ANCHOR)"
@@ -151,8 +154,8 @@ Scan the diff for consumer-visible changes. Look at:
 # Manifest changes (extension versions, PG version, base image)
 git diff $ANCHOR..dev -- scripts/extensions/manifest-data.ts
 
-# CHANGELOG unreleased section (before squash — from dev's HEAD)
-git show dev:CHANGELOG.md | head -80
+# CHANGELOG unreleased section (before squash — from dev's HEAD; no truncation)
+git show dev:CHANGELOG.md
 
 # Dockerfile changes (if any)
 git diff $ANCHOR..dev -- docker/postgres/Dockerfile.template
@@ -200,12 +203,12 @@ echo "Range: ${FIRST_SHORT}..${LAST_SHORT}"
 Review dev's CHANGELOG (`[Unreleased]` section) against the net delta from Phase 1.
 
 ```bash
-git show dev:CHANGELOG.md | head -100
+git show dev:CHANGELOG.md
 ```
 
 **Audit rules**:
 
-1. **Consumer-first ordering**: Security → Breaking → Fixed → Changed → Added → Development
+1. **Consumer-first ordering within existing categories**: Use whichever categories dev's CHANGELOG already has (`Breaking`, `Changed`, `Added`, `Development` — from `update.md`). Reorder for impact: Breaking first, then Changed (security fixes go here too), then Added, then Development. Do NOT invent new categories like "Fixed" or "Security" — put bug fixes in "Changed", security fixes in "Changed" with a ⚠️ marker.
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
 4. **Development section**: MAX 3 brief lines, no per-file detail
@@ -258,7 +261,7 @@ Rules:
 - Always include `Co-Authored-By: Claude <noreply@anthropic.com>`
 - Deduplicate co-authors (case-insensitive); add Claude if not already present
 
-Write the complete message now. You will use it verbatim in Phase 4.7.
+Write the complete message now with ALL actual values filled in (no UPPERCASE placeholders — replace them all). You will copy this exact text into the HEREDOC in Phase 4.7, replacing the template lines entirely.
 
 ---
 
@@ -435,11 +438,19 @@ echo "$DIFF_FILES"
 
 Do NOT compare tree hashes — trees intentionally diverge after CHANGELOG edits.
 
-### 5.2 — Linear history
+### 5.2 — Linear history (machine-verified — no merge commit)
 
 ```bash
 git log --oneline -3
-# Should show: single new commit on top, no merge commit
+
+# Machine check: HEAD must NOT be a merge commit (would have a second parent)
+if git rev-parse HEAD^2 >/dev/null 2>&1; then
+  echo "🚨 ERROR: HEAD is a merge commit! Release squash must produce a regular commit."
+  echo "   This means git merge --squash was accidentally replaced with git merge."
+  echo "   See guardrail 13. You must revert this and re-run /release."
+  exit 1
+fi
+echo "Linear history confirmed — HEAD is a regular commit. ✓"
 ```
 
 ### 5.3 — Final validation
@@ -458,9 +469,10 @@ echo "Diff from dev (CHANGELOG.md + any release-time edits):"
 git diff dev HEAD --name-only
 echo "=============================="
 echo ""
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Next steps:"
 echo "  1. Review commit: git show HEAD"
-echo "  2. Push: git push origin $BRANCH"
+echo "  2. Push: git push origin $CURRENT_BRANCH"
 echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
 echo "  4. Sync main/release if needed (see Appendix B)"
 ```
@@ -480,6 +492,8 @@ After every execution, reflect and update this command:
 → Edit this command file, commit as:
 `docs(skill): improve /release — [lesson learned]`
 
+**⚠️ Kaizen commits MUST happen BEFORE creating the Anchor Merge** (Appendix A). The anchor merge captures the release branch tree at that moment — if kaizen edits to this command file happen after the anchor merge, dev and release will drift by exactly those edits. Sequence: Phase 6 kaizen commit → push → CI → Anchor Merge.
+
 ---
 
 ## Appendix A: Anchor Merge (After Push + CI Pass)
@@ -487,7 +501,11 @@ After every execution, reflect and update this command:
 Creates a merge commit on dev whose **tree** is forced to match the release branch's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge <branch> --no-ff` produces the WRONG tree when release-time edits diverge from dev.
 
 ```bash
-# Run from dev. The RELEASE_BRANCH is whichever branch /release was executed on.
+# Determine which branch /release was run on. Auto-detect: the release branch is
+# whichever of main/release has the squash commit as its HEAD. If unsure, verify with:
+#   git log --oneline main -1
+#   git log --oneline release -1
+# Then set RELEASE_BRANCH accordingly:
 RELEASE_BRANCH="main"   # Change to "release" if /release ran on release branch
 
 git checkout dev
@@ -501,6 +519,9 @@ DEV_HEAD=$(git rev-parse --short HEAD)
 
 COMMIT=$(echo "Anchor Merge: dev $DEV_HEAD → $RELEASE_BRANCH $RELEASE_SHORT" \
   | git commit-tree $TREE -p HEAD -p $RELEASE_BRANCH)
+
+# Guard against commit-tree failure (empty commit hash = catastrophic reset)
+[[ -n "$COMMIT" ]] || { echo "ABORT: git commit-tree failed — COMMIT is empty. Do NOT reset."; exit 1; }
 
 git reset --hard $COMMIT
 git push origin dev

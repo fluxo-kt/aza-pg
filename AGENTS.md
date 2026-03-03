@@ -121,6 +121,14 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - `Bun.env` over process.env
 - Exception: `path` module (no Bun alternative), `stat()` from node:fs for directory checks (Bun.file.exists only works for files)
 
+**`Bun.spawn()` pipe deadlock rule** — OS pipe buffer is ~64KB; exceeding it blocks the child writing, deadlocking `proc.exited`. **Three mandatory patterns**:
+
+- **Exit-code only**: `stdout: "ignore", stderr: "ignore"` — no pipe, no risk
+- **One stream needed**: unused stream → `"ignore"`, use `Promise.all([new Response(proc.stdout).text(), proc.exited])`
+- **Both streams needed**: `Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited])`
+- **NEVER**: `await proc.exited` THEN read streams — guaranteed deadlock for large output (docker info, docker logs, git ls-remote, etc.)
+- **DRY**: use `isDockerDaemonRunning()` from `utils/docker.ts` — NEVER reimplement local `isDockerAvailable()` variants
+
 **Linting**: oxlint (fast) + prettier + shellcheck + hadolint + yamllint | TS strict mode
 
 **Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed

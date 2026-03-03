@@ -603,17 +603,25 @@ Resolution options:
 2. **Breaking changes**: Separate section with "action required" flag
 3. **Development (non-image) changes**: One line max, or omit if trivial
 
+**Standard categories** (in impact order): `Breaking` | `Security` | `Fixed` | `Changed` | `Added` | `Deprecated` | `Removed` | `Development`. Do not invent categories beyond this set.
+
 **Format**:
 
 ```markdown
 ## [Unreleased]
 
-### Changed (user-facing)
-- **pgvector 0.8.1 → 0.9.0**: New HNSW parameters (ef_search default changed from 40 to 100)
-- **TimescaleDB 2.24.0**: 4-5× faster recompression, ⚠️ requires bloom filter index rebuild on ARM
-
 ### Breaking (action required)
 - **pgflow 0.13.0**: Handler signature changed - root steps now receive `(flowInput, ctx)` instead of `(input)`. Update your handler functions.
+
+### Security
+- **pg_partman**: Patched CVE-XXXX-YYYY (privilege escalation via search_path in run_maintenance())
+
+### Fixed
+- **pg_cron**: Fixed scheduled jobs failing silently when pg_cron.max_running_jobs limit was reached
+
+### Changed (user-facing)
+- **pgvector 0.8.1 → 0.9.0**: New HNSW parameters (ef_search default changed from 40 to 100)
+- **TimescaleDB 2.24.0**: 4-5× faster recompression
 
 ### Added
 - New extension: xyz with feature ABC

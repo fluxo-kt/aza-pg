@@ -538,6 +538,11 @@ After every execution, reflect and update this command:
 4. What needed manual intervention that could be automated?
 5. Any new edge case or gotcha to encode as a guardrail?
 
+### Accumulated Lessons
+
+- **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
+- **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
+
 → Edit this command file, commit as:
 `docs(skill): improve /release — [lesson learned]`
 

@@ -500,18 +500,31 @@ After every execution, reflect and update this command:
 
 Creates a merge commit on dev whose **tree** is forced to match the release branch's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge <branch> --no-ff` produces the WRONG tree when release-time edits diverge from dev.
 
+> **Note**: The anchor merge is a separate operation from the release itself, typically done after CI passes on the pushed release commit.
+
+### A.1 — Ask user to switch to dev
+
+The AI agent cannot switch branches itself. Output this message verbatim and **wait for the user to confirm** before proceeding:
+
+```
+Please run:
+  git checkout dev
+Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should print "dev").
+```
+
+### A.2 — Once user confirms they are on dev
+
 ```bash
-# Determine which branch /release was run on. Auto-detect: the release branch is
-# whichever of main/release has the squash commit as its HEAD. If unsure, verify with:
+# ⚠️ dev working tree MUST be clean — git reset --hard destroys uncommitted changes!
+[[ "$(git rev-parse --abbrev-ref HEAD)" == "dev" ]] || \
+  { echo "ABORT: Not on dev branch. Ask user to run: git checkout dev"; exit 1; }
+[[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
+
+# Determine RELEASE_BRANCH: whichever of main/release has the squash commit as HEAD.
+# Inspect with:
 #   git log --oneline main -1
 #   git log --oneline release -1
-# Then set RELEASE_BRANCH accordingly:
 RELEASE_BRANCH="main"   # Change to "release" if /release ran on release branch
-
-git checkout dev
-
-# ⚠️ dev working tree MUST be clean — git reset --hard destroys uncommitted changes!
-[[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
 
 RELEASE_SHORT=$(git rev-parse --short $RELEASE_BRANCH)
 TREE=$(git rev-parse $RELEASE_BRANCH^{tree})

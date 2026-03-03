@@ -78,7 +78,8 @@ echo "Branch check passed. ✓"
 
 ```bash
 git fetch origin
-LOCAL_DEV=$(git rev-parse dev)
+LOCAL_DEV=$(git rev-parse dev 2>/dev/null) || \
+  { echo "ABORT: Local 'dev' branch not found. Run: git fetch origin && git checkout -t origin/dev"; exit 1; }
 REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
 if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
   if git merge-base --is-ancestor origin/dev dev 2>/dev/null; then
@@ -291,13 +292,24 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 ### 4.1 — Squash dev onto current branch
 
 ```bash
-git merge --squash dev
+# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
+# If conflicts occur, recovery is: git reset HEAD && git checkout -- . && bun install
+if ! git merge --squash dev; then
+  echo "ABORT: Merge conflicts detected. Conflicting files:"
+  git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
+  echo ""
+  echo "Recovering to clean state:"
+  git reset HEAD
+  git checkout -- .
+  bun install
+  echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
+  exit 1
+fi
 ```
 
-Expected output: a list of staged files. Verify changes were staged:
+Verify changes were staged (should not be empty after passing Phase 0.7):
 
 ```bash
-# Verify squash produced staged changes (should not be empty after passing Phase 0.7)
 STAGED_STAT=$(git diff --cached --stat)
 if [[ -z "$STAGED_STAT" ]]; then
   echo "ABORT: git merge --squash dev produced no staged changes."
@@ -305,22 +317,6 @@ if [[ -z "$STAGED_STAT" ]]; then
   exit 1
 fi
 echo "$STAGED_STAT"
-```
-
-If **merge conflicts** (should not happen with a valid anchor merge, but defensively):
-
-```bash
-# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort fails here.
-# Capture conflict info FIRST (while markers are in the working tree), THEN reset.
-echo "ABORT: Merge conflicts detected. Conflicting files:"
-git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
-echo ""
-echo "Recovering to clean state:"
-git reset HEAD
-git checkout -- .
-bun install
-echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
-exit 1
 ```
 
 ### 4.2 — Sync node_modules to dev's packages
@@ -476,7 +472,8 @@ git log --oneline -3
 if git rev-parse HEAD^2 >/dev/null 2>&1; then
   echo "🚨 ERROR: HEAD is a merge commit! Release squash must produce a regular commit."
   echo "   This means git merge --squash was accidentally replaced with git merge."
-  echo "   See guardrail 13. You must revert this and re-run /release."
+  echo "   To undo: git reset --hard HEAD~1"
+  echo "   See guardrail 13. After undoing, re-run /release."
   exit 1
 fi
 echo "Linear history confirmed — HEAD is a regular commit. ✓"

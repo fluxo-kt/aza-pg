@@ -207,7 +207,7 @@ RUN set -euo pipefail && \
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Copy ALL compiled extensions (including regression-only ones)
@@ -245,8 +245,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying GitHub release .so files..." && \
     test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true && \
+    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*
 

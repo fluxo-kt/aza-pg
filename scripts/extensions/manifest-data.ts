@@ -886,18 +886,18 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/percona/pg_stat_monitor.git",
-      tag: "2.3.1",
+      tag: "2.3.2",
     },
     install_via: "percona",
     perconaPackage: "percona-pg-stat-monitor18",
-    perconaVersion: "1:2.3.1-2.trixie",
+    perconaVersion: "1:2.3.2-1.trixie",
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.1)",
+        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.3.2)",
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       ],
     },

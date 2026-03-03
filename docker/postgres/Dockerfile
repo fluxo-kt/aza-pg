@@ -217,7 +217,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "All 9 PGDG .so files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/extensions.manifest.json && \
+    rm -f /tmp/extensions.manifest.json; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
@@ -236,8 +236,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     dpkg -i /tmp/percona-release.deb && \
     percona-release enable ppg-18 release && \
     apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.1-2.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \
@@ -247,7 +247,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/*; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
@@ -273,7 +273,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit.so && \
     echo "All 2 Timescale .so files verified" && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/*; \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
@@ -326,8 +326,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying GitHub release .so files..." && \
     test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true && \
+    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
+    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*
 

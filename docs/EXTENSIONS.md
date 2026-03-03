@@ -99,7 +99,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.1](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.1) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.2](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.2) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
 | [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.2](https://github.com/darold/pgbadger/releases/tag/v13.2)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations

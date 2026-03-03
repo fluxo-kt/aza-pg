@@ -64,10 +64,11 @@ RUN set -euo pipefail && \
 # gosu carries Go stdlib CVEs (CVE-2025-68121 CRITICAL + multiple HIGH) with no upstream fix.
 # su-exec is functionally identical (same CLI: user[:group] command) but pure C — no Go stdlib.
 # git/gcc/make/strip are already present from the build-essential install above.
-# SHA pin: v0.2 = 478be7e2740e4cd46156ce28c777b65f77bb7514 (immutable; tags are mutable)
+# SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
+# (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
 RUN set -euo pipefail && \
     git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
-    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "478be7e2740e4cd46156ce28c777b65f77bb7514" ] && \
+    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
     chmod 755 /tmp/su-exec-build/su-exec

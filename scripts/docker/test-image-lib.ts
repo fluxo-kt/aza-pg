@@ -1207,10 +1207,9 @@ export async function testPgvectorComprehensive(containerName: string): Promise<
       };
     }
 
-    // Force HNSW index usage (planner uses SeqScan on small tables without this)
-    await execSQL("SET enable_seqscan = OFF", containerName);
+    // Force HNSW index usage: SET + query in one session (SET does not persist across execSQL calls)
     const search = await execSQL(
-      "SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2",
+      "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2",
       containerName
     );
     if (!search.success || search.output.trim() === "") {
@@ -1267,10 +1266,9 @@ export async function testVectorscaleDiskann(containerName: string): Promise<Tes
       };
     }
 
-    // Force DiskANN index usage — planner selects SeqScan on small tables without this
-    await execSQL("SET enable_seqscan = OFF", containerName);
+    // Force DiskANN index usage: SET + query in one session (SET does not persist across execSQL calls)
     const search = await execSQL(
-      "SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1",
+      "SET enable_seqscan = OFF; SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1",
       containerName
     );
     if (!search.success || search.output.trim() === "") {
@@ -2114,11 +2112,9 @@ export async function testPgTrgmSimilarity(containerName: string): Promise<TestR
       "CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)",
       containerName
     );
-    // Force GIN index usage — on 3 rows the planner would choose SeqScan otherwise
-    await execSQL("SET enable_seqscan = OFF", containerName);
-
+    // Force GIN index usage: SET + query in one session (SET does not persist across execSQL calls)
     const search = await execSQL(
-      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
+      "SET enable_seqscan = OFF; SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
       containerName
     );
     // Verify the TOP result is the expected closest match — any non-empty result would pass

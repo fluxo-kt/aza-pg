@@ -81,11 +81,12 @@ async function loadSizeBaselines(): Promise<void> {
       if (
         typeof entry.min !== "number" ||
         typeof entry.max !== "number" ||
+        typeof entry.description !== "string" ||
         entry.min < 0 ||
         entry.max < entry.min
       ) {
         error(
-          `Invalid baseline entry '${name}': min=${entry.min}, max=${entry.max} — require 0 ≤ min ≤ max`
+          `Invalid baseline entry '${name}': min=${entry.min}, max=${entry.max}, description=${JSON.stringify(entry.description)} — require 0 ≤ min ≤ max and description string`
         );
         process.exit(1);
       }

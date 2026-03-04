@@ -145,7 +145,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ `bun run validate` before commit
-- ❌ Adding a new `.test.ts` file without registering it → ✅ New test files MUST be explicitly listed in BOTH `scripts/validate.ts` (Unit Tests command array) AND `package.json` `test:unit` script (bun test uses explicit file lists, not discovery); Docker-dependent tests belong in `test-all.ts` instead
+- ❌ Adding a Docker-dependent `.test.ts` file without excluding it → ✅ Unit test files are auto-discovered via glob in `validate.ts`; no registration needed. Docker-dependent tests MUST be added to `DOCKER_INTEGRATION_TESTS` set in `validate.ts` AND registered in `test-all.ts` instead
 
 ## Git Workflow
 

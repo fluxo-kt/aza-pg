@@ -299,30 +299,32 @@ async function validate(
       description: fixMode ? "Auto-formatting SQL files" : "SQL formatting and syntax validation",
       required: true,
     },
-    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI
-    // Skipped in fix mode since fix mode is for auto-formatting, not running tests
+    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI.
+    // Test files are auto-discovered via glob — no manual registration needed.
+    // Docker-dependent integration tests are excluded explicitly below.
+    // Skipped in fix mode since fix mode is for auto-formatting, not running tests.
     ...(fixMode
       ? []
       : [
-          {
-            name: "Unit Tests",
-            command: [
-              "bun",
-              "test",
-              "./scripts/config-generator/manifest-generator.test.ts",
-              "./scripts/config-generator/config-generator.test.ts",
-              "./scripts/config-generator/sql-generator.test.ts",
-              "./scripts/docker/generate-dockerfile.test.ts",
-              "./scripts/docker/generate-entrypoint.test.ts",
-              "./scripts/docker/test-image-lib.test.ts",
-              "./scripts/test/test-auto-config-units.ts",
-              "./scripts/test/test-utils.test.ts",
-              "./scripts/check-size-regression.test.ts",
-            ],
-            description:
-              "Unit tests (config generator, Dockerfile generator, auto-config, size regression, utilities)",
-            required: true,
-          },
+          (() => {
+            // Tests requiring a running Docker container — excluded from unit test suite.
+            // These are run by test-all.ts (bun run test:all) instead.
+            const DOCKER_INTEGRATION_TESTS = new Set(["./scripts/test/test-security.test.ts"]);
+            const discoveredTestFiles = Array.from(
+              new Bun.Glob("scripts/**/*.test.ts").scanSync(".")
+            )
+              .map((f) => `./${f}`)
+              .filter((f) => !DOCKER_INTEGRATION_TESTS.has(f))
+              .sort();
+            // Legacy test file predating the .test.ts naming convention
+            const legacyTestFiles = ["./scripts/test/test-auto-config-units.ts"];
+            return {
+              name: "Unit Tests",
+              command: ["bun", "test", ...discoveredTestFiles, ...legacyTestFiles],
+              description: `Unit tests (${discoveredTestFiles.length + legacyTestFiles.length} files, auto-discovered)`,
+              required: true,
+            };
+          })(),
         ]),
   ];
 
@@ -404,7 +406,7 @@ async function validate(
       command: [
         "sh",
         "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|test.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
+        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
       ],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,

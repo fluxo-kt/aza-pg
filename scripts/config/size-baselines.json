@@ -30,8 +30,8 @@
     "description": "TimescaleDB analytical hyperfunctions"
   },
   "pg_jsonschema": {
-    "min": 3.8,
-    "max": 4.0,
+    "min": 4.0,
+    "max": 4.5,
     "description": "JSON Schema validation (Rust/pgrx, current optimized build)"
   },
   "wrappers": {

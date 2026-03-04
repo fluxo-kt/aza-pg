@@ -173,10 +173,16 @@ async function checkExtensionSize(
       passed: true,
       message: `${extensionName}: ${size.toFixed(2)}MB (below baseline, possible optimization or build change)`,
     };
-  } else {
+  } else if (size <= baseline.max) {
     return {
       passed: true,
       message: `${extensionName}: ${size.toFixed(2)}MB (within expected range ${baseline.min.toFixed(1)}-${baseline.max.toFixed(1)}MB)`,
+    };
+  } else {
+    // size > baseline.max but <= maxAllowed (within tolerance)
+    return {
+      passed: true,
+      message: `${extensionName}: ${size.toFixed(2)}MB (above baseline max ${baseline.max.toFixed(1)}MB but within ${MAX_SIZE_INCREASE_PERCENT}% tolerance — update baseline if this is the new normal)`,
     };
   }
 }

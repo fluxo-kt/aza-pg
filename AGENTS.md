@@ -192,6 +192,16 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **test-image-lib.ts `toolBinaries`**: Keys MUST match manifest entry `name` (kind: "tool") exactly — wrong keys silently skip checks (classic false-confidence bug). `.so` paths hardcode PG major version (`/usr/lib/postgresql/18/lib/`); update ALL when bumping PG major. Disabled tools filtered by `entry.enabled !== false` before the loop; unknown enabled tools fail loudly.
 
+**Test Architecture (CRITICAL)**: `test-all.ts` calls **only** `scripts/docker/test-image.ts` (the monolith). `test-image-lib.ts` is used by standalone scripts (`test-image-core.ts`, `test-image-functional-1/2/3.ts`) that are NOT in CI. Any fix applied only to `test-image-lib.ts` is invisible in CI — ALWAYS port changes to BOTH files.
+
+**Test Shared-Container Contamination**: All tests in `test-image.ts` share one container. Event trigger changes (`ALTER EVENT TRIGGER ... DISABLE`) MUST be wrapped in try/finally with `ENABLE` in the finally block — missed re-enable poisons all subsequent tests in the suite.
+
+**INSERT Idempotency**: Tests using `CREATE TABLE IF NOT EXISTS` + unconditional `INSERT` produce wrong counts on `--no-cleanup` container reuse. ALWAYS add `TRUNCATE tablename RESTART IDENTITY` before INSERTs when the test asserts exact row counts or id values.
+
+**psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
+
+**precreatedExtensions list**: The 13 extensions created at initdb (`01-extensions.sql` + `01b-pg_cron.sh`) CANNOT be derived from the manifest — `runtime.defaultEnable` covers preload libs only (4 entries). Update the hardcoded list in BOTH `test-image.ts` and `test-image-lib.ts` whenever `01-extensions.sql` changes.
+
 **Multi-Stage Gosu Replacement: GHA Cache Ambiguity + Trivy Layer Scanning**: All multi-stage approaches (`COPY --from=`, bind-mounts, `apt-get install su-exec` — absent from postgres image repos, `COPY via builder-pgxs output dir` — COPY cache key matched stale GHA entry) fail due to GHA layer cache interference. `apt-get purge gosu` is a no-op because postgres:18.3-trixie installs gosu via direct binary download (not dpkg). **Root cause of Trivy persistence**: Trivy scans ALL image layers including immutable base image layers — gosu in the postgres base layer is reported even when `/usr/local/bin/gosu` is su-exec in the merged filesystem. **Definitive fix**: compile su-exec in the final stage, install at `/usr/local/bin/gosu` (shadows the base binary), add `CVE-2025-68121` to `.trivyignore` (gosu is unreachable at runtime), exclude gosu from builder-pgxs rsync (`--exclude='gosu'`). Add `[ SZ -lt 500000 ]` to FAIL build if wrong binary.
 
 ## Changelog

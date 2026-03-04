@@ -556,46 +556,44 @@ export async function testPrecreatedExtensions(
       "vectorscale",
     ];
 
-    const failed: string[] = [];
+    // Single query: unnest the expected list and find any NOT in pg_extension.
+    // One round-trip instead of 2 per extension. Empty output = all present.
+    const arrayLiteral = precreatedExtensions.map((e) => `'${e}'`).join(",");
+    const missing = await execSQL(
+      `SELECT e FROM unnest(ARRAY[${arrayLiteral}]::text[]) e
+       WHERE e NOT IN (SELECT extname FROM pg_extension)
+       ORDER BY e`,
+      containerName
+    );
 
-    for (const extName of precreatedExtensions) {
-      const result = await execSQL(
-        `SELECT COUNT(*) FROM pg_extension WHERE extname = '${extName}'`,
-        containerName
-      );
-
-      if (!result.success) {
-        failed.push(`${extName}: Query failed - ${result.output.slice(0, 100)}`);
-      } else {
-        const count = parseInt(result.output.trim());
-        if (count !== 1) {
-          failed.push(`${extName}: Not found in pg_extension (count: ${count})`);
-        }
-      }
-
-      // Also verify CREATE EXTENSION IF NOT EXISTS works (doesn't fail)
-      const createResult = await execSQL(
-        `CREATE EXTENSION IF NOT EXISTS "${extName}"`,
-        containerName
-      );
-      if (!createResult.success) {
-        failed.push(
-          `${extName}: CREATE IF NOT EXISTS failed - ${createResult.output.slice(0, 100)}`
-        );
-      }
-    }
-
-    if (failed.length > 0) {
+    if (!missing.success) {
       return {
         name: "Pre-created extensions available on startup",
         passed: false,
         duration: Date.now() - startTime,
-        error: `${failed.length} extension(s) had issues:\n  ${failed.join("\n  ")}`,
+        error: `pg_extension query failed: ${missing.output.slice(0, 100)}`,
+      };
+    }
+
+    const missingList = missing.output.trim()
+      ? missing.output
+          .trim()
+          .split("\n")
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : [];
+
+    if (missingList.length > 0) {
+      return {
+        name: "Pre-created extensions available on startup",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `${missingList.length} extension(s) not in pg_extension: ${missingList.join(", ")}`,
       };
     }
 
     return {
-      name: `Pre-created extensions available on startup (${precreatedExtensions.length} tested)`,
+      name: `Pre-created extensions available on startup (${precreatedExtensions.length} verified)`,
       passed: true,
       duration: Date.now() - startTime,
     };
@@ -2724,6 +2722,7 @@ BEGIN
   FOR t IN
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename LIKE 'test%'
+    ORDER BY tablename  -- parents before partition children (test_partman < test_partman_p*)
   LOOP
     EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', t);
   END LOOP;

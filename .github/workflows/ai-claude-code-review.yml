@@ -39,7 +39,7 @@ jobs:
       # https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@64c7a0ef71df67b14cb4471f4d9c8565c61042bf # v1.0.66
+        uses: anthropics/claude-code-action@e763fe78de2db7389e04818a00b5ff8ba13d1360 # v1.0.68
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_commit_signing: true

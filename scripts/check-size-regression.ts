@@ -151,7 +151,7 @@ async function checkExtensionSize(
   imageName: string,
   extensionName: string,
   baseline: { min: number; max: number; description: string }
-): Promise<{ passed: boolean; message: string }> {
+): Promise<{ passed: boolean; warn?: boolean; message: string }> {
   const size = await getSoSize(imageName, extensionName);
 
   if (size === null) {
@@ -179,9 +179,10 @@ async function checkExtensionSize(
       message: `${extensionName}: ${size.toFixed(2)}MB (within expected range ${baseline.min.toFixed(1)}-${baseline.max.toFixed(1)}MB)`,
     };
   } else {
-    // size > baseline.max but <= maxAllowed (within tolerance)
+    // size > baseline.max but <= maxAllowed (within tolerance — advisory, not failure)
     return {
       passed: true,
+      warn: true,
       message: `${extensionName}: ${size.toFixed(2)}MB (above baseline max ${baseline.max.toFixed(1)}MB but within ${MAX_SIZE_INCREASE_PERCENT}% tolerance — update baseline if this is the new normal)`,
     };
   }
@@ -259,7 +260,7 @@ async function main() {
   info(`Checking ${extensionsToCheck.length} large extensions...`);
   console.log("");
 
-  const results: { passed: boolean; message: string }[] = [];
+  const results: { passed: boolean; warn?: boolean; message: string }[] = [];
 
   for (const extensionName of extensionsToCheck) {
     const baseline = SIZE_BASELINES[extensionName];
@@ -269,16 +270,19 @@ async function main() {
     const result = await checkExtensionSize(imageName, extensionName, baseline);
     results.push(result);
 
-    if (result.passed) {
-      success(result.message);
-    } else {
+    if (!result.passed) {
       warning(result.message);
+    } else if (result.warn) {
+      warning(result.message); // above baseline max but within tolerance
+    } else {
+      success(result.message);
     }
   }
 
   console.log("");
 
   const failed = results.filter((r) => !r.passed);
+  const advisory = results.filter((r) => r.passed && r.warn);
   if (failed.length > 0) {
     warning(
       `${failed.length} extension(s) exceeded size baselines (non-critical - review changes)`
@@ -288,6 +292,10 @@ async function main() {
     info("  - New features or functionality added");
     info("  - Build configuration changes");
     info("  - Update SIZE_BASELINES if intentional");
+  } else if (advisory.length > 0) {
+    warning(
+      `${advisory.length} extension(s) above baseline max but within tolerance — update size-baselines.json if this is the new normal`
+    );
   } else {
     success("All extension sizes within expected ranges!");
   }

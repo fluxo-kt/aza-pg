@@ -198,6 +198,8 @@ review** — do NOT blindly accept without checking each one.
 | `actions/attest-build-provenance` | v3→v4 | Node.js 24 (runner req); `subject-version` input added (additive) | None unless on old self-hosted runners |
 | `actions/checkout` | v5→v6 | Credentials stored in `$RUNNER_TEMP` via `includeIf` (not `.git/config`) | None for normal git usage; breaks scripts that parse `.git/config` directly |
 | `actions/cache` | v3→v4 | Removed `save-always` input (use `cache-hit` output pattern instead) | Check for `save-always:` usage |
+| `docker/login-action` | v3→v4 | Node.js 20→24 runtime only; all inputs/outputs/defaults identical | None for GitHub-hosted runners (runner ≥ v2.327.1 required; all ubuntu-* runners qualify) |
+| `docker/setup-qemu-action` | v3→v4 | Node.js 20→24 runtime only; all inputs/outputs/defaults identical | None for GitHub-hosted runners (same runner requirement) |
 
 ### MANDATORY: Fix Stale Inline Version Comments
 

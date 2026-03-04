@@ -1194,8 +1194,10 @@ async function testVectorscaleDiskann(): Promise<TestResult> {
       };
     }
 
+    // Force DiskANN index: SET + query in one session (SET does not persist across execSQL calls)
+    // All 3 vectors are equidistant from [1,1,1] — any id is valid; check non-empty
     const search = await execSQL(
-      "SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1"
+      "SET enable_seqscan = OFF; SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1"
     );
     if (!search.success || search.output.trim() === "") {
       return {

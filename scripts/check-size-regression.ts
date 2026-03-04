@@ -111,12 +111,10 @@ async function imageExists(imageName: string): Promise<boolean> {
  */
 async function getSoSize(imageName: string, extensionName: string): Promise<number | null> {
   try {
-    // Common locations for .so files
+    // PostgreSQL extension libraries are always in $pkglibdir = /usr/lib/postgresql/N/lib/
+    // /usr/share/ (FHS architecture-independent data) never contains .so files
     const pgVersion = Bun.env.PG_VERSION ?? "18";
-    const possiblePaths = [
-      `/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`,
-      `/usr/share/postgresql/${pgVersion}/extension/${extensionName}.so`,
-    ];
+    const possiblePaths = [`/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`];
 
     for (const path of possiblePaths) {
       const proc = Bun.spawn(["docker", "run", "--rm", imageName, "stat", "-c", "%s", path], {

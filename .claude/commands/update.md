@@ -496,6 +496,11 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 }
 ```
 
+**Also remove from `scripts/config/size-baselines.json`** if the extension is listed there.
+A disabled extension can never be size-checked (no Docker image runs it), so keeping its entry
+creates false confidence that it's being validated. The `postgis` incident: it was disabled AND
+had the wrong `.so` filename — the dead entry went unnoticed until an explicit audit.
+
 ### 5.5: Updating Disabled Extensions
 
 **Identify**: `command grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
@@ -691,7 +696,7 @@ something. Run through these checks adversarially — try to break your own work
   `command grep -rn 'includes\|startsWith\|=== "' scripts/test/ | command grep -E '[0-9]+\.[0-9]'`
   Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
 - **Size baselines after updating any tracked extension**: After updating any extension listed in
-  `scripts/config/size-baselines.json` (timescaledb, postgis, pgroonga, pg_jsonschema, wrappers,
+  `scripts/config/size-baselines.json` (timescaledb, pgroonga, pg_jsonschema, wrappers,
   vectorscale, etc.), run the size regression check. Advisory warnings indicate a stale baseline:
   ```bash
   bun scripts/check-size-regression.ts  # requires a built image; run bun run build first if needed

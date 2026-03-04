@@ -71,7 +71,7 @@ bun run lint                # Alias for validate
 # Testing
 bun run test                # Optimized: uses existing build (~30min)
 bun run test:all            # Complete: rebuilds image + all tests (~45min)
-bun run test:unit           # Unit tests only (no Docker)
+bun run test:unit           # Alias for validate (fast checks + unit tests, no Docker)
 
 # Build/Generation
 bun run build               # Build Docker image
@@ -145,7 +145,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ `bun run validate` before commit
-- ❌ Adding a Docker-dependent `.test.ts` file without excluding it → ✅ Unit test files are auto-discovered via glob in `validate.ts`; no registration needed. Docker-dependent tests MUST be added to `DOCKER_INTEGRATION_TESTS` set in `validate.ts` AND registered in `test-all.ts` instead
+- ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`) + be registered in `test-all.ts`. All `*.test.ts` files are unconditionally unit-test safe.
 
 ## Git Workflow
 

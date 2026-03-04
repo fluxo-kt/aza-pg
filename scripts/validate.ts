@@ -307,12 +307,10 @@ async function validate(
       ? []
       : [
           (() => {
-            // Tests requiring a running Docker container — excluded from unit test suite.
-            // These are run by test-all.ts (bun run test:all) instead.
-            const DOCKER_INTEGRATION_TESTS = new Set(["./scripts/test/test-security.test.ts"]);
+            // All *.test.ts files are safe to run without Docker — Docker-dependent
+            // tests use test-*.ts naming (not *.test.ts) and are NOT auto-discovered.
             const testFiles = Array.from(new Bun.Glob("scripts/**/*.test.ts").scanSync("."))
               .map((f) => `./${f}`)
-              .filter((f) => !DOCKER_INTEGRATION_TESTS.has(f))
               .sort();
             return {
               name: "Unit Tests",

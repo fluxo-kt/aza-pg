@@ -108,13 +108,6 @@ jobs:
       - name: Validate pinned base image digest is resolvable
         run: bun scripts/validate-base-image-sha.ts --check
 
-      - name: Run unit tests
-        run: |
-          set -euo pipefail
-          echo "Running unit tests..."
-          bun test ./scripts/test/test-auto-config-units.test.ts
-          bun test ./scripts/test/test-utils.test.ts
-
       - name: Verify manifest is up to date
         run: bun scripts/ci/verify-manifest-sync.ts
 
@@ -403,7 +396,7 @@ jobs:
           set -euo pipefail
           echo "Running security hardening tests..."
           export POSTGRES_IMAGE=aza-pg-ci:test
-          bun test scripts/test/test-security.test.ts
+          bun test scripts/test/test-security.ts
 
       - name: Capture test diagnostics
         uses: ./.github/actions/capture-test-diagnostics

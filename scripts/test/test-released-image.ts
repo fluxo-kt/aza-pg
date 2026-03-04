@@ -467,7 +467,7 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
     results.push(
       await runPhase(
         "Security tests",
-        ["bun", "test", "./scripts/test/test-security.test.ts"],
+        ["bun", "test", "./scripts/test/test-security.ts"],
         "SCRAM-SHA-256 auth, pgAudit, network binding"
       )
     );

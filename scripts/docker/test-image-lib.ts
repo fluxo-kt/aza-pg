@@ -1,15 +1,12 @@
 /**
  * Shared Test Library for Docker Image Tests
  *
- * This module contains all shared utilities, helper functions, and test functions
- * that are used across the split test files:
- * - test-image-core.ts (Core infrastructure tests)
- * - test-image-functional-1.ts (Functional tests group 1)
- * - test-image-functional-2.ts (Functional tests group 2)
- * - test-image-functional-3.ts (Functional tests group 3)
+ * Single source of truth for all 39 test functions. Primary consumer is
+ * test-image.ts (CI, ~350-line thin wrapper that owns container lifecycle).
+ * Standalone on-demand scripts (test-image-core.ts, test-image-functional-1/2/3.ts)
+ * also import from here but are NOT in CI.
  *
- * All functions accept a containerName parameter to support parallel execution
- * with independent test containers.
+ * All functions accept a containerName parameter for independent test containers.
  */
 
 import { join } from "node:path";
@@ -839,12 +836,10 @@ export async function testVersionInfoTxt(
     const totalCount = manifest.entries.length;
     const enabledCount = manifest.entries.filter((e) => e.enabled !== false).length;
     const disabledCount = manifest.entries.filter((e) => e.enabled === false).length;
-    // Match generate-image-contents.ts definition: sharedPreload + defaultEnable (not optional preloads)
+    // Match generate-version-info.ts definition: ALL enabled sharedPreload entries,
+    // including optional preloads (supautils, pg_partman_bgw, set_user, etc.)
     const preloadedCount = manifest.entries.filter(
-      (e) =>
-        e.enabled !== false &&
-        e.runtime?.sharedPreload === true &&
-        e.runtime?.defaultEnable === true
+      (e) => e.enabled !== false && e.runtime?.sharedPreload === true
     ).length;
 
     const errors: string[] = [];
@@ -1482,6 +1477,7 @@ export async function testPostgisSpatialQuery(containerName: string): Promise<Te
       "CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))",
       containerName
     );
+    await execSQL("TRUNCATE test_postgis RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))",
       containerName
@@ -1969,6 +1965,7 @@ export async function testHypopgHypotheticalIndexes(containerName: string): Prom
       "CREATE TABLE IF NOT EXISTS test_hypopg (id serial PRIMARY KEY, val int)",
       containerName
     );
+    await execSQL("TRUNCATE test_hypopg RESTART IDENTITY", containerName);
     await execSQL("INSERT INTO test_hypopg (val) SELECT generate_series(1, 1000)", containerName);
 
     // Create and verify in same session (hypothetical indexes are session-local)
@@ -2397,93 +2394,101 @@ export async function testPgsodiumEncryption(containerName: string): Promise<Tes
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE", containerName);
 
-    // Disable event triggers if pgsodium not preloaded (prevents GUC parameter errors)
+    // Disable event trigger to prevent GUC parameter errors during crypto operations.
+    // Wrapped in try/finally to always re-enable — leaving it disabled poisons subsequent
+    // tests that depend on pgsodium's DDL masking (same pattern as testPgPartmanPartitioning).
     await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName).catch(
       () => {
         /* Ignore if trigger doesn't exist */
       }
     );
 
-    const key = await execSQL(
-      "SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')",
-      containerName
-    );
-    if (!key.success || key.output.trim() === "") {
+    try {
+      const key = await execSQL(
+        "SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')",
+        containerName
+      );
+      if (!key.success || key.output.trim() === "") {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Key generation failed",
+        };
+      }
+
+      const nonce = await execSQL(
+        "SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')",
+        containerName
+      );
+      if (!nonce.success || nonce.output.trim() === "") {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Nonce generation failed",
+        };
+      }
+
+      const keyHex = key.output.trim();
+      const nonceHex = nonce.output.trim();
+      const plaintext = "secret data";
+      const encrypt = await execSQL(
+        `
+        SELECT encode(
+          pgsodium.crypto_secretbox(
+            '${plaintext}'::bytea,
+            decode('${nonceHex}', 'hex'),
+            decode('${keyHex}', 'hex')
+          ),
+          'hex'
+        )
+      `,
+        containerName
+      );
+
+      if (!encrypt.success || encrypt.output.trim() === "") {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Encryption failed",
+        };
+      }
+
+      const decrypt = await execSQL(
+        `
+        SELECT convert_from(
+          pgsodium.crypto_secretbox_open(
+            decode('${encrypt.output.trim()}', 'hex'),
+            decode('${nonceHex}', 'hex'),
+            decode('${keyHex}', 'hex')
+          ),
+          'utf8'
+        )
+      `,
+        containerName
+      );
+
+      if (!decrypt.success || decrypt.output.trim() !== plaintext) {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Decryption failed",
+        };
+      }
+
       return {
         name: "pgsodium - Encryption",
-        passed: false,
+        passed: true,
         duration: Date.now() - startTime,
-        error: "Key generation failed",
       };
+    } finally {
+      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName).catch(
+        () => {}
+      );
     }
-
-    const nonce = await execSQL(
-      "SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')",
-      containerName
-    );
-    if (!nonce.success || nonce.output.trim() === "") {
-      return {
-        name: "pgsodium - Encryption",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Nonce generation failed",
-      };
-    }
-
-    const keyHex = key.output.trim();
-    const nonceHex = nonce.output.trim();
-    const plaintext = "secret data";
-    const encrypt = await execSQL(
-      `
-      SELECT encode(
-        pgsodium.crypto_secretbox(
-          '${plaintext}'::bytea,
-          decode('${nonceHex}', 'hex'),
-          decode('${keyHex}', 'hex')
-        ),
-        'hex'
-      )
-    `,
-      containerName
-    );
-
-    if (!encrypt.success || encrypt.output.trim() === "") {
-      return {
-        name: "pgsodium - Encryption",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Encryption failed",
-      };
-    }
-
-    const decrypt = await execSQL(
-      `
-      SELECT convert_from(
-        pgsodium.crypto_secretbox_open(
-          decode('${encrypt.output.trim()}', 'hex'),
-          decode('${nonceHex}', 'hex'),
-          decode('${keyHex}', 'hex')
-        ),
-        'utf8'
-      )
-    `,
-      containerName
-    );
-
-    if (!decrypt.success || decrypt.output.trim() !== plaintext) {
-      return {
-        name: "pgsodium - Encryption",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Decryption failed",
-      };
-    }
-
-    return {
-      name: "pgsodium - Encryption",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
   } catch (err) {
     return {
       name: "pgsodium - Encryption",
@@ -2705,7 +2710,6 @@ export async function cleanupTestData(containerName: string): Promise<void> {
     "test_trgm",
     "test_pgroonga",
     "test_rum",
-    "test_audit",
     "test_timescale",
   ];
 
@@ -2720,7 +2724,4 @@ export async function cleanupTestData(containerName: string): Promise<void> {
   await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName).catch(() => {
     /* Ignore if pgmq not installed or queue does not exist */
   });
-
-  // Cleanup materialized views
-  await execSQL("DROP MATERIALIZED VIEW IF EXISTS test_timescale_hourly CASCADE", containerName);
 }

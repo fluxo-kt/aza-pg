@@ -307,11 +307,14 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
-# Replace gosu from base image with su-exec (built in builder-base).
-# The builder COPY above restores the vulnerable gosu binary via rsync of /usr/local/bin/.
-# This COPY must come AFTER builder-pgxs and builder-cargo to be the definitive version.
-# Identical CLI: postgres entrypoint calls `gosu postgres "$@"` — su-exec is a transparent drop-in.
-COPY --from=builder-base /tmp/su-exec-build/su-exec /usr/local/bin/gosu
+# Replace gosu (Go binary, CVE-2025-68121 CRITICAL) with su-exec (pure C, identical CLI).
+# builder-pgxs rsyncs /usr/local/bin/ — including the original gosu — into /opt/ext-out/usr/local/bin/.
+# The COPY above then puts that gosu back. This RUN --mount=type=bind step overwrites it.
+# Uses bind-mount (not COPY --from) to guarantee strong cache invalidation; COPY --from can
+# silently serve stale registry-cached layers that still contain the original Go binary.
+# su-exec v0.2 SHA: f85e5bde1afef399021fbc2a99c837cf851ceafa (verified in builder-base 8/12)
+RUN --mount=type=bind,from=builder-base,source=/tmp/su-exec-build/su-exec,target=/tmp/su-exec-staging,readonly \
+    install -o root -g root -m 0755 /tmp/su-exec-staging /usr/local/bin/gosu
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations

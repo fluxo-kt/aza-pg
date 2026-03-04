@@ -973,8 +973,7 @@ async function testToolsPresent(manifest: Manifest): Promise<TestResult> {
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path
       wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
-      pg_plan_filter: "/usr/lib/postgresql/18/lib/plan_filter.so",
-      safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
+      pg_safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so", // key must match manifest entry name
     };
 
     const missing: string[] = [];
@@ -2362,8 +2361,6 @@ async function cleanupTestData(): Promise<void> {
     "test_wal2json_table",
     "test_postgis",
     "test_routing",
-    "test_btree_gin",
-    "test_btree_gist",
     "test_exclusion",
     "test_trigger_table",
     "test_partman",

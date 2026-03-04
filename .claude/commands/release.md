@@ -577,7 +577,7 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  4. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
 
 ---

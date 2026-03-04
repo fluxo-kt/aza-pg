@@ -52,8 +52,10 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
    ```bash
-   # TypeScript test files
-   command grep -rn "0\.8\|2\.8\|0\.5" scripts/test/ | command grep -i "version\|include\|assert"
+   # TypeScript test files — search ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
+   command grep -rn "0\.8\|2\.8\|0\.5" scripts/ | command grep -i "version\|include\|assert" | command grep -v ".bun/"
+   # Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+   command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"
    # SQL regression expected outputs — also hard-code version strings and WILL break nightly if stale
    command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
    ```
@@ -248,6 +250,13 @@ command grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 
 **⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
 PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the same commit.
+
+**⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
+- `scripts/docker/test-image-lib.ts` `toolBinaries` dict — `.so` paths hardcode PG major (e.g., `postgresql/18/lib/` → `postgresql/19/lib/`)
+- pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
+- TimescaleDB version suffix (e.g., `-1803` → `-1900`)
+- All `pgdgVersion` strings that contain the PG major version
+- All `pgdg13+N` suffixes stay unchanged (that's the Debian version, not PG version)
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
 
@@ -528,10 +537,12 @@ Extensions still in test suites should stay current. Permanently broken extensio
 Before writing tests, search for hardcoded version strings in ALL test files:
 
 ```bash
-# Find any hardcoded version strings that will break after an upgrade (TypeScript test files)
-command grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/test/ | command grep -v ".bun/"
+# Find hardcoded version strings in ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
+command grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/ | command grep -v ".bun/"
 # Also search for specific old version patterns:
-command grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/test/ | command grep -v ".bun/" | command grep -i "include\|assert\|version"
+command grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/ | command grep -v ".bun/" | command grep -i "include\|assert\|version"
+# Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"
 # SQL regression expected outputs — hard-code extversion strings; stale = nightly failures
 command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
 ```
@@ -692,8 +703,12 @@ something. Run through these checks adversarially — try to break your own work
   Contains a version series check (`startsWith("2.25.")`) — **update the series prefix** when
   TimescaleDB crosses a minor version boundary (2.25.x → 2.26.x). Also update the file title
   and run banner.
+- **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version
+  (e.g., `/usr/lib/postgresql/18/lib/`). **Update all paths when bumping PG major version.**
+  Keys must match manifest entry `name` exactly (kind: "tool") — wrong keys silently skip checks.
+  Find stale paths: `command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"`
 - **Search all test files for hardcoded version strings** that would fail after the update:
-  `command grep -rn 'includes\|startsWith\|=== "' scripts/test/ | command grep -E '[0-9]+\.[0-9]'`
+  `command grep -rn 'includes\|startsWith\|=== "' scripts/ | command grep -E '[0-9]+\.[0-9]'` | command grep -v ".bun/"
   Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
 - **Size baselines after updating any tracked extension**: After updating any extension listed in
   `scripts/config/size-baselines.json` (timescaledb, pgroonga, pg_jsonschema, wrappers,

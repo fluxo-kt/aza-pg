@@ -101,22 +101,23 @@ describe("Tool Binary Path Validation", () => {
           "to match the manifest documentation in docker/postgres/extensions.manifest.json"
       );
     }
+    expect(mismatches.length).toBe(0);
   });
 
   test("all tool entries have documented binary paths", async () => {
     const manifest = await loadManifest();
-    const tools = manifest.entries.filter(
-      (e) => e.kind === "tool" && e.name !== "pg_plan_filter" && e.name !== "pg_safeupdate"
-    );
+    // Exclude .so-module tools (no standalone CLI binary to document):
+    //   wal2json     — output plugin .so, loaded by logical replication
+    //   pg_safeupdate — hook .so, loaded via shared_preload_libraries
+    //   pg_plan_filter — hook .so, disabled (PG18 incompatible), no binary
+    const SO_MODULE_TOOLS = new Set(["wal2json", "pg_safeupdate", "pg_plan_filter"]);
+    const tools = manifest.entries.filter((e) => e.kind === "tool" && !SO_MODULE_TOOLS.has(e.name));
 
     const missingPaths: string[] = [];
 
     for (const tool of tools) {
       const notes = tool.runtime?.notes ?? [];
       const binaryPath = extractBinaryPathFromNotes(notes);
-
-      // Only check standalone CLI tools (not .so modules)
-      if (tool.name === "wal2json") continue; // This is a .so module, not a CLI tool
 
       if (!binaryPath) {
         missingPaths.push(`Tool '${tool.name}' has no documented binary path in notes`);

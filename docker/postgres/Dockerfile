@@ -115,6 +115,17 @@ RUN set -euo pipefail && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out -name '*.a' -delete
 
+# Replace gosu (Go binary, CVE-2025-68121 CRITICAL) with su-exec in the output directory.
+# builder-base compiled su-exec (v0.2, SHA-pinned) — inherited by all builder-* stages.
+# Replacing here (before COPY --from=builder-pgxs in the final stage) means the COPY delivers
+# su-exec at /usr/local/bin/gosu with no apt dependency and no bind-mount ambiguity.
+# Build-time assertion: fails if binary >500KB (su-exec ~14KB, gosu ~7MB).
+RUN set -euo pipefail && \
+    install -o root -g root -m 0755 /tmp/su-exec-build/su-exec /opt/ext-out/usr/local/bin/gosu && \
+    SZ=$(stat -c%s /opt/ext-out/usr/local/bin/gosu) && \
+    echo "su-exec: ${SZ} bytes at /opt/ext-out/usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
+    [ "${SZ}" -lt 500000 ] || { echo "FATAL: gosu replacement >500KB — su-exec install failed"; exit 1; }
+
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
 
@@ -306,24 +317,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
-
-# Replace gosu (Go binary, CVE-2025-68121 CRITICAL) with su-exec (pure C, identical CLI).
-# builder-pgxs rsyncs /usr/local/bin/ into /opt/ext-out/usr/local/bin/, so COPY --from=builder-pgxs
-# above restores the original gosu from the postgres base image. This step permanently replaces it.
-# Self-contained: installs su-exec from Debian Trixie apt (no multi-stage bind-mount dependency).
-# Build-time assertion: fails the build if the replacement produces a binary >500KB (gosu ~7MB, su-exec ~14KB).
-# hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends su-exec && \
-    install -o root -g root -m 0755 /usr/sbin/su-exec /usr/local/bin/gosu && \
-    SZ=$(stat -c%s /usr/local/bin/gosu) && \
-    echo "su-exec replacement: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
-    [ "${SZ}" -lt 500000 ] || { echo "FATAL: /usr/local/bin/gosu is >500KB — su-exec replacement failed"; exit 1; } && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations

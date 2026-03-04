@@ -495,6 +495,31 @@ export async function testDisabledPgdgExtensionsNotPresent(
 }
 
 // ============================================================================
+// MANIFEST COUNT UTILITIES
+// ============================================================================
+
+/**
+ * Compute manifest extension counts — matches generate-version-info.ts definition.
+ * Centralised here so testVersionInfoTxt and testVersionInfoJson stay in sync.
+ */
+function getManifestCounts(manifest: Manifest): {
+  total: number;
+  enabled: number;
+  disabled: number;
+  preloaded: number;
+} {
+  return {
+    total: manifest.entries.length,
+    enabled: manifest.entries.filter((e) => e.enabled !== false).length,
+    disabled: manifest.entries.filter((e) => e.enabled === false).length,
+    // ALL enabled sharedPreload entries, including optional preloads
+    preloaded: manifest.entries.filter(
+      (e) => e.enabled !== false && e.runtime?.sharedPreload === true
+    ).length,
+  };
+}
+
+// ============================================================================
 // RUNTIME VERIFICATION TESTS
 // ============================================================================
 
@@ -859,14 +884,12 @@ export async function testVersionInfoTxt(
 
     const content = result.output;
 
-    const totalCount = manifest.entries.length;
-    const enabledCount = manifest.entries.filter((e) => e.enabled !== false).length;
-    const disabledCount = manifest.entries.filter((e) => e.enabled === false).length;
-    // Match generate-version-info.ts definition: ALL enabled sharedPreload entries,
-    // including optional preloads (supautils, pg_partman_bgw, set_user, etc.)
-    const preloadedCount = manifest.entries.filter(
-      (e) => e.enabled !== false && e.runtime?.sharedPreload === true
-    ).length;
+    const {
+      total: totalCount,
+      enabled: enabledCount,
+      disabled: disabledCount,
+      preloaded: preloadedCount,
+    } = getManifestCounts(manifest);
 
     const errors: string[] = [];
 
@@ -941,14 +964,7 @@ export async function testVersionInfoJson(
 
     const versionInfo = JSON.parse(result.output);
 
-    const expectedCounts = {
-      total: manifest.entries.length,
-      enabled: manifest.entries.filter((e) => e.enabled !== false).length,
-      disabled: manifest.entries.filter((e) => e.enabled === false).length,
-      preloaded: manifest.entries.filter(
-        (e) => e.enabled !== false && e.runtime?.sharedPreload === true
-      ).length,
-    };
+    const expectedCounts = getManifestCounts(manifest);
 
     const errors: string[] = [];
 
@@ -2088,6 +2104,77 @@ export async function testPgmqQueue(containerName: string): Promise<TestResult> 
         error: `Read returned msg_id ${read.output.trim()}, expected ${sentMsgId}`,
       };
     }
+
+    // Topic routing (pgmq 1.11.0+): bind_topic → send_topic → verify message arrives in bound queue.
+    // Verifies the AMQP-style fan-out routing path end-to-end, not just basic queue mechanics.
+    await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
+    const topicCreate = await execSQL("SELECT pgmq.create('test_topic_queue')", containerName);
+    if (!topicCreate.success) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `Failed to create queue for topic routing: ${topicCreate.output.slice(0, 100)}`,
+      };
+    }
+
+    // Bind queue to topic pattern — '#' matches zero or more segments (e.g. 'test.event.created')
+    const bindResult = await execSQL(
+      "SELECT pgmq.bind_topic('test_topic_queue', 'test.#')",
+      containerName
+    );
+    if (!bindResult.success) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `bind_topic failed: ${bindResult.output.slice(0, 100)}`,
+      };
+    }
+
+    // Verify binding is registered before sending (list_topic_bindings sanity check)
+    const bindings = await execSQL(
+      "SELECT count(*) FROM pgmq.list_topic_bindings('test_topic_queue')",
+      containerName
+    );
+    if (!bindings.success || parseInt(bindings.output.trim(), 10) < 1) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `Topic binding not listed after bind_topic call (count=${bindings.output.trim()})`,
+      };
+    }
+
+    // Fan out a message via topic routing key — 'test.event' matches bound pattern 'test.#'
+    const topicSend = await execSQL(
+      "SELECT pgmq.send_topic('test.event', '{\"action\": \"created\"}'::jsonb)",
+      containerName
+    );
+    if (!topicSend.success) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `send_topic failed: ${topicSend.output.slice(0, 100)}`,
+      };
+    }
+
+    // Message must have been routed into the bound queue
+    const topicRead = await execSQL(
+      "SELECT count(*) FROM pgmq.read('test_topic_queue', 30, 10)",
+      containerName
+    );
+    if (!topicRead.success || parseInt(topicRead.output.trim(), 10) < 1) {
+      return {
+        name: "pgmq - Message queue",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `Topic message not received in bound queue (count=${topicRead.output.trim()})`,
+      };
+    }
+
+    await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
 
     return {
       name: "pgmq - Message queue",

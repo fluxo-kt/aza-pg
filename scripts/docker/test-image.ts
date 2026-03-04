@@ -1117,10 +1117,11 @@ async function testPgvectorComprehensive(): Promise<TestResult> {
   const startTime = Date.now();
 
   try {
-    // Create table and insert vectors
+    // Create table and truncate to ensure exact id=1 assertion holds on container reuse
     await execSQL(
       "CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))"
     );
+    await execSQL("TRUNCATE test_vectors RESTART IDENTITY");
     await execSQL(
       "INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')"
     );
@@ -1599,44 +1600,41 @@ async function testPgPartmanPartitioning(): Promise<TestResult> {
       /* Ignore if trigger doesn't exist */
     });
 
-    let testResult: TestResult;
     try {
       const config = await execSQL(
         "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := '2025-01-01')"
       );
       if (!config.success) {
-        testResult = {
+        return {
           name: "pg_partman - Partitioning",
           passed: false,
           duration: Date.now() - startTime,
           error: `Failed to configure pg_partman: ${config.output}`,
         };
-      } else {
-        // Verify partitions created
-        const check = await execSQL(
-          "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test_partman_p%'"
-        );
-        if (!check.success || parseInt(check.output.trim()) === 0) {
-          testResult = {
-            name: "pg_partman - Partitioning",
-            passed: false,
-            duration: Date.now() - startTime,
-            error: "No partitions created",
-          };
-        } else {
-          testResult = {
-            name: "pg_partman - Partitioning",
-            passed: true,
-            duration: Date.now() - startTime,
-          };
-        }
       }
+
+      // Verify partitions created
+      const check = await execSQL(
+        "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test_partman_p%'"
+      );
+      if (!check.success || parseInt(check.output.trim()) === 0) {
+        return {
+          name: "pg_partman - Partitioning",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "No partitions created",
+        };
+      }
+
+      return {
+        name: "pg_partman - Partitioning",
+        passed: true,
+        duration: Date.now() - startTime,
+      };
     } finally {
       // Always re-enable to avoid contaminating subsequent tests in the shared container
       await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE").catch(() => {});
     }
-
-    return testResult;
   } catch (err) {
     return {
       name: "pg_partman - Partitioning",
@@ -1941,6 +1939,8 @@ async function testPgroongaFullText(): Promise<TestResult> {
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE");
     await execSQL("CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)");
+    // Truncate so count=2 assertion holds on container reuse (--no-cleanup flag)
+    await execSQL("TRUNCATE test_pgroonga RESTART IDENTITY");
     await execSQL(
       "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')"
     );
@@ -1984,6 +1984,8 @@ async function testRumRankedSearch(): Promise<TestResult> {
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS rum CASCADE");
     await execSQL("CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)");
+    // Truncate so count=2 assertion holds on container reuse (--no-cleanup flag)
+    await execSQL("TRUNCATE test_rum RESTART IDENTITY");
     await execSQL(
       "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))"
     );
@@ -2003,6 +2005,20 @@ async function testRumRankedSearch(): Promise<TestResult> {
         passed: false,
         duration: Date.now() - startTime,
         error: `Expected 2 rows matching 'fox & dog', got: ${search.output.trim()}`,
+      };
+    }
+
+    // RUM-specific: <=> distance operator for tsvector ranking — exclusive to rum access method;
+    // a broken rum that falls back to GIN would fail here (GIN has no <=> for tsvector)
+    const ranked = await execSQL(
+      "SELECT content <=> to_tsquery('english', 'fox') FROM test_rum ORDER BY 1 LIMIT 1"
+    );
+    if (!ranked.success || ranked.output.trim() === "") {
+      return {
+        name: "rum - Ranked search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "RUM <=> ranking operator failed (exclusive to rum, not GIN)",
       };
     }
 
@@ -2074,84 +2090,80 @@ async function testPgsodiumEncryption(): Promise<TestResult> {
       /* Ignore if trigger doesn't exist */
     });
 
-    let testResult: TestResult;
     try {
       const key = await execSQL("SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')");
       if (!key.success || key.output.trim() === "") {
-        testResult = {
+        return {
           name: "pgsodium - Encryption",
           passed: false,
           duration: Date.now() - startTime,
           error: "Key generation failed",
         };
-      } else {
-        const nonce = await execSQL("SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')");
-        if (!nonce.success || nonce.output.trim() === "") {
-          testResult = {
-            name: "pgsodium - Encryption",
-            passed: false,
-            duration: Date.now() - startTime,
-            error: "Nonce generation failed",
-          };
-        } else {
-          // Trim to remove trailing newline from psql -tA output — hex strings must be exact
-          const keyHex = key.output.trim();
-          const nonceHex = nonce.output.trim();
-          const plaintext = "secret data";
-
-          const encrypt = await execSQL(`
-            SELECT encode(
-              pgsodium.crypto_secretbox(
-                '${plaintext}'::bytea,
-                decode('${nonceHex}', 'hex'),
-                decode('${keyHex}', 'hex')
-              ),
-              'hex'
-            )
-          `);
-
-          if (!encrypt.success || encrypt.output.trim() === "") {
-            testResult = {
-              name: "pgsodium - Encryption",
-              passed: false,
-              duration: Date.now() - startTime,
-              error: "Encryption failed",
-            };
-          } else {
-            const cipherHex = encrypt.output.trim();
-            const decrypt = await execSQL(`
-              SELECT convert_from(
-                pgsodium.crypto_secretbox_open(
-                  decode('${cipherHex}', 'hex'),
-                  decode('${nonceHex}', 'hex'),
-                  decode('${keyHex}', 'hex')
-                ),
-                'utf8'
-              )
-            `);
-
-            testResult =
-              !decrypt.success || decrypt.output.trim() !== plaintext
-                ? {
-                    name: "pgsodium - Encryption",
-                    passed: false,
-                    duration: Date.now() - startTime,
-                    error: "Decryption failed",
-                  }
-                : {
-                    name: "pgsodium - Encryption",
-                    passed: true,
-                    duration: Date.now() - startTime,
-                  };
-          }
-        }
       }
+
+      const nonce = await execSQL("SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')");
+      if (!nonce.success || nonce.output.trim() === "") {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Nonce generation failed",
+        };
+      }
+
+      // Trim to remove trailing newline from psql -tA output — hex strings must be exact
+      const keyHex = key.output.trim();
+      const nonceHex = nonce.output.trim();
+      const plaintext = "secret data";
+
+      const encrypt = await execSQL(`
+        SELECT encode(
+          pgsodium.crypto_secretbox(
+            '${plaintext}'::bytea,
+            decode('${nonceHex}', 'hex'),
+            decode('${keyHex}', 'hex')
+          ),
+          'hex'
+        )
+      `);
+      if (!encrypt.success || encrypt.output.trim() === "") {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Encryption failed",
+        };
+      }
+
+      const cipherHex = encrypt.output.trim();
+      const decrypt = await execSQL(`
+        SELECT convert_from(
+          pgsodium.crypto_secretbox_open(
+            decode('${cipherHex}', 'hex'),
+            decode('${nonceHex}', 'hex'),
+            decode('${keyHex}', 'hex')
+          ),
+          'utf8'
+        )
+      `);
+      if (!decrypt.success || decrypt.output.trim() !== plaintext) {
+        return {
+          name: "pgsodium - Encryption",
+          passed: false,
+          duration: Date.now() - startTime,
+          error: "Decryption failed",
+        };
+      }
+
+      return {
+        name: "pgsodium - Encryption",
+        passed: true,
+        duration: Date.now() - startTime,
+      };
     } finally {
       // Always re-enable to avoid contaminating subsequent tests in the shared container
       await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE").catch(() => {});
     }
-
-    return testResult;
   } catch (err) {
     return {
       name: "pgsodium - Encryption",

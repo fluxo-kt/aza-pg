@@ -2206,6 +2206,8 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       "CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)",
       containerName
     );
+    // Truncate so count=2 assertion holds on container reuse
+    await execSQL("TRUNCATE test_rum RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))",
       containerName
@@ -2219,17 +2221,17 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       containerName
     );
 
-    // Basic match with @@ (works with any tsvector index, not RUM-specific)
+    // Exact count: both rows contain 'fox' AND 'dog'
     const search = await execSQL(
-      "SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')",
+      "SELECT count(*) FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')",
       containerName
     );
-    if (!search.success || search.output.trim() === "") {
+    if (!search.success || parseInt(search.output.trim()) !== 2) {
       return {
         name: "rum - Ranked search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "RUM ranked search failed",
+        error: `Expected 2 rows matching 'fox & dog', got: ${search.output.trim()}`,
       };
     }
 

@@ -474,7 +474,7 @@ const allChecks: Check[] = [
   {
     name: "Unit Tests: Auto-Config",
     category: "validation",
-    command: ["bun", "test", "./scripts/test/test-auto-config-units.ts"],
+    command: ["bun", "test", "./scripts/test/test-auto-config-units.test.ts"],
     description: "Unit tests for PostgreSQL auto-configuration",
     critical: true,
   },

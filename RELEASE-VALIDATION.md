@@ -65,7 +65,7 @@ During this validation, the following test infrastructure fixes were implemented
 **Unit Tests**: 198 tests passed across 4 test files:
 
 - manifest-generator.test.ts
-- test-auto-config-units.ts
+- test-auto-config-units.test.ts
 - test-utils.test.ts
 - test-image-lib.test.ts
 

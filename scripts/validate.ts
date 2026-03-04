@@ -310,18 +310,14 @@ async function validate(
             // Tests requiring a running Docker container — excluded from unit test suite.
             // These are run by test-all.ts (bun run test:all) instead.
             const DOCKER_INTEGRATION_TESTS = new Set(["./scripts/test/test-security.test.ts"]);
-            const discoveredTestFiles = Array.from(
-              new Bun.Glob("scripts/**/*.test.ts").scanSync(".")
-            )
+            const testFiles = Array.from(new Bun.Glob("scripts/**/*.test.ts").scanSync("."))
               .map((f) => `./${f}`)
               .filter((f) => !DOCKER_INTEGRATION_TESTS.has(f))
               .sort();
-            // Legacy test file predating the .test.ts naming convention
-            const legacyTestFiles = ["./scripts/test/test-auto-config-units.ts"];
             return {
               name: "Unit Tests",
-              command: ["bun", "test", ...discoveredTestFiles, ...legacyTestFiles],
-              description: `Unit tests (${discoveredTestFiles.length} auto-discovered + ${legacyTestFiles.length} legacy = ${discoveredTestFiles.length + legacyTestFiles.length} files)`,
+              command: ["bun", "test", ...testFiles],
+              description: `Unit tests (${testFiles.length} files, auto-discovered via glob)`,
               required: true,
             };
           })(),

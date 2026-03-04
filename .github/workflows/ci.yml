@@ -112,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running unit tests..."
-          bun test ./scripts/test/test-auto-config-units.ts
+          bun test ./scripts/test/test-auto-config-units.test.ts
           bun test ./scripts/test/test-utils.test.ts
 
       - name: Verify manifest is up to date

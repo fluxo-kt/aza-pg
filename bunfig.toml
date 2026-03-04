@@ -32,6 +32,10 @@ coverage = false
 # Global test timeout to prevent hanging on container startup
 timeout = 120000  # 2 minutes per test (in milliseconds)
 
+# Exclude Docker-dependent tests from bare `bun test` runs (defence-in-depth;
+# validate.ts also filters these via DOCKER_INTEGRATION_TESTS).
+exclude = ["scripts/test/test-security.test.ts"]
+
 # Preload files for tests (if needed later)
 # preload = ["./scripts/test/setup.ts"]
 

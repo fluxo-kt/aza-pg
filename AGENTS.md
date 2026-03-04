@@ -196,17 +196,31 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 ## Changelog
 
-**File**: `CHANGELOG.md` — Keep a Changelog format, integrated with GitHub releases
+**File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
+
+**Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
 
 **Workflow**:
 
 1. Track image-affecting changes in `[Unreleased]` section
-2. Focus on: extension updates, base image changes, breaking changes
+2. Focus on: extension updates, base image changes, breaking changes, security fixes
 3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[v18.1-202602082259]`)
 4. Start new `[Unreleased]` section for next changes
-5. Non-image changes (tests, tooling, CI): mention briefly in "Development" subsection
+5. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
 
-**Categories**: Changed (updates) | Added (new features) | Fixed (bug fixes) | Removed | Security | Breaking
+**What NEVER belongs in the changelog**:
+
+- Agent commands (`.claude/commands/`), skills, tooling scripts — these are invisible to image consumers
+- Individual kaizen/audit pass details, test assertion improvements, internal refactors
+- Anything a user of the Docker image cannot observe or act on
+
+**Development section rules** (when it's worth including at all):
+
+- Max 1-2 bullets total, no technical detail, user-impact framing only
+- OK: "Test coverage hardened; CI updated to Node.js 24 runners"
+- NOT OK: "testPgStatStatements now executes a tracked query after reset and asserts count >= 1 because..."
+
+**Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development
 
 ## References
 

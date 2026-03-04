@@ -448,8 +448,10 @@ export async function testEnabledExtensions(
       const isEnabled = entry.enabled !== false;
       const isNotTool = entry.kind !== "tool";
       const isNotPreloadOnly = entry.runtime?.preloadOnly !== true;
-      // Skip extensions that require optional preload (not in default config)
-      // Example: timescaledb requires shared_preload_libraries but is defaultEnable: false
+      // Skip extensions that require shared_preload_libraries but are NOT in the DEFAULT
+      // shared_preload_libraries (e.g. pg_partman_bgw, set_user, supautils — optional preloads
+      // that users must explicitly enable via POSTGRES_SHARED_PRELOAD_LIBRARIES).
+      // Extensions with defaultEnable: true ARE in the default preload (e.g. timescaledb, pgaudit).
       const isNotOptionalPreload = !(
         entry.runtime?.sharedPreload === true && entry.runtime?.defaultEnable === false
       );
@@ -1723,7 +1725,7 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
     );
 
     const config = await execSQL(
-      "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := '2025-01-01')",
+      "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := (now() - interval '7 days')::text)",
       containerName
     );
     if (!config.success) {
@@ -1856,14 +1858,10 @@ export async function testPgCronScheduling(containerName: string): Promise<TestR
       };
     }
 
-    // Cleanup
-    const jobId = await execSQL(
-      "SELECT jobid FROM cron.job WHERE jobname = 'test-job'",
-      containerName
-    );
-    if (jobId.success && jobId.output.trim() !== "") {
-      await execSQL(`SELECT cron.unschedule(${jobId.output})`, containerName);
-    }
+    // Cleanup — use jobname to avoid integer-parsing fragility of jobid output
+    await execSQL("SELECT cron.unschedule('test-job')", containerName).catch(() => {
+      /* Ignore if job was already removed */
+    });
 
     return {
       name: "pg_cron - Job scheduling",

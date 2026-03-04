@@ -7,6 +7,7 @@
  * Coverage:
  * - Start container with current image
  * - Query extension versions from pg_extension
+ * - Assert installed versions match manifest declarations (manifest-version contract)
  * - Create test data with key extensions (pgvector, postgis, timescaledb, pg_cron)
  * - Test extension upgrade scenario (ALTER EXTENSION UPDATE)
  * - Verify data integrity after version changes
@@ -17,6 +18,7 @@
  *   bun scripts/test/test-extension-versions.ts [image-tag] [--no-cleanup]
  */
 
+import { join } from "node:path";
 import { $ } from "bun";
 import {
   checkCommand,
@@ -138,12 +140,139 @@ async function testQueryExtensions(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 2: Create Test Data with pgvector
+ * Test 2: Verify installed extension versions match manifest declarations.
+ *
+ * First checks pg_aza_status for any failed installations (the initdb contract table),
+ * then reads source.tag from extensions.manifest.json and extracts a semver string via
+ * regex, asserting pg_extension.extversion starts with that declared version.
+ *
+ * Only extensions with defaultEnable=true are required to be present; all others that
+ * happen to be installed get opportunistic version checks. Skips entries without
+ * extractable semver (commit-hash refs, REL-style tags).
+ *
+ * NOTE: Reads extensions.manifest.json from the HOST filesystem — authoritative when
+ * testing a locally built image, but may diverge if testing a remote/published image tag.
+ */
+async function testManifestVersionMatch(config: TestConfig): Promise<TestResult> {
+  const start = Date.now();
+  try {
+    section("Test 2: Verify Extension Versions Match Manifest");
+
+    // === Preliminary: check pg_aza_status for failed installations ===
+    // pg_aza_status is written by initdb and records exactly which extensions failed,
+    // including the PostgreSQL error message. This catches .so absence before version checks.
+    const statusResult =
+      await $`docker exec ${config.containerName} psql -U postgres -tAc "SELECT array_to_string(failed_extensions, ',') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1;"`;
+    const failedExtStr = statusResult.text().trim();
+    if (failedExtStr.length > 0) {
+      const failedList = failedExtStr.split(",").filter(Boolean);
+      for (const ext of failedList) {
+        error(`initdb failed to install extension: ${ext}`);
+      }
+      throw new Error(
+        `pg_aza_status reports ${failedList.length} failed extension(s): ${failedList.join(", ")}`
+      );
+    }
+    info("pg_aza_status: no failed extensions ✓");
+
+    const installed = await queryExtensions(config.containerName);
+    const installedMap = new Map<string, string>(installed.map((e) => [e.name, e.version]));
+
+    const manifestPath = join(import.meta.dir, "../../docker/postgres/extensions.manifest.json");
+    const manifest = await Bun.file(manifestPath).json();
+
+    interface ManifestEntry {
+      name: string;
+      kind: string;
+      runtime?: { defaultEnable?: boolean };
+      source?: { tag?: string };
+    }
+
+    // Extract semver from source.tag — handles v1.2.3, ver_1.2.3, 1.2.3.
+    // Returns null for commit hashes and tag formats without dots (REL4_2_0).
+    function extractSemver(tag: string): string | null {
+      const m = tag.match(/(\d+\.\d+(?:\.\d+)?)/);
+      return m?.[1] ?? null;
+    }
+
+    const manifestVersions = new Map<string, { version: string; required: boolean }>();
+    for (const entry of manifest.entries as ManifestEntry[]) {
+      if (entry.kind !== "extension") continue;
+      const tag = entry.source?.tag;
+      if (!tag) continue;
+      const version = extractSemver(tag);
+      if (!version) continue;
+      manifestVersions.set(entry.name, {
+        version,
+        required: entry.runtime?.defaultEnable === true,
+      });
+    }
+
+    const mismatches: string[] = [];
+    const missing: string[] = [];
+    const verified: string[] = [];
+
+    for (const [name, { version: expected, required }] of manifestVersions.entries()) {
+      const actual = installedMap.get(name);
+      if (!actual) {
+        if (required) {
+          missing.push(`${name} (expected ${expected})`);
+        }
+        continue;
+      }
+      if (!actual.startsWith(expected)) {
+        mismatches.push(`${name}: manifest=${expected} installed=${actual}`);
+      } else {
+        verified.push(`  ${name.padEnd(25)} ${expected.padEnd(12)} → ${actual} ✓`);
+      }
+    }
+
+    if (verified.length > 0) {
+      console.log(`\nVerified ${verified.length} extension versions against manifest:`);
+      console.log("-".repeat(65));
+      for (const v of verified) {
+        console.log(v);
+      }
+      console.log("");
+    }
+
+    for (const m of missing) {
+      error(`Required extension missing from pg_extension: ${m}`);
+    }
+    for (const m of mismatches) {
+      error(`Version mismatch: ${m}`);
+    }
+
+    if (missing.length > 0 || mismatches.length > 0) {
+      const parts: string[] = [];
+      if (mismatches.length > 0) parts.push(`version mismatches: ${mismatches.join("; ")}`);
+      if (missing.length > 0) parts.push(`missing required: ${missing.join("; ")}`);
+      throw new Error(parts.join(" | "));
+    }
+
+    success(`All ${verified.length} installed extension versions match manifest declarations`);
+    return {
+      name: "Verify Extension Versions Match Manifest",
+      passed: true,
+      duration: Date.now() - start,
+    };
+  } catch (err) {
+    return {
+      name: "Verify Extension Versions Match Manifest",
+      passed: false,
+      duration: Date.now() - start,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Test 3: Create Test Data with pgvector
  */
 async function testPgvectorData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 2: Create Test Data with pgvector");
+    section("Test 3: Create Test Data with pgvector");
 
     info("Creating pgvector extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"`;
@@ -186,12 +315,12 @@ async function testPgvectorData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 3: Create Test Data with PostGIS
+ * Test 4: Create Test Data with PostGIS
  */
 async function testPostgisData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 3: Create Test Data with PostGIS");
+    section("Test 4: Create Test Data with PostGIS");
 
     info("Creating postgis extension...");
     try {
@@ -240,12 +369,12 @@ async function testPostgisData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 4: Create Test Data with TimescaleDB
+ * Test 5: Create Test Data with TimescaleDB
  */
 async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 4: Create Test Data with TimescaleDB");
+    section("Test 5: Create Test Data with TimescaleDB");
 
     info("Creating timescaledb extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"`;
@@ -293,12 +422,12 @@ async function testTimescaledbData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 5: Create Test Data with pg_cron
+ * Test 6: Create Test Data with pg_cron
  */
 async function testPgCronData(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 5: Create Test Data with pg_cron");
+    section("Test 6: Create Test Data with pg_cron");
 
     info("Creating pg_cron extension...");
     await $`docker exec ${config.containerName} psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;"`;
@@ -343,12 +472,12 @@ async function testPgCronData(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 6: Verify Extension Dependencies
+ * Test 7: Verify Extension Dependencies
  */
 async function testExtensionDependencies(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 6: Verify Extension Dependencies");
+    section("Test 7: Verify Extension Dependencies");
 
     info("Querying extension dependencies...");
     const depsResult =
@@ -391,12 +520,12 @@ async function testExtensionDependencies(config: TestConfig): Promise<TestResult
 }
 
 /**
- * Test 7: Verify Data Integrity After Extension Operations
+ * Test 8: Verify Data Integrity After Extension Operations
  */
 async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 7: Verify Data Integrity After Extension Operations");
+    section("Test 8: Verify Data Integrity After Extension Operations");
 
     // Verify pgvector data
     info("Verifying pgvector data integrity...");
@@ -454,12 +583,12 @@ async function testDataIntegrity(config: TestConfig): Promise<TestResult> {
 }
 
 /**
- * Test 8: Check Extension Control Files
+ * Test 9: Check Extension Control Files
  */
 async function testExtensionControlFiles(config: TestConfig): Promise<TestResult> {
   const start = Date.now();
   try {
-    section("Test 8: Check Extension Control Files");
+    section("Test 9: Check Extension Control Files");
 
     info("Checking for extension control files...");
 
@@ -578,6 +707,7 @@ async function main(): Promise<void> {
   try {
     // Run tests
     results.push(await testQueryExtensions(config));
+    results.push(await testManifestVersionMatch(config));
     results.push(await testPgvectorData(config));
     results.push(await testPostgisData(config));
     results.push(await testTimescaledbData(config));

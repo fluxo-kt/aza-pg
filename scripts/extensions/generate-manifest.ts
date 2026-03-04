@@ -16,34 +16,41 @@ type ResolvedSource =
 type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSource };
 
 async function resolveGitCommit(repo: string, tag: string): Promise<string> {
-  const proc = spawn(["git", "ls-remote", repo, `refs/tags/${tag}^{}`, `refs/tags/${tag}`], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    throw new Error(`git ls-remote failed for ${repo} tag ${tag}: ${stderr || stdout}`);
+  const maxAttempts = 3;
+  let lastError = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const proc = spawn(["git", "ls-remote", repo, `refs/tags/${tag}^{}`, `refs/tags/${tag}`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+    if (exitCode === 0) {
+      const lines = stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!lines.length) throw new Error(`No commits found for ${repo} tag ${tag}`);
+      // Prefer peeled commit if available (^{}), otherwise first entry.
+      const peeled = lines.find((line) => line.endsWith(`refs/tags/${tag}^{}`));
+      const selected = peeled ?? lines[0];
+      if (!selected)
+        throw new Error(`No lines available from ls-remote output for ${repo} tag ${tag}`);
+      const [commit] = selected.split(/\s+/);
+      if (!commit)
+        throw new Error(`Unable to parse commit from ls-remote output for ${repo} tag ${tag}`);
+      return commit;
+    }
+    lastError = stderr || stdout;
+    if (attempt < maxAttempts) {
+      // Exponential backoff for transient proxy/network failures
+      await Bun.sleep(1000 * attempt);
+    }
   }
-  const lines = stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!lines.length) {
-    throw new Error(`No commits found for ${repo} tag ${tag}`);
-  }
-  // Prefer peeled commit if available (^{}), otherwise first entry.
-  const peeled = lines.find((line) => line.endsWith(`refs/tags/${tag}^{}`));
-  const selected = peeled ?? lines[0];
-  if (!selected) {
-    throw new Error(`No lines available from ls-remote output for ${repo} tag ${tag}`);
-  }
-  const [commit] = selected.split(/\s+/);
-  if (!commit) {
-    throw new Error(`Unable to parse commit from ls-remote output for ${repo} tag ${tag}`);
-  }
-  return commit;
+  throw new Error(
+    `git ls-remote failed for ${repo} tag ${tag} after ${maxAttempts} attempts: ${lastError}`
+  );
 }
 
 async function resolveSource(source: SourceSpec): Promise<ResolvedSource> {

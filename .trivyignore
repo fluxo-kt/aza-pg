@@ -3,6 +3,16 @@
 # This file contains CVEs that are accepted as known upstream vulnerabilities
 # that do not affect PostgreSQL functionality. See SECURITY.md for detailed justifications.
 
+# CVE-2025-68121: Go stdlib crypto/tls session resumption — gosu in postgres base image layers
+# - postgres:18.3-trixie ships gosu (Go 1.24.6) as a direct binary download (not a dpkg package)
+# - The binary is in immutable base image layers; cannot be removed via apt or any Dockerfile instruction
+# - /usr/local/bin/gosu is replaced by su-exec v0.2 (pure C, no Go stdlib) in the final build stage
+# - Trivy scans ALL image layers including immutable base layers, finding gosu in the postgres base layer
+# - In the merged filesystem (what containers actually see), su-exec is at that path — gosu is unreachable
+# - Mitigation: gosu's Go binary is permanently shadowed; only su-exec is ever executed at runtime
+# - See Fixed section in CHANGELOG.md [Unreleased] and Key Learnings in AGENTS.md
+CVE-2025-68121
+
 # CVE-2025-13836: Python http.client memory exhaustion vulnerability
 # - PostgreSQL core is written in C and doesn't use Python
 # - No enabled extensions use Python's http.client module

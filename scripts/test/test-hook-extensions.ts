@@ -52,14 +52,17 @@ async function assertSqlFails(
   errorPatterns: string[],
   message: string
 ): Promise<void> {
-  const result = await Bun.spawn(
+  const result = Bun.spawn(
     ["docker", "exec", container, "psql", "-U", "postgres", "-t", "-c", sql],
     { stdout: "pipe", stderr: "pipe" }
   );
 
-  const stdout = await new Response(result.stdout).text();
-  const stderr = await new Response(result.stderr).text();
-  const exitCode = await result.exited;
+  // Concurrent reads prevent pipe deadlock when both streams are piped
+  const [exitCode, stdout, stderr] = await Promise.all([
+    result.exited,
+    new Response(result.stdout).text(),
+    new Response(result.stderr).text(),
+  ]);
   const output = (stdout + stderr).toLowerCase();
 
   if (exitCode === 0) {

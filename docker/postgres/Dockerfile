@@ -60,6 +60,19 @@ RUN set -euo pipefail && \
     ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
     rm /tmp/.tool-versions
 
+# Build su-exec: C-based privilege-drop binary, replaces gosu in final stage.
+# gosu carries Go stdlib CVEs (CVE-2025-68121 CRITICAL + multiple HIGH) with no upstream fix.
+# su-exec is functionally identical (same CLI: user[:group] command) but pure C — no Go stdlib.
+# git/gcc/make/strip are already present from the build-essential install above.
+# SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
+# (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
+RUN set -euo pipefail && \
+    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
+    make -C /tmp/su-exec-build && \
+    strip /tmp/su-exec-build/su-exec && \
+    chmod 755 /tmp/su-exec-build/su-exec
+
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
@@ -92,7 +105,7 @@ RUN set -euo pipefail && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    rsync -a --exclude='gosu' /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
@@ -297,6 +310,38 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
+
+# Replace gosu (Go binary, CVE-2025-68121 CRITICAL, CVSS 8.8) with su-exec (pure C, no Go stdlib).
+# APPROACH: Self-contained final-stage compilation + dpkg purge of gosu package.
+# Prior approaches failed (listed oldest→latest):
+#   1. COPY --from=builder-base: stale GHA cached layer
+#   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
+#   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
+#   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
+#   5. Self-contained compile without dpkg purge: apt-get install in next step detected file hash
+#      mismatch (we replaced gosu's file but dpkg still owned it) and reinstalled gosu from the
+#      --mount=type=cache,target=/var/cache/apt persistent apt cache.
+# Fix: purge gosu package from dpkg AFTER compiling su-exec, BEFORE placing it. This removes dpkg's
+# ownership so subsequent apt operations cannot reinstate gosu. Also exclude gosu from builder-pgxs
+# rsync to avoid creating an unnecessary intermediate layer with the Go binary.
+# SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
+# hadolint ignore=DL3008
+RUN set -euo pipefail && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends build-essential git ca-certificates && \
+    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
+    make -C /tmp/su-exec-build && \
+    strip /tmp/su-exec-build/su-exec && \
+    apt-get purge -y gosu && \
+    install -o root -g root -m 0755 /tmp/su-exec-build/su-exec /usr/local/bin/gosu && \
+    SZ=$(stat -c%s /usr/local/bin/gosu) && \
+    echo "su-exec: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
+    [ "${SZ}" -lt 500000 ] || { echo "FATAL: su-exec replacement failed — binary is >500KB"; exit 1; } && \
+    apt-get purge -y --auto-remove build-essential git && \
+    rm -rf /tmp/su-exec-build && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Pre-compiled extensions from GitHub releases (for packages not available in apt)
 # IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten

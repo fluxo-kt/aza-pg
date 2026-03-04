@@ -66,8 +66,8 @@ async function verifyGeneratedFiles(): Promise<boolean> {
   // Run generate command to create fresh versions
   console.log("📝 Generating fresh files...");
   const proc = Bun.spawn(["bun", "run", "generate"], {
-    stdout: "pipe",
-    stderr: "pipe",
+    stdout: "ignore",
+    stderr: "ignore",
   });
   await proc.exited;
 
@@ -105,8 +105,8 @@ async function verifyGeneratedFiles(): Promise<boolean> {
 
     // Re-generate to show the actual diff
     const regenerateProc = Bun.spawn(["bun", "run", "generate"], {
-      stdout: "pipe",
-      stderr: "pipe",
+      stdout: "ignore",
+      stderr: "ignore",
     });
     await regenerateProc.exited;
 
@@ -115,9 +115,9 @@ async function verifyGeneratedFiles(): Promise<boolean> {
       console.error(`\n--- Content changes in ${file} ---`);
       const diffProc = Bun.spawn(["git", "diff", "--color=always", file], {
         stdout: "pipe",
-        stderr: "pipe",
+        stderr: "ignore",
       });
-      const diff = await new Response(diffProc.stdout).text();
+      const [diff] = await Promise.all([new Response(diffProc.stdout).text(), diffProc.exited]);
       if (diff) {
         // Filter out timestamp-only changes from display
         const filteredDiff = diff

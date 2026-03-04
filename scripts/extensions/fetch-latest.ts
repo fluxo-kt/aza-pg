@@ -124,9 +124,13 @@ async function lsRemote(spec: RepoSpec): Promise<Omit<ResultRow, "name" | "versi
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  // Read stdout and stderr CONCURRENTLY with exit — sequential reads risk deadlock
+  // if ls-remote output for a large repo exceeds the pipe buffer size (~64KB).
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   if (exitCode !== 0) {
     throw new Error(`git ls-remote failed for ${spec.repo}: ${stderr}`);
   }

@@ -792,7 +792,9 @@ jobs:
     needs:
       [prep, merge, test-smoke, test-extensions, test-features, test-security, regression-tests]
     timeout-minutes: 1
-    if: always()
+    # Run when prep actually ran (skipped = CI was cancelled/not from release = nothing to check).
+    # Still uses always() semantics to catch test failures even when upstream jobs fail.
+    if: always() && needs.prep.result != 'skipped'
 
     steps:
       - name: Check all test results
@@ -801,34 +803,34 @@ jobs:
           echo "Checking comprehensive test results..."
 
           if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
-            echo "::notice::Comprehensive tests were not executed because upstream prep/merge did not complete successfully."
-            echo "prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}"
-            exit 0
+            echo "::error::Build pipeline did not complete: prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}"
+            echo "No tests ran — release blocked."
+            exit 1
           fi
 
           FAILED=0
 
-          if [ "${{ needs.test-smoke.result }}" = "failure" ] || [ "${{ needs.test-smoke.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-smoke.result }}" != "success" ]; then
             echo "::error::Smoke tests ended with ${{ needs.test-smoke.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-extensions.result }}" = "failure" ] || [ "${{ needs.test-extensions.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-extensions.result }}" != "success" ]; then
             echo "::error::Extension tests ended with ${{ needs.test-extensions.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-features.result }}" = "failure" ] || [ "${{ needs.test-features.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-features.result }}" != "success" ]; then
             echo "::error::Feature tests ended with ${{ needs.test-features.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.test-security.result }}" = "failure" ] || [ "${{ needs.test-security.result }}" = "cancelled" ]; then
+          if [ "${{ needs.test-security.result }}" != "success" ]; then
             echo "::error::Security tests ended with ${{ needs.test-security.result }}"
             FAILED=1
           fi
 
-          if [ "${{ needs.regression-tests.result }}" = "failure" ] || [ "${{ needs.regression-tests.result }}" = "cancelled" ]; then
+          if [ "${{ needs.regression-tests.result }}" != "success" ]; then
             echo "::error::Regression tests ended with ${{ needs.regression-tests.result }}"
             FAILED=1
           fi
@@ -863,9 +865,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
-            echo "## ⏭️ Test Gate: BLOCKED" >> $GITHUB_STEP_SUMMARY
+            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Comprehensive suites were skipped because upstream build stages did not complete successfully." >> $GITHUB_STEP_SUMMARY
+            echo "Build pipeline did not complete (prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}). No tests ran — release blocked." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.test-smoke.result }}" = "success" ] && \
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-features.result }}" = "success" ] && \
@@ -926,6 +928,7 @@ jobs:
 
       - name: Security scan (SARIF for GitHub Security)
         uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # 0.34.2
+        continue-on-error: true # SARIF upload is informational; blocking gate is the next step
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
@@ -1460,10 +1463,9 @@ jobs:
         scan,
         release,
       ]
-    # ALWAYS run cleanup regardless of any job failures or skips
-    # With 'if: always()', this runs even if tests/scan are skipped due to merge failure
-    # Waits for all jobs including release to complete before deleting testing artifacts
-    if: always()
+    # Run cleanup after all jobs complete — including on test/scan failures.
+    # Skipped when prep is skipped (CI cancelled = nothing was built = no testing images to clean up).
+    if: always() && needs.prep.result != 'skipped'
     timeout-minutes: 10
 
     steps:

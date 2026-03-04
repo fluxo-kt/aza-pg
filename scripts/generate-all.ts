@@ -132,8 +132,8 @@ async function main(): Promise<void> {
   if (formattableGenerated.length > 0) {
     logger.info("Formatting generated files with Prettier...");
     const formatProc = spawn(["bun", "run", "prettier:write", ...formattableGenerated], {
-      stdout: "pipe",
-      stderr: "pipe",
+      stdout: "ignore",
+      stderr: "ignore",
     });
 
     const formatExitCode = await formatProc.exited;

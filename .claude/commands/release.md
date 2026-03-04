@@ -1,6 +1,6 @@
 ---
 name: /release
-description: Squash dev commits into a single release commit on main/release
+description: Squash dev commits into a single release commit on the release branch
 argument-hint: (optional notes or version override)
 id: p-release
 category: project
@@ -11,8 +11,10 @@ tags: [project, release]
 
 You are executing a **deterministic release squash** for the aza-pg project.
 
-The Anchor Merge pattern: granular dev commits → squashed single mega-commit on main/release.
+The Anchor Merge pattern: granular dev commits → squashed single mega-commit on `release`.
 Dev's anchor merge ensures `git merge --squash dev` applies ONLY the net delta.
+After committing, both `release` and `main` are pushed simultaneously via refspec (see Phase 6).
+**Always work from `release`, never from `main`** — `main` is kept in sync by push, not by running /release on it.
 
 OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 
@@ -33,12 +35,30 @@ OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 11. **⚠️ `git fetch origin` before anchor discovery** — local dev might be stale.
 12. **⚠️ Prefer `startsWith()` over `===`** for version assertions — never encode stale absolute versions.
 13. **⚠️ NEVER `git merge dev` (without `--squash`) on main/release** — this creates a merge commit and permanently pollutes the linear history. The ONLY allowed mechanism is `git merge --squash dev`.
+14. **⚠️ Use `refs/heads/dev` for bare git commands** (log, diff, show without `:`). A file/directory named `dev` in the repo root causes "ambiguous argument" errors. Range syntax `$ANCHOR..refs/heads/dev` is safe (git resolves both sides as revisions) but use `refs/heads/dev` consistently for clarity.
+15. **⚠️ RTK proxy rewrites `grep`** — use `command grep` in ALL pipelines to bypass RTK's grep replacement, which has incompatible flag handling (`-iE`, `-c`, etc.).
+16. **⚠️ macOS `awk` lacks `tolower()`** — use `sort -uf` for case-insensitive dedup, not `awk '!seen[tolower($0)]++'`.
 
 ---
 
 ## Phase 0: Pre-Flight (All Must Pass — Fail Fast)
 
 Run each check in sequence; abort on first failure.
+
+### 0.0 — Environment detection (run FIRST, before any work)
+
+```bash
+# Detect environment hazards before any work begins
+if command -v rtk &>/dev/null; then
+  echo "⚠️ RTK proxy detected — use 'command grep' in ALL pipelines (guardrail 15)"
+fi
+if ! echo test | awk '{print tolower($0)}' 2>/dev/null | command grep -q test; then
+  echo "⚠️ macOS awk (no tolower) — use 'sort -uf' for dedup (guardrail 16)"
+fi
+if [[ -e "dev" ]]; then
+  echo "⚠️ File/directory 'dev' exists — use refs/heads/dev in bare git commands (guardrail 14)"
+fi
+```
 
 ### 0.1 — Branch check
 
@@ -47,23 +67,27 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Current branch: $BRANCH"
 ```
 
-If `$BRANCH` is not `main` or `release`, **do not abort** — output this message to the user and wait for them to confirm before continuing:
+**If `$BRANCH` is `release`**: proceed — correct branch.
+
+**If `$BRANCH` is `main`**: **do not abort** — output this message and wait for the user to confirm:
 
 ```text
-Currently on branch: <BRANCH>
-/release must run from main or release. Please run:
-  git checkout main
-  (or: git checkout release)
-Then confirm you are on the correct branch.
+Currently on branch: main
+/release must run from 'release', not 'main'. main is kept in sync via push refspec after the release commit.
+Please run:
+  git checkout release
+Then confirm you are on the release branch.
 ```
 
-Once the user confirms, re-run the check explicitly:
+**If `$BRANCH` is anything else**: same message, mutatis mutandis.
+
+Once the user confirms, re-run:
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Branch after switch: $BRANCH"
-[[ "$BRANCH" == "main" || "$BRANCH" == "release" ]] || \
-  { echo "ABORT: Still not on main or release (currently: $BRANCH)."; exit 1; }
+[[ "$BRANCH" == "release" ]] || \
+  { echo "ABORT: Not on release branch (currently: $BRANCH)."; exit 1; }
 echo "Branch check passed. ✓"
 ```
 
@@ -78,7 +102,7 @@ echo "Branch check passed. ✓"
 
 ```bash
 git fetch origin
-LOCAL_DEV=$(git rev-parse dev 2>/dev/null) || \
+LOCAL_DEV=$(git rev-parse refs/heads/dev 2>/dev/null) || \
   { echo "ABORT: Local 'dev' branch not found. Run: git fetch origin && git checkout -t origin/dev"; exit 1; }
 REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
 if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
@@ -99,7 +123,7 @@ fi
 ### 0.4 — Find latest anchor merge
 
 ```bash
-ANCHOR=$(git log dev --merges --format="%H" --regexp-ignore-case --grep="Anchor Merge" -1)
+ANCHOR=$(git log refs/heads/dev --merges --format="%H" --regexp-ignore-case --grep="Anchor Merge" -1)
 [[ -n "$ANCHOR" ]] || { echo "ABORT: No anchor merge found on dev."; exit 1; }
 echo "Anchor merge: $ANCHOR"
 echo "Anchor short: $(git rev-parse --short $ANCHOR)"
@@ -134,7 +158,7 @@ CURRENT_HEAD=$(git rev-parse HEAD)
 ### 0.7 — Dev has new commits after anchor merge
 
 ```bash
-COMMIT_COUNT=$(git rev-list $ANCHOR..dev --count)
+COMMIT_COUNT=$(git rev-list $ANCHOR..refs/heads/dev --count)
 echo "Commits after anchor: $COMMIT_COUNT"
 [[ "$COMMIT_COUNT" -gt 0 ]] || \
   { echo "ABORT: No commits on dev after anchor merge. Nothing to release."; exit 1; }
@@ -147,7 +171,7 @@ echo "=== Pre-Flight Summary ==="
 echo "Branch:            $BRANCH"
 echo "HEAD:              $(git rev-parse --short HEAD)"
 echo "Anchor:            $(git rev-parse --short $ANCHOR)"
-echo "Dev tip:           $(git rev-parse --short dev)"
+echo "Dev tip:           $(git rev-parse --short refs/heads/dev)"
 echo "Commits to squash: $COMMIT_COUNT"
 echo "=========================="
 ```
@@ -160,10 +184,10 @@ echo "=========================="
 
 ```bash
 # Verify count independently to guard against RTK truncation
-git rev-list $ANCHOR..dev --count  # Should match $COMMIT_COUNT from Phase 0
+git rev-list $ANCHOR..refs/heads/dev --count  # Should match $COMMIT_COUNT from Phase 0
 
 # List ALL commits including intermediate merges — full picture of what's being squashed
-git log $ANCHOR..dev --oneline
+git log $ANCHOR..refs/heads/dev --oneline
 ```
 
 ### 1.2 — Categorise changes (consumer-visible)
@@ -172,16 +196,16 @@ Scan the diff for consumer-visible changes. Look at:
 
 ```bash
 # Manifest changes (extension versions, PG version, base image)
-git diff $ANCHOR..dev -- scripts/extensions/manifest-data.ts
+git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts
 
 # CHANGELOG unreleased section (before squash — from dev's HEAD; no truncation)
-git show dev:CHANGELOG.md
+git show refs/heads/dev:CHANGELOG.md
 
 # Dockerfile changes (if any)
-git diff $ANCHOR..dev -- docker/postgres/Dockerfile.template
+git diff $ANCHOR..refs/heads/dev -- docker/postgres/Dockerfile.template
 
 # Test additions/changes
-git diff $ANCHOR..dev --stat -- scripts/test/
+git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
 ```
 
 **Categorise into**:
@@ -193,23 +217,27 @@ git diff $ANCHOR..dev --stat -- scripts/test/
 ### 1.3 — Collect unique co-authors
 
 ```bash
-# Anchored grep avoids false positives from prose mentioning co-authors.
-# awk deduplicates case-insensitively while preserving first-occurrence order.
-COAUTHORS=$(git log $ANCHOR..dev --format="%b" \
-  | grep -iE "^co-authored-by:" \
-  | awk '!seen[tolower($0)]++')
+# Use command grep to bypass RTK proxy (guardrail 15); sort -uf for macOS-compatible case-insensitive dedup (guardrail 16)
+COAUTHORS=$(git log $ANCHOR..refs/heads/dev --format="%b" \
+  | command grep -iE "^co-authored-by:" \
+  | sort -uf)
 echo "$COAUTHORS"
+# Sanity check: unique co-author lines must not exceed commit count (more = wrong range or pipeline corruption)
+COAUTHOR_COUNT=$(echo "$COAUTHORS" | command grep -c . || echo 0)
+echo "Unique co-authors: $COAUTHOR_COUNT (from $COMMIT_COUNT commits)"
+[[ "$COAUTHOR_COUNT" -le "$COMMIT_COUNT" ]] || \
+  { echo "ABORT: co-author count ($COAUTHOR_COUNT) exceeds commit count ($COMMIT_COUNT) — pipeline corruption or wrong range. Investigate."; exit 1; }
 ```
 
 ### 1.4 — Determine hash range (for commit body)
 
 ```bash
 # --no-merges for range display: shows the actual work commits, not merge plumbing
-WORK_COMMITS=$(git rev-list $ANCHOR..dev --no-merges)
+WORK_COMMITS=$(git rev-list $ANCHOR..refs/heads/dev --no-merges)
 if [[ -z "$WORK_COMMITS" ]]; then
   # All commits are merges (rare but possible) — fall back to full range
   echo "⚠️ All commits in range are merges — using full range for hash display"
-  WORK_COMMITS=$(git rev-list $ANCHOR..dev)
+  WORK_COMMITS=$(git rev-list $ANCHOR..refs/heads/dev)
 fi
 FIRST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | tail -1)")
 LAST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | head -1)")
@@ -223,7 +251,7 @@ echo "Range: ${FIRST_SHORT}..${LAST_SHORT}"
 Review dev's CHANGELOG (`[Unreleased]` section) against the net delta from Phase 1.
 
 ```bash
-git show dev:CHANGELOG.md
+git show refs/heads/dev:CHANGELOG.md
 ```
 
 **Audit rules**:
@@ -232,10 +260,9 @@ git show dev:CHANGELOG.md
 2. **Net-delta only**: If X went v1→v2→v3 during dev, entry must say "v1→v3"
 3. **Cancellation**: Entries added then reverted = omit entirely
 4. **Development section**: MAX 3 brief lines, no per-file detail
-5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..dev -- scripts/extensions/manifest-data.ts`
+5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
-7. **Upgrade verification SQL**: For significant extension upgrades, include a SQL snippet consumers can run to verify (e.g., `SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';`)
-8. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
+7. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
 
 Write down the specific CHANGELOG edits needed (which lines to change, add, or remove). You will apply them in Phase 4.4 AFTER the squash, at which point the CHANGELOG in the working tree will be dev's version.
 
@@ -254,6 +281,8 @@ Scan categorised changes from Phase 1:
 Scope: `feat(postgres)` for features/upgrades, `fix(postgres)` for bugfix-dominated, `chore(release)` for maintenance-only.
 
 Title should name the 1-2 most impactful consumer-visible changes (e.g., "upgrade PG 18.1→18.3, TimescaleDB 2.24→2.25"). **Max 72 chars total.**
+
+Machine-verify before proceeding: `echo -n "TYPE(SCOPE): your title here" | wc -m` must output ≤ 72.
 
 ### 3.2 — Draft full commit message
 
@@ -314,7 +343,7 @@ Verify changes were staged (should not be empty after passing Phase 0.7):
 STAGED_STAT=$(git diff --cached --stat)
 if [[ -z "$STAGED_STAT" ]]; then
   echo "ABORT: git merge --squash dev produced no staged changes."
-  echo "       Run: git rev-list $ANCHOR..dev --oneline (should be non-empty)"
+  echo "       Run: git rev-list $ANCHOR..refs/heads/dev --oneline (should be non-empty)"
   exit 1
 fi
 echo "$STAGED_STAT"
@@ -411,7 +440,7 @@ Note: `bun.lock` diff is normal if bun's format changed across versions.
 First, capture the exact dev tip that was squashed. This is recorded in the commit message so Appendix A can verify dev hasn't advanced beyond it before anchoring:
 
 ```bash
-DEV_SQUASH_TIP=$(git rev-parse dev)
+DEV_SQUASH_TIP=$(git rev-parse refs/heads/dev)
 echo "Dev squash tip: $DEV_SQUASH_TIP"
 ```
 
@@ -459,7 +488,7 @@ COMMIT_EOF
 ### 5.1 — Scope of changes vs dev
 
 ```bash
-DIFF_FILES=$(git diff dev HEAD --name-only)
+DIFF_FILES=$(git diff refs/heads/dev HEAD --name-only)
 echo "Files differing from dev:"
 echo "$DIFF_FILES"
 ```
@@ -499,7 +528,7 @@ echo "=== Release Commit Summary ==="
 git log -1 --format="Hash:    %H%nShort:   %h%nAuthor:  %an%nDate:    %ai%nSubject: %s"
 echo ""
 echo "Diff from dev (CHANGELOG.md + any release-time edits):"
-git diff dev HEAD --name-only
+git diff refs/heads/dev HEAD --name-only
 echo "=============================="
 ```
 
@@ -515,6 +544,14 @@ After every execution, reflect and update this command:
 4. What needed manual intervention that could be automated?
 5. Any new edge case or gotcha to encode as a guardrail?
 
+### Accumulated Lessons
+
+- **`workflow_run` always executes from `main` (default branch), not the triggering branch.** GitHub security restriction — prevents privilege escalation from untrusted branches. Consequence: every change to `publish.yml` on `release` is **invisible to CI** until `main` is fast-forwarded. Always push to BOTH `release` and `main` after a release commit. The Phase 6 next-steps output now makes this explicit and mandatory.
+
+- **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
+- **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
+- **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
+
 → Edit this command file, commit as:
 `docs(skill): improve /release — [lesson learned]`
 
@@ -527,9 +564,9 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo ""
 echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
-echo "  2. Push: git push origin $CURRENT_BRANCH"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
-echo "  4. Sync main/release if needed (see Appendix B)"
+echo "  2. Push both branches (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
+echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
+echo "  4. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
 
 ---
@@ -636,17 +673,16 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 ## Appendix B: main/release Branch Sync
 
-If /release ran on `release` but `main` needs updating (or vice versa), the agent cannot switch branches itself. Output the following commands for the user to run:
+**This is MANDATORY, not optional.** GitHub's `workflow_run` triggered workflows always execute from the **default branch** (`main`), regardless of which branch triggered the upstream CI. If `main` lags behind `release`, the publish workflow runs the OLD `publish.yml` — all fixes on `release` are silently bypassed.
 
-```text
-Please run:
-  git checkout main
-  git merge release --ff-only
-  git checkout release
-Then confirm each step succeeded.
+Push to both branches simultaneously — no branch switch needed:
+
+```bash
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git push origin "$CURRENT_BRANCH" "$CURRENT_BRANCH:main"
 ```
 
-Only works if history is perfectly linear (fast-forward). If `--ff-only` fails, investigate before forcing — do NOT use `git merge release` without `--ff-only`.
+Only works if history is perfectly linear (fast-forward). If the push to `main` fails (rejected), investigate — do NOT force-push `main`.
 
 ---
 

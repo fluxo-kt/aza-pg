@@ -71,18 +71,18 @@ async function validateDockerfile(): Promise<boolean> {
   // Temporarily rename current Dockerfile
   await Bun.write(tempPath, currentDockerfile);
 
-  // Run generator
+  // Run generator — read stderr concurrently with exit to prevent pipe deadlock
   const proc = Bun.spawn(["bun", GENERATOR_SCRIPT], {
     cwd: REPO_ROOT,
-    stdout: "pipe",
+    stdout: "ignore",
     stderr: "pipe",
   });
 
-  const exitCode = await proc.exited;
+  const [exitCode, stderrText] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
 
   if (exitCode !== 0) {
     error("Failed to generate Dockerfile");
-    const stderr = await new Response(proc.stderr).text();
+    const stderr = stderrText;
     console.error(stderr);
     // Restore original
     await Bun.write(DOCKERFILE_PATH, currentDockerfile);

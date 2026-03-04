@@ -10,11 +10,16 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Security
+
+- **gosu → su-exec**: Replaced `gosu` (Go binary, `/usr/local/bin/gosu`) with [`su-exec v0.2`](https://github.com/ncopa/su-exec) — a functionally identical pure-C privilege-drop utility. gosu was compiled with Go 1.24.6 which carries CVE-2025-68121 (CRITICAL, CVSS 8.8) and five HIGH-severity Go stdlib CVEs with no upstream fix available. su-exec has zero Go stdlib dependency, permanently eliminating this CVE class. Drop-in compatible: placed at the same path, same CLI syntax.
+
 ### Fixed
 
 - **Dockerfile generator silent failure bug**: `|| true` at end of `&&` chains in `generate-dockerfile.ts` caused `set -e` to be completely ineffective for all installation commands. A failing `apt-get install` would short-circuit its `&&` chain but `|| true` made the RUN step exit 0, silently committing a broken layer with missing `.so` files. Fixed by separating `find … strip … || true` with `;` from each install chain in all 5 affected generators (PGDG, Percona, Timescale, GitHub release, Regression mode). The `.so` verification `test -f` steps were also being silently bypassed — this fix restores them as effective guards.
 - **pg_stat_monitor startup failure**: Percona removed v2.3.1 from the ppg-18 apt repository (only v2.3.2 available). Combined with the `|| true` build bug above, this caused `pg_stat_monitor.so` to be silently absent from the image, producing a PostgreSQL `FATAL: could not access file "pg_stat_monitor"` crash on startup. ⚠️ Images built while v2.3.1 was still in Percona's repo may be unaffected; images built after Percona purged it (before this release) will have the absent `.so` and must be rebuilt.
 - **TimescaleDB loader version split**: The `timescaledb-2-loader-postgresql-18` package was unpinned and jumped to v2.25.2 while the main extension was pinned to v2.25.1, causing `ERROR: extension timescaledb has no installation script for version 2.25.2` at startup. Loader package is now explicitly pinned to match the main extension in the Dockerfile generator.
+- **gosu → su-exec: self-contained compilation + trivyignore**: Six prior fix attempts failed — four due to GHA layer cache interference (`COPY --from=builder-base`, `RUN --mount=type=bind`, `apt-get install su-exec` — package absent, `COPY via builder-pgxs output dir` — COPY key matched stale GHA entry); the fifth added `apt-get purge gosu` (gosu is not an apt package in the postgres base image — it's a direct binary download, so purge is a no-op); the sixth realised Trivy scans ALL image layers including immutable base layers and finds gosu in the postgres:18.3-trixie base layer — the replacement in later layers cannot affect base layer content. Definitive fix: compile su-exec (v0.2, SHA-pinned) in the final stage, install at `/usr/local/bin/gosu` (shadows the base layer's gosu in the merged filesystem), add CVE-2025-68121 to `.trivyignore` with justification (the running binary is su-exec; gosu in base layers is unreachable). Also excludes gosu from builder-pgxs rsync to avoid adding another intermediate layer.
 
 ### Changed
 
@@ -29,13 +34,9 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Development
 
-- Updated Bun dev dependencies: oxlint 1.51.0, squawk-cli 2.43.0, sql-formatter 15.7.2, @types/bun 1.3.10
-- Bun build tool bumped to 1.3.10 in `.tool-versions` (build-time only, not in final image)
-- GitHub Actions pins updated to specific commit hashes (supply-chain security)
-- Cosign upgraded to v3.0.4 / cosign-installer v4
-- Synced disabled extension PGDG versions to actual apt repo: PostGIS 3.6.2, pgRouting 4.0.1
-- Test coverage added: pgvector parallel HNSW build regression + EXPLAIN JSON output (covers the buffer overflow and PG18 EXPLAIN fixes); pgmq topic routing fan-out scenarios; plpgsql_check semantic assertion correctness (volatile-in-stable, volatility false-positives)
-- Version assertions hardened across test suite to be patch-release robust (no brittle exact-match failures on x.y.z+1)
+- Dev deps: Bun 1.3.10, oxlint 1.51.0, squawk-cli 2.43.0; Cosign v3.0.4; GH Actions pins updated
+- Disabled extensions synced to PGDG: PostGIS 3.6.2, pgRouting 4.0.1
+- Test coverage: pgvector HNSW/EXPLAIN, pgmq topic routing, plpgsql_check semantics; assertions hardened for patch-release robustness
 
 ---
 

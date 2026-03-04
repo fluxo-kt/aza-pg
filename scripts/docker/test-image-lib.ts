@@ -727,6 +727,7 @@ export async function testPreloadedExtensions(
   const startTime = Date.now();
 
   try {
+    // Required: must be present (defaultEnable: true)
     const preloadedExtensions = manifest.entries
       .filter(
         (entry) =>
@@ -735,6 +736,12 @@ export async function testPreloadedExtensions(
           entry.runtime?.defaultEnable === true
       )
       // Use preloadLibraryName if specified (e.g., pg_safeupdate -> safeupdate)
+      .map((entry) => entry.runtime?.preloadLibraryName || entry.name);
+
+    // Allowable: valid to be present (all sharedPreload: true, including optional preloads).
+    // Used for the reverse check — any lib in shared_preload_libraries NOT in this set is a bug.
+    const allPreloadableNames = manifest.entries
+      .filter((entry) => entry.enabled !== false && entry.runtime?.sharedPreload === true)
       .map((entry) => entry.runtime?.preloadLibraryName || entry.name);
 
     if (preloadedExtensions.length === 0) {
@@ -761,8 +768,8 @@ export async function testPreloadedExtensions(
       .map((lib) => lib.trim())
       .filter((lib) => lib.length > 0);
 
+    // Forward check: every required lib must be present
     const missing: string[] = [];
-
     for (const ext of preloadedExtensions) {
       if (!preloadedLibs.includes(ext)) {
         missing.push(ext);
@@ -778,8 +785,25 @@ export async function testPreloadedExtensions(
       };
     }
 
+    // Reverse check: every active lib must be known to the manifest (no rogue preloads)
+    const unexpected: string[] = [];
+    for (const lib of preloadedLibs) {
+      if (!allPreloadableNames.includes(lib)) {
+        unexpected.push(lib);
+      }
+    }
+
+    if (unexpected.length > 0) {
+      return {
+        name: "Preloaded extensions in shared_preload_libraries",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `${unexpected.length} unexpected library/ies in shared_preload_libraries (not declared as preloadable in manifest): ${unexpected.join(", ")}`,
+      };
+    }
+
     return {
-      name: `Preloaded extensions in shared_preload_libraries (${preloadedExtensions.length} verified)`,
+      name: `Preloaded extensions in shared_preload_libraries (${preloadedExtensions.length} required, ${preloadedLibs.length} active)`,
       passed: true,
       duration: Date.now() - startTime,
     };
@@ -819,6 +843,14 @@ export async function testPostgresConfiguration(containerName: string): Promise<
         sql: "SELECT pg_size_bytes(current_setting('work_mem'))",
         check: (val: string) => parseInt(val, 10) >= 1024 * 1024, // >= 1MB
         desc: ">= 1MB",
+      },
+      {
+        // wal_level=logical is required for CDC (wal2json, pg_logical). Checking early here
+        // gives a clear Phase 2 failure vs a cryptic "slot creation failed" in Phase 5.
+        name: "wal_level",
+        sql: "SELECT current_setting('wal_level')",
+        check: (val: string) => val === "logical",
+        desc: "= logical (required for CDC/replication slots)",
       },
     ];
 
@@ -2837,7 +2869,10 @@ END;$$`,
   // not removed by DROP TABLE CASCADE above)
   await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'", containerName);
 
-  // Cleanup pgmq queue (lives in pgmq schema, not affected by table drops above)
-  // success: false is silently ignored if pgmq is not installed
+  // Cleanup pgmq queues (live in pgmq schema, not affected by table drops above).
+  // Both queues are dropped unconditionally — success:false silently ignored if
+  // pgmq is not installed or a queue was already removed by testPgmqQueue's own cleanup.
+  // test_topic_queue can linger when testPgmqQueue fails mid-topic-routing-test.
   await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName);
+  await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
 }

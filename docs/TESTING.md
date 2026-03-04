@@ -1343,8 +1343,9 @@ The naming convention is the structural enforcement mechanism — no code requir
 
 **Rules:**
 
-- `*.test.ts` files are **always** safe to run without Docker — `validate.ts` discovers them via glob unconditionally
-- Integration tests use `test-*.ts` naming (without `.test.ts` suffix) and must be registered in `test-all.ts`; they may be in any `scripts/` subdirectory (`scripts/`, `scripts/test/`, `scripts/docker/`, `scripts/config/`, etc.)
+- `*.test.ts` files are **always** safe to run without Docker — `validate.ts` discovers them via glob unconditionally. This is the only **structural** guarantee (enforced by glob, not convention).
+- Integration tests use `test-*.ts` naming (without `.test.ts` suffix); they may be in any `scripts/` subdirectory (`scripts/`, `scripts/test/`, `scripts/docker/`, `scripts/config/`, etc.)
+- Integration tests intended for the main CI suite are registered in `test-all.ts`. Many are intentionally standalone (e.g., `test-timescaledb-breaking-changes.ts`, `test-extension-regression.ts`, `test-image-core.ts`) — run manually or for specific scenarios.
 - `bunfig.toml [test]` does **not** support an `exclude` option (Bun 1.3.x) — file naming is the only enforcement mechanism
 - Running `bun test` (no args) discovers only `*.test.ts` files, so integration tests are excluded structurally
 
@@ -1355,13 +1356,21 @@ The naming convention is the structural enforcement mechanism — no code requir
 # No registration anywhere needed
 ```
 
-**Adding a new integration test:**
+**Adding a new integration test (main CI suite):**
 
 ```bash
 # Create scripts/test/test-my-feature.ts — NOT auto-discovered
 # Register in scripts/test-all.ts
 #   - set requiresDocker: true only if the test requires a running container
 # Run via: bun run test:all
+```
+
+**Adding a standalone integration test (on-demand / manual):**
+
+```bash
+# Create scripts/test/test-my-feature.ts — NOT auto-discovered, NOT in test-all.ts
+# Run manually: bun scripts/test/test-my-feature.ts
+# Document intent at top of file (usage comment + when to run)
 ```
 
 ### Extension Functional Tests

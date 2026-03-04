@@ -123,12 +123,6 @@ describe("Tool Binary Path Validation", () => {
       }
     }
 
-    if (missingPaths.length > 0) {
-      console.warn("Warning: Some tools are missing binary path documentation:");
-      console.warn(missingPaths.join("\n"));
-    }
-
-    // Don't fail for missing documentation, just warn
-    expect(true).toBe(true);
+    expect(missingPaths.length).toBe(0);
   });
 });

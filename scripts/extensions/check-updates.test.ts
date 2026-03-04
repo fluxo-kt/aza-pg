@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { canUseCandidateTag, compareTagVersions, isPreReleaseTag } from "./check-updates";
+import {
+  canUseCandidateTag,
+  compareTagVersions,
+  isPreReleaseTag,
+  parseLsRemoteHeadOutput,
+  refsPointToSameCommit,
+} from "./check-updates";
 
 describe("compareTagVersions", () => {
   test("detects newer and older comparable tags", () => {
@@ -30,5 +36,43 @@ describe("pre-release filtering", () => {
     expect(canUseCandidateTag("1.4.2", "2.0.0beta")).toBeFalse();
     expect(canUseCandidateTag("1.4.2", "1.5.0")).toBeTrue();
     expect(canUseCandidateTag("2.0.0-rc1", "2.0.0beta")).toBeTrue();
+  });
+});
+
+describe("git-ref helpers", () => {
+  test("parses HEAD commit from ls-remote output", () => {
+    const output = "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a\tHEAD\n";
+    expect(parseLsRemoteHeadOutput(output)).toBe("cbe74b570d38aa0c4d42914e7a118bcb3adaee7a");
+  });
+
+  test("ignores non-head refs and invalid hashes", () => {
+    const output = [
+      "notasha\tHEAD",
+      "1234567890abcdef1234567890abcdef12345678\trefs/heads/main",
+      "feedbeef\tHEAD",
+    ].join("\n");
+    expect(parseLsRemoteHeadOutput(output)).toBeNull();
+  });
+
+  test("treats matching full refs as equal", () => {
+    expect(
+      refsPointToSameCommit(
+        "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
+        "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a"
+      )
+    ).toBeTrue();
+  });
+
+  test("treats matching short/full refs as equal when prefix is long enough", () => {
+    expect(refsPointToSameCommit("cbe74b570d38aa0c4d42914e7a118bcb3adaee7a", "cbe74b5")).toBeTrue();
+  });
+
+  test("does not match unrelated refs", () => {
+    expect(
+      refsPointToSameCommit(
+        "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
+        "7c8603f14d8d20ea84435b0b8409a4e1a40147b0"
+      )
+    ).toBeFalse();
   });
 });

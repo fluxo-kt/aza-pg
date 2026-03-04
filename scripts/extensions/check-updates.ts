@@ -4,7 +4,7 @@
  *
  * Queries upstream sources for all extensions to detect available updates.
  * - Checks GitHub Releases API for git-tag extensions
- * - Notes git-ref extensions (commit-based) for manual review
+ * - Checks git-ref extensions against remote HEAD commit
  * - Outputs JSON report of available updates
  *
  * Usage:
@@ -60,6 +60,9 @@ interface ParsedTagVersion {
   prefix: string;
   segments: number[];
 }
+
+const MIN_COMMIT_PREFIX_LENGTH = 7;
+const COMMIT_SHA_PATTERN = /^[a-f0-9]{40,64}$/i;
 
 export function isPreReleaseTag(tag: string): boolean {
   return /(?:^|[^a-z])(alpha|beta|rc|preview|pre)(?:[^a-z]|$)/i.test(tag);
@@ -161,6 +164,72 @@ export function compareTagVersions(currentTag: string, candidateTag: string): nu
   }
 
   return compareSegments(candidateParsed.segments, currentParsed.segments);
+}
+
+export function parseLsRemoteHeadOutput(stdout: string): string | null {
+  const lines = stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const [commit, ref] = line.split(/\s+/);
+    if (ref !== "HEAD" || !commit || !COMMIT_SHA_PATTERN.test(commit)) {
+      continue;
+    }
+    return commit.toLowerCase();
+  }
+
+  return null;
+}
+
+export function refsPointToSameCommit(currentRef: string, candidateRef: string): boolean {
+  const normalizedCurrent = currentRef.trim().toLowerCase();
+  const normalizedCandidate = candidateRef.trim().toLowerCase();
+
+  if (normalizedCurrent.length === 0 || normalizedCandidate.length === 0) {
+    return false;
+  }
+
+  if (normalizedCurrent === normalizedCandidate) {
+    return true;
+  }
+
+  const minLength = Math.min(normalizedCurrent.length, normalizedCandidate.length);
+  if (minLength < MIN_COMMIT_PREFIX_LENGTH) {
+    return false;
+  }
+
+  return (
+    normalizedCurrent.startsWith(normalizedCandidate) ||
+    normalizedCandidate.startsWith(normalizedCurrent)
+  );
+}
+
+async function checkGitRefHead(
+  repository: string
+): Promise<{ head: string | null; error: string | null }> {
+  const proc = Bun.spawn(["git", "ls-remote", repository, "HEAD"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    return { head: null, error: stderr.trim() || `git ls-remote exited with code ${exitCode}` };
+  }
+
+  const head = parseLsRemoteHeadOutput(stdout);
+  if (head === null) {
+    return { head: null, error: "Remote HEAD was not present in git ls-remote output" };
+  }
+
+  return { head, error: null };
 }
 
 async function checkGitHubRelease(
@@ -336,15 +405,24 @@ async function checkExtensionUpdates(entry: ManifestEntry): Promise<UpdateInfo |
 
   // Handle git-ref (commit-based) extensions
   if (source.type === "git-ref") {
+    const { head, error } = await checkGitRefHead(source.repository);
+    const updateAvailable = head !== null ? !refsPointToSameCommit(source.ref, head) : false;
+    const notes =
+      head === null
+        ? `Could not resolve remote HEAD${error ? `: ${error}` : ""}`
+        : updateAvailable
+          ? "Update available: remote HEAD differs from pinned commit"
+          : "Pinned commit matches remote HEAD";
+
     return {
       name,
-      current: source.ref.substring(0, 8),
-      latest: null,
-      updateAvailable: false,
+      current: source.ref,
+      latest: head,
+      updateAvailable,
       source: source.repository,
       sourceType: "git-ref",
       releaseUrl: null,
-      notes: "Uses git-ref (commit SHA) - check upstream manually",
+      notes,
       enabled,
     };
   }
@@ -416,9 +494,16 @@ function printTable(updates: UpdateInfo[]) {
   // Group by update status
   const withUpdates = updates.filter((u) => u.updateAvailable && u.enabled);
   const gitRefs = updates.filter((u) => u.sourceType === "git-ref");
-  const upToDate = updates.filter((u) => !u.updateAvailable && u.latest !== null && u.enabled);
+  const upToDate = updates.filter(
+    (u) => u.sourceType === "git" && !u.updateAvailable && u.latest !== null && u.enabled
+  );
   const disabled = updates.filter((u) => !u.enabled);
-  const errors = updates.filter((u) => u.sourceType === "git" && u.latest === null);
+  const errors = updates.filter(
+    (u) =>
+      (u.sourceType === "git" || u.sourceType === "git-ref") &&
+      u.latest === null &&
+      u.notes.startsWith("Could not")
+  );
 
   if (withUpdates.length > 0) {
     console.log(`${colors.yellow}📦 Updates Available (${withUpdates.length}):${colors.reset}`);
@@ -440,7 +525,11 @@ function printTable(updates: UpdateInfo[]) {
     console.log("");
     for (const ref of gitRefs) {
       console.log(`  ${colors.cyan}${ref.name.padEnd(25)}${colors.reset}`);
-      console.log(`    Commit:   ${colors.gray}${ref.current}${colors.reset}`);
+      const statusColor = ref.updateAvailable ? colors.yellow : colors.gray;
+      console.log(`    Pinned:   ${colors.gray}${ref.current}${colors.reset}`);
+      if (ref.latest !== null) {
+        console.log(`    HEAD:     ${statusColor}${ref.latest}${colors.reset}`);
+      }
       console.log(`    ${colors.gray}${ref.notes}${colors.reset}`);
       console.log("");
     }

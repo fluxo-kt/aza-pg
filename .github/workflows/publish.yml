@@ -753,7 +753,7 @@ jobs:
           set -euo pipefail
           echo "Running security hardening tests..."
           export POSTGRES_IMAGE="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}"
-          bun test scripts/test/test-security.ts
+          bun test ./scripts/test/test-security.ts
 
       - name: Capture test diagnostics
         if: failure()

@@ -17,6 +17,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - Size regression checker: fixed false-negative signals (null/.so-not-found and below-min now emit warn, not success); removed dead postgis entry from size-baselines.json (disabled extension, wrong .so filename); fixed SIZE_BASELINES code-variable reference in failure message to actual file path
 - Size regression checker: removed impossible second search path (`/usr/share/.../extension/*.so`); FHS mandates .so binaries in `/usr/lib/`; dead path caused a wasted `docker run` per missing extension
 - /update skill: fixed 15 bare `grep` calls to `command grep` (RTK proxy guardrail 15); stale postgis ref in size-baselines example list removed; Phase 5.4 now mandates removing size-baselines.json entries when disabling extensions
+- Size regression checker: major refactor — extracted `classifySize` as pure testable function; added `ResultCategory` discriminator (`ok/not-found/below-min/tolerance/exceeded`); fixed `toFixed(1)→toFixed(2)` precision bug (0.35 rendered as "0.3" via IEEE754); added `import.meta.main` guard for testability; added JSON schema validation in `loadSizeBaselines`; 13 unit tests added covering all branches, boundary conditions, and precision regression
 
 ---
 

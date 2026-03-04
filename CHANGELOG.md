@@ -18,6 +18,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - Size regression checker: removed impossible second search path (`/usr/share/.../extension/*.so`); FHS mandates .so binaries in `/usr/lib/`; dead path caused a wasted `docker run` per missing extension
 - /update skill: fixed 15 bare `grep` calls to `command grep` (RTK proxy guardrail 15); stale postgis ref in size-baselines example list removed; Phase 5.4 now mandates removing size-baselines.json entries when disabling extensions
 - Size regression checker: major refactor — extracted `classifySize` as pure testable function; added `ResultCategory` discriminator (`ok/not-found/below-min/tolerance/exceeded`); fixed `toFixed(1)→toFixed(2)` precision bug (0.35 rendered as "0.3" via IEEE754); added `import.meta.main` guard for testability; added JSON schema validation in `loadSizeBaselines`; 13 unit tests added covering all branches, boundary conditions, and precision regression
+- Unit test suite: registered 5 previously orphaned test files in validate.ts + package.json test:unit (config-generator, sql-generator, generate-dockerfile, generate-entrypoint, check-size-regression); fixed 3 pre-existing test failures (stale `18.1` hardcoded version regex in sql-generator; line-based comment filtering in two generate-dockerfile tests where regex match missed leading `#`); test count 198→353
 
 ---
 

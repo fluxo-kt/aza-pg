@@ -10,6 +10,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Development
+
+- GH Actions SHA pins updated (docker/login-action, docker/setup-qemu-action → Node.js 24; claude-code-action minor bumps)
+- Size regression checker: fixed misleading "within expected range" message for tolerance zone; tri-state result signal; updated pg_jsonschema baseline
+
 ---
 
 ## [v18.3-202603040417] - 2026-03-04

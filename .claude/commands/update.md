@@ -167,7 +167,7 @@ actions were updated and how many were **breaking** (major version bumps).
 `actions-up` reports breaking changes (major version jumps) separately. **These require manual
 review** — do NOT blindly accept without checking each one.
 
-**For every major-version bump** (e.g., `upload-artifact v6 → v7`):
+**For every major-version bump** (e.g., `actions/upload-artifact` bumping a major version):
 
 1. Fetch the upstream release notes:
    ```bash
@@ -190,33 +190,33 @@ review** — do NOT blindly accept without checking each one.
 
 ### Known Breaking Patterns for Common Actions
 
-| Action | Breaking boundary | What changed | Action needed |
-|--------|------------------|--------------|---------------|
-| `actions/upload-artifact` | v6→v7 | New `archive:` param (default `true`, safe); Node.js 24 | None for normal usage |
-| `actions/download-artifact` | v7→v8 | `digest-mismatch` default changed `warn` → `error`; new `skip-decompress` | Check if your workflows relied on silent hash-mismatch tolerance |
-| `sigstore/cosign-installer` | v3→v4 | v3 cannot install cosign v3.x (bundle format changed); default cosign bumped to v3.x | If you pin `cosign-release:` explicitly, verify it still installs; verify cosign v3 CLI compat |
-| `actions/attest-build-provenance` | v3→v4 | Node.js 24 (runner req); `subject-version` input added (additive) | None unless on old self-hosted runners |
-| `actions/checkout` | v5→v6 | Credentials stored in `$RUNNER_TEMP` via `includeIf` (not `.git/config`) | None for normal git usage; breaks scripts that parse `.git/config` directly |
-| `actions/cache` | v3→v4 | Removed `save-always` input (use `cache-hit` output pattern instead) | Check for `save-always:` usage |
-| `docker/login-action` | v3→v4 | Node.js 20→24 runtime only; all inputs/outputs/defaults identical | None for GitHub-hosted runners (runner ≥ v2.327.1 required; all ubuntu-* runners qualify) |
-| `docker/setup-qemu-action` | v3→v4 | Node.js 20→24 runtime only; all inputs/outputs/defaults identical | None for GitHub-hosted runners (same runner requirement) |
+| Action | Typical major-version changes | What to verify |
+|--------|------------------------------|----------------|
+| `actions/upload-artifact` | Node.js runtime bump; additive params | Generally safe; verify runner ≥ v2.327.1 for Node.js 24 requirement |
+| `actions/download-artifact` | Default strictness changes (hash-mismatch handling); new inputs | Check if workflow relied on lenient defaults (e.g., silent mismatch tolerance) |
+| `sigstore/cosign-installer` | Cosign bundle format compatibility; default cosign version bump | If you pin `cosign-release:`, verify pinned version still installs; check CLI compat |
+| `actions/attest-build-provenance` | Node.js runtime bump; new optional inputs (additive) | Verify runner version; new inputs are safe if not referenced |
+| `actions/checkout` | Credentials storage location can change | Breaks scripts parsing `.git/config` directly; normal git usage unaffected |
+| `actions/cache` | Input removals/renames (e.g., `save-always` was removed) | Grep all `cache:` steps for removed/renamed inputs; use `cache-hit` output pattern |
+| `docker/login-action` | Node.js runtime bump only; interface stable | None for GitHub-hosted runners; verify runner ≥ v2.327.1 for Node.js 24 |
+| `docker/setup-qemu-action` | Node.js runtime bump only; interface stable | None for GitHub-hosted runners (same runner requirement as above) |
 
 ### MANDATORY: Fix Stale Inline Version Comments
 
-**`actions-up` updates the `uses:` SHA but does NOT update inline comments.**
+**`actions-up` updates the SHA AND the `# vX.Y.Z` tag on each `uses:` line, but does NOT update
+version references in prose comments elsewhere in the file** (e.g., a comment in a `run:` step
+or a description block that mentions an old version like `# Uses upload-artifact v6`).
 
-After running `actions-up`, scan ALL workflow and composite action files for stale version comments:
+After running `actions-up`, scan ALL workflow and composite action files for stale prose comments:
 
 ```bash
-# Find inline version comments that may be stale (e.g., "# v3.0.0" next to a v4 SHA)
-command grep -rn "# v" .github/workflows/ .github/actions/
-# Also check for explicit version refs in prose comments:
+# Find prose version references that may be stale (distinct from the uses: line comments)
 command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"
 ```
 
-Cross-reference each comment against the actual `# vX.Y.Z` comment that `actions-up` added to the
-`uses:` line. Update any prose comment that references an old version. This is easy to miss and
-creates actively misleading documentation.
+Cross-reference each result against the `# vX.Y.Z` tag on the corresponding `uses:` line.
+Update any prose comment that references an old version. This is easy to miss and creates
+actively misleading documentation.
 
 **Validate after actions-up**:
 ```bash
@@ -689,6 +689,14 @@ something. Run through these checks adversarially — try to break your own work
 - **Search all test files for hardcoded version strings** that would fail after the update:
   `command grep -rn 'includes\|startsWith\|=== "' scripts/test/ | command grep -E '[0-9]+\.[0-9]'`
   Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
+- **Size baselines after Rust/pgrx extension updates**: After any pgrx/Rust extension update
+  (pg_jsonschema, wrappers, vectorscale, etc.), run the size regression check. Advisory warnings
+  (`⚠️ above baseline max but within tolerance`) indicate the baseline is stale:
+  ```bash
+  bun scripts/check-size-regression.ts  # requires built image
+  ```
+  If warnings appear for an extension you just updated, update `scripts/config/size-baselines.json`
+  with the new observed range (keep ~10-20% headroom above measured size for the `max`).
 
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
 what would they find?" Find it yourself first.

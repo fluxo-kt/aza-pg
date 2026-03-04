@@ -52,7 +52,10 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
    ```bash
-   grep -rn "0\.8\|2\.8\|0\.5" scripts/test/ | grep -i "version\|include\|assert"
+   # TypeScript test files
+   command grep -rn "0\.8\|2\.8\|0\.5" scripts/test/ | command grep -i "version\|include\|assert"
+   # SQL regression expected outputs — also hard-code version strings and WILL break nightly if stale
+   command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
    ```
    These WILL break tests if not updated alongside the extension. This is the #1 missed item.
 
@@ -204,9 +207,9 @@ After running `actions-up`, scan ALL workflow and composite action files for sta
 
 ```bash
 # Find inline version comments that may be stale (e.g., "# v3.0.0" next to a v4 SHA)
-grep -rn "# v" .github/workflows/ .github/actions/
+command grep -rn "# v" .github/workflows/ .github/actions/
 # Also check for explicit version refs in prose comments:
-grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | grep "#"
+command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"
 ```
 
 Cross-reference each comment against the actual `# vX.Y.Z` comment that `actions-up` added to the
@@ -517,10 +520,12 @@ Extensions still in test suites should stay current. Permanently broken extensio
 Before writing tests, search for hardcoded version strings in ALL test files:
 
 ```bash
-# Find any hardcoded version strings that will break after an upgrade
-grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/test/ | grep -v ".bun/"
+# Find any hardcoded version strings that will break after an upgrade (TypeScript test files)
+command grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/test/ | command grep -v ".bun/"
 # Also search for specific old version patterns:
-grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/test/ | grep -v ".bun/" | grep -i "include\|assert\|version"
+command grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/test/ | command grep -v ".bun/" | command grep -i "include\|assert\|version"
+# SQL regression expected outputs — hard-code extversion strings; stale = nightly failures
+command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
 ```
 
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
@@ -680,7 +685,8 @@ something. Run through these checks adversarially — try to break your own work
   TimescaleDB crosses a minor version boundary (2.25.x → 2.26.x). Also update the file title
   and run banner.
 - **Search all test files for hardcoded version strings** that would fail after the update:
-  `grep -rn 'includes\|startsWith\|=== "' scripts/test/ | grep -E '[0-9]+\.[0-9]'`
+  `command grep -rn 'includes\|startsWith\|=== "' scripts/test/ | command grep -E '[0-9]+\.[0-9]'`
+  Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
 
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
 what would they find?" Find it yourself first.

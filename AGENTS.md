@@ -190,7 +190,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
 
-**test-image-lib.ts `toolBinaries`**: Keys MUST match manifest entry `name` (kind: "tool") exactly — wrong keys silently skip checks (classic false-confidence bug). `.so` paths hardcode PG major version (`/usr/lib/postgresql/18/lib/`); update ALL when bumping PG major. Disabled tools filtered by `entry.enabled !== false` before the loop; unknown enabled tools fail loudly.
+**test-image-lib.ts `toolBinaries`**: Keys MUST match manifest entry `name` (kind: "tool") exactly — wrong keys silently skip checks (classic false-confidence bug). `.so` paths are derived at runtime via `SHOW server_version_num → floor(num/10000)` — no manual update needed on PG major version bumps. Disabled tools filtered by `entry.enabled !== false` before the loop; unknown enabled tools fail loudly.
 
 **Test Architecture**: `test-all.ts` calls `scripts/docker/test-image.ts` (thin wrapper, ~350 lines). All 39 test functions live exclusively in `test-image-lib.ts` — `test-image.ts` imports and calls them, so divergence is structurally impossible. Standalone scripts (`test-image-core.ts`, `test-image-functional-1/2/3.ts`) also use `test-image-lib.ts` and are NOT in CI — they run on-demand only.
 
@@ -201,6 +201,10 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **Custom AM Index Contamination**: For custom index AMs (PGroonga), `TRUNCATE` alone does NOT reliably clear the AM's external storage (Groonga files). The non-negotiable requirements are: (1) `DROP INDEX IF EXISTS` must occur to purge external storage, (2) `CREATE INDEX` must be unconditional (no `IF NOT EXISTS`), (3) `CREATE INDEX` must happen AFTER all INSERTs. The ORDER of DROP INDEX relative to TRUNCATE is flexible — both `DROP → TRUNCATE → INSERT → CREATE` and `TRUNCATE → DROP → INSERT → CREATE` are correct; what breaks things is `CREATE INDEX IF NOT EXISTS` after TRUNCATE (skips rebuild, stale external data accumulates). RUM uses standard PostgreSQL AM pages (no external storage); the same pattern is applied for consistency.
 
 **psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
+
+**execSQL Never Throws**: `dockerRun` (the backing function for `execSQL`) has an internal try/catch that returns `{success: false, output: errorMessage}` on spawn failure. Therefore `execSQL` NEVER rejects — `.catch()` chained on `execSQL` is dead code. Check results via the `success` field, not exception handling.
+
+**DROP TABLE CASCADE ≠ DROP FUNCTION**: `DROP TABLE x CASCADE` removes the table's triggers, indexes, constraints, and sequences — but NOT the trigger functions they reference. Functions are standalone objects reusable across multiple tables. Any function created in a test (e.g., `test_trigger_func()`) must be explicitly dropped in `cleanupTestData` or it persists until the container is removed.
 
 **precreatedExtensions list**: The 13 extensions created at initdb (`01-extensions.sql` + `01b-pg_cron.sh`) CANNOT be derived from the manifest — `runtime.defaultEnable` covers preload libs only (4 entries). Update the hardcoded list in `test-image-lib.ts` whenever `01-extensions.sql` changes (single source of truth — `test-image.ts` imports from lib).
 

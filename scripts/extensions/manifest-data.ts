@@ -722,7 +722,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git-ref",
       repository: "https://github.com/supabase/pg_jsonschema.git",
-      ref: "7c8603f14d8d20ea84435b0b8409a4e1a40147b0",
+      ref: "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
     },
     build: {
       type: "cargo-pgrx",

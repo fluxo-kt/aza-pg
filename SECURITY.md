@@ -45,6 +45,7 @@ The following vulnerabilities exist in upstream dependencies that we cannot dire
 - **CVE-2025-68121** (CRITICAL), **CVE-2025-58183, CVE-2025-61726, CVE-2025-61728, CVE-2025-61729, CVE-2025-61730** (HIGH): Go stdlib vulnerabilities in gosu (compiled with Go 1.24.6; no upstream fix available)
 - **Resolution**: gosu replaced with [su-exec v0.2](https://github.com/ncopa/su-exec) — a pure-C privilege-drop binary with identical CLI (`user[:group] command`). Zero Go stdlib dependency eliminates this entire CVE class permanently.
 - **Compatibility**: Transparent drop-in; binary placed at `/usr/local/bin/gosu` so base postgres entrypoint calls it unchanged.
+- **Trivy scanner note**: CVE-2025-68121 is listed in `.trivyignore`. The postgres:18.3-trixie base image ships gosu as a direct binary download (not a dpkg package); it exists in immutable base image layers that cannot be modified by any Dockerfile instruction. Trivy scans all layers including base layers and finds gosu there. In the merged filesystem (what containers actually see and execute), `/usr/local/bin/gosu` is su-exec — the Go binary is permanently shadowed and never executed.
 
 ## Security Measures
 

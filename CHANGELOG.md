@@ -27,6 +27,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - docs(TESTING.md): corrected naming convention table — path was wrong (`scripts/test/test-*.ts` → `test-*.ts`, no path constraint; files exist in scripts/, scripts/test/, scripts/docker/, scripts/config/); "Requires Docker?" column was wrong (`✅ Yes` → "Often, but not guaranteed¹") — invariant is one-directional only (`*.test.ts` → Docker-free is guaranteed; `test-*.ts` → Docker-required is NOT, e.g. test-smoke.ts runs without Docker)
 - docs(TESTING.md): corrected "must be registered in test-all.ts" inaccuracy — ~25 test-_.ts files are intentionally standalone (test-timescaledb-breaking-changes.ts, test-image-core.ts, test-extension-regression.ts, etc.); added standalone integration test recipe; clarified only _.test.ts→Docker-free is a STRUCTURAL guarantee, registration is convention
 - fix(test-image-lib.test.ts): replaced zero-confidence `expect(true).toBe(true)` with `expect(missingPaths.length).toBe(0)` — was always passing regardless of whether tools had documented binary paths; now actually gates the invariant (374 pass, 1474 expect() — same count, real meaning)
+- docs(AGENTS.md): corrected "MUST be registered in test-all.ts" — was factually wrong (~25 test-\*.ts are intentionally standalone); softened to "register for CI inclusion (standalone tests OK with documented intent)"; fix(test-image-lib.test.ts): added diagnostic throw before assert in second test — failure now shows WHICH tool is missing docs instead of opaque "Expected 0, Received 1"
 
 ---
 

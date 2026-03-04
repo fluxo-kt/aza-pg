@@ -123,6 +123,14 @@ describe("Tool Binary Path Validation", () => {
       }
     }
 
+    if (missingPaths.length > 0) {
+      throw new Error(
+        "Tools missing documented binary paths:\n\n" +
+          missingPaths.join("\n\n") +
+          "\n\nAdd an 'Installs /path' or 'Binary installed to /path' note in " +
+          "docker/postgres/extensions.manifest.json for each tool listed above."
+      );
+    }
     expect(missingPaths.length).toBe(0);
   });
 });

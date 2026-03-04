@@ -145,7 +145,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ `bun run validate` before commit
-- ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`) + be registered in `test-all.ts`. All `*.test.ts` files are unconditionally unit-test safe.
+- ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`); register in `test-all.ts` for CI inclusion (standalone on-demand tests are fine — just document intent at top of file). All `*.test.ts` files are unconditionally unit-test safe.
 
 ## Git Workflow
 

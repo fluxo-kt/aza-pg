@@ -705,16 +705,32 @@ export async function testPostgresConfiguration(containerName: string): Promise<
   const startTime = Date.now();
 
   try {
+    // Use pg_size_bytes() to get numeric bytes for memory settings — avoids JS unit parsing
     const configs = [
-      { name: "shared_buffers", check: (val: string) => val.length > 0 },
-      { name: "max_connections", check: (val: string) => parseInt(val, 10) > 0 },
-      { name: "work_mem", check: (val: string) => val.length > 0 },
+      {
+        name: "shared_buffers",
+        sql: "SELECT pg_size_bytes(current_setting('shared_buffers'))",
+        check: (val: string) => parseInt(val, 10) >= 16 * 1024 * 1024, // >= 16MB
+        desc: ">= 16MB",
+      },
+      {
+        name: "max_connections",
+        sql: "SELECT current_setting('max_connections')",
+        check: (val: string) => parseInt(val, 10) >= 20,
+        desc: ">= 20",
+      },
+      {
+        name: "work_mem",
+        sql: "SELECT pg_size_bytes(current_setting('work_mem'))",
+        check: (val: string) => parseInt(val, 10) >= 1024 * 1024, // >= 1MB
+        desc: ">= 1MB",
+      },
     ];
 
     const errors: string[] = [];
 
     for (const config of configs) {
-      const result = await execSQL(`SHOW ${config.name};`, containerName);
+      const result = await execSQL(config.sql, containerName);
 
       if (!result.success) {
         errors.push(`Failed to read ${config.name}`);
@@ -722,7 +738,7 @@ export async function testPostgresConfiguration(containerName: string): Promise<
       }
 
       if (!config.check(result.output.trim())) {
-        errors.push(`Invalid ${config.name}: ${result.output}`);
+        errors.push(`${config.name} below threshold (${config.desc}): ${result.output.trim()}`);
       }
     }
 
@@ -1102,9 +1118,22 @@ export async function testAutoConfigApplied(containerName: string): Promise<Test
       }
 
       const value = result.output.trim();
-      if (!value || value === "") {
+      if (!value) {
         errors.push(`${setting} is empty`);
       }
+    }
+
+    // Verify auto-config actually ran: shared_buffers must be sourced from a config file or
+    // command-line override — if source = 'default', the auto-config entrypoint did not write
+    // a postgresql.conf, which means auto-configuration silently failed.
+    const sourceCheck = await execSQL(
+      "SELECT count(*) FROM pg_settings WHERE name = 'shared_buffers' AND source IN ('configuration file', 'command line')",
+      containerName
+    );
+    if (!sourceCheck.success || parseInt(sourceCheck.output.trim(), 10) === 0) {
+      errors.push(
+        "shared_buffers source is 'default' — auto-config entrypoint may not have run (expected 'configuration file' or 'command line')"
+      );
     }
 
     if (errors.length > 0) {
@@ -1226,6 +1255,8 @@ export async function testVectorscaleDiskann(containerName: string): Promise<Tes
       };
     }
 
+    // Force DiskANN index usage — planner selects SeqScan on small tables without this
+    await execSQL("SET enable_seqscan = OFF", containerName);
     const search = await execSQL(
       "SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1",
       containerName
@@ -1344,6 +1375,19 @@ export async function testWal2jsonReplication(containerName: string): Promise<Te
         passed: false,
         duration: Date.now() - startTime,
         error: "Failed to read wal2json changes",
+      };
+    }
+
+    // Verify wal2json actually captured the INSERT — success with empty output means
+    // the slot was created but change capture is not working (e.g., wal_level != logical)
+    if (changes.output.trim() === "") {
+      await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')", containerName);
+      return {
+        name: "wal2json - Logical replication",
+        passed: false,
+        duration: Date.now() - startTime,
+        error:
+          "wal2json slot created but no changes captured (INSERT not reflected in slot output)",
       };
     }
 
@@ -1737,6 +1781,9 @@ export async function testPgStatStatements(containerName: string): Promise<TestR
       };
     }
 
+    // Execute a tracked query so the extension has something to collect
+    await execSQL("SELECT 'pg_stat_statements tracking test'", containerName);
+
     const verify = await execSQL("SELECT count(*) FROM pg_stat_statements", containerName);
     if (!verify.success) {
       return {
@@ -1744,6 +1791,18 @@ export async function testPgStatStatements(containerName: string): Promise<TestR
         passed: false,
         duration: Date.now() - startTime,
         error: "Failed to query pg_stat_statements",
+      };
+    }
+
+    // After executing a query post-reset, count must be >= 1 — zero means the extension
+    // is loaded but not collecting statements (misconfigured track setting, etc.)
+    const count = parseInt(verify.output.trim(), 10);
+    if (count < 1) {
+      return {
+        name: "pg_stat_statements - Statistics",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `pg_stat_statements is not collecting queries (count = ${count} after tracked query)`,
       };
     }
 
@@ -2026,15 +2085,17 @@ export async function testPgTrgmSimilarity(containerName: string): Promise<TestR
     );
 
     const search = await execSQL(
-      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC",
+      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
       containerName
     );
-    if (!search.success || search.output.trim() === "") {
+    // Verify the TOP result is the expected closest match — any non-empty result would pass
+    // even if the wrong row is returned (e.g., similarity operator misconfigured)
+    if (!search.success || search.output.trim() !== "hello world") {
       return {
         name: "pg_trgm - Similarity search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Similarity search failed",
+        error: `Expected 'hello world' as top similarity match, got: '${search.output.trim()}'`,
       };
     }
 
@@ -2127,6 +2188,7 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       containerName
     );
 
+    // Basic match with @@ (works with any tsvector index, not RUM-specific)
     const search = await execSQL(
       "SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')",
       containerName
@@ -2137,6 +2199,22 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
         passed: false,
         duration: Date.now() - startTime,
         error: "RUM ranked search failed",
+      };
+    }
+
+    // RUM-specific: use <=> operator for tsvector distance ranking — this operator
+    // is provided exclusively by the rum index access method and does NOT exist in GIN.
+    // A broken rum installation that falls back to GIN would fail here.
+    const ranked = await execSQL(
+      "SELECT content <=> to_tsquery('english', 'fox') FROM test_rum ORDER BY 1 LIMIT 1",
+      containerName
+    );
+    if (!ranked.success || ranked.output.trim() === "") {
+      return {
+        name: "rum - Ranked search",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "RUM <=> ranking operator failed (RUM-specific operator not available)",
       };
     }
 
@@ -2347,6 +2425,21 @@ export async function testTimescaledbHypertables(containerName: string): Promise
         passed: false,
         duration: Date.now() - startTime,
         error: "Failed to insert time-series data",
+      };
+    }
+
+    // Verify TimescaleDB actually chunked the data — this is the defining hypertable feature.
+    // 7 days of hourly data with default 7-day chunks should produce >= 1 chunk.
+    const chunks = await execSQL(
+      "SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'test_timescale'",
+      containerName
+    );
+    if (!chunks.success || parseInt(chunks.output.trim(), 10) < 1) {
+      return {
+        name: "timescaledb - Hypertables",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `Hypertable created but no chunks found (count = ${chunks.output.trim()}) — TimescaleDB chunking may be broken`,
       };
     }
 

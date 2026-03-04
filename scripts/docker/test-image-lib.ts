@@ -997,14 +997,21 @@ export async function testToolsPresent(
       };
     }
 
+    // Derive PG major version from the running server so .so paths stay correct
+    // across PG version bumps without any manual update.
+    // server_version_num: e.g. 180003 → major = floor(180003 / 10000) = 18
+    const pgVerResult = await execSQL("SHOW server_version_num", containerName);
+    const pgMajor = pgVerResult.success
+      ? String(Math.floor(parseInt(pgVerResult.output.trim()) / 10000))
+      : "18"; // fallback (container is ready at this point, so this branch is unreachable in practice)
+
     // Keys MUST match manifest entry names (kind: "tool") exactly.
     // When adding a new tool to the manifest, add its binary path here.
-    // .so paths encode the PG major version — update when bumping PG major.
     const toolBinaries: Record<string, string> = {
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path
-      wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
-      pg_safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
+      wal2json: `/usr/lib/postgresql/${pgMajor}/lib/wal2json.so`,
+      pg_safeupdate: `/usr/lib/postgresql/${pgMajor}/lib/safeupdate.so`,
     };
 
     const missing: string[] = [];

@@ -189,7 +189,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
 
-**COPY --from Stale Registry Cache**: `COPY --from=builder-stage /src /dest` can silently serve a stale BuildKit registry cache layer that still contains the OLD binary, even when the source stage rebuilt fresh. Symptom: Trivy detects the pre-replacement binary despite the COPY step showing `DONE 0.Xs`. Fix: use `RUN --mount=type=bind,from=builder-stage,source=/src,target=/tmp/stage,readonly \ install -o root -g root -m 0755 /tmp/stage /dest` — bind-mount RUN has stronger cache invalidation semantics tied to the full parent-layer chain.
+**Multi-Stage Gosu Replacement: GHA Cache Ambiguity**: Both `COPY --from=builder-stage` and `RUN --mount=type=bind,from=builder-stage,...` fail to reliably replace `/usr/local/bin/gosu` when GHA layer cache (`type=gha`) is involved. The bind-mount source resolution against a GHA-cached stage cannot be verified at build time — Trivy consistently detected the original Go binary despite the step showing `DONE 0.1s`. **Definitive fix**: install the replacement binary from Debian apt directly in the final stage (`apt-get install su-exec && install /usr/sbin/su-exec /usr/local/bin/gosu`), add a build-time size assertion (`[ SZ -lt 500000 ]`) that FAILS the build if the wrong binary is present. No multi-stage dependency = no cache ambiguity.
 
 ## Changelog
 

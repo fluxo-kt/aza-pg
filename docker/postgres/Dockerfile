@@ -308,13 +308,22 @@ COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Replace gosu (Go binary, CVE-2025-68121 CRITICAL) with su-exec (pure C, identical CLI).
-# builder-pgxs rsyncs /usr/local/bin/ — including the original gosu — into /opt/ext-out/usr/local/bin/.
-# The COPY above then puts that gosu back. This RUN --mount=type=bind step overwrites it.
-# Uses bind-mount (not COPY --from) to guarantee strong cache invalidation; COPY --from can
-# silently serve stale registry-cached layers that still contain the original Go binary.
-# su-exec v0.2 SHA: f85e5bde1afef399021fbc2a99c837cf851ceafa (verified in builder-base 8/12)
-RUN --mount=type=bind,from=builder-base,source=/tmp/su-exec-build/su-exec,target=/tmp/su-exec-staging,readonly \
-    install -o root -g root -m 0755 /tmp/su-exec-staging /usr/local/bin/gosu
+# builder-pgxs rsyncs /usr/local/bin/ into /opt/ext-out/usr/local/bin/, so COPY --from=builder-pgxs
+# above restores the original gosu from the postgres base image. This step permanently replaces it.
+# Self-contained: installs su-exec from Debian Trixie apt (no multi-stage bind-mount dependency).
+# Build-time assertion: fails the build if the replacement produces a binary >500KB (gosu ~7MB, su-exec ~14KB).
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -euo pipefail && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends su-exec && \
+    install -o root -g root -m 0755 /usr/sbin/su-exec /usr/local/bin/gosu && \
+    SZ=$(stat -c%s /usr/local/bin/gosu) && \
+    echo "su-exec replacement: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
+    [ "${SZ}" -lt 500000 ] || { echo "FATAL: /usr/local/bin/gosu is >500KB — su-exec replacement failed"; exit 1; } && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
 # Moved here (right after builder COPYs) to clean up before remaining operations

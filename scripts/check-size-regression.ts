@@ -5,12 +5,8 @@
  * Tracks .so file sizes for known large extensions to detect unexpected bloat.
  * This is a non-critical check (warn-only) that helps identify build issues.
  *
- * Baseline sizes (approximate, for PostgreSQL 18):
- * - timescaledb: ~3-5MB
- * - pg_stat_monitor: ~2-3MB
- * - pgvector: ~1-2MB
- * - postgis: ~4-6MB (large due to GEOS/PROJ dependencies)
- * - pgroonga: ~2-4MB
+ * Baselines are maintained in scripts/config/size-baselines.json (single source of truth).
+ * Run with --baseline-only to see current tracked extensions and their expected ranges.
  *
  * Usage:
  *   bun scripts/check-size-regression.ts                    # Check sizes (requires Docker build)

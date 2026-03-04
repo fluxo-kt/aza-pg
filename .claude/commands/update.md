@@ -183,8 +183,9 @@ review** — do NOT blindly accept without checking each one.
    - **Behaviour changes** (silent→loud defaults): new defaults may turn previously-tolerated
      warnings into hard failures — this is the most dangerous category
    - **New required inputs**: does the action now require a parameter you haven't set?
-   - **Runner version requirements**: Node.js 24 actions require Actions Runner ≥ v2.327.1–v2.329.0;
-     self-hosted runners below this threshold will fail with "node24 not found"
+   - **Runner version requirements**: Node.js runtime version bump = new minimum runner version;
+     self-hosted runners below the threshold will fail with "nodeXX not found" (check release notes
+     for the minimum runner version required by the action's Node.js release)
 
 3. Fix any incompatible usages before committing.
 

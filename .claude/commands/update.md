@@ -26,6 +26,10 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```bash
    bun scripts/extensions/check-updates.ts
    ```
+   Mandatory interpretation:
+   - Treat `sourceType: "git-ref"` rows exactly like tagged updates: compare `current` vs `latest`
+   - If any git-ref row has `latest: null`, stop and fix connectivity/parsing before proceeding
+   - If any enabled row has `updateAvailable: true`, either update it now or document a concrete skip reason
    Verify candidate updates are true upgrades in the same release family:
    - Ignore mismatched tag-family noise (e.g., monorepo tags like `foo@X.Y.Z` vs plain `X.Y.Z`)
    - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
@@ -100,6 +104,11 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    apt-cache madison timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
    ```
    Both must show the same `X.Y.Z~debianNN-NNNN` version string.
+
+9. **Pre-plan the changelog obligation** (MANDATORY): if you touch any image-affecting source
+   (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`,
+   `scripts/config/extension-defaults.ts` via generation), you MUST update `CHANGELOG.md` in the
+   same update round before Phase 12.
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
@@ -464,13 +473,18 @@ bun run generate
 bun run test:pgflow
 ```
 
-### 5.2: git-ref Extensions (Manual Review Required)
+### 5.2: git-ref Extensions (HEAD Drift Verification REQUIRED)
 
 **Identify**: `command grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
-These use commit SHAs (no version tags). Update requires manual review:
+These use commit SHAs (no version tags). Verification is mandatory:
 
 ```bash
+# Primary check (must be zero for enabled extensions before closing round)
+bun scripts/extensions/check-updates.ts --format=json | jq -r '
+  .[] | select(.sourceType=="git-ref" and .enabled==true and .updateAvailable==true) |
+  "\(.name): \(.current) -> \(.latest)"'
+
 # Check if upstream now has stable tags
 git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 
@@ -482,6 +496,8 @@ git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 # Check: CI status, changelog mentions, no breaking changes
 gh api repos/OWNER/REPO/commits/COMMIT_REF/status
 ```
+
+Any non-empty output from the `jq` command above is actionable work, not an informational note.
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
 
@@ -625,6 +641,9 @@ Resolution options:
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 
+**MANDATORY GATE**: If this round changed any image-affecting files, `CHANGELOG.md` must be
+updated before proceeding to Phase 10/12. No exceptions.
+
 **Rules**:
 1. **User-facing changes**: Full detail with migration guidance
 2. **Breaking changes**: Separate section with "action required" flag
@@ -692,6 +711,7 @@ something. Run through these checks adversarially — try to break your own work
   `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
 
 **Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
+- **`CHANGELOG.md` gate**: If `git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks` is non-empty, `git diff --name-only -- CHANGELOG.md` MUST also be non-empty before Phase 12.
 - `docs/EXTENSION-SOURCES.md`: PGDG/source-built/Percona/Timescale version tables — update
   every changed extension version AND verify categorisation (PGDG vs source-built) is still
   correct. A migrated extension (source→PGDG or vice-versa) MUST move between table sections.
@@ -785,6 +805,9 @@ After every update round, perform a mandatory self-reflection before closing out
 10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
     verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
     paths were exercised when GitHub API was rate-limited.
+11. **Was changelog gating enforced?** If any image-affecting files changed, verify `CHANGELOG.md`
+    was updated in the same round with user-facing entries (or explicitly document why no user-facing
+    impact exists).
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

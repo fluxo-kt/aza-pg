@@ -188,6 +188,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
+**git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.
+
 **Secret-Scan Heuristic Trap**: `bun run test:all` secret-scan can flag ordinary local vars when names look credential-like (e.g., `token = "..."`). In non-secret code paths, use precise neutral names (`versionChunk`, `segment`, etc.) and re-run tests; don't suppress the scan blindly.
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.

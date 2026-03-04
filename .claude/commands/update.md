@@ -192,16 +192,16 @@ review** — do NOT blindly accept without checking each one.
 
 | Action | Typical major-version changes | What to verify |
 |--------|------------------------------|----------------|
-| `actions/upload-artifact` | Node.js runtime bump; additive params | Generally safe; verify runner ≥ v2.327.1 for Node.js 24 requirement |
+| `actions/upload-artifact` | Node.js runtime bump; additive params | Generally safe; check release notes for new required inputs or default changes |
 | `actions/download-artifact` | Default strictness changes (hash-mismatch handling); new inputs | Check if workflow relied on lenient defaults (e.g., silent mismatch tolerance) |
 | `sigstore/cosign-installer` | Cosign bundle format compatibility; default cosign version bump | If you pin `cosign-release:`, verify pinned version still installs; check CLI compat |
-| `actions/attest-build-provenance` | Node.js runtime bump; new optional inputs (additive) | Verify runner version; new inputs are safe if not referenced |
+| `actions/attest-build-provenance` | Node.js runtime bump; new optional inputs (additive) | Check runner version requirement in release notes; new additive inputs are safe if not referenced |
 | `actions/checkout` | Credentials storage location can change | Breaks scripts parsing `.git/config` directly; normal git usage unaffected |
 | `actions/cache` | Input removals/renames (e.g., `save-always` was removed) | Grep all `cache:` steps for removed/renamed inputs; use `cache-hit` output pattern |
-| `docker/login-action` | Node.js runtime bump only; interface stable | None for GitHub-hosted runners; verify runner ≥ v2.327.1 for Node.js 24 |
-| `docker/setup-qemu-action` | Node.js runtime bump only; interface stable | None for GitHub-hosted runners (same runner requirement as above) |
+| `docker/login-action` | Has historically been runtime-only (no interface changes) | For self-hosted runners: check Node.js runtime requirement in release notes |
+| `docker/setup-qemu-action` | Has historically been runtime-only (no interface changes) | Same pattern as docker/login-action; GitHub-hosted runners always qualify |
 
-### MANDATORY: Fix Stale Inline Version Comments
+### MANDATORY: Audit for Stale Prose Version Comments
 
 **`actions-up` updates the SHA AND the `# vX.Y.Z` tag on each `uses:` line, but does NOT update
 version references in prose comments elsewhere in the file** (e.g., a comment in a `run:` step
@@ -689,13 +689,13 @@ something. Run through these checks adversarially — try to break your own work
 - **Search all test files for hardcoded version strings** that would fail after the update:
   `command grep -rn 'includes\|startsWith\|=== "' scripts/test/ | command grep -E '[0-9]+\.[0-9]'`
   Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
-- **Size baselines after Rust/pgrx extension updates**: After any pgrx/Rust extension update
-  (pg_jsonschema, wrappers, vectorscale, etc.), run the size regression check. Advisory warnings
-  (`⚠️ above baseline max but within tolerance`) indicate the baseline is stale:
+- **Size baselines after updating any tracked extension**: After updating any extension listed in
+  `scripts/config/size-baselines.json` (timescaledb, postgis, pgroonga, pg_jsonschema, wrappers,
+  vectorscale, etc.), run the size regression check. Advisory warnings indicate a stale baseline:
   ```bash
-  bun scripts/check-size-regression.ts  # requires built image
+  bun scripts/check-size-regression.ts  # requires a built image; run bun run build first if needed
   ```
-  If warnings appear for an extension you just updated, update `scripts/config/size-baselines.json`
+  If advisory warnings appear for an extension you just updated, update `scripts/config/size-baselines.json`
   with the new observed range (keep ~10-20% headroom above measured size for the `max`).
 
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
@@ -737,10 +737,9 @@ After every update round, perform a mandatory self-reflection before closing out
    validator script, verify that following its own fix instructions would resolve the error it
    reports. Validators with inline data copies (like `validate-manifest-integrity.ts`) are
    especially prone to self-defeating instructions.
-8. **Were GitHub Actions stale inline comments fixed?** `actions-up` updates `uses:` SHA pins but
-   NOT inline version comments (e.g. `# v3.0.0` that refers to the old version in a prose comment
-   elsewhere in the file). After running `actions-up`, every prose comment referencing an old
-   version is now silently wrong.
+8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
+   automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
+   section for the exact grep command and what to look for.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern

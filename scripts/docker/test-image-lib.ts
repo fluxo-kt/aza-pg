@@ -502,14 +502,20 @@ export async function testPrecreatedExtensions(
   const startTime = Date.now();
 
   try {
-    // Extensions that should be pre-created in 01-extensions.sql
+    // Extensions pre-created by initdb scripts (01-extensions.sql + 01b-pg_cron.sh).
+    // Update this list whenever 01-extensions.sql or pg_cron initdb script changes.
     const precreatedExtensions = [
-      "pg_cron",
+      "pg_cron", // 01b-pg_cron.sh
+      "pg_net",
       "pg_stat_monitor",
       "pg_stat_statements",
       "pg_trgm",
       "pgaudit",
+      "pgmq",
+      "pgsodium",
       "plpgsql",
+      "supabase_vault",
+      "timescaledb",
       "vector",
       "vectorscale",
     ];

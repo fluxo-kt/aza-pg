@@ -936,8 +936,9 @@ export async function testToolsPresent(
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path
       wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
-      plan_filter: "/usr/lib/postgresql/18/lib/plan_filter.so",
-      safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
+      // Keys MUST match manifest entry names (kind: "tool") exactly.
+      // pg_plan_filter omitted — incompatible with PG18, not installed.
+      pg_safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
     };
 
     const missing: string[] = [];

@@ -52,8 +52,11 @@ function extractBinaryPathFromNotes(notes: string[]): string | null {
 
 describe("Tool Binary Path Validation", () => {
   test("hardcoded tool paths match manifest documentation", async () => {
-    // These are the hardcoded paths from test-image-lib.ts testToolsPresent()
-    // If this test fails, the hardcoded paths in test-image-lib.ts need to be updated
+    // CLI tool paths from test-image-lib.ts testToolsPresent() — these change when
+    // install method changes (e.g., source → PGDG). .so module paths (wal2json,
+    // pg_safeupdate) are NOT included: they live at a fixed PostgreSQL PKGLIBDIR path
+    // regardless of install method and don't need install-method-change protection.
+    // Keys must match manifest entry names (kind: "tool") exactly.
     const hardcodedToolBinaries: Record<string, string> = {
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path

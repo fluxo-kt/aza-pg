@@ -181,6 +181,19 @@ export async function execSQL(
 }
 
 /**
+ * Extract the last non-empty line from psql output.
+ * Multi-statement calls (e.g. "SET ...; SELECT ...") return command tags and rows.
+ * Tests that assert on scalar results should use the final data row.
+ */
+function getLastOutputLine(output: string): string {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines[lines.length - 1] ?? "";
+}
+
+/**
  * Execute command in container
  */
 export async function execCommand(
@@ -1328,7 +1341,8 @@ export async function testPgvectorComprehensive(containerName: string): Promise<
       "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1",
       containerName
     );
-    if (!search.success || search.output.trim() !== "1") {
+    const nearestId = getLastOutputLine(search.output);
+    if (!search.success || nearestId !== "1") {
       return {
         name: "pgvector - HNSW index and similarity search",
         passed: false,
@@ -2152,7 +2166,7 @@ export async function testPgmqQueue(containerName: string): Promise<TestResult> 
 
     // Bind queue to topic pattern — '#' matches zero or more segments (e.g. 'test.event.created')
     const bindResult = await execSQL(
-      "SELECT pgmq.bind_topic('test_topic_queue', 'test.#')",
+      "SELECT pgmq.bind_topic('test.#', 'test_topic_queue')",
       containerName
     );
     if (!bindResult.success) {
@@ -2326,9 +2340,10 @@ export async function testPgTrgmSimilarity(containerName: string): Promise<TestR
       "SET enable_seqscan = OFF; SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
       containerName
     );
+    const topMatch = getLastOutputLine(search.output);
     // Verify the TOP result is the expected closest match — any non-empty result would pass
     // even if the wrong row is returned (e.g., similarity operator misconfigured)
-    if (!search.success || search.output.trim() !== "hello world") {
+    if (!search.success || topMatch !== "hello world") {
       return {
         name: "pg_trgm - Similarity search",
         passed: false,

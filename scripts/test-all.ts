@@ -472,24 +472,13 @@ const allChecks: Check[] = [
     envOverride: "ALLOW_STALE_BASE_IMAGE",
   },
   {
-    name: "Unit Tests: Auto-Config",
+    // All *.test.ts files are unconditionally Docker-free — naming convention is the enforcement.
+    // Docker-dependent tests use test-*.ts naming and are NOT auto-discovered here.
+    name: "Unit Tests",
     category: "validation",
-    command: ["bun", "test", "./scripts/test/test-auto-config-units.test.ts"],
-    description: "Unit tests for PostgreSQL auto-configuration",
-    critical: true,
-  },
-  {
-    name: "Unit Tests: Utilities",
-    category: "validation",
-    command: ["bun", "test", "./scripts/test/test-utils.test.ts"],
-    description: "Unit tests for manifest validation and utilities",
-    critical: true,
-  },
-  {
-    name: "Unit Tests: Manifest Generator",
-    category: "validation",
-    command: ["bun", "test", "./scripts/config-generator/manifest-generator.test.ts"],
-    description: "Unit tests for Dockerfile manifest generation",
+    command: ["bun", "test", "scripts"],
+    description:
+      "All unit tests — auto-discovered *.test.ts files in scripts/ (never requires Docker)",
     critical: true,
   },
   {

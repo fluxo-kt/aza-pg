@@ -1179,12 +1179,15 @@ async function testVectorscaleDiskann(): Promise<TestResult> {
     await execSQL(
       "CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))"
     );
+    // Truncate and rebuild index so DiskANN always covers exactly the 3 fresh rows
+    await execSQL("TRUNCATE test_vectorscale RESTART IDENTITY");
+    await execSQL("DROP INDEX IF EXISTS test_vectorscale_diskann_idx");
     await execSQL(
       "INSERT INTO test_vectorscale (vec) VALUES ('[1,0,0]'), ('[0,1,0]'), ('[0,0,1]')"
     );
 
     const index = await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)"
+      "CREATE INDEX test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)"
     );
     if (!index.success) {
       return {
@@ -1233,6 +1236,8 @@ async function testHllCardinality(): Promise<TestResult> {
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS hll CASCADE");
     await execSQL("CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)");
+    // Truncate so INSERT always produces id=1 and UPDATE targets the correct fresh row
+    await execSQL("TRUNCATE test_hll RESTART IDENTITY");
     await execSQL("INSERT INTO test_hll (users) VALUES (hll_empty())");
     await execSQL("UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1");
 
@@ -1381,19 +1386,22 @@ async function testPgroutingShortestPath(): Promise<TestResult> {
       target int,
       cost float
     )`);
+    // Truncate so Dijkstra sees exactly 3 edges and computes the deterministic optimal cost
+    await execSQL("TRUNCATE test_routing RESTART IDENTITY");
     await execSQL(
       "INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)"
     );
 
+    // Optimal path 1→2→3 costs 3.0 (vs direct 1→3 at 5.0); verify exact aggregate cost
     const path = await execSQL(
-      "SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)"
+      "SELECT sum(cost)::numeric(4,1)::text FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false) WHERE edge != -1"
     );
-    if (!path.success || path.output.trim() === "") {
+    if (!path.success || path.output.trim() !== "3.0") {
       return {
         name: "pgRouting - Shortest path",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Dijkstra shortest path failed",
+        error: `Expected Dijkstra cost 3.0 (1→2→3), got: '${path.output.trim()}'`,
       };
     }
 
@@ -1435,6 +1443,9 @@ async function testBtreeGistExclusion(): Promise<TestResult> {
       };
     }
 
+    // Truncate so [1,10) insert always succeeds and [5,15) is blocked by the constraint,
+    // not by a pre-existing row that happens to overlap from a previous run
+    await execSQL("TRUNCATE test_exclusion RESTART IDENTITY");
     await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(1, 10))");
     const conflict = await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(5, 15))");
 
@@ -1585,13 +1596,15 @@ async function testPgPartmanPartitioning(): Promise<TestResult> {
 
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE");
-    await execSQL(`CREATE TABLE IF NOT EXISTS test_partman (
+    // Drop parent CASCADE (removes partition children too); CREATE fresh for clean create_parent call
+    await execSQL("DROP TABLE IF EXISTS test_partman CASCADE");
+    await execSQL(`CREATE TABLE test_partman (
       id serial,
       created_at timestamp NOT NULL DEFAULT now(),
       data text
     ) PARTITION BY RANGE (created_at)`);
 
-    // Clean up existing config
+    // Clean up any stale partman config (should be none after DROP CASCADE, but be safe)
     await execSQL("DELETE FROM part_config WHERE parent_table = 'public.test_partman'");
 
     // Ensure pgsodium is created first and trigger disabled (pg_partman CASCADE dependency)

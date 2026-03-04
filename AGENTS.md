@@ -198,6 +198,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **INSERT Idempotency**: Tests using `CREATE TABLE IF NOT EXISTS` + unconditional `INSERT` produce wrong counts on `--no-cleanup` container reuse. ALWAYS add `TRUNCATE tablename RESTART IDENTITY` before INSERTs when the test asserts exact row counts or id values.
 
+**Custom AM Index Contamination**: For custom index AMs (PGroonga, RUM), `TRUNCATE` alone does NOT reliably clear the AM's external storage (Groonga files for PGroonga; positional posting data for RUM). Always `DROP INDEX IF EXISTS` BEFORE `TRUNCATE` when the test asserts exact result counts. Pattern: DROP INDEX → TRUNCATE → INSERT → CREATE INDEX (unconditional, no IF NOT EXISTS). vectorscale (DiskANN) uses this correctly as a reference.
+
 **psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
 
 **precreatedExtensions list**: The 13 extensions created at initdb (`01-extensions.sql` + `01b-pg_cron.sh`) CANNOT be derived from the manifest — `runtime.defaultEnable` covers preload libs only (4 entries). Update the hardcoded list in `test-image-lib.ts` whenever `01-extensions.sql` changes (single source of truth — `test-image.ts` imports from lib).

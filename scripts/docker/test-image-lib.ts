@@ -1629,7 +1629,7 @@ export async function testBtreeGistExclusion(containerName: string): Promise<Tes
 }
 
 /**
- * Test: Integration - http GET/POST
+ * Test: Integration - http GET request
  */
 export async function testHttpRequests(containerName: string): Promise<TestResult> {
   const startTime = Date.now();
@@ -1637,7 +1637,9 @@ export async function testHttpRequests(containerName: string): Promise<TestResul
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS http CASCADE", containerName);
 
-    // GET request
+    // GET request — verifies the extension is installed and functional.
+    // POST is not tested; network/service failures are treated as pass to avoid
+    // false negatives in CI environments with restricted egress.
     const getResult = await execSQL(
       "SELECT status FROM http_get('https://httpbin.org/status/200')",
       containerName
@@ -1647,7 +1649,7 @@ export async function testHttpRequests(containerName: string): Promise<TestResul
     // success: false — treat gracefully to avoid false negatives from environment restrictions.
     if (!getResult.success) {
       return {
-        name: "http - GET/POST requests",
+        name: "http - GET request",
         passed: true,
         duration: Date.now() - startTime,
       };
@@ -1656,7 +1658,7 @@ export async function testHttpRequests(containerName: string): Promise<TestResul
     // Rate limiting or service unavailability from httpbin.org is not an extension failure
     if (getResult.output.trim() === "503" || getResult.output.trim() === "429") {
       return {
-        name: "http - GET/POST requests",
+        name: "http - GET request",
         passed: true,
         duration: Date.now() - startTime,
       };
@@ -1664,7 +1666,7 @@ export async function testHttpRequests(containerName: string): Promise<TestResul
 
     if (getResult.output.trim() !== "200") {
       return {
-        name: "http - GET/POST requests",
+        name: "http - GET request",
         passed: false,
         duration: Date.now() - startTime,
         error: `HTTP GET returned unexpected status: ${getResult.output.trim()}`,
@@ -1672,13 +1674,13 @@ export async function testHttpRequests(containerName: string): Promise<TestResul
     }
 
     return {
-      name: "http - GET/POST requests",
+      name: "http - GET request",
       passed: true,
       duration: Date.now() - startTime,
     };
   } catch (err) {
     return {
-      name: "http - GET/POST requests",
+      name: "http - GET request",
       passed: false,
       duration: Date.now() - startTime,
       error: getErrorMessage(err),
@@ -1718,6 +1720,7 @@ export async function testPlpgsqlTriggers(containerName: string): Promise<TestRe
     }
 
     await execSQL("DROP TRIGGER IF EXISTS test_trigger ON test_trigger_table", containerName);
+    await execSQL("TRUNCATE test_trigger_table RESTART IDENTITY", containerName);
     await execSQL(
       "CREATE TRIGGER test_trigger BEFORE INSERT ON test_trigger_table FOR EACH ROW EXECUTE FUNCTION test_trigger_func()",
       containerName
@@ -2085,6 +2088,7 @@ export async function testPgSafeupdateProtection(containerName: string): Promise
       "CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)",
       containerName
     );
+    await execSQL("TRUNCATE test_safeupdate RESTART IDENTITY", containerName);
     await execSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)", containerName);
 
     // Attempt UPDATE without WHERE (should be blocked)
@@ -2214,13 +2218,17 @@ export async function testPgroongaFullText(containerName: string): Promise<TestR
       "CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)",
       containerName
     );
+    // DROP INDEX before TRUNCATE: PGroonga uses external Groonga storage — TRUNCATE alone
+    // does not reliably clear PGroonga's index. Stale Groonga entries would inflate count
+    // past 2, breaking the exact-count assertion on --no-cleanup container reuse.
+    await execSQL("DROP INDEX IF EXISTS test_pgroonga_idx", containerName);
     await execSQL("TRUNCATE test_pgroonga RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')",
       containerName
     );
     await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_pgroonga_idx ON test_pgroonga USING pgroonga (content)",
+      "CREATE INDEX test_pgroonga_idx ON test_pgroonga USING pgroonga (content)",
       containerName
     );
 
@@ -2266,7 +2274,10 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       "CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)",
       containerName
     );
-    // Truncate so count=2 assertion holds on container reuse
+    // DROP INDEX before TRUNCATE: RUM is a custom index AM (GIN fork with positional storage).
+    // Relying on TRUNCATE alone to clear the RUM index risks stale entries inflating count
+    // past 2, breaking the exact-count assertion on --no-cleanup container reuse.
+    await execSQL("DROP INDEX IF EXISTS test_rum_idx", containerName);
     await execSQL("TRUNCATE test_rum RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))",
@@ -2277,7 +2288,7 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       containerName
     );
     await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)",
+      "CREATE INDEX test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)",
       containerName
     );
 
@@ -2528,6 +2539,9 @@ export async function testTimescaledbHypertables(containerName: string): Promise
         error: "Failed to create hypertable",
       };
     }
+
+    // TRUNCATE drops all chunks and resets state — prevents ~840-row accumulation per reuse
+    await execSQL("TRUNCATE test_timescale", containerName);
 
     const insert = await execSQL(
       `

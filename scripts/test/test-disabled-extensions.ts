@@ -21,7 +21,7 @@ import {
   checkDockerDaemon,
   dockerCleanup,
   ensureImageAvailable,
-  waitForPostgres,
+  waitForPostgresStable,
 } from "../utils/docker";
 import { MANIFEST_PATH, type Manifest } from "../docker/test-image-lib";
 import { error, info, success } from "../utils/logger.ts";
@@ -370,7 +370,7 @@ async function test5(): Promise<boolean> {
 
     // Wait for PostgreSQL to be ready
     try {
-      await waitForPostgres({
+      await waitForPostgresStable({
         host: "localhost",
         port: 5432,
         user: "postgres",

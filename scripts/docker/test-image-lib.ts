@@ -1305,7 +1305,9 @@ export async function testVectorscaleDiskann(containerName: string): Promise<Tes
       };
     }
 
-    // Force DiskANN index usage: SET + query in one session (SET does not persist across execSQL calls)
+    // Force DiskANN index usage: SET + query in one session (SET does not persist across execSQL calls).
+    // Query vector [1,1,1] is equidistant from all 3 stored vectors ([1,0,0], [0,1,0], [0,0,1])
+    // at L2 distance sqrt(2) each — any id is a correct nearest neighbour, so we assert non-empty.
     const search = await execSQL(
       "SET enable_seqscan = OFF; SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1",
       containerName
@@ -2601,25 +2603,17 @@ export async function testPgHashidsEncoding(containerName: string): Promise<Test
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE", containerName);
 
-    const encode = await execSQL("SELECT id_encode(12345)", containerName);
-    if (!encode.success || encode.output.trim() === "") {
+    // CTE round-trip: encode then decode in a single session — avoids runtime SQL interpolation
+    const roundtrip = await execSQL(
+      "WITH encoded AS (SELECT id_encode(12345) AS h) SELECT (id_decode(h))[1]::text FROM encoded",
+      containerName
+    );
+    if (!roundtrip.success || roundtrip.output.trim() !== "12345") {
       return {
         name: "pg_hashids - Encoding",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Failed to encode hashid",
-      };
-    }
-
-    const encodedValue = encode.output.trim();
-    const decode = await execSQL(`SELECT (id_decode('${encodedValue}'))[1]::text`, containerName);
-
-    if (!decode.success || decode.output.trim() !== "12345") {
-      return {
-        name: "pg_hashids - Encoding",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to decode hashid",
+        error: `Hashid encode/decode roundtrip failed (expected '12345', got '${roundtrip.output.trim()}')`,
       };
     }
 
@@ -2709,29 +2703,26 @@ export async function testPgJsonschemaValidation(containerName: string): Promise
  * Cleanup test tables and data
  */
 export async function cleanupTestData(containerName: string): Promise<void> {
-  const tables = [
-    "test_vectors",
-    "test_vectorscale",
-    "test_hll",
-    "test_wal2json_table",
-    "test_postgis",
-    "test_routing",
-    "test_exclusion", // btree_gist test (NOT test_btree_gist — that table is never created)
-    "test_trigger_table",
-    "test_partman",
-    "test_hypopg",
-    "test_safeupdate",
-    "test_trgm",
-    "test_pgroonga",
-    "test_rum",
-    "test_timescale",
-  ];
-
-  for (const table of tables) {
-    await execSQL(`DROP TABLE IF EXISTS ${table} CASCADE`, containerName);
+  // Dynamic discovery: find all public test_* tables and drop them.
+  // This self-maintains as tests are added/removed — no manual list to keep in sync.
+  // Partition children (test_partman_p*) are dropped automatically via CASCADE when
+  // the parent is dropped; IF EXISTS handles the no-op if already gone.
+  const discovered = await execSQL(
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test%' ORDER BY tablename",
+    containerName
+  );
+  if (discovered.success && discovered.output.trim() !== "") {
+    const tables = discovered.output
+      .trim()
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    for (const table of tables) {
+      await execSQL(`DROP TABLE IF EXISTS ${table} CASCADE`, containerName);
+    }
   }
 
-  // Cleanup pg_partman config
+  // Cleanup pg_partman config for any test_ tables
   await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'", containerName);
 
   // Cleanup pgmq queue (lives in pgmq schema, not dropped by DROP TABLE above)

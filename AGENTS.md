@@ -198,7 +198,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **INSERT Idempotency**: Tests using `CREATE TABLE IF NOT EXISTS` + unconditional `INSERT` produce wrong counts on `--no-cleanup` container reuse. ALWAYS add `TRUNCATE tablename RESTART IDENTITY` before INSERTs when the test asserts exact row counts or id values.
 
-**Custom AM Index Contamination**: For custom index AMs (PGroonga, RUM), `TRUNCATE` alone does NOT reliably clear the AM's external storage (Groonga files for PGroonga; positional posting data for RUM). Always `DROP INDEX IF EXISTS` BEFORE `TRUNCATE` when the test asserts exact result counts. Pattern: DROP INDEX → TRUNCATE → INSERT → CREATE INDEX (unconditional, no IF NOT EXISTS). vectorscale (DiskANN) uses this correctly as a reference.
+**Custom AM Index Contamination**: For custom index AMs (PGroonga), `TRUNCATE` alone does NOT reliably clear the AM's external storage (Groonga files). The non-negotiable requirements are: (1) `DROP INDEX IF EXISTS` must occur to purge external storage, (2) `CREATE INDEX` must be unconditional (no `IF NOT EXISTS`), (3) `CREATE INDEX` must happen AFTER all INSERTs. The ORDER of DROP INDEX relative to TRUNCATE is flexible — both `DROP → TRUNCATE → INSERT → CREATE` and `TRUNCATE → DROP → INSERT → CREATE` are correct; what breaks things is `CREATE INDEX IF NOT EXISTS` after TRUNCATE (skips rebuild, stale external data accumulates). RUM uses standard PostgreSQL AM pages (no external storage); the same pattern is applied for consistency.
 
 **psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
 

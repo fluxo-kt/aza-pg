@@ -106,7 +106,7 @@ LOCAL_DEV=$(git rev-parse refs/heads/dev 2>/dev/null) || \
   { echo "ABORT: Local 'dev' branch not found. Run: git fetch origin && git checkout -t origin/dev"; exit 1; }
 REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
 if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
-  if git merge-base --is-ancestor origin/dev dev 2>/dev/null; then
+  if git merge-base --is-ancestor origin/dev refs/heads/dev 2>/dev/null; then
     # local dev has commits not yet pushed (local AHEAD of remote) — normal
     echo "⚠️  INFO: Local dev is AHEAD of origin/dev (unpushed commits). Proceeding."
   else
@@ -114,7 +114,7 @@ if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
     echo "🚨 ABORT: Local dev is BEHIND or diverged from origin/dev — you may be missing commits!"
     echo "   If BEHIND (no local-only commits): git checkout dev && git pull --ff-only && git checkout $BRANCH"
     echo "   If DIVERGED (both sides have unique commits): investigate before proceeding — do NOT rebase blindly"
-    echo "   Verify: git log --oneline dev...origin/dev"
+    echo "   Verify: git log --oneline refs/heads/dev...origin/dev"
     exit 1
   fi
 fi

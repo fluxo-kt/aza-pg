@@ -12,7 +12,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Changed
 
-- **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit to latest upstream `main` (`7c8603f` → `cbe74b5`) for the PG18 build, pulling current JSON Schema validation fixes from Supabase's maintained head
+- **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit (`7c8603f` → `cbe74b5`) to align with upstream 0.3.4 release-prep commits (Cargo/metadata/version/release automation updates). In this commit range, no `src/` or SQL API files changed.
 
 ### Development
 

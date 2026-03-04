@@ -112,7 +112,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
-For EACH extension to update, check upstream for breaking changes and new features:
+For EACH extension to update, inspect upstream delta before writing tests or changelog text:
 
 ```bash
 # Method 1: GitHub releases
@@ -123,7 +123,18 @@ curl -s https://raw.githubusercontent.com/OWNER/REPO/NEW_TAG/CHANGELOG.md | head
 
 # Method 3: Compare tags
 curl -s https://api.github.com/repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG | jq '.commits[].commit.message'
+
+# Method 4 (MANDATORY for git-ref updates): inspect commit range and touched paths
+git clone https://github.com/OWNER/REPO.git /tmp/EXT-REPO
+cd /tmp/EXT-REPO
+git log --oneline OLD_REF..NEW_REF
+git diff --name-status OLD_REF..NEW_REF
 ```
+
+**MANDATORY evidence discipline**:
+- Do not claim "bug fixes", "schema fixes", or "new features" unless the commit range proves it
+- For git-ref bumps, summarize what changed by path class (`src/`, `sql/`, docs/CI/release scripts)
+- If only CI/docs/release metadata changed, say exactly that in CHANGELOG (no runtime-claim inflation)
 
 **Document findings** — you'll need this for:
 - Writing new tests (Phase 6)
@@ -808,6 +819,9 @@ After every update round, perform a mandatory self-reflection before closing out
 11. **Was changelog gating enforced?** If any image-affecting files changed, verify `CHANGELOG.md`
     was updated in the same round with user-facing entries (or explicitly document why no user-facing
     impact exists).
+12. **Are changelog claims evidence-backed?** Cross-check each changelog statement against actual
+    upstream diff evidence (release notes, compare output, commit/file diffs). Remove any claim that
+    cannot be tied to concrete upstream changes.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

@@ -100,21 +100,60 @@ export async function startContainer(image: string, containerName: string): Prom
 }
 
 /**
- * Wait for PostgreSQL to be ready
+ * Wait for PostgreSQL to be ready and stable.
+ *
+ * IMPORTANT: pg_isready returns true during initdb, but PostgreSQL restarts after
+ * initdb completes. A single poll creates a race condition where tests connect during
+ * the shutdown/restart window. We require N consecutive successful SQL queries to
+ * confirm the server is stable before declaring it ready.
  */
 export async function waitForPostgres(
   containerName: string,
-  timeoutSeconds: number = 60
+  timeoutSeconds: number = 90
 ): Promise<boolean> {
   const startTime = Date.now();
   const timeoutMs = timeoutSeconds * 1000;
+  const requiredSuccesses = 3;
 
+  // Phase 1: Wait for basic pg_isready
   while (Date.now() - startTime < timeoutMs) {
     const result = await dockerRun(["exec", containerName, "pg_isready", "-U", "postgres"]);
+    if (result.success) break;
+    await Bun.sleep(2000);
+  }
 
-    if (result.success) {
-      return true;
+  if (Date.now() - startTime >= timeoutMs) return false;
+
+  // Allow initdb restart to complete before stability polling
+  await Bun.sleep(3000);
+
+  // Phase 2: Require N consecutive successful queries to confirm stability
+  while (Date.now() - startTime < timeoutMs) {
+    let consecutiveSuccesses = 0;
+
+    for (let i = 0; i < requiredSuccesses; i++) {
+      const result = await dockerRun([
+        "exec",
+        containerName,
+        "psql",
+        "-U",
+        "postgres",
+        "-c",
+        "SELECT 1",
+        "-t",
+      ]);
+
+      if (result.success) {
+        consecutiveSuccesses++;
+      } else {
+        consecutiveSuccesses = 0;
+        break;
+      }
+
+      if (i < requiredSuccesses - 1) await Bun.sleep(1000);
     }
+
+    if (consecutiveSuccesses >= requiredSuccesses) return true;
 
     await Bun.sleep(2000);
   }
@@ -1183,11 +1222,12 @@ export async function testPgvectorComprehensive(containerName: string): Promise<
   const startTime = Date.now();
 
   try {
-    // Create table and insert vectors
+    // Create table and truncate to ensure exact id=1 assertion holds on container reuse
     await execSQL(
       "CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))",
       containerName
     );
+    await execSQL("TRUNCATE test_vectors RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')",
       containerName
@@ -1207,17 +1247,18 @@ export async function testPgvectorComprehensive(containerName: string): Promise<
       };
     }
 
-    // Force HNSW index usage: SET + query in one session (SET does not persist across execSQL calls)
+    // Force HNSW index: SET + query in one session (SET does not persist across execSQL calls)
+    // [1,2,3] is nearest to query [3,1,2] by L2 — nearest id must be 1
     const search = await execSQL(
-      "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2",
+      "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1",
       containerName
     );
-    if (!search.success || search.output.trim() === "") {
+    if (!search.success || search.output.trim() !== "1") {
       return {
         name: "pgvector - HNSW index and similarity search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Similarity search failed",
+        error: `Expected nearest vector id=1, got: '${search.output.trim()}'`,
       };
     }
 
@@ -2167,6 +2208,7 @@ export async function testPgroongaFullText(containerName: string): Promise<TestR
       "CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)",
       containerName
     );
+    await execSQL("TRUNCATE test_pgroonga RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')",
       containerName

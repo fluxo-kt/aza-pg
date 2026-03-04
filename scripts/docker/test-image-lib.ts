@@ -1248,13 +1248,16 @@ export async function testVectorscaleDiskann(containerName: string): Promise<Tes
       "CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))",
       containerName
     );
+    // Truncate and rebuild index so DiskANN always covers exactly the 3 fresh rows
+    await execSQL("TRUNCATE test_vectorscale RESTART IDENTITY", containerName);
+    await execSQL("DROP INDEX IF EXISTS test_vectorscale_diskann_idx", containerName);
     await execSQL(
       "INSERT INTO test_vectorscale (vec) VALUES ('[1,0,0]'), ('[0,1,0]'), ('[0,0,1]')",
       containerName
     );
 
     const index = await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)",
+      "CREATE INDEX test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)",
       containerName
     );
     if (!index.success) {
@@ -1307,6 +1310,8 @@ export async function testHllCardinality(containerName: string): Promise<TestRes
       "CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)",
       containerName
     );
+    // Truncate so INSERT always produces id=1 and UPDATE targets the correct fresh row
+    await execSQL("TRUNCATE test_hll RESTART IDENTITY", containerName);
     await execSQL("INSERT INTO test_hll (users) VALUES (hll_empty())", containerName);
     await execSQL(
       "UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1",
@@ -1492,21 +1497,24 @@ export async function testPgroutingShortestPath(containerName: string): Promise<
     )`,
       containerName
     );
+    // Truncate so Dijkstra sees exactly 3 edges and computes the deterministic optimal cost
+    await execSQL("TRUNCATE test_routing RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)",
       containerName
     );
 
+    // Optimal path 1→2→3 costs 3.0 (vs direct 1→3 at 5.0); verify exact aggregate cost
     const path = await execSQL(
-      "SELECT * FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false)",
+      "SELECT sum(cost)::numeric(4,1)::text FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false) WHERE edge != -1",
       containerName
     );
-    if (!path.success || path.output.trim() === "") {
+    if (!path.success || path.output.trim() !== "3.0") {
       return {
         name: "pgRouting - Shortest path",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Dijkstra shortest path failed",
+        error: `Expected Dijkstra cost 3.0 (1→2→3), got: '${path.output.trim()}'`,
       };
     }
 
@@ -1551,6 +1559,8 @@ export async function testBtreeGistExclusion(containerName: string): Promise<Tes
       };
     }
 
+    // Truncate so [1,10) insert always succeeds and [5,15) is blocked by the constraint
+    await execSQL("TRUNCATE test_exclusion RESTART IDENTITY", containerName);
     await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(1, 10))", containerName);
     const conflict = await execSQL(
       "INSERT INTO test_exclusion (period) VALUES (int4range(5, 15))",
@@ -1714,8 +1724,10 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
 
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE", containerName);
+    // Drop parent CASCADE (removes partition children too); CREATE fresh for clean create_parent call
+    await execSQL("DROP TABLE IF EXISTS test_partman CASCADE", containerName);
     await execSQL(
-      `CREATE TABLE IF NOT EXISTS test_partman (
+      `CREATE TABLE test_partman (
       id serial,
       created_at timestamp NOT NULL DEFAULT now(),
       data text
@@ -1723,7 +1735,7 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
       containerName
     );
 
-    // Clean up existing config
+    // Clean up any stale partman config (should be none after DROP CASCADE, but be safe)
     await execSQL(
       "DELETE FROM part_config WHERE parent_table = 'public.test_partman'",
       containerName

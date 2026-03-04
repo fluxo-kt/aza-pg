@@ -263,8 +263,15 @@ git show refs/heads/dev:CHANGELOG.md
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
+8. **⚠️ Regression expected outputs**: For every extension version change in the manifest diff, check `tests/regression/extensions/EXTNAME/expected/basic.out` for hard-coded version strings. If stale, note which files need updating — you will apply them in Phase 4.4.
 
-Write down the specific CHANGELOG edits needed (which lines to change, add, or remove). You will apply them in Phase 4.4 AFTER the squash, at which point the CHANGELOG in the working tree will be dev's version.
+   ```bash
+   # Show all version strings hard-coded in regression expected outputs
+   command grep -n "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
+   # Cross-reference any hit against the manifest diff from Phase 1.2 to find staleness
+   ```
+
+Write down the specific CHANGELOG edits AND regression expected output updates needed. You will apply them all in Phase 4.4 AFTER the squash.
 
 ---
 
@@ -407,9 +414,11 @@ bun install              # Restore release branch's node_modules
 echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 ```
 
-### 4.4 — Apply CHANGELOG optimisations
+### 4.4 — Apply CHANGELOG optimisations and regression expected output updates
 
 Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there.
+
+Also apply any regression expected output updates identified in Phase 2 audit rule 8 — update `tests/regression/extensions/EXTNAME/expected/basic.out` files with the new version strings.
 
 After editing:
 

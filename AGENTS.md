@@ -84,7 +84,7 @@ bun run generate            # Regenerate all files from manifest
 - **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
 - **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
-- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild
+- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild → **also update `tests/regression/extensions/EXTNAME/expected/basic.out`** for any extension whose version string is hard-coded in that file (e.g., `extname | 1.2.3` lines); stale expected outputs cause nightly regression failures
 - **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)

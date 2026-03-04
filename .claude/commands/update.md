@@ -78,7 +78,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
      dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
      apt-get update -qq 2>/dev/null &&
      apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json
-   " 2>&1 | grep -E "percona-pg|percona-postgresql"
+   " 2>&1 | command grep -E "percona-pg|percona-postgresql"
    ```
    If a version is gone, update `perconaVersion` in `manifest-data.ts` to the new version
    and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
@@ -243,7 +243,7 @@ SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
 # - baseImageSha: "sha256:..."
 
 # Verify format (baseImageSha is just the sha256:... digest, no image name prefix)
-grep 'baseImageSha:' scripts/extensions/manifest-data.ts
+command grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
 
 **⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
@@ -255,7 +255,7 @@ PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the s
 
 ### Dependency Graph
 
-**Extract from manifest**: `grep 'dependencies:' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Extract from manifest**: `command grep 'dependencies:' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
 Extensions with `dependencies: ["extension1", "extension2"]` field must be updated AFTER their dependencies.
 
@@ -292,7 +292,7 @@ bun run test:all  # Verify runtime compatibility
 
 ### PGDG Extensions
 
-**Identify**: `grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
 **⚠️ CRITICAL**: When switching between PGDG and source build, update **4 files**:
 1. `scripts/extensions/manifest-data.ts`: Change `install_via`, add/remove `pgdgVersion`, add/remove `build`
@@ -327,7 +327,7 @@ Update BOTH `source.tag` AND `pgdgVersion`:
 
 ### Percona Extensions
 
-**Identify**: `grep 'install_via: "percona"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "percona"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `perconaVersion`:
 
@@ -346,7 +346,7 @@ Update BOTH `source.tag` AND `perconaVersion`:
 
 ### Timescale Extensions
 
-**Identify**: `grep 'install_via: "timescale"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "timescale"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `timescaleVersion`:
 
@@ -364,7 +364,7 @@ Update BOTH `source.tag` AND `timescaleVersion`:
 
 ### GitHub Release Extensions
 
-**Identify**: `grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 
@@ -389,7 +389,7 @@ gh release view TAG --repo OWNER/REPO --json assets --jq '.assets[].name'
 ### Source-Built Extensions
 
 **Identify**: Extensions with `build:` field (no `install_via`, or `install_via` with `build:`)
-- `grep -B 5 'build:' scripts/extensions/manifest-data.ts | grep 'name:'`
+- `command grep -B 5 'build:' scripts/extensions/manifest-data.ts | command grep 'name:'`
 
 Update ONLY `source.tag`:
 
@@ -404,7 +404,7 @@ Update ONLY `source.tag`:
 
 ### Builtin Extensions
 
-**Identify**: `grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
 
 **No manual updates required** - Builtin extensions are part of PostgreSQL core and update automatically with the base image (Phase 3).
 
@@ -414,7 +414,7 @@ These only need updates when PostgreSQL version changes.
 
 **IMPORTANT**: When updating any extension, check for local patches/compatibility layers in `docker/postgres/`:
 - Search for files: `find docker/postgres -name "*EXTENSION_NAME*patch*" -o -name "*EXTENSION_NAME*stub*" -o -name "*EXTENSION_NAME*compat*"`
-- Review init scripts: `grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
+- Review init scripts: `command grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
 - Verify patches still apply with new version or if upstream fixed them
 
 ### 5.1: pgflow (6+ Files to Update)
@@ -454,7 +454,7 @@ bun run test:pgflow
 
 ### 5.2: git-ref Extensions (Manual Review Required)
 
-**Identify**: `grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Identify**: `command grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
 These use commit SHAs (no version tags). Update requires manual review:
 
@@ -473,7 +473,7 @@ gh api repos/OWNER/REPO/commits/COMMIT_REF/status
 
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
 
-**Identify**: `grep 'type: "cargo-pgrx"' scripts/extensions/manifest-data.ts -B 5 | grep 'name:'`
+**Identify**: `command grep 'type: "cargo-pgrx"' scripts/extensions/manifest-data.ts -B 5 | command grep 'name:'`
 
 These extensions use Rust pgrx framework for building PostgreSQL extensions in Rust.
 
@@ -498,7 +498,7 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 
 ### 5.5: Updating Disabled Extensions
 
-**Identify**: `grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Identify**: `command grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
 **Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
 
@@ -754,7 +754,7 @@ After every update round, perform a mandatory self-reflection before closing out
      curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
      dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
      apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
-   " 2>&1 | grep "percona-pg-stat-monitor"
+   " 2>&1 | command grep "percona-pg-stat-monitor"
    ```
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
@@ -853,7 +853,7 @@ bun run test:all
 | Source | Command |
 |--------|---------|
 | **GitHub latest release** | `curl -s https://api.github.com/repos/OWNER/REPO/releases/latest \| jq -r .tag_name` |
-| **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| grep -v '{}' \| tail -5` |
+| **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| command grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Timescale apt** | `docker run --rm timescale/timescaledb:latest-pg18 bash -c "apt-cache madison postgresql-18-timescaledb"` |

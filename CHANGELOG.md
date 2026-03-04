@@ -14,6 +14,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - GH Actions SHA pins updated (docker/login-action, docker/setup-qemu-action → Node.js 24; claude-code-action minor bumps)
 - Size regression checker: fixed misleading "within expected range" message for tolerance zone; tri-state result signal; updated pg_jsonschema baseline
+- Size regression checker: fixed false-negative signals (null/.so-not-found and below-min now emit warn, not success); removed dead postgis entry from size-baselines.json (disabled extension, wrong .so filename); fixed SIZE_BASELINES code-variable reference in failure message to actual file path
+- /update skill: fixed 15 bare `grep` calls to `command grep` (RTK proxy guardrail 15)
 
 ---
 

@@ -14,11 +14,6 @@
     "max": 0.3,
     "description": "pgvector - vector similarity search (optimized build)"
   },
-  "postgis": {
-    "min": 4.0,
-    "max": 6.0,
-    "description": "PostGIS spatial database extension"
-  },
   "pgroonga": {
     "min": 0.25,
     "max": 0.7,

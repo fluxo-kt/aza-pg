@@ -153,7 +153,8 @@ async function checkExtensionSize(
   if (size === null) {
     return {
       passed: true,
-      message: `${extensionName}: .so file not found (may not produce .so or disabled)`,
+      warn: true,
+      message: `${extensionName}: .so file not found in expected locations — broken build or non-standard path? Remove from size-baselines.json if intentional`,
     };
   }
 
@@ -167,7 +168,8 @@ async function checkExtensionSize(
   } else if (size < baseline.min) {
     return {
       passed: true,
-      message: `${extensionName}: ${size.toFixed(2)}MB (below baseline, possible optimization or build change)`,
+      warn: true,
+      message: `${extensionName}: ${size.toFixed(2)}MB (below baseline min ${baseline.min.toFixed(1)}MB — possible stripped or broken build; update baseline if intentional)`,
     };
   } else if (size <= baseline.max) {
     return {
@@ -287,7 +289,7 @@ async function main() {
     info("  - Dependency updates that increased binary size");
     info("  - New features or functionality added");
     info("  - Build configuration changes");
-    info("  - Update SIZE_BASELINES if intentional");
+    info("  - Update scripts/config/size-baselines.json if intentional");
   } else if (advisory.length > 0) {
     warning(
       `${advisory.length} extension(s) above baseline max but within tolerance — update size-baselines.json if this is the new normal`

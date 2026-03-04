@@ -459,7 +459,7 @@ export async function testEnabledExtensions(
     const failed: string[] = [];
 
     for (const ext of enabledExtensions) {
-      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name};`, containerName);
+      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS "${ext.name}";`, containerName);
 
       if (!result.success) {
         failed.push(`${ext.name}: ${result.output.slice(0, 100)}`);
@@ -590,7 +590,7 @@ export async function testDisabledExtensions(
     const unexpectedlyAvailable: string[] = [];
 
     for (const ext of disabledExtensions) {
-      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name};`, containerName);
+      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS "${ext.name}";`, containerName);
 
       // If it succeeds, the extension is unexpectedly available
       if (result.success) {
@@ -1166,7 +1166,8 @@ export async function testPgvectorComprehensive(containerName: string): Promise<
       };
     }
 
-    // Similarity search
+    // Force HNSW index usage (planner uses SeqScan on small tables without this)
+    await execSQL("SET enable_seqscan = OFF", containerName);
     const search = await execSQL(
       "SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2",
       containerName
@@ -1355,6 +1356,11 @@ export async function testWal2jsonReplication(containerName: string): Promise<Te
       duration: Date.now() - startTime,
     };
   } catch (err) {
+    // Best-effort cleanup — slot may be open if error fired after slot creation
+    await execSQL(
+      "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'",
+      containerName
+    ).catch(() => {});
     return {
       name: "wal2json - Logical replication",
       passed: false,
@@ -1662,11 +1668,13 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
       containerName
     );
 
-    // Ensure pgsodium is created first and trigger disabled (pg_partman CASCADE dependency)
+    // pgsodium's DDL event trigger fires on pg_partman child table creation and can
+    // interfere with mask metadata. Pre-load pgsodium and disable the trigger to
+    // prevent spurious failures — this is NOT a pg_partman dependency.
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE", containerName);
     await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName).catch(
       () => {
-        /* Ignore if trigger doesn't exist */
+        /* Ignore if trigger doesn't exist (pgsodium version may differ) */
       }
     );
 
@@ -1938,7 +1946,7 @@ export async function testPgSafeupdateProtection(containerName: string): Promise
 
     if (updateResult.success) {
       return {
-        name: "pg_safeupdate - UPDATE protection",
+        name: "pg_safeupdate - UPDATE/DELETE protection",
         passed: false,
         duration: Date.now() - startTime,
         error: "pg_safeupdate should block UPDATE without WHERE",
@@ -1952,21 +1960,43 @@ export async function testPgSafeupdateProtection(containerName: string): Promise
     );
     if (!safeUpdate.success) {
       return {
-        name: "pg_safeupdate - UPDATE protection",
+        name: "pg_safeupdate - UPDATE/DELETE protection",
         passed: false,
         duration: Date.now() - startTime,
         error: "UPDATE with WHERE should succeed",
       };
     }
 
+    // Attempt DELETE without WHERE (should also be blocked)
+    const deleteResult = await execSQL("DELETE FROM test_safeupdate", containerName);
+    if (deleteResult.success) {
+      return {
+        name: "pg_safeupdate - UPDATE/DELETE protection",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "pg_safeupdate should block DELETE without WHERE",
+      };
+    }
+
+    // Verify DELETE with WHERE works
+    const safeDelete = await execSQL("DELETE FROM test_safeupdate WHERE id = 1", containerName);
+    if (!safeDelete.success) {
+      return {
+        name: "pg_safeupdate - UPDATE/DELETE protection",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: "DELETE with WHERE should succeed",
+      };
+    }
+
     return {
-      name: "pg_safeupdate - UPDATE protection",
+      name: "pg_safeupdate - UPDATE/DELETE protection",
       passed: true,
       duration: Date.now() - startTime,
     };
   } catch (err) {
     return {
-      name: "pg_safeupdate - UPDATE protection",
+      name: "pg_safeupdate - UPDATE/DELETE protection",
       passed: false,
       duration: Date.now() - startTime,
       error: getErrorMessage(err),
@@ -2459,9 +2489,7 @@ export async function cleanupTestData(containerName: string): Promise<void> {
     "test_wal2json_table",
     "test_postgis",
     "test_routing",
-    "test_btree_gin",
-    "test_btree_gist",
-    "test_exclusion",
+    "test_exclusion", // btree_gist test (NOT test_btree_gist — that table is never created)
     "test_trigger_table",
     "test_partman",
     "test_hypopg",
@@ -2479,6 +2507,11 @@ export async function cleanupTestData(containerName: string): Promise<void> {
 
   // Cleanup pg_partman config
   await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'", containerName);
+
+  // Cleanup pgmq queue (lives in pgmq schema, not dropped by DROP TABLE above)
+  await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName).catch(() => {
+    /* Ignore if pgmq not installed or queue does not exist */
+  });
 
   // Cleanup materialized views
   await execSQL("DROP MATERIALIZED VIEW IF EXISTS test_timescale_hourly CASCADE", containerName);

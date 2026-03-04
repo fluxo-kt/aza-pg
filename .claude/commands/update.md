@@ -237,7 +237,8 @@ docker run --rm postgres:18-trixie postgres --version  # check latest minor
 
 # Get latest base image SHA
 docker pull postgres:18.X-trixie
-SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
+SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}' | sed 's/.*@//')
+# ↑ strip "docker.io/library/postgres@" prefix — manifest needs just "sha256:XXXXX"
 
 # Update manifest-data.ts (search for MANIFEST_METADATA)
 # Change TWO fields:
@@ -441,22 +442,19 @@ bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
 # Step 3: Update npm packages in package.json
 bun update @pgflow/client @pgflow/dsl --latest
 
-# Step 4: Update Dockerfile.template (search for `COPY tests/fixtures/pgflow`)
-# Change: COPY tests/fixtures/pgflow/schema-vX.Y.Z.sql
+# Step 4: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
-# Step 5: Update 05-pgflow-init.sh (search for version in header comment and success message)
-
-# Step 6: Review and update ALL patches and compatibility layers
+# Step 5: Review and update ALL patches and compatibility layers
 # Check ALL pgflow patches for compatibility with new version:
 #   - docker/postgres/pgflow/security-patches.sql (SET search_path protection)
 #   - docker/postgres/docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh (Supabase compatibility)
 # Verify patches still apply or if upstream fixed them
 # Check if new version introduces breaking changes requiring new patches
 
-# Step 7: Delete old schema file
+# Step 6: Delete old schema file
 rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
-# Step 8: Regenerate and test
+# Step 7: Regenerate and test
 bun run generate
 bun run test:pgflow
 ```

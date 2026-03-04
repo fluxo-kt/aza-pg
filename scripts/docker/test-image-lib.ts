@@ -1907,6 +1907,10 @@ export async function testPgCronScheduling(containerName: string): Promise<TestR
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE", containerName);
 
+    // Pre-cleanup: remove any leftover test-job from a prior run
+    // (if prior run failed between schedule and unschedule, job persists)
+    await execSQL("SELECT cron.unschedule('test-job')", containerName).catch(() => {});
+
     const schedule = await execSQL(
       "SELECT cron.schedule('test-job', '* * * * *', 'SELECT 1')",
       containerName
@@ -2011,6 +2015,10 @@ export async function testPgmqQueue(containerName: string): Promise<TestResult> 
 
   try {
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE", containerName);
+
+    // Pre-cleanup: drop queue to eliminate stale messages from a prior failed run.
+    // pgmq.read is FIFO — stale messages cause msg_id mismatch assertions to fail.
+    await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName).catch(() => {});
 
     const create = await execSQL("SELECT pgmq.create('test_queue')", containerName);
     if (!create.success) {
@@ -2157,6 +2165,7 @@ export async function testPgTrgmSimilarity(containerName: string): Promise<TestR
       "CREATE TABLE IF NOT EXISTS test_trgm (id serial PRIMARY KEY, text_col text)",
       containerName
     );
+    await execSQL("TRUNCATE test_trgm RESTART IDENTITY", containerName);
     await execSQL(
       "INSERT INTO test_trgm (text_col) VALUES ('hello world'), ('hello universe'), ('goodbye world')",
       containerName

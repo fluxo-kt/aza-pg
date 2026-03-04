@@ -118,7 +118,6 @@ async function startContainer(image: string): Promise<boolean> {
  */
 async function waitForPostgres(timeoutSeconds: number = 90): Promise<boolean> {
   info(`Waiting for PostgreSQL to be ready (timeout: ${timeoutSeconds}s)...`);
-  info(`Waiting for PostgreSQL stability (3 consecutive successful queries)...`);
   const startTime = Date.now();
   const ok = await libWaitForPostgres(CONTAINER_NAME, timeoutSeconds);
   if (!ok) {

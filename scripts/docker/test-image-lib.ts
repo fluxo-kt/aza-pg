@@ -198,6 +198,17 @@ export async function fileExists(path: string, containerName: string): Promise<b
   return result.success;
 }
 
+/**
+ * Derive PostgreSQL major version from the running server.
+ * server_version_num: e.g. 180003 → major = floor(180003 / 10000) = 18
+ * Avoids hardcoding "18" in filesystem paths so tests stay correct across PG bumps.
+ */
+async function getPgMajorVersion(containerName: string): Promise<string> {
+  const result = await execSQL("SHOW server_version_num", containerName);
+  // Container is ready at this point — the fallback is unreachable in practice
+  return result.success ? String(Math.floor(parseInt(result.output.trim()) / 10000)) : "18";
+}
+
 // ============================================================================
 // FILESYSTEM VERIFICATION TESTS
 // ============================================================================
@@ -209,7 +220,11 @@ export async function testExtensionDirectoryStructure(containerName: string): Pr
   const startTime = Date.now();
 
   try {
-    const dirs = ["/usr/share/postgresql/18/extension", "/usr/lib/postgresql/18/lib"];
+    const pgMajor = await getPgMajorVersion(containerName);
+    const dirs = [
+      `/usr/share/postgresql/${pgMajor}/extension`,
+      `/usr/lib/postgresql/${pgMajor}/lib`,
+    ];
 
     const missing: string[] = [];
 
@@ -369,10 +384,11 @@ export async function testEnabledPgdgExtensionsPresent(
       };
     }
 
+    const pgMajor = await getPgMajorVersion(containerName);
     const missing: string[] = [];
 
     for (const ext of enabledPgdgExtensions) {
-      const controlFile = `/usr/share/postgresql/18/extension/${ext.name}.control`;
+      const controlFile = `/usr/share/postgresql/${pgMajor}/extension/${ext.name}.control`;
       const exists = await fileExists(controlFile, containerName);
 
       if (!exists) {
@@ -426,6 +442,7 @@ export async function testDisabledPgdgExtensionsNotPresent(
       };
     }
 
+    const pgMajor = await getPgMajorVersion(containerName);
     const unexpectedlyPresent: string[] = [];
 
     for (const ext of disabledPgdgExtensions) {
@@ -434,7 +451,7 @@ export async function testDisabledPgdgExtensionsNotPresent(
         continue;
       }
 
-      const controlFile = `/usr/share/postgresql/18/extension/${ext.name}.control`;
+      const controlFile = `/usr/share/postgresql/${pgMajor}/extension/${ext.name}.control`;
       const exists = await fileExists(controlFile, containerName);
 
       if (exists) {
@@ -995,13 +1012,7 @@ export async function testToolsPresent(
       };
     }
 
-    // Derive PG major version from the running server so .so paths stay correct
-    // across PG version bumps without any manual update.
-    // server_version_num: e.g. 180003 → major = floor(180003 / 10000) = 18
-    const pgVerResult = await execSQL("SHOW server_version_num", containerName);
-    const pgMajor = pgVerResult.success
-      ? String(Math.floor(parseInt(pgVerResult.output.trim()) / 10000))
-      : "18"; // fallback (container is ready at this point, so this branch is unreachable in practice)
+    const pgMajor = await getPgMajorVersion(containerName);
 
     // Keys MUST match manifest entry names (kind: "tool") exactly.
     // When adding a new tool to the manifest, add its binary path here.

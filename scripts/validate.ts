@@ -321,7 +321,7 @@ async function validate(
             return {
               name: "Unit Tests",
               command: ["bun", "test", ...discoveredTestFiles, ...legacyTestFiles],
-              description: `Unit tests (${discoveredTestFiles.length + legacyTestFiles.length} files, auto-discovered)`,
+              description: `Unit tests (${discoveredTestFiles.length} auto-discovered + ${legacyTestFiles.length} legacy = ${discoveredTestFiles.length + legacyTestFiles.length} files)`,
               required: true,
             };
           })(),

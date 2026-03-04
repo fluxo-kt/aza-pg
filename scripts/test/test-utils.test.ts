@@ -210,6 +210,11 @@ describe("GUC Formatting - PostgreSQL GUC Names", () => {
     expect(toPostgresGUCName("cronDatabaseName")).toBe("cron.database_name");
   });
 
+  test("TimescaleDB namespace is handled", () => {
+    expect(toPostgresGUCName("timescaledbTelemetryLevel")).toBe("timescaledb.telemetry_level");
+    expect(toPostgresGUCName("timescaledbMaxBackground")).toBe("timescaledb.max_background");
+  });
+
   test("Invalid GUC names throw errors", () => {
     // Names with invalid characters should throw
     expect(() => toPostgresGUCName("invalid-name-with-dashes")).toThrow();

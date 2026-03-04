@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit to latest upstream `main` (`7c8603f` → `cbe74b5`) for the PG18 build, pulling current JSON Schema validation fixes from Supabase's maintained head
+
 ### Development
 
 - Integration test assertions hardened (index usage forcing, CDC capture verification, chunk existence, config source checking); unit test infrastructure auto-discovery; GH Actions updated to Node.js 24 runners

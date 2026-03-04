@@ -40,6 +40,10 @@ The following vulnerabilities exist in upstream dependencies that we cannot dire
 - **Impact**: Potential memory corruption
 - **Status**: Awaiting upstream Debian fix
 
+## Resolved Vulnerabilities
+
+Vulnerabilities that have been actively mitigated in this image (may still appear in scanners due to base image layer scanning):
+
 ### gosu → su-exec replacement
 
 - **CVE-2025-68121** (CRITICAL), **CVE-2025-58183, CVE-2025-61726, CVE-2025-61728, CVE-2025-61729, CVE-2025-61730** (HIGH): Go stdlib vulnerabilities in gosu (compiled with Go 1.24.6; no upstream fix available)

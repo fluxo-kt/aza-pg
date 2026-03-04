@@ -20,9 +20,9 @@ DROP TABLE IF EXISTS regression_test_metrics CASCADE;
 CREATE TABLE regression_test_metrics (TIME TIMESTAMPTZ NOT NULL, device_id INTEGER, value DOUBLE PRECISION);
 
 
--- Create hypertable (returns table info - just verify it succeeds)
+-- Create hypertable (returns created=true on success)
 SELECT
-  hypertable_name
+  created
 FROM
   create_hypertable ('regression_test_metrics', 'time', if_not_exists => TRUE);
 

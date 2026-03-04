@@ -676,6 +676,9 @@ ANCHOR_COMMIT=$(git commit-tree "$TARGET"^{tree} \
 [[ -n "$ANCHOR_COMMIT" ]] || { echo "ABORT: git commit-tree failed — ANCHOR_COMMIT is empty."; exit 1; }
 
 git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only failed."; exit 1; }
+# The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
+# node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
+bun install
 git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
 echo "Anchor merge pushed. ✓"
 ```

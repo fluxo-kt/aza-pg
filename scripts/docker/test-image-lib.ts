@@ -2710,30 +2710,33 @@ export async function testPgJsonschemaValidation(containerName: string): Promise
  * Cleanup test tables and data
  */
 export async function cleanupTestData(containerName: string): Promise<void> {
-  // Dynamic discovery: find all public test_* tables and drop them.
-  // This self-maintains as tests are added/removed — no manual list to keep in sync.
-  // Partition children (test_partman_p*) are dropped automatically via CASCADE when
-  // the parent is dropped; IF EXISTS handles the no-op if already gone.
-  const discovered = await execSQL(
-    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test%' ORDER BY tablename",
+  // Server-side PL/pgSQL loop: one round-trip drops all public test_* tables using
+  // format('%I') for correct identifier quoting (handles any identifier, including
+  // those with spaces or special chars). Partition children (test_partman_p*) are
+  // removed automatically via CASCADE on the parent drop.
+  // Also drops test_trigger_func(): a trigger function left by testPlpgsqlTriggers
+  // that survives DROP TABLE CASCADE (functions are not dependents of the tables
+  // that reference them — they can be used by multiple triggers on different tables).
+  await execSQL(
+    `DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename LIKE 'test%'
+  LOOP
+    EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', t);
+  END LOOP;
+  DROP FUNCTION IF EXISTS test_trigger_func() CASCADE;
+END;$$`,
     containerName
   );
-  if (discovered.success && discovered.output.trim() !== "") {
-    const tables = discovered.output
-      .trim()
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    for (const table of tables) {
-      await execSQL(`DROP TABLE IF EXISTS ${table} CASCADE`, containerName);
-    }
-  }
 
-  // Cleanup pg_partman config for any test_ tables
+  // Cleanup pg_partman config for test_ tables (parent_table is a TEXT column, not a FK —
+  // not removed by DROP TABLE CASCADE above)
   await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'", containerName);
 
-  // Cleanup pgmq queue (lives in pgmq schema, not dropped by DROP TABLE above)
-  await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName).catch(() => {
-    /* Ignore if pgmq not installed or queue does not exist */
-  });
+  // Cleanup pgmq queue (lives in pgmq schema, not affected by table drops above)
+  // success: false is silently ignored if pgmq is not installed
+  await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName);
 }

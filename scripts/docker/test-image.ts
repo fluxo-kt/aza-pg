@@ -1138,16 +1138,17 @@ async function testPgvectorComprehensive(): Promise<TestResult> {
       };
     }
 
-    // Similarity search
+    // Force HNSW index: SET + query in one session (SET does not persist across execSQL calls)
+    // [1,2,3] is nearest to query [3,1,2] by L2 — nearest id must be 1
     const search = await execSQL(
-      "SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 2"
+      "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1"
     );
-    if (!search.success || search.output.trim() === "") {
+    if (!search.success || search.output.trim() !== "1") {
       return {
         name: "pgvector - HNSW index and similarity search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Similarity search failed",
+        error: `Expected nearest vector id=1, got: '${search.output.trim()}'`,
       };
     }
 
@@ -1901,15 +1902,16 @@ async function testPgTrgmSimilarity(): Promise<TestResult> {
       "CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)"
     );
 
+    // Force GIN index: SET + query in one session (SET does not persist across execSQL calls)
     const search = await execSQL(
-      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC"
+      "SET enable_seqscan = OFF; SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1"
     );
-    if (!search.success || search.output.trim() === "") {
+    if (!search.success || search.output.trim() !== "hello world") {
       return {
         name: "pg_trgm - Similarity search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "Similarity search failed",
+        error: `Expected 'hello world' as top similarity match, got: '${search.output.trim()}'`,
       };
     }
 

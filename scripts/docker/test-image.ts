@@ -1995,14 +1995,14 @@ async function testRumRankedSearch(): Promise<TestResult> {
     );
 
     const search = await execSQL(
-      "SELECT content FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')"
+      "SELECT count(*) FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')"
     );
-    if (!search.success || search.output.trim() === "") {
+    if (!search.success || parseInt(search.output.trim()) !== 2) {
       return {
         name: "rum - Ranked search",
         passed: false,
         duration: Date.now() - startTime,
-        error: "RUM ranked search failed",
+        error: `Expected 2 rows matching 'fox & dog', got: ${search.output.trim()}`,
       };
     }
 

@@ -53,11 +53,11 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
    ```bash
    # TypeScript test files — search ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
-   command grep -rn "0\.8\|2\.8\|0\.5" scripts/ | command grep -i "version\|include\|assert" | command grep -v ".bun/"
+   command grep -rn -E "0\.8|2\.8|0\.5" scripts/ | command grep -iE "version|include|assert" | command grep -v "\.bun/"
    # Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
-   command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"
+   command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
    # SQL regression expected outputs — also hard-code version strings and WILL break nightly if stale
-   command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
+   command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
    ```
    These WILL break tests if not updated alongside the extension. This is the #1 missed item.
 
@@ -538,13 +538,13 @@ Before writing tests, search for hardcoded version strings in ALL test files:
 
 ```bash
 # Find hardcoded version strings in ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
-command grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/ | command grep -v ".bun/"
+command grep -rn -E 'includes\("0\.|includes\("1\.|includes\("2\.' scripts/ | command grep -v "\.bun/"
 # Also search for specific old version patterns:
-command grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/ | command grep -v ".bun/" | command grep -i "include\|assert\|version"
+command grep -rn -E "0\.8|0\.5|2\.8|1\.10|5\.4" scripts/ | command grep -v "\.bun/" | command grep -iE "include|assert|version"
 # Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
-command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"
+command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
 # SQL regression expected outputs — hard-code extversion strings; stale = nightly failures
-command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
+command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
 ```
 
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
@@ -706,10 +706,10 @@ something. Run through these checks adversarially — try to break your own work
 - **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version
   (e.g., `/usr/lib/postgresql/18/lib/`). **Update all paths when bumping PG major version.**
   Keys must match manifest entry `name` exactly (kind: "tool") — wrong keys silently skip checks.
-  Find stale paths: `command grep -rn "postgresql/[0-9]\+/lib" scripts/ | command grep -v ".bun/"`
+  Find stale paths: `command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"`
 - **Search all test files for hardcoded version strings** that would fail after the update:
-  `command grep -rn 'includes\|startsWith\|=== "' scripts/ | command grep -E '[0-9]+\.[0-9]'` | command grep -v ".bun/"
-  Also check SQL regression expected outputs: `command grep -rn "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
+  `command grep -rn -E 'includes|startsWith|=== "' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"`
+  Also check SQL regression expected outputs: `command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
 - **Size baselines after updating any tracked extension**: After updating any extension listed in
   `scripts/config/size-baselines.json` (timescaledb, pgroonga, pg_jsonschema, wrappers,
   vectorscale, etc.), run the size regression check. Advisory warnings indicate a stale baseline:

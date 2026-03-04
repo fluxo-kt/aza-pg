@@ -202,11 +202,21 @@ export async function fileExists(path: string, containerName: string): Promise<b
  * Derive PostgreSQL major version from the running server.
  * server_version_num: e.g. 180003 → major = floor(180003 / 10000) = 18
  * Avoids hardcoding "18" in filesystem paths so tests stay correct across PG bumps.
+ *
+ * Cached per containerName: PG version is immutable during a test run and
+ * shared by multiple Phase 1 and Phase 3 tests — no need to re-query each time.
  */
+const _pgMajorVersionCache = new Map<string, string>();
 async function getPgMajorVersion(containerName: string): Promise<string> {
+  const cached = _pgMajorVersionCache.get(containerName);
+  if (cached !== undefined) return cached;
   const result = await execSQL("SHOW server_version_num", containerName);
   // Container is ready at this point — the fallback is unreachable in practice
-  return result.success ? String(Math.floor(parseInt(result.output.trim()) / 10000)) : "18";
+  const version = result.success
+    ? String(Math.floor(parseInt(result.output.trim(), 10) / 10000))
+    : "18";
+  _pgMajorVersionCache.set(containerName, version);
+  return version;
 }
 
 // ============================================================================
@@ -1473,7 +1483,7 @@ export async function testWal2jsonReplication(containerName: string): Promise<Te
     await execSQL(
       "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'",
       containerName
-    ).catch(() => {});
+    );
     return {
       name: "wal2json - Logical replication",
       passed: false,
@@ -1505,7 +1515,7 @@ export async function testPostgisSpatialQuery(containerName: string): Promise<Te
       "SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)",
       containerName
     );
-    if (!query.success || parseInt(query.output.trim()) === 0) {
+    if (!query.success || parseInt(query.output.trim(), 10) === 0) {
       return {
         name: "PostGIS - Spatial query",
         passed: false,
@@ -1803,11 +1813,8 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
     // interfere with mask metadata. Pre-load pgsodium and disable the trigger to
     // prevent spurious failures — this is NOT a pg_partman dependency.
     await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE", containerName);
-    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName).catch(
-      () => {
-        /* Ignore if trigger doesn't exist (pgsodium version may differ) */
-      }
-    );
+    // success:false is OK — trigger may not exist if pgsodium version differs
+    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName);
 
     // Re-enable trigger in finally to avoid state pollution for subsequent tests
     try {
@@ -1829,7 +1836,7 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
         "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test_partman_p%'",
         containerName
       );
-      if (!check.success || parseInt(check.output.trim()) === 0) {
+      if (!check.success || parseInt(check.output.trim(), 10) === 0) {
         return {
           name: "pg_partman - Partitioning",
           passed: false,
@@ -1844,9 +1851,7 @@ export async function testPgPartmanPartitioning(containerName: string): Promise<
         duration: Date.now() - startTime,
       };
     } finally {
-      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName).catch(
-        () => {}
-      );
+      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName);
     }
   } catch (err) {
     return {
@@ -1926,7 +1931,7 @@ export async function testPgCronScheduling(containerName: string): Promise<TestR
 
     // Pre-cleanup: remove any leftover test-job from a prior run
     // (if prior run failed between schedule and unschedule, job persists)
-    await execSQL("SELECT cron.unschedule('test-job')", containerName).catch(() => {});
+    await execSQL("SELECT cron.unschedule('test-job')", containerName);
 
     const schedule = await execSQL(
       "SELECT cron.schedule('test-job', '* * * * *', 'SELECT 1')",
@@ -1945,7 +1950,7 @@ export async function testPgCronScheduling(containerName: string): Promise<TestR
       "SELECT count(*) FROM cron.job WHERE jobname = 'test-job'",
       containerName
     );
-    if (!check.success || parseInt(check.output.trim()) !== 1) {
+    if (!check.success || parseInt(check.output.trim(), 10) !== 1) {
       return {
         name: "pg_cron - Job scheduling",
         passed: false,
@@ -1955,9 +1960,7 @@ export async function testPgCronScheduling(containerName: string): Promise<TestR
     }
 
     // Cleanup — use jobname to avoid integer-parsing fragility of jobid output
-    await execSQL("SELECT cron.unschedule('test-job')", containerName).catch(() => {
-      /* Ignore if job was already removed */
-    });
+    await execSQL("SELECT cron.unschedule('test-job')", containerName);
 
     return {
       name: "pg_cron - Job scheduling",
@@ -2001,7 +2004,7 @@ export async function testHypopgHypotheticalIndexes(containerName: string): Prom
     const lines = result.output.split("\n").filter((l: string) => l.trim());
     const lastLine = lines[lines.length - 1];
 
-    if (!result.success || !lastLine || parseInt(lastLine) === 0) {
+    if (!result.success || !lastLine || parseInt(lastLine, 10) === 0) {
       return {
         name: "hypopg - Hypothetical indexes",
         passed: false,
@@ -2036,7 +2039,7 @@ export async function testPgmqQueue(containerName: string): Promise<TestResult> 
 
     // Pre-cleanup: drop queue to eliminate stale messages from a prior failed run.
     // pgmq.read is FIFO — stale messages cause msg_id mismatch assertions to fail.
-    await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName).catch(() => {});
+    await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName);
 
     const create = await execSQL("SELECT pgmq.create('test_queue')", containerName);
     if (!create.success) {
@@ -2256,7 +2259,7 @@ export async function testPgroongaFullText(containerName: string): Promise<TestR
       "SELECT count(*) FROM test_pgroonga WHERE content &@~ 'full-text'",
       containerName
     );
-    if (!search.success || parseInt(search.output.trim()) !== 2) {
+    if (!search.success || parseInt(search.output.trim(), 10) !== 2) {
       return {
         name: "pgroonga - Full-text search",
         passed: false,
@@ -2315,7 +2318,7 @@ export async function testRumRankedSearch(containerName: string): Promise<TestRe
       "SELECT count(*) FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')",
       containerName
     );
-    if (!search.success || parseInt(search.output.trim()) !== 2) {
+    if (!search.success || parseInt(search.output.trim(), 10) !== 2) {
       return {
         name: "rum - Ranked search",
         passed: false,
@@ -2367,7 +2370,7 @@ export async function testPgauditLogging(containerName: string): Promise<TestRes
       "SELECT count(*) FROM pg_extension WHERE extname = 'pgaudit'",
       containerName
     );
-    if (!installed.success || parseInt(installed.output.trim()) !== 1) {
+    if (!installed.success || parseInt(installed.output.trim(), 10) !== 1) {
       return {
         name: "pgaudit - Audit logging",
         passed: false,
@@ -2426,11 +2429,8 @@ export async function testPgsodiumEncryption(containerName: string): Promise<Tes
     // Disable event trigger to prevent GUC parameter errors during crypto operations.
     // Wrapped in try/finally to always re-enable — leaving it disabled poisons subsequent
     // tests that depend on pgsodium's DDL masking (same pattern as testPgPartmanPartitioning).
-    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName).catch(
-      () => {
-        /* Ignore if trigger doesn't exist */
-      }
-    );
+    // success:false is OK — trigger may not exist if pgsodium version differs
+    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName);
 
     try {
       const key = await execSQL(
@@ -2514,9 +2514,7 @@ export async function testPgsodiumEncryption(containerName: string): Promise<Tes
         duration: Date.now() - startTime,
       };
     } finally {
-      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName).catch(
-        () => {}
-      );
+      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName);
     }
   } catch (err) {
     return {

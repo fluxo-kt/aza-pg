@@ -1334,17 +1334,19 @@ The script provides:
 
 The naming convention is the structural enforcement mechanism — no code required:
 
-| Pattern                  | Category                 | Auto-discovered? | Requires Docker? |
-| ------------------------ | ------------------------ | ---------------- | ---------------- |
-| `scripts/**/*.test.ts`   | Unit tests               | ✅ Yes, via glob | ❌ Never         |
-| `scripts/test/test-*.ts` | Docker integration tests | ❌ No            | ✅ Yes           |
+| Pattern                            | Category          | Auto-discovered?                | Requires Docker?           |
+| ---------------------------------- | ----------------- | ------------------------------- | -------------------------- |
+| `scripts/**/*.test.ts`             | Unit tests        | ✅ Yes, via glob                | ❌ Never (guaranteed)      |
+| `test-*.ts` (no `.test.ts` suffix) | Integration tests | ❌ No — register in test-all.ts | Often, but not guaranteed¹ |
+
+¹ The invariant is **one-directional**: `*.test.ts` → Docker-free is guaranteed; `test-*.ts` → Docker-required is NOT. Some `test-*.ts` files (e.g., `test-smoke.ts`) run without Docker. Each test declares `requiresDocker: true` in `test-all.ts` only when needed.
 
 **Rules:**
 
 - `*.test.ts` files are **always** safe to run without Docker — `validate.ts` discovers them via glob unconditionally
-- Docker-dependent tests **must** use `test-*.ts` naming (without `.test.ts`) and be registered in `test-all.ts`
+- Integration tests use `test-*.ts` naming (without `.test.ts` suffix) and must be registered in `test-all.ts`; they may be in any `scripts/` subdirectory (`scripts/`, `scripts/test/`, `scripts/docker/`, `scripts/config/`, etc.)
 - `bunfig.toml [test]` does **not** support an `exclude` option (Bun 1.3.x) — file naming is the only enforcement mechanism
-- Running `bun test` (no args) discovers only `*.test.ts` files, so Docker tests are excluded structurally
+- Running `bun test` (no args) discovers only `*.test.ts` files, so integration tests are excluded structurally
 
 **Adding a new unit test:**
 
@@ -1353,11 +1355,12 @@ The naming convention is the structural enforcement mechanism — no code requir
 # No registration anywhere needed
 ```
 
-**Adding a new Docker integration test:**
+**Adding a new integration test:**
 
 ```bash
 # Create scripts/test/test-my-feature.ts — NOT auto-discovered
-# Register in scripts/test-all.ts with requiresDocker: true
+# Register in scripts/test-all.ts
+#   - set requiresDocker: true only if the test requires a running container
 # Run via: bun run test:all
 ```
 

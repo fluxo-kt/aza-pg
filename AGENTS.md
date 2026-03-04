@@ -188,6 +188,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
+**Secret-Scan Heuristic Trap**: `bun run test:all` secret-scan can flag ordinary local vars when names look credential-like (e.g., `token = "..."`). In non-secret code paths, use precise neutral names (`versionChunk`, `segment`, etc.) and re-run tests; don't suppress the scan blindly.
+
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
 
 **test-image-lib.ts `toolBinaries`**: Keys MUST match manifest entry `name` (kind: "tool") exactly — wrong keys silently skip checks (classic false-confidence bug). `.so` paths are derived at runtime via `SHOW server_version_num → floor(num/10000)` — no manual update needed on PG major version bumps. Disabled tools filtered by `entry.enabled !== false` before the loop; unknown enabled tools fail loudly. All filesystem paths embedding PG major version use `getPgMajorVersion(containerName)` (derived dynamically, cached per container in a module-level `Map`) — NEVER hardcode the version number (e.g., `postgresql/18/`).

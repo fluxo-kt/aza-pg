@@ -26,6 +26,11 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```bash
    bun scripts/extensions/check-updates.ts
    ```
+   Verify candidate updates are true upgrades in the same release family:
+   - Ignore mismatched tag-family noise (e.g., monorepo tags like `foo@X.Y.Z` vs plain `X.Y.Z`)
+   - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
+   - Ignore downgrades (`current > candidate`) caused by mixed/non-semver tags
+   - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
 
 2. **Bun dependencies**:
 
@@ -665,6 +670,9 @@ something. Run through these checks adversarially — try to break your own work
   code path being tested. Add session-level forcing (e.g. `SET enable_seqscan = OFF`) or sufficient
   data volume to guarantee the expected path is taken.
 - Does the test verify the actual bug mode, or just that no crash occurred?
+- Did secret scanning run on changed scripts, and did it flag false positives from ambiguous names
+  (`token`, `secret`, `password`) used as ordinary local variables? Prefer explicit non-secret names
+  (`versionChunk`, `authHeader`) and re-run `bun run test:all`.
 
 **File completeness**
 - When touching a file that documents required changes (README, validator error messages,
@@ -771,9 +779,12 @@ After every update round, perform a mandatory self-reflection before closing out
      apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
      curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
      dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
-     apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
-   " 2>&1 | command grep "percona-pg-stat-monitor"
+   apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
+  " 2>&1 | command grep "percona-pg-stat-monitor"
    ```
+10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
+    verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
+    paths were exercised when GitHub API was rate-limited.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

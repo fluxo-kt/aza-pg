@@ -332,7 +332,7 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 # If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
 if ! git merge --squash dev; then
   echo "ABORT: Merge conflicts detected. Conflicting files:"
-  git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
+  git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
   echo ""
   echo "Recovering to clean state:"
   git reset HEAD

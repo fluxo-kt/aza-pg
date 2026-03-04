@@ -264,7 +264,7 @@ Extensions with `dependencies: ["extension1", "extension2"]` field must be updat
 
 ```bash
 # Find dependents
-grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | grep 'name:'
+command grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | command grep 'name:'
 
 # Check compatibility:
 # - Read dependent's Cargo.toml / package.json for version constraints

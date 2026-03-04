@@ -211,10 +211,11 @@ async function getPgMajorVersion(containerName: string): Promise<string> {
   const cached = _pgMajorVersionCache.get(containerName);
   if (cached !== undefined) return cached;
   const result = await execSQL("SHOW server_version_num", containerName);
-  // Container is ready at this point — the fallback is unreachable in practice
-  const version = result.success
-    ? String(Math.floor(parseInt(result.output.trim(), 10) / 10000))
-    : "18";
+  // Container is ready at this point — the fallback is unreachable in practice.
+  // isNaN guard: if output is unexpectedly empty/non-numeric, String(NaN) would produce "NaN"
+  // as the version string and break all filesystem paths. Treat that as fallback too.
+  const num = parseInt(result.output.trim(), 10);
+  const version = result.success && !isNaN(num) ? String(Math.floor(num / 10000)) : "18";
   _pgMajorVersionCache.set(containerName, version);
   return version;
 }
@@ -869,20 +870,28 @@ export async function testVersionInfoTxt(
 
     const errors: string[] = [];
 
-    if (!content.includes(`Total Catalog: ${totalCount}`)) {
-      errors.push(`Total count mismatch (expected: ${totalCount})`);
+    // Extract actual values from file content for "expected X, got Y" error messages,
+    // consistent with testVersionInfoJson's error format.
+    const actualTotal = content.match(/Total Catalog:\s*(\d+)/)?.[1] ?? "not found";
+    if (actualTotal !== String(totalCount)) {
+      errors.push(`Total count mismatch (expected: ${totalCount}, got: ${actualTotal})`);
     }
 
-    if (!content.includes(`Enabled: ${enabledCount}`)) {
-      errors.push(`Enabled count mismatch (expected: ${enabledCount})`);
+    const actualEnabled = content.match(/Enabled:\s*(\d+)/)?.[1] ?? "not found";
+    if (actualEnabled !== String(enabledCount)) {
+      errors.push(`Enabled count mismatch (expected: ${enabledCount}, got: ${actualEnabled})`);
     }
 
-    if (!content.includes(`Disabled: ${disabledCount}`)) {
-      errors.push(`Disabled count mismatch (expected: ${disabledCount})`);
+    const actualDisabled = content.match(/Disabled:\s*(\d+)/)?.[1] ?? "not found";
+    if (actualDisabled !== String(disabledCount)) {
+      errors.push(`Disabled count mismatch (expected: ${disabledCount}, got: ${actualDisabled})`);
     }
 
-    if (!content.includes(`Preloaded: ${preloadedCount}`)) {
-      errors.push(`Preloaded count mismatch (expected: ${preloadedCount})`);
+    const actualPreloaded = content.match(/Preloaded:\s*(\d+)/)?.[1] ?? "not found";
+    if (actualPreloaded !== String(preloadedCount)) {
+      errors.push(
+        `Preloaded count mismatch (expected: ${preloadedCount}, got: ${actualPreloaded})`
+      );
     }
 
     if (errors.length > 0) {
@@ -1170,50 +1179,47 @@ export async function testAutoConfigApplied(containerName: string): Promise<Test
   const startTime = Date.now();
 
   try {
-    // Check that key auto-configured settings are set
-    const settings = [
-      "shared_buffers",
-      "effective_cache_size",
-      "maintenance_work_mem",
-      "work_mem",
-      "max_connections",
-    ];
-
-    const errors: string[] = [];
-
-    for (const setting of settings) {
-      const result = await execSQL(`SHOW ${setting};`, containerName);
-
-      if (!result.success) {
-        errors.push(`Failed to read ${setting}`);
-        continue;
-      }
-
-      const value = result.output.trim();
-      if (!value) {
-        errors.push(`${setting} is empty`);
-      }
-    }
-
-    // Verify auto-config actually ran: shared_buffers must be sourced from a config file or
-    // command-line override — if source = 'default', the auto-config entrypoint did not write
-    // a postgresql.conf, which means auto-configuration silently failed.
-    const sourceCheck = await execSQL(
-      "SELECT count(*) FROM pg_settings WHERE name = 'shared_buffers' AND source IN ('configuration file', 'command line')",
+    // Verify auto-config actually ran for ALL key settings in ONE query.
+    //
+    // Strategy: query pg_settings for any key setting still at 'default' source.
+    // If auto-config wrote postgresql.conf, ALL of these will be 'configuration file'
+    // or 'command line'. Any 'default' means that setting was never written — auto-config
+    // partially or fully failed.
+    //
+    // The 5 prior SHOW queries were removed: SHOW always returns a non-empty value for
+    // built-in settings regardless of whether auto-config ran. They tested nothing useful
+    // and added 5 round-trips. The source check is the only meaningful gate.
+    const defaultSettings = await execSQL(
+      `SELECT name FROM pg_settings
+       WHERE name IN ('shared_buffers','effective_cache_size','maintenance_work_mem','work_mem','max_connections')
+         AND source NOT IN ('configuration file','command line')
+       ORDER BY name`,
       containerName
     );
-    if (!sourceCheck.success || parseInt(sourceCheck.output.trim(), 10) === 0) {
-      errors.push(
-        "shared_buffers source is 'default' — auto-config entrypoint may not have run (expected 'configuration file' or 'command line')"
-      );
-    }
 
-    if (errors.length > 0) {
+    if (!defaultSettings.success) {
       return {
         name: "Auto-config applied",
         passed: false,
         duration: Date.now() - startTime,
-        error: errors.join(", "),
+        error: "Failed to query pg_settings source",
+      };
+    }
+
+    const stillAtDefault = defaultSettings.output.trim()
+      ? defaultSettings.output
+          .trim()
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    if (stillAtDefault.length > 0) {
+      return {
+        name: "Auto-config applied",
+        passed: false,
+        duration: Date.now() - startTime,
+        error: `${stillAtDefault.length} setting(s) not written by auto-config (source = default): ${stillAtDefault.join(", ")}`,
       };
     }
 

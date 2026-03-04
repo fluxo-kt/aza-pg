@@ -105,7 +105,7 @@ RUN set -euo pipefail && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    rsync -a --exclude='gosu' /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
@@ -312,13 +312,18 @@ COPY --from=builder-cargo /opt/ext-out/ /
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 
 # Replace gosu (Go binary, CVE-2025-68121 CRITICAL, CVSS 8.8) with su-exec (pure C, no Go stdlib).
-# APPROACH: Self-contained final-stage compilation. All prior approaches failed due to GHA layer
-# cache interference: COPY --from=builder-base (stale cached layer), RUN --mount=type=bind (bind-
-# mount source resolution against GHA-cached stage unverifiable), apt-get install su-exec (package
-# absent from postgres image's stripped apt repos), COPY via builder-pgxs output dir (COPY cache
-# key in GHA matched old entry pre-dating the replacement step — gosu served from cache despite
-# builder-pgxs having su-exec). Self-contained compile in the final stage: install+compile+purge
-# in ONE RUN = net layer diff is only gosu→su-exec (~14KB). Build tools leave no trace.
+# APPROACH: Self-contained final-stage compilation + dpkg purge of gosu package.
+# Prior approaches failed (listed oldest→latest):
+#   1. COPY --from=builder-base: stale GHA cached layer
+#   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
+#   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
+#   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
+#   5. Self-contained compile without dpkg purge: apt-get install in next step detected file hash
+#      mismatch (we replaced gosu's file but dpkg still owned it) and reinstalled gosu from the
+#      --mount=type=cache,target=/var/cache/apt persistent apt cache.
+# Fix: purge gosu package from dpkg AFTER compiling su-exec, BEFORE placing it. This removes dpkg's
+# ownership so subsequent apt operations cannot reinstate gosu. Also exclude gosu from builder-pgxs
+# rsync to avoid creating an unnecessary intermediate layer with the Go binary.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
@@ -328,6 +333,7 @@ RUN set -euo pipefail && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
+    apt-get purge -y gosu && \
     install -o root -g root -m 0755 /tmp/su-exec-build/su-exec /usr/local/bin/gosu && \
     SZ=$(stat -c%s /usr/local/bin/gosu) && \
     echo "su-exec: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \

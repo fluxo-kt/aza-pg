@@ -922,7 +922,10 @@ export async function testToolsPresent(
   const startTime = Date.now();
 
   try {
-    const tools = manifest.entries.filter((entry) => entry.kind === "tool");
+    // Only check enabled tools — disabled tools are intentionally not installed.
+    const tools = manifest.entries.filter(
+      (entry) => entry.kind === "tool" && entry.enabled !== false
+    );
 
     if (tools.length === 0) {
       return {
@@ -932,12 +935,13 @@ export async function testToolsPresent(
       };
     }
 
+    // Keys MUST match manifest entry names (kind: "tool") exactly.
+    // When adding a new tool to the manifest, add its binary path here.
+    // .so paths encode the PG major version — update when bumping PG major.
     const toolBinaries: Record<string, string> = {
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path
       wal2json: "/usr/lib/postgresql/18/lib/wal2json.so",
-      // Keys MUST match manifest entry names (kind: "tool") exactly.
-      // pg_plan_filter omitted — incompatible with PG18, not installed.
       pg_safeupdate: "/usr/lib/postgresql/18/lib/safeupdate.so",
     };
 
@@ -946,7 +950,11 @@ export async function testToolsPresent(
     for (const tool of tools) {
       const binaryPath = toolBinaries[tool.name];
       if (!binaryPath) {
-        continue; // Unknown tool, skip
+        // Unknown enabled tool — add its path to toolBinaries above.
+        missing.push(
+          `${tool.name} (path unknown — add entry to toolBinaries in test-image-lib.ts)`
+        );
+        continue;
       }
 
       const exists = await fileExists(binaryPath, containerName);

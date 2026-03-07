@@ -88,8 +88,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgpartman/pg_partman.git",
-        "tag": "v5.4.2",
-        "commit": "aa304755620f1295d9aa863764e874e2aa88ce0e"
+        "tag": "v5.4.3",
+        "commit": "a12b23ee6615d179dfaa38cc6fed8ed44cd61ba2"
       },
       "build": {
         "type": "pgxs"
@@ -101,7 +101,7 @@
         "preloadLibraryName": "pg_partman_bgw",
         "notes": [
           "Built from source (PGDG package not available for PG18)",
-          "v5.4.2: search_path injection hardening (v5.4.1) + regression fix for non-default schemas",
+          "v5.4.3: inherits toast relation options from template table; fixes version reporting bug in v5.4.2 (\\dx showed 5.4.1)",
           "Set pg_partman_bgw.role and interval to enable background worker."
         ]
       },

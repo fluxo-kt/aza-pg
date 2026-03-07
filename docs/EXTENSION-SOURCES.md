@@ -86,7 +86,7 @@ Extensions not available in PGDG — installed via Timescale apt, Percona apt, G
 
 | Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                                    |
 | ------------------- | ------------- | ---------------- | ----------- | ---------------------------------------- |
-| **pg_partman**      | v5.4.2        | v5.0.1           | ❌          | Source for latest (PGDG has v5.3.1 only) |
+| **pg_partman**      | v5.4.3        | v5.0.1           | ❌          | Source for latest (PGDG has v5.3.1 only) |
 | **pg_stat_monitor** | v2.3.2        | v2.1             | v2.3.2 ✅   | Percona apt (ppg-18); not in PGDG        |
 | **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
 | **pgmq**            | v1.11.0       | v1.5.1           | ❌          | Source for latest (PG18 support)         |

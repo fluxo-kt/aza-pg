@@ -10,13 +10,18 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Fixed
+
+- **pg_partman 5.4.2 version reporting bug**: v5.4.2 shipped with the wrong version in its control file — `\dx` reported `5.4.1` even with v5.4.2 installed. Upgrading to v5.4.3 corrects the catalog entry and includes the proper update path for both affected and unaffected v5.4.2 installs.
+
 ### Changed
 
+- **pg_partman 5.4.2 → 5.4.3**: Inherits toast table relation options from template table; fixes the control-file version reporting bug (see Fixed above).
 - **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit (`7c8603f` → `cbe74b5`) to align with upstream 0.3.4 release-prep commits (Cargo/metadata/version/release automation updates). In this commit range, no `src/` or SQL API files changed.
 
 ### Development
 
-- Integration test assertions hardened (index usage forcing, CDC capture verification, chunk existence, config source checking); unit test infrastructure auto-discovery; GH Actions updated to Node.js 24 runners
+- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (all Node.js 24 runtime bumps); aquasecurity/trivy-action 0.34→0.35; SHA pins refreshed across all workflows
 
 ---
 

@@ -10,7 +10,7 @@
 #
 # WHEN IT RUNS:
 # -------------
-# 1. Scheduled: Daily at 2:00 AM UTC (cron: '0 2 * * *')
+# 1. Scheduled: Weekly on Sunday at 2:00 AM UTC (cron: '0 2 * * 0')
 # 2. Manual trigger (workflow_dispatch) - On-demand comprehensive validation
 #
 # WHAT IT TESTS:
@@ -53,8 +53,8 @@ name: Nightly Regression Tests
 
 on:
   schedule:
-    # Daily at 2:00 AM UTC
-    - cron: "0 2 * * *"
+    # Weekly on Sunday at 2:00 AM UTC
+    - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
       image_tag:
@@ -511,7 +511,7 @@ jobs:
           echo "| Integration | Backup/Restore, Replication & Stack Deployments | ${{ needs.integration.result == 'success' && '✅ Passed' || needs.integration.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** Regression (comprehensive - ALL extensions and preloads)" >> $GITHUB_STEP_SUMMARY
-          echo "**Schedule:** Daily at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** Weekly on Sunday at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

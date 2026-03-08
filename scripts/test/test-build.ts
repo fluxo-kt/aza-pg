@@ -95,8 +95,19 @@ function verifyDockerfile(projectRoot: string): void {
 
 /**
  * Build Docker image using buildx
+ * Skips the build if the image already exists locally (e.g. when called from test-all.ts
+ * after the Docker Build step has already produced the image).
  */
 async function buildDockerImage(config: BuildTestConfig): Promise<void> {
+  // Skip rebuild if image already exists locally — test-all.ts pre-builds via scripts/build.ts
+  const existingId = await $`docker images -q ${config.imageTag}`.text();
+  if (existingId.trim()) {
+    console.log(`ℹ️  Image '${config.imageTag}' already exists locally — skipping build`);
+    console.log(`   To force rebuild: docker rmi ${config.imageTag}`);
+    console.log();
+    return;
+  }
+
   console.log("📦 Building Docker image with buildx...");
   const dockerfilePath = "docker/postgres/Dockerfile";
 
@@ -346,8 +357,8 @@ async function listInstalledExtensions(config: BuildTestConfig): Promise<void> {
  * Main test execution
  */
 async function main(): Promise<void> {
-  // Parse arguments
-  const imageTag = Bun.argv[2] ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
+  // Parse arguments — prefer CLI arg, then POSTGRES_IMAGE env var, then default
+  const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
   const projectRoot = getProjectRoot();
   const testPassword = generateTestPassword();
   const containerName = `pg-test-${process.pid}`;

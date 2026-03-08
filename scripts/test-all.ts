@@ -598,11 +598,12 @@ const allChecks: Check[] = [
   {
     name: "Build Tests",
     category: "build",
-    command: ["bun", "scripts/test/test-build.ts"],
+    // Pass image tag as argv so test-build.ts skips the Docker build (image already built above)
+    command: ["sh", "-c", "bun scripts/test/test-build.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
     description: "Test Docker image building and extension verification",
     critical: false,
     requiresDocker: true,
-    timeout: 900000, // 15 minutes
+    timeout: 300000, // 5 minutes (tests only, no rebuild)
   },
 
   // === FUNCTIONAL TESTS (run sequentially) ===

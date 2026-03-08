@@ -291,7 +291,7 @@ POSTGRES_DATA_VOLUME=${config.volumeName}
     info("Starting Docker Compose stack with existing volume...");
     await $`docker compose --env-file .env.test up -d postgres`
       .cwd(config.stackPath)
-      .env({ COMPOSE_PROJECT_NAME: config.projectName });
+      .env({ ...Bun.env, COMPOSE_PROJECT_NAME: config.projectName });
 
     info("Waiting for PostgreSQL to be stable in compose stack...");
     const containerName = `${config.projectName}-postgres-single`;
@@ -388,7 +388,7 @@ async function testFullStackRecreation(config: TestConfig): Promise<TestResult> 
     info("Stopping compose stack (keeping volumes)...");
     await $`docker compose --env-file .env.test down`
       .cwd(config.stackPath)
-      .env({ COMPOSE_PROJECT_NAME: config.projectName });
+      .env({ ...Bun.env, COMPOSE_PROJECT_NAME: config.projectName });
 
     // Wait for cleanup
     await Bun.sleep(3000);
@@ -396,7 +396,7 @@ async function testFullStackRecreation(config: TestConfig): Promise<TestResult> 
     info("Starting compose stack again...");
     await $`docker compose --env-file .env.test up -d postgres`
       .cwd(config.stackPath)
-      .env({ COMPOSE_PROJECT_NAME: config.projectName });
+      .env({ ...Bun.env, COMPOSE_PROJECT_NAME: config.projectName });
 
     info("Waiting for PostgreSQL to be stable after recreation...");
     const containerName = `${config.projectName}-postgres-single`;
@@ -527,7 +527,7 @@ async function cleanup(config: TestConfig): Promise<void> {
   try {
     await $`docker compose --env-file .env.test down -v --remove-orphans`
       .cwd(config.stackPath)
-      .env({ COMPOSE_PROJECT_NAME: config.projectName })
+      .env({ ...Bun.env, COMPOSE_PROJECT_NAME: config.projectName })
       .nothrow()
       .quiet();
   } catch {

@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     try {
       await $`docker compose --env-file ${envTestPath} down -v --remove-orphans`
         .cwd(singleStackPath)
-        .env({ COMPOSE_PROJECT_NAME: projectName })
+        .env({ ...Bun.env, COMPOSE_PROJECT_NAME: projectName })
         .quiet();
 
       // Wait for port release
@@ -281,7 +281,7 @@ POSTGRES_EXPORTER_PORT=9189
       try {
         await $`docker compose --env-file .env.test up -d postgres`
           .cwd(singleStackPath)
-          .env({ COMPOSE_PROJECT_NAME: projectName });
+          .env({ ...Bun.env, COMPOSE_PROJECT_NAME: projectName });
       } catch (err) {
         error("Failed to start single stack");
         throw err;
@@ -518,7 +518,7 @@ POSTGRES_EXPORTER_PORT=9189
       try {
         await $`docker compose --env-file .env.test up -d postgres_exporter`
           .cwd(singleStackPath)
-          .env({ COMPOSE_PROJECT_NAME: projectName });
+          .env({ ...Bun.env, COMPOSE_PROJECT_NAME: projectName });
       } catch (err) {
         error("Failed to start postgres_exporter");
         throw err;

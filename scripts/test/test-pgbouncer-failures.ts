@@ -78,7 +78,7 @@ async function cleanup(): Promise<void> {
       await (
         cleanupDockerEnv
           ? cmd.env(cleanupDockerEnv)
-          : cmd.env({ COMPOSE_PROJECT_NAME: cleanupProject })
+          : cmd.env({ ...Bun.env, COMPOSE_PROJECT_NAME: cleanupProject })
       ).quiet();
 
       // Verify containers are removed
@@ -132,7 +132,7 @@ async function waitForContainerStatus(
     try {
       const cmd = $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} --format json`;
       const result = await (
-        dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+        dockerEnv ? cmd.env(dockerEnv) : cmd.env({ ...Bun.env, COMPOSE_PROJECT_NAME: project })
       ).text();
 
       if (result.trim()) {
@@ -245,7 +245,7 @@ async function testWrongPassword(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;
@@ -346,7 +346,7 @@ async function testMissingPgpass(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;
@@ -433,7 +433,7 @@ async function testInvalidListenAddress(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;
@@ -544,7 +544,7 @@ async function testPostgresUnavailable(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;
@@ -619,7 +619,7 @@ async function testMaxConnections(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;
@@ -737,7 +737,7 @@ async function testPgpassPermissions(): Promise<void> {
   // Setup dockerEnv for this test
   const dockerEnv = cleanupDockerConfig
     ? { ...Bun.env, DOCKER_CONFIG: cleanupDockerConfig, COMPOSE_PROJECT_NAME: projectName }
-    : { COMPOSE_PROJECT_NAME: projectName };
+    : { ...Bun.env, COMPOSE_PROJECT_NAME: projectName };
 
   // Update global for cleanup
   cleanupDockerEnv = dockerEnv;

@@ -183,7 +183,8 @@ echo "=========================="
 ### 1.1 — Enumerate commits (anchor..dev, ALL including merges)
 
 ```bash
-# Verify count independently to guard against RTK truncation
+# Verify count independently to guard against RTK truncation/corruption
+# ⚠️ RTK can corrupt the numeric result (observed: 91→1189). Re-run if implausible.
 git rev-list $ANCHOR..refs/heads/dev --count  # Should match $COMMIT_COUNT from Phase 0
 
 # List ALL commits including intermediate merges — full picture of what's being squashed
@@ -217,10 +218,11 @@ git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
 ### 1.3 — Collect unique co-authors
 
 ```bash
-# Use command grep to bypass RTK proxy (guardrail 15); sort -uf for macOS-compatible case-insensitive dedup (guardrail 16)
-COAUTHORS=$(git log $ANCHOR..refs/heads/dev --format="%b" \
-  | command grep -iE "^co-authored-by:" \
-  | sort -uf)
+# ⚠️ RTK proxy silently kills git log | grep pipelines for co-authors (returns empty).
+# Use per-commit git show iteration — slower but reliable:
+COAUTHORS=$(for hash in $(git rev-list $ANCHOR..refs/heads/dev --no-merges); do
+  git show "$hash" --format="%B" --no-patch
+done | command grep -iE "^co-authored-by:" | sort -uf)
 echo "$COAUTHORS"
 # Sanity check: unique co-author lines must not exceed commit count (more = wrong range or pipeline corruption)
 COAUTHOR_COUNT=$(echo "$COAUTHORS" | command grep -c . || echo 0)
@@ -560,6 +562,12 @@ After every execution, reflect and update this command:
 - **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
 - **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
 - **Hotfix/direct-commit releases: Dev-Squash-Tip is absent.** When a release is published via direct commits on `release` (e.g., CVE hotfix requiring multiple iterations), no Dev-Squash-Tip trailer exists in the tag. The anchor merge still works correctly — dev history is preserved as parent-1. The check: list dev commits since last anchor (`git rev-list LAST_ANCHOR_SHA..HEAD --oneline`); verify their content is already captured in the release tree (same fixes done on release). IMPORTANT: the anchor's parent-1 link means ALL those dev commits remain git-accessible forever — nothing is deleted. Their file content in the working tree is superseded by the release tree, which is the correct and expected outcome.
+
+- **RTK proxy `git rev-list --count` output is intermittently corrupted** (observed: returned `1189` for a count that was `91`). The standard `git rev-list ... --count` command passes through RTK but the numeric result can be mangled. Always verify with a second invocation if the count looks implausible. Guardrail #1 mentions truncation but not count corruption — the failure mode is distinct.
+
+- **RTK proxy silently kills `git log --format="%b" | grep` co-author pipelines** — returns empty even when co-author trailers exist. Two reliable workarounds: (a) `for hash in $(git rev-list ANCHOR..refs/heads/dev --no-merges); do git show "$hash" --format="%B" --no-patch; done | command grep -iE "^co-authored-by:"` (slow but reliable), or (b) `git log ... --format="%(trailers:key=Co-Authored-By,valueonly,separator=%x0a)"` (fast but misses trailers that git doesn't parse as formal trailers). Prefer (a) for completeness.
+
+- **Validation regexes can false-positive on comment text** — `build-extensions.ts` had a comment `// bare .env({ PATH })` that matched the env-safety checker's `\.env\(\{` pattern. When a validation failure reports a line that is clearly a comment explaining the anti-pattern, rephrase the comment to not use the literal pattern string. The checker should ideally exclude lines starting with `//` but that's a broader fix.
 
 - **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
 

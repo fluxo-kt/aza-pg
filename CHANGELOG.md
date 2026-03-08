@@ -18,7 +18,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Development
 
-- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (Node.js 24 runtime bumps); trivy-action 0.34→0.35; SHA pins refreshed across all workflows
+- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (Node.js 24 runtime bumps); trivy-action 0.34→0.35; new Junie AI review workflows; SHA pins refreshed across all workflows
 
 ---
 

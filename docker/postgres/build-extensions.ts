@@ -302,7 +302,7 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
 
   // Use conditional template literals to handle --features flag properly
   // Bun's $ template requires separate arguments for flags, not array spreading
-  // Spread Bun.env to preserve HOME, CARGO_HOME, RUSTUP_HOME etc. — bare .env({ PATH })
+  // Spread Bun.env to preserve HOME, CARGO_HOME, RUSTUP_HOME etc. — passing only PATH
   // would strip them, breaking cargo's registry and toolchain resolution.
   const cargoEnv = { ...Bun.env, PATH: pathEnv };
 

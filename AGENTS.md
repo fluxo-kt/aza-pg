@@ -232,6 +232,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
 
+The changelog focuses changes affecting the **release Docker image** only!
 **Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
 
 **Workflow**:

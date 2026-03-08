@@ -302,22 +302,25 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
 
   // Use conditional template literals to handle --features flag properly
   // Bun's $ template requires separate arguments for flags, not array spreading
+  // Spread Bun.env to preserve HOME, CARGO_HOME, RUSTUP_HOME etc. — bare .env({ PATH })
+  // would strip them, breaking cargo's registry and toolchain resolution.
+  const cargoEnv = { ...Bun.env, PATH: pathEnv };
+
+  // Bun's $ template requires separate arguments for flags, not array spreading
   if (features.length > 0 && noDefaultFeatures) {
     await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} --features ${features.join(",")} ${noDefaultFeatures}`.env(
-      { PATH: pathEnv }
+      cargoEnv
     );
   } else if (features.length > 0) {
     await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} --features ${features.join(",")}`.env(
-      { PATH: pathEnv }
+      cargoEnv
     );
   } else if (noDefaultFeatures) {
     await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN} ${noDefaultFeatures}`.env(
-      { PATH: pathEnv }
+      cargoEnv
     );
   } else {
-    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN}`.env({
-      PATH: pathEnv,
-    });
+    await $`cd ${dir} && cargo pgrx install --release --pg-config ${PG_CONFIG_BIN}`.env(cargoEnv);
   }
 }
 

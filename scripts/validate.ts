@@ -411,14 +411,15 @@ async function validate(
         "sh",
         "-c",
         // $.env({ KEY: val }) replaces the ENTIRE subprocess env, stripping PATH/HOME/DOCKER_CONFIG
-        // and breaking docker-credential helpers when pulling uncached images. All .env() calls
-        // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Uses -F (fixed string) for
-        // the filter to avoid regex-escaping differences between BSD and GNU grep.
+        // and breaking docker-credential helpers and build tools (cargo, etc.). All .env() calls
+        // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Covers scripts/ AND docker/postgres/
+        // (build-extensions.ts uses cargo subprocess that also needs HOME/CARGO_HOME/RUSTUP_HOME).
+        // Uses -F (fixed string) for the filter — avoids BSD/GNU grep regex-escaping differences.
         // validate.ts excluded — its description string contains ".env({" as a literal example.
-        'result=$(git ls-files scripts/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
+        'result=$(git ls-files scripts/ docker/postgres/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
       ],
       description:
-        "Detect bare subprocess .env() calls in scripts/ that strip PATH (must spread Bun.env)",
+        "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",
       required: true,
     },
     {

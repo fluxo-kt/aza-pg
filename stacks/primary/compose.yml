@@ -134,7 +134,7 @@ services:
 
   pgbouncer_exporter:
     image: >-
-      ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.9.0@sha256:bf9a5189cc1d8be3f5f1cd4695f4cfec267318a3d7e340b9073a0ee7bf2efb44}
+      ${PGBOUNCER_EXPORTER_IMAGE:-prometheuscommunity/pgbouncer-exporter:v0.12.0@sha256:68cb622d030a14c98de30b97ec86ce28e7a6b57c9b75a91553e9153b264afb78}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbouncer-exporter-primary
     restart: unless-stopped
 

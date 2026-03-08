@@ -17,11 +17,12 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Inherits toast table relation options from template table; fixes the control-file version reporting bug (see Fixed above).
+- **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds SHOW CLIENTS metrics (v0.12.0), fixes `pgbouncer_stats_totals_server_assignments_total` metric (v0.11.1), adds prepared statement metrics and total_server_assignment_count (v0.11.0). ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup. PgBouncer ≥ 1.8 required (we use v1.25.1, unaffected).
 - **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit (`7c8603f` → `cbe74b5`) to align with upstream 0.3.4 release-prep commits (Cargo/metadata/version/release automation updates). In this commit range, no `src/` or SQL API files changed.
 
 ### Development
 
-- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (all Node.js 24 runtime bumps); aquasecurity/trivy-action 0.34→0.35; SHA pins refreshed across all workflows
+- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (all Node.js 24 runtime bumps); aquasecurity/trivy-action 0.34→0.35; junie workflow SHA-pinned (was @main); SHA pins refreshed across all workflows
 
 ---
 

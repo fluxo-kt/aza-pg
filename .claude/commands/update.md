@@ -802,6 +802,10 @@ command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@
 
 # 5. Verify validate:all passes
 bun run validate:all
+
+# 6. Verify no bare .env() subprocess calls (structural check — also in validate)
+command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v '\.\.\.Bun\.env' | command grep -v '\.\.\.process\.env' | command grep -v '^scripts/validate.ts:'
+# non-empty output = bare .env() that strips PATH/HOME — must use { ...Bun.env, KEY: val }
 ```
 
 **Then review these qualitative questions** — try to break your own work:
@@ -947,6 +951,13 @@ After every update round, perform a mandatory self-reflection before closing out
 12. **Are changelog claims evidence-backed?** Cross-check each changelog statement against actual
     upstream diff evidence (release notes, compare output, commit/file diffs). Remove any claim that
     cannot be tied to concrete upstream changes.
+13. **Were all bug fixes systematically verified with a full-codebase grep?** A targeted fix (e.g.,
+    fixing `.env()` calls in the files that visibly failed) is not the same as verifying the entire
+    codebase. After any structural fix pattern, run a grep across ALL relevant files to confirm zero
+    remaining violations before declaring done. Latent bugs in gracefully-degrading code paths
+    (try/catch → warning, optional fallback branches) pass tests silently until they hit edge cases.
+    Run the validate check or a direct grep: `bun run validate` now includes "Subprocess Env Safety"
+    for the `.env()` pattern specifically.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items

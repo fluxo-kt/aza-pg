@@ -17,6 +17,16 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 # Update Process
 
+## Pre-Flight: Docker Availability Check (FIRST)
+
+Before launching any parallel checks, confirm Docker is available. Docker-dependent checks (3, 8) cannot be deferred past the first commit if they fail here:
+
+```bash
+docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "⚠️ Docker OFFLINE — checks 3 and 8 are BLOCKED; they MUST complete before first commit"
+```
+
+If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but treat them as **BLOCKING** — no commit until they complete.
+
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
 Launch sub-agents (general-purpose, sonnet model) in parallel to check:
@@ -57,9 +67,29 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
    **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
+5. **Compose stack images** — ALL external images across ALL stacks (not in manifest!):
+
+   ```bash
+   # Enumerate ALL external images in ALL compose stacks (run this — don't assume you know them all)
+   command grep -rh ":-" stacks/*/compose.yml stacks/*/.env.example 2>/dev/null \
+     | command grep -E "image|IMAGE" | sort -u | command grep -v "^\s*#"
+   ```
+
+   Then for each discovered image, check the latest version:
+   - Docker Hub images: `curl -s "https://hub.docker.com/v2/repositories/ORG/REPO/tags?page_size=5&ordering=last_updated" | python3 -c "import sys,json; [print(t['name']) for t in json.load(sys.stdin)['results']]"`
+   - GitHub-backed images: `gh release list --repo ORG/REPO --limit 5`
+
+   **Current compose images** (update this list when adding new services):
+
+   | Image | GitHub Repo | Stacks |
+   |-------|-------------|--------|
+   | `edoburu/pgbouncer` | `edoburu/docker-pgbouncer` | primary only |
+   | `prometheuscommunity/pgbouncer-exporter` | `prometheus-community/pgbouncer_exporter` | primary only |
+   | `prometheuscommunity/postgres-exporter` | `prometheus-community/postgres_exporter` | **all three** |
+
 ## Pre-Flight: Additional Checks (MANDATORY)
 
-5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
+6. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
    ```bash
    # TypeScript test files — search ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
    command grep -rn -E "0\.8|2\.8|0\.5" scripts/ | command grep -iE "version|include|assert" | command grep -v "\.bun/"
@@ -164,12 +194,9 @@ rule with a comment; if legitimate, fix the code.
 `@types/bun`) but does NOT update the Bun runtime pinned in `.tool-versions`. These are independent:
 
 ```bash
-# Check current pinned runtime version
-cat .tool-versions            # e.g. "bun 1.3.8"
-
-# Check latest stable Bun runtime
-bun --version               # current installed
-# Then check https://github.com/oven-sh/bun/releases for latest stable tag
+# Check current pinned runtime version vs latest stable
+cat .tool-versions | command grep bun          # e.g. "bun 1.3.10"
+gh release view --repo oven-sh/bun --json tagName --jq .tagName  # e.g. "bun-v1.3.11"
 # NOTE: `bun upgrade` has no --dry-run flag — it upgrades immediately; do NOT run it
 ```
 
@@ -201,11 +228,11 @@ review** — do NOT blindly accept without checking each one.
 
 **For every major-version bump** (e.g., `actions/upload-artifact` bumping a major version):
 
-1. Fetch the upstream release notes:
+1. Fetch the upstream release notes (RTK proxy breaks `curl | jq` — use `gh` instead):
    ```bash
-   # Replace OWNER/REPO and vN.0.0 with the actual action and version
-   curl -s https://api.github.com/repos/OWNER/REPO/releases/tags/vN.0.0 | jq -r '.body'
-   # Or fetch the RELEASES.md directly:
+   # PREFERRED — works reliably via RTK proxy
+   gh release view vN.0.0 --repo OWNER/REPO --json body --jq .body
+   # Or fetch raw RELEASES.md (curl of raw content works fine — RTK only transforms API JSON):
    curl -s https://raw.githubusercontent.com/OWNER/REPO/main/RELEASES.md | head -80
    ```
 
@@ -670,12 +697,14 @@ scripts/test/
 # Regenerate all files from manifest
 bun run generate
 
-# Fast validation (REQUIRED - static checks + unit tests)
+# Fast validation: static checks + unit tests (~3s, runs without Docker)
 bun run validate
 
-# Full validation (includes shellcheck, hadolint, yamllint)
+# MANDATORY full validation: + shellcheck, hadolint, yamllint (~30s, still no Docker)
 bun run validate:all
 ```
+
+**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) — these do NOT require Docker and take only ~30s. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
@@ -747,10 +776,31 @@ updated before proceeding to Phase 10/12. No exceptions.
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
-## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE COMMITTING)
+## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE EVERY COMMIT — NO EXCEPTIONS)
 
-**Do this after every batch of changes, without waiting to be asked.** Assume you missed
-something. Run through these checks adversarially — try to break your own work:
+**This is a MANDATORY GATE before every commit — not a suggestion, not "when time permits", not something to do when the user asks.** If you are about to call `git commit`, stop and run through this checklist first. Adversarially assume you missed something.
+
+**Pre-commit mechanical checklist** (run these commands, check the output):
+```bash
+# 1. Verify CHANGELOG gating
+git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks
+# If non-empty → must also show: git diff --name-only -- CHANGELOG.md (non-empty)
+
+# 2. Verify no stale version strings in tests
+command grep -rn -E 'includes\(|startsWith\(' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"
+
+# 3. Verify ALL compose stacks updated (not just primary)
+command grep -rh "pgbouncer\|postgres-exporter" stacks/*/compose.yml stacks/*/.env.example | sort -u
+
+# 4. Verify no branch-pinned reusable workflow refs remain
+command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
+# (non-empty output = action required)
+
+# 5. Verify validate:all passes
+bun run validate:all
+```
+
+**Then review these qualitative questions** — try to break your own work:
 
 **Tests**
 - Do any new tests pass trivially regardless of the fix they claim to cover?

@@ -10,20 +10,16 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
-### Fixed
-
-- **pg_partman 5.4.2 version reporting bug**: v5.4.2 shipped with the wrong version in its control file — `\dx` reported `5.4.1` even with v5.4.2 installed. Upgrading to v5.4.3 corrects the catalog entry and includes the proper update path for both affected and unaffected v5.4.2 installs.
-
 ### Changed
 
-- **pg_partman 5.4.2 → 5.4.3**: Inherits toast table relation options from template table; fixes the control-file version reporting bug (see Fixed above).
-- **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds SHOW CLIENTS metrics (v0.12.0), fixes `pgbouncer_stats_totals_server_assignments_total` metric (v0.11.1), adds prepared statement metrics and total_server_assignment_count (v0.11.0). ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup. PgBouncer ≥ 1.8 required (we use v1.25.1, unaffected).
-- **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in `long_running_transactions` collector and `pg_settings` crash on bad values (v0.19.0); optimised `pg_stat_statements` queries to avoid excessive temp file creation; fixed WAL collector NULL SUM(size) (v0.19.1). Behaviour change: duplicate entries in `pg_stat_statements` are now filtered and logged (previously silent).
-- **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit (`7c8603f` → `cbe74b5`) to align with upstream 0.3.4 release-prep commits (Cargo/metadata/version/release automation updates). In this commit range, no `src/` or SQL API files changed.
+- **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
+- **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
+- **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
 
 ### Development
 
-- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (all Node.js 24 runtime bumps); aquasecurity/trivy-action 0.34→0.35; junie workflow SHA-pinned (was @main); SHA pins refreshed across all workflows
+- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (Node.js 24 runtime bumps); trivy-action 0.34→0.35; SHA pins refreshed across all workflows
+- **Build reliability fix**: `build-extensions.ts` now resolves git tags to commit SHAs via `git ls-remote` instead of a full clone+rm-rf sequence. Bun's shell `rm -rf` built-in fails on deeply nested directories (pgroonga regression test trees) with "Directory not empty", breaking CI. The new approach needs no temp directory at all.
 
 ---
 

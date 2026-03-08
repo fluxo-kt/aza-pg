@@ -18,6 +18,7 @@
  */
 
 import { $ } from "bun";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -116,9 +117,10 @@ function log(message: string): void {
 }
 
 async function ensureCleanDir(dir: string): Promise<void> {
-  // Always remove directory if it exists (nothrow ignores error if it doesn't exist)
-  // NOTE: Bun.file().exists() only works for files, not directories, so we use rm -rf
-  await $`rm -rf ${dir}`.nothrow();
+  // Use fs.rm (not Bun shell rm) — Bun's shell rm built-in fails on deeply nested
+  // directories (e.g. pgroonga regression test trees) with "Directory not empty".
+  // force:true is the nothrow equivalent: silently succeeds if dir doesn't exist.
+  await rm(dir, { recursive: true, force: true });
   await Bun.write(`${dir}/.gitkeep`, "");
 }
 
@@ -654,15 +656,23 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   // Clone repository based on source type
   if (source.type === "git" && source.repository && source.tag) {
-    // Resolve tag to commit SHA
-    const tempDir = join(BUILD_ROOT, `${name}-temp`);
-    // Remove temp directory if it exists (git clone requires target to not exist)
-    await $`rm -rf ${tempDir}`.nothrow();
-
     validateGitUrl(source.repository);
-    await $`git clone --depth 1 --branch ${source.tag} ${source.repository} ${tempDir}`.quiet();
-    const commit = await $`git -C ${tempDir} rev-parse HEAD`.text().then((s) => s.trim());
-    await $`rm -rf ${tempDir}`;
+    // Resolve tag → commit SHA via ls-remote (no temp clone or rm -rf needed).
+    // Request both TAG^{} (peeled commit for annotated tags) and TAG (lightweight tags).
+    const lsOutput =
+      await $`git ls-remote ${source.repository} refs/tags/${source.tag}^{} refs/tags/${source.tag}`.text();
+    const lines = lsOutput
+      .trim()
+      .split("\n")
+      .filter((l) => l.includes("\t"));
+    // Annotated tags: prefer the peeled ^{} entry (actual commit SHA, not tag-object SHA)
+    const peeledLine = lines.find((l) => l.includes("^{}"));
+    const regularLine = lines.find((l) => !l.includes("^{}"));
+    const commit = (peeledLine ?? regularLine)?.split("\t")[0]?.trim();
+    if (!commit) {
+      log(`Could not resolve tag ${source.tag} for ${source.repository} — check tag exists`);
+      process.exit(1);
+    }
 
     await cloneRepo(source.repository, commit, dest);
   } else if (source.type === "git-ref" && source.repository && (source.ref || source.commit)) {

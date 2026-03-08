@@ -115,21 +115,26 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 For EACH extension to update, inspect upstream delta before writing tests or changelog text:
 
 ```bash
-# Method 1: GitHub releases
-curl -s https://api.github.com/repos/OWNER/REPO/releases/latest | jq -r '.body'
+# Method 1: GitHub releases (PREFERRED — curl | jq is broken via RTK proxy)
+gh release view vX.Y.Z --repo OWNER/REPO --json body --jq .body
 
-# Method 2: Upstream CHANGELOG
+# Method 2: Latest release (no tag needed)
+gh release view --repo OWNER/REPO --json body --jq .body
+
+# Method 3: Upstream CHANGELOG (raw file — still works via curl since RTK only transforms API JSON)
 curl -s https://raw.githubusercontent.com/OWNER/REPO/NEW_TAG/CHANGELOG.md | head -100
 
-# Method 3: Compare tags
-curl -s https://api.github.com/repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG | jq '.commits[].commit.message'
+# Method 4: Compare tags via gh
+gh api repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG --jq '.commits[].commit.message'
 
-# Method 4 (MANDATORY for git-ref updates): inspect commit range and touched paths
+# Method 5 (MANDATORY for git-ref updates): inspect commit range and touched paths
 git clone https://github.com/OWNER/REPO.git /tmp/EXT-REPO
 cd /tmp/EXT-REPO
 git log --oneline OLD_REF..NEW_REF
 git diff --name-status OLD_REF..NEW_REF
 ```
+
+**⚠️ RTK proxy note**: `curl` to `api.github.com` returns RTK-filtered non-JSON output — `| jq` will fail. Always use `gh` CLI for GitHub API calls.
 
 **MANDATORY evidence discipline**:
 - Do not claim "bug fixes", "schema fixes", or "new features" unless the commit range proves it
@@ -245,6 +250,36 @@ command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#
 Cross-reference each result against the `# vX.Y.Z` tag on the corresponding `uses:` line.
 Update any prose comment that references an old version. This is easy to miss and creates
 actively misleading documentation.
+
+### MANDATORY: Fix Branch-Pinned Reusable Workflow Refs
+
+**`actions-up` has a critical blind spot**: it cannot SHA-pin job-level `uses:` refs for reusable
+workflows (`uses: ORG/REPO/.github/workflows/FILE.yml@main`). It reports them as
+"Skipped N actions pinned to branches" and `--include-branches` does NOT fix them either —
+it only applies to step-level action refs.
+
+After `actions-up`, manually check for any remaining branch-pinned reusable workflow calls:
+
+```bash
+# Find all job-level uses: with branch refs (not SHA-pinned)
+command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
+```
+
+For each found: get the current HEAD SHA and pin it:
+
+```bash
+# Get current HEAD SHA of the branch
+git ls-remote https://github.com/ORG/REPO.git refs/heads/BRANCH
+
+# Then update the workflow file:
+# uses: ORG/REPO/.github/workflows/FILE.yml@BRANCH
+# →
+# uses: ORG/REPO/.github/workflows/FILE.yml@SHA # BRANCH
+```
+
+This is especially important for reusable workflows with broad permissions (`contents: write`,
+`packages: write`, etc.) — a compromised upstream branch would get those permissions on the
+next manual or scheduled invocation.
 
 **Validate after actions-up**:
 ```bash
@@ -548,17 +583,38 @@ had the wrong `.so` filename — the dead entry went unnoticed until an explicit
 
 Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
 
-### 5.6: PgBouncer Image (Outside Manifest)
+### 5.6: PgBouncer and pgbouncer-exporter (Outside Manifest)
 
-**Not in manifest-data.ts!** PgBouncer version is hardcoded in:
+**Not in manifest-data.ts!** Two separate images are hardcoded in compose stacks:
+
+**1. PgBouncer** (`edoburu/pgbouncer`) — connection pooler:
 - `stacks/primary/compose.yml` (search for `edoburu/pgbouncer`)
 - Test files: `scripts/test/test-pgbouncer-*.ts`
 
-**Update procedure**:
+```bash
+gh release list --repo edoburu/docker-pgbouncer --limit 5
+```
 
-1. Check for new edoburu/pgbouncer releases on Docker Hub
-2. Update image tag and SHA256 digest in compose.yml
-3. Update test files if needed
+**2. pgbouncer-exporter** (`prometheuscommunity/pgbouncer-exporter`) — Prometheus metrics:
+- `stacks/primary/compose.yml` (search for `pgbouncer-exporter`)
+
+```bash
+gh release list --repo prometheus-community/pgbouncer_exporter --limit 5
+```
+
+**Update procedure** (for each image):
+
+1. Check for new releases via `gh release list` (above)
+2. Get the new SHA256 digest — without Docker daemon, use the registry API:
+   ```bash
+   TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
+     | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+     -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
+   ```
+3. Update image tag and SHA256 digest in `stacks/primary/compose.yml`
+4. Update test files if needed
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -798,6 +854,9 @@ After every update round, perform a mandatory self-reflection before closing out
 8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
    automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
    section for the exact grep command and what to look for.
+8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
+    `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
+    Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern

@@ -89,7 +89,7 @@ services:
 
   postgres_exporter:
     image: >-
-      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.18.1@sha256:5c35b3243652c4108f8e7ca906f366785e586f95a1c0ba225cc5e3a40c3e1a98}
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-primary
     restart: unless-stopped
 

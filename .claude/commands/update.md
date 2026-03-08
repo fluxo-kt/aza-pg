@@ -583,38 +583,42 @@ had the wrong `.so` filename — the dead entry went unnoticed until an explicit
 
 Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
 
-### 5.6: PgBouncer and pgbouncer-exporter (Outside Manifest)
+### 5.6: Compose Stack Images (Outside Manifest)
 
-**Not in manifest-data.ts!** Two separate images are hardcoded in compose stacks:
+**Not in manifest-data.ts!** Three external images are hardcoded across compose stacks. Check ALL three, and update in ALL stacks (primary, replica, single) that contain them:
 
-**1. PgBouncer** (`edoburu/pgbouncer`) — connection pooler:
-- `stacks/primary/compose.yml` (search for `edoburu/pgbouncer`)
-- Test files: `scripts/test/test-pgbouncer-*.ts`
+| Image | Stacks | Repo |
+|-------|--------|------|
+| `edoburu/pgbouncer` | primary only | `edoburu/docker-pgbouncer` |
+| `prometheuscommunity/pgbouncer-exporter` | primary only | `prometheus-community/pgbouncer_exporter` |
+| `prometheuscommunity/postgres-exporter` | **ALL three** | `prometheus-community/postgres_exporter` |
+
+**Also update companion `.env.example` files** — each stack has one with the same image tag (no digest). Easily missed; 3 files for postgres_exporter.
 
 ```bash
+# Check for latest releases
 gh release list --repo edoburu/docker-pgbouncer --limit 5
-```
-
-**2. pgbouncer-exporter** (`prometheuscommunity/pgbouncer-exporter`) — Prometheus metrics:
-- `stacks/primary/compose.yml` (search for `pgbouncer-exporter`)
-
-```bash
 gh release list --repo prometheus-community/pgbouncer_exporter --limit 5
+gh release list --repo prometheus-community/postgres_exporter --limit 5
+
+# Scan all compose stacks for current versions
+command grep -rn "pgbouncer\|postgres-exporter" stacks/*/compose.yml | command grep "image\|exporter"
 ```
 
-**Update procedure** (for each image):
+**Get SHA256 digest** (works without Docker daemon):
+```bash
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+  -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
+```
 
-1. Check for new releases via `gh release list` (above)
-2. Get the new SHA256 digest — without Docker daemon, use the registry API:
-   ```bash
-   TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
-     | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-   curl -s -H "Authorization: Bearer $TOKEN" \
-     -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
-     -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
-   ```
-3. Update image tag and SHA256 digest in `stacks/primary/compose.yml`
-4. Update test files if needed
+**Update checklist per image**:
+1. Update `image:` line in each affected `stacks/*/compose.yml`
+2. Update `EXPORTER_IMAGE=` line in each affected `stacks/*/.env.example`
+3. Update test files if they assert version strings
+4. Add CHANGELOG entry (compose changes are image-consumer-visible)
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -857,6 +861,9 @@ After every update round, perform a mandatory self-reflection before closing out
 8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
     `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
     Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
+8b. **Were ALL compose stack images updated across ALL stacks?** `postgres_exporter` lives in
+    primary, replica, AND single stacks plus three `.env.example` files. Updating only the primary
+    stack is a silent partial update. See Phase 5.6 table for which images are in which stacks.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern

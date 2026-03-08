@@ -18,6 +18,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **pg_partman 5.4.2 → 5.4.3**: Inherits toast table relation options from template table; fixes the control-file version reporting bug (see Fixed above).
 - **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds SHOW CLIENTS metrics (v0.12.0), fixes `pgbouncer_stats_totals_server_assignments_total` metric (v0.11.1), adds prepared statement metrics and total_server_assignment_count (v0.11.0). ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup. PgBouncer ≥ 1.8 required (we use v1.25.1, unaffected).
+- **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in `long_running_transactions` collector and `pg_settings` crash on bad values (v0.19.0); optimised `pg_stat_statements` queries to avoid excessive temp file creation; fixed WAL collector NULL SUM(size) (v0.19.1). Behaviour change: duplicate entries in `pg_stat_statements` are now filtered and logged (previously silent).
 - **pg_jsonschema (git-ref) commit bump**: Updated pinned source commit (`7c8603f` → `cbe74b5`) to align with upstream 0.3.4 release-prep commits (Cargo/metadata/version/release automation updates). In this commit range, no `src/` or SQL API files changed.
 
 ### Development

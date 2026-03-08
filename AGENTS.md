@@ -146,6 +146,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ `bun run validate` before commit
 - ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`); register in `test-all.ts` for CI inclusion (standalone on-demand tests are fine — just document intent at top of file). All `*.test.ts` files are unconditionally unit-test safe.
+- ❌ `$.env({ COMPOSE_PROJECT_NAME: name })` in test files — replaces the ENTIRE subprocess env (strips PATH, HOME, DOCKER_CONFIG), causing `docker-credential-osxkeychain: executable file not found` when Docker pulls uncached images → ✅ ALWAYS use `$.env({ ...Bun.env, COMPOSE_PROJECT_NAME: name })` to inherit the full process environment
+- ❌ `bun run test:all` exit code 0 does NOT mean zero failures — it exits 0 when only non-critical tests fail. Always verify the "Failed: X" count in the summary output is 0.
 
 ## Git Workflow
 

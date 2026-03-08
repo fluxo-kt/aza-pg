@@ -646,6 +646,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 2. Update `EXPORTER_IMAGE=` line in each affected `stacks/*/.env.example`
 3. Update test files if they assert version strings
 4. Add CHANGELOG entry (compose changes are image-consumer-visible)
+5. **Pre-pull after update** — run `docker pull NEW_IMAGE@SHA` immediately after updating so the image is in the local cache before `test:all` runs. New compose image versions are NOT cached locally and the first test run will need to pull them. Pre-pulling verifies the SHA is correct and prevents timing-dependent test failures:
+   ```bash
+   docker pull prometheuscommunity/postgres-exporter:vX.Y.Z@sha256:DIGEST
+   ```
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -914,6 +918,11 @@ After every update round, perform a mandatory self-reflection before closing out
 8b. **Were ALL compose stack images updated across ALL stacks?** `postgres_exporter` lives in
     primary, replica, AND single stacks plus three `.env.example` files. Updating only the primary
     stack is a silent partial update. See Phase 5.6 table for which images are in which stacks.
+8c. **Were updated compose images pre-pulled?** New image versions are NOT in the local Docker
+    cache. The `test:all` single-stack test pulls them during the test run. If the credential
+    helper lookup fails (e.g., env stripping in test subprocess), the test fails. Running
+    `docker pull NEW_IMAGE@SHA` immediately after updating ensures the image is cached before
+    `test:all` runs. See Phase 5.6 checklist item 5.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern

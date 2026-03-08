@@ -71,7 +71,7 @@ bun run lint                # Alias for validate
 # Testing
 bun run test                # Optimized: uses existing build (~30min)
 bun run test:all            # Complete: rebuilds image + all tests (~45min)
-bun run test:unit           # Unit tests only (no Docker)
+bun run test:unit           # Alias for validate (fast checks + unit tests, no Docker)
 
 # Build/Generation
 bun run build               # Build Docker image
@@ -84,7 +84,7 @@ bun run generate            # Regenerate all files from manifest
 - **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
 - **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
-- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild
+- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild → **also update `tests/regression/extensions/EXTNAME/expected/basic.out`** for any extension whose version string is hard-coded in that file (e.g., `extname | 1.2.3` lines); stale expected outputs cause nightly regression failures
 - **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
@@ -145,6 +145,9 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ `bun run validate` before commit
+- ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`); register in `test-all.ts` for CI inclusion (standalone on-demand tests are fine — just document intent at top of file). All `*.test.ts` files are unconditionally unit-test safe.
+- ❌ `$.env({ COMPOSE_PROJECT_NAME: name })` in test files — replaces the ENTIRE subprocess env (strips PATH, HOME, DOCKER_CONFIG), causing `docker-credential-osxkeychain: executable file not found` when Docker pulls uncached images → ✅ ALWAYS use `$.env({ ...Bun.env, COMPOSE_PROJECT_NAME: name })` to inherit the full process environment
+- ❌ `bun run test:all` exit code 0 does NOT mean zero failures — it exits 0 when only non-critical tests fail. Always verify the "Failed: X" count in the summary output is 0.
 
 ## Git Workflow
 
@@ -185,25 +188,79 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+ (immutable releases). Locally: `bun run security:scan`.
 
-**SHA Pin Accuracy**: GitHub Actions SHA comments (`# v1.2.3`) rot silently — the resolved tag in CI logs may differ from the comment. Run `actions-up` (see `/update` skill) to keep all SHA pins current. Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
+**SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
+
+**git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.
+
+**Secret-Scan Heuristic Trap**: `bun run test:all` secret-scan can flag ordinary local vars when names look credential-like (e.g., `token = "..."`). In non-secret code paths, use precise neutral names (`versionChunk`, `segment`, etc.) and re-run tests; don't suppress the scan blindly.
 
 **Annotated Tags Have TWO SHAs**: `git ls-remote ... refs/tags/vX.Y` returns the tag OBJECT SHA (not usable for `rev-parse HEAD`). Use `refs/tags/vX.Y^{}` (caret-brace) to get the peeled COMMIT SHA — this is what `HEAD` resolves to after `git clone --branch vX.Y`. Always verify with both: `git ls-remote URL 'refs/tags/TAG' 'refs/tags/TAG^{}'`.
+
+**Bun Shell `rm -rf` Fails on Deep Directories**: Bun's shell `$` built-in `rm` fails with "Directory not empty" on deeply nested directories (e.g. pgroonga regression test trees with 7+ levels like `expected/full-text-search/text/single/compatibility/v2`). Do NOT use `$\`rm -rf dir\``for directories that may contain deep trees. Use`import { rm } from "node:fs/promises"; await rm(dir, { recursive: true, force: true })`instead — this is reliable on Linux.`ensureCleanDir`in`build-extensions.ts`was updated to use`fs.rm`. The tag→SHA resolution code was also redesigned to use `git ls-remote` instead of clone+rm-rf (eliminates the temp directory entirely).
+
+**test-image-lib.ts `toolBinaries`**: Keys MUST match manifest entry `name` (kind: "tool") exactly — wrong keys silently skip checks (classic false-confidence bug). `.so` paths are derived at runtime via `SHOW server_version_num → floor(num/10000)` — no manual update needed on PG major version bumps. Disabled tools filtered by `entry.enabled !== false` before the loop; unknown enabled tools fail loudly. All filesystem paths embedding PG major version use `getPgMajorVersion(containerName)` (derived dynamically, cached per container in a module-level `Map`) — NEVER hardcode the version number (e.g., `postgresql/18/`).
+
+**Test Architecture**: `test-all.ts` calls `scripts/docker/test-image.ts` (thin wrapper, ~350 lines). All 39 test functions live exclusively in `test-image-lib.ts` — `test-image.ts` imports and calls them, so divergence is structurally impossible. Standalone scripts (`test-image-core.ts`, `test-image-functional-1/2/3.ts`) also use `test-image-lib.ts` and are NOT in CI — they run on-demand only.
+
+**Test Shared-Container Contamination**: All tests in `test-image.ts` share one container. Event trigger changes (`ALTER EVENT TRIGGER ... DISABLE`) MUST be wrapped in try/finally with `ENABLE` in the finally block — missed re-enable poisons all subsequent tests in the suite.
+
+**INSERT Idempotency**: Tests using `CREATE TABLE IF NOT EXISTS` + unconditional `INSERT` produce wrong counts on `--no-cleanup` container reuse. ALWAYS add `TRUNCATE tablename RESTART IDENTITY` before INSERTs when the test asserts exact row counts or id values.
+
+**Custom AM Index Contamination**: For custom index AMs (PGroonga), `TRUNCATE` alone does NOT reliably clear the AM's external storage (Groonga files). The non-negotiable requirements are: (1) `DROP INDEX IF EXISTS` must occur to purge external storage, (2) `CREATE INDEX` must be unconditional (no `IF NOT EXISTS`), (3) `CREATE INDEX` must happen AFTER all INSERTs. The ORDER of DROP INDEX relative to TRUNCATE is flexible — both `DROP → TRUNCATE → INSERT → CREATE` and `TRUNCATE → DROP → INSERT → CREATE` are correct; what breaks things is `CREATE INDEX IF NOT EXISTS` after TRUNCATE (skips rebuild, stale external data accumulates). RUM uses standard PostgreSQL AM pages (no external storage); the same pattern is applied for consistency.
+
+**psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
+
+**execSQL Never Throws**: `dockerRun` (the backing function for `execSQL`) has an internal try/catch that returns `{success: false, output: errorMessage}` on spawn failure. Therefore `execSQL` NEVER rejects — `.catch()` chained on `execSQL` is dead code. Check results via the `success` field, not exception handling.
+
+**DROP TABLE CASCADE ≠ DROP FUNCTION**: `DROP TABLE x CASCADE` removes the table's triggers, indexes, constraints, and sequences — but NOT the trigger functions they reference. Functions are standalone objects reusable across multiple tables. Any function created in a test (e.g., `test_trigger_func()`) must be explicitly dropped in `cleanupTestData` or it persists until the container is removed.
+
+**Auto-config Verification**: Testing that a GUC was written by auto-config uses `SELECT name FROM pg_settings WHERE name IN (...) AND source NOT IN ('configuration file','command line')` — any row returned means that setting was NOT written by auto-config (still at default). `SHOW setting` is useless for this: PostgreSQL always returns a value (the default), so SHOW cannot distinguish "configured" from "at default". A non-empty result from `SHOW shared_buffers` proves nothing.
+
+**`enabled: false` vs `defaultEnable: false`**: `enabled: false` = extension absent from image (guard integration tests with `isExtensionEnabled()` before calling CREATE EXTENSION — it will fail). `runtime.defaultEnable: false` = extension installed but NOT precreated in public schema (no guard needed — CREATE EXTENSION works in tests fine). Conflating these either makes tests meaningless (no guard on absent ext) or adds useless guards on installed exts.
+
+**precreatedExtensions list**: The 13 extensions created at initdb (`01-extensions.sql` + `01b-pg_cron.sh`) CANNOT be derived from the manifest — `runtime.defaultEnable` covers preload libs only (4 entries). Update the hardcoded list in `test-image-lib.ts` whenever `01-extensions.sql` changes (single source of truth — `test-image.ts` imports from lib).
+
+**Bidirectional Membership Checks**: Any test that validates "expected ⊆ actual" must also validate the reverse — "actual ⊆ allowable" — or unexpected entries go undetected. IMPORTANT: the reverse check must use the **allowable** superset, not the **required** set. Example: `testPreloadedExtensions` checks (1) all `defaultEnable:true` libs ARE in `shared_preload_libraries` (forward) and (2) everything IN `shared_preload_libraries` IS a `sharedPreload:true` lib (reverse). Using `required` for the reverse would flag legitimate optional preloads as rogue entries.
+
+**Fail-Fast for Phase 5 Prerequisites**: Phase 2 (`testPostgresConfiguration`) should assert prerequisites for Phase 5 functional tests. If `wal_level != logical`, Phase 5's `testWal2jsonReplication` fails with a cryptic "slot creation failed" error. A Phase 2 config assertion catches it immediately with a clear message. Rule: any GUC whose wrong value would cause a Phase 5 test to fail with an obscure error belongs in Phase 2's config check array.
+
+**cleanupTestData Must Cover ALL Failure Paths**: The cleanup function is a safety net — it must drop every resource ANY test can create, regardless of whether tests clean up after themselves on the happy path. Tests that create resources only drop them on the success path (early failure returns skip cleanup). If `cleanupTestData` doesn't also drop them, they accumulate on failed runs. Example: `testPgmqQueue` drops `test_topic_queue` only on success; `cleanupTestData` must explicitly drop it too.
 
 **Multi-Stage Gosu Replacement: GHA Cache Ambiguity + Trivy Layer Scanning**: All multi-stage approaches (`COPY --from=`, bind-mounts, `apt-get install su-exec` — absent from postgres image repos, `COPY via builder-pgxs output dir` — COPY cache key matched stale GHA entry) fail due to GHA layer cache interference. `apt-get purge gosu` is a no-op because postgres:18.3-trixie installs gosu via direct binary download (not dpkg). **Root cause of Trivy persistence**: Trivy scans ALL image layers including immutable base image layers — gosu in the postgres base layer is reported even when `/usr/local/bin/gosu` is su-exec in the merged filesystem. **Definitive fix**: compile su-exec in the final stage, install at `/usr/local/bin/gosu` (shadows the base binary), add `CVE-2025-68121` to `.trivyignore` (gosu is unreachable at runtime), exclude gosu from builder-pgxs rsync (`--exclude='gosu'`). Add `[ SZ -lt 500000 ]` to FAIL build if wrong binary.
 
 ## Changelog
 
-**File**: `CHANGELOG.md` — Keep a Changelog format, integrated with GitHub releases
+**File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases
+
+The changelog focuses changes affecting the **release Docker image** only!
+**Audience**: Image consumers (ops, developers deploying aza-pg). NOT developers of aza-pg tooling.
 
 **Workflow**:
 
 1. Track image-affecting changes in `[Unreleased]` section
-2. Focus on: extension updates, base image changes, breaking changes
+2. Focus on: extension updates, base image changes, breaking changes, security fixes
 3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[v18.1-202602082259]`)
 4. Start new `[Unreleased]` section for next changes
-5. Non-image changes (tests, tooling, CI): mention briefly in "Development" subsection
+5. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
 
-**Categories**: Changed (updates) | Added (new features) | Fixed (bug fixes) | Removed | Security | Breaking
+**The ONLY test that matters**: Would the change appear in `docker inspect`, `\dx`, extension behaviour, `psql --version`, or otherwise change what the image **does** for an operator? Yes → belongs. No → NEVER belongs.
+
+**What NEVER belongs in the changelog**:
+
+- Build script fixes (`build-extensions.ts`, `generate-dockerfile.ts`, etc.) — even if they fixed a build bug, the fix itself is invisible; only the **resulting extension change** (if any) belongs
+- Agent commands (`.claude/commands/`), skills, test scripts — invisible to image consumers
+- Individual kaizen/audit passes, validate check improvements, internal refactors
+- CI infra fixes (timeouts, retry logic, credentials) — operators can't see these
+- Anything a user running `docker run` cannot observe or act on
+
+**Development section rules** (when it's worth including at all):
+
+- Max 1-2 bullets total, no technical detail, user-impact framing only
+- OK: "Test coverage hardened; CI updated to Node.js 24 runners"
+- NOT OK: "testPgStatStatements now executes a tracked query after reset..."
+- NOT OK: "Fixed ensureCleanDir to use node:fs instead of Bun shell rm..."
+
+**Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development
 
 ## References
 

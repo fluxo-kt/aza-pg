@@ -1221,17 +1221,17 @@ bun run test:image ghcr.io/fluxo-kt/aza-pg:TAG --fast
 
 **Test Phases:**
 
-| Phase            | Description                            | Tests                |
-| ---------------- | -------------------------------------- | -------------------- |
-| 1. Pre-flight    | Static validation, linting, unit tests | 10 checks, 198 tests |
-| 2. Image Pull    | Pull and verify image exists           | psql version check   |
-| 3. Comprehensive | 5-phase image verification             | 37 tests             |
-| 4. Auto-Config   | Memory tier and workload testing       | 36 scenarios         |
-| 5. Extensions    | All 5 extension test suites            | 117+ tests           |
-| 6. Stack Deploy  | Single-node deployment                 | Full stack test      |
-| 7. Features      | pgflow, pgmq, security                 | 54+ tests            |
-| 8. Regression    | Tiers 1-3 PostgreSQL regression        | Core + extensions    |
-| 9. Negative      | Error handling validation              | 10 scenarios         |
+| Phase            | Description                            | Tests                 |
+| ---------------- | -------------------------------------- | --------------------- |
+| 1. Pre-flight    | Static validation, linting, unit tests | 10 checks, unit tests |
+| 2. Image Pull    | Pull and verify image exists           | psql version check    |
+| 3. Comprehensive | 5-phase image verification             | 37 tests              |
+| 4. Auto-Config   | Memory tier and workload testing       | 36 scenarios          |
+| 5. Extensions    | All 5 extension test suites            | 117+ tests            |
+| 6. Stack Deploy  | Single-node deployment                 | Full stack test       |
+| 7. Features      | pgflow, pgmq, security                 | 54+ tests             |
+| 8. Regression    | Tiers 1-3 PostgreSQL regression        | Core + extensions     |
+| 9. Negative      | Error handling validation              | 10 scenarios          |
 
 **Usage Examples:**
 
@@ -1329,6 +1329,49 @@ The script provides:
 - Categorized summary at the end (Validation, Build, Functional)
 - Timing for each test
 - Highlighted failures with actionable error messages
+
+### Test File Naming Convention
+
+The naming convention is the structural enforcement mechanism — no code required:
+
+| Pattern                            | Category          | Auto-discovered?                | Requires Docker?           |
+| ---------------------------------- | ----------------- | ------------------------------- | -------------------------- |
+| `scripts/**/*.test.ts`             | Unit tests        | ✅ Yes, via glob                | ❌ Never (guaranteed)      |
+| `test-*.ts` (no `.test.ts` suffix) | Integration tests | ❌ No — register in test-all.ts | Often, but not guaranteed¹ |
+
+¹ The invariant is **one-directional**: `*.test.ts` → Docker-free is guaranteed; `test-*.ts` → Docker-required is NOT. Some `test-*.ts` files (e.g., `test-smoke.ts`) run without Docker. Each test declares `requiresDocker: true` in `test-all.ts` only when needed.
+
+**Rules:**
+
+- `*.test.ts` files are **always** safe to run without Docker — `validate.ts` discovers them via glob unconditionally. This is the only **structural** guarantee (enforced by glob, not convention).
+- Integration tests use `test-*.ts` naming (without `.test.ts` suffix); they may be in any `scripts/` subdirectory (`scripts/`, `scripts/test/`, `scripts/docker/`, `scripts/config/`, etc.)
+- Integration tests intended for the main CI suite are registered in `test-all.ts`. Many are intentionally standalone (e.g., `test-timescaledb-breaking-changes.ts`, `test-extension-regression.ts`, `test-image-core.ts`) — run manually or for specific scenarios.
+- `bunfig.toml [test]` does **not** support an `exclude` option (Bun 1.3.x) — file naming is the only enforcement mechanism
+- Running `bun test` (no args) discovers only `*.test.ts` files, so integration tests are excluded structurally
+
+**Adding a new unit test:**
+
+```bash
+# Create scripts/test/my-feature.test.ts — auto-discovered by glob
+# No registration anywhere needed
+```
+
+**Adding a new integration test (main CI suite):**
+
+```bash
+# Create scripts/test/test-my-feature.ts — NOT auto-discovered
+# Register in scripts/test-all.ts
+#   - set requiresDocker: true only if the test requires a running container
+# Run via: bun run test:all
+```
+
+**Adding a standalone integration test (on-demand / manual):**
+
+```bash
+# Create scripts/test/test-my-feature.ts — NOT auto-discovered, NOT in test-all.ts
+# Run manually: bun scripts/test/test-my-feature.ts
+# Document intent at top of file (usage comment + when to run)
+```
 
 ### Extension Functional Tests
 

@@ -92,7 +92,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.2](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.2)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.3](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.3)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
 | [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
 
 ### observability
@@ -170,7 +170,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                    | Version                                                                                               | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                        |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [7c8603f1](https://github.com/supabase/pg_jsonschema/commit/7c8603f14d8d20ea84435b0b8409a4e1a40147b0) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
+| [`pg_jsonschema`](https://github.com/supabase/pg_jsonschema) | [cbe74b57](https://github.com/supabase/pg_jsonschema/commit/cbe74b570d38aa0c4d42914e7a118bcb3adaee7a) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/pg_jsonschema) | JSON Schema validation for JSONB documents on INSERT/UPDATE. |
 
 ### workflow
 

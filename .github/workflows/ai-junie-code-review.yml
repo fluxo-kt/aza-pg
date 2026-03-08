@@ -1,0 +1,52 @@
+name: Junie Review
+
+on:
+  pull_request:
+    types: [opened, reopened]
+    #types: [opened, reopened, synchronize]
+
+env:
+  CI: true
+  BUILD_NUMBER: ${{ github.run_number }}
+  SCM_TAG: ${{ github.sha }}
+  IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+jobs:
+  junie-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIMER'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 23
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+      security-events: read
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 30 # Longer history for better diff analysis
+
+      # https://junie.jetbrains.com/docs/junie-on-github.html#setup
+      # https://github.com/JetBrains/junie-github-action/blob/main/COOKBOOK.md#setup
+      # https://github.com/JetBrains/junie-github-action/blob/main/action.yml
+      - name: Run Junie Review
+        id: junie-review
+        uses: JetBrains/junie-github-action@e98483eebe3270dc041ff6df56850dc5aa5be84c # v1.1.0
+        with:
+          junie_api_key: ${{ secrets.JUNIE_API_KEY }}
+          # Alternatively, write your custom review instructions in the prompt field
+          # instead of using the built-in "code-review" value
+          prompt: "code-review"
+          # Update the same comment on subsequent Junie runs instead of adding new comments
+          #use_single_comment: "true"

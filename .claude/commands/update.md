@@ -17,6 +17,16 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 # Update Process
 
+## Pre-Flight: Docker Availability Check (FIRST)
+
+Before launching any parallel checks, confirm Docker is available. Docker-dependent checks (3, 8) cannot be deferred past the first commit if they fail here:
+
+```bash
+docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "⚠️ Docker OFFLINE — checks 3 and 8 are BLOCKED; they MUST complete before first commit"
+```
+
+If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but treat them as **BLOCKING** — no commit until they complete.
+
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
 Launch sub-agents (general-purpose, sonnet model) in parallel to check:
@@ -26,6 +36,15 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```bash
    bun scripts/extensions/check-updates.ts
    ```
+   Mandatory interpretation:
+   - Treat `sourceType: "git-ref"` rows exactly like tagged updates: compare `current` vs `latest`
+   - If any git-ref row has `latest: null`, stop and fix connectivity/parsing before proceeding
+   - If any enabled row has `updateAvailable: true`, either update it now or document a concrete skip reason
+   Verify candidate updates are true upgrades in the same release family:
+   - Ignore mismatched tag-family noise (e.g., monorepo tags like `foo@X.Y.Z` vs plain `X.Y.Z`)
+   - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
+   - Ignore downgrades (`current > candidate`) caused by mixed/non-semver tags
+   - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
 
 2. **Bun dependencies**:
 
@@ -48,11 +67,36 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
 
    **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
+5. **Compose stack images** — ALL external images across ALL stacks (not in manifest!):
+
+   ```bash
+   # Enumerate ALL external images in ALL compose stacks (run this — don't assume you know them all)
+   command grep -rh ":-" stacks/*/compose.yml stacks/*/.env.example 2>/dev/null \
+     | command grep -E "image|IMAGE" | sort -u | command grep -v "^\s*#"
+   ```
+
+   Then for each discovered image, check the latest version:
+   - Docker Hub images: `curl -s "https://hub.docker.com/v2/repositories/ORG/REPO/tags?page_size=5&ordering=last_updated" | python3 -c "import sys,json; [print(t['name']) for t in json.load(sys.stdin)['results']]"`
+   - GitHub-backed images: `gh release list --repo ORG/REPO --limit 5`
+
+   **Current compose images** (update this list when adding new services):
+
+   | Image | GitHub Repo | Stacks |
+   |-------|-------------|--------|
+   | `edoburu/pgbouncer` | `edoburu/docker-pgbouncer` | primary only |
+   | `prometheuscommunity/pgbouncer-exporter` | `prometheus-community/pgbouncer_exporter` | primary only |
+   | `prometheuscommunity/postgres-exporter` | `prometheus-community/postgres_exporter` | **all three** |
+
 ## Pre-Flight: Additional Checks (MANDATORY)
 
-5. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
+6. **Test file version strings**: Search test files for hardcoded version strings of extensions being updated:
    ```bash
-   grep -rn "0\.8\|2\.8\|0\.5" scripts/test/ | grep -i "version\|include\|assert"
+   # TypeScript test files — search ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
+   command grep -rn -E "0\.8|2\.8|0\.5" scripts/ | command grep -iE "version|include|assert" | command grep -v "\.bun/"
+   # Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+   command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
+   # SQL regression expected outputs — also hard-code version strings and WILL break nightly if stale
+   command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
    ```
    These WILL break tests if not updated alongside the extension. This is the #1 missed item.
 
@@ -75,7 +119,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
      dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
      apt-get update -qq 2>/dev/null &&
      apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json
-   " 2>&1 | grep -E "percona-pg|percona-postgresql"
+   " 2>&1 | command grep -E "percona-pg|percona-postgresql"
    ```
    If a version is gone, update `perconaVersion` in `manifest-data.ts` to the new version
    and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
@@ -91,20 +135,41 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```
    Both must show the same `X.Y.Z~debianNN-NNNN` version string.
 
+9. **Pre-plan the changelog obligation** (MANDATORY): if you touch any image-affecting source
+   (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`,
+   `scripts/config/extension-defaults.ts` via generation), you MUST update `CHANGELOG.md` in the
+   same update round before Phase 12.
+
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
 
-For EACH extension to update, check upstream for breaking changes and new features:
+For EACH extension to update, inspect upstream delta before writing tests or changelog text:
 
 ```bash
-# Method 1: GitHub releases
-curl -s https://api.github.com/repos/OWNER/REPO/releases/latest | jq -r '.body'
+# Method 1: GitHub releases (PREFERRED — curl | jq is broken via RTK proxy)
+gh release view vX.Y.Z --repo OWNER/REPO --json body --jq .body
 
-# Method 2: Upstream CHANGELOG
+# Method 2: Latest release (no tag needed)
+gh release view --repo OWNER/REPO --json body --jq .body
+
+# Method 3: Upstream CHANGELOG (raw file — still works via curl since RTK only transforms API JSON)
 curl -s https://raw.githubusercontent.com/OWNER/REPO/NEW_TAG/CHANGELOG.md | head -100
 
-# Method 3: Compare tags
-curl -s https://api.github.com/repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG | jq '.commits[].commit.message'
+# Method 4: Compare tags via gh
+gh api repos/OWNER/REPO/compare/OLD_TAG...NEW_TAG --jq '.commits[].commit.message'
+
+# Method 5 (MANDATORY for git-ref updates): inspect commit range and touched paths
+git clone https://github.com/OWNER/REPO.git /tmp/EXT-REPO
+cd /tmp/EXT-REPO
+git log --oneline OLD_REF..NEW_REF
+git diff --name-status OLD_REF..NEW_REF
 ```
+
+**⚠️ RTK proxy note**: `curl` to `api.github.com` returns RTK-filtered non-JSON output — `| jq` will fail. Always use `gh` CLI for GitHub API calls.
+
+**MANDATORY evidence discipline**:
+- Do not claim "bug fixes", "schema fixes", or "new features" unless the commit range proves it
+- For git-ref bumps, summarize what changed by path class (`src/`, `sql/`, docs/CI/release scripts)
+- If only CI/docs/release metadata changed, say exactly that in CHANGELOG (no runtime-claim inflation)
 
 **Document findings** — you'll need this for:
 - Writing new tests (Phase 6)
@@ -129,12 +194,9 @@ rule with a comment; if legitimate, fix the code.
 `@types/bun`) but does NOT update the Bun runtime pinned in `.tool-versions`. These are independent:
 
 ```bash
-# Check current pinned runtime version
-cat .tool-versions            # e.g. "bun 1.3.8"
-
-# Check latest stable Bun runtime
-bun --version               # current installed
-# Then check https://github.com/oven-sh/bun/releases for latest stable tag
+# Check current pinned runtime version vs latest stable
+cat .tool-versions | command grep bun          # e.g. "bun 1.3.10"
+gh release view --repo oven-sh/bun --json tagName --jq .tagName  # e.g. "bun-v1.3.11"
 # NOTE: `bun upgrade` has no --dry-run flag — it upgrades immediately; do NOT run it
 ```
 
@@ -164,13 +226,13 @@ actions were updated and how many were **breaking** (major version bumps).
 `actions-up` reports breaking changes (major version jumps) separately. **These require manual
 review** — do NOT blindly accept without checking each one.
 
-**For every major-version bump** (e.g., `upload-artifact v6 → v7`):
+**For every major-version bump** (e.g., `actions/upload-artifact` bumping a major version):
 
-1. Fetch the upstream release notes:
+1. Fetch the upstream release notes (RTK proxy breaks `curl | jq` — use `gh` instead):
    ```bash
-   # Replace OWNER/REPO and vN.0.0 with the actual action and version
-   curl -s https://api.github.com/repos/OWNER/REPO/releases/tags/vN.0.0 | jq -r '.body'
-   # Or fetch the RELEASES.md directly:
+   # PREFERRED — works reliably via RTK proxy
+   gh release view vN.0.0 --repo OWNER/REPO --json body --jq .body
+   # Or fetch raw RELEASES.md (curl of raw content works fine — RTK only transforms API JSON):
    curl -s https://raw.githubusercontent.com/OWNER/REPO/main/RELEASES.md | head -80
    ```
 
@@ -180,38 +242,71 @@ review** — do NOT blindly accept without checking each one.
    - **Behaviour changes** (silent→loud defaults): new defaults may turn previously-tolerated
      warnings into hard failures — this is the most dangerous category
    - **New required inputs**: does the action now require a parameter you haven't set?
-   - **Runner version requirements**: Node.js 24 actions require Actions Runner ≥ v2.327.1–v2.329.0;
-     self-hosted runners below this threshold will fail with "node24 not found"
+   - **Runner version requirements**: Node.js runtime version bump = new minimum runner version;
+     self-hosted runners below the threshold will fail with "nodeXX not found" (check release notes
+     for the minimum runner version required by the action's Node.js release)
 
 3. Fix any incompatible usages before committing.
 
 ### Known Breaking Patterns for Common Actions
 
-| Action | Breaking boundary | What changed | Action needed |
-|--------|------------------|--------------|---------------|
-| `actions/upload-artifact` | v6→v7 | New `archive:` param (default `true`, safe); Node.js 24 | None for normal usage |
-| `actions/download-artifact` | v7→v8 | `digest-mismatch` default changed `warn` → `error`; new `skip-decompress` | Check if your workflows relied on silent hash-mismatch tolerance |
-| `sigstore/cosign-installer` | v3→v4 | v3 cannot install cosign v3.x (bundle format changed); default cosign bumped to v3.x | If you pin `cosign-release:` explicitly, verify it still installs; verify cosign v3 CLI compat |
-| `actions/attest-build-provenance` | v3→v4 | Node.js 24 (runner req); `subject-version` input added (additive) | None unless on old self-hosted runners |
-| `actions/checkout` | v5→v6 | Credentials stored in `$RUNNER_TEMP` via `includeIf` (not `.git/config`) | None for normal git usage; breaks scripts that parse `.git/config` directly |
-| `actions/cache` | v3→v4 | Removed `save-always` input (use `cache-hit` output pattern instead) | Check for `save-always:` usage |
+| Action | Typical major-version changes | What to verify |
+|--------|------------------------------|----------------|
+| `actions/upload-artifact` | Node.js runtime bump; additive params | Generally safe; check release notes for new required inputs or default changes |
+| `actions/download-artifact` | Default strictness changes (hash-mismatch handling); new inputs | Check if workflow relied on lenient defaults (e.g., silent mismatch tolerance) |
+| `sigstore/cosign-installer` | Cosign bundle format compatibility; default cosign version bump | If you pin `cosign-release:`, verify pinned version still installs; check CLI compat |
+| `actions/attest-build-provenance` | Node.js runtime bump; new optional inputs (additive) | Check runner version requirement in release notes; new additive inputs are safe if not referenced |
+| `actions/checkout` | Credentials storage location can change | Breaks scripts parsing `.git/config` directly; normal git usage unaffected |
+| `actions/cache` | Input removals/renames (e.g., `save-always` was removed) | Grep all `cache:` steps for removed/renamed inputs; use `cache-hit` output pattern |
+| `docker/login-action` | Has historically been runtime-only (no interface changes) | For self-hosted runners: check Node.js runtime requirement in release notes |
+| `docker/setup-qemu-action` | Has historically been runtime-only (no interface changes) | Same pattern as docker/login-action; GitHub-hosted runners always qualify |
 
-### MANDATORY: Fix Stale Inline Version Comments
+### MANDATORY: Audit for Stale Prose Version Comments
 
-**`actions-up` updates the `uses:` SHA but does NOT update inline comments.**
+**`actions-up` updates the SHA AND the `# vX.Y.Z` tag on each `uses:` line, but does NOT update
+version references in prose comments elsewhere in the file** (e.g., a comment in a `run:` step
+or a description block that mentions an old version like `# Uses upload-artifact v6`).
 
-After running `actions-up`, scan ALL workflow and composite action files for stale version comments:
+After running `actions-up`, scan ALL workflow and composite action files for stale prose comments:
 
 ```bash
-# Find inline version comments that may be stale (e.g., "# v3.0.0" next to a v4 SHA)
-grep -rn "# v" .github/workflows/ .github/actions/
-# Also check for explicit version refs in prose comments:
-grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | grep "#"
+# Find prose version references that may be stale (distinct from the uses: line comments)
+command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"
 ```
 
-Cross-reference each comment against the actual `# vX.Y.Z` comment that `actions-up` added to the
-`uses:` line. Update any prose comment that references an old version. This is easy to miss and
-creates actively misleading documentation.
+Cross-reference each result against the `# vX.Y.Z` tag on the corresponding `uses:` line.
+Update any prose comment that references an old version. This is easy to miss and creates
+actively misleading documentation.
+
+### MANDATORY: Fix Branch-Pinned Reusable Workflow Refs
+
+**`actions-up` has a critical blind spot**: it cannot SHA-pin job-level `uses:` refs for reusable
+workflows (`uses: ORG/REPO/.github/workflows/FILE.yml@main`). It reports them as
+"Skipped N actions pinned to branches" and `--include-branches` does NOT fix them either —
+it only applies to step-level action refs.
+
+After `actions-up`, manually check for any remaining branch-pinned reusable workflow calls:
+
+```bash
+# Find all job-level uses: with branch refs (not SHA-pinned)
+command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
+```
+
+For each found: get the current HEAD SHA and pin it:
+
+```bash
+# Get current HEAD SHA of the branch
+git ls-remote https://github.com/ORG/REPO.git refs/heads/BRANCH
+
+# Then update the workflow file:
+# uses: ORG/REPO/.github/workflows/FILE.yml@BRANCH
+# →
+# uses: ORG/REPO/.github/workflows/FILE.yml@SHA # BRANCH
+```
+
+This is especially important for reusable workflows with broad permissions (`contents: write`,
+`packages: write`, etc.) — a compromised upstream branch would get those permissions on the
+next manual or scheduled invocation.
 
 **Validate after actions-up**:
 ```bash
@@ -229,7 +324,8 @@ docker run --rm postgres:18-trixie postgres --version  # check latest minor
 
 # Get latest base image SHA
 docker pull postgres:18.X-trixie
-SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
+SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}' | sed 's/.*@//')
+# ↑ strip "docker.io/library/postgres@" prefix — manifest needs just "sha256:XXXXX"
 
 # Update manifest-data.ts (search for MANIFEST_METADATA)
 # Change TWO fields:
@@ -237,11 +333,18 @@ SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}')
 # - baseImageSha: "sha256:..."
 
 # Verify format (baseImageSha is just the sha256:... digest, no image name prefix)
-grep 'baseImageSha:' scripts/extensions/manifest-data.ts
+command grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
 
 **⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
 PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the same commit.
+
+**⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
+- `scripts/docker/test-image-lib.ts` `toolBinaries` dict — `.so` paths hardcode PG major (e.g., `postgresql/18/lib/` → `postgresql/19/lib/`)
+- pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
+- TimescaleDB version suffix (e.g., `-1803` → `-1900`)
+- All `pgdgVersion` strings that contain the PG major version
+- All `pgdg13+N` suffixes stay unchanged (that's the Debian version, not PG version)
 
 ## Phase 4: Extensions (BY SOURCE TYPE)
 
@@ -249,7 +352,7 @@ PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the s
 
 ### Dependency Graph
 
-**Extract from manifest**: `grep 'dependencies:' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Extract from manifest**: `command grep 'dependencies:' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
 Extensions with `dependencies: ["extension1", "extension2"]` field must be updated AFTER their dependencies.
 
@@ -261,7 +364,7 @@ Extensions with `dependencies: ["extension1", "extension2"]` field must be updat
 
 ```bash
 # Find dependents
-grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | grep 'name:'
+command grep -B 30 "dependencies:.*EXTENSION_NAME" scripts/extensions/manifest-data.ts | command grep 'name:'
 
 # Check compatibility:
 # - Read dependent's Cargo.toml / package.json for version constraints
@@ -286,7 +389,7 @@ bun run test:all  # Verify runtime compatibility
 
 ### PGDG Extensions
 
-**Identify**: `grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
 **⚠️ CRITICAL**: When switching between PGDG and source build, update **4 files**:
 1. `scripts/extensions/manifest-data.ts`: Change `install_via`, add/remove `pgdgVersion`, add/remove `build`
@@ -321,7 +424,7 @@ Update BOTH `source.tag` AND `pgdgVersion`:
 
 ### Percona Extensions
 
-**Identify**: `grep 'install_via: "percona"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "percona"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `perconaVersion`:
 
@@ -340,7 +443,7 @@ Update BOTH `source.tag` AND `perconaVersion`:
 
 ### Timescale Extensions
 
-**Identify**: `grep 'install_via: "timescale"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "timescale"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `timescaleVersion`:
 
@@ -358,7 +461,7 @@ Update BOTH `source.tag` AND `timescaleVersion`:
 
 ### GitHub Release Extensions
 
-**Identify**: `grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
 
 Update BOTH `source.tag` AND `githubReleaseTag` (must match):
 
@@ -383,7 +486,7 @@ gh release view TAG --repo OWNER/REPO --json assets --jq '.assets[].name'
 ### Source-Built Extensions
 
 **Identify**: Extensions with `build:` field (no `install_via`, or `install_via` with `build:`)
-- `grep -B 5 'build:' scripts/extensions/manifest-data.ts | grep 'name:'`
+- `command grep -B 5 'build:' scripts/extensions/manifest-data.ts | command grep 'name:'`
 
 Update ONLY `source.tag`:
 
@@ -398,7 +501,7 @@ Update ONLY `source.tag`:
 
 ### Builtin Extensions
 
-**Identify**: `grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
 
 **No manual updates required** - Builtin extensions are part of PostgreSQL core and update automatically with the base image (Phase 3).
 
@@ -408,7 +511,7 @@ These only need updates when PostgreSQL version changes.
 
 **IMPORTANT**: When updating any extension, check for local patches/compatibility layers in `docker/postgres/`:
 - Search for files: `find docker/postgres -name "*EXTENSION_NAME*patch*" -o -name "*EXTENSION_NAME*stub*" -o -name "*EXTENSION_NAME*compat*"`
-- Review init scripts: `grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
+- Review init scripts: `command grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
 - Verify patches still apply with new version or if upstream fixed them
 
 ### 5.1: pgflow (6+ Files to Update)
@@ -426,33 +529,35 @@ bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
 # Step 3: Update npm packages in package.json
 bun update @pgflow/client @pgflow/dsl --latest
 
-# Step 4: Update Dockerfile.template (search for `COPY tests/fixtures/pgflow`)
-# Change: COPY tests/fixtures/pgflow/schema-vX.Y.Z.sql
+# Step 4: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
-# Step 5: Update 05-pgflow-init.sh (search for version in header comment and success message)
-
-# Step 6: Review and update ALL patches and compatibility layers
+# Step 5: Review and update ALL patches and compatibility layers
 # Check ALL pgflow patches for compatibility with new version:
 #   - docker/postgres/pgflow/security-patches.sql (SET search_path protection)
 #   - docker/postgres/docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh (Supabase compatibility)
 # Verify patches still apply or if upstream fixed them
 # Check if new version introduces breaking changes requiring new patches
 
-# Step 7: Delete old schema file
+# Step 6: Delete old schema file
 rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
-# Step 8: Regenerate and test
+# Step 7: Regenerate and test
 bun run generate
 bun run test:pgflow
 ```
 
-### 5.2: git-ref Extensions (Manual Review Required)
+### 5.2: git-ref Extensions (HEAD Drift Verification REQUIRED)
 
-**Identify**: `grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Identify**: `command grep 'type: "git-ref"' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
-These use commit SHAs (no version tags). Update requires manual review:
+These use commit SHAs (no version tags). Verification is mandatory:
 
 ```bash
+# Primary check (must be zero for enabled extensions before closing round)
+bun scripts/extensions/check-updates.ts --format=json | jq -r '
+  .[] | select(.sourceType=="git-ref" and .enabled==true and .updateAvailable==true) |
+  "\(.name): \(.current) -> \(.latest)"'
+
 # Check if upstream now has stable tags
 git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 
@@ -465,9 +570,11 @@ git ls-remote --tags https://github.com/OWNER/REPO | tail -20
 gh api repos/OWNER/REPO/commits/COMMIT_REF/status
 ```
 
+Any non-empty output from the `jq` command above is actionable work, not an informational note.
+
 ### 5.3: cargo-pgrx Extensions (Rust Version Alignment)
 
-**Identify**: `grep 'type: "cargo-pgrx"' scripts/extensions/manifest-data.ts -B 5 | grep 'name:'`
+**Identify**: `command grep 'type: "cargo-pgrx"' scripts/extensions/manifest-data.ts -B 5 | command grep 'name:'`
 
 These extensions use Rust pgrx framework for building PostgreSQL extensions in Rust.
 
@@ -490,25 +597,59 @@ If an extension becomes incompatible (like `pg_plan_filter`):
 }
 ```
 
+**Also remove from `scripts/config/size-baselines.json`** if the extension is listed there.
+A disabled extension can never be size-checked (no Docker image runs it), so keeping its entry
+creates false confidence that it's being validated. The `postgis` incident: it was disabled AND
+had the wrong `.so` filename — the dead entry went unnoticed until an explicit audit.
+
 ### 5.5: Updating Disabled Extensions
 
-**Identify**: `grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | grep 'name:'`
+**Identify**: `command grep 'enabled: false' scripts/extensions/manifest-data.ts -B 2 | command grep 'name:'`
 
 **Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
 
 Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
 
-### 5.6: PgBouncer Image (Outside Manifest)
+### 5.6: Compose Stack Images (Outside Manifest)
 
-**Not in manifest-data.ts!** PgBouncer version is hardcoded in:
-- `stacks/primary/compose.yml` (search for `edoburu/pgbouncer`)
-- Test files: `scripts/test/test-pgbouncer-*.ts`
+**Not in manifest-data.ts!** Three external images are hardcoded across compose stacks. Check ALL three, and update in ALL stacks (primary, replica, single) that contain them:
 
-**Update procedure**:
+| Image | Stacks | Repo |
+|-------|--------|------|
+| `edoburu/pgbouncer` | primary only | `edoburu/docker-pgbouncer` |
+| `prometheuscommunity/pgbouncer-exporter` | primary only | `prometheus-community/pgbouncer_exporter` |
+| `prometheuscommunity/postgres-exporter` | **ALL three** | `prometheus-community/postgres_exporter` |
 
-1. Check for new edoburu/pgbouncer releases on Docker Hub
-2. Update image tag and SHA256 digest in compose.yml
-3. Update test files if needed
+**Also update companion `.env.example` files** — each stack has one with the same image tag (no digest). Easily missed; 3 files for postgres_exporter.
+
+```bash
+# Check for latest releases
+gh release list --repo edoburu/docker-pgbouncer --limit 5
+gh release list --repo prometheus-community/pgbouncer_exporter --limit 5
+gh release list --repo prometheus-community/postgres_exporter --limit 5
+
+# Scan all compose stacks for current versions
+command grep -rn "pgbouncer\|postgres-exporter" stacks/*/compose.yml | command grep "image\|exporter"
+```
+
+**Get SHA256 digest** (works without Docker daemon):
+```bash
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+  -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
+```
+
+**Update checklist per image**:
+1. Update `image:` line in each affected `stacks/*/compose.yml`
+2. Update `EXPORTER_IMAGE=` line in each affected `stacks/*/.env.example`
+3. Update test files if they assert version strings
+4. Add CHANGELOG entry (compose changes are image-consumer-visible)
+5. **Pre-pull after update** — run `docker pull NEW_IMAGE@SHA` immediately after updating so the image is in the local cache before `test:all` runs. New compose image versions are NOT cached locally and the first test run will need to pull them. Pre-pulling verifies the SHA is correct and prevents timing-dependent test failures:
+   ```bash
+   docker pull prometheuscommunity/postgres-exporter:vX.Y.Z@sha256:DIGEST
+   ```
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -517,10 +658,14 @@ Extensions still in test suites should stay current. Permanently broken extensio
 Before writing tests, search for hardcoded version strings in ALL test files:
 
 ```bash
-# Find any hardcoded version strings that will break after an upgrade
-grep -rn "includes(\"0\.\|includes(\"1\.\|includes(\"2\." scripts/test/ | grep -v ".bun/"
+# Find hardcoded version strings in ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
+command grep -rn -E 'includes\("0\.|includes\("1\.|includes\("2\.' scripts/ | command grep -v "\.bun/"
 # Also search for specific old version patterns:
-grep -rn "0\.8\|0\.5\|2\.8\|1\.10\|5\.4" scripts/test/ | grep -v ".bun/" | grep -i "include\|assert\|version"
+command grep -rn -E "0\.8|0\.5|2\.8|1\.10|5\.4" scripts/ | command grep -v "\.bun/" | command grep -iE "include|assert|version"
+# Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
+# SQL regression expected outputs — hard-code extversion strings; stale = nightly failures
+command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
 ```
 
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
@@ -556,12 +701,14 @@ scripts/test/
 # Regenerate all files from manifest
 bun run generate
 
-# Fast validation (REQUIRED - static checks + unit tests)
+# Fast validation: static checks + unit tests (~3s, runs without Docker)
 bun run validate
 
-# Full validation (includes shellcheck, hadolint, yamllint)
+# MANDATORY full validation: + shellcheck, hadolint, yamllint (~30s, still no Docker)
 bun run validate:all
 ```
+
+**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) — these do NOT require Docker and take only ~30s. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
@@ -598,6 +745,9 @@ Resolution options:
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
 
+**MANDATORY GATE**: If this round changed any image-affecting files, `CHANGELOG.md` must be
+updated before proceeding to Phase 10/12. No exceptions.
+
 **Rules**:
 1. **User-facing changes**: Full detail with migration guidance
 2. **Breaking changes**: Separate section with "action required" flag
@@ -630,10 +780,35 @@ Resolution options:
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
-## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE COMMITTING)
+## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE EVERY COMMIT — NO EXCEPTIONS)
 
-**Do this after every batch of changes, without waiting to be asked.** Assume you missed
-something. Run through these checks adversarially — try to break your own work:
+**This is a MANDATORY GATE before every commit — not a suggestion, not "when time permits", not something to do when the user asks.** If you are about to call `git commit`, stop and run through this checklist first. Adversarially assume you missed something.
+
+**Pre-commit mechanical checklist** (run these commands, check the output):
+```bash
+# 1. Verify CHANGELOG gating
+git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks
+# If non-empty → must also show: git diff --name-only -- CHANGELOG.md (non-empty)
+
+# 2. Verify no stale version strings in tests
+command grep -rn -E 'includes\(|startsWith\(' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"
+
+# 3. Verify ALL compose stacks updated (not just primary)
+command grep -rh "pgbouncer\|postgres-exporter" stacks/*/compose.yml stacks/*/.env.example | sort -u
+
+# 4. Verify no branch-pinned reusable workflow refs remain
+command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
+# (non-empty output = action required)
+
+# 5. Verify validate:all passes
+bun run validate:all
+
+# 6. Verify no bare .env() subprocess calls (structural check — also in validate)
+command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v '\.\.\.Bun\.env' | command grep -v '\.\.\.process\.env' | command grep -v '^scripts/validate.ts:'
+# non-empty output = bare .env() that strips PATH/HOME — must use { ...Bun.env, KEY: val }
+```
+
+**Then review these qualitative questions** — try to break your own work:
 
 **Tests**
 - Do any new tests pass trivially regardless of the fix they claim to cover?
@@ -643,6 +818,9 @@ something. Run through these checks adversarially — try to break your own work
   code path being tested. Add session-level forcing (e.g. `SET enable_seqscan = OFF`) or sufficient
   data volume to guarantee the expected path is taken.
 - Does the test verify the actual bug mode, or just that no crash occurred?
+- Did secret scanning run on changed scripts, and did it flag false positives from ambiguous names
+  (`token`, `secret`, `password`) used as ordinary local variables? Prefer explicit non-secret names
+  (`versionChunk`, `authHeader`) and re-run `bun run test:all`.
 
 **File completeness**
 - When touching a file that documents required changes (README, validator error messages,
@@ -662,6 +840,7 @@ something. Run through these checks adversarially — try to break your own work
   `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
 
 **Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
+- **`CHANGELOG.md` gate**: If `git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks` is non-empty, `git diff --name-only -- CHANGELOG.md` MUST also be non-empty before Phase 12.
 - `docs/EXTENSION-SOURCES.md`: PGDG/source-built/Percona/Timescale version tables — update
   every changed extension version AND verify categorisation (PGDG vs source-built) is still
   correct. A migrated extension (source→PGDG or vice-versa) MUST move between table sections.
@@ -679,8 +858,21 @@ something. Run through these checks adversarially — try to break your own work
   Contains a version series check (`startsWith("2.25.")`) — **update the series prefix** when
   TimescaleDB crosses a minor version boundary (2.25.x → 2.26.x). Also update the file title
   and run banner.
+- **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version
+  (e.g., `/usr/lib/postgresql/18/lib/`). **Update all paths when bumping PG major version.**
+  Keys must match manifest entry `name` exactly (kind: "tool") — wrong keys silently skip checks.
+  Find stale paths: `command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"`
 - **Search all test files for hardcoded version strings** that would fail after the update:
-  `grep -rn 'includes\|startsWith\|=== "' scripts/test/ | grep -E '[0-9]+\.[0-9]'`
+  `command grep -rn -E 'includes|startsWith|=== "' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"`
+  Also check SQL regression expected outputs: `command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
+- **Size baselines after updating any tracked extension**: After updating any extension listed in
+  `scripts/config/size-baselines.json` (timescaledb, pgroonga, pg_jsonschema, wrappers,
+  vectorscale, etc.), run the size regression check. Advisory warnings indicate a stale baseline:
+  ```bash
+  bun scripts/check-size-regression.ts  # requires a built image; run bun run build first if needed
+  ```
+  If advisory warnings appear for an extension you just updated, update `scripts/config/size-baselines.json`
+  with the new observed range (keep ~10-20% headroom above measured size for the `max`).
 
 **The question to answer**: "If the user ran an adversarial audit on what I just did,
 what would they find?" Find it yourself first.
@@ -721,10 +913,20 @@ After every update round, perform a mandatory self-reflection before closing out
    validator script, verify that following its own fix instructions would resolve the error it
    reports. Validators with inline data copies (like `validate-manifest-integrity.ts`) are
    especially prone to self-defeating instructions.
-8. **Were GitHub Actions stale inline comments fixed?** `actions-up` updates `uses:` SHA pins but
-   NOT inline version comments (e.g. `# v3.0.0` that refers to the old version in a prose comment
-   elsewhere in the file). After running `actions-up`, every prose comment referencing an old
-   version is now silently wrong.
+8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
+   automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
+   section for the exact grep command and what to look for.
+8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
+    `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
+    Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
+8b. **Were ALL compose stack images updated across ALL stacks?** `postgres_exporter` lives in
+    primary, replica, AND single stacks plus three `.env.example` files. Updating only the primary
+    stack is a silent partial update. See Phase 5.6 table for which images are in which stacks.
+8c. **Were updated compose images pre-pulled?** New image versions are NOT in the local Docker
+    cache. The `test:all` single-stack test pulls them during the test run. If the credential
+    helper lookup fails (e.g., env stripping in test subprocess), the test fails. Running
+    `docker pull NEW_IMAGE@SHA` immediately after updating ensures the image is cached before
+    `test:all` runs. See Phase 5.6 checklist item 5.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern
@@ -737,9 +939,25 @@ After every update round, perform a mandatory self-reflection before closing out
      apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
      curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
      dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
-     apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
-   " 2>&1 | grep "percona-pg-stat-monitor"
+   apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
+  " 2>&1 | command grep "percona-pg-stat-monitor"
    ```
+10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
+    verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
+    paths were exercised when GitHub API was rate-limited.
+11. **Was changelog gating enforced?** If any image-affecting files changed, verify `CHANGELOG.md`
+    was updated in the same round with user-facing entries (or explicitly document why no user-facing
+    impact exists).
+12. **Are changelog claims evidence-backed?** Cross-check each changelog statement against actual
+    upstream diff evidence (release notes, compare output, commit/file diffs). Remove any claim that
+    cannot be tied to concrete upstream changes.
+13. **Were all bug fixes systematically verified with a full-codebase grep?** A targeted fix (e.g.,
+    fixing `.env()` calls in the files that visibly failed) is not the same as verifying the entire
+    codebase. After any structural fix pattern, run a grep across ALL relevant files to confirm zero
+    remaining violations before declaring done. Latent bugs in gracefully-degrading code paths
+    (try/catch → warning, optional fallback branches) pass tests silently until they hit edge cases.
+    Run the validate check or a direct grep: `bun run validate` now includes "Subprocess Env Safety"
+    for the `.env()` pattern specifically.
 
 Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improvements:
 - Add checks that would have caught missed items
@@ -837,7 +1055,7 @@ bun run test:all
 | Source | Command |
 |--------|---------|
 | **GitHub latest release** | `curl -s https://api.github.com/repos/OWNER/REPO/releases/latest \| jq -r .tag_name` |
-| **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| grep -v '{}' \| tail -5` |
+| **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| command grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Timescale apt** | `docker run --rm timescale/timescaledb:latest-pg18 bash -c "apt-cache madison postgresql-18-timescaledb"` |

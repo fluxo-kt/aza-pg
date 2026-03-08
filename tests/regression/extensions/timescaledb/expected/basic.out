@@ -19,14 +19,15 @@ timescaledb
 DROP TABLE IF EXISTS regression_test_metrics CASCADE;
 NOTICE:  table "regression_test_metrics" does not exist, skipping
 CREATE TABLE regression_test_metrics (TIME TIMESTAMPTZ NOT NULL, device_id INTEGER, value DOUBLE PRECISION);
--- Create hypertable (returns table info - just verify it succeeds)
+-- Create hypertable (returns created=true on success)
 SELECT
-hypertable_name
+created
 FROM
 create_hypertable ('regression_test_metrics', 'time', if_not_exists => TRUE);
-ERROR:  column "hypertable_name" does not exist
-LINE 2:   hypertable_name
-^
+created
+---------
+t
+(1 row)
 -- Insert test data with deterministic values
 INSERT INTO
 regression_test_metrics (TIME, device_id, value)

@@ -10,7 +10,7 @@
 #
 # WHEN IT RUNS:
 # -------------
-# 1. Scheduled: Daily at 2:00 AM UTC (cron: '0 2 * * *')
+# 1. Scheduled: Weekly on Sunday at 2:00 AM UTC (cron: '0 2 * * 0')
 # 2. Manual trigger (workflow_dispatch) - On-demand comprehensive validation
 #
 # WHAT IT TESTS:
@@ -53,8 +53,8 @@ name: Nightly Regression Tests
 
 on:
   schedule:
-    # Daily at 2:00 AM UTC
-    - cron: "0 2 * * *"
+    # Weekly on Sunday at 2:00 AM UTC
+    - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
       image_tag:
@@ -105,7 +105,7 @@ jobs:
           echo "default_tag=$(jq -r '.defaultTag' .github/workflow-config.json)" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
           driver: docker-container
           driver-opts: network=host
@@ -124,7 +124,7 @@ jobs:
           echo "Using image tag: ${TAG}"
 
       - name: Build Docker image with layer caching
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           context: .
           file: ./docker/postgres/Dockerfile
@@ -511,7 +511,7 @@ jobs:
           echo "| Integration | Backup/Restore, Replication & Stack Deployments | ${{ needs.integration.result == 'success' && '✅ Passed' || needs.integration.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** Regression (comprehensive - ALL extensions and preloads)" >> $GITHUB_STEP_SUMMARY
-          echo "**Schedule:** Daily at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
+          echo "**Schedule:** Weekly on Sunday at 2:00 AM UTC" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

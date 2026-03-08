@@ -10,6 +10,20 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
+- **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
+- **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
+
+### Development
+
+- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (Node.js 24 runtime bumps); trivy-action 0.34→0.35; new Junie AI review workflows; SHA pins refreshed across all workflows
+
+---
+
+## [v18.3-202603040417] - 2026-03-04
+
 ### Security
 
 - **gosu → su-exec**: Replaced `gosu` (Go binary, `/usr/local/bin/gosu`) with [`su-exec v0.2`](https://github.com/ncopa/su-exec) — a functionally identical pure-C privilege-drop utility. gosu was compiled with Go 1.24.6 which carries CVE-2025-68121 (CRITICAL, CVSS 8.8) and five HIGH-severity Go stdlib CVEs with no upstream fix available. su-exec has zero Go stdlib dependency, permanently eliminating this CVE class. Drop-in compatible: placed at the same path, same CLI syntax.

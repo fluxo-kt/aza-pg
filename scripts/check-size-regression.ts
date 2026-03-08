@@ -5,12 +5,8 @@
  * Tracks .so file sizes for known large extensions to detect unexpected bloat.
  * This is a non-critical check (warn-only) that helps identify build issues.
  *
- * Baseline sizes (approximate, for PostgreSQL 18):
- * - timescaledb: ~3-5MB
- * - pg_stat_monitor: ~2-3MB
- * - pgvector: ~1-2MB
- * - postgis: ~4-6MB (large due to GEOS/PROJ dependencies)
- * - pgroonga: ~2-4MB
+ * Baselines are maintained in scripts/config/size-baselines.json (single source of truth).
+ * Run with --baseline-only to see current tracked extensions and their expected ranges.
  *
  * Usage:
  *   bun scripts/check-size-regression.ts                    # Check sizes (requires Docker build)
@@ -41,10 +37,20 @@ interface Manifest {
   entries: Extension[];
 }
 
-interface SizeBaseline {
+export interface SizeBaseline {
   min: number;
   max: number;
   description: string;
+}
+
+/** Discriminates the reason for a warn/fail result — avoids message-text heuristics in summaries. */
+export type ResultCategory = "ok" | "not-found" | "below-min" | "tolerance" | "exceeded";
+
+export interface SizeCheckResult {
+  passed: boolean;
+  warn?: boolean;
+  category: ResultCategory;
+  message: string;
 }
 
 /**
@@ -54,7 +60,14 @@ interface SizeBaseline {
 let SIZE_BASELINES: Record<string, SizeBaseline> = {};
 
 /**
- * Load size baselines from config file
+ * Maximum allowed size increase threshold (as percentage)
+ * Exported so tests can use the same threshold constant.
+ */
+export const MAX_SIZE_INCREASE_PERCENT = 20;
+
+/**
+ * Load size baselines from config file.
+ * Validates structure: each entry must have 0 ≤ min ≤ max.
  */
 async function loadSizeBaselines(): Promise<void> {
   try {
@@ -63,17 +76,27 @@ async function loadSizeBaselines(): Promise<void> {
       error(`Size baselines config not found at ${SIZE_BASELINES_PATH}`);
       process.exit(1);
     }
-    SIZE_BASELINES = await file.json();
+    const loaded = (await file.json()) as Record<string, SizeBaseline>;
+    for (const [name, entry] of Object.entries(loaded)) {
+      if (
+        typeof entry.min !== "number" ||
+        typeof entry.max !== "number" ||
+        typeof entry.description !== "string" ||
+        entry.min < 0 ||
+        entry.max < entry.min
+      ) {
+        error(
+          `Invalid baseline entry '${name}': min=${entry.min}, max=${entry.max}, description=${JSON.stringify(entry.description)} — require 0 ≤ min ≤ max and description string`
+        );
+        process.exit(1);
+      }
+    }
+    SIZE_BASELINES = loaded;
   } catch (err) {
     error(`Failed to load size baselines: ${getErrorMessage(err)}`);
     process.exit(1);
   }
 }
-
-/**
- * Maximum allowed size increase threshold (as percentage)
- */
-const MAX_SIZE_INCREASE_PERCENT = 20;
 
 /**
  * Print baseline information
@@ -86,7 +109,7 @@ function showBaselines(): void {
 
   for (const [name, baseline] of Object.entries(SIZE_BASELINES)) {
     console.log(`  ${name}:`);
-    console.log(`    Range: ${baseline.min.toFixed(1)}MB - ${baseline.max.toFixed(1)}MB`);
+    console.log(`    Range: ${baseline.min.toFixed(2)}MB - ${baseline.max.toFixed(2)}MB`);
     console.log(`    Description: ${baseline.description}`);
     console.log("");
   }
@@ -111,36 +134,85 @@ async function imageExists(imageName: string): Promise<boolean> {
 }
 
 /**
- * Get .so file size from Docker image
+ * Get .so file size from Docker image.
+ * Returns size in MB, or null if the file is not found.
  */
 async function getSoSize(imageName: string, extensionName: string): Promise<number | null> {
   try {
-    // Common locations for .so files
+    // PostgreSQL extension libraries are always in $pkglibdir = /usr/lib/postgresql/N/lib/
+    // /usr/share/ (FHS architecture-independent data) never contains .so files
     const pgVersion = Bun.env.PG_VERSION ?? "18";
-    const possiblePaths = [
-      `/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`,
-      `/usr/share/postgresql/${pgVersion}/extension/${extensionName}.so`,
-    ];
-
-    for (const path of possiblePaths) {
-      const proc = Bun.spawn(["docker", "run", "--rm", imageName, "stat", "-c", "%s", path], {
-        stdout: "pipe",
-        stderr: "ignore",
-      });
-
-      // Read stdout concurrently with exit — sequential reads risk deadlock
-      const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-      if (exitCode === 0) {
-        const bytes = parseInt(output.trim(), 10);
-        if (!isNaN(bytes)) {
-          return bytes / (1024 * 1024); // Convert to MB
-        }
+    const soPath = `/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`;
+    const proc = Bun.spawn(["docker", "run", "--rm", imageName, "stat", "-c", "%s", soPath], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    // Read stdout concurrently with exit — sequential reads risk deadlock
+    const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+    if (exitCode === 0) {
+      const bytes = parseInt(output.trim(), 10);
+      if (!isNaN(bytes)) {
+        return bytes / (1024 * 1024); // Convert to MB
       }
     }
-
     return null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Pure classification function — testable without Docker.
+ *
+ * @param extensionName  Extension name (for message formatting only)
+ * @param size           Measured .so size in MB, or null if not found
+ * @param baseline       Expected size range from size-baselines.json
+ * @param maxIncreasePercent  Tolerance above baseline.max before failing (default: MAX_SIZE_INCREASE_PERCENT)
+ */
+export function classifySize(
+  extensionName: string,
+  size: number | null,
+  baseline: SizeBaseline,
+  maxIncreasePercent = MAX_SIZE_INCREASE_PERCENT
+): SizeCheckResult {
+  if (size === null) {
+    return {
+      passed: true,
+      warn: true,
+      category: "not-found",
+      message: `${extensionName}: .so file not found in expected locations — broken build or non-standard path? Remove from size-baselines.json if intentional`,
+    };
+  }
+
+  const maxAllowed = baseline.max * (1 + maxIncreasePercent / 100);
+
+  if (size > maxAllowed) {
+    return {
+      passed: false,
+      category: "exceeded",
+      message: `${extensionName}: ${size.toFixed(2)}MB exceeds baseline max ${baseline.max.toFixed(2)}MB + ${maxIncreasePercent}% (${maxAllowed.toFixed(2)}MB)`,
+    };
+  } else if (size < baseline.min) {
+    return {
+      passed: true,
+      warn: true,
+      category: "below-min",
+      message: `${extensionName}: ${size.toFixed(2)}MB (below baseline min ${baseline.min.toFixed(2)}MB — possible stripped or broken build; update baseline if intentional)`,
+    };
+  } else if (size <= baseline.max) {
+    return {
+      passed: true,
+      category: "ok",
+      message: `${extensionName}: ${size.toFixed(2)}MB (within expected range ${baseline.min.toFixed(2)}-${baseline.max.toFixed(2)}MB)`,
+    };
+  } else {
+    // size > baseline.max but <= maxAllowed (within tolerance — advisory, not failure)
+    return {
+      passed: true,
+      warn: true,
+      category: "tolerance",
+      message: `${extensionName}: ${size.toFixed(2)}MB (above baseline max ${baseline.max.toFixed(2)}MB but within ${maxIncreasePercent}% tolerance — update baseline if this is the new normal)`,
+    };
   }
 }
 
@@ -150,35 +222,10 @@ async function getSoSize(imageName: string, extensionName: string): Promise<numb
 async function checkExtensionSize(
   imageName: string,
   extensionName: string,
-  baseline: { min: number; max: number; description: string }
-): Promise<{ passed: boolean; message: string }> {
+  baseline: SizeBaseline
+): Promise<SizeCheckResult> {
   const size = await getSoSize(imageName, extensionName);
-
-  if (size === null) {
-    return {
-      passed: true,
-      message: `${extensionName}: .so file not found (may not produce .so or disabled)`,
-    };
-  }
-
-  const maxAllowed = baseline.max * (1 + MAX_SIZE_INCREASE_PERCENT / 100);
-
-  if (size > maxAllowed) {
-    return {
-      passed: false,
-      message: `${extensionName}: ${size.toFixed(2)}MB exceeds baseline max ${baseline.max.toFixed(1)}MB + ${MAX_SIZE_INCREASE_PERCENT}% (${maxAllowed.toFixed(1)}MB)`,
-    };
-  } else if (size < baseline.min) {
-    return {
-      passed: true,
-      message: `${extensionName}: ${size.toFixed(2)}MB (below baseline, possible optimization or build change)`,
-    };
-  } else {
-    return {
-      passed: true,
-      message: `${extensionName}: ${size.toFixed(2)}MB (within expected range ${baseline.min.toFixed(1)}-${baseline.max.toFixed(1)}MB)`,
-    };
-  }
+  return classifySize(extensionName, size, baseline);
 }
 
 async function main() {
@@ -253,7 +300,7 @@ async function main() {
   info(`Checking ${extensionsToCheck.length} large extensions...`);
   console.log("");
 
-  const results: { passed: boolean; message: string }[] = [];
+  const results: SizeCheckResult[] = [];
 
   for (const extensionName of extensionsToCheck) {
     const baseline = SIZE_BASELINES[extensionName];
@@ -263,33 +310,63 @@ async function main() {
     const result = await checkExtensionSize(imageName, extensionName, baseline);
     results.push(result);
 
-    if (result.passed) {
-      success(result.message);
-    } else {
+    if (!result.passed || result.warn) {
       warning(result.message);
+    } else {
+      success(result.message);
     }
   }
 
   console.log("");
 
-  const failed = results.filter((r) => !r.passed);
-  if (failed.length > 0) {
+  // Use category discriminator for accurate summary messages
+  const exceeded = results.filter((r) => r.category === "exceeded");
+  const notFound = results.filter((r) => r.category === "not-found");
+  const belowMin = results.filter((r) => r.category === "below-min");
+  const tolerance = results.filter((r) => r.category === "tolerance");
+
+  if (exceeded.length > 0) {
     warning(
-      `${failed.length} extension(s) exceeded size baselines (non-critical - review changes)`
+      `${exceeded.length} extension(s) exceeded size baselines (non-critical - review changes)`
     );
     info("This may indicate:");
     info("  - Dependency updates that increased binary size");
     info("  - New features or functionality added");
     info("  - Build configuration changes");
-    info("  - Update SIZE_BASELINES if intentional");
-  } else {
+    info("  - Update scripts/config/size-baselines.json if intentional");
+  }
+  if (notFound.length > 0) {
+    warning(
+      `${notFound.length} extension(s): .so file not found — check build completeness or update size-baselines.json`
+    );
+  }
+  if (belowMin.length > 0) {
+    warning(
+      `${belowMin.length} extension(s) below baseline min — possible stripped or broken build; update size-baselines.json if intentional`
+    );
+  }
+  if (tolerance.length > 0) {
+    warning(
+      `${tolerance.length} extension(s) above baseline max but within tolerance — update size-baselines.json if this is the new normal`
+    );
+  }
+  if (
+    exceeded.length === 0 &&
+    notFound.length === 0 &&
+    belowMin.length === 0 &&
+    tolerance.length === 0
+  ) {
     success("All extension sizes within expected ranges!");
   }
 
   // Note: This is a non-critical check, so we don't exit with error
 }
 
-main().catch((err) => {
-  error(`Size regression check error: ${getErrorMessage(err)}`);
-  process.exit(1);
-});
+// import.meta.main guard: allows classifySize to be imported for unit tests
+// without triggering Docker operations or process.exit() calls
+if (import.meta.main) {
+  main().catch((err) => {
+    error(`Size regression check error: ${getErrorMessage(err)}`);
+    process.exit(1);
+  });
+}

@@ -299,24 +299,26 @@ async function validate(
       description: fixMode ? "Auto-formatting SQL files" : "SQL formatting and syntax validation",
       required: true,
     },
-    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI
-    // Skipped in fix mode since fix mode is for auto-formatting, not running tests
+    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI.
+    // Test files are auto-discovered via glob — no manual registration needed.
+    // Docker-dependent integration tests are excluded explicitly below.
+    // Skipped in fix mode since fix mode is for auto-formatting, not running tests.
     ...(fixMode
       ? []
       : [
-          {
-            name: "Unit Tests",
-            command: [
-              "bun",
-              "test",
-              "./scripts/config-generator/manifest-generator.test.ts",
-              "./scripts/test/test-auto-config-units.ts",
-              "./scripts/test/test-utils.test.ts",
-              "./scripts/docker/test-image-lib.test.ts",
-            ],
-            description: "Unit tests (auto-config, manifest validation, utilities, tool paths)",
-            required: true,
-          },
+          (() => {
+            // All *.test.ts files are safe to run without Docker — Docker-dependent
+            // tests use test-*.ts naming (not *.test.ts) and are NOT auto-discovered.
+            const testFiles = Array.from(new Bun.Glob("scripts/**/*.test.ts").scanSync("."))
+              .map((f) => `./${f}`)
+              .sort();
+            return {
+              name: "Unit Tests",
+              command: ["bun", "test", ...testFiles],
+              description: `Unit tests (${testFiles.length} files, auto-discovered via glob)`,
+              required: true,
+            };
+          })(),
         ]),
   ];
 
@@ -398,10 +400,27 @@ async function validate(
       command: [
         "sh",
         "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|test.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
+        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
       ],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,
+    },
+    {
+      name: "Subprocess Env Safety",
+      command: [
+        "sh",
+        "-c",
+        // $.env({ KEY: val }) replaces the ENTIRE subprocess env, stripping PATH/HOME/DOCKER_CONFIG
+        // and breaking docker-credential helpers and build tools (cargo, etc.). All .env() calls
+        // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Covers scripts/ AND docker/postgres/
+        // (build-extensions.ts uses cargo subprocess that also needs HOME/CARGO_HOME/RUSTUP_HOME).
+        // Uses -F (fixed string) for the filter — avoids BSD/GNU grep regex-escaping differences.
+        // validate.ts excluded — its description string contains ".env({" as a literal example.
+        'result=$(git ls-files scripts/ docker/postgres/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
+      ],
+      description:
+        "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",
+      required: true,
     },
     {
       name: "Extension Size Regression",

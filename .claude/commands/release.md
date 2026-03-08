@@ -106,7 +106,7 @@ LOCAL_DEV=$(git rev-parse refs/heads/dev 2>/dev/null) || \
   { echo "ABORT: Local 'dev' branch not found. Run: git fetch origin && git checkout -t origin/dev"; exit 1; }
 REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
 if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
-  if git merge-base --is-ancestor origin/dev dev 2>/dev/null; then
+  if git merge-base --is-ancestor origin/dev refs/heads/dev 2>/dev/null; then
     # local dev has commits not yet pushed (local AHEAD of remote) — normal
     echo "⚠️  INFO: Local dev is AHEAD of origin/dev (unpushed commits). Proceeding."
   else
@@ -114,7 +114,7 @@ if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
     echo "🚨 ABORT: Local dev is BEHIND or diverged from origin/dev — you may be missing commits!"
     echo "   If BEHIND (no local-only commits): git checkout dev && git pull --ff-only && git checkout $BRANCH"
     echo "   If DIVERGED (both sides have unique commits): investigate before proceeding — do NOT rebase blindly"
-    echo "   Verify: git log --oneline dev...origin/dev"
+    echo "   Verify: git log --oneline refs/heads/dev...origin/dev"
     exit 1
   fi
 fi
@@ -263,8 +263,15 @@ git show refs/heads/dev:CHANGELOG.md
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
+8. **⚠️ Regression expected outputs**: For every extension version change in the manifest diff, check `tests/regression/extensions/EXTNAME/expected/basic.out` for hard-coded version strings. If stale, note which files need updating — you will apply them in Phase 4.4.
 
-Write down the specific CHANGELOG edits needed (which lines to change, add, or remove). You will apply them in Phase 4.4 AFTER the squash, at which point the CHANGELOG in the working tree will be dev's version.
+   ```bash
+   # Show all version strings hard-coded in regression expected outputs
+   command grep -n "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
+   # Cross-reference any hit against the manifest diff from Phase 1.2 to find staleness
+   ```
+
+Write down the specific CHANGELOG edits AND regression expected output updates needed. You will apply them all in Phase 4.4 AFTER the squash.
 
 ---
 
@@ -325,7 +332,7 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 # If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
 if ! git merge --squash dev; then
   echo "ABORT: Merge conflicts detected. Conflicting files:"
-  git status --short | grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
+  git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
   echo ""
   echo "Recovering to clean state:"
   git reset HEAD
@@ -407,9 +414,11 @@ bun install              # Restore release branch's node_modules
 echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 ```
 
-### 4.4 — Apply CHANGELOG optimisations
+### 4.4 — Apply CHANGELOG optimisations and regression expected output updates
 
 Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there.
+
+Also apply any regression expected output updates identified in Phase 2 audit rule 8 — update `tests/regression/extensions/EXTNAME/expected/basic.out` files with the new version strings.
 
 After editing:
 
@@ -550,6 +559,8 @@ After every execution, reflect and update this command:
 
 - **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
 - **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
+- **Hotfix/direct-commit releases: Dev-Squash-Tip is absent.** When a release is published via direct commits on `release` (e.g., CVE hotfix requiring multiple iterations), no Dev-Squash-Tip trailer exists in the tag. The anchor merge still works correctly — dev history is preserved as parent-1. The check: list dev commits since last anchor (`git rev-list LAST_ANCHOR_SHA..HEAD --oneline`); verify their content is already captured in the release tree (same fixes done on release). IMPORTANT: the anchor's parent-1 link means ALL those dev commits remain git-accessible forever — nothing is deleted. Their file content in the working tree is superseded by the release tree, which is the correct and expected outcome.
+
 - **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
 
 → Edit this command file, commit as:
@@ -566,7 +577,7 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  4. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
 
 ---
@@ -642,7 +653,25 @@ if [[ -n "$DEV_SQUASH_TIP" ]]; then
   fi
   echo "✓ dev has not advanced since squash (tip: $(git rev-parse --short "$DEV_SQUASH_TIP")). Safe to anchor."
 else
-  echo "⚠️ No Dev-Squash-Tip trailer in $TARGET — cannot verify dev safety. Inspect manually."
+  # No Dev-Squash-Tip: release was published via direct commits (hotfix path), not via /release squash.
+  # This is valid — anchor still works. But we must verify dev has no NEW commits since last anchor
+  # that aren't represented in the release tree, because their FILE CONTENT will be superseded.
+  # (All commits remain reachable via parent-1 of the anchor — nothing is deleted from history.)
+  echo "⚠️ No Dev-Squash-Tip trailer in $TARGET — release was likely published via direct commits."
+  LAST_ANCHOR=$(git log HEAD --merges --format="%H %s" --regexp-ignore-case --grep="Anchor Merge" -1)
+  if [[ -n "$LAST_ANCHOR" ]]; then
+    LAST_ANCHOR_SHA=$(echo "$LAST_ANCHOR" | awk '{print $1}')
+    NEW_ON_DEV=$(git rev-list "$LAST_ANCHOR_SHA"..HEAD --oneline)
+    echo "Dev commits since last anchor ($(git rev-parse --short "$LAST_ANCHOR_SHA")):"
+    echo "${NEW_ON_DEV:-(none)}"
+    echo ""
+    echo "These commits will persist in history via parent-1 of the anchor merge."
+    echo "Their FILE CONTENT in the working tree will be replaced by the release tree."
+    echo "Confirm: are these commits already captured in the release (e.g., same fixes done directly on release branch)?"
+    echo "If YES: safe to proceed. If NO: do another squash release first to include them."
+  else
+    echo "⚠️ No previous anchor merge found. Inspect dev history manually before proceeding."
+  fi
 fi
 ```
 
@@ -656,7 +685,10 @@ ANCHOR_COMMIT=$(git commit-tree "$TARGET"^{tree} \
 [[ -n "$ANCHOR_COMMIT" ]] || { echo "ABORT: git commit-tree failed — ANCHOR_COMMIT is empty."; exit 1; }
 
 git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only failed."; exit 1; }
-git push origin dev || { echo "ABORT: git push origin dev failed."; exit 1; }
+# The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
+# node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
+bun install
+git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
 echo "Anchor merge pushed. ✓"
 ```
 

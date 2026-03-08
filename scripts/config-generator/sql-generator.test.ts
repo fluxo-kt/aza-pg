@@ -225,8 +225,8 @@ describe("generateExtensionsInitScript - Generation Metadata", () => {
     const sql = await generateExtensionsInitScript(extensions);
 
     // Should contain a script version with PG version and hash
-    // Format: "18.1-{7-char-hash}"
-    const versionPattern = /VALUES \('18\.1-[a-f0-9]{7}'/;
+    // Format: "{pgVersion}-{7-char-hash}" e.g. "18.3-792df5d"
+    const versionPattern = /VALUES \('\d+\.\d+-[a-f0-9]{7}'/;
     expect(sql).toMatch(versionPattern);
   });
 });

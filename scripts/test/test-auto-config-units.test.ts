@@ -6,8 +6,8 @@
  * Reimplements bash formulas in TypeScript for fast verification.
  *
  * Usage:
- *   bun test ./scripts/test/test-auto-config-units.ts
- *   bun test scripts/test/test-auto-config-units.ts
+ *   bun test ./scripts/test/test-auto-config-units.test.ts
+ *   bun test scripts/test/test-auto-config-units.test.ts
  *
  * Features:
  * - 90 regression test cases across 12 test suites

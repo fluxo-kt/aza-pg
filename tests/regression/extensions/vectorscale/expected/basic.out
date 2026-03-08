@@ -9,7 +9,7 @@ WHERE extname IN ('vector', 'vectorscale')
 ORDER BY extname;
 extname | extversion
 -------------+------------
-vector | 0.8.1
+vector | 0.8.2
 vectorscale | 0.9.0
 (2 rows)
 -- Test 2: Verify vectorscale schema exists

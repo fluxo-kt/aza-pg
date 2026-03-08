@@ -308,7 +308,9 @@ async function cleanup(
   try {
     const downCmd = $`docker compose --env-file .env.test down -v`.cwd(stackPath);
     await (
-      dockerEnv ? downCmd.env(dockerEnv) : downCmd.env({ COMPOSE_PROJECT_NAME: projectName })
+      dockerEnv
+        ? downCmd.env(dockerEnv)
+        : downCmd.env({ ...Bun.env, COMPOSE_PROJECT_NAME: projectName })
     ).quiet();
 
     // Verify containers are removed

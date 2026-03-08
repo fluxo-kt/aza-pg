@@ -52,8 +52,11 @@ function extractBinaryPathFromNotes(notes: string[]): string | null {
 
 describe("Tool Binary Path Validation", () => {
   test("hardcoded tool paths match manifest documentation", async () => {
-    // These are the hardcoded paths from test-image-lib.ts testToolsPresent()
-    // If this test fails, the hardcoded paths in test-image-lib.ts need to be updated
+    // CLI tool paths from test-image-lib.ts testToolsPresent() — these change when
+    // install method changes (e.g., source → PGDG). .so module paths (wal2json,
+    // pg_safeupdate) are NOT included: they live at a fixed PostgreSQL PKGLIBDIR path
+    // regardless of install method and don't need install-method-change protection.
+    // Keys must match manifest entry names (kind: "tool") exactly.
     const hardcodedToolBinaries: Record<string, string> = {
       pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
       pgbadger: "/usr/bin/pgbadger", // PGDG package path
@@ -101,13 +104,17 @@ describe("Tool Binary Path Validation", () => {
           "to match the manifest documentation in docker/postgres/extensions.manifest.json"
       );
     }
+    expect(mismatches.length).toBe(0);
   });
 
   test("all tool entries have documented binary paths", async () => {
     const manifest = await loadManifest();
-    const tools = manifest.entries.filter(
-      (e) => e.kind === "tool" && e.name !== "pg_plan_filter" && e.name !== "pg_safeupdate"
-    );
+    // Exclude .so-module tools (no standalone CLI binary to document):
+    //   wal2json     — output plugin .so, loaded by logical replication
+    //   pg_safeupdate — hook .so, loaded via shared_preload_libraries
+    //   pg_plan_filter — hook .so, disabled (PG18 incompatible), no binary
+    const SO_MODULE_TOOLS = new Set(["wal2json", "pg_safeupdate", "pg_plan_filter"]);
+    const tools = manifest.entries.filter((e) => e.kind === "tool" && !SO_MODULE_TOOLS.has(e.name));
 
     const missingPaths: string[] = [];
 
@@ -115,20 +122,19 @@ describe("Tool Binary Path Validation", () => {
       const notes = tool.runtime?.notes ?? [];
       const binaryPath = extractBinaryPathFromNotes(notes);
 
-      // Only check standalone CLI tools (not .so modules)
-      if (tool.name === "wal2json") continue; // This is a .so module, not a CLI tool
-
       if (!binaryPath) {
         missingPaths.push(`Tool '${tool.name}' has no documented binary path in notes`);
       }
     }
 
     if (missingPaths.length > 0) {
-      console.warn("Warning: Some tools are missing binary path documentation:");
-      console.warn(missingPaths.join("\n"));
+      throw new Error(
+        "Tools missing documented binary paths:\n\n" +
+          missingPaths.join("\n\n") +
+          "\n\nAdd an 'Installs /path' or 'Binary installed to /path' note in " +
+          "docker/postgres/extensions.manifest.json for each tool listed above."
+      );
     }
-
-    // Don't fail for missing documentation, just warn
-    expect(true).toBe(true);
+    expect(missingPaths.length).toBe(0);
   });
 });

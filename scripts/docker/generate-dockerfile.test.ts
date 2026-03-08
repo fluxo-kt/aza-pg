@@ -302,12 +302,13 @@ describe("Generated Dockerfile Validation", () => {
   });
 
   test("Cache mounts use sharing=locked", async () => {
-    const cacheMounts = generatedDockerfile.match(/--mount=type=cache[^\n]*/g);
+    // Line-based filter: exclude comment lines (regex match misses leading # outside the capture)
+    const cacheMountLines = generatedDockerfile
+      .split("\n")
+      .filter((line) => line.includes("--mount=type=cache") && !line.trimStart().startsWith("#"));
 
-    if (cacheMounts) {
-      for (const mount of cacheMounts) {
-        expect(mount).toContain("sharing=locked");
-      }
+    for (const line of cacheMountLines) {
+      expect(line).toContain("sharing=locked");
     }
   });
 
@@ -487,15 +488,14 @@ describe("Dockerfile Syntax Validation", () => {
   });
 
   test("Apt packages use --no-install-recommends", async () => {
-    const aptInstalls = dockerfile.match(/apt-get install[^\n]*/g);
+    // Line-based filter: the regex match starts after any leading `#`, so install.includes("#")
+    // misses comment lines where # appears before apt-get install on the same line.
+    const aptInstallLines = dockerfile
+      .split("\n")
+      .filter((line) => line.includes("apt-get install") && !line.trimStart().startsWith("#"));
 
-    if (aptInstalls) {
-      for (const install of aptInstalls) {
-        if (!install.includes("#")) {
-          // Active install commands should use --no-install-recommends
-          expect(install).toContain("--no-install-recommends");
-        }
-      }
+    for (const line of aptInstallLines) {
+      expect(line).toContain("--no-install-recommends");
     }
   });
 });

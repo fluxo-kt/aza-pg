@@ -370,7 +370,7 @@ async function testHostConnection(pgbouncerPassword: string): Promise<void> {
 
     try {
       await $`psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"`
-        .env({ PGPASSWORD: pgbouncerPassword })
+        .env({ ...Bun.env, PGPASSWORD: pgbouncerPassword })
         .quiet();
       success("Connection from host machine successful");
     } catch {

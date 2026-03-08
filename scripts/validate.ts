@@ -406,6 +406,22 @@ async function validate(
       required: false,
     },
     {
+      name: "Subprocess Env Safety",
+      command: [
+        "sh",
+        "-c",
+        // $.env({ KEY: val }) replaces the ENTIRE subprocess env, stripping PATH/HOME/DOCKER_CONFIG
+        // and breaking docker-credential helpers when pulling uncached images. All .env() calls
+        // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Uses -F (fixed string) for
+        // the filter to avoid regex-escaping differences between BSD and GNU grep.
+        // validate.ts excluded — its description string contains ".env({" as a literal example.
+        'result=$(git ls-files scripts/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
+      ],
+      description:
+        "Detect bare subprocess .env() calls in scripts/ that strip PATH (must spread Bun.env)",
+      required: true,
+    },
+    {
       name: "Extension Size Regression",
       command: ["bun", "scripts/check-size-regression.ts"],
       description: "Check for unexpected extension binary size increases (warn-only)",

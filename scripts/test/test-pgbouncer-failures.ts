@@ -167,7 +167,7 @@ async function checkLogsForPattern(
   try {
     const cmd = $`docker compose -f ${STACK_PATH}/compose.yml logs ${service}`;
     const logs = await (
-      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ ...Bun.env, COMPOSE_PROJECT_NAME: project })
     ).text();
 
     return new RegExp(pattern, "i").test(logs);
@@ -187,7 +187,7 @@ async function getContainerId(
   try {
     const cmd = $`docker compose -f ${STACK_PATH}/compose.yml ps ${service} -q`;
     const result = await (
-      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ COMPOSE_PROJECT_NAME: project })
+      dockerEnv ? cmd.env(dockerEnv) : cmd.env({ ...Bun.env, COMPOSE_PROJECT_NAME: project })
     ).text();
     return result.trim() || null;
   } catch {

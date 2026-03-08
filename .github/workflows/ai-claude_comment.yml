@@ -37,7 +37,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 20 # Longer history for better diff analysis
+          fetch-depth: 30 # Longer history for better diff analysis
 
       - name: React to the comment right away
         uses: dkershner6/reaction-action@97ede302a1b145b3739dec3ca84a489a34ef48b5 # v2.2.1

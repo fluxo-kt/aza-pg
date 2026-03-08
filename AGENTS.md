@@ -242,17 +242,22 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 4. Start new `[Unreleased]` section for next changes
 5. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
 
+**The ONLY test that matters**: Would the change appear in `docker inspect`, `\dx`, extension behaviour, `psql --version`, or otherwise change what the image **does** for an operator? Yes → belongs. No → NEVER belongs.
+
 **What NEVER belongs in the changelog**:
 
-- Agent commands (`.claude/commands/`), skills, tooling scripts — these are invisible to image consumers
-- Individual kaizen/audit pass details, test assertion improvements, internal refactors
-- Anything a user of the Docker image cannot observe or act on
+- Build script fixes (`build-extensions.ts`, `generate-dockerfile.ts`, etc.) — even if they fixed a build bug, the fix itself is invisible; only the **resulting extension change** (if any) belongs
+- Agent commands (`.claude/commands/`), skills, test scripts — invisible to image consumers
+- Individual kaizen/audit passes, validate check improvements, internal refactors
+- CI infra fixes (timeouts, retry logic, credentials) — operators can't see these
+- Anything a user running `docker run` cannot observe or act on
 
 **Development section rules** (when it's worth including at all):
 
 - Max 1-2 bullets total, no technical detail, user-impact framing only
 - OK: "Test coverage hardened; CI updated to Node.js 24 runners"
-- NOT OK: "testPgStatStatements now executes a tracked query after reset and asserts count >= 1 because..."
+- NOT OK: "testPgStatStatements now executes a tracked query after reset..."
+- NOT OK: "Fixed ensureCleanDir to use node:fs instead of Bun shell rm..."
 
 **Categories**: Breaking | Security | Fixed | Changed | Added | Deprecated | Removed | Development
 

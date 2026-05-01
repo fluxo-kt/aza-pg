@@ -43,7 +43,7 @@
     "prettier": "^3.8.1",
     "sql-formatter": "^15.7.2",
     "squawk-cli": "^2.43.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "yaml": "^2.8.2"
   },
   "engines": {

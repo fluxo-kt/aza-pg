@@ -49,8 +49,10 @@ import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { error, success, warning, info, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import { checkDockerDaemon } from "../utils/docker";
 
 const TRIVY_IMAGE = "aquasec/trivy:0.70.0";
+const SHADOWED_GOSU_PATH = "usr/local/bin/gosu";
 
 interface Options {
   image: string;
@@ -184,13 +186,12 @@ async function ensureOutputDir(outputDir: string): Promise<void> {
  */
 async function checkDocker(): Promise<void> {
   try {
-    await $`docker --version`.quiet();
+    await checkDockerDaemon();
   } catch (err) {
-    error("Docker is not available", err);
+    error("Docker daemon is not running", err);
     console.log();
-    console.log("Install Docker to use this script:");
-    console.log("  https://docs.docker.com/get-docker/");
-    throw new Error("Docker not found");
+    console.log("Start Docker and try again.");
+    throw new Error("Docker daemon unavailable");
   }
 }
 
@@ -223,10 +224,12 @@ async function captureTrivyFullScan(
 
     // Run Trivy scan with all severities
     const result = await $`docker run --rm \
-      -v ${absCacheDir}:/root/.cache/ \
+      -v ${absCacheDir}:/root/.cache/trivy \
+      -v /var/run/docker.sock:/var/run/docker.sock \
       ${TRIVY_IMAGE} image \
       --format table \
       --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+      --skip-files ${SHADOWED_GOSU_PATH} \
       ${image}`.text();
 
     // Write output to file
@@ -255,10 +258,12 @@ async function captureTrivyJsonScan(
 
     // Run Trivy scan with JSON output
     const result = await $`docker run --rm \
-      -v ${absCacheDir}:/root/.cache/ \
+      -v ${absCacheDir}:/root/.cache/trivy \
+      -v /var/run/docker.sock:/var/run/docker.sock \
       ${TRIVY_IMAGE} image \
       --format json \
       --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+      --skip-files ${SHADOWED_GOSU_PATH} \
       ${image}`.text();
 
     // Write output to file
@@ -364,7 +369,7 @@ async function main(): Promise<void> {
   }
 
   // Ensure output directory exists
-  ensureOutputDir(options.outputDir);
+  await ensureOutputDir(options.outputDir);
 
   // Ensure cache directory exists
   const absCacheDir = resolve(options.cacheDir);

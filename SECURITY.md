@@ -11,45 +11,25 @@
 
 Please report security vulnerabilities via GitHub Security Advisories or by email to the maintainers.
 
-## Known Upstream Vulnerabilities
+## Scanner Policy
 
-The following vulnerabilities exist in upstream dependencies that we cannot directly fix:
+Security gates must distinguish fixable image risk from upstream no-fix noise:
 
-### Python 3.13.5-2
-
-- **CVE-2025-8194**: Infinite loop when parsing malformed tarfiles
-  - **Severity**: HIGH
-  - **Impact**: DoS potential if processing untrusted tar archives
-  - **Status**: Awaiting upstream Debian fix
-
-- **CVE-2025-13836**: Memory exhaustion via malicious Content-Length header in http.client
-  - **Severity**: CRITICAL (scanner classification) / Moderate (6.3 CVSS actual impact)
-  - **Impact**: DoS potential if making HTTP requests to untrusted servers
-  - **Status**: Awaiting upstream Debian fix (fixed in Python 3.13.11, not yet in Trixie)
-  - **Note**: PostgreSQL does not use Python's http.client module - zero impact on PostgreSQL functionality
-
-### libxml2 2.12.7
-
-- **CVE-2025-12863**: Namespace use-after-free in xmlSetTreeDoc()
-- **Impact**: Potential memory corruption
-- **Status**: Awaiting upstream Debian fix
-
-### libxslt 1.1.35
-
-- **CVE-2025-7425**: Heap use-after-free
-- **Impact**: Potential memory corruption
-- **Status**: Awaiting upstream Debian fix
+- Blocking Trivy gates fail on fixable CRITICAL/HIGH vulnerabilities.
+- SARIF scans still report upstream Debian findings so maintainers can track no-fix exposure.
+- Do not silence findings with static CVE ignores unless the runtime path is impossible and a narrower path skip cannot express it.
+- Do not mix Debian stable images with sid/testing packages to satisfy scanners; that trades scanner silence for ABI and support risk.
 
 ## Resolved Vulnerabilities
 
-Vulnerabilities that have been actively mitigated in this image (may still appear in scanners due to base image layer scanning):
+Vulnerabilities that have been actively mitigated in this image:
 
-### gosu → su-exec replacement
+### gosu -> su-exec replacement
 
-- **CVE-2025-68121** (CRITICAL), **CVE-2025-58183, CVE-2025-61726, CVE-2025-61728, CVE-2025-61729, CVE-2025-61730** (HIGH): Go stdlib vulnerabilities in gosu (compiled with Go 1.24.6; no upstream fix available)
-- **Resolution**: gosu replaced with [su-exec v0.2](https://github.com/ncopa/su-exec) — a pure-C privilege-drop binary with identical CLI (`user[:group] command`). Zero Go stdlib dependency eliminates this entire CVE class permanently.
-- **Compatibility**: Transparent drop-in; binary placed at `/usr/local/bin/gosu` so base postgres entrypoint calls it unchanged.
-- **Trivy scanner note**: CVE-2025-68121 is listed in `.trivyignore`. The postgres:18.3-trixie base image ships gosu as a direct binary download (not a dpkg package); it exists in immutable base image layers that cannot be modified by any Dockerfile instruction. Trivy scans all layers including base layers and finds gosu there. In the merged filesystem (what containers actually see and execute), `/usr/local/bin/gosu` is su-exec — the Go binary is permanently shadowed and never executed.
+- **Issue**: The upstream postgres base image includes `gosu`, a Go binary that can appear in layer-based scanners even after replacement.
+- **Resolution**: `/usr/local/bin/gosu` is replaced with [su-exec v0.2](https://github.com/ncopa/su-exec), a pure-C privilege-drop binary with the same CLI (`user[:group] command`).
+- **Verification**: The Docker build fails if `/usr/local/bin/gosu` is larger than 500 KB, which catches accidental restoration of the multi-MB Go binary.
+- **Scanner handling**: Trivy gates skip only `usr/local/bin/gosu`; static CVE ignores are not used for this class because path-level suppression is narrower and less likely to hide future fixable CVEs.
 
 ## Security Measures
 
@@ -61,6 +41,7 @@ This image implements the following security best practices:
 4. **Network isolation**: Binds to localhost by default
 5. **Signed images**: All releases are signed with Cosign
 6. **SLSA attestations**: Supply chain security via GitHub Actions
+7. **Minimal runtime tooling**: Install-only helpers (`curl`, `unzip`, GnuPG CLI stack, `lsb-release`, `percona-release`) are purged after all repositories and release assets are installed
 
 ## Security Scanning
 
@@ -70,4 +51,4 @@ All images undergo automated security scanning:
 - **Trivy**: CVE vulnerability scanning
 - **GitHub Security**: SARIF reports uploaded to Security tab
 
-The CI pipeline blocks releases with CRITICAL vulnerabilities but allows HIGH severity issues from upstream packages that we cannot directly fix.
+The CI pipeline blocks releases with fixable CRITICAL/HIGH vulnerabilities. Upstream Debian findings with no stable fix remain visible in SARIF and diagnostics instead of being hidden by stale ignore lists.

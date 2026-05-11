@@ -54,6 +54,7 @@ dev/
 dist/
 build/
 !scripts/build/
+.trivy-cache/
 *.egg-info/
 .tsbuildinfo
 *.tmp

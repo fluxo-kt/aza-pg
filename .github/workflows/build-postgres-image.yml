@@ -437,6 +437,7 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
+          skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
@@ -451,8 +452,10 @@ jobs:
         with:
           image-ref: "aza-pg-testing:scan"
           format: "table"
-          severity: "CRITICAL,HIGH,MEDIUM"
-          exit-code: "1" # Fail build on CRITICAL/HIGH vulnerabilities
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: "true"
+          skip-files: "usr/local/bin/gosu"
+          exit-code: "1" # Fail build on fixable CRITICAL/HIGH vulnerabilities
 
       - name: Capture security scan diagnostics on failure
         if: failure()

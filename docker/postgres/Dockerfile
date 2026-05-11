@@ -311,19 +311,19 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 
-# Replace gosu (Go binary, CVE-2025-68121 CRITICAL, CVSS 8.8) with su-exec (pure C, no Go stdlib).
-# APPROACH: Self-contained final-stage compilation + dpkg purge of gosu package.
+# Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
+# APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
+# by stale cross-stage COPY cache entries.
 # Prior approaches failed (listed oldest→latest):
 #   1. COPY --from=builder-base: stale GHA cached layer
 #   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
 #   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
 #   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
-#   5. Self-contained compile without dpkg purge: apt-get install in next step detected file hash
-#      mismatch (we replaced gosu's file but dpkg still owned it) and reinstalled gosu from the
-#      --mount=type=cache,target=/var/cache/apt persistent apt cache.
-# Fix: purge gosu package from dpkg AFTER compiling su-exec, BEFORE placing it. This removes dpkg's
-# ownership so subsequent apt operations cannot reinstate gosu. Also exclude gosu from builder-pgxs
-# rsync to avoid creating an unnecessary intermediate layer with the Go binary.
+#   5. apt-get purge gosu: no-op for postgres:18.3-trixie because gosu is a direct
+#      binary download in the base image, not a dpkg-owned file.
+# Fix: compile and install su-exec directly in the final stage, then verify the binary size
+# is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
+# creating an unnecessary intermediate layer with the Go binary.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
@@ -374,6 +374,26 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
     find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
     # Clean apt lists (Dockle DKL-DI-0005)
+    rm -rf /var/lib/apt/lists/*
+
+# Remove package-manager helpers needed only while installing repositories and release assets.
+# Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
+RUN set -euo pipefail && \
+    apt-get purge -y --auto-remove \
+      curl \
+      dirmngr \
+      gnupg \
+      gnupg-l10n \
+      gnupg2 \
+      gpg \
+      gpg-agent \
+      gpgconf \
+      gpgsm \
+      gpgv \
+      lsb-release \
+      percona-release \
+      unzip && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)

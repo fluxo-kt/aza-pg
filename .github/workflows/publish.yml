@@ -936,6 +936,7 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
+          skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
@@ -950,8 +951,10 @@ jobs:
         with:
           image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           format: "table"
-          severity: "CRITICAL"
-          exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: "true"
+          skip-files: "usr/local/bin/gosu"
+          exit-code: "1" # Fail on fixable CRITICAL/HIGH vulnerabilities
 
       - name: Capture security scan diagnostics on failure
         if: failure()
@@ -964,20 +967,22 @@ jobs:
           # Capture full Trivy scan output (all severities)
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
           docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
             aquasec/trivy:0.70.0 image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
           # Capture Trivy scan in JSON format for detailed analysis
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
           docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
             aquasec/trivy:0.70.0 image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 

@@ -12,10 +12,42 @@ import { describe, expect, test } from "bun:test";
 import {
   classifySize,
   MAX_SIZE_INCREASE_PERCENT,
+  selectSharedObjectSize,
   type SizeBaseline,
+  type SharedObjectFile,
 } from "./check-size-regression";
 
 const baseline: SizeBaseline = { min: 1.0, max: 2.0, description: "test extension" };
+const mib = 1024 * 1024;
+
+function so(name: string, sizeMb: number): SharedObjectFile {
+  return { name, sizeBytes: sizeMb * mib };
+}
+
+describe("selectSharedObjectSize", () => {
+  test("uses manifest soFileName before fallback names", () => {
+    const files = [so("vectorscale.so", 1.1), so("vectorscale-0.9.0.so", 0.93)];
+    expect(selectSharedObjectSize(files, "vectorscale", "vectorscale-0.9.0.so")).toBeCloseTo(0.93);
+  });
+
+  test("falls back to exact extensionName.so", () => {
+    const files = [so("pg_jsonschema.so", 3.07)];
+    expect(selectSharedObjectSize(files, "pg_jsonschema")).toBeCloseTo(3.07);
+  });
+
+  test("falls back to versioned source-build library names", () => {
+    const files = [so("wrappers-0.6.1.so", 0.32)];
+    expect(selectSharedObjectSize(files, "wrappers")).toBeCloseTo(0.32);
+  });
+
+  test("does not match unrelated similarly-prefixed libraries", () => {
+    const files = [
+      so("timescaledb-tsl-2.26.4.so", 5.85),
+      so("timescaledb_toolkit-1.22.0.so", 12.32),
+    ];
+    expect(selectSharedObjectSize(files, "timescaledb", "timescaledb.so")).toBeNull();
+  });
+});
 
 describe("classifySize — branch coverage", () => {
   test("null size → not-found advisory (warn, not fail)", () => {

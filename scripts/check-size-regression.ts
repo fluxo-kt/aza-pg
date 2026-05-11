@@ -31,6 +31,7 @@ interface Extension {
   name: string;
   kind: string;
   enabled?: boolean;
+  soFileName?: string;
 }
 
 interface Manifest {
@@ -51,6 +52,11 @@ export interface SizeCheckResult {
   warn?: boolean;
   category: ResultCategory;
   message: string;
+}
+
+export interface SharedObjectFile {
+  name: string;
+  sizeBytes: number;
 }
 
 /**
@@ -133,27 +139,85 @@ async function imageExists(imageName: string): Promise<boolean> {
   }
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function selectSharedObjectSize(
+  files: SharedObjectFile[],
+  extensionName: string,
+  manifestSoFileName?: string
+): number | null {
+  const exactNames = [manifestSoFileName, `${extensionName}.so`].filter(
+    (name): name is string => name !== undefined
+  );
+
+  for (const exactName of exactNames) {
+    const file = files.find((candidate) => candidate.name === exactName);
+    if (file) {
+      return file.sizeBytes / (1024 * 1024);
+    }
+  }
+
+  const versionedName = new RegExp(`^${escapeRegExp(extensionName)}-[0-9][a-zA-Z0-9_.-]*\\.so$`);
+  const versionedFiles = files
+    .filter((file) => versionedName.test(file.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const file = versionedFiles.at(-1);
+  return file ? file.sizeBytes / (1024 * 1024) : null;
+}
+
 /**
  * Get .so file size from Docker image.
  * Returns size in MB, or null if the file is not found.
  */
-async function getSoSize(imageName: string, extensionName: string): Promise<number | null> {
+async function getSoSize(
+  imageName: string,
+  extensionName: string,
+  manifestSoFileName?: string
+): Promise<number | null> {
   try {
     // PostgreSQL extension libraries are always in $pkglibdir = /usr/lib/postgresql/N/lib/
     // /usr/share/ (FHS architecture-independent data) never contains .so files
     const pgVersion = Bun.env.PG_VERSION ?? "18";
-    const soPath = `/usr/lib/postgresql/${pgVersion}/lib/${extensionName}.so`;
-    const proc = Bun.spawn(["docker", "run", "--rm", imageName, "stat", "-c", "%s", soPath], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
+    const proc = Bun.spawn(
+      [
+        "docker",
+        "run",
+        "--rm",
+        imageName,
+        "find",
+        `/usr/lib/postgresql/${pgVersion}/lib`,
+        "-maxdepth",
+        "1",
+        "-type",
+        "f",
+        "-name",
+        "*.so",
+        "-printf",
+        "%f\t%s\n",
+      ],
+      {
+        stdout: "pipe",
+        stderr: "ignore",
+      }
+    );
     // Read stdout concurrently with exit — sequential reads risk deadlock
     const [exitCode, output] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
     if (exitCode === 0) {
-      const bytes = parseInt(output.trim(), 10);
-      if (!isNaN(bytes)) {
-        return bytes / (1024 * 1024); // Convert to MB
-      }
+      const files = output
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [name, size] = line.split("\t");
+          return {
+            name: name ?? "",
+            sizeBytes: Number(size),
+          };
+        })
+        .filter((file) => file.name !== "" && Number.isFinite(file.sizeBytes));
+      return selectSharedObjectSize(files, extensionName, manifestSoFileName);
     }
     return null;
   } catch {
@@ -221,11 +285,11 @@ export function classifySize(
  */
 async function checkExtensionSize(
   imageName: string,
-  extensionName: string,
+  extension: Extension,
   baseline: SizeBaseline
 ): Promise<SizeCheckResult> {
-  const size = await getSoSize(imageName, extensionName);
-  return classifySize(extensionName, size, baseline);
+  const size = await getSoSize(imageName, extension.name, extension.soFileName);
+  return classifySize(extension.name, size, baseline);
 }
 
 async function main() {
@@ -287,10 +351,10 @@ async function main() {
   }
 
   // Check sizes for extensions in our baseline list that are enabled
-  const enabledExtensionNames = new Set(enabledExtensions.map((e) => e.name));
-  const extensionsToCheck = Object.keys(SIZE_BASELINES).filter((name) =>
-    enabledExtensionNames.has(name)
-  );
+  const enabledExtensionByName = new Map(enabledExtensions.map((entry) => [entry.name, entry]));
+  const extensionsToCheck = Object.keys(SIZE_BASELINES)
+    .map((name) => enabledExtensionByName.get(name))
+    .filter((entry): entry is Extension => entry !== undefined);
 
   if (extensionsToCheck.length === 0) {
     info("No tracked large extensions found in enabled extensions");
@@ -302,12 +366,12 @@ async function main() {
 
   const results: SizeCheckResult[] = [];
 
-  for (const extensionName of extensionsToCheck) {
-    const baseline = SIZE_BASELINES[extensionName];
+  for (const extension of extensionsToCheck) {
+    const baseline = SIZE_BASELINES[extension.name];
     if (!baseline) {
       continue; // Shouldn't happen, but satisfy TypeScript
     }
-    const result = await checkExtensionSize(imageName, extensionName, baseline);
+    const result = await checkExtensionSize(imageName, extension, baseline);
     results.push(result);
 
     if (!result.passed || result.warn) {

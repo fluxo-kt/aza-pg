@@ -349,10 +349,10 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
           `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
       );
     }
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
       throw new Error(
         `Timescale entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be alphanumeric with underscores/hyphens and end with .so`
+          `Must be a filename with alphanumerics, dots, underscores, or hyphens and end with .so`
       );
     }
 
@@ -599,7 +599,7 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
       throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
     }
     // Validate soFileName format
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
       throw new Error(
         `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
       );

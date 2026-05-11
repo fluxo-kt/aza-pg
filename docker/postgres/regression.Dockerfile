@@ -243,7 +243,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "✓ Installed vectorscale v0.9.0" && \
     # Verify .so files exist
     echo "Verifying GitHub release .so files..." && \
-    test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
+    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.0.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
     # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
     find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \

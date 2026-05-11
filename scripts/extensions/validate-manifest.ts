@@ -428,9 +428,9 @@ function validateGithubReleaseEntries(manifest: Manifest): void {
     }
 
     // Validate soFileName format
-    if (entry.soFileName && !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+    if (entry.soFileName && !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
       error(
-        `GitHub release entry '${entry.name}' has invalid soFileName: '${entry.soFileName}'. Expected: name.so`
+        `GitHub release entry '${entry.name}' has invalid soFileName: '${entry.soFileName}'. Expected: name.so or name-version.so`
       );
     }
 

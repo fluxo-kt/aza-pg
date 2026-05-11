@@ -128,7 +128,7 @@ export interface ManifestEntry {
   /**
    * Shared object filename for .so file verification.
    * Required when install_via === "percona", "timescale", or "github-release".
-   * Example: "pg_stat_monitor.so" or "timescaledb.so"
+   * Example: "pg_stat_monitor.so", "timescaledb.so", or "vectorscale-0.9.0.so"
    */
   soFileName?: string;
   /**
@@ -972,7 +972,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "timescale",
     timescalePackage: "timescaledb-toolkit-postgresql-18",
     timescaleVersion: "1:1.22.0~debian13",
-    soFileName: "timescaledb_toolkit.so",
+    soFileName: "timescaledb_toolkit-1.22.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
     source: {
@@ -1052,7 +1052,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     githubRepo: "timescale/pgvectorscale",
     githubReleaseTag: "0.9.0",
     githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-    soFileName: "vectorscale.so",
+    soFileName: "vectorscale-0.9.0.so",
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
     source: {

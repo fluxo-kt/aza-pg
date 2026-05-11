@@ -118,6 +118,161 @@ function getSchemaUrl(tag: string, filename: string): string {
   return `https://raw.githubusercontent.com/pgflow-dev/pgflow/${encodedTag}/pkgs/core/schemas/${filename}`;
 }
 
+const CLEANUP_ENSURE_WORKERS_LOGS_COMPAT_SQL = `-- Cleanup Ensure Workers Logs
+-- Cleans up old cron job run details to prevent the table from growing indefinitely.
+-- Note: net._http_response is automatically cleaned by pg_net (6 hour TTL), so we only clean cron logs.
+CREATE OR REPLACE FUNCTION pgflow.cleanup_ensure_workers_logs (retention_hours INTEGER DEFAULT 24) returns TABLE (cron_deleted BIGINT) language plpgsql security definer
+SET
+  search_path = pgflow,
+  pg_temp AS $$
+DECLARE
+  deleted_count BIGINT;
+BEGIN
+  IF to_regclass('cron.job_run_details') IS NULL THEN
+    RETURN QUERY SELECT 0::BIGINT;
+    RETURN;
+  END IF;
+
+  EXECUTE 'DELETE FROM cron.job_run_details WHERE end_time < now() - make_interval(hours => $1)'
+  USING retention_hours;
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN QUERY SELECT deleted_count;
+END;
+$$;
+
+
+COMMENT ON function pgflow.cleanup_ensure_workers_logs (INTEGER) IS 'Cleans up old cron job run details to prevent table growth.
+Default retention is 24 hours. HTTP response logs (net._http_response) are
+automatically cleaned by pg_net with a 6-hour TTL, so they are not cleaned here.
+Returns 0 when pg_cron is configured in another database and cron.job_run_details
+is absent from the current database.
+This function follows the standard pg_cron maintenance pattern recommended by
+AWS RDS, Neon, and Supabase documentation.';`;
+
+const VAULT_SECRET_COMPAT_SQL = `-- AZA PostgreSQL Vault Secret Compatibility
+-- Reads Supabase Vault secrets without binding pgflow schema installation to vault.decrypted_secrets.
+CREATE OR REPLACE FUNCTION pgflow.aza_vault_secret (secret_name TEXT) returns TEXT language plpgsql stable
+SET
+  search_path = '' AS $$
+DECLARE
+  secret_value TEXT;
+BEGIN
+  IF to_regclass('vault.decrypted_secrets') IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  EXECUTE $query$
+    SELECT nullif(decrypted_secret, '')
+    FROM vault.decrypted_secrets
+    WHERE name = $1
+    LIMIT 1
+  $query$
+  INTO secret_value
+  USING secret_name;
+
+  RETURN secret_value;
+END;
+$$;
+
+
+COMMENT ON function pgflow.aza_vault_secret (TEXT) IS 'Reads a Supabase Vault secret when vault.decrypted_secrets exists; returns NULL when Vault is not installed in this database.';`;
+
+function replaceRequired(
+  filename: string,
+  content: string,
+  search: string,
+  replacement: string
+): string {
+  if (!content.includes(search)) {
+    throw new Error(`Local pgflow schema patch no longer matches upstream ${filename}`);
+  }
+
+  return content.replace(search, replacement);
+}
+
+function patchCronSearchPath(filename: string, content: string): string {
+  return replaceRequired(
+    filename,
+    content,
+    "set search_path = pgflow, cron, pg_temp",
+    "set search_path = pgflow, pg_temp"
+  );
+}
+
+function patchEnsureWorkersCronSetup(filename: string, upstreamContent: string): string {
+  let patched = patchCronSearchPath(filename, upstreamContent);
+  patched = replaceRequired(
+    filename,
+    patched,
+    "begin\n  -- Remove existing jobs if they exist (ignore errors if not found)",
+    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow worker cron setup';\n  END IF;\n\n  -- Remove existing jobs if they exist (ignore errors if not found)"
+  );
+  return replaceRequired(
+    filename,
+    patched,
+    "Replaces existing jobs if they exist (idempotent).\nReturns a confirmation message with job IDs.';",
+    "Replaces existing jobs if they exist (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job IDs.';"
+  );
+}
+
+function patchRequeueCronSetup(filename: string, upstreamContent: string): string {
+  let patched = patchCronSearchPath(filename, upstreamContent);
+  patched = replaceRequired(
+    filename,
+    patched,
+    "begin\n  -- Remove existing job if any",
+    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow stalled-task cron setup';\n  END IF;\n\n  -- Remove existing job if any"
+  );
+  patched = replaceRequired(filename, patched, "job_id=%s)', \n", "job_id=%s)',\n");
+  return replaceRequired(
+    filename,
+    patched,
+    "Replaces existing job if it exists (idempotent).\nReturns a confirmation message with job ID.';",
+    "Replaces existing job if it exists (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job ID.';"
+  );
+}
+
+function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string): string {
+  let patched = replaceRequired(
+    filename,
+    upstreamContent,
+    "nullif((select decrypted_secret from vault.decrypted_secrets where name = 'pgflow_auth_secret'), ''),\n            nullif((select decrypted_secret from vault.decrypted_secrets where name = 'supabase_service_role_key'), '')",
+    "pgflow.aza_vault_secret('pgflow_auth_secret'),\n            pgflow.aza_vault_secret('supabase_service_role_key')"
+  );
+  patched = replaceRequired(
+    filename,
+    patched,
+    "else (select 'https://' || nullif(decrypted_secret, '') || '.supabase.co/functions/v1' from vault.decrypted_secrets where name = 'supabase_project_id')",
+    "else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1'"
+  );
+
+  return `${VAULT_SECRET_COMPAT_SQL}\n\n\n${patched}`;
+}
+
+function localSchemaContent(filename: string, upstreamContent: string): string {
+  if (filename === "0059_function_ensure_workers.sql") {
+    return patchEnsureWorkersVaultAccess(filename, upstreamContent);
+  }
+  if (filename === "0060_function_cleanup_ensure_workers_logs.sql") {
+    return CLEANUP_ENSURE_WORKERS_LOGS_COMPAT_SQL;
+  }
+  if (filename === "0061_function_setup_ensure_workers_cron.sql") {
+    return patchEnsureWorkersCronSetup(filename, upstreamContent);
+  }
+  if (filename === "0063_function_setup_requeue_stalled_tasks_cron.sql") {
+    return patchRequeueCronSetup(filename, upstreamContent);
+  }
+
+  return upstreamContent;
+}
+
+function stripTrailingWhitespace(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
+}
+
 async function fetchSchemaFilenames(tag: string): Promise<string[]> {
   const url = `${SCHEMA_DIRECTORY_API}?ref=${encodeURIComponent(tag)}`;
   const token = await getGitHubToken();
@@ -214,7 +369,7 @@ function generateCombinedSchema(
     sections.push(`-- ============================================================================
 -- Source: ${filename}
 -- ============================================================================
-${content.trim()}
+${localSchemaContent(filename, content).trim()}
 
 `);
   }
@@ -364,7 +519,7 @@ async function main(): Promise<void> {
     const sqlConfig = await loadSqlFormatterConfig();
     const rawContent = await Bun.file(outputPath).text();
     const formattedContent = formatSql(rawContent, sqlConfig);
-    await Bun.write(outputPath, formattedContent);
+    await Bun.write(outputPath, stripTrailingWhitespace(formattedContent));
     console.log("✅ Schema formatted");
   }
 

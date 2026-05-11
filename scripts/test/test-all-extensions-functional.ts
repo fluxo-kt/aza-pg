@@ -17,7 +17,7 @@
  * - Performance: hypopg, index_advisor
  * - Quality: plpgsql_check
  * - Queueing: pgmq
- * - Safety: pg_safeupdate (pg_plan_filter, supautils disabled in manifest)
+ * - Safety: pg_safeupdate, supautils (pg_plan_filter disabled in manifest)
  * - Search: pg_trgm, pgroonga, rum
  * - Security: pgaudit, pgsodium, set_user, supabase_vault
  * - Timeseries: timescaledb, timescaledb_toolkit
@@ -120,6 +120,16 @@ interface Manifest {
 }
 
 let disabledExtensions: Set<string> = new Set();
+const REQUIRED_PGFLOW_TABLES = [
+  "flows",
+  "steps",
+  "deps",
+  "workers",
+  "worker_functions",
+  "runs",
+  "step_states",
+  "step_tasks",
+] as const;
 
 async function loadManifest(): Promise<void> {
   try {
@@ -158,6 +168,10 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
       success: false,
     };
   }
+}
+
+function sqlValues(values: readonly string[]): string {
+  return values.map((value) => `('${value}')`).join(",");
 }
 
 async function test(name: string, category: string, fn: () => Promise<void>): Promise<void> {
@@ -1859,11 +1873,14 @@ await test("pgflow - Verify core tables exist", "workflow", async () => {
     );
   }
   const tables = await runSQL(`
-    SELECT count(*) FROM information_schema.tables
-    WHERE table_schema = 'pgflow'
-      AND table_name IN ('flows', 'runs', 'steps', 'step_states', 'step_tasks', 'deps', 'workers')
+    SELECT string_agg(required.name, ', ' ORDER BY required.name)
+    FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM information_schema.tables t
+      WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
+    )
   `);
-  assert(tables.success && tables.stdout === "7", "pgflow tables not found (expected 7)");
+  assert(tables.success && tables.stdout === "", `Missing pgflow tables: ${tables.stdout}`);
 });
 
 await test("pgflow - Create simple workflow", "workflow", async () => {

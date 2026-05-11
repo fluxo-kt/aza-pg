@@ -81,7 +81,16 @@ const harness = new TestHarness();
 // Expected Schema Components
 // ============================================================================
 
-const EXPECTED_TABLES = ["flows", "steps", "deps", "workers", "runs", "step_states", "step_tasks"];
+const EXPECTED_TABLES = [
+  "flows",
+  "steps",
+  "deps",
+  "workers",
+  "worker_functions",
+  "runs",
+  "step_states",
+  "step_tasks",
+];
 
 const EXPECTED_FUNCTIONS = [
   "is_valid_slug",
@@ -94,8 +103,13 @@ const EXPECTED_FUNCTIONS = [
   "complete_task",
   "fail_task",
   "maybe_complete_run",
+  "_archive_task_message",
+  "_cascade_force_skip_steps",
   "cascade_complete_taskless_steps",
+  "cascade_resolve_conditions",
+  "ensure_flow_compiled",
   "get_run_with_states",
+  "requeue_stalled_tasks",
   "set_vt_batch",
   "start_flow_with_states",
 ];

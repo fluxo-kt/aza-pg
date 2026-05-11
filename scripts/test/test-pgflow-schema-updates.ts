@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * pgflow v0.13.3 Schema-Level SQL Tests
+ * pgflow v0.14.1 Schema-Level SQL Tests
  *
- * Tests SQL-side schema changes in pgflow v0.13.3 that can be verified from PostgreSQL.
+ * Tests SQL-side pgflow schema changes that can be verified from PostgreSQL.
  * Does NOT test TypeScript edge-worker features (PGFLOW_AUTH_SECRET, maxPgConnections)
  * as these have zero SQL presence in the schema.
  *
@@ -13,6 +13,7 @@
  * - T3.4: workers table structure (7 columns)
  * - T3.5: Function signatures (start_tasks, set_vt_batch, step_task_record)
  * - T3.6: cascade_complete_taskless_steps (empty map flow auto-completion)
+ * - T3.7: v0.14.1 conditional step skip/fail propagation
  *
  * Usage:
  *   # Start new container from image
@@ -70,7 +71,7 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-function assert(condition: boolean, message: string): void {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
   }
@@ -188,40 +189,40 @@ async function runTests(): Promise<void> {
       const lastRequeued = columns.find((c) => c.name === "last_requeued_at");
       assert(lastRequeued !== undefined, "last_requeued_at column not found");
       assert(
-        lastRequeued!.type === "timestamp with time zone",
-        `last_requeued_at should be timestamptz, got ${lastRequeued!.type}`
+        lastRequeued.type === "timestamp with time zone",
+        `last_requeued_at should be timestamptz, got ${lastRequeued.type}`
       );
       assert(
-        lastRequeued!.nullable === "YES",
-        `last_requeued_at should be nullable, got ${lastRequeued!.nullable}`
+        lastRequeued.nullable === "YES",
+        `last_requeued_at should be nullable, got ${lastRequeued.nullable}`
       );
 
       // Verify permanently_stalled_at
       const permStalled = columns.find((c) => c.name === "permanently_stalled_at");
       assert(permStalled !== undefined, "permanently_stalled_at column not found");
       assert(
-        permStalled!.type === "timestamp with time zone",
-        `permanently_stalled_at should be timestamptz, got ${permStalled!.type}`
+        permStalled.type === "timestamp with time zone",
+        `permanently_stalled_at should be timestamptz, got ${permStalled.type}`
       );
       assert(
-        permStalled!.nullable === "YES",
-        `permanently_stalled_at should be nullable, got ${permStalled!.nullable}`
+        permStalled.nullable === "YES",
+        `permanently_stalled_at should be nullable, got ${permStalled.nullable}`
       );
 
       // Verify requeued_count
       const requeuedCount = columns.find((c) => c.name === "requeued_count");
       assert(requeuedCount !== undefined, "requeued_count column not found");
       assert(
-        requeuedCount!.type === "integer",
-        `requeued_count should be integer, got ${requeuedCount!.type}`
+        requeuedCount.type === "integer",
+        `requeued_count should be integer, got ${requeuedCount.type}`
       );
       assert(
-        requeuedCount!.nullable === "NO",
-        `requeued_count should be NOT NULL, got ${requeuedCount!.nullable}`
+        requeuedCount.nullable === "NO",
+        `requeued_count should be NOT NULL, got ${requeuedCount.nullable}`
       );
       assert(
-        requeuedCount!.default === "0",
-        `requeued_count should default to 0, got ${requeuedCount!.default}`
+        requeuedCount.default === "0",
+        `requeued_count should default to 0, got ${requeuedCount.default}`
       );
     });
 
@@ -289,7 +290,9 @@ async function runTests(): Promise<void> {
       const lines = result.stdout.split("\n").filter((l) => l.trim());
       assert(lines.length === 1, "last_worker_id column not found");
 
-      const parts = lines[0]!.split("|");
+      const line = lines[0];
+      assert(line !== undefined, "last_worker_id column row missing");
+      const parts = line.split("|");
       assert(parts[0] === "last_worker_id", `Expected last_worker_id, got ${parts[0]}`);
       assert(parts[1] === "uuid", `last_worker_id should be uuid, got ${parts[1]}`);
       assert(parts[2] === "YES", `last_worker_id should be nullable, got ${parts[2]}`);
@@ -354,12 +357,15 @@ async function runTests(): Promise<void> {
       const lines = result.stdout.split("\n").filter((l) => l.trim());
       assert(lines.length >= 1, "start_tasks function not found");
 
-      const parts = lines[0]!.split("|");
+      const line = lines[0];
+      assert(line !== undefined, "start_tasks function row missing");
+      const parts = line.split("|");
       assert(parts[0] === "start_tasks", `Expected start_tasks, got ${parts[0]}`);
       assert(parts[1] === "3", `start_tasks should have 3 arguments, got ${parts[1]}`);
 
       // proargnames is a PostgreSQL array format: {arg1,arg2,arg3}
-      const argNames = parts[2]!;
+      const argNames = parts[2];
+      assert(argNames !== undefined, "start_tasks argument names missing");
       assert(argNames.includes("flow_slug"), `Expected flow_slug in arguments, got ${argNames}`);
       assert(argNames.includes("msg_ids"), `Expected msg_ids in arguments, got ${argNames}`);
       assert(argNames.includes("worker_id"), `Expected worker_id in arguments, got ${argNames}`);
@@ -382,7 +388,9 @@ async function runTests(): Promise<void> {
       const lines = result.stdout.split("\n").filter((l) => l.trim());
       assert(lines.length === 1, "set_vt_batch function not found");
 
-      const parts = lines[0]!.split("|");
+      const line = lines[0];
+      assert(line !== undefined, "set_vt_batch function row missing");
+      const parts = line.split("|");
       assert(parts[0] === "set_vt_batch", `Expected set_vt_batch, got ${parts[0]}`);
       assert(parts[1] === "3", `set_vt_batch should have 3 arguments, got ${parts[1]}`);
     });
@@ -499,6 +507,157 @@ async function runTests(): Promise<void> {
     });
 
     // ========================================================================
+    // T3.7: Conditional step execution
+    // ========================================================================
+
+    await test("T3.7: when_unmet=skip marks the step skipped", async () => {
+      const createFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.create_flow('condition_skip_test');`
+      );
+      assert(createFlow.success, `create_flow failed: ${createFlow.stderr}`);
+      const addStep = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT pgflow.add_step(
+          flow_slug => 'condition_skip_test',
+          step_slug => 'gate',
+          required_input_pattern => '{"enabled": true}'::jsonb,
+          when_unmet => 'skip'
+        );
+      `
+      );
+      assert(addStep.success, `add_step failed: ${addStep.stderr}`);
+
+      const startFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT * FROM pgflow.start_flow('condition_skip_test', '{"enabled": false}'::jsonb);`
+      );
+      assert(startFlow.success, `start_flow failed: ${startFlow.stderr}`);
+
+      const status = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT status, skip_reason
+        FROM pgflow.step_states
+        WHERE flow_slug = 'condition_skip_test' AND step_slug = 'gate';
+      `
+      );
+      assert(status.success, `Query failed: ${status.stderr}`);
+      assert(
+        status.stdout === "skipped|condition_unmet",
+        `Unexpected skip state: ${status.stdout}`
+      );
+    });
+
+    await test("T3.7: when_unmet=fail fails both step and run", async () => {
+      const createFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.create_flow('condition_fail_test');`
+      );
+      assert(createFlow.success, `create_flow failed: ${createFlow.stderr}`);
+      const addStep = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT pgflow.add_step(
+          flow_slug => 'condition_fail_test',
+          step_slug => 'gate',
+          required_input_pattern => '{"enabled": true}'::jsonb,
+          when_unmet => 'fail'
+        );
+      `
+      );
+      assert(addStep.success, `add_step failed: ${addStep.stderr}`);
+
+      const startFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT * FROM pgflow.start_flow('condition_fail_test', '{"enabled": false}'::jsonb);`
+      );
+      assert(startFlow.success, `start_flow failed: ${startFlow.stderr}`);
+
+      const status = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT r.status, ss.status, ss.error_message
+        FROM pgflow.runs r
+        JOIN pgflow.step_states ss ON ss.run_id = r.run_id
+        WHERE r.flow_slug = 'condition_fail_test' AND ss.step_slug = 'gate';
+      `
+      );
+      assert(status.success, `Query failed: ${status.stderr}`);
+      assert(
+        status.stdout === "failed|failed|Condition not met",
+        `Unexpected fail state: ${status.stdout}`
+      );
+    });
+
+    await test("T3.7: when_unmet=skip-cascade skips downstream dependents", async () => {
+      const createFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT pgflow.create_flow('condition_cascade_test');`
+      );
+      assert(createFlow.success, `create_flow failed: ${createFlow.stderr}`);
+      const addParent = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT pgflow.add_step(
+          flow_slug => 'condition_cascade_test',
+          step_slug => 'gate',
+          required_input_pattern => '{"enabled": true}'::jsonb,
+          when_unmet => 'skip-cascade'
+        );
+      `
+      );
+      assert(addParent.success, `add parent failed: ${addParent.stderr}`);
+
+      const addChild = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT pgflow.add_step(
+          flow_slug => 'condition_cascade_test',
+          step_slug => 'child',
+          deps_slugs => ARRAY['gate']
+        );
+      `
+      );
+      assert(addChild.success, `add child failed: ${addChild.stderr}`);
+
+      const startFlow = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `SELECT * FROM pgflow.start_flow('condition_cascade_test', '{"enabled": false}'::jsonb);`
+      );
+      assert(startFlow.success, `start_flow failed: ${startFlow.stderr}`);
+
+      const states = await runSQL(
+        CONTAINER,
+        DATABASE,
+        `
+        SELECT step_slug, status, skip_reason
+        FROM pgflow.step_states
+        WHERE flow_slug = 'condition_cascade_test'
+        ORDER BY step_slug;
+      `
+      );
+      assert(states.success, `Query failed: ${states.stderr}`);
+      assert(
+        states.stdout === "child|skipped|dependency_skipped\ngate|skipped|condition_unmet",
+        `Unexpected cascade states: ${states.stdout}`
+      );
+    });
+
+    // ========================================================================
     // Summary
     // ========================================================================
 
@@ -525,10 +684,10 @@ async function runTests(): Promise<void> {
         });
     }
 
-    process.exit(failed > 0 ? 1 : 0);
+    process.exitCode = failed > 0 ? 1 : 0;
   } catch (error) {
     console.error("\n❌ Fatal error:", error);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     if (!useExistingContainer) {
       console.log("\n🧹 Cleaning up test container...");

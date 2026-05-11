@@ -7,7 +7,7 @@
  *   - pg_safeupdate (hook-based, default-enabled in shared_preload_libraries)
  *
  * Note: pg_plan_filter removed (incompatible with PostgreSQL 18)
- * Note: supautils removed (disabled - compilation issues)
+ * Note: supautils is tested separately because it is preload-only.
  *
  * Examples:
  *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
   console.log();
   console.log("Notes:");
   console.log("  - pg_plan_filter excluded (incompatible with PostgreSQL 18)");
-  console.log("  - supautils excluded (disabled due to compilation issues)");
+  console.log("  - supautils excluded here (covered by dedicated preload-only tests)");
 }
 
 // Run main function

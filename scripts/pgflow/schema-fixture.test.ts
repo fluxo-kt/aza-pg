@@ -53,6 +53,12 @@ describe("pgflow schema fixture", () => {
     }
   });
 
+  test("does not include volatile generation metadata", async () => {
+    const schema = await readSchema();
+
+    expect(schema).not.toContain("-- Generated at:");
+  });
+
   test("ensure_workers installs without binding to Supabase Vault tables", async () => {
     const schema = await readSchema();
     const ensureWorkersSource = schemaSection(

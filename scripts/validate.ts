@@ -21,8 +21,11 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
-import { error, info, section, success, warning } from "./utils/logger.ts";
+import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
+
+const HADOLINT_IMAGE =
+  "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
 
 /**
  * Validation check configuration
@@ -358,12 +361,12 @@ async function validate(
             "-c",
             // CI mode: JSON output for SARIF upload. Use jq to check for empty array ([] = no errors)
             // because shellcheck outputs [] even with no errors, which is 2 bytes, not 0
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e 'length == 0' shellcheck-results.json > /dev/null",
+            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e \'length == 0\' shellcheck-results.json > /dev/null',
           ]
         : [
             "sh",
             "-c",
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck",
+            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck',
           ],
       description: "Shell script linting",
       required: true,
@@ -375,12 +378,12 @@ async function validate(
         ? [
             "sh",
             "-c",
-            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q \'"level":"error"\' hadolint-results.sarif',
+            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q '"level":"error"' hadolint-results.sarif`,
           ]
         : [
             "sh",
             "-c",
-            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile',
+            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
           ],
       description: "Dockerfile linting",
       required: true,
@@ -400,7 +403,7 @@ async function validate(
       command: [
         "sh",
         "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
+        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
       ],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,

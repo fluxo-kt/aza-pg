@@ -31,6 +31,8 @@ import {
 } from "./utils/logger.ts";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
+const HADOLINT_IMAGE =
+  "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
 
 /**
  * Test/validation check configuration
@@ -506,7 +508,7 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile',
+      `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
     ],
     description: "Dockerfile linting (hadolint)",
     critical: true,
@@ -528,7 +530,7 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|docs/|\\.github/|scripts/test/|examples/|deployments/|scripts/README\\.md|\\.[^/]*rc$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]\\s*[\\"\']?[a-zA-Z0-9_-]{8,}" | grep -v -E "(\\$\\{|Bun\\.env\\.|process\\.env\\.|export |POSTGRES_PASSWORD=(test|postgres)|secrets\\.GITHUB_TOKEN|id-token:\\s*write|\\$\\{\\{|your-|xxx|yyy|placeholder)" && exit 1 || exit 0',
+      'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|docs/|\\.github/|scripts/test/|examples/|deployments/|scripts/README\\.md|\\.[^/]*rc$)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]\\s*[\\"\']?[a-zA-Z0-9_-]{8,}" | grep -v -E "(\\$\\{|Bun\\.env\\.|process\\.env\\.|export |POSTGRES_PASSWORD=(test|postgres)|secrets\\.GITHUB_TOKEN|id-token:\\s*write|\\$\\{\\{|your-|xxx|yyy|placeholder)" && exit 1 || exit 0',
     ],
     description:
       "Scan for hardcoded secrets (excludes env vars, test values, examples, and placeholders)",
@@ -934,15 +936,14 @@ const allChecks: Check[] = [
     timeout: 180000, // 3 minutes
   },
   {
-    name: "pgflow New Database Inheritance",
+    name: "pgflow New Database Install",
     category: "functional",
     command: [
       "sh",
       "-c",
       "bun scripts/test/test-pgflow-new-database.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
     ],
-    description:
-      "Verify pgflow and realtime.send() work in newly created databases via template1 inheritance",
+    description: "Verify pgflow can be installed in new databases that inherit realtime.send()",
     critical: false,
     requiresDocker: true,
     requiresBuild: true,

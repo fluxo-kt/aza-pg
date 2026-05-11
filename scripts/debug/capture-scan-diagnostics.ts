@@ -41,7 +41,7 @@
  *   1 - Failure (missing options, command errors, etc.)
  *
  * Reference:
- *   Based on .github/workflows/build-postgres-image.yml:585-621
+ *   Mirrors the workflow security diagnostic collection block.
  */
 
 import { $ } from "bun";
@@ -49,6 +49,8 @@ import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { error, success, warning, info, section } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+
+const TRIVY_IMAGE = "aquasec/trivy:0.70.0";
 
 interface Options {
   image: string;
@@ -222,7 +224,7 @@ async function captureTrivyFullScan(
     // Run Trivy scan with all severities
     const result = await $`docker run --rm \
       -v ${absCacheDir}:/root/.cache/ \
-      aquasec/trivy:latest image \
+      ${TRIVY_IMAGE} image \
       --format table \
       --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
       ${image}`.text();
@@ -254,7 +256,7 @@ async function captureTrivyJsonScan(
     // Run Trivy scan with JSON output
     const result = await $`docker run --rm \
       -v ${absCacheDir}:/root/.cache/ \
-      aquasec/trivy:latest image \
+      ${TRIVY_IMAGE} image \
       --format json \
       --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
       ${image}`.text();

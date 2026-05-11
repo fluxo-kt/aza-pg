@@ -23,7 +23,6 @@
     "sourceMap": false,
     "removeComments": false,
     "importHelpers": false,
-    "downlevelIteration": true,
 
     // JavaScript Support
     "allowJs": true,

@@ -20,8 +20,8 @@ import { error, info, section, success } from "./utils/logger";
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
 
-// Pinned to a version with immutable releases (post-incident v0.69.3+)
-const TRIVY_IMAGE = "aquasec/trivy:0.69.3";
+// Pinned to an immutable post-incident release instead of the mutable Docker tag.
+const TRIVY_IMAGE = "aquasec/trivy:0.70.0";
 const DEFAULT_IMAGE = "aza-pg:pg18";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");

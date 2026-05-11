@@ -105,6 +105,9 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"
    ```
    If available, migrate to PGDG for faster builds (eliminates source compilation during Docker build).
+   If still source-built, verify the upstream build system for the exact new tag before changing the
+   manifest. Example: PGroonga 4.0.6 switched from PGXS Makefile to Meson and
+   needs `mesonOptions: ["-Dtest=false"]` unless intentionally running upstream tests.
 
 7. **Verify apt version strings**: NEVER assume version strings from memory. Always verify against
    actual apt repos before writing the plan. Use the apt-cache madison command above.
@@ -307,6 +310,18 @@ git ls-remote https://github.com/ORG/REPO.git refs/heads/BRANCH
 This is especially important for reusable workflows with broad permissions (`contents: write`,
 `packages: write`, etc.) — a compromised upstream branch would get those permissions on the
 next manual or scheduled invocation.
+
+### MANDATORY: Pin Container Images in Workflow Shell Steps
+
+`actions-up` only updates `uses:` refs. It does not see Docker images embedded in `run:` blocks.
+After action updates, scan workflow/composite scripts for mutable images and pin them:
+
+```bash
+command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/ | command grep -E "docker run|image"
+```
+
+For security scanners, prefer the same pinned container used by local tooling (for example,
+`scripts/security-scan.ts`) so CI diagnostics and local scans use the same scanner family.
 
 **Validate after actions-up**:
 ```bash
@@ -519,15 +534,15 @@ These only need updates when PostgreSQL version changes.
 **Most complex** — requires coordinated updates across multiple files:
 
 ```bash
-# Step 1: Generate new schema (combines 21 SQL files from upstream)
+# Step 1: Generate new schema (discovers all upstream SQL files; do not hardcode file counts)
 bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
 # ⚠️ This updates manifest-data.ts and install.ts, but NOT Dockerfile.template!
 
 # Step 2: Update Dockerfile.template manually (script doesn't do this)
 # Change: COPY tests/fixtures/pgflow/schema-vOLD.sql → schema-vNEW.sql
 
-# Step 3: Update npm packages in package.json
-bun update @pgflow/client @pgflow/dsl --latest
+# Step 3: Update npm packages in package.json with explicit versions
+bun add --dev @pgflow/client@NEW_VERSION @pgflow/dsl@NEW_VERSION
 
 # Step 4: Update 05-pgflow-init.sh (search for version in header comment and success message)
 
@@ -543,6 +558,7 @@ rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
 # Step 7: Regenerate and test
 bun run generate
+bun test scripts/pgflow/schema-fixture.test.ts
 bun run test:pgflow
 ```
 
@@ -855,9 +871,8 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
   When migrating an extension to/from PGDG, add/remove `expect(versions.KEY).toBeDefined()` and
   update the comments accordingly.
 - **`scripts/test/test-timescaledb-breaking-changes.ts`**: Standalone test not in `test:all`.
-  Contains a version series check (`startsWith("2.25.")`) — **update the series prefix** when
-  TimescaleDB crosses a minor version boundary (2.25.x → 2.26.x). Also update the file title
-  and run banner.
+  Contains a target-version helper for the TimescaleDB breaking-change series — update it when
+  TimescaleDB crosses the tested minor boundary. Also update the file title and run banner.
 - **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version
   (e.g., `/usr/lib/postgresql/18/lib/`). **Update all paths when bumping PG major version.**
   Keys must match manifest entry `name` exactly (kind: "tool") — wrong keys silently skip checks.

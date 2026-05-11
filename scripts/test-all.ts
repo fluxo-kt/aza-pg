@@ -600,18 +600,7 @@ const allChecks: Check[] = [
   {
     name: "Basic Extension Loading",
     category: "functional",
-    command: [
-      "sh",
-      "-c",
-      [
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        "for i in {1..30}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        'docker exec $CONTAINER psql -U postgres -c "CREATE EXTENSION vector;" >/dev/null',
-        'docker exec $CONTAINER psql -U postgres -c "CREATE EXTENSION pg_cron;" >/dev/null',
-        "docker exec $CONTAINER psql -U postgres -c \"SELECT \\'[1,2,3]\\'::vector;\" >/dev/null",
-        "docker rm -f $CONTAINER >/dev/null",
-      ].join("; "),
-    ],
+    command: ["bun", "scripts/test/test-basic-extension-loading.ts"],
     description: "Test basic extension loading (vector, pg_cron)",
     critical: true,
     requiresDocker: true,

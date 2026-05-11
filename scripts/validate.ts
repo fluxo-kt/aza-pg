@@ -400,11 +400,7 @@ async function validate(
     },
     {
       name: "Secret Scan",
-      command: [
-        "sh",
-        "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
-      ],
+      command: ["bun", "scripts/security/secret-scan.ts", "--warn-only", "--profile", "validate"],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,
     },

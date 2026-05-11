@@ -519,11 +519,7 @@ const allChecks: Check[] = [
   {
     name: "Secret Scan",
     category: "validation",
-    command: [
-      "sh",
-      "-c",
-      'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|docs/|\\.github/|scripts/test/|examples/|deployments/|scripts/README\\.md|\\.[^/]*rc$)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]\\s*[\\"\']?[a-zA-Z0-9_-]{8,}" | grep -v -E "(\\$\\{|Bun\\.env\\.|process\\.env\\.|export |POSTGRES_PASSWORD=(test|postgres)|secrets\\.GITHUB_TOKEN|id-token:\\s*write|\\$\\{\\{|your-|xxx|yyy|placeholder)" && exit 1 || exit 0',
-    ],
+    command: ["bun", "scripts/security/secret-scan.ts", "--strict", "--profile", "test-all"],
     description:
       "Scan for hardcoded secrets (excludes env vars, test values, examples, and placeholders)",
     critical: true,

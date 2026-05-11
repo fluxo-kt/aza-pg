@@ -27,6 +27,7 @@ import {
   validateNoTools,
 } from "./manifest-test-utils";
 import { resolveImageTag } from "./image-resolver";
+import { waitForPostgresStable } from "../utils/docker";
 
 // Path to the pgsodium_getkey script fixture for volume mounting
 const PGSODIUM_GETKEY_FIXTURE = path.join(
@@ -135,7 +136,7 @@ async function startContainer() {
   }
 
   // Clean up any existing container
-  await $`docker rm -f ${TEST_CONTAINER}`.nothrow();
+  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
 
   // Use image from CLI arg, environment, or default
   const testImage = resolveImageTag({
@@ -173,55 +174,30 @@ async function startContainer() {
     throw new Error(`Failed to start test container from image ${testImage}`);
   }
 
-  // Wait for database to be ready (up to 120 seconds for CI environments)
-  for (let i = 0; i < 120; i++) {
-    const check =
-      await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
-    if (check.exitCode === 0) {
-      console.log("✅ Database responding");
+  const isStable = await waitForPostgresStable({
+    container: TEST_CONTAINER,
+    timeout: 120,
+    requiredSuccesses: 3,
+    checkInterval: 1000,
+  });
 
-      // Wait for init scripts to complete (pgsodium-init, etc.)
-      // Init scripts run in parallel with our check and may restart services
-      console.log("⏳ Waiting for init scripts to complete...");
-      await Bun.sleep(5000);
+  if (isStable) {
+    console.log("✅ Database is stable");
 
-      // Verify database is stable (check multiple times)
-      let stable = true;
-      for (let j = 0; j < 3; j++) {
-        const verify =
-          await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c "SELECT 1"`.nothrow();
-        if (verify.exitCode !== 0) {
-          stable = false;
-          console.log("⚠️  Database not yet stable, waiting...");
-          await Bun.sleep(2000);
-          break;
-        }
-        await Bun.sleep(500);
+    // Create enabled extensions dynamically
+    // pgsodium_getkey script is volume-mounted, so pgsodium TCE is fully functional
+    console.log(`Creating ${testableExtensions.length} testable extensions...`);
+    for (const ext of testableExtensions) {
+      const create = await runSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name}`);
+      if (create.success) {
+        console.log(`  ✓ ${ext.name}`);
+      } else {
+        console.log(`  ✗ ${ext.name}: ${create.stderr}`);
       }
-
-      if (!stable) {
-        // Database was restarting, continue waiting
-        continue;
-      }
-
-      console.log("✅ Database is stable");
-
-      // Create enabled extensions dynamically
-      // pgsodium_getkey script is volume-mounted, so pgsodium TCE is fully functional
-      console.log(`Creating ${testableExtensions.length} testable extensions...`);
-      for (const ext of testableExtensions) {
-        const create = await runSQL(`CREATE EXTENSION IF NOT EXISTS ${ext.name}`);
-        if (create.success) {
-          console.log(`  ✓ ${ext.name}`);
-        } else {
-          console.log(`  ✗ ${ext.name}: ${create.stderr}`);
-        }
-      }
-
-      console.log("✅ Extensions created");
-      return;
     }
-    await Bun.sleep(1000);
+
+    console.log("✅ Extensions created");
+    return;
   }
 
   throw new Error("Database did not become ready in time");

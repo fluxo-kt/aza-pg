@@ -17,6 +17,7 @@ import {
   waitForPostgres,
 } from "../utils/docker";
 import { error, warning } from "../utils/logger";
+import { getSharedPreloadLibraries } from "./lib/test-mode";
 import { TestHarness } from "./harness";
 
 /**
@@ -274,14 +275,10 @@ async function caseCpuDetection(logs: string, container: string): Promise<void> 
 
 /**
  * Test 7: Custom shared_preload_libraries override
- * NOTE: This function is currently unused (Test 7 disabled pending investigation)
  */
-// @ts-expect-error: Function intentionally unused - disabled test case
-async function _caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
-  // Verify custom shared_preload_libraries override
-  // Default is pg_stat_statements,pg_stat_monitor,auto_explain,pg_cron,pgaudit,timescaledb,safeupdate
-  // Override to minimal set (pg_stat_statements,pg_cron) to prove it works
-  // Note: pg_cron must be included because init scripts depend on it
+async function caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
+  const expectedLibraries = [...getSharedPreloadLibraries("production").split(","), "set_user"];
+
   let actual: string;
   try {
     const result =
@@ -292,20 +289,23 @@ async function _caseCustomSharedPreload(_logs: string, container: string): Promi
     throw new Error("Failed to query shared_preload_libraries");
   }
 
-  // Verify override worked: should have pg_stat_statements,pg_cron but NOT auto_explain/pgaudit/timescaledb/safeupdate
-  const hasRequired = actual.includes("pg_stat_statements") && actual.includes("pg_cron");
-  const lacksOptional = !/(auto_explain|pgaudit|timescaledb|safeupdate|pg_stat_monitor)/.test(
-    actual
-  );
+  const actualLibraries = actual
+    .split(",")
+    .map((library) => library.trim())
+    .filter(Boolean);
+  const expectedSet = new Set(expectedLibraries);
+  const actualSet = new Set(actualLibraries);
+  const missingLibraries = expectedLibraries.filter((library) => !actualSet.has(library));
+  const unexpectedLibraries = actualLibraries.filter((library) => !expectedSet.has(library));
 
-  if (hasRequired && lacksOptional) {
+  if (missingLibraries.length === 0 && unexpectedLibraries.length === 0) {
     console.log(`✅ Custom shared_preload_libraries honored (actual: ${actual})`);
   } else {
     console.log("❌ FAILED: Override not respected");
-    console.log(
-      "   Expected: pg_stat_statements,pg_cron (without auto_explain,pgaudit,timescaledb,safeupdate,pg_stat_monitor)"
-    );
+    console.log(`   Expected exactly: ${expectedLibraries.join(",")}`);
     console.log(`   Actual: ${actual}`);
+    console.log(`   Missing: ${missingLibraries.join(",") || "<none>"}`);
+    console.log(`   Unexpected: ${unexpectedLibraries.join(",") || "<none>"}`);
     throw new Error("Custom shared_preload_libraries override failed");
   }
 }
@@ -1049,23 +1049,18 @@ async function main(): Promise<void> {
   console.log();
 
   // Test 7: Custom shared_preload_libraries override
-  // DISABLED: This test needs investigation - PostgreSQL fails to start with minimal preload list
-  // TODO: Investigate why pg_cron dependency causes startup issues with custom preload list
-  // await runCase(
-  //   "Test 7: Custom shared_preload_libraries override",
-  //   caseCustomSharedPreload,
-  //   [
-  //     "--memory=1g",
-  //     "-e",
-  //     `POSTGRES_PASSWORD=${testPassword}`,
-  //     "-e",
-  //     "POSTGRES_SHARED_PRELOAD_LIBRARIES=pg_stat_statements,pg_cron",
-  //   ],
-  //   imageTag
-  // );
-  console.log("\n📌 Test 7: Custom shared_preload_libraries override");
-  console.log("⏭️  SKIPPED: Test disabled pending investigation of pg_cron startup dependencies");
-  console.log();
+  await runCase(
+    "Test 7: Custom shared_preload_libraries override",
+    caseCustomSharedPreload,
+    [
+      "--memory=1g",
+      "-e",
+      `POSTGRES_PASSWORD=${testPassword}`,
+      "-e",
+      `POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries("production")},set_user`,
+    ],
+    imageTag
+  );
 
   // Test 8: 4GB memory tier (medium production)
   await runCase(

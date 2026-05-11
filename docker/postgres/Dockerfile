@@ -6,7 +6,7 @@
 
 # PostgreSQL 18.3 with comprehensive extension suite
 
-FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d AS builder-base
+FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -162,7 +162,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d
+FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -277,8 +277,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
@@ -411,7 +411,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.13.3.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.14.1.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

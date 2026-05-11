@@ -14,7 +14,7 @@ WHERE
   extname = 'wrappers';
  extname  | extversion 
 ----------+------------
- wrappers | 0.6.0
+ wrappers | 0.6.1
 (1 row)
 
 -- Verify pg_stat_statements dependency (required by wrappers)
@@ -89,4 +89,3 @@ WHERE
 ----------------------
  t
 (1 row)
-

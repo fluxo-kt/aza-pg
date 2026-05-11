@@ -47,7 +47,7 @@ minimumReleaseAge = 86400  # 1 day delay
 
 ### TypeScript
 
-**Version**: 5.9.3+
+**Version**: See `package.json` (`devDependencies.typescript`)
 **Why**: Type safety, excellent IDE support, industry standard
 **Status**: ✅ LOCKED
 **Configuration**: `tsconfig.json` (strict mode enabled)
@@ -80,7 +80,7 @@ minimumReleaseAge = 86400  # 1 day delay
 
 ### Prettier (temporary - migrate to Oxfmt when stable)
 
-**Version**: 3.6.2+
+**Version**: See `package.json` (`devDependencies.prettier`)
 **Why**: Industry-standard code formatter, zero-config philosophy
 **Status**: ✅ CURRENT - **Planned migration to Oxfmt when stable**
 **Configuration**: `.prettierrc.json`, `.prettierignore`
@@ -88,7 +88,7 @@ minimumReleaseAge = 86400  # 1 day delay
 
 **Decision Rationale**:
 
-- Prettier is battle-tested and production-ready (current stable: 3.6.2)
+- Prettier is battle-tested and production-ready
 - Oxfmt is preferred but **NOT YET STABLE** (pre-alpha as of Nov 2025, npm package marked "DO NOT USE")
 - When Oxfmt reaches stable (planned: 99.99% Prettier-compatible):
   - Performance: ~45x faster than Prettier, 2-3x faster than Biome
@@ -98,7 +98,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Migration Checklist (when Oxfmt stable)**:
 
 1. ✅ Verify Oxfmt npm package is stable (not pre-alpha)
-2. ✅ Test formatting on codebase: `npx oxfmt --check .`
+2. ✅ Add Oxfmt as a dev dependency, then test formatting on the codebase
 3. ✅ Compare diff size (should be minimal due to 99.99% compat)
 4. ✅ Rename config file: `.prettierrc.json` → `.oxfmtrc.jsonc`
 5. ✅ Update package.json: Replace `prettier` with `oxfmt`
@@ -108,7 +108,7 @@ minimumReleaseAge = 86400  # 1 day delay
 
 ### sql-formatter + Squawk + Custom PostgreSQL Linting
 
-**Version**: 15.6.10+ (sql-formatter) + 2.30.0+ (Squawk) + Bun-native linting
+**Version**: See `package.json` (`sql-formatter`, `squawk-cli`) + Bun-native linting
 **Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
 **Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
@@ -184,7 +184,7 @@ minimumReleaseAge = 86400  # 1 day delay
 **Scope**:
 
 - `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (auto-generated)
-- `tests/fixtures/pgflow/schema-v0.13.0.sql` (pgflow test schema)
+- `tests/fixtures/pgflow/schema-v*.sql` (pgflow test schema)
 
 ---
 
@@ -306,7 +306,7 @@ minimumReleaseAge = 86400  # 1 day delay
 3. **Oxfmt** ❌ (temporarily)
    - Reason: Pre-alpha, npm package marked "DO NOT USE" (as of Nov 2025)
    - Status: Will migrate when stable (planned 99.99% Prettier compat, 45x faster)
-   - Current: Using Prettier 3.6.2 until Oxfmt reaches production-ready state
+   - Current: Using Prettier until Oxfmt reaches production-ready state
 
 4. **Husky** ❌
    - Reason: Replaced by bun-git-hooks (Bun-native, lighter)

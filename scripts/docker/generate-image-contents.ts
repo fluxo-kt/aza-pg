@@ -58,9 +58,10 @@ function getVersion(entry: ManifestEntry): string {
     return match?.[1] ?? entry.pgdgVersion;
   }
   if (entry.source?.tag) {
-    // Strip 'v' prefix if present, handle scoped tags like "pgflow@0.13.3"
+    // Strip a release prefix and reduce scoped monorepo tags to the package version.
     const cleaned = entry.source.tag.replace(/^v/, "");
-    return cleaned.includes("@") ? cleaned.split("@").pop()! : cleaned;
+    const scopedVersion = cleaned.split("@").pop();
+    return cleaned.includes("@") && scopedVersion ? scopedVersion : cleaned;
   }
   return "builtin";
 }
@@ -80,7 +81,8 @@ function generateContents(manifest: Manifest): string {
   const enabled = manifest.entries.filter((e) => e.enabled !== false);
 
   // Group by kind
-  const extensions = enabled.filter((e) => e.kind === "extension");
+  const extensions = enabled.filter((e) => e.kind === "extension" && !e.runtime?.preloadOnly);
+  const sqlOnlySchemas = enabled.filter((e) => e.kind === "extension" && e.runtime?.preloadOnly);
   const builtins = enabled.filter((e) => e.kind === "builtin");
   const tools = enabled.filter((e) => e.kind === "tool");
 
@@ -109,6 +111,22 @@ function generateContents(manifest: Manifest): string {
   lines.push("");
   lines.push(`Total: ${sortedExtensions.length} extensions`);
   lines.push("");
+
+  if (sqlOnlySchemas.length > 0) {
+    lines.push("═══════════════════════════════════════════════════════════════");
+    lines.push("NON-CREATE-EXTENSION ENTRIES (preload or init managed)");
+    lines.push("═══════════════════════════════════════════════════════════════");
+    lines.push("");
+
+    for (const schema of sqlOnlySchemas.sort((a, b) => a.name.localeCompare(b.name))) {
+      const version = getVersion(schema);
+      const versionStr = version !== "builtin" ? `v${version}` : "builtin";
+      lines.push(
+        `  ${schema.name.padEnd(28)} ${versionStr.padEnd(14)} ${schema.category ?? ""}`.trimEnd()
+      );
+    }
+    lines.push("");
+  }
 
   // Tools section
   lines.push("═══════════════════════════════════════════════════════════════");

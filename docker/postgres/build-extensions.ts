@@ -55,6 +55,7 @@ interface BuildSpec {
   subdir?: string;
   features?: string[];
   noDefaultFeatures?: boolean;
+  mesonOptions?: string[];
   script?: string;
   patches?: string[];
 }
@@ -373,11 +374,12 @@ async function buildCmake(dir: string, name: string): Promise<void> {
   await $`cmake --install ${buildDir}`;
 }
 
-async function buildMeson(dir: string): Promise<void> {
+async function buildMeson(dir: string, build: BuildSpec): Promise<void> {
   const buildDir = join(dir, ".meson-build");
-  log(`Running Meson build in ${dir}`);
+  const options = build.mesonOptions ?? [];
+  log(`Running Meson build in ${dir}${options.length ? ` (${options.join(" ")})` : ""}`);
 
-  await $`meson setup ${buildDir} ${dir} --prefix=/usr/local`;
+  await $`meson setup ${buildDir} ${dir} --prefix=/usr/local ${options}`;
   await $`ninja -C ${buildDir} -j${NPROC}`;
   await $`ninja -C ${buildDir} install`;
 }
@@ -730,7 +732,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
       break;
 
     case "meson":
-      await buildMeson(workdir);
+      await buildMeson(workdir, build);
       break;
 
     case "make":

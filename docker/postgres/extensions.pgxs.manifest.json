@@ -167,8 +167,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.11.0",
-        "commit": "ae5d34e096608666816d207d0c4b0342e0d58b64"
+        "tag": "v1.11.1",
+        "commit": "885251cf4dcb4853d7fa253f56e382d84d5f0821"
       },
       "build": {
         "type": "pgxs",
@@ -179,7 +179,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.11.0 with PG18 support",
+          "Source build for latest v1.11.1 with PG18 support",
+          "v1.11.1: read_grouped_head() plus SQL-only install/upgrade parity fixes",
           "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
@@ -224,14 +225,16 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.5",
-        "commit": "15c8ed3e00c65577e71071a9f1e408c9237f39e3"
+        "tag": "4.0.6",
+        "commit": "dacbeaeb088160812ca0cf6afc779f2db1ded896"
       },
       "build": {
-        "type": "pgxs"
+        "type": "meson",
+        "mesonOptions": ["-Dtest=false"]
       },
       "aptPackages": [
         "cmake",
+        "meson",
         "ninja-build",
         "pkg-config",
         "libgroonga-dev",
@@ -245,7 +248,9 @@
       },
       "notes": [
         "NOT available in PGDG for PostgreSQL 18",
-        "v4.0.5: Fix LIKE/ILIKE with OR clause returning no results (GH-916)",
+        "v4.0.6: Fix pg_tokenize failure cleanup and initialize fuzzy search distance ratio",
+        "v4.0.6 switched from PGXS Makefile to Meson.",
+        "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
         "Source build required for PG18"
       ],
       "sourceUrl": "https://github.com/pgroonga/pgroonga",
@@ -319,8 +324,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.1.0",
-        "commit": "35e7314d9ae7891c7b094116c6db22b9c03c5da8"
+        "tag": "v3.2.2",
+        "commit": "64792e14681bba81c9adccdcfd598715cd052eb5"
       },
       "build": {
         "type": "pgxs"
@@ -330,7 +335,7 @@
         "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
-          "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
+          "v3.2.2: Permission hint improvements plus ALTER ROLE and executor hook crash fixes",
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },

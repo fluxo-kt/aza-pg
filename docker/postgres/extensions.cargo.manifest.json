@@ -6,9 +6,9 @@
       "category": "validation",
       "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
       "source": {
-        "type": "git-ref",
+        "type": "git",
         "repository": "https://github.com/supabase/pg_jsonschema.git",
-        "ref": "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
+        "tag": "v0.3.4",
         "commit": "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a"
       },
       "build": {
@@ -22,6 +22,7 @@
         "defaultEnable": false,
         "notes": [
           "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+          "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
           "Source build required for latest features"
         ]
       },
@@ -37,8 +38,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.0",
-        "commit": "77d42008540975a34f97dbc0c9a21cb25bb9b46b"
+        "tag": "v0.6.1",
+        "commit": "adfb7a311baa6cef077a53b5a6055aa4f8d9a6e4"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -54,7 +55,7 @@
       },
       "notes": [
         "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-        "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+        "v0.6.1: FDW parameter rescan, aggregate pushdown for enabled FDWs, dependency fixes.",
         "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest."
       ],
       "sourceUrl": "https://github.com/supabase/wrappers",

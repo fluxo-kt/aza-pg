@@ -45,6 +45,7 @@ interface BuildSpec {
   subdir?: string;
   features?: string[];
   noDefaultFeatures?: boolean;
+  mesonOptions?: string[];
   script?: string;
   patches?: string[];
 }

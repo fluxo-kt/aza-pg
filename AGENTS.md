@@ -188,6 +188,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+ (immutable releases). Locally: `bun run security:scan`.
 
+**PGroonga Build System**: PGroonga 4.0.6+ uses Meson, not PGXS Makefile. Manifest must use `build.type: "meson"`, include `meson` in `aptPackages`, and pass `mesonOptions: ["-Dtest=false"]` for production builds; upstream Meson test setup requires Ruby.
+
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
 **git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.

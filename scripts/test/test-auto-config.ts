@@ -16,7 +16,7 @@ import {
   ensureImageAvailable,
   waitForPostgres,
 } from "../utils/docker";
-import { error, warning } from "../utils/logger.ts";
+import { error, warning } from "../utils/logger";
 import { TestHarness } from "./harness";
 
 /**

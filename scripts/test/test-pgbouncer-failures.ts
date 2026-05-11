@@ -20,7 +20,7 @@ import { $ } from "bun";
 import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
-import { info, success, warning, error } from "../utils/logger.ts";
+import { info, success, warning, error } from "../utils/logger";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { getTestDockerConfig, cleanupTestDockerConfig } from "../utils/docker-test-config";
 

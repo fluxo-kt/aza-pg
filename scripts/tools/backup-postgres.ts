@@ -13,7 +13,7 @@
 
 import { $ } from "bun";
 import { checkCommand, waitForPostgres } from "../utils/docker";
-import { info, success, error } from "../utils/logger.ts";
+import { info, success, error } from "../utils/logger";
 import { dirname } from "node:path";
 
 interface BackupConfig {

@@ -9,7 +9,7 @@
  */
 
 import { $ } from "bun";
-import { info, success, error, warning } from "../utils/logger.ts";
+import { info, success, error, warning } from "../utils/logger";
 
 interface CertConfig {
   certDir: string;

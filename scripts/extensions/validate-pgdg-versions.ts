@@ -4,8 +4,8 @@
  * Prevents build failures from incorrect version strings
  */
 
-import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data.ts";
-import { PACKAGE_NAME_MAP } from "../extensions/pgdg-mappings.ts";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
+import { PACKAGE_NAME_MAP } from "../extensions/pgdg-mappings";
 
 interface PgdgExtension {
   name: string;

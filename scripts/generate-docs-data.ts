@@ -16,7 +16,7 @@
  */
 
 import { join } from "node:path";
-import { info, success, error } from "./utils/logger.ts";
+import { info, success, error } from "./utils/logger";
 
 // Derive project root from current file location (scripts/generate-docs-data.ts)
 const PROJECT_ROOT = join(import.meta.dir, "..");

@@ -6,7 +6,7 @@
  */
 
 import { $ } from "bun";
-import { cleanPsqlOutput, normalizeRegressionOutput } from "./output-normalizer.ts";
+import { cleanPsqlOutput, normalizeRegressionOutput } from "./output-normalizer";
 
 /**
  * Result of running a single regression test

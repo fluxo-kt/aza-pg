@@ -389,7 +389,7 @@ If assets don't exist, stay on current version.
   githubRepo: "timescale/pgvectorscale",
   githubReleaseTag: "0.10.0",  // ← Update this
   githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-  soFileName: "vectorscale.so",
+  soFileName: "vectorscale-0.10.0.so",
   source: {
     type: "git",
     repository: "https://github.com/timescale/pgvectorscale.git",

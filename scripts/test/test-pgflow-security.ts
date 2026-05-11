@@ -12,8 +12,8 @@
  */
 
 import { $ } from "bun";
-import { TestHarness } from "./harness.ts";
-import { error, info, success } from "../utils/logger.ts";
+import { TestHarness } from "./harness";
+import { error, info, success } from "../utils/logger";
 
 // Get image tag from command line args, POSTGRES_IMAGE env var, or use default
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";

@@ -19,7 +19,7 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
-import { error, info, section, success, warning } from "./utils/logger.ts";
+import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 
 // Derive project root from current file location (scripts/check-size-regression.ts)

@@ -22,7 +22,7 @@ import {
   ensureImageAvailable,
   waitForPostgresStable,
 } from "../utils/docker";
-import { error } from "../utils/logger.ts";
+import { error } from "../utils/logger";
 
 // Generate random test password at runtime
 const TEST_POSTGRES_PASSWORD =

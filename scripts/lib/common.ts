@@ -3,7 +3,7 @@
  * consolidated into scripts/utils/docker.ts
  *
  * MIGRATION GUIDE:
- *   Old: import { ... } from './lib/common.ts'
+ *   Old: import { ... } from './lib/common'
  *   New: import { ... } from '../utils/docker'
  *
  * Functions moved:

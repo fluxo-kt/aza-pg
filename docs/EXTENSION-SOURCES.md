@@ -227,7 +227,7 @@ For extensions where apt packages aren't available for Debian Trixie, pre-built 
   githubRepo: "timescale/pgvectorscale",
   githubReleaseTag: "0.9.0",
   githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-  soFileName: "vectorscale.so",
+  soFileName: "vectorscale-0.9.0.so",
 }
 ```
 

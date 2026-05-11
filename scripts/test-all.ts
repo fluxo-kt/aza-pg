@@ -20,15 +20,7 @@
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
 import { isDockerDaemonRunning } from "./utils/docker";
-import {
-  error,
-  formatDuration,
-  info,
-  section,
-  separator,
-  success,
-  warning,
-} from "./utils/logger.ts";
+import { error, formatDuration, info, section, separator, success, warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const HADOLINT_IMAGE =

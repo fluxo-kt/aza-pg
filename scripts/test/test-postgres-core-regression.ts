@@ -27,17 +27,17 @@
 
 import { $ } from "bun";
 import { join } from "node:path";
-import { detectTestMode, type TestMode } from "./lib/test-mode.ts";
-import { resolveImageTag } from "./image-resolver.ts";
+import { detectTestMode, type TestMode } from "./lib/test-mode";
+import { resolveImageTag } from "./image-resolver";
 import {
   runRegressionTestsWithSetup,
   generateRegressionDiffs,
   type TestResult,
   type SetupResult,
   type ConnectionConfig,
-} from "./lib/regression-runner.ts";
-import { CORE_TESTS, SQL_DIR, EXPECTED_DIR } from "../ci/fetch-pg-regression-tests.ts";
-import { requiresMinimalSetup, requiresFullSetup, groupTestsBySetup } from "./lib/test-groups.ts";
+} from "./lib/regression-runner";
+import { CORE_TESTS, SQL_DIR, EXPECTED_DIR } from "../ci/fetch-pg-regression-tests";
+import { requiresMinimalSetup, requiresFullSetup, groupTestsBySetup } from "./lib/test-groups";
 
 interface TestOptions {
   mode: TestMode;

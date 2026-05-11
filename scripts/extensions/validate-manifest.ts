@@ -5,7 +5,7 @@
  */
 
 import { join } from "node:path";
-import { validateManifest } from "./manifest-schema.ts";
+import { validateManifest } from "./manifest-schema";
 import * as logger from "../utils/logger";
 
 // Counts are auto-derived from manifest (no hardcoding - manifest is source of truth)

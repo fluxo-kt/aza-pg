@@ -26,7 +26,7 @@
 
 import { join } from "node:path";
 import { getErrorMessage } from "./utils/errors";
-import { error, info, section, success, warning } from "./utils/logger.ts";
+import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning, dockerRun } from "./utils/docker";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");

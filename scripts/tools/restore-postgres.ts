@@ -12,7 +12,7 @@
 
 import { $ } from "bun";
 import { checkCommand, waitForPostgres } from "../utils/docker";
-import { info, success, error } from "../utils/logger.ts";
+import { info, success, error } from "../utils/logger";
 
 interface RestoreConfig {
   backupFile: string;

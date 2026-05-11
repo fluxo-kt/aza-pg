@@ -132,7 +132,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **pgflow v0.13.1 Supabase Compatibility Layer**: Full integration with Supabase-to-standalone PostgreSQL compatibility
   - `realtime.send()` stub replacing Supabase Realtime API (3-layer: pg_notify + pgmq + pg_net webhooks)
-  - Template1 installation: ALL new databases inherit pgflow compatibility automatically
+  - Template1 installation: new databases inherit the `realtime.send()` compatibility stub automatically
   - Custom installation marker (`app.aza_pg_custom`) for environment detection
   - Comprehensive documentation: `docs/PGFLOW.md`
   - Test suite: `test-pgflow-security.ts`, `test-pgflow-new-database.ts`

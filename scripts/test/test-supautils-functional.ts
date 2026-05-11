@@ -441,11 +441,37 @@ await test("Verify both pg_cron and pg_net can be created alongside supautils", 
 console.log("\n🧪 Additional Functional Tests");
 console.log("-".repeat(80));
 
-await test("Verify supautils GUC parameters are configurable", async () => {
-  // Attempt to set a supautils parameter (will only affect session)
-  // Note: reserved_roles requires restart to take effect, but we can test the setting syntax
-  await runSQL("SET supautils.reserved_roles = ''");
-  // If this doesn't error, the GUC is properly registered and configurable
+await test("Verify supautils GUC parameters use their declared configuration contexts", async () => {
+  const contexts = await runSQL(
+    "SELECT name || '=' || context FROM pg_settings WHERE name IN ('supautils.log_skipped_evtrigs', 'supautils.reserved_roles') ORDER BY name"
+  );
+  assert(
+    contexts.includes("supautils.log_skipped_evtrigs=user"),
+    `Expected log_skipped_evtrigs to be user-settable, got: ${contexts}`
+  );
+  assert(
+    contexts.includes("supautils.reserved_roles=sighup"),
+    `Expected reserved_roles to be SIGHUP-scoped, got: ${contexts}`
+  );
+
+  const userSetting = await runSQL(
+    "SELECT set_config('supautils.log_skipped_evtrigs', 'on', false), current_setting('supautils.log_skipped_evtrigs')"
+  );
+  assert(userSetting === "on|on", `Expected user GUC to update in-session, got: ${userSetting}`);
+
+  try {
+    await runSQL("ALTER SYSTEM SET supautils.reserved_roles = ''");
+    const reloaded = await runSQL("SELECT pg_reload_conf()");
+    assert(reloaded === "t", `Expected pg_reload_conf() to return true, got: ${reloaded}`);
+    const reservedRoles = await runSQL("SHOW supautils.reserved_roles");
+    assert(
+      reservedRoles === "",
+      `Expected reserved_roles to reload as empty, got: ${reservedRoles}`
+    );
+  } finally {
+    await runSQL("ALTER SYSTEM RESET supautils.reserved_roles").catch(() => undefined);
+    await runSQL("SELECT pg_reload_conf()").catch(() => undefined);
+  }
 });
 
 // ============================================================================

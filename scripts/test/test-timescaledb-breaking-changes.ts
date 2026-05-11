@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * TimescaleDB 2.25.x Breaking Changes & New Defaults Test Suite
+ * TimescaleDB 2.25+ Breaking Changes & New Defaults Test Suite
  *
  * Tests:
  * - T1.1: time_bucket_ng removal (BREAKING)
@@ -44,6 +44,13 @@ function recordTest(name: string, success: boolean, message: string, details?: s
   if (details) {
     log(`  Details: ${details}`);
   }
+}
+
+function isTimescaleVersionWith225Changes(version: string): boolean {
+  const [majorPart, minorPart] = version.split(".");
+  const major = Number(majorPart);
+  const minor = Number(minorPart);
+  return major === 2 && minor >= 25;
 }
 
 async function setup(): Promise<void> {
@@ -276,8 +283,8 @@ async function testWALInvalidationRemoval(): Promise<void> {
     if (caTestSourceExists !== "t") {
       recordTest(
         "T1.4.2: CA refresh without WAL invalidation",
-        true,
-        "SKIPPED: T1.2 prerequisite (ca_test_source) not found"
+        false,
+        "T1.2 prerequisite missing: ca_test_source"
       );
     } else {
       await harness.runSQL(
@@ -308,17 +315,17 @@ async function testWALInvalidationRemoval(): Promise<void> {
 
 async function testTimescaleDBVersion(): Promise<void> {
   try {
-    // POSITIVE: Verify TimescaleDB version is 2.25.x (breaking changes introduced in 2.25.0)
+    // POSITIVE: Verify TimescaleDB version includes changes introduced in 2.25.0
     const version = await harness.runSQL(
       container,
       "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
     );
     recordTest(
       "T1.5.1: TimescaleDB version check",
-      version.startsWith("2.25."),
+      isTimescaleVersionWith225Changes(version),
       `TimescaleDB version: ${version}`,
-      version.startsWith("2.25.")
-        ? `Version ${version} in expected 2.25.x series`
+      isTimescaleVersionWith225Changes(version)
+        ? `Version ${version} includes 2.25+ breaking-change semantics`
         : "Version mismatch"
     );
 
@@ -496,22 +503,18 @@ async function testBucketsPerBatchDefault(): Promise<void> {
     // Using ca_test_new from T1.2 which already exists
 
     // First check if it's exposed as a GUC (unlikely but worth checking)
-    const gucCheck = await harness.runSQL(
+    const bucketsPerBatchGuc = await harness.runSQL(
       container,
-      "SELECT name FROM pg_settings WHERE name LIKE '%buckets%';"
+      "SELECT setting FROM pg_settings WHERE name LIKE '%buckets_per_batch%';"
     );
 
-    if (gucCheck.length > 0) {
+    if (bucketsPerBatchGuc.length > 0) {
       // If it is a GUC, verify the default
-      const value = await harness.runSQL(
-        container,
-        "SELECT setting FROM pg_settings WHERE name LIKE '%buckets_per_batch%';"
-      );
       recordTest(
         "T1.8.1: buckets_per_batch default (GUC)",
-        value === "10",
-        `buckets_per_batch GUC value: ${value}`,
-        value === "10" ? "Default matches expected 10" : "Default mismatch"
+        bucketsPerBatchGuc === "10",
+        `buckets_per_batch GUC value: ${bucketsPerBatchGuc}`,
+        bucketsPerBatchGuc === "10" ? "Default matches expected 10" : "Default mismatch"
       );
     } else {
       // Not a GUC — verify via CA refresh (the parameter affects refresh behaviour)
@@ -523,11 +526,11 @@ async function testBucketsPerBatchDefault(): Promise<void> {
       if (caTestSourceExists !== "t") {
         recordTest(
           "T1.8.1: buckets_per_batch default (refresh parameter)",
-          true,
-          "SKIPPED: T1.2 prerequisite (ca_test_source/ca_test_new) not found"
+          false,
+          "T1.2 prerequisite missing: ca_test_source/ca_test_new"
         );
       } else {
-        // A successful refresh with default settings confirms 2.25.0 defaults are active
+        // This verifies the implicit refresh path still works when the batch-size control is not exposed as a GUC.
         await harness.runSQL(
           container,
           "INSERT INTO ca_test_source SELECT t, random() FROM generate_series(now() + interval '2 hours', now() + interval '3 hours', '1 min') t;"
@@ -538,10 +541,10 @@ async function testBucketsPerBatchDefault(): Promise<void> {
         );
         const count = await harness.runSQL(container, "SELECT count(*) FROM ca_test_new;");
         recordTest(
-          "T1.8.1: buckets_per_batch default (refresh parameter)",
+          "T1.8.1: implicit CA refresh batch settings",
           parseInt(count) > 0,
-          "CA refresh with 2.25.0 default buckets_per_batch=10 succeeded",
-          `buckets_per_batch is a per-refresh parameter (not a GUC), rows: ${count}`
+          "CA refresh succeeded without a buckets_per_batch GUC",
+          `buckets_per_batch is not exposed as a GUC; refreshed rows: ${count}`
         );
       }
     }
@@ -559,7 +562,7 @@ async function runTests(): Promise<void> {
   try {
     await setup();
 
-    log("\n=== Running TimescaleDB 2.25.x Breaking Changes Tests ===\n");
+    log("\n=== Running TimescaleDB 2.25+ Breaking Changes Tests ===\n");
 
     await testTimeBucketNgRemoval();
     await testOldCAFormatRemoval();
@@ -585,13 +588,13 @@ async function runTests(): Promise<void> {
             log(`    ${r.details}`);
           }
         });
-      process.exit(1);
+      process.exitCode = 1;
     } else {
       log("\n✓ All tests passed!");
     }
   } catch (error) {
     log(`Fatal error: ${error}`);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     await cleanup();
   }

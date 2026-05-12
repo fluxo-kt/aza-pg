@@ -153,6 +153,22 @@ function validateGitUrl(url: string): void {
   }
 }
 
+async function gitWithRetry(args: string[], label: string, maxAttempts = 5): Promise<string> {
+  let lastError = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await $`git -c http.version=HTTP/1.1 ${args}`.quiet().nothrow();
+    if (result.exitCode === 0) return result.stdout.toString();
+
+    lastError = result.stderr.toString().trim() || result.stdout.toString().trim();
+    if (attempt < maxAttempts) {
+      log(`${label} failed (attempt ${attempt}/${maxAttempts}); retrying`);
+      await Bun.sleep(1000 * attempt);
+    }
+  }
+
+  throw new Error(`${label} failed after ${maxAttempts} attempts: ${lastError}`);
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Git Repository Cloning
 // ────────────────────────────────────────────────────────────────────────────
@@ -165,22 +181,28 @@ async function cloneRepo(repo: string, commit: string, target: string): Promise<
 
   // Shallow clone optimization: fetch only the specific commit (Phase 4.2)
   // Benefits: faster clone, reduced disk usage, smaller attack surface
-  await $`git init ${target}`.quiet();
-  await $`git -C ${target} remote add origin ${repo}`.quiet();
+  await gitWithRetry(["init", target], `git init ${target}`);
+  await gitWithRetry(["-C", target, "remote", "add", "origin", repo], `git remote add ${repo}`);
 
   // Try shallow fetch first, fallback to full fetch if server rejects
   try {
-    await $`git -C ${target} fetch --depth 1 origin ${commit}`.quiet();
+    await gitWithRetry(
+      ["-C", target, "fetch", "--depth", "1", "origin", commit],
+      `shallow fetch ${repo} @ ${commit}`
+    );
   } catch {
     log(`Shallow fetch failed, falling back to full fetch for ${commit}`);
-    await $`git -C ${target} fetch origin ${commit}`.quiet();
+    await gitWithRetry(["-C", target, "fetch", "origin", commit], `fetch ${repo} @ ${commit}`);
   }
 
-  await $`git -C ${target} checkout --quiet ${commit}`.quiet();
+  await gitWithRetry(["-C", target, "checkout", "--quiet", commit], `checkout ${commit}`);
 
   // Initialize submodules if present
   if (await Bun.file(join(target, ".gitmodules")).exists()) {
-    await $`git -C ${target} submodule update --init --recursive`.quiet();
+    await gitWithRetry(
+      ["-C", target, "submodule", "update", "--init", "--recursive"],
+      `submodule update ${repo}`
+    );
   }
 }
 
@@ -664,8 +686,10 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
     validateGitUrl(source.repository);
     // Resolve tag → commit SHA via ls-remote (no temp clone or rm -rf needed).
     // Request both TAG^{} (peeled commit for annotated tags) and TAG (lightweight tags).
-    const lsOutput =
-      await $`git ls-remote ${source.repository} refs/tags/${source.tag}^{} refs/tags/${source.tag}`.text();
+    const lsOutput = await gitWithRetry(
+      ["ls-remote", source.repository, `refs/tags/${source.tag}^{}`, `refs/tags/${source.tag}`],
+      `resolve tag ${source.tag} for ${source.repository}`
+    );
     const lines = lsOutput
       .trim()
       .split("\n")

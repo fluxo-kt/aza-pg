@@ -46,6 +46,12 @@ interface BuildConfig {
   target: string;
 }
 
+async function registryCacheExists(config: BuildConfig): Promise<boolean> {
+  const cacheRef = `${config.cacheRegistry}:${config.cacheTag}`;
+  const result = await $`docker buildx imagetools inspect ${cacheRef}`.quiet().nothrow();
+  return result.exitCode === 0;
+}
+
 // Parse command line arguments
 function parseArgs(): BuildConfig {
   // Handle POSTGRES_IMAGE which may already include a tag (e.g., "aza-pg-ci:test")
@@ -280,8 +286,14 @@ async function buildImage(config: BuildConfig): Promise<void> {
       "--cache-to",
       "type=local,dest=/tmp/.buildx-cache,mode=max"
     );
-    // Also try registry cache as fallback
-    buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
+    if (await registryCacheExists(config)) {
+      buildArgs.push(
+        "--cache-from",
+        `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`
+      );
+    } else {
+      console.log("Registry cache unavailable: using local filesystem cache only");
+    }
   } else {
     // CI: Use GitHub Actions cache with unified scope for cross-branch sharing
     // Scope pattern: aza-pg-{platform} (matches build-postgres-image.yml and publish.yml)
@@ -294,8 +306,14 @@ async function buildImage(config: BuildConfig): Promise<void> {
       "--cache-to",
       `type=gha,mode=max,scope=${cacheScope}`
     );
-    // Also try registry cache as fallback
-    buildArgs.push("--cache-from", `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`);
+    if (await registryCacheExists(config)) {
+      buildArgs.push(
+        "--cache-from",
+        `type=registry,ref=${config.cacheRegistry}:${config.cacheTag}`
+      );
+    } else {
+      console.log("Registry cache unavailable: using GitHub Actions cache only");
+    }
   }
 
   // Load or push

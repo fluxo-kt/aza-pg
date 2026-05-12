@@ -67,7 +67,13 @@ RUN set -euo pipefail && \
 # SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
 RUN set -euo pipefail && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -329,7 +335,13 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 RUN set -euo pipefail && \
     apt-get update && \
     apt-get install -y --no-install-recommends build-essential git ca-certificates && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -358,7 +370,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     ARCH=$(dpkg --print-architecture) && \
     ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
     echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
-    curl -fsSL "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip && \
+    rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip.tmp && \
+    test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
+    unzip -tq /tmp/vectorscale.zip.tmp && \
+    mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
     unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \

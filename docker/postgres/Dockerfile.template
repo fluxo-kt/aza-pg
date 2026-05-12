@@ -61,7 +61,13 @@ RUN set -euo pipefail && \
 # SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
 RUN set -euo pipefail && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -233,7 +239,13 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 RUN set -euo pipefail && \
     apt-get update && \
     apt-get install -y --no-install-recommends build-essential git ca-certificates && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \

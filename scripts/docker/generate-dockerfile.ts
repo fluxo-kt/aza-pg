@@ -625,7 +625,11 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
     ARCH=$(dpkg --print-architecture) && \\
     ASSET="${assetPattern.replace("{arch}", "${ARCH}")}" && \\
     echo "Downloading ${entry.name} v${entry.githubReleaseTag} for $ARCH..." && \\
-    curl -fsSL "${url}/$ASSET" -o /tmp/${entry.name}.zip && \\
+    rm -rf /tmp/${entry.name} /tmp/${entry.name}.zip /tmp/${entry.name}.zip.tmp && \\
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "${url}/$ASSET" -o /tmp/${entry.name}.zip.tmp && \\
+    test -s /tmp/${entry.name}.zip.tmp || { echo "ERROR: Empty ${entry.name} release archive"; exit 1; } && \\
+    unzip -tq /tmp/${entry.name}.zip.tmp && \\
+    mv /tmp/${entry.name}.zip.tmp /tmp/${entry.name}.zip && \\
     unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\

@@ -232,7 +232,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     ARCH=$(dpkg --print-architecture) && \
     ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
     echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
-    curl -fsSL "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip && \
+    rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip.tmp && \
+    test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
+    unzip -tq /tmp/vectorscale.zip.tmp && \
+    mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
     unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \

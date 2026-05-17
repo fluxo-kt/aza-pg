@@ -81,6 +81,7 @@ interface Options extends OCIMetadataOptions {
   exactPlatforms: boolean;
   requireAnnotations: boolean;
   expectedDigest?: string;
+  verifySource: boolean;
   verbose: boolean;
 }
 
@@ -121,6 +122,8 @@ Optional Flags:
   --platforms CSV         Expected platforms (comma-separated)
                           Default: "linux/amd64,linux/arm64"
   --require-annotations   Fail if no annotations present
+  --verify-source         Require and validate source URL and revision annotations
+  --expected-digest SHA   Require the manifest reference to resolve to this digest
   --verbose               Show full manifest details
   --help                  Show this help message
 
@@ -167,6 +170,7 @@ function parseArgs(): Options {
     exactPlatforms: false,
     requireAnnotations: false,
     expectedDigest: undefined,
+    verifySource: false,
     verbose: false,
   };
 
@@ -211,6 +215,10 @@ function parseArgs(): Options {
         options.requireAnnotations = true;
         break;
 
+      case "--verify-source":
+        options.verifySource = true;
+        break;
+
       case "--exact-platforms":
         options.exactPlatforms = true;
         break;
@@ -248,6 +256,8 @@ function parseArgs(): Options {
     printHelp();
     process.exit(1);
   }
+
+  validateSourceVerificationOptions(options);
 
   return options;
 }
@@ -491,6 +501,19 @@ function validateExpectedAnnotations(manifest: OCIImageIndex, options: Options):
   }
 }
 
+function validateSourceVerificationOptions(options: Options): void {
+  if (!options.verifySource) return;
+
+  const missing: string[] = [];
+  if (!options.sourceUrl) missing.push("--source-url");
+  if (!options.revision) missing.push("--revision");
+
+  if (missing.length > 0) {
+    error(`--verify-source requires ${missing.join(" and ")}`);
+    process.exit(1);
+  }
+}
+
 async function validateExpectedDigest(manifestRef: string, expectedDigest?: string): Promise<void> {
   if (!expectedDigest) return;
 
@@ -622,4 +645,6 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+if (import.meta.main) {
+  await main();
+}

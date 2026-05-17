@@ -24,6 +24,27 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : [];
 }
 
+function collectRunSteps(value: unknown, runs: string[] = []): string[] {
+  const record = asRecord(value);
+  if (record) {
+    if (typeof record.run === "string") {
+      runs.push(record.run);
+    }
+    for (const child of Object.values(record)) {
+      collectRunSteps(child, runs);
+    }
+    return runs;
+  }
+
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      collectRunSteps(child, runs);
+    }
+  }
+
+  return runs;
+}
+
 async function readText(relativePath: string): Promise<string> {
   return Bun.file(path.join(REPO_ROOT, relativePath)).text();
 }
@@ -102,6 +123,51 @@ async function validatePublishVerificationTopology(issues: Issue[]): Promise<voi
   }
 }
 
+function collectLongFlags(text: string): Set<string> {
+  const flags = new Set<string>();
+  for (const match of text.matchAll(/(?:^|\s)(--[a-z0-9-]+)(?=\s|$)/gm)) {
+    const flag = match[1];
+    if (flag) flags.add(flag);
+  }
+  return flags;
+}
+
+function collectCliSwitchCases(text: string): Set<string> {
+  const flags = new Set<string>();
+  for (const match of text.matchAll(/case\s+"(--[a-z0-9-]+)":/g)) {
+    const flag = match[1];
+    if (flag) flags.add(flag);
+  }
+  return flags;
+}
+
+async function validateManifestCliContract(issues: Issue[]): Promise<void> {
+  const workflowFile = ".github/workflows/publish.yml";
+  const workflow = await readYaml(workflowFile);
+  const validateManifestSource = await readText("scripts/docker/validate-manifest.ts");
+  const metadataSource = await readText("scripts/utils/oci-metadata.ts");
+
+  const supportedFlags = collectCliSwitchCases(validateManifestSource);
+  for (const flag of collectCliSwitchCases(metadataSource)) {
+    supportedFlags.add(flag);
+  }
+
+  const runSteps = collectRunSteps(workflow);
+  for (const runStep of runSteps) {
+    if (!runStep.includes("bun scripts/docker/validate-manifest.ts")) continue;
+
+    for (const flag of collectLongFlags(runStep)) {
+      if (!supportedFlags.has(flag)) {
+        addIssue(
+          issues,
+          workflowFile,
+          `validate-manifest workflow call uses unsupported CLI flag: ${flag}`
+        );
+      }
+    }
+  }
+}
+
 async function validateEnvironmentDocs(issues: Issue[]): Promise<void> {
   const files = ["docs/BUILD.md", "docs/GITHUB_ENVIRONMENT_SETUP.md"];
 
@@ -149,6 +215,7 @@ async function main(): Promise<void> {
   await validateReleaseCommand(issues);
   await validatePublishEnvironment(issues);
   await validatePublishVerificationTopology(issues);
+  await validateManifestCliContract(issues);
   await validateEnvironmentDocs(issues);
   await validateReleasedImageHarness(issues);
   await validateForbiddenBunX(issues);

@@ -1,5 +1,5 @@
 ╔═══════════════════════════════════════════════════════════════╗
-║  aza-pg Single-Node PostgreSQL 18.3                           ║
+║  aza-pg Single-Node PostgreSQL 18.4                           ║
 ║  https://github.com/fluxo-kt/aza-pg                           ║
 ╚═══════════════════════════════════════════════════════════════╝
 

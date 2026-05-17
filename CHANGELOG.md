@@ -12,12 +12,13 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Security
 
+- **Base OS security refresh**: Applies current Debian package updates during the final image build before runtime dependency installation. This prevents a digest-pinned base image from shipping stale fixable OS CVEs when Debian security packages move after the upstream PostgreSQL image was published.
 - **Final image attack surface**: Purges install-only `curl`, `unzip`, GnuPG CLI tools, `lsb-release`, and `percona-release` after all repositories and release assets are installed; PostgreSQL runtime libraries and extension tools remain installed.
 
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
-- **Base image refresh**: Updated `postgres:18.3-trixie` digest to the current Docker Hub manifest for reproducible rebuilds
+- **PostgreSQL 18.3 → 18.4**: Updates the pinned `postgres:18.4-trixie` base image for upstream security fixes and reproducible rebuilds
 - **TimescaleDB 2.25.2 → 2.26.4**: Bugfix updates for continuous aggregates, compression, upgrade handling, and planner stability
 - **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
 - **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes
@@ -30,9 +31,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Development
 
 - Dev deps: Bun 1.3.13, @pgflow/client/dsl 0.14.1, oxlint 1.64.0, squawk-cli 2.51.0
-- Disabled regression-only extensions synced to PGDG: PostGIS 3.6.3
-- pg_jsonschema source pin moved to release tag v0.3.4
-- GitHub Actions: SHA pins refreshed across workflows and composite actions; action runtime bumps include github-script v9, upload/download-artifact v7/v8, setup-bun v2.2.0, trivy-action v0.36.0, and docker/build-push-action v7.1.0; Trivy diagnostic containers now use a pinned release image
+- Disabled/regression-only catalog sync: PostGIS 3.6.3; pg_jsonschema now pinned to release tag v0.3.4
+- GitHub Actions pins refreshed; release gates now verify public manifests, signatures, SBOM, attestation, and GitHub Release digest
 
 ---
 

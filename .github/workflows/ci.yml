@@ -106,7 +106,7 @@ jobs:
           CI: "true"
 
       - name: Validate pinned base image digest is resolvable
-        run: bun scripts/validate-base-image-sha.ts --check
+        run: bun scripts/validate-base-image-sha.ts --check --require-latest-minor
 
       - name: Verify manifest is up to date
         run: bun scripts/ci/verify-manifest-sync.ts

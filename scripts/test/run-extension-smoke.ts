@@ -15,6 +15,7 @@ import { dockerCleanup } from "../utils/docker";
 const scriptDir = import.meta.dir;
 const projectRoot = join(scriptDir, "../..");
 const manifestPath = join(projectRoot, "docker/postgres/extensions.manifest.json");
+const ENTRYPOINT_READY_MARKER = "PostgreSQL init process complete; ready for start up.";
 
 interface ManifestEntry {
   name: string;
@@ -24,11 +25,70 @@ interface ManifestEntry {
   runtime?: {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
+    preloadOnly?: boolean;
+    excludeFromAutoTests?: boolean;
   };
 }
 
 interface Manifest {
   entries: ManifestEntry[];
+}
+
+interface CommandResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function dockerExec(containerName: string, args: string[]): Promise<CommandResult> {
+  const proc = Bun.spawn(["docker", "exec", containerName, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+async function readContainerLogs(containerName: string): Promise<CommandResult> {
+  const proc = Bun.spawn(["docker", "logs", containerName], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+async function printContainerLogs(containerName: string): Promise<void> {
+  const { stdout, stderr } = await readContainerLogs(containerName);
+  printCommandOutput({ stdout, stderr }, "container ");
+}
+
+function printCommandOutput(
+  { stdout, stderr }: Pick<CommandResult, "stdout" | "stderr">,
+  prefix = ""
+): void {
+  if (stdout.trim()) {
+    console.error(`[${prefix}stdout]\n${stdout.trim()}`);
+  }
+  if (stderr.trim()) {
+    console.error(`[${prefix}stderr]\n${stderr.trim()}`);
+  }
+}
+
+function quoteSqlIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function quoteSqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 /**
@@ -139,6 +199,14 @@ async function main(): Promise<void> {
         console.log(`[info] Skipping ${entry.name} (requires shared_preload_libraries)`);
         return false;
       }
+      if (entry.runtime?.preloadOnly === true) {
+        console.log(`[info] Skipping ${entry.name} (not a CREATE EXTENSION target)`);
+        return false;
+      }
+      if (entry.runtime?.excludeFromAutoTests === true) {
+        console.log(`[info] Skipping ${entry.name} (excluded from automated tests)`);
+        return false;
+      }
       return true;
     });
 
@@ -163,11 +231,27 @@ async function main(): Promise<void> {
     const maxAttempts = 60;
 
     while (attempt < maxAttempts) {
-      try {
-        await $`docker exec ${containerName} pg_isready -U postgres`.quiet();
-        break;
-      } catch {
-        // Not ready yet
+      const logs = await readContainerLogs(containerName);
+      if (
+        logs.stdout.includes(ENTRYPOINT_READY_MARKER) ||
+        logs.stderr.includes(ENTRYPOINT_READY_MARKER)
+      ) {
+        const ready = await dockerExec(containerName, ["pg_isready", "-U", "postgres"]);
+        const sqlReady =
+          ready.exitCode === 0
+            ? await dockerExec(containerName, [
+                "psql",
+                "-U",
+                "postgres",
+                "-d",
+                "postgres",
+                "-tAc",
+                "SELECT 1",
+              ])
+            : undefined;
+        if (ready.exitCode === 0 && sqlReady?.exitCode === 0 && sqlReady.stdout.trim() === "1") {
+          break;
+        }
       }
       await Bun.sleep(2000);
       attempt++;
@@ -175,6 +259,7 @@ async function main(): Promise<void> {
 
     if (attempt === maxAttempts) {
       console.error(`[smoke] postgres did not become ready in time (${maxAttempts} attempts)`);
+      await printContainerLogs(containerName);
       await cleanup();
       process.exit(1);
     }
@@ -184,29 +269,45 @@ async function main(): Promise<void> {
     // Create each extension
     for (const ext of extensionOrder) {
       // Check if extension control file is present
-      try {
-        const available =
-          await $`docker exec ${containerName} psql -U postgres -d postgres -tAc "SELECT 1 FROM pg_available_extensions WHERE name = '${ext}'"`.text();
-        if (!available.includes("1")) {
-          console.log(`  - ${ext} (skipped; control file not present)`);
-          continue;
-        }
-      } catch {
-        console.log(`  - ${ext} (skipped; control file not present)`);
-        continue;
-      }
-
-      // Create extension
-      try {
-        await $`docker exec ${containerName} psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS \"${ext}\" CASCADE;"`.quiet();
-        console.log(`  - ${ext} created`);
-      } catch (error) {
-        console.error(
-          `  - ${ext} FAILED: ${error instanceof Error ? error.message : String(error)}`
-        );
+      const available = await dockerExec(containerName, [
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-tAc",
+        `SELECT 1 FROM pg_available_extensions WHERE name = ${quoteSqlLiteral(ext)}`,
+      ]);
+      if (available.exitCode !== 0 || available.stdout.trim() !== "1") {
+        console.error(`  - ${ext} FAILED: extension is enabled but unavailable`);
+        printCommandOutput(available);
+        await printContainerLogs(containerName);
         await cleanup();
         process.exit(1);
       }
+
+      // Create extension
+      const created = await dockerExec(containerName, [
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        `CREATE EXTENSION IF NOT EXISTS ${quoteSqlIdentifier(ext)} CASCADE;`,
+      ]);
+      if (created.exitCode === 0) {
+        console.log(`  - ${ext} created`);
+        continue;
+      }
+
+      console.error(`  - ${ext} FAILED (exit ${created.exitCode})`);
+      printCommandOutput(created);
+      await printContainerLogs(containerName);
+      await cleanup();
+      process.exit(1);
     }
 
     // Run functional tests (skip tests for disabled/preload-dependent extensions)
@@ -217,11 +318,28 @@ SELECT '[-1,1]'::vector(2) AS vector_smoke;
 SELECT extname FROM pg_extension WHERE extname IN ('timescaledb', 'vectorscale');
 SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries';
 `;
-      await $`docker exec ${containerName} psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c ${testSQL}`;
+      const functional = await dockerExec(containerName, [
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        testSQL,
+      ]);
+      if (functional.exitCode === 0) {
+        console.log(functional.stdout.trim());
+      } else {
+        console.error(`[smoke] Functional tests failed (exit ${functional.exitCode})`);
+        printCommandOutput(functional);
+        await printContainerLogs(containerName);
+        await cleanup();
+        process.exit(1);
+      }
     } catch (error) {
-      console.error(
-        `[smoke] Functional tests failed: ${error instanceof Error ? error.message : String(error)}`
-      );
+      console.error(`[smoke] Functional test runner failed: ${String(error)}`);
       await cleanup();
       process.exit(1);
     }

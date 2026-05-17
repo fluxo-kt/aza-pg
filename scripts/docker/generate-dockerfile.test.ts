@@ -499,6 +499,10 @@ describe("Dockerfile Syntax Validation", () => {
       expect(line).toContain("--no-install-recommends");
     }
   });
+
+  test("Final image refreshes security updates before runtime package installs", async () => {
+    expect(dockerfile).toContain("apt-get upgrade -y --no-install-recommends");
+  });
 });
 
 describe("Build Optimization Checks", () => {

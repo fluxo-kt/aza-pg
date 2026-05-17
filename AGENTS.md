@@ -194,6 +194,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
+**PostgreSQL Minor Drift Guard**: Release/publish gates MUST run `scripts/validate-base-image-sha.ts --require-latest-minor`; stale `MANIFEST_METADATA.pgVersion/baseImageSha` can pass same-tag SHA checks while PGDG/floating `postgres:N-trixie` has advanced, then fail built-image version verification. Update manifest, regenerate, validate.
+
 **git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.
 
 **Secret-Scan Heuristic Trap**: `bun run test:all` secret-scan can flag ordinary local vars when names look credential-like (e.g., `token = "..."`). In non-secret code paths, use precise neutral names (`versionChunk`, `segment`, etc.) and re-run tests; don't suppress the scan blindly.
@@ -214,6 +216,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
 
+**Postgres Entrypoint Readiness**: `pg_isready` can pass during the official image's temporary initdb server, right before entrypoint shutdown/restart. Fresh-container smoke tests MUST wait for `PostgreSQL init process complete; ready for start up.` in logs, then re-check `pg_isready` + `SELECT 1` against the final server.
+
 **execSQL Never Throws**: `dockerRun` (the backing function for `execSQL`) has an internal try/catch that returns `{success: false, output: errorMessage}` on spawn failure. Therefore `execSQL` NEVER rejects — `.catch()` chained on `execSQL` is dead code. Check results via the `success` field, not exception handling.
 
 **DROP TABLE CASCADE ≠ DROP FUNCTION**: `DROP TABLE x CASCADE` removes the table's triggers, indexes, constraints, and sequences — but NOT the trigger functions they reference. Functions are standalone objects reusable across multiple tables. Any function created in a test (e.g., `test_trigger_func()`) must be explicitly dropped in `cleanupTestData` or it persists until the container is removed.
@@ -231,6 +235,10 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **cleanupTestData Must Cover ALL Failure Paths**: The cleanup function is a safety net — it must drop every resource ANY test can create, regardless of whether tests clean up after themselves on the happy path. Tests that create resources only drop them on the success path (early failure returns skip cleanup). If `cleanupTestData` doesn't also drop them, they accumulate on failed runs. Example: `testPgmqQueue` drops `test_topic_queue` only on success; `cleanupTestData` must explicitly drop it too.
 
 **Multi-Stage Gosu Replacement: GHA Cache Ambiguity + Trivy Layer Scanning**: All multi-stage approaches (`COPY --from=`, bind-mounts, `apt-get install su-exec` — absent from postgres image repos, `COPY via builder-pgxs output dir` — COPY key matched stale GHA entry) fail due to GHA layer cache interference. `apt-get purge gosu` is a no-op because postgres:18.3-trixie installs gosu via direct binary download (not dpkg). **Root cause of Trivy persistence**: Trivy scans ALL image layers including immutable base layers — gosu in the postgres base layer is reported even when `/usr/local/bin/gosu` is su-exec in the merged filesystem. **Definitive fix**: compile su-exec in the final stage, install at `/usr/local/bin/gosu` (shadows the base binary), skip only that path in Trivy gates, exclude gosu from builder-pgxs rsync (`--exclude='gosu'`). Add `[ SZ -lt 500000 ]` to FAIL build if wrong binary.
+
+**Digest-Pinned Base Security Drift**: A valid/latest PostgreSQL base digest can still contain stale Debian packages after Debian publishes security updates. Final image builds MUST run `apt-get upgrade -y --no-install-recommends` after `apt-get update`; the merged-image PostgreSQL version check guards against accidental PG minor drift.
+
+**BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
 
 ## Changelog
 

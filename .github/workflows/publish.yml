@@ -442,7 +442,7 @@ jobs:
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}" \
             --verify-source \
-            --expected-digest "${{ needs.merge.outputs.image_digest }}"
+            --expected-digest "${{ steps.merge.outputs.digest }}"
 
       - name: Verify PostgreSQL version in merged image
         run: |

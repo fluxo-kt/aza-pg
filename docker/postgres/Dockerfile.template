@@ -205,7 +205,7 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 {{PGDG_PACKAGES_INSTALL}}
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
-# Provides extensions not available in PGDG: pg_stat_monitor, wal2json
+# Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
 {{PERCONA_PACKAGES_INSTALL}}
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)

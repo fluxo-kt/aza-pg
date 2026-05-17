@@ -60,7 +60,7 @@ Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 
 ## Non-PGDG Extensions
 
-Extensions not available in PGDG — installed via Timescale apt, Percona apt, GitHub releases, or source build:
+Extensions installed via Timescale apt, Percona apt, GitHub releases, or source build instead of PGDG:
 
 ### Rust/pgrx Source-Built
 
@@ -80,7 +80,7 @@ Extensions not available in PGDG — installed via Timescale apt, Percona apt, G
 
 | Extension       | Version | Pigsty Alt            | Timescale Alt | Notes               |
 | --------------- | ------- | --------------------- | ------------- | ------------------- |
-| **timescaledb** | 2.26.4  | v2.20.0 (Apache only) | v2.26.4 (TSL) | Timescale apt (TSL) |
+| **timescaledb** | 2.27.0  | v2.20.0 (Apache only) | v2.27.0 (TSL) | Timescale apt (TSL) |
 
 ### Source-Built (Other)
 
@@ -91,7 +91,7 @@ Extensions not available in PGDG — installed via Timescale apt, Percona apt, G
 | **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
 | **pgmq**            | v1.11.1       | v1.5.1           | ❌          | Source for latest (PG18 support)         |
 | **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)           |
-| **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Source build; Percona apt also available |
+| **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Percona apt; PGDG also available         |
 | **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match                   |
 | **pgq**             | v3.5.1        | v3.5.1           | ❌          | Pigsty has exact match                   |
 | **vault**           | v0.3.1        | v0.3.1           | ❌          | Supabase-specific                        |
@@ -168,8 +168,8 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 
 | Package                           | Version | License |
 | --------------------------------- | ------- | ------- |
-| timescaledb-2-postgresql-18       | 2.26.4  | TSL     |
-| timescaledb-2-oss-postgresql-18   | 2.26.4  | Apache  |
+| timescaledb-2-postgresql-18       | 2.27.0  | TSL     |
+| timescaledb-2-oss-postgresql-18   | 2.27.0  | Apache  |
 | timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
 
 - **License:** Timescale License (TSL) - not Apache 2.0

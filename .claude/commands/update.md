@@ -31,6 +31,9 @@ If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but trea
 
 Use parallel tool calls or sub-agents only when the active environment supports them. Keep each
 check bounded, verify every returned claim locally, and never let a sub-agent make the decision.
+Do not start implementation from only one row of this list. The update scope is the full matrix
+below; a clean Bun/actions update is still incomplete until PostgreSQL, image, extension, apt-repo,
+and compose-image surfaces have also been checked.
 Check:
 
 1. **Git-based extensions**:
@@ -911,7 +914,7 @@ what would they find?" Find it yourself first.
 **Always include**:
 
 ```text
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Codex <codex@openai.com>
 ```
 
 **Commit granularity**: One logical change per commit (e.g., one extension update, or all Bun deps).
@@ -993,6 +996,22 @@ Then update THIS SKILL FILE (`.claude/commands/update.md`) with concrete improve
 that gets better with every use. Commit the skill update as the final commit of the round.**
 
 ## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
+
+Before final verification, prove the full update matrix is closed. Do not claim "update complete"
+unless every item below has either been updated or has an evidence-backed no-op/skip reason:
+
+- PostgreSQL base version and digest
+- Git/tag/git-ref extensions from `check-updates.ts`
+- PGDG package versions from `bun run validate`
+- Percona pinned package versions
+- Timescale main and loader package versions
+- Source-to-PGDG migration opportunities
+- Compose stack images across every stack and `.env.example`
+- Bun runtime in `.tool-versions`
+- Bun package dependencies and `bun.lock`
+- GitHub Actions SHA pins, reusable workflow refs, and stale prose comments
+- Hardcoded test/doc version strings for every changed image-facing dependency
+- Generated files and `CHANGELOG.md` when any image-facing source changed
 
 After ALL other phases — including CHANGELOG, skill update commit, and every other commit — run
 the full comprehensive test suite one final time:

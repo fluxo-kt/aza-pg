@@ -192,6 +192,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
     RUNTIME_PKGS="$(tr '\n' ' ' < /tmp/extensions.runtime-packages.txt)" && \
     apt-get install -y --no-install-recommends \
       # postgresql-client provides psql CLI tool (base postgres image only has server)

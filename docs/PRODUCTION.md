@@ -399,10 +399,10 @@ cosign verify-attestation \
   ghcr.io/fluxo-kt/aza-pg@sha256:<digest>
 ```
 
-**View SBOM:**
+**Verify BuildKit SBOM attestations:**
 
 ```bash
-cosign download sbom ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
+bun scripts/release/verify-sbom.ts --image ghcr.io/fluxo-kt/aza-pg@sha256:<digest>
 ```
 
 ### Version Selection for Production

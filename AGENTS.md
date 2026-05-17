@@ -238,6 +238,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Digest-Pinned Base Security Drift**: A valid/latest PostgreSQL base digest can still contain stale Debian packages after Debian publishes security updates. Final image builds MUST run `apt-get upgrade -y --no-install-recommends` after `apt-get update`; the merged-image PostgreSQL version check guards against accidental PG minor drift.
 
+**BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
+
 ## Changelog
 
 **File**: `CHANGELOG.md` — Keep a Changelog format, user-facing, integrated with GitHub releases

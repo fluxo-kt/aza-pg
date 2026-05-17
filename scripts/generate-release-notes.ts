@@ -908,8 +908,9 @@ function generateMarkdown(
   lines.push("# View embedded version info");
   lines.push(`docker run --rm ${REGISTRY}:${args.tag} cat /etc/postgresql/version-info.txt`);
   lines.push("");
-  lines.push("# Download SBOM");
-  lines.push(`cosign download sbom ${REGISTRY}:${args.tag}`);
+  lines.push("# Verify BuildKit SBOM attestations");
+  lines.push("bun scripts/release/verify-sbom.ts \\");
+  lines.push(`  --image ${REGISTRY}:${args.tag}`);
   lines.push("```");
   lines.push("");
 

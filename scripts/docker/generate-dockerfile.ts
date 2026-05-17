@@ -208,7 +208,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 
 /**
  * Generate Percona package installation script
- * Percona repository provides extensions not available in PGDG (e.g., pg_stat_monitor, wal2json)
+ * Percona repository provides pg_stat_monitor and keeps wal2json on the same already-required repo layer.
  * Versions are hardcoded directly from manifest perconaVersion field
  */
 function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): string {
@@ -278,7 +278,7 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
       : "";
 
   return `# Percona repository setup and package installation
-# Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
+# Provides: pg_stat_monitor and wal2json from Percona ppg-${pgMajor}
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\

@@ -19,7 +19,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
 - **PostgreSQL 18.3 → 18.4**: Updates the pinned `postgres:18.4-trixie` base image for upstream security fixes and reproducible rebuilds
-- **TimescaleDB 2.25.2 → 2.26.4**: Bugfix updates for continuous aggregates, compression, upgrade handling, and planner stability
+- **TimescaleDB 2.25.2 → 2.27.0**: Adds Hypercore vectorized filters and bloom-filter pruning for compressed `UPDATE`/`DELETE`/`UPSERT`; includes PG18 module magic support and fixes for compression, continuous aggregates, and planner stability. ⚠️ Upgrade can be blocked for databases with affected sparse bloom indexes on compressed `int2` columns; drop those indexes before upgrading.
 - **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
 - **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes
 - **supautils 3.1.0 → 3.2.2**: Adds privilege-error hints and fixes ALTER ROLE hook and executor hook crash paths
@@ -30,7 +30,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Development
 
-- Dev deps: Bun 1.3.13, @pgflow/client/dsl 0.14.1, oxlint 1.64.0, squawk-cli 2.51.0
+- Dev deps: Bun 1.3.14, @pgflow/client/dsl 0.14.1, oxlint 1.65.0, squawk-cli 2.52.1
 - Disabled/regression-only catalog sync: PostGIS 3.6.3; pg_jsonschema now pinned to release tag v0.3.4
 - GitHub Actions pins refreshed; release gates now verify public manifests, signatures, SBOM, attestation, and GitHub Release digest
 

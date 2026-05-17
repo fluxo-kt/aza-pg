@@ -29,7 +29,12 @@ If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but trea
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
-Launch sub-agents (general-purpose, sonnet model) in parallel to check:
+Use parallel tool calls or sub-agents only when the active environment supports them. Keep each
+check bounded, verify every returned claim locally, and never let a sub-agent make the decision.
+Do not start implementation from only one row of this list. The update scope is the full matrix
+below; a clean Bun/actions update is still incomplete until PostgreSQL, image, extension, apt-repo,
+and compose-image surfaces have also been checked.
+Check:
 
 1. **Git-based extensions**:
 
@@ -76,7 +81,7 @@ Launch sub-agents (general-purpose, sonnet model) in parallel to check:
    ```
 
    Then for each discovered image, check the latest version:
-   - Docker Hub images: `curl -s "https://hub.docker.com/v2/repositories/ORG/REPO/tags?page_size=5&ordering=last_updated" | python3 -c "import sys,json; [print(t['name']) for t in json.load(sys.stdin)['results']]"`
+   - Docker Hub images: use a small Bun script or registry API query; do not hardcode the current list as complete
    - GitHub-backed images: `gh release list --repo ORG/REPO --limit 5`
 
    **Current compose images** (update this list when adding new services):
@@ -181,8 +186,15 @@ git diff --name-status OLD_REF..NEW_REF
 ## Phase 2: Bun Dependencies
 
 ```bash
-# Update all npm/bun package dependencies to latest versions
+# Update package dependencies to latest versions
 bun update --latest
+
+# Normalize bun.lock root specs back to package.json ranges after --latest resolution
+bun install
+
+# If Bun reports blocked lifecycle scripts, inspect them before proceeding.
+# Trust only scripts that are expected, necessary, and runnable; otherwise document why blocked is acceptable.
+bun pm untrusted
 
 # Validate immediately
 bun run validate
@@ -193,7 +205,7 @@ existing code. Run `bun run validate` immediately and fix issues before proceedi
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
 
-**⚠️ ALWAYS check Bun runtime version separately** — `bun update` bumps npm packages (incl.
+**⚠️ ALWAYS check Bun runtime version separately** — `bun update` bumps package dependencies (incl.
 `@types/bun`) but does NOT update the Bun runtime pinned in `.tool-versions`. These are independent:
 
 ```bash
@@ -208,7 +220,7 @@ If a new stable runtime is available, update `.tool-versions` manually:
 # Edit .tool-versions: bump bun X.Y.Z to latest stable
 ```
 
-Note: `@types/bun` (npm package) may lag the runtime release by ~1 week — that is expected.
+Note: `@types/bun` may lag the runtime release. That is expected.
 Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.
 
 ## Phase 2.5: GitHub Actions Pins
@@ -541,7 +553,7 @@ bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
 # Step 2: Update Dockerfile.template manually (script doesn't do this)
 # Change: COPY tests/fixtures/pgflow/schema-vOLD.sql → schema-vNEW.sql
 
-# Step 3: Update npm packages in package.json with explicit versions
+# Step 3: Update package dependencies in package.json with explicit versions
 bun add --dev @pgflow/client@NEW_VERSION @pgflow/dsl@NEW_VERSION
 
 # Step 4: Update 05-pgflow-init.sh (search for version in header comment and success message)
@@ -553,8 +565,8 @@ bun add --dev @pgflow/client@NEW_VERSION @pgflow/dsl@NEW_VERSION
 # Verify patches still apply or if upstream fixed them
 # Check if new version introduces breaking changes requiring new patches
 
-# Step 6: Delete old schema file
-rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
+# Step 6: Delete old generated schema fixture after confirming the new fixture is referenced
+git rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
 
 # Step 7: Regenerate and test
 bun run generate
@@ -651,7 +663,7 @@ command grep -rn "pgbouncer\|postgres-exporter" stacks/*/compose.yml | command g
 **Get SHA256 digest** (works without Docker daemon):
 ```bash
 TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+  | bun -e 'const input = await Bun.stdin.text(); console.log(JSON.parse(input).token)')
 curl -s -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
   -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
@@ -717,14 +729,14 @@ scripts/test/
 # Regenerate all files from manifest
 bun run generate
 
-# Fast validation: static checks + unit tests (~3s, runs without Docker)
+# Fast validation: static checks + unit tests; runs without Docker
 bun run validate
 
-# MANDATORY full validation: + shellcheck, hadolint, yamllint (~30s, still no Docker)
+# MANDATORY full validation: + shellcheck, hadolint, yamllint; still no Docker
 bun run validate:all
 ```
 
-**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) — these do NOT require Docker and take only ~30s. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
+**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) without requiring Docker. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
@@ -732,7 +744,7 @@ bun run validate:all
 # Build image
 bun run build
 
-# Full test suite (rebuild + all tests, ~45 min)
+# Full test suite: rebuild + all tests
 bun run test:all
 ```
 
@@ -902,7 +914,7 @@ what would they find?" Find it yourself first.
 **Always include**:
 
 ```text
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Codex <codex@openai.com>
 ```
 
 **Commit granularity**: One logical change per commit (e.g., one extension update, or all Bun deps).
@@ -985,6 +997,22 @@ that gets better with every use. Commit the skill update as the final commit of 
 
 ## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
 
+Before final verification, prove the full update matrix is closed. Do not claim "update complete"
+unless every item below has either been updated or has an evidence-backed no-op/skip reason:
+
+- PostgreSQL base version and digest
+- Git/tag/git-ref extensions from `check-updates.ts`
+- PGDG package versions from `bun run validate`
+- Percona pinned package versions
+- Timescale main and loader package versions
+- Source-to-PGDG migration opportunities
+- Compose stack images across every stack and `.env.example`
+- Bun runtime in `.tool-versions`
+- Bun package dependencies and `bun.lock`
+- GitHub Actions SHA pins, reusable workflow refs, and stale prose comments
+- Hardcoded test/doc version strings for every changed image-facing dependency
+- Generated files and `CHANGELOG.md` when any image-facing source changed
+
 After ALL other phases — including CHANGELOG, skill update commit, and every other commit — run
 the full comprehensive test suite one final time:
 
@@ -1011,30 +1039,32 @@ test:all → pass → DONE
 test:all → fail → fix → commit fix → test:all (loop)
 ```
 
-## Rollback Procedure
+## Recovery Procedure
 
 ### Before Push (Local Only)
 
 If update breaks **before pushing to remote**:
 
 ```bash
-# Option 1: Discard uncommitted changes
-git checkout -- .
+# Inspect exact damage first
+git status --short
+git diff --stat
 
-# Option 2: Revert last commit (keeps history)
+# Preferred for committed changes: revert with history
 git revert HEAD
 
-# Option 3: Hard reset to known good state (destroys history)
-git reset --hard <known-good-commit>
-
-# Then rebuild
+# Then regenerate/rebuild from the recovered state
 bun run generate
 bun run build
 ```
 
+For uncommitted changes, use targeted `git restore -- <path>` only after verifying the diff belongs
+entirely to the failed update attempt. Never discard unrelated user work.
+
 ### After User Pushes
 
-**Agents NEVER push - only commit locally.**
+Only push when the user explicitly requested upstream publication or the current task requires it.
+Verify branch, remotes, CI status, and release invariants before and after pushing.
 
 If update breaks after user already pushed:
 
@@ -1069,7 +1099,7 @@ bun run test:all
 
 | Source | Command |
 |--------|---------|
-| **GitHub latest release** | `curl -s https://api.github.com/repos/OWNER/REPO/releases/latest \| jq -r .tag_name` |
+| **GitHub latest release** | `gh release view --repo OWNER/REPO --json tagName --jq .tagName` |
 | **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| command grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
 | **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
@@ -1077,8 +1107,8 @@ bun run test:all
 
 ## Parallel Execution Opportunities
 
-Use **general-purpose sub-agents** (sonnet model) for:
-- ✅ Pre-flight checks (all 4 in parallel)
+Use parallelism where supported for:
+- ✅ Pre-flight checks that do not share mutable state
 - ✅ Upstream changelog review (per extension in parallel)
 - ✅ Test creation (if multiple extensions updated)
 - ✅ Version lookups from different sources (GitHub, apt repositories)
@@ -1088,6 +1118,7 @@ Use **general-purpose sub-agents** (sonnet model) for:
 - Include filtering criteria (e.g., "return only version numbers")
 - Specify output format (e.g., "provide as JSON" or "list as Markdown table")
 
-Don't blindly 100% trust the results from agents. Sometimes they could do the job in the wrong way because they often have weaker models. They could also be too-narrow-minded, so verify.
+Do not trust delegated results blindly. Re-run decisive commands locally and verify every version,
+URL, digest, release note claim, and file path before editing or committing.
 
 ---

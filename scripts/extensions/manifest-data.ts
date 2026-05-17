@@ -941,7 +941,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.26.4~debian13-1803",
+    timescaleVersion: "2.27.0~debian13-1803",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -949,15 +949,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.26.4",
+      tag: "2.27.0",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.26.4 TSL)",
-        "v2.26.4: Bugfix release for 2.26.x continuous aggregate, compression, and planner stability fixes",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.0 TSL)",
+        "v2.27.0: Hypercore vectorized filters, bloom-filter pruning for compressed UPDATE/DELETE/UPSERT, and PG18 module magic support",
+        "⚠️ Upgrade blocker: affected databases with incorrect sparse bloom indexes on compressed int2 columns must drop those indexes before upgrading",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
@@ -1011,7 +1012,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "NOT in PGDG. Installed via Percona ppg-18 repository (v2.6)",
+        "Installed via Percona ppg-18 repository (v2.6); PGDG also packages wal2json, but Percona is already required for pg_stat_monitor.",
         "Requires wal_level=logical in postgresql.conf for CDC functionality.",
       ],
     },

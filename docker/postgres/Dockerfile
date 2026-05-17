@@ -241,9 +241,9 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
-# Provides extensions not available in PGDG: pg_stat_monitor, wal2json
+# Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
 # Percona repository setup and package installation
-# Provides: pg_stat_monitor, wal2json (extensions not in PGDG)
+# Provides: pg_stat_monitor and wal2json from Percona ppg-18
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -284,8 +284,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.27.0~debian13-1803 timescaledb-2-loader-postgresql-18=2.27.0~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.27.0~debian13-1803 timescaledb-2-loader-postgresql-18=2.27.0~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \

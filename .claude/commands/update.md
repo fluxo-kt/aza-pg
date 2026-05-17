@@ -186,6 +186,13 @@ git diff --name-status OLD_REF..NEW_REF
 # Update package dependencies to latest versions
 bun update --latest
 
+# Normalize bun.lock root specs back to package.json ranges after --latest resolution
+bun install
+
+# If Bun reports blocked lifecycle scripts, inspect them before proceeding.
+# Trust only scripts that are expected, necessary, and runnable; otherwise document why blocked is acceptable.
+bun pm untrusted
+
 # Validate immediately
 bun run validate
 ```

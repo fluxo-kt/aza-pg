@@ -309,15 +309,15 @@ TYPE(SCOPE): concise consumer-first title (max 72 chars)
 FIRST_SHORT..LAST_SHORT
 
 Co-Authored-By: Name <email>
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Current Agent <agent@example.com>
 ```
 
 Rules:
 - Body bullets: consumer-visible first, then build, infra, dev
 - Blank line before hash range
 - Blank line before Co-Authored-By block
-- Always include `Co-Authored-By: Claude <noreply@anthropic.com>`
-- Deduplicate co-authors (case-insensitive); add Claude if not already present
+- Always include the current agent co-author identity from `AGENTS.md`
+- Deduplicate co-authors case-insensitively; add the current agent if not already present
 
 Write the complete message now with ALL actual values filled in (no UPPERCASE placeholders — replace them all). You will copy this exact text into the HEREDOC in Phase 4.7, replacing the template lines entirely.
 
@@ -476,7 +476,7 @@ FIRST_SHORT..LAST_SHORT
 
 Dev-Squash-Tip: DEV_SQUASH_TIP
 Co-Authored-By: Name <email>
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Current Agent <agent@example.com>
 COMMIT_EOF
 )"
 ```

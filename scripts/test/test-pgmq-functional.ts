@@ -8,7 +8,7 @@
  * - Message operations (send, send delayed, batch send, read, pop)
  * - Visibility timeout (read with timeout, set VT, polling)
  * - Message lifecycle (delete, batch delete, archive, batch archive)
- * - FIFO queues (v1.9.0): read_grouped, read_grouped_rr, create_fifo_index
+ * - FIFO queues (v1.9.0+): read_grouped, read_grouped_rr, read_grouped_head, create_fifo_index
  * - Topic routing (v1.11.0): bind_topic, send_topic, unbind_topic, list_topic_bindings
  * - Queue management (purge, metrics)
  * - Error handling (non-existent queues, invalid operations)
@@ -53,9 +53,31 @@ if (containerName) {
 const REPO_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 
+interface ManifestEntry {
+  name: string;
+  enabled?: boolean;
+  disabledReason?: string;
+}
+
+interface Manifest {
+  entries: ManifestEntry[];
+}
+
+function isManifest(value: unknown): value is Manifest {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "entries" in value &&
+    Array.isArray(value.entries)
+  );
+}
+
 try {
-  const manifest = await Bun.file(MANIFEST_PATH).json();
-  const pgmqEntry = manifest.entries.find((e: any) => e.name === "pgmq");
+  const manifestJson = await Bun.file(MANIFEST_PATH).json();
+  if (!isManifest(manifestJson)) {
+    throw new Error("Invalid manifest shape: entries array missing");
+  }
+  const pgmqEntry = manifestJson.entries.find((entry) => entry.name === "pgmq");
 
   if (pgmqEntry && pgmqEntry.enabled === false) {
     console.log("\n" + "=".repeat(80));
@@ -77,7 +99,7 @@ interface TestResult {
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: Record<string, any>;
+  metrics?: Record<string, number | string>;
 }
 
 const results: TestResult[] = [];
@@ -116,7 +138,7 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-function assert(condition: boolean, message: string): void {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
   }
@@ -593,6 +615,34 @@ await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
   console.log(`   📊 FIFO read_grouped returned ${lines.length} messages`);
 });
 
+// Test 15b: FIFO Queue - read_grouped_head (v1.11.1)
+await test("FIFO read_grouped_head returns one visible head per group (v1.11.1)", async () => {
+  const create = await runSQL("SELECT pgmq.create('test_queue_fifo_head')");
+  assert(create.success, `Create queue failed: ${create.stderr}`);
+
+  const msg1 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo_head', '{"order": 1}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  );
+  assert(msg1.success, `Send msg1 failed: ${msg1.stderr}`);
+
+  const msg2 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo_head', '{"order": 2}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
+  );
+  assert(msg2.success, `Send msg2 failed: ${msg2.stderr}`);
+
+  const msg3 = await runSQL(
+    `SELECT pgmq.send('test_queue_fifo_head', '{"order": 3}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  );
+  assert(msg3.success, `Send msg3 failed: ${msg3.stderr}`);
+
+  const read = await runSQL(`
+    SELECT string_agg((message->>'order') || ':' || (headers->>'x-pgmq-group'), ',' ORDER BY msg_id)
+    FROM pgmq.read_grouped_head('test_queue_fifo_head', 30, 10)
+  `);
+  assert(read.success, `read_grouped_head failed: ${read.stderr}`);
+  assert(read.stdout === "1:group_a,2:group_b", `Unexpected grouped heads: ${read.stdout}`);
+});
+
 // Test 16: FIFO Queue - read_grouped_rr (v1.9.0)
 await test("FIFO read_grouped_rr distributes across groups (v1.9.0)", async () => {
   await runSQL("SELECT pgmq.create('test_queue_fifo_rr')");
@@ -797,21 +847,18 @@ await test("list_queues returns correct metadata columns", async () => {
 
   // Standard queue: is_partitioned=f, is_unlogged=f
   assert(
-    stdLine!.includes("|f|f"),
+    stdLine.includes("|f|f"),
     `Standard queue should have is_partitioned=f, is_unlogged=f. Got: ${stdLine}`
   );
 
   // Partitioned queue: is_partitioned=t, is_unlogged=f
   assert(
-    partLine!.includes("|t|f"),
+    partLine.includes("|t|f"),
     `Partitioned queue should have is_partitioned=t. Got: ${partLine}`
   );
 
   // Unlogged queue: is_partitioned=f, is_unlogged=t
-  assert(
-    unlogLine!.includes("|f|t"),
-    `Unlogged queue should have is_unlogged=t. Got: ${unlogLine}`
-  );
+  assert(unlogLine.includes("|f|t"), `Unlogged queue should have is_unlogged=t. Got: ${unlogLine}`);
 
   console.log(
     "   📊 list_queues metadata verified: is_partitioned and is_unlogged columns correct"
@@ -961,6 +1008,7 @@ await test("Drop queue", async () => {
     "test_queue_setvt_ts",
     "test_queue_purge",
     "test_queue_fifo",
+    "test_queue_fifo_head",
     "test_queue_fifo_rr",
     "test_queue_fifo_index",
     "test_queue_delay",
@@ -985,7 +1033,12 @@ await test("Drop queue", async () => {
 
   // Verify no test queues remain
   const remaining = await runSQL(
-    "SELECT count(*) FROM pgmq.metrics_all() WHERE queue_name LIKE 'test_queue_%'"
+    `SELECT count(*) FROM pgmq.metrics_all()
+     WHERE queue_name LIKE 'test_queue_%'
+        OR queue_name LIKE 'test_list_%'
+        OR queue_name LIKE 'test_meta_%'
+        OR queue_name LIKE 'topic_queue_%'
+        OR queue_name = 'benchmark_queue'`
   );
   assert(remaining.success, `Check remaining queues failed: ${remaining.stderr}`);
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
@@ -1029,7 +1082,8 @@ await test("Performance benchmark - message throughput", async () => {
   );
 
   // Cleanup
-  await runSQL("SELECT pgmq.drop_queue('benchmark_queue')");
+  const cleanup = await runSQL("SELECT pgmq.drop_queue('benchmark_queue')");
+  assert(cleanup.success, `Benchmark queue cleanup failed: ${cleanup.stderr}`);
 
   const lastResult = results[results.length - 1];
   if (lastResult) {
@@ -1070,14 +1124,17 @@ if (failed > 0) {
 }
 
 // Print performance metrics
-const perfResults = results.filter((r) => r.metrics);
+const perfResults = results.filter(
+  (result): result is TestResult & { metrics: Record<string, number | string> } =>
+    result.metrics !== undefined
+);
 if (perfResults.length > 0) {
   console.log("\n" + "=".repeat(80));
   console.log("PERFORMANCE METRICS");
   console.log("=".repeat(80));
   perfResults.forEach((r) => {
     console.log(`\n${r.name}:`);
-    Object.entries(r.metrics!).forEach(([key, value]) => {
+    Object.entries(r.metrics).forEach(([key, value]) => {
       console.log(`  ${key}: ${value}`);
     });
   });

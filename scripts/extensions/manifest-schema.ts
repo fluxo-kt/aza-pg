@@ -45,6 +45,7 @@ export const BuildKindSchema = type(
  * - subdir: Optional subdirectory within repository to build
  * - features: Optional Cargo feature flags (for cargo-pgrx builds)
  * - noDefaultFeatures: Disable default Cargo features (for cargo-pgrx builds)
+ * - mesonOptions: Optional Meson setup options (for meson builds)
  * - script: Optional script identifier for custom build logic
  * - patches: Optional sed expressions to apply before building
  */
@@ -53,6 +54,7 @@ export const BuildSpecSchema = type({
   "subdir?": "string",
   "features?": "string[]",
   "noDefaultFeatures?": "boolean",
+  "mesonOptions?": "string[]",
   "script?": "string",
   "patches?": "string[]",
 });

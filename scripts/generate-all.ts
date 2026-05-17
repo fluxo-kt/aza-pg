@@ -43,8 +43,12 @@ const generators: GeneratorTask[] = [
     dependsOn: ["Manifest"],
   },
 
-  // Phase 4: Parallel Docker generators (depend on manifest)
-  { name: "Dockerfile", script: "scripts/docker/generate-dockerfile.ts", dependsOn: ["Manifest"] },
+  // Phase 4: Dockerfile imports extension-defaults, so it must run after that file is refreshed.
+  {
+    name: "Dockerfile",
+    script: "scripts/docker/generate-dockerfile.ts",
+    dependsOn: ["Extension Defaults"],
+  },
   { name: "Entrypoint", script: "scripts/docker/generate-entrypoint.ts", dependsOn: ["Manifest"] },
   {
     name: "Image Contents",

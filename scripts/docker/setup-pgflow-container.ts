@@ -6,7 +6,7 @@
  * - Stage 1: Container startup
  * - Stage 2: Container running verification
  * - Stage 3: PostgreSQL ready (pg_isready)
- * - Stage 4: pgflow schema installation (7 tables + 13+ functions)
+ * - Stage 4: pgflow schema installation and required object verification
  * - Stage 5: Final verification
  *
  * Usage:
@@ -41,6 +41,34 @@ import { parseArgs } from "node:util";
 import { dockerCleanup } from "../utils/docker";
 import { error, info, success, warning, section } from "../utils/logger";
 import { installPgflowSchema } from "../../tests/fixtures/pgflow/install";
+
+const REQUIRED_PGFLOW_TABLES = [
+  "flows",
+  "steps",
+  "deps",
+  "workers",
+  "worker_functions",
+  "runs",
+  "step_states",
+  "step_tasks",
+] as const;
+
+const REQUIRED_PGFLOW_FUNCTIONS = [
+  "_archive_task_message",
+  "_cascade_force_skip_steps",
+  "add_step",
+  "cascade_complete_taskless_steps",
+  "cascade_resolve_conditions",
+  "complete_task",
+  "create_flow",
+  "ensure_flow_compiled",
+  "fail_task",
+  "maybe_complete_run",
+  "requeue_stalled_tasks",
+  "start_flow",
+  "start_ready_steps",
+  "start_tasks",
+] as const;
 
 interface SetupOptions {
   name: string;
@@ -77,34 +105,55 @@ async function waitForPostgres(container: string, timeout: number): Promise<bool
   return false;
 }
 
+function sqlValues(values: readonly string[]): string {
+  return values.map((value) => `('${value}')`).join(",");
+}
+
+const PGFLOW_SCHEMA_READY_QUERY = `
+  SELECT
+    CASE
+      WHEN EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgflow')
+      AND NOT EXISTS (
+        SELECT 1 FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM information_schema.tables t
+          WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_FUNCTIONS)}) AS required(name)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM pg_proc p
+          JOIN pg_namespace n ON p.pronamespace = n.oid
+          WHERE n.nspname = 'pgflow' AND p.proname = required.name
+        )
+      )
+      THEN 1
+      ELSE 0
+    END
+`;
+
+async function hasRequiredPgflowSchema(container: string, database: string): Promise<boolean> {
+  const result =
+    await $`docker exec ${container} psql -U postgres -d ${database} -tAc ${PGFLOW_SCHEMA_READY_QUERY}`.nothrow();
+  return result.exitCode === 0 && result.stdout.toString().trim() === "1";
+}
+
 /**
  * Wait for pgflow schema to be fully initialized
- * Verifies: 1 schema + 7 tables + 13+ functions
+ * Verifies the schema and required pgflow tables/functions by name.
  */
 async function waitForPgflowSchema(
   container: string,
   database: string,
   timeout: number
 ): Promise<boolean> {
-  const verifyQuery = `
-    SELECT
-      CASE
-        WHEN EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgflow')
-        AND (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow') = 7
-        AND (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'pgflow') >= 13
-        THEN 1
-        ELSE 0
-      END
-  `;
-
   const start = Date.now();
   const timeoutMs = timeout * 1000;
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const result =
-        await $`docker exec ${container} psql -U postgres -d ${database} -tAc ${verifyQuery}`.nothrow();
-      if (result.exitCode === 0 && result.stdout.toString().trim() === "1") {
+      if (await hasRequiredPgflowSchema(container, database)) {
         return true;
       }
     } catch {
@@ -214,7 +263,7 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
   // Stage 4: Wait for pgflow schema (installed by initdb) or install as fallback
   info("Stage 4: Verifying pgflow schema...");
-  const schemaReady = await waitForPgflowSchema(options.name, options.database, 60);
+  const schemaReady = await waitForPgflowSchema(options.name, options.database, options.timeout);
 
   if (!schemaReady) {
     // Fallback: try to install if somehow not present (shouldn't happen normally)
@@ -230,6 +279,13 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
     success(
       `✓ pgflow schema installed (${installResult.tablesCreated} tables, ${installResult.functionsCreated} functions)`
     );
+    if (!(await hasRequiredPgflowSchema(options.name, options.database))) {
+      error("pgflow schema install completed but required tables/functions are still missing");
+      if (options.diagnosticDir) {
+        await captureDiagnostics(options.name, options.diagnosticDir);
+      }
+      return 2;
+    }
   } else {
     success("✓ pgflow schema ready");
   }
@@ -251,11 +307,13 @@ async function setupPgflowContainer(options: SetupOptions): Promise<number> {
 
     info(`pgflow schema: ${tables} tables, ${functions} functions`);
 
-    if (tables === 7 && functions >= 13) {
+    if (await hasRequiredPgflowSchema(options.name, options.database)) {
       success(`✅ Container ${options.name} ready for testing`);
       return 0;
     } else {
-      warning(`Schema incomplete: ${tables}/7 tables, ${functions}/13+ functions`);
+      warning(
+        `Schema incomplete: required pgflow tables/functions missing (${tables} tables, ${functions} functions present)`
+      );
       return 2;
     }
   } else {
@@ -326,6 +384,17 @@ async function verifyPgflowContainer(name: string, database: string): Promise<nu
 
   success(`✓ Container ${name} is ready`);
   return 0;
+}
+
+function requiredString(value: string | boolean | undefined, option: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`Missing required option: ${option}`);
+  }
+  return value;
+}
+
+function requiredBoolean(value: string | boolean | undefined): boolean {
+  return typeof value === "boolean" ? value : false;
 }
 
 // Main execution
@@ -403,16 +472,17 @@ Exit Codes:
   });
 
   const options: SetupOptions = {
-    name: values.name!,
-    image: values.image!,
-    password: values.password!,
-    database: values.database!,
-    memory: Number(values.memory),
-    workloadType: values["workload-type"]!,
-    timeout: Number(values.timeout),
-    cleanupOnly: values["cleanup-only"]!,
-    verifyOnly: values["verify-only"]!,
-    diagnosticDir: values["diagnostic-dir"],
+    name: requiredString(values.name, "--name"),
+    image: requiredString(values.image, "--image"),
+    password: requiredString(values.password, "--password"),
+    database: requiredString(values.database, "--database"),
+    memory: Number(requiredString(values.memory, "--memory")),
+    workloadType: requiredString(values["workload-type"], "--workload-type"),
+    timeout: Number(requiredString(values.timeout, "--timeout")),
+    cleanupOnly: requiredBoolean(values["cleanup-only"]),
+    verifyOnly: requiredBoolean(values["verify-only"]),
+    diagnosticDir:
+      typeof values["diagnostic-dir"] === "string" ? values["diagnostic-dir"] : undefined,
   };
 
   try {

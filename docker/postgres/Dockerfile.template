@@ -61,7 +61,13 @@ RUN set -euo pipefail && \
 # SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
 RUN set -euo pipefail && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -215,25 +221,31 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 
-# Replace gosu (Go binary, CVE-2025-68121 CRITICAL, CVSS 8.8) with su-exec (pure C, no Go stdlib).
-# APPROACH: Self-contained final-stage compilation + dpkg purge of gosu package.
+# Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
+# APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
+# by stale cross-stage COPY cache entries.
 # Prior approaches failed (listed oldest→latest):
 #   1. COPY --from=builder-base: stale GHA cached layer
 #   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
 #   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
 #   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
-#   5. Self-contained compile without dpkg purge: apt-get install in next step detected file hash
-#      mismatch (we replaced gosu's file but dpkg still owned it) and reinstalled gosu from the
-#      --mount=type=cache,target=/var/cache/apt persistent apt cache.
-# Fix: purge gosu package from dpkg AFTER compiling su-exec, BEFORE placing it. This removes dpkg's
-# ownership so subsequent apt operations cannot reinstate gosu. Also exclude gosu from builder-pgxs
-# rsync to avoid creating an unnecessary intermediate layer with the Go binary.
+#   5. apt-get purge gosu: no-op for postgres:18.3-trixie because gosu is a direct
+#      binary download in the base image, not a dpkg-owned file.
+# Fix: compile and install su-exec directly in the final stage, then verify the binary size
+# is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
+# creating an unnecessary intermediate layer with the Go binary.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
     apt-get update && \
     apt-get install -y --no-install-recommends build-essential git ca-certificates && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -250,6 +262,26 @@ RUN set -euo pipefail && \
 # Pre-compiled extensions from GitHub releases (for packages not available in apt)
 # IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
 {{GITHUB_RELEASE_PACKAGES_INSTALL}}
+
+# Remove package-manager helpers needed only while installing repositories and release assets.
+# Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
+RUN set -euo pipefail && \
+    apt-get purge -y --auto-remove \
+      curl \
+      dirmngr \
+      gnupg \
+      gnupg-l10n \
+      gnupg2 \
+      gpg \
+      gpg-agent \
+      gpgconf \
+      gpgsm \
+      gpgv \
+      lsb-release \
+      percona-release \
+      unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
 # pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
@@ -286,7 +318,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.13.3.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.14.1.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

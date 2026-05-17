@@ -16,7 +16,7 @@
  */
 
 import { $ } from "bun";
-import { TestHarness } from "./harness.ts";
+import { TestHarness } from "./harness";
 
 // Support CLI image override for consistency with other tests
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";

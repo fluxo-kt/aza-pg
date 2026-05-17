@@ -4,7 +4,7 @@ This directory contains the pgflow SQL schema for testing purposes.
 
 ## Contents
 
-- `schema-v0.13.3.sql` - Complete pgflow schema (21 combined SQL files)
+- `schema-v0.14.1.sql` - Complete pgflow release schema
 - `install.ts` - TypeScript helper for installing schema into containers
 
 ## Usage
@@ -60,68 +60,25 @@ if (result.success) {
 
 ## Schema Source
 
-The schema is combined from 21 individual files in the pgflow repository:
-https://github.com/pgflow-dev/pgflow/tree/pgflow@0.13.3/pkgs/core/schemas/
+The schema is combined from the release-tagged SQL files in the pgflow repository:
+https://github.com/pgflow-dev/pgflow/tree/pgflow@0.14.1/pkgs/core/schemas/
 
-### Files (in order)
-
-1. `0010_extensions.sql` - pgmq extension
-2. `0020_schemas.sql` - pgflow schema
-3. `0030_utilities.sql` - Utility functions
-4. `0040_types.sql` - Custom types
-5. `0050_tables_definitions.sql` - Definition tables
-6. `0055_tables_workers.sql` - Worker tables
-7. `0060_tables_runtime.sql` - Runtime tables
-8. `0090_function_poll_for_tasks.sql` - Deprecated poll function
-9. `0100_function_*.sql` - Core functions (8 files)
-10. `0105_function_get_run_with_states.sql`
-11. `0110_function_*.sql` - Batch functions (2 files)
-12. `0120_function_start_tasks.sql`
-13. `0200_grants_and_revokes.sql` - Security
+The generator discovers upstream `*.sql` files from the release tag and concatenates them in
+lexicographic order.
 
 ## Updating Schema
 
 To update to a newer pgflow version:
 
 1. Check latest release: https://github.com/pgflow-dev/pgflow/releases
-2. Download schema files from `pkgs/core/schemas/`
-3. Combine in lexicographic order with separator comments
-4. Update `PGFLOW_VERSION` in `install.ts`
-5. Update this README
+2. Run `bun scripts/pgflow/generate-schema.ts <version> --update-install`
+3. Review the generated schema and delete the old schema fixture
+4. Run pgflow tests before committing
+5. Update this README if the fixture workflow changes
 
 ```bash
-# Example download script
-VERSION="0.13.3"
-BASE_URL="https://raw.githubusercontent.com/pgflow-dev/pgflow/pgflow%40${VERSION}/pkgs/core/schemas"
-FILES=(
-  0010_extensions.sql
-  0020_schemas.sql
-  0030_utilities.sql
-  0040_types.sql
-  0050_tables_definitions.sql
-  0055_tables_workers.sql
-  0060_tables_runtime.sql
-  0090_function_poll_for_tasks.sql
-  # ... add all files
-  0200_grants_and_revokes.sql
-)
-
-echo "-- pgflow v${VERSION} Schema" > schema-v${VERSION}.sql
-for file in "${FILES[@]}"; do
-  echo -e "\n-- ============================================================================" >> schema-v${VERSION}.sql
-  echo "-- Source: ${file}" >> schema-v${VERSION}.sql
-  echo -e "-- ============================================================================\n" >> schema-v${VERSION}.sql
-  curl -sS "${BASE_URL}/${file}" >> schema-v${VERSION}.sql
-done
+bun scripts/pgflow/generate-schema.ts 0.14.1 --update-install
 ```
-
-## Expected Counts (v0.13.3)
-
-| Component | Count |
-| --------- | ----- |
-| Tables    | 7     |
-| Functions | 15+   |
-| Types     | 1     |
 
 ## Supabase Realtime Compatibility
 

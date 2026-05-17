@@ -20,7 +20,7 @@ import { $ } from "bun";
 import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
-import { info, success, warning, error } from "../utils/logger.ts";
+import { info, success, warning, error } from "../utils/logger";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { getTestDockerConfig, cleanupTestDockerConfig } from "../utils/docker-test-config";
 
@@ -207,6 +207,37 @@ async function getContainerState(containerId: string): Promise<string> {
   }
 }
 
+async function runPgbouncerAdmin(containerId: string, command: string): Promise<string> {
+  const result =
+    await $`docker exec ${containerId} sh -c ${`PGPASSWORD="$PGBOUNCER_AUTH_PASS" psql -h localhost -p 6432 -U pgbouncer_auth -d pgbouncer -tAc "${command}" 2>&1`}`
+      .quiet()
+      .nothrow();
+
+  if (result.exitCode !== 0) {
+    const message = result.stdout.toString().trim() || result.stderr.toString().trim();
+    throw new Error(message);
+  }
+
+  return result.stdout.toString().trim();
+}
+
+async function waitForPostgresClients(containerId: string, expected: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const output = await runPgbouncerAdmin(containerId, "SHOW CLIENTS");
+    const clientCount = output
+      .split("\n")
+      .filter((line) => line.split("|")[2] === "postgres").length;
+
+    if (clientCount >= expected) {
+      return true;
+    }
+
+    await Bun.sleep(500);
+  }
+
+  return false;
+}
+
 /**
  * Create test environment file
  * Note: Docker Compose v2 always loads .env from cwd before --env-file,
@@ -387,19 +418,20 @@ POSTGRES_BIND_IP=0.0.0.0
         await $`docker exec ${pgbouncerContainer} rm -f /tmp/.pgpass`.quiet().nothrow();
 
         // Try to connect (should fail without .pgpass)
-        const connectionSucceeded =
-          await $`docker exec ${pgbouncerContainer} sh -c 'unset PGPASSFILE; HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"'`
+        const result =
+          await $`docker exec ${pgbouncerContainer} sh -c 'unset PGPASSWORD PGPASSFILE; HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" 2>&1'`
             .quiet()
-            .nothrow()
-            .then(() => true)
-            .catch(() => false);
+            .nothrow();
+        const output = result.stdout.toString();
 
-        if (connectionSucceeded) {
-          warning("Test PARTIAL: Connection succeeded without .pgpass (password may be cached)");
-          testResult.testsPassed++;
-        } else {
+        if (result.exitCode !== 0 && /fe_sendauth|no password supplied|password/i.test(output)) {
           success("Test PASSED: Connection properly failed without .pgpass");
           testResult.testsPassed++;
+        } else {
+          error(
+            `Test FAILED: Missing .pgpass did not produce a password-file auth failure (exit ${result.exitCode}): ${output.trim()}`
+          );
+          testResult.testsFailed++;
         }
       } else {
         error("Test FAILED: PgBouncer container not found");
@@ -510,8 +542,8 @@ PGBOUNCER_LISTEN_ADDR=999.999.999.999
             );
             testResult.testsPassed++;
           } else {
-            warning("Test PARTIAL: Container in unexpected state: " + containerState);
-            testResult.testsPassed++;
+            error("Test FAILED: PgBouncer state/logs did not prove invalid-address rejection");
+            testResult.testsFailed++;
           }
         }
       } else {
@@ -659,53 +691,37 @@ PGBOUNCER_MAX_CLIENT_CONN=2
       if (pgbouncerContainer) {
         // Open multiple connections that hold for 10 seconds
         info("Opening 2 long-running connections...");
+        await $`docker exec -d ${pgbouncerContainer} sh -c 'PGPASSWORD="$PGBOUNCER_AUTH_PASS" timeout 12 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT pg_sleep(10)"'`.quiet();
+        await $`docker exec -d ${pgbouncerContainer} sh -c 'PGPASSWORD="$PGBOUNCER_AUTH_PASS" timeout 12 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT pg_sleep(10)"'`.quiet();
 
-        // Start first connection in background (holds for 10 seconds)
-        const conn1 =
-          $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT pg_sleep(10)"'`
-            .quiet()
-            .nothrow();
-
-        // Start second connection in background (holds for 10 seconds)
-        const conn2 =
-          $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT pg_sleep(10)"'`
-            .quiet()
-            .nothrow();
-
-        // Wait for connections to be established
-        await Bun.sleep(2000);
+        if (!(await waitForPostgresClients(pgbouncerContainer, 2))) {
+          error("Test FAILED: Could not establish two PgBouncer client connections");
+          testResult.testsFailed++;
+          return;
+        }
 
         // Try third connection - should fail due to max_client_conn=2
         info("Attempting third connection (should fail due to max_client_conn=2)...");
         const result =
-          await $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp timeout 3 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" 2>&1'`
+          await $`docker exec ${pgbouncerContainer} sh -c 'PGPASSWORD="$PGBOUNCER_AUTH_PASS" timeout 5 psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" 2>&1'`
             .nothrow()
             .quiet();
 
         const output = result.text();
         const connectionFailed = result.exitCode !== 0;
 
-        // Cleanup background connections
-        await Promise.allSettled([conn1, conn2]);
-
         if (connectionFailed) {
           // Check if error mentions connection limit
           if (/no more connections|max_client_conn|too many|connection limit/i.test(output)) {
             success("Test PASSED: Connection properly rejected (max_client_conn limit enforced)");
             testResult.testsPassed++;
-          } else if (/timeout/i.test(output)) {
-            success("Test PASSED: Connection timed out waiting (limit enforced)");
-            testResult.testsPassed++;
           } else {
-            success("Test PASSED: Third connection rejected as expected");
-            testResult.testsPassed++;
+            error(`Test FAILED: Third connection failed for the wrong reason: ${output.trim()}`);
+            testResult.testsFailed++;
           }
         } else {
-          // PgBouncer may queue connections rather than reject them outright
-          warning(
-            "Test PARTIAL: Third connection succeeded (PgBouncer may queue instead of reject)"
-          );
-          testResult.testsPassed++;
+          error("Test FAILED: Third connection succeeded despite max_client_conn=2");
+          testResult.testsFailed++;
         }
       } else {
         error("Test FAILED: PgBouncer container not found");
@@ -773,7 +789,7 @@ POSTGRES_BIND_IP=0.0.0.0
 
       const pgbouncerContainer = await getContainerId(projectName, "pgbouncer", dockerEnv);
       if (pgbouncerContainer) {
-        // SECURITY TEST: Intentionally set insecure permissions to verify PostgreSQL client warning behavior
+        // SECURITY TEST: Intentionally set insecure permissions to verify PostgreSQL client rejection behavior
         // This is NOT a security vulnerability - it's testing that psql properly rejects insecure .pgpass files
         info(
           "Changing .pgpass permissions to 777 (insecure - this is a deliberate security test)..."
@@ -781,32 +797,25 @@ POSTGRES_BIND_IP=0.0.0.0
         await $`docker exec ${pgbouncerContainer} chmod 777 /tmp/.pgpass`.quiet().nothrow();
 
         // PostgreSQL client should reject .pgpass with wrong permissions
-        const connectionOutput =
-          await $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"'`
-            .nothrow()
-            .text();
+        const result =
+          await $`docker exec ${pgbouncerContainer} sh -c 'unset PGPASSWORD; PGPASSFILE=/tmp/.pgpass psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1" 2>&1'`
+            .quiet()
+            .nothrow();
+        const output = result.stdout.toString();
 
-        if (/WARNING.*password file.*permissions/i.test(connectionOutput)) {
-          success("Test PASSED: PostgreSQL client warned about insecure .pgpass permissions");
+        if (
+          result.exitCode !== 0 &&
+          /WARNING.*password file.*permissions|password file.*has group or world access/i.test(
+            output
+          )
+        ) {
+          success("Test PASSED: PostgreSQL client rejected insecure .pgpass permissions");
           testResult.testsPassed++;
         } else {
-          // Connection may still work but should warn
-          const connectionSucceeded =
-            await $`docker exec ${pgbouncerContainer} sh -c 'HOME=/tmp psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SELECT 1"'`
-              .quiet()
-              .nothrow()
-              .then(() => true)
-              .catch(() => false);
-
-          if (connectionSucceeded) {
-            warning(
-              "Test PARTIAL: Connection succeeded despite wrong permissions (warning may be in logs)"
-            );
-            testResult.testsPassed++;
-          } else {
-            success("Test PASSED: Connection failed with wrong .pgpass permissions");
-            testResult.testsPassed++;
-          }
+          error(
+            `Test FAILED: Insecure .pgpass did not produce the expected permission rejection (exit ${result.exitCode}): ${output.trim()}`
+          );
+          testResult.testsFailed++;
         }
       } else {
         error("Test FAILED: PgBouncer container not found");
@@ -929,7 +938,7 @@ async function main(): Promise<void> {
     console.log("  ✅ Invalid listen address (startup prevented)");
     console.log("  ✅ PostgreSQL unavailable (depends_on healthcheck works)");
     console.log("  ✅ Max connections exceeded (limit enforced)");
-    console.log("  ✅ .pgpass wrong permissions (security warning/rejection)");
+    console.log("  ✅ .pgpass wrong permissions (psql rejects insecure password file)");
     process.exit(0);
   } else {
     error("Some tests failed!");

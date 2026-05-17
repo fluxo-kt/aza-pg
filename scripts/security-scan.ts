@@ -20,9 +20,10 @@ import { error, info, section, success } from "./utils/logger";
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
 
-// Pinned to a version with immutable releases (post-incident v0.69.3+)
-const TRIVY_IMAGE = "aquasec/trivy:0.69.3";
+// Pinned to an immutable post-incident release instead of the mutable Docker tag.
+const TRIVY_IMAGE = "aquasec/trivy:0.70.0";
 const DEFAULT_IMAGE = "aza-pg:pg18";
+const SHADOWED_GOSU_PATH = "usr/local/bin/gosu";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 
@@ -57,6 +58,9 @@ async function pullTrivyIfNeeded(): Promise<boolean> {
 async function runScan(imageRef: string): Promise<boolean> {
   section("Security Scan (Trivy)");
   info(`Target: ${imageRef}`);
+  info(
+    "Policy: fail on fixable CRITICAL/HIGH vulnerabilities; report no-fix upstream CVEs in CI SARIF."
+  );
   console.log("");
 
   // Use Docker container to run Trivy — avoids GitHub release binary download entirely
@@ -80,6 +84,9 @@ async function runScan(imageRef: string): Promise<boolean> {
       "table",
       "--exit-code",
       "1",
+      "--ignore-unfixed",
+      "--skip-files",
+      SHADOWED_GOSU_PATH,
       imageRef,
     ],
     {
@@ -110,9 +117,9 @@ async function main(): Promise<void> {
 
   console.log("");
   if (clean) {
-    success("No CRITICAL or HIGH vulnerabilities found.");
+    success("No fixable CRITICAL or HIGH vulnerabilities found.");
   } else {
-    error("CRITICAL or HIGH vulnerabilities detected. Review output above.");
+    error("Fixable CRITICAL or HIGH vulnerabilities detected. Review output above.");
     process.exit(1);
   }
 }

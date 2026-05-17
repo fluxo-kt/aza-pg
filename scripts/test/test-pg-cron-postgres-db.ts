@@ -37,6 +37,16 @@ interface TestResult {
 }
 
 const results: TestResult[] = [];
+const REQUIRED_PGFLOW_TABLES = [
+  "flows",
+  "steps",
+  "deps",
+  "workers",
+  "worker_functions",
+  "runs",
+  "step_states",
+  "step_tasks",
+] as const;
 
 async function test(name: string, fn: () => Promise<void>): Promise<void> {
   const start = Date.now();
@@ -58,6 +68,10 @@ function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
   }
+}
+
+function sqlValues(values: readonly string[]): string {
+  return values.map((value) => `('${value}')`).join(",");
 }
 
 async function runSQL(
@@ -249,15 +263,22 @@ async function testPgflowDefaultDB(): Promise<void> {
       assert(result.stdout.trim() === "1", "pgflow schema should exist in postgres database");
     });
 
-    // Test 3.2: Verify pgflow schema has expected table count
-    await test("pgflow schema has 7 tables", async () => {
+    // Test 3.2: Verify pgflow schema has required tables
+    await test("pgflow schema has required tables", async () => {
       const result = await runSQL(
         container,
         "postgres",
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow'"
+        `
+        SELECT string_agg(required.name, ', ' ORDER BY required.name)
+        FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM information_schema.tables t
+          WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
+        )
+        `
       );
       assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "7", `Expected 7 tables, got: ${result.stdout.trim()}`);
+      assert(result.stdout.trim() === "", `Missing pgflow tables: ${result.stdout.trim()}`);
     });
 
     // Test 3.3: Verify pg_cron and pgflow are in same database
@@ -318,15 +339,22 @@ async function testPgflowCustomDB(): Promise<void> {
       assert(result.stdout.trim() === "1", `pgflow schema should exist in ${customDB} database`);
     });
 
-    // Test 4.2: Verify pgflow schema has expected table count
-    await test(`pgflow schema has 7 tables in ${customDB}`, async () => {
+    // Test 4.2: Verify pgflow schema has required tables
+    await test(`pgflow schema has required tables in ${customDB}`, async () => {
       const result = await runSQL(
         container,
         customDB,
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pgflow'"
+        `
+        SELECT string_agg(required.name, ', ' ORDER BY required.name)
+        FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM information_schema.tables t
+          WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
+        )
+        `
       );
       assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "7", `Expected 7 tables, got: ${result.stdout.trim()}`);
+      assert(result.stdout.trim() === "", `Missing pgflow tables: ${result.stdout.trim()}`);
     });
 
     // Test 4.3: Verify pg_cron and pgflow are in same custom database

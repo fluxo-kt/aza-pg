@@ -24,9 +24,9 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import { getSharedPreloadLibraries, type TestMode } from "./lib/test-mode.ts";
-import { resolveImageTag } from "./image-resolver.ts";
-import { cleanPsqlOutput } from "./lib/output-normalizer.ts";
+import { getSharedPreloadLibraries, type TestMode } from "./lib/test-mode";
+import { resolveImageTag } from "./image-resolver";
+import { cleanPsqlOutput } from "./lib/output-normalizer";
 
 /**
  * Top 10 most critical extensions for production mode.

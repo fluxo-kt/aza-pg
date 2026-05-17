@@ -12,7 +12,7 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
-import { error, info, section, success } from "./utils/logger.ts";
+import { error, info, section, success } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");

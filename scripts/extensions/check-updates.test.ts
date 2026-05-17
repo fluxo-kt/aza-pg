@@ -21,7 +21,7 @@ describe("compareTagVersions", () => {
   });
 
   test("rejects mismatched tag families", () => {
-    expect(compareTagVersions("pgflow@0.13.3", "@pgflow/edge-worker@0.13.3")).toBeNull();
+    expect(compareTagVersions("pgflow@0.14.1", "@pgflow/edge-worker@0.14.1")).toBeNull();
   });
 });
 

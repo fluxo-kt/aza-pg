@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.3",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d",
+  baseImageSha: "sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db",
 } as const;
 
 export type SourceSpec =
@@ -49,6 +49,10 @@ export interface BuildSpec {
    */
   features?: string[];
   noDefaultFeatures?: boolean;
+  /**
+   * When type === "meson", pass-through setup options.
+   */
+  mesonOptions?: string[];
   /**
    * Optional script identifier for bespoke installers.
    */
@@ -124,7 +128,7 @@ export interface ManifestEntry {
   /**
    * Shared object filename for .so file verification.
    * Required when install_via === "percona", "timescale", or "github-release".
-   * Example: "pg_stat_monitor.so" or "timescaledb.so"
+   * Example: "pg_stat_monitor.so", "timescaledb.so", or "vectorscale-0.9.0.so"
    */
   soFileName?: string;
   /**
@@ -444,7 +448,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
-      tag: "v3.1.0",
+      tag: "v3.2.2",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -452,7 +456,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       preloadOnly: true,
       defaultEnable: false,
       notes: [
-        "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
+        "v3.2.2: Permission hint improvements plus ALTER ROLE and executor hook crash fixes",
         "Creates supabase-managed roles which expect pg_cron and pg_net to be present.",
       ],
     },
@@ -518,7 +522,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/wrappers.git",
-      tag: "v0.6.0",
+      tag: "v0.6.1",
     },
     build: {
       type: "cargo-pgrx",
@@ -531,7 +535,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
       "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-      "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+      "v0.6.1: FDW parameter rescan, aggregate pushdown for enabled FDWs, dependency fixes.",
       "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest.",
     ],
     sourceUrl: "https://github.com/supabase/wrappers",
@@ -545,11 +549,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgroonga/pgroonga.git",
-      tag: "4.0.5",
+      tag: "4.0.6",
     },
-    build: { type: "pgxs" },
+    build: { type: "meson", mesonOptions: ["-Dtest=false"] },
     aptPackages: [
       "cmake",
+      "meson",
       "ninja-build",
       "pkg-config",
       "libgroonga-dev",
@@ -560,7 +565,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
       "NOT available in PGDG for PostgreSQL 18",
-      "v4.0.5: Fix LIKE/ILIKE with OR clause returning no results (GH-916)",
+      "v4.0.6: Fix pg_tokenize failure cleanup and initialize fuzzy search distance ratio",
+      "v4.0.6 switched from PGXS Makefile to Meson.",
+      "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
       "Source build required for PG18",
     ],
     sourceUrl: "https://github.com/pgroonga/pgroonga",
@@ -591,7 +598,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "postgis",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "3.6.2+dfsg-1.pgdg13+1",
+    pgdgVersion: "3.6.3+dfsg-1.pgdg13+1",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
@@ -601,7 +608,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
-      tag: "3.6.2",
+      tag: "3.6.3",
     },
     build: { type: "autotools" },
     aptPackages: [
@@ -625,8 +632,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-postgis-3 (v3.6.2+dfsg-1.pgdg13+1)",
-        "Alt: Pigsty v3.6.1 (1 version behind)",
+        "PGDG: postgresql-18-postgis-3 (v3.6.3+dfsg-1.pgdg13+1)",
+        "Alt: Pigsty v3.6.1 (2 versions behind)",
       ],
     },
     sourceUrl: "https://github.com/postgis/postgis",
@@ -720,9 +727,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "validation",
     description: "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
     source: {
-      type: "git-ref",
+      type: "git",
       repository: "https://github.com/supabase/pg_jsonschema.git",
-      ref: "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
+      tag: "v0.3.4",
     },
     build: {
       type: "cargo-pgrx",
@@ -735,6 +742,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: [
         "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+        "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
         "Source build required for latest features",
       ],
     },
@@ -772,7 +780,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.11.0",
+      tag: "v1.11.1",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -780,7 +788,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-        "Source build for latest v1.11.0 with PG18 support",
+        "Source build for latest v1.11.1 with PG18 support",
+        "v1.11.1: read_grouped_head() plus SQL-only install/upgrade parity fixes",
         "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)",
       ],
     },
@@ -798,7 +807,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.13.3",
+      tag: "pgflow@0.14.1",
     },
     runtime: {
       sharedPreload: false,
@@ -814,6 +823,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
+      "v0.14.1: Conditional step execution with skipped-state propagation",
       "v0.13.3: PGFLOW_AUTH_SECRET support, maxPgConnections fix (edge worker features)",
       "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
       "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
@@ -931,7 +941,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.25.2~debian13-1803",
+    timescaleVersion: "2.26.4~debian13-1803",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -939,15 +949,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.25.2",
+      tag: "2.26.4",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.25.2 TSL)",
-        "v2.25.2: Bugfix release for 2.25.1",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.26.4 TSL)",
+        "v2.26.4: Bugfix release for 2.26.x continuous aggregate, compression, and planner stability fixes",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
@@ -962,7 +972,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "timescale",
     timescalePackage: "timescaledb-toolkit-postgresql-18",
     timescaleVersion: "1:1.22.0~debian13",
-    soFileName: "timescaledb_toolkit.so",
+    soFileName: "timescaledb_toolkit-1.22.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
     source: {
@@ -1042,7 +1052,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     githubRepo: "timescale/pgvectorscale",
     githubReleaseTag: "0.9.0",
     githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-    soFileName: "vectorscale.so",
+    soFileName: "vectorscale-0.9.0.so",
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
     source: {

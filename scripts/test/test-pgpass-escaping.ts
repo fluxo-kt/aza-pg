@@ -15,7 +15,7 @@
 
 import { $ } from "bun";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
-import { error, info, success, warning } from "../utils/logger.ts";
+import { error, info, success, warning } from "../utils/logger";
 import { join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { TIMEOUTS } from "../config/test-timeouts";

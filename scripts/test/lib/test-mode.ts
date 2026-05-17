@@ -6,8 +6,8 @@
  * - regression: Tests ALL extensions and preloads (maximum coverage)
  */
 
-import type { ManifestEntry } from "../../extensions/manifest-data.ts";
-import { MANIFEST_ENTRIES } from "../../extensions/manifest-data.ts";
+import type { ManifestEntry } from "../../extensions/manifest-data";
+import { MANIFEST_ENTRIES } from "../../extensions/manifest-data";
 
 /**
  * Test execution mode.

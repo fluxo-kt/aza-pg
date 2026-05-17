@@ -24,7 +24,7 @@ import {
   waitForPostgresStable,
 } from "../utils/docker";
 import { MANIFEST_PATH, type Manifest } from "../docker/test-image-lib";
-import { error, info, success } from "../utils/logger.ts";
+import { error, info, success } from "../utils/logger";
 
 // Test counters
 let testsPassed = 0;

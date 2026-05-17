@@ -28,8 +28,8 @@
  */
 
 import { $ } from "bun";
-import { detectTestMode, type TestMode, getSharedPreloadLibraries } from "./lib/test-mode.ts";
-import { resolveImageTag } from "./image-resolver.ts";
+import { detectTestMode, type TestMode, getSharedPreloadLibraries } from "./lib/test-mode";
+import { resolveImageTag } from "./image-resolver";
 
 interface TestResult {
   testName: string;

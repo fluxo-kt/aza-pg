@@ -43,7 +43,7 @@
  */
 
 import { $ } from "bun";
-import { info, success, warning, error } from "../utils/logger.ts";
+import { info, success, warning, error } from "../utils/logger";
 
 interface PromoteConfig {
   containerName: string;

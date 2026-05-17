@@ -38,7 +38,7 @@ export interface ExtensionDefaults {
  */
 export const extensionDefaults: ExtensionDefaults = {
   pgVersion: "18.3",
-  baseImageSha: "sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d",
+  baseImageSha: "sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db",
   pgdgVersions: {
     hll: "2.19-2.pgdg13+2",
     http: "1.7.0-3.pgdg13+1",
@@ -48,7 +48,7 @@ export const extensionDefaults: ExtensionDefaults = {
     pgrouting: "4.0.1-1.pgdg13+1",
     pgvector: "0.8.2-1.pgdg13+1",
     plpgsqlCheck: "2.8.11-1.pgdg13+1",
-    postgis: "3.6.2+dfsg-1.pgdg13+1",
+    postgis: "3.6.3+dfsg-1.pgdg13+1",
     repack: "1.5.3-1.pgdg13+1",
     rum: "1.3.15-1.pgdg13+1",
     setUser: "4.2.0-1.pgdg13+1",

@@ -332,7 +332,7 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 ```bash
 # NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
 # If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
-if ! git merge --squash dev; then
+if ! git merge --squash refs/heads/dev; then
   echo "ABORT: Merge conflicts detected. Conflicting files:"
   git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
   echo ""
@@ -567,7 +567,9 @@ After every execution, reflect and update this command:
 
 - **RTK proxy silently kills `git log --format="%b" | grep` co-author pipelines** — returns empty even when co-author trailers exist. Two reliable workarounds: (a) `for hash in $(git rev-list ANCHOR..refs/heads/dev --no-merges); do git show "$hash" --format="%B" --no-patch; done | command grep -iE "^co-authored-by:"` (slow but reliable), or (b) `git log ... --format="%(trailers:key=Co-Authored-By,valueonly,separator=%x0a)"` (fast but misses trailers that git doesn't parse as formal trailers). Prefer (a) for completeness.
 
-- **Validation regexes can false-positive on comment text** — `build-extensions.ts` had a comment `// bare .env({ PATH })` that matched the env-safety checker's `\.env\(\{` pattern. When a validation failure reports a line that is clearly a comment explaining the anti-pattern, rephrase the comment to not use the literal pattern string. The checker should ideally exclude lines starting with `//` but that's a broader fix.
+- **`Dev-Squash-Tip` Appendix A lookup used `git log -1` — broken for multi-commit releases** (squash commit + kaizen commit). The tag tip is the LAST commit (kaizen), which has no trailer; the trailer lives in the parent (squash commit). Fix: `git log "$TARGET" -10 --format='%(trailers:...)' | grep -v '^$' | head -1` searches ancestry. Was silently falling through to "inspect manually" on every kaizen release.
+
+- **Validation regexes can false-positive on comment text** — `build-extensions.ts` had a comment `// bare .env({ PATH })` that matched the env-safety checker's `\.env\(\{` pattern. Root fix: add `| grep -Ev ":[0-9]+:[[:space:]]*//"` to exclude comment lines from checker output. Workaround (rephrasing comment) is fragile and breaks the comment's explanatory value.
 
 - **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
 
@@ -637,7 +639,9 @@ Once the tag is confirmed, run the safety check:
 # The squash commit embeds the exact dev tip as a Dev-Squash-Tip trailer.
 # If new commits landed on dev AFTER the squash, the anchor merge would force
 # dev's tree to the release tree, silently overwriting their file content.
-DEV_SQUASH_TIP=$(git log -1 --format='%(trailers:key=Dev-Squash-Tip,valueonly)' "$TARGET")
+# Search up to 10 commits on the tag — kaizen commits sit between the squash commit and the tag tip,
+# so git log -1 only sees the kaizen commit (no trailer). Search ancestry for the squash commit.
+DEV_SQUASH_TIP=$(git log "$TARGET" -10 --format='%(trailers:key=Dev-Squash-Tip,valueonly)' | command grep -v '^$' | head -1)
 if [[ -n "$DEV_SQUASH_TIP" ]]; then
   # First check DEV_SQUASH_TIP is an ancestor of HEAD — if not, histories have diverged
   if ! git merge-base --is-ancestor "$DEV_SQUASH_TIP" HEAD 2>/dev/null; then
@@ -675,10 +679,14 @@ else
     echo ""
     echo "These commits will persist in history via parent-1 of the anchor merge."
     echo "Their FILE CONTENT in the working tree will be replaced by the release tree."
-    echo "Confirm: are these commits already captured in the release (e.g., same fixes done directly on release branch)?"
-    echo "If YES: safe to proceed. If NO: do another squash release first to include them."
+    if [[ -n "$NEW_ON_DEV" ]]; then
+      echo "ABORT: no Dev-Squash-Tip and dev has commits since the last anchor."
+      echo "       Do another squash release first, or get explicit user approval before anchoring over these file changes."
+      exit 1
+    fi
   else
     echo "⚠️ No previous anchor merge found. Inspect dev history manually before proceeding."
+    exit 1
   fi
 fi
 ```

@@ -29,14 +29,11 @@
 
 import { $ } from "bun";
 import { join, dirname } from "node:path";
-import { detectTestMode, getSharedPreloadLibraries, type TestMode } from "./lib/test-mode.ts";
-import { resolveImageTag } from "./image-resolver.ts";
-import {
-  runRegressionTests,
-  generateRegressionDiffs,
-  type TestResult,
-  type ConnectionConfig,
-} from "./lib/regression-runner.ts";
+import { detectTestMode, getSharedPreloadLibraries } from "./lib/test-mode";
+import type { TestMode } from "./lib/test-mode";
+import { resolveImageTag } from "./image-resolver";
+import { runRegressionTests, generateRegressionDiffs } from "./lib/regression-runner";
+import type { TestResult, ConnectionConfig } from "./lib/regression-runner";
 
 /**
  * Top 10 most critical extensions for production mode.

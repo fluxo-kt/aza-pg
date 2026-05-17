@@ -11,7 +11,7 @@
  */
 
 import { join } from "node:path";
-import { info, success, error, warning, section } from "./utils/logger.ts";
+import { info, success, error, warning, section } from "./utils/logger";
 import { Glob } from "bun";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");

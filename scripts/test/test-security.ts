@@ -16,15 +16,33 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { $ } from "bun";
 import type { ManifestEntry } from "../extensions/manifest-data";
+import { generateUniqueContainerName, waitForPostgresStable } from "../utils/docker";
 
 const TEST_CONTAINER = `aza-pg-security-test-${Date.now()}`;
 const TEST_PASSWORD = "secureTestPass123!";
+const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest";
+const IMAGE_MANIFEST_PATH = "/etc/postgresql/extensions.manifest.json";
+
+type ImageSourceSpec = ManifestEntry["source"] & { commit?: string };
+
+interface ImageManifestEntry extends Omit<ManifestEntry, "source"> {
+  source: ImageSourceSpec;
+}
+
+interface ImageManifest {
+  entries: ImageManifestEntry[];
+}
 
 /**
  * Execute SQL command in test container
  */
-async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
-  const result = await $`docker exec ${TEST_CONTAINER} psql -U postgres -t -A -c ${sql}`.nothrow();
+async function runSQLInContainer(
+  containerName: string,
+  sql: string
+): Promise<{ stdout: string; stderr: string; success: boolean }> {
+  const result = await $`docker exec ${containerName} psql -U postgres -t -A -c ${sql}`
+    .quiet()
+    .nothrow();
   return {
     stdout: result.stdout.toString().trim(),
     stderr: result.stderr.toString().trim(),
@@ -32,44 +50,87 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
   };
 }
 
+async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
+  return runSQLInContainer(TEST_CONTAINER, sql);
+}
+
+async function readImageManifest(): Promise<ImageManifest> {
+  const result = await $`docker exec ${TEST_CONTAINER} cat ${IMAGE_MANIFEST_PATH}`
+    .quiet()
+    .nothrow();
+  expect(result.exitCode).toBe(0);
+
+  const manifest = JSON.parse(result.stdout.toString()) as ImageManifest;
+  expect(Array.isArray(manifest.entries)).toBe(true);
+  return manifest;
+}
+
 /**
  * Start test container
  */
 async function startContainer() {
   // Clean up any existing container
-  await $`docker rm -f ${TEST_CONTAINER}`.nothrow();
+  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
 
   // Start container with security settings
   const result = await $`docker run --name ${TEST_CONTAINER} \
     -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
     -e POSTGRES_MEMORY=2048 \
     -e POSTGRES_BIND_IP=127.0.0.1 \
-    -d ${Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest"}`.nothrow();
+    -d ${TEST_IMAGE}`
+    .quiet()
+    .nothrow();
 
   if (result.exitCode !== 0) {
     throw new Error("Failed to start test container - image may not be built");
   }
 
-  // Wait for database to be ready (increased timeout for CI environments)
-  for (let i = 0; i < 120; i++) {
-    const check = await runSQL("SELECT 1");
-    if (check.success) {
-      console.log("Database is ready");
-      // Give extensions a moment to fully initialize
-      await Bun.sleep(2000);
-      return;
-    }
-    await Bun.sleep(1000);
+  const ready = await waitForPostgresStable({
+    container: TEST_CONTAINER,
+    timeout: 120,
+    requiredSuccesses: 3,
+    checkInterval: 1000,
+  });
+  if (!ready) {
+    throw new Error("Database did not become stable in time (120s timeout)");
   }
-
-  throw new Error("Database did not become ready in time (120s timeout)");
+  console.log("Database is ready");
 }
 
 /**
  * Stop and remove test container
  */
 async function stopContainer() {
-  await $`docker rm -f ${TEST_CONTAINER}`.nothrow();
+  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
+}
+
+async function readListenAddressForBindIp(bindIp: string): Promise<string> {
+  const containerName = generateUniqueContainerName("aza-pg-security-bind");
+
+  try {
+    const result = await $`docker run --name ${containerName} \
+      -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
+      -e POSTGRES_MEMORY=1024 \
+      -e POSTGRES_BIND_IP=${bindIp} \
+      -d ${TEST_IMAGE}`
+      .quiet()
+      .nothrow();
+    expect(result.exitCode).toBe(0);
+
+    const ready = await waitForPostgresStable({
+      container: containerName,
+      timeout: 90,
+      requiredSuccesses: 3,
+      checkInterval: 1000,
+    });
+    expect(ready).toBe(true);
+
+    const setting = await runSQLInContainer(containerName, "SHOW listen_addresses");
+    expect(setting.success).toBe(true);
+    return setting.stdout;
+  } finally {
+    await $`docker rm -f ${containerName}`.quiet().nothrow();
+  }
 }
 
 beforeAll(async () => {
@@ -103,7 +164,7 @@ describe("Security - Authentication", () => {
     const dataDir = dataDirResult.stdout.trim();
     const hbaPath = `${dataDir}/pg_hba.conf`;
 
-    const result = await $`docker exec ${TEST_CONTAINER} cat ${hbaPath}`.nothrow();
+    const result = await $`docker exec ${TEST_CONTAINER} cat ${hbaPath}`.quiet().nothrow();
     expect(result.exitCode).toBe(0);
 
     const hbaContent = result.stdout.toString();
@@ -222,11 +283,14 @@ describe("Security - PgBouncer auth_query", () => {
   test("No plaintext passwords in userlist.txt (when used)", async () => {
     // Check if userlist.txt exists in container
     const checkFile =
-      await $`docker exec ${TEST_CONTAINER} test -f /etc/pgbouncer/userlist.txt && echo exists || echo missing`.nothrow();
+      await $`docker exec ${TEST_CONTAINER} test -f /etc/pgbouncer/userlist.txt && echo exists || echo missing`
+        .quiet()
+        .nothrow();
 
     if (checkFile.stdout.toString().includes("exists")) {
-      const result =
-        await $`docker exec ${TEST_CONTAINER} cat /etc/pgbouncer/userlist.txt`.nothrow();
+      const result = await $`docker exec ${TEST_CONTAINER} cat /etc/pgbouncer/userlist.txt`
+        .quiet()
+        .nothrow();
 
       if (result.exitCode === 0) {
         const content = result.stdout.toString();
@@ -261,14 +325,10 @@ describe("Security - Network Binding", () => {
     expect(listenAddr).toMatch(/127\.0\.0\.1|localhost/);
   });
 
-  test("POSTGRES_BIND_IP=0.0.0.0 should change binding (via config)", async () => {
-    // We test this by checking current setting
-    const result = await runSQL("SHOW listen_addresses");
-    expect(result.success).toBe(true);
-
-    // In this test, we started with 127.0.0.1, so it should be that
-    expect(result.stdout).toMatch(/127\.0\.0\.1|localhost/);
-  });
+  test("POSTGRES_BIND_IP=0.0.0.0 should change binding", async () => {
+    const listenAddress = await readListenAddressForBindIp("0.0.0.0");
+    expect(listenAddress).toBe("0.0.0.0");
+  }, 120000);
 
   test("Port should be standard PostgreSQL port (5432)", async () => {
     const result = await runSQL("SHOW port");
@@ -279,16 +339,7 @@ describe("Security - Network Binding", () => {
 
 describe("Security - Extension Security", () => {
   test("All extensions should have correct SHA pins in manifest", async () => {
-    // Read the manifest from container
-    const manifestResult =
-      await $`docker exec ${TEST_CONTAINER} cat /extensions.manifest.json`.nothrow();
-
-    if (manifestResult.exitCode !== 0) {
-      console.log("Skipping - manifest not found in container");
-      return;
-    }
-
-    const manifest = JSON.parse(manifestResult.stdout.toString());
+    const manifest = await readImageManifest();
     expect(manifest.entries).toBeDefined();
     expect(Array.isArray(manifest.entries)).toBe(true);
 
@@ -298,41 +349,29 @@ describe("Security - Extension Security", () => {
         expect(entry.source.repository).toBeDefined();
         expect(entry.source.repository).toMatch(/^https?:\/\//);
 
-        // Should have either tag or ref
-        const hasTag = entry.source.tag !== undefined;
-        const hasRef = entry.source.ref !== undefined;
-        expect(hasTag || hasRef).toBe(true);
-
-        // Verify commit hash exists (for source verification)
-        if (entry.source.commit) {
-          expect(entry.source.commit).toMatch(/^[a-f0-9]{40}$/);
+        if (entry.source.type === "git") {
+          expect(entry.source.tag).toBeDefined();
+        } else {
+          expect(entry.source.ref).toBeDefined();
         }
+
+        expect(entry.source.commit).toMatch(/^[a-f0-9]{40}$/);
       }
     }
   });
 
   test("Manifest should have no enabled:false extensions with empty disabledReason", async () => {
-    const manifestResult =
-      await $`docker exec ${TEST_CONTAINER} cat /extensions.manifest.json`.nothrow();
-
-    if (manifestResult.exitCode !== 0) {
-      console.log("Skipping - manifest not found in container");
-      return;
-    }
-
-    const manifest = JSON.parse(manifestResult.stdout.toString());
+    const manifest = await readImageManifest();
 
     for (const entry of manifest.entries) {
       if (entry.enabled === false) {
-        // Disabled extensions should have a reason documented
-        // This is a best practice, not strictly enforced yet
-        expect(entry).toBeDefined();
+        expect(entry.disabledReason?.trim()).toBeTruthy();
       }
     }
 
     // Some extensions are deliberately disabled in the manifest (not available in this build)
     // These are known disabled extensions that are documented in the manifest
-    const knownDisabledExtensions = ["postgis", "pgrouting", "pgq", "pg_plan_filter", "supautils"];
+    const knownDisabledExtensions = ["postgis", "pgrouting", "pgq", "pg_plan_filter"];
     const disabledEntries = manifest.entries.filter((e: ManifestEntry) => e.enabled === false);
     const unexpectedDisabled = disabledEntries.filter(
       (e: ManifestEntry) => !knownDisabledExtensions.includes(e.name)
@@ -467,9 +506,13 @@ describe("Security - SSL/TLS Configuration", () => {
     if (sslSetting.stdout === "on") {
       // Check for SSL certificate files (use $PGDATA for portability)
       const certCheck =
-        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.crt" && echo exists || echo missing'`.nothrow();
+        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.crt" && echo exists || echo missing'`
+          .quiet()
+          .nothrow();
       const keyCheck =
-        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.key" && echo exists || echo missing'`.nothrow();
+        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.key" && echo exists || echo missing'`
+          .quiet()
+          .nothrow();
 
       // If SSL is on, certificates should exist
       expect(certCheck.stdout.toString()).toContain("exists");

@@ -8,7 +8,7 @@
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { setGitHubOutput, isGitHubActions } from "./utils/github.ts";
+import { setGitHubOutput, isGitHubActions } from "./utils/github";
 
 interface ManifestEntry {
   name: string;

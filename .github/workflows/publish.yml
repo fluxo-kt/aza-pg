@@ -278,7 +278,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           file: ./docker/postgres/Dockerfile
@@ -311,7 +311,7 @@ jobs:
           echo "Exported digest: ${digest}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: digests-${{ matrix.artifact }}
           path: ${{ runner.temp }}/digests/*
@@ -357,7 +357,7 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Download digests
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: digests-*
           path: ${{ runner.temp }}/digests
@@ -424,7 +424,25 @@ jobs:
           bun scripts/docker/validate-manifest.ts \
             --manifest "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --platforms "linux/amd64,linux/arm64" \
-            --require-annotations
+            --exact-platforms \
+            --require-annotations \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ env.RELEASE_SHA }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}" \
+            --verify-source \
+            --expected-digest "${{ needs.merge.outputs.image_digest }}"
 
       - name: Verify PostgreSQL version in merged image
         run: |
@@ -663,7 +681,7 @@ jobs:
 
       - name: Upload pgflow setup logs
         if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pgflow-setup-logs-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/pgflow-setup-logs
@@ -910,7 +928,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache Trivy vulnerability database
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .trivy-cache
           key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/publish.yml') }}
@@ -918,7 +936,7 @@ jobs:
             trivy-db-${{ runner.os }}-
 
       - name: Best practices scan (Dockle)
-        uses: erzz/dockle-action@69369bc745ee29813f730231a821bcd4f71cd290 # v1.4.0
+        uses: erzz/dockle-action@e8a7c41f36f1236ca3282b298d425ffbfdb2e922 # v1.4.1
         with:
           image: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           exit-code: "1"
@@ -927,7 +945,7 @@ jobs:
           accept-filenames: /docker-entrypoint-initdb.d
 
       - name: Security scan (SARIF for GitHub Security)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true # SARIF upload is informational; blocking gate is the next step
         env:
           TRIVY_CACHE_DIR: .trivy-cache
@@ -936,22 +954,25 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
+          skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
 
       - name: Security scan (blocking on failures)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_CACHE_DIR: .trivy-cache
         with:
           image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           format: "table"
-          severity: "CRITICAL"
-          exit-code: "1" # Fail on CRITICAL vulnerabilities only (HIGH are from upstream)
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: "true"
+          skip-files: "usr/local/bin/gosu"
+          exit-code: "1" # Fail on fixable CRITICAL/HIGH vulnerabilities
 
       - name: Capture security scan diagnostics on failure
         if: failure()
@@ -964,20 +985,22 @@ jobs:
           # Capture full Trivy scan output (all severities)
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
           docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
-            aquasec/trivy:latest image \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
+            aquasec/trivy:0.70.0 image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
           # Capture Trivy scan in JSON format for detailed analysis
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
           docker run --rm \
-            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/ \
-            aquasec/trivy:latest image \
+            -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
+            aquasec/trivy:0.70.0 image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 
@@ -996,7 +1019,7 @@ jobs:
 
       - name: Upload security scan failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scan-failure-diagnostics-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/scan-diagnostics/*
@@ -1047,7 +1070,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: "v3.0.4"
 
@@ -1087,6 +1110,37 @@ jobs:
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
+      - name: Verify production manifests
+        run: |
+          set -euo pipefail
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            bun scripts/docker/validate-manifest.ts \
+              --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" \
+              --expected-digest "${{ needs.merge.outputs.image_digest }}" \
+              --platforms "linux/amd64,linux/arm64" \
+              --exact-platforms \
+              --require-annotations \
+              --title "aza-pg Single-Node PostgreSQL" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --created "${{ needs.prep.outputs.timestamp }}" \
+              --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+              --licenses "MIT" \
+              --url "${{ github.server_url }}/${{ github.repository }}" \
+              --authors "fluxo-kt" \
+              --version "${{ needs.prep.outputs.image_tag }}" \
+              --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+              --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+              --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+              --revision "${{ env.RELEASE_SHA }}" \
+              --source-url "${{ github.server_url }}/${{ github.repository }}"
+          done
+
       - name: Sign all convenience tags
         run: |
           set -euo pipefail
@@ -1122,6 +1176,12 @@ jobs:
 
           echo "✅ All signatures verified successfully"
 
+      - name: Verify public SBOM
+        run: |
+          set -euo pipefail
+          bun scripts/release/verify-sbom.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
       - name: Attest container image provenance
         id: attest
         if: success()
@@ -1135,6 +1195,15 @@ jobs:
           push-to-registry: true
           # Display attestation summary in workflow run (default: true, explicit for clarity)
           show-summary: true
+
+      - name: Verify public attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh attestation verify \
+            "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
+            --owner fluxo-kt
 
       - name: Generate release summary
         run: |
@@ -1179,8 +1248,7 @@ jobs:
           - **Total catalog entries:** ${{ needs.prep.outputs.catalog_total }}
           - **Enabled extensions:** ${{ needs.prep.outputs.catalog_enabled }}
           - **Disabled extensions:** ${{ needs.prep.outputs.catalog_disabled }}
-          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
-          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+          - **Preload and auto-create details:** See generated release notes and docs for the manifest-derived lists.
 
           ## Platforms
 
@@ -1335,7 +1403,7 @@ jobs:
           ref: ${{ env.RELEASE_SHA }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2.1.3
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ needs.prep.outputs.bun_version }}
 
@@ -1448,6 +1516,106 @@ jobs:
           echo "✅ GitHub Release created: v${{ needs.prep.outputs.version_tag }}"
           echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.version_tag }}"
 
+  verify-public-release:
+    name: Verify Public Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, release, create-release]
+    if: success()
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.4"
+
+      - name: Verify GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun scripts/release/verify-github-release.ts \
+            --repository "${{ github.repository }}" \
+            --tag "v${{ needs.prep.outputs.version_tag }}" \
+            --expected-commit "${{ env.RELEASE_SHA }}" \
+            --image-tag "${{ needs.prep.outputs.image_tag }}" \
+            --digest "${{ needs.merge.outputs.image_digest }}"
+
+      - name: Verify public manifests
+        run: |
+          set -euo pipefail
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            bun scripts/docker/validate-manifest.ts \
+              --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" \
+              --expected-digest "${{ needs.merge.outputs.image_digest }}" \
+              --platforms "linux/amd64,linux/arm64" \
+              --exact-platforms \
+              --require-annotations \
+              --title "aza-pg Single-Node PostgreSQL" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --created "${{ needs.prep.outputs.timestamp }}" \
+              --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+              --licenses "MIT" \
+              --url "${{ github.server_url }}/${{ github.repository }}" \
+              --authors "fluxo-kt" \
+              --version "${{ needs.prep.outputs.image_tag }}" \
+              --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+              --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+              --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+              --revision "${{ env.RELEASE_SHA }}" \
+              --source-url "${{ github.server_url }}/${{ github.repository }}"
+          done
+
+      - name: Verify public signatures, SBOM, and attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            cosign verify \
+              --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+          done
+
+          bun scripts/release/verify-sbom.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
+          gh attestation verify \
+            "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
+            --owner fluxo-kt
+
   cleanup:
     name: Cleanup Testing Artifacts
     runs-on: ubuntu-latest
@@ -1462,6 +1630,8 @@ jobs:
         test-complete,
         scan,
         release,
+        create-release,
+        verify-public-release,
       ]
     # Run cleanup after all jobs complete — including on test/scan failures.
     # Skipped when prep is skipped (CI cancelled = nothing was built = no testing images to clean up).

@@ -26,7 +26,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FILE = join(__dirname, "schema-v0.13.3.sql");
+const SCHEMA_FILE = join(__dirname, "schema-v0.14.1.sql");
 
 /**
  * SQL to create a multi-layer replacement for Supabase Realtime.
@@ -189,13 +189,12 @@ export async function installRealtimeStub(
       "-v",
       "ON_ERROR_STOP=1",
     ],
-    { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
+    { stdin: "pipe", stdout: "ignore", stderr: "pipe" }
   );
   proc.stdin.write(REALTIME_STUB_SQL);
   proc.stdin.end();
 
-  const exitCode = await proc.exited;
-  const stderr = await new Response(proc.stderr).text();
+  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
   return {
     success: exitCode === 0,
@@ -278,14 +277,16 @@ export async function installPgflowSchema(
         "-v",
         "ON_ERROR_STOP=1",
       ],
-      { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
+      { stdin: "pipe", stdout: "ignore", stderr: "pipe" }
     );
     stubProc.stdin.write(REALTIME_STUB_SQL);
     stubProc.stdin.end();
 
-    const stubExitCode = await stubProc.exited;
+    const [stubStderr, stubExitCode] = await Promise.all([
+      new Response(stubProc.stderr).text(),
+      stubProc.exited,
+    ]);
     if (stubExitCode !== 0) {
-      const stubStderr = await new Response(stubProc.stderr).text();
       return {
         success: false,
         stdout: "",
@@ -348,9 +349,11 @@ export async function installPgflowSchema(
     proc.stdin.write(schemaContent);
     proc.stdin.end();
 
-    const exitCode = await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
 
     if (exitCode !== 0) {
       return {
@@ -416,11 +419,10 @@ export async function verifyInstallation(
         "-c",
         sql,
       ],
-      { stdout: "pipe", stderr: "pipe" }
+      { stdout: "pipe", stderr: "ignore" }
     );
-    const exitCode = await proc.exited;
+    const [output, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     if (exitCode === 0) {
-      const output = await new Response(proc.stdout).text();
       results[key as keyof typeof results] = parseInt(output.trim(), 10) || 0;
     }
   }
@@ -439,12 +441,11 @@ export async function isPgflowInstalled(
   const sql = `SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = 'pgflow')`;
   const proc = Bun.spawn(
     ["docker", "exec", "-i", "-u", user, container, "psql", "-d", database, "-t", "-A", "-c", sql],
-    { stdout: "pipe", stderr: "pipe" }
+    { stdout: "pipe", stderr: "ignore" }
   );
-  const exitCode = await proc.exited;
+  const [output, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
   if (exitCode !== 0) return false;
 
-  const output = await new Response(proc.stdout).text();
   return output.trim() === "t";
 }
 
@@ -459,7 +460,7 @@ export async function createDatabase(
   const sql = `CREATE DATABASE "${database}"`;
   const proc = Bun.spawn(
     ["docker", "exec", "-i", "-u", user, container, "psql", "-d", "postgres", "-c", sql],
-    { stdout: "pipe", stderr: "pipe" }
+    { stdout: "ignore", stderr: "ignore" }
   );
   const exitCode = await proc.exited;
   return exitCode === 0;
@@ -476,7 +477,7 @@ export async function dropDatabase(
   const sql = `DROP DATABASE IF EXISTS "${database}"`;
   const proc = Bun.spawn(
     ["docker", "exec", "-i", "-u", user, container, "psql", "-d", "postgres", "-c", sql],
-    { stdout: "pipe", stderr: "pipe" }
+    { stdout: "ignore", stderr: "ignore" }
   );
   const exitCode = await proc.exited;
   return exitCode === 0;
@@ -499,9 +500,11 @@ export async function runSQL(
   proc.stdin.write(sql);
   proc.stdin.end();
 
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
 
   return {
     success: exitCode === 0,
@@ -512,4 +515,4 @@ export async function runSQL(
 
 // Export schema file path for direct access if needed
 export const PGFLOW_SCHEMA_PATH = SCHEMA_FILE;
-export const PGFLOW_VERSION = "0.13.3";
+export const PGFLOW_VERSION = "0.14.1";

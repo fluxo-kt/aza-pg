@@ -25,6 +25,32 @@ const ROOT_DIR = join(__dirname, "../..");
 const FIXTURES_DIR = join(ROOT_DIR, "tests/fixtures/pgflow");
 const INSTALL_TS = join(FIXTURES_DIR, "install.ts");
 const SQL_FORMATTER_CONFIG = join(ROOT_DIR, ".sql-formatter.json");
+const SCHEMA_DIRECTORY_API =
+  "https://api.github.com/repos/pgflow-dev/pgflow/contents/pkgs/core/schemas";
+
+interface GitHubContentItem {
+  name: string;
+  type: string;
+}
+
+async function getGitHubToken(): Promise<string | undefined> {
+  const envToken = Bun.env.GITHUB_TOKEN ?? Bun.env.GH_TOKEN;
+  if (envToken) {
+    return envToken;
+  }
+
+  try {
+    const proc = Bun.spawn(["gh", "auth", "token"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    const token = stdout.trim();
+    return exitCode === 0 && token ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 async function loadSqlFormatterConfig(): Promise<Record<string, unknown>> {
   try {
@@ -41,30 +67,16 @@ async function loadSqlFormatterConfig(): Promise<Record<string, unknown>> {
   }
 }
 
-// Schema files in the order they should be concatenated
-const SCHEMA_FILES = [
-  "0010_extensions.sql",
-  "0020_schemas.sql",
-  "0030_utilities.sql",
-  "0040_types.sql",
-  "0050_tables_definitions.sql",
-  "0055_tables_workers.sql",
-  "0060_tables_runtime.sql",
-  "0090_function_poll_for_tasks.sql",
-  "0100_function_add_step.sql",
-  "0100_function_cascade_complete_taskless_steps.sql",
-  "0100_function_complete_task.sql",
-  "0100_function_create_flow.sql",
-  "0100_function_fail_task.sql",
-  "0100_function_maybe_complete_run.sql",
-  "0100_function_start_flow.sql",
-  "0100_function_start_ready_steps.sql",
-  "0105_function_get_run_with_states.sql",
-  "0110_function_set_vt_batch.sql",
-  "0110_function_start_flow_with_states.sql",
-  "0120_function_start_tasks.sql",
-  "0200_grants_and_revokes.sql",
-] as const;
+function isGitHubContentItem(value: unknown): value is GitHubContentItem {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    "type" in value &&
+    typeof value.name === "string" &&
+    typeof value.type === "string"
+  );
+}
 
 interface Options {
   version: string;
@@ -106,6 +118,191 @@ function getSchemaUrl(tag: string, filename: string): string {
   return `https://raw.githubusercontent.com/pgflow-dev/pgflow/${encodedTag}/pkgs/core/schemas/${filename}`;
 }
 
+const CLEANUP_ENSURE_WORKERS_LOGS_COMPAT_SQL = `-- Cleanup Ensure Workers Logs
+-- Cleans up old cron job run details to prevent the table from growing indefinitely.
+-- Note: net._http_response is automatically cleaned by pg_net (6 hour TTL), so we only clean cron logs.
+CREATE OR REPLACE FUNCTION pgflow.cleanup_ensure_workers_logs (retention_hours INTEGER DEFAULT 24) returns TABLE (cron_deleted BIGINT) language plpgsql security definer
+SET
+  search_path = pgflow,
+  pg_temp AS $$
+DECLARE
+  deleted_count BIGINT;
+BEGIN
+  IF to_regclass('cron.job_run_details') IS NULL THEN
+    RETURN QUERY SELECT 0::BIGINT;
+    RETURN;
+  END IF;
+
+  EXECUTE 'DELETE FROM cron.job_run_details WHERE end_time < now() - make_interval(hours => $1)'
+  USING retention_hours;
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN QUERY SELECT deleted_count;
+END;
+$$;
+
+
+COMMENT ON function pgflow.cleanup_ensure_workers_logs (INTEGER) IS 'Cleans up old cron job run details to prevent table growth.
+Default retention is 24 hours. HTTP response logs (net._http_response) are
+automatically cleaned by pg_net with a 6-hour TTL, so they are not cleaned here.
+Returns 0 when pg_cron is configured in another database and cron.job_run_details
+is absent from the current database.
+This function follows the standard pg_cron maintenance pattern recommended by
+AWS RDS, Neon, and Supabase documentation.';`;
+
+const VAULT_SECRET_COMPAT_SQL = `-- AZA PostgreSQL Vault Secret Compatibility
+-- Reads Supabase Vault secrets without binding pgflow schema installation to vault.decrypted_secrets.
+CREATE OR REPLACE FUNCTION pgflow.aza_vault_secret (secret_name TEXT) returns TEXT language plpgsql stable
+SET
+  search_path = '' AS $$
+DECLARE
+  secret_value TEXT;
+BEGIN
+  IF to_regclass('vault.decrypted_secrets') IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  EXECUTE $query$
+    SELECT nullif(decrypted_secret, '')
+    FROM vault.decrypted_secrets
+    WHERE name = $1
+    LIMIT 1
+  $query$
+  INTO secret_value
+  USING secret_name;
+
+  RETURN secret_value;
+END;
+$$;
+
+
+COMMENT ON function pgflow.aza_vault_secret (TEXT) IS 'Reads a Supabase Vault secret when vault.decrypted_secrets exists; returns NULL when Vault is not installed in this database.';`;
+
+function replaceRequired(
+  filename: string,
+  content: string,
+  search: string,
+  replacement: string
+): string {
+  if (!content.includes(search)) {
+    throw new Error(`Local pgflow schema patch no longer matches upstream ${filename}`);
+  }
+
+  return content.replace(search, replacement);
+}
+
+function patchCronSearchPath(filename: string, content: string): string {
+  return replaceRequired(
+    filename,
+    content,
+    "set search_path = pgflow, cron, pg_temp",
+    "set search_path = pgflow, pg_temp"
+  );
+}
+
+function patchEnsureWorkersCronSetup(filename: string, upstreamContent: string): string {
+  let patched = patchCronSearchPath(filename, upstreamContent);
+  patched = replaceRequired(
+    filename,
+    patched,
+    "begin\n  -- Remove existing jobs if they exist (ignore errors if not found)",
+    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow worker cron setup';\n  END IF;\n\n  -- Remove existing jobs if they exist (ignore errors if not found)"
+  );
+  return replaceRequired(
+    filename,
+    patched,
+    "Replaces existing jobs if they exist (idempotent).\nReturns a confirmation message with job IDs.';",
+    "Replaces existing jobs if they exist (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job IDs.';"
+  );
+}
+
+function patchRequeueCronSetup(filename: string, upstreamContent: string): string {
+  let patched = patchCronSearchPath(filename, upstreamContent);
+  patched = replaceRequired(
+    filename,
+    patched,
+    "begin\n  -- Remove existing job if any",
+    "begin\n  IF to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN\n    RETURN 'pg_cron is not available in this database; skipped pgflow stalled-task cron setup';\n  END IF;\n\n  -- Remove existing job if any"
+  );
+  patched = replaceRequired(filename, patched, "job_id=%s)', \n", "job_id=%s)',\n");
+  return replaceRequired(
+    filename,
+    patched,
+    "Replaces existing job if it exists (idempotent).\nReturns a confirmation message with job ID.';",
+    "Replaces existing job if it exists (idempotent).\nReturns a skipped message when pg_cron is configured in another database.\nReturns a confirmation message with job ID.';"
+  );
+}
+
+function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string): string {
+  let patched = replaceRequired(
+    filename,
+    upstreamContent,
+    "nullif((select decrypted_secret from vault.decrypted_secrets where name = 'pgflow_auth_secret'), ''),\n            nullif((select decrypted_secret from vault.decrypted_secrets where name = 'supabase_service_role_key'), '')",
+    "pgflow.aza_vault_secret('pgflow_auth_secret'),\n            pgflow.aza_vault_secret('supabase_service_role_key')"
+  );
+  patched = replaceRequired(
+    filename,
+    patched,
+    "else (select 'https://' || nullif(decrypted_secret, '') || '.supabase.co/functions/v1' from vault.decrypted_secrets where name = 'supabase_project_id')",
+    "else 'https://' || pgflow.aza_vault_secret('supabase_project_id') || '.supabase.co/functions/v1'"
+  );
+
+  return `${VAULT_SECRET_COMPAT_SQL}\n\n\n${patched}`;
+}
+
+function localSchemaContent(filename: string, upstreamContent: string): string {
+  if (filename === "0059_function_ensure_workers.sql") {
+    return patchEnsureWorkersVaultAccess(filename, upstreamContent);
+  }
+  if (filename === "0060_function_cleanup_ensure_workers_logs.sql") {
+    return CLEANUP_ENSURE_WORKERS_LOGS_COMPAT_SQL;
+  }
+  if (filename === "0061_function_setup_ensure_workers_cron.sql") {
+    return patchEnsureWorkersCronSetup(filename, upstreamContent);
+  }
+  if (filename === "0063_function_setup_requeue_stalled_tasks_cron.sql") {
+    return patchRequeueCronSetup(filename, upstreamContent);
+  }
+
+  return upstreamContent;
+}
+
+function stripTrailingWhitespace(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
+}
+
+async function fetchSchemaFilenames(tag: string): Promise<string[]> {
+  const url = `${SCHEMA_DIRECTORY_API}?ref=${encodeURIComponent(tag)}`;
+  const token = await getGitHubToken();
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "aza-pg-schema-generator",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const authHint = token
+      ? ""
+      : " Set GITHUB_TOKEN/GH_TOKEN or authenticate gh to avoid API limits.";
+    throw new Error(
+      `Failed to list pgflow schema directory: ${response.status} ${response.statusText}.${authHint}`
+    );
+  }
+
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload) || !payload.every(isGitHubContentItem)) {
+    throw new Error("Unexpected GitHub schema directory response");
+  }
+
+  return payload
+    .filter((item) => item.type === "file" && item.name.endsWith(".sql"))
+    .map((item) => item.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 async function fetchSchemaFile(tag: string, filename: string, verbose: boolean): Promise<string> {
   const url = getSchemaUrl(tag, filename);
 
@@ -131,12 +328,16 @@ async function fetchSchemaFile(tag: string, filename: string, verbose: boolean):
   return content;
 }
 
-async function fetchAllSchemas(tag: string, verbose: boolean): Promise<Map<string, string>> {
+async function fetchAllSchemas(
+  tag: string,
+  schemaFiles: readonly string[],
+  verbose: boolean
+): Promise<Map<string, string>> {
   const schemas = new Map<string, string>();
 
-  console.log(`Fetching ${SCHEMA_FILES.length} schema files from ${tag}...`);
+  console.log(`Fetching ${schemaFiles.length} schema files from ${tag}...`);
 
-  for (const filename of SCHEMA_FILES) {
+  for (const filename of schemaFiles) {
     const content = await fetchSchemaFile(tag, filename, verbose);
     schemas.set(filename, content);
   }
@@ -145,17 +346,20 @@ async function fetchAllSchemas(tag: string, verbose: boolean): Promise<Map<strin
   return schemas;
 }
 
-function generateCombinedSchema(version: string, schemas: Map<string, string>): string {
+function generateCombinedSchema(
+  version: string,
+  schemaFiles: readonly string[],
+  schemas: Map<string, string>
+): string {
   const header = `-- pgflow v${version} Schema
 -- Source: https://github.com/pgflow-dev/pgflow/tree/pgflow@${version}/pkgs/core/schemas/
 -- Generated by: bun scripts/pgflow/generate-schema.ts ${version}
--- Generated at: ${new Date().toISOString()}
 -- Combined from ${schemas.size} individual schema files
 `;
 
   const sections: string[] = [header];
 
-  for (const filename of SCHEMA_FILES) {
+  for (const filename of schemaFiles) {
     const content = schemas.get(filename);
     if (!content) {
       throw new Error(`Missing content for ${filename}`);
@@ -164,7 +368,7 @@ function generateCombinedSchema(version: string, schemas: Map<string, string>): 
     sections.push(`-- ============================================================================
 -- Source: ${filename}
 -- ============================================================================
-${content.trim()}
+${localSchemaContent(filename, content).trim()}
 
 `);
   }
@@ -178,6 +382,12 @@ async function updateInstallTs(version: string, dryRun: boolean, verbose: boolea
   // Update PGFLOW_VERSION constant
   const versionPattern = /export const PGFLOW_VERSION = "[^"]+"/;
   const schemaPattern = /const SCHEMA_FILE = join\(__dirname, "schema-v[^"]+\.sql"\)/;
+
+  if (!versionPattern.test(content) || !schemaPattern.test(content)) {
+    throw new Error(
+      "install.ts schema/version anchors changed; update generator before continuing"
+    );
+  }
 
   let newContent = content.replace(versionPattern, `export const PGFLOW_VERSION = "${version}"`);
   newContent = newContent.replace(
@@ -228,11 +438,14 @@ async function main(): Promise<void> {
   console.log("═".repeat(70));
   console.log("");
 
+  // Discover the upstream file set instead of carrying a fragile local copy.
+  const schemaFiles = await fetchSchemaFilenames(options.tag);
+
   // Fetch all schema files
-  const schemas = await fetchAllSchemas(options.tag, options.verbose);
+  const schemas = await fetchAllSchemas(options.tag, schemaFiles, options.verbose);
 
   // Generate combined schema
-  const combinedSchema = generateCombinedSchema(options.version, schemas);
+  const combinedSchema = generateCombinedSchema(options.version, schemaFiles, schemas);
   const outputPath = join(FIXTURES_DIR, `schema-v${options.version}.sql`);
 
   console.log("");
@@ -264,6 +477,13 @@ async function main(): Promise<void> {
         name: "headers column present",
         pass: schemaLower.includes("headers jsonb"),
         fail: "headers JSONB column should be present for pgmq 1.5.1 compatibility",
+      },
+      {
+        name: "condition resolver is defined when referenced",
+        pass:
+          !schemaLower.includes("cascade_resolve_conditions(") ||
+          schemaLower.includes("create or replace function pgflow.cascade_resolve_conditions"),
+        fail: "cascade_resolve_conditions is referenced but its schema file was not included",
       },
     ];
 
@@ -298,7 +518,7 @@ async function main(): Promise<void> {
     const sqlConfig = await loadSqlFormatterConfig();
     const rawContent = await Bun.file(outputPath).text();
     const formattedContent = formatSql(rawContent, sqlConfig);
-    await Bun.write(outputPath, formattedContent);
+    await Bun.write(outputPath, stripTrailingWhitespace(formattedContent));
     console.log("✅ Schema formatted");
   }
 

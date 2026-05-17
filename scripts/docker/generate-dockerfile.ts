@@ -45,6 +45,7 @@ interface BuildSpec {
   subdir?: string;
   features?: string[];
   noDefaultFeatures?: boolean;
+  mesonOptions?: string[];
   script?: string;
   patches?: string[];
 }
@@ -348,10 +349,10 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
           `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
       );
     }
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
       throw new Error(
         `Timescale entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be alphanumeric with underscores/hyphens and end with .so`
+          `Must be a filename with alphanumerics, dots, underscores, or hyphens and end with .so`
       );
     }
 
@@ -598,7 +599,7 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
       throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
     }
     // Validate soFileName format
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
+    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
       throw new Error(
         `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
       );
@@ -624,7 +625,11 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
     ARCH=$(dpkg --print-architecture) && \\
     ASSET="${assetPattern.replace("{arch}", "${ARCH}")}" && \\
     echo "Downloading ${entry.name} v${entry.githubReleaseTag} for $ARCH..." && \\
-    curl -fsSL "${url}/$ASSET" -o /tmp/${entry.name}.zip && \\
+    rm -rf /tmp/${entry.name} /tmp/${entry.name}.zip /tmp/${entry.name}.zip.tmp && \\
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "${url}/$ASSET" -o /tmp/${entry.name}.zip.tmp && \\
+    test -s /tmp/${entry.name}.zip.tmp || { echo "ERROR: Empty ${entry.name} release archive"; exit 1; } && \\
+    unzip -tq /tmp/${entry.name}.zip.tmp && \\
+    mv /tmp/${entry.name}.zip.tmp /tmp/${entry.name}.zip && \\
     unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\

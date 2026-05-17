@@ -232,9 +232,9 @@
       "category": "validation",
       "description": "JSON Schema validation for JSONB documents on INSERT/UPDATE.",
       "source": {
-        "type": "git-ref",
+        "type": "git",
         "repository": "https://github.com/supabase/pg_jsonschema.git",
-        "ref": "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a",
+        "tag": "v0.3.4",
         "commit": "cbe74b570d38aa0c4d42914e7a118bcb3adaee7a"
       },
       "build": {
@@ -255,6 +255,7 @@
         "defaultEnable": false,
         "notes": [
           "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+          "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
           "Source build required for latest features"
         ]
       },
@@ -580,8 +581,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
-        "tag": "pgflow@0.13.3",
-        "commit": "bd742c475d32aeb20d4cebf5ab9c5594aaa3846f"
+        "tag": "pgflow@0.14.1",
+        "commit": "c5f45ae27353eb12a040801f0e68b72115d0b118"
       },
       "runtime": {
         "sharedPreload": false,
@@ -602,6 +603,7 @@
       ],
       "notes": [
         "SQL-only schema - no compiled components",
+        "v0.14.1: Conditional step execution with skipped-state propagation",
         "v0.13.3: PGFLOW_AUTH_SECRET support, maxPgConnections fix (edge worker features)",
         "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",
         "v0.13.0: 2.17× faster Map→Map chains via atomic step output storage",
@@ -620,8 +622,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.11.0",
-        "commit": "ae5d34e096608666816d207d0c4b0342e0d58b64"
+        "tag": "v1.11.1",
+        "commit": "885251cf4dcb4853d7fa253f56e382d84d5f0821"
       },
       "build": {
         "type": "pgxs",
@@ -632,7 +634,8 @@
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.11.0 with PG18 support",
+          "Source build for latest v1.11.1 with PG18 support",
+          "v1.11.1: read_grouped_head() plus SQL-only install/upgrade parity fixes",
           "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
         ]
       },
@@ -677,14 +680,18 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.5",
-        "commit": "15c8ed3e00c65577e71071a9f1e408c9237f39e3"
+        "tag": "4.0.6",
+        "commit": "dacbeaeb088160812ca0cf6afc779f2db1ded896"
       },
       "build": {
-        "type": "pgxs"
+        "type": "meson",
+        "mesonOptions": [
+          "-Dtest=false"
+        ]
       },
       "aptPackages": [
         "cmake",
+        "meson",
         "ninja-build",
         "pkg-config",
         "libgroonga-dev",
@@ -698,7 +705,9 @@
       },
       "notes": [
         "NOT available in PGDG for PostgreSQL 18",
-        "v4.0.5: Fix LIKE/ILIKE with OR clause returning no results (GH-916)",
+        "v4.0.6: Fix pg_tokenize failure cleanup and initialize fuzzy search distance ratio",
+        "v4.0.6 switched from PGXS Makefile to Meson.",
+        "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
         "Source build required for PG18"
       ],
       "sourceUrl": "https://github.com/pgroonga/pgroonga",
@@ -819,7 +828,7 @@
       "name": "postgis",
       "kind": "extension",
       "install_via": "pgdg",
-      "pgdgVersion": "3.6.2+dfsg-1.pgdg13+1",
+      "pgdgVersion": "3.6.3+dfsg-1.pgdg13+1",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
@@ -828,8 +837,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.2",
-        "commit": "08d9b9f749fa3531591055db2a736bfb6df47006"
+        "tag": "3.6.3",
+        "commit": "3d12666588a84b23a3147618eaa9b40b0fe5e796"
       },
       "build": {
         "type": "autotools"
@@ -855,8 +864,8 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-postgis-3 (v3.6.2+dfsg-1.pgdg13+1)",
-          "Alt: Pigsty v3.6.1 (1 version behind)"
+          "PGDG: postgresql-18-postgis-3 (v3.6.3+dfsg-1.pgdg13+1)",
+          "Alt: Pigsty v3.6.1 (2 versions behind)"
         ]
       },
       "sourceUrl": "https://github.com/postgis/postgis",
@@ -958,8 +967,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.1.0",
-        "commit": "35e7314d9ae7891c7b094116c6db22b9c03c5da8"
+        "tag": "v3.2.2",
+        "commit": "64792e14681bba81c9adccdcfd598715cd052eb5"
       },
       "build": {
         "type": "pgxs"
@@ -969,7 +978,7 @@
         "preloadOnly": true,
         "defaultEnable": false,
         "notes": [
-          "v3.1.0: PG_MODULE_MAGIC_EXT support, spurious GUC warning fix",
+          "v3.2.2: Permission hint improvements plus ALTER ROLE and executor hook crash fixes",
           "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
         ]
       },
@@ -981,23 +990,23 @@
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-2-postgresql-18",
-      "timescaleVersion": "2.25.2~debian13-1803",
+      "timescaleVersion": "2.26.4~debian13-1803",
       "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.25.2",
-        "commit": "3d9e005987643878a0cd51da40abbf7d3a63d453"
+        "tag": "2.26.4",
+        "commit": "b69fa27838e21c3401ee431a730837bfa28f16e0"
       },
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "excludeFromAutoTests": false,
         "notes": [
-          "Timescale repo: timescaledb-2-postgresql-18 (v2.25.2 TSL)",
-          "v2.25.2: Bugfix release for 2.25.1",
+          "Timescale repo: timescaledb-2-postgresql-18 (v2.26.4 TSL)",
+          "v2.26.4: Bugfix release for 2.26.x continuous aggregate, compression, and planner stability fixes",
           "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
@@ -1012,7 +1021,7 @@
       "install_via": "timescale",
       "timescalePackage": "timescaledb-toolkit-postgresql-18",
       "timescaleVersion": "1:1.22.0~debian13",
-      "soFileName": "timescaledb_toolkit.so",
+      "soFileName": "timescaledb_toolkit-1.22.0.so",
       "category": "timeseries",
       "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
       "source": {
@@ -1073,7 +1082,7 @@
       "githubRepo": "timescale/pgvectorscale",
       "githubReleaseTag": "0.9.0",
       "githubAssetPattern": "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-      "soFileName": "vectorscale.so",
+      "soFileName": "vectorscale-0.9.0.so",
       "category": "ai",
       "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
       "source": {
@@ -1137,8 +1146,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.0",
-        "commit": "77d42008540975a34f97dbc0c9a21cb25bb9b46b"
+        "tag": "v0.6.1",
+        "commit": "adfb7a311baa6cef077a53b5a6055aa4f8d9a6e4"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -1163,7 +1172,7 @@
       },
       "notes": [
         "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-        "v0.6.0: New Infura and OpenAPI FDWs, ClickHouse fixes, memory context fixes.",
+        "v0.6.1: FDW parameter rescan, aggregate pushdown for enabled FDWs, dependency fixes.",
         "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest."
       ],
       "sourceUrl": "https://github.com/supabase/wrappers",

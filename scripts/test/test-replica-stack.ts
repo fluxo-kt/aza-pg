@@ -16,7 +16,7 @@
 import { $ } from "bun";
 import { resolve } from "node:path";
 import { checkCommand, checkDockerDaemon, generateUniqueProjectName } from "../utils/docker";
-import { error, info, success, warning } from "../utils/logger.ts";
+import { error, info, success, warning } from "../utils/logger";
 import { TIMEOUTS } from "../config/test-timeouts";
 
 /**
@@ -320,11 +320,7 @@ async function deployReplicaStack(config: ReplicaTestConfig): Promise<void> {
   info("Step 3: Deploying replica stack...");
 
   // Clear any existing replica data volume to force fresh pg_basebackup
-  try {
-    await $`docker volume rm postgres-replica-data`.nothrow();
-  } catch {
-    // Volume doesn't exist, ignore
-  }
+  await $`docker volume rm postgres-replica-data`.quiet().nothrow();
 
   // Generate unique project name for replica (must match network name from primary)
   const replicaProjectName = generateUniqueProjectName("aza-pg-replica-test-replica");
@@ -479,20 +475,23 @@ async function verifyHotStandby(config: ReplicaTestConfig): Promise<void> {
 
   // Test write attempt (should fail)
   info("Testing write protection on replica...");
-  try {
-    await $`docker exec ${containerId} psql -U postgres -c "CREATE TABLE test_write (id INT);"`;
-    warning("Write protection test inconclusive");
-  } catch (err) {
-    const errorOutput = err instanceof Error ? err.message : String(err);
-    if (
-      errorOutput.toLowerCase().includes("cannot execute") ||
-      errorOutput.toLowerCase().includes("read-only")
-    ) {
-      success("Replica is read-only (write protection verified)");
-    } else {
-      warning(`Write protection test inconclusive (got: '${errorOutput}')`);
-    }
+  const writeResult =
+    await $`docker exec ${containerId} psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE TABLE test_write (id INT);"`
+      .quiet()
+      .nothrow();
+  const writeOutput = `${writeResult.stdout.toString()}\n${writeResult.stderr.toString()}`.trim();
+  const readOnlyRejected =
+    writeResult.exitCode !== 0 &&
+    /cannot execute .* in a read-only transaction|read-only/i.test(writeOutput);
+
+  if (!readOnlyRejected) {
+    error(
+      `Replica write protection not verified (exit ${writeResult.exitCode}, output: ${writeOutput || "<empty>"})`
+    );
+    process.exit(1);
   }
+
+  success("Replica is read-only (write protection verified)");
 }
 
 /**
@@ -527,30 +526,24 @@ async function verifyReplicationLag(config: ReplicaTestConfig): Promise<void> {
 /**
  * Start and test postgres_exporter
  */
-async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
+async function testPostgresExporter(config: ReplicaTestConfig): Promise<boolean> {
   info("Step 7: Starting postgres_exporter on replica...");
 
-  try {
-    await $`docker compose --env-file .env.test up -d postgres_exporter`.cwd(
-      config.replicaStackPath
-    );
-  } catch (err) {
+  const startResult = await $`docker compose --env-file .env.test up -d postgres_exporter`
+    .cwd(config.replicaStackPath)
+    .quiet()
+    .nothrow();
+  if (startResult.exitCode !== 0) {
     // Check if the error is due to missing monitoring network (optional in test environments)
-    const errorMessage = String(err);
-    const stderr = (err as any)?.stderr || "";
+    const startOutput = `${startResult.stdout.toString()}\n${startResult.stderr.toString()}`.trim();
 
-    if (
-      errorMessage.includes("network monitoring") ||
-      errorMessage.includes("could not be found") ||
-      stderr.includes("network monitoring") ||
-      stderr.includes("could not be found")
-    ) {
+    if (startOutput.includes("network monitoring") || startOutput.includes("could not be found")) {
       warning("postgres_exporter startup skipped (monitoring network not available)");
       warning("This is expected in test environments without pre-configured monitoring");
-      return; // Skip exporter tests, but don't fail the entire test suite
+      return false;
     }
     error("Failed to start postgres_exporter");
-    console.error(err);
+    console.error(startOutput);
     process.exit(1);
   }
 
@@ -604,6 +597,7 @@ async function testPostgresExporter(config: ReplicaTestConfig): Promise<void> {
     }
 
     success("postgres_exporter metrics endpoint works");
+    return true;
   } catch (err) {
     error("Failed to test metrics endpoint");
     console.error(err);
@@ -725,7 +719,7 @@ async function cleanup(config: ReplicaTestConfig): Promise<void> {
 /**
  * Print test summary
  */
-function printSummary(): void {
+function printSummary(exporterVerified: boolean): void {
   console.log("");
   console.log("========================================");
   console.log("✅ All replica stack tests passed!");
@@ -739,7 +733,11 @@ function printSummary(): void {
   console.log("  ✅ Hot standby enabled - read-only queries work");
   console.log("  ✅ Write protection verified on replica");
   console.log("  ✅ Replication active (WAL replay working)");
-  console.log("  ✅ postgres_exporter functional on replica");
+  if (exporterVerified) {
+    console.log("  ✅ postgres_exporter functional on replica");
+  } else {
+    console.log("  ⏭️  postgres_exporter skipped (monitoring network unavailable)");
+  }
   console.log("");
 }
 
@@ -917,10 +915,10 @@ async function main(): Promise<void> {
     await verifyReplicationLag(config);
 
     // Step 7: Test postgres_exporter
-    await testPostgresExporter(config);
+    const exporterVerified = await testPostgresExporter(config);
 
     // Print summary
-    printSummary();
+    printSummary(exporterVerified);
   } catch (err) {
     error("Test failed");
     console.error(err);

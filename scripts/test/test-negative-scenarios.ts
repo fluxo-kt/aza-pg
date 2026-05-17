@@ -14,9 +14,16 @@
 
 import { describe, test, expect, afterAll } from "bun:test";
 import { $ } from "bun";
-import { generateUniqueContainerName } from "../utils/docker";
+import { resolve } from "node:path";
+import { generateUniqueContainerName, waitForPostgresStable } from "../utils/docker";
 
 const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
+const REPO_ROOT = resolve(import.meta.dir, "../..");
+const PGBOUNCER_IMAGE =
+  Bun.env.PGBOUNCER_IMAGE ||
+  "edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4";
+const PGBOUNCER_TEMPLATE = resolve(REPO_ROOT, "stacks/primary/configs/pgbouncer.ini.template");
+const PGBOUNCER_ENTRYPOINT = resolve(REPO_ROOT, "stacks/primary/scripts/pgbouncer-entrypoint.sh");
 
 // Store unique container names for cleanup
 const containersCreated: Set<string> = new Set();
@@ -28,6 +35,16 @@ function getUniqueContainerName(prefix: string = "aza-pg-negative-test"): string
   const name = generateUniqueContainerName(prefix);
   containersCreated.add(name);
   return name;
+}
+
+async function expectStablePostgres(containerName: string): Promise<void> {
+  const ready = await waitForPostgresStable({
+    container: containerName,
+    timeout: 90,
+    requiredSuccesses: 3,
+    checkInterval: 1000,
+  });
+  expect(ready).toBe(true);
 }
 
 /**
@@ -56,7 +73,7 @@ afterAll(async () => {
 });
 
 describe("Negative Scenarios - Invalid Memory Settings", () => {
-  test("RAM below 256MB minimum should fail with clear error", async () => {
+  test("RAM below 512MB minimum should fail with clear error", async () => {
     await cleanup();
 
     const containerName = getUniqueContainerName("aza-pg-negative-ram-low");
@@ -136,26 +153,15 @@ describe("Negative Scenarios - Missing Required Environment Variables", () => {
 
     // Try to start PgBouncer without auth configuration
     const result = await $`docker run --name ${containerName} \
-      -e PGBOUNCER_DATABASES="postgres=host=localhost port=5432 dbname=postgres" \
-      -d localhost/aza-pg-pgbouncer:latest`.nothrow();
+      -v ${PGBOUNCER_TEMPLATE}:/etc/pgbouncer/pgbouncer.ini.template:ro \
+      -v ${PGBOUNCER_ENTRYPOINT}:/opt/pgbouncer-entrypoint.sh:ro \
+      --entrypoint /bin/sh \
+      ${PGBOUNCER_IMAGE} /opt/pgbouncer-entrypoint.sh`.nothrow();
 
-    // Should fail or exit quickly due to missing auth
-    if (result.exitCode === 0) {
-      await Bun.sleep(3000);
-      const inspect =
-        await $`docker inspect ${containerName} --format='{{.State.Running}}'`.nothrow();
-      const isRunning = inspect.stdout.toString().trim() === "true";
-
-      // Either not running, or check logs for auth error
-      if (isRunning) {
-        const logs = await $`docker logs ${containerName}`.nothrow();
-        expect(logs.stdout.toString() + logs.stderr.toString()).toMatch(/auth|password|error/i);
-      } else {
-        expect(isRunning).toBe(false);
-      }
-    } else {
-      expect(result.exitCode).not.toBe(0);
-    }
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString() + result.stdout.toString()).toContain(
+      "PGBOUNCER_AUTH_PASS not set"
+    );
   }, 10000);
 });
 
@@ -176,12 +182,11 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
       return;
     }
 
-    // Wait for database to be ready
-    await Bun.sleep(5000);
+    await expectStablePostgres(containerName);
 
     // Try to create a non-existent extension
     const result = await $`docker exec ${containerName} \
-      psql -U postgres -c "CREATE EXTENSION nonexistent_extension"`.nothrow();
+      psql -v ON_ERROR_STOP=1 -U postgres -c "CREATE EXTENSION nonexistent_extension"`.nothrow();
 
     expect(result.exitCode).not.toBe(0);
     // PostgreSQL 18 changed error message from "does not exist" to "is not available"
@@ -206,12 +211,11 @@ describe("Negative Scenarios - Invalid Extension Combinations", () => {
       return;
     }
 
-    // Wait for database to be ready
-    await Bun.sleep(5000);
+    await expectStablePostgres(containerName);
 
     // Try to create an extension that doesn't exist
     const result = await $`docker exec ${containerName} \
-      psql -U postgres -c "CREATE EXTENSION fake_extension"`.nothrow();
+      psql -v ON_ERROR_STOP=1 -U postgres -c "CREATE EXTENSION fake_extension"`.nothrow();
 
     expect(result.exitCode).not.toBe(0);
     // PostgreSQL 18 changed error message from "does not exist" to "is not available"
@@ -240,7 +244,7 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
       return;
     }
 
-    await Bun.sleep(5000);
+    await expectStablePostgres(containerName);
 
     // Get the actual data directory path
     const dataDirResult = await $`docker exec ${containerName} \
@@ -260,21 +264,17 @@ describe("Negative Scenarios - Configuration Conflicts", () => {
 
     expect(configResult.exitCode).toBe(0);
 
-    // Reload configuration (should fail or warn)
+    // Reloading invalid syntax can return success because pg_reload_conf() only
+    // signals PostgreSQL to re-read the file; the server reports parse failures
+    // asynchronously in logs.
     const reloadResult = await $`docker exec ${containerName} \
       psql -U postgres -c "SELECT pg_reload_conf()"`.nothrow();
 
-    // PostgreSQL may accept it or reject it depending on syntax
-    // Check logs for any warnings
     const logs = await $`docker logs ${containerName} 2>&1 | tail -50`.nothrow();
     const logOutput = logs.stdout.toString();
 
-    // Either reload failed, or logs should show warning
-    if (reloadResult.exitCode === 0) {
-      // Check if logs contain syntax warnings (optional, as PG may be lenient)
-      // This test primarily verifies we can detect config issues
-      expect(logOutput).toBeDefined();
-    }
+    expect(reloadResult.exitCode).toBe(0);
+    expect(logOutput).toMatch(/syntax error|configuration file .*contains errors/i);
 
     await cleanup();
   }, 20000);
@@ -340,12 +340,10 @@ describe("Negative Scenarios - Resource Constraints", () => {
 
     await Bun.sleep(5000);
 
-    // Container should start but may have warnings
     const logs = await $`docker logs ${containerName} 2>&1`.nothrow();
     const logOutput = logs.stdout.toString();
 
-    // Verify container adapted settings or logged warnings
-    expect(logOutput).toBeDefined();
+    expect(logOutput).toMatch(/FATAL.*minimum.*512MB.*REQUIRED/i);
 
     await cleanup();
   }, 20000);
@@ -376,14 +374,9 @@ describe("Negative Scenarios - Network Configuration", () => {
       await $`docker inspect ${containerName} --format='{{.State.Running}}'`.nothrow();
     const isRunning = inspect.stdout.toString().trim() === "true";
 
-    if (isRunning) {
-      const logs = await $`docker logs ${containerName} 2>&1`.nothrow();
-      // Should either fail or log error about invalid IP
-      expect(logs.stdout.toString()).toMatch(/invalid|error|could not|bind/i);
-    } else {
-      // Container failed to start
-      expect(isRunning).toBe(false);
-    }
+    const logs = await $`docker logs ${containerName} 2>&1`.nothrow();
+    expect(isRunning).toBe(false);
+    expect(logs.stdout.toString()).toMatch(/invalid|error|could not|bind/i);
 
     await cleanup();
   }, 20000);

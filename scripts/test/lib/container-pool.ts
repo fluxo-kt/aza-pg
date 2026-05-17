@@ -27,7 +27,7 @@
  */
 
 import { $ } from "bun";
-import { getSharedPreloadLibraries } from "./test-mode.ts";
+import { getSharedPreloadLibraries } from "./test-mode";
 
 export interface PoolConfig {
   /** Number of containers to pre-warm (default: 2) */

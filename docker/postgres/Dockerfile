@@ -6,7 +6,7 @@
 
 # PostgreSQL 18.3 with comprehensive extension suite
 
-FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d AS builder-base
+FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -67,7 +67,13 @@ RUN set -euo pipefail && \
 # SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
 RUN set -euo pipefail && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -162,7 +168,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.3-trixie@sha256:69e8582b781cb44fa4557b98ed586fe68361e320d9b12f9707494335634f4f3d
+FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -277,13 +283,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.25.2~debian13-1803 timescaledb-2-loader-postgresql-18=2.25.2~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.26.4~debian13-1803 timescaledb-2-loader-postgresql-18=2.26.4~debian13-1803 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/timescaledb.so && \
-    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit.so && \
+    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.22.0.so && \
     echo "All 2 Timescale .so files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*; \
@@ -311,25 +317,31 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 
-# Replace gosu (Go binary, CVE-2025-68121 CRITICAL, CVSS 8.8) with su-exec (pure C, no Go stdlib).
-# APPROACH: Self-contained final-stage compilation + dpkg purge of gosu package.
+# Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
+# APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
+# by stale cross-stage COPY cache entries.
 # Prior approaches failed (listed oldest→latest):
 #   1. COPY --from=builder-base: stale GHA cached layer
 #   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
 #   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
 #   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
-#   5. Self-contained compile without dpkg purge: apt-get install in next step detected file hash
-#      mismatch (we replaced gosu's file but dpkg still owned it) and reinstalled gosu from the
-#      --mount=type=cache,target=/var/cache/apt persistent apt cache.
-# Fix: purge gosu package from dpkg AFTER compiling su-exec, BEFORE placing it. This removes dpkg's
-# ownership so subsequent apt operations cannot reinstate gosu. Also exclude gosu from builder-pgxs
-# rsync to avoid creating an unnecessary intermediate layer with the Go binary.
+#   5. apt-get purge gosu: no-op for postgres:18.3-trixie because gosu is a direct
+#      binary download in the base image, not a dpkg-owned file.
+# Fix: compile and install su-exec directly in the final stage, then verify the binary size
+# is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
+# creating an unnecessary intermediate layer with the Go binary.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
     apt-get update && \
     apt-get install -y --no-install-recommends build-essential git ca-certificates && \
-    git clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && \
+    rm -rf /tmp/su-exec-build && \
+    for attempt in 1 2 3 4 5; do \
+        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
+        rm -rf /tmp/su-exec-build; \
+        [ "$attempt" != "5" ] || exit 1; \
+        sleep 2; \
+    done && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
@@ -358,7 +370,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     ARCH=$(dpkg --print-architecture) && \
     ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
     echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
-    curl -fsSL "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip && \
+    rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip.tmp && \
+    test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
+    unzip -tq /tmp/vectorscale.zip.tmp && \
+    mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
     unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
     # Install the .deb package (skip debug symbols package)
     DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
@@ -369,11 +385,31 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "✓ Installed vectorscale v0.9.0" && \
     # Verify .so files exist
     echo "Verifying GitHub release .so files..." && \
-    test -f /usr/lib/postgresql/18/lib/vectorscale.so && \
+    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.0.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
     # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
     find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
     # Clean apt lists (Dockle DKL-DI-0005)
+    rm -rf /var/lib/apt/lists/*
+
+# Remove package-manager helpers needed only while installing repositories and release assets.
+# Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
+RUN set -euo pipefail && \
+    apt-get purge -y --auto-remove \
+      curl \
+      dirmngr \
+      gnupg \
+      gnupg-l10n \
+      gnupg2 \
+      gpg \
+      gpg-agent \
+      gpgconf \
+      gpgsm \
+      gpgv \
+      lsb-release \
+      percona-release \
+      unzip && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
@@ -411,7 +447,7 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.13.3.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema-v0.14.1.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
 
 # Consolidate all chmod operations into single RUN (better layer caching)

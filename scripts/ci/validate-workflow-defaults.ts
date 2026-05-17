@@ -14,7 +14,7 @@
  */
 
 import { resolve } from "node:path";
-import { extensionDefaults, extractSemanticVersion } from "../extension-defaults.ts";
+import { extensionDefaults, extractSemanticVersion } from "../extension-defaults";
 
 interface ValidationResult {
   field: string;

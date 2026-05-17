@@ -20,23 +20,23 @@
     "description": "PGroonga full-text search (optimized build)"
   },
   "timescaledb_toolkit": {
-    "min": 2.0,
-    "max": 4.0,
-    "description": "TimescaleDB analytical hyperfunctions"
+    "min": 12.0,
+    "max": 12.8,
+    "description": "TimescaleDB analytical hyperfunctions (versioned shared library)"
   },
   "pg_jsonschema": {
-    "min": 4.0,
-    "max": 4.5,
+    "min": 3.0,
+    "max": 3.4,
     "description": "JSON Schema validation (Rust/pgrx, current optimized build)"
   },
   "wrappers": {
-    "min": 1.5,
-    "max": 3.0,
-    "description": "Supabase foreign data wrappers (Rust/pgrx)"
+    "min": 0.25,
+    "max": 0.45,
+    "description": "Supabase foreign data wrappers (Rust/pgrx, versioned shared library)"
   },
   "vectorscale": {
-    "min": 1.0,
-    "max": 2.5,
-    "description": "pgvectorscale DiskANN index (prebuilt GitHub release binary)"
+    "min": 0.8,
+    "max": 1.1,
+    "description": "pgvectorscale DiskANN index (versioned prebuilt GitHub release binary)"
   }
 }

@@ -13,8 +13,8 @@
 
 import { getErrorMessage } from "./utils/errors";
 import { join } from "node:path";
-import { error, info, section, testSummary } from "./utils/logger.ts";
-import type { TestResult } from "./utils/logger.ts";
+import { error, info, section, testSummary } from "./utils/logger";
+import type { TestResult } from "./utils/logger";
 import { Glob } from "bun";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");

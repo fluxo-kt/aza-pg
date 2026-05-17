@@ -21,8 +21,11 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
-import { error, info, section, success, warning } from "./utils/logger.ts";
+import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
+
+const HADOLINT_IMAGE =
+  "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
 
 /**
  * Validation check configuration
@@ -234,6 +237,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Release Process Contracts",
+      command: ["bun", "scripts/ci/validate-release-process.ts"],
+      description: "Validate release command, publish workflow, and release harness contracts",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly
@@ -358,12 +367,12 @@ async function validate(
             "-c",
             // CI mode: JSON output for SARIF upload. Use jq to check for empty array ([] = no errors)
             // because shellcheck outputs [] even with no errors, which is 2 bytes, not 0
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e 'length == 0' shellcheck-results.json > /dev/null",
+            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e \'length == 0\' shellcheck-results.json > /dev/null',
           ]
         : [
             "sh",
             "-c",
-            "git ls-files '*.sh' | grep -v -E \"^(node_modules/|\\.git/|\\.archived/)\" | xargs -r shellcheck",
+            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck',
           ],
       description: "Shell script linting",
       required: true,
@@ -375,12 +384,12 @@ async function validate(
         ? [
             "sh",
             "-c",
-            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q \'"level":"error"\' hadolint-results.sarif',
+            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q '"level":"error"' hadolint-results.sarif`,
           ]
         : [
             "sh",
             "-c",
-            'docker run --rm -i -v "$(pwd):/work:ro" hadolint/hadolint hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile',
+            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
           ],
       description: "Dockerfile linting",
       required: true,
@@ -397,11 +406,7 @@ async function validate(
     },
     {
       name: "Secret Scan",
-      command: [
-        "sh",
-        "-c",
-        'git ls-files | grep -v -E "(\\.env\\.example|\\.archived/|\\.github/|docs/|deployments/|\\.[^/]*rc$|\\.test\\.ts$|test-.*\\.ts$)" | xargs grep -nHiE "(password|secret|api[_-]?key|token)\\s*[:=]" | grep -v -E "(\\$\\{\\{|id-token:|password.*test|PASSWORD.*test)" || true',
-      ],
+      command: ["bun", "scripts/security/secret-scan.ts", "--warn-only", "--profile", "validate"],
       description: "Scan for potential secrets in tracked files (warn-only)",
       required: false,
     },
@@ -414,9 +419,12 @@ async function validate(
         // and breaking docker-credential helpers and build tools (cargo, etc.). All .env() calls
         // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Covers scripts/ AND docker/postgres/
         // (build-extensions.ts uses cargo subprocess that also needs HOME/CARGO_HOME/RUSTUP_HOME).
-        // Uses -F (fixed string) for the filter — avoids BSD/GNU grep regex-escaping differences.
+        // Uses -F (fixed string) for the spread filters — avoids BSD/GNU grep regex-escaping differences.
         // validate.ts excluded — its description string contains ".env({" as a literal example.
-        'result=$(git ls-files scripts/ docker/postgres/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
+        // Comment lines excluded — grep output format is "file:line:content"; pattern ":[0-9]+:[[:space:]]*//'"
+        // catches lines whose content starts with // (allowing leading whitespace), preventing false-positives
+        // on comments that explain the anti-pattern (e.g. "// bare .env({ PATH }) would strip…").
+        'result=$(git ls-files scripts/ docker/postgres/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" | grep -Ev ":[0-9]+:[[:space:]]*//" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
       ],
       description:
         "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",

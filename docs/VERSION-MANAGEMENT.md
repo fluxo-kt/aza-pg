@@ -389,7 +389,7 @@ If assets don't exist, stay on current version.
   githubRepo: "timescale/pgvectorscale",
   githubReleaseTag: "0.10.0",  // ← Update this
   githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-  soFileName: "vectorscale.so",
+  soFileName: "vectorscale-0.10.0.so",
   source: {
     type: "git",
     repository: "https://github.com/timescale/pgvectorscale.git",
@@ -571,7 +571,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
 **File:** `.tool-versions` (asdf/mise format)
 
 ```
-bun 1.3.5
+bun 1.3.13
 ```
 
 **Other build tools** (not pinned, use system packages):

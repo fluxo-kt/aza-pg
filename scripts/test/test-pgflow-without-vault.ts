@@ -14,8 +14,8 @@
  */
 
 import { $ } from "bun";
-import { TestHarness } from "./harness.ts";
-import { error, info, success } from "../utils/logger.ts";
+import { TestHarness } from "./harness";
+import { error, info, success } from "../utils/logger";
 
 const IMAGE_TAG = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
 Bun.env.POSTGRES_IMAGE = IMAGE_TAG; // Set env var for harness to use

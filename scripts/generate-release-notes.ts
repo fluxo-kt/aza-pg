@@ -35,7 +35,7 @@
  */
 
 import { join } from "node:path";
-import type { ManifestEntry } from "./extensions/manifest-data.ts";
+import type { ManifestEntry } from "./extensions/manifest-data";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");

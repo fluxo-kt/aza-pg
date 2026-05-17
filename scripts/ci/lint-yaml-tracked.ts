@@ -13,6 +13,8 @@ import { error, info, section, success } from "../utils/logger";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const WORKFLOW_PREFIX = ".github/workflows/";
+const YAMLLINT_IMAGE =
+  "cytopia/yamllint@sha256:3e9eb827ab2b12a5ea5f49d4257bb3aca94bba9f1ba427c8bc7f2456385a5204";
 const RELAXED_LINE_LENGTH_FILES = new Set([
   "deployments/phase1-single-vps/prometheus/postgres_exporter_queries.yaml",
 ]);
@@ -44,7 +46,13 @@ async function listTrackedYamlFiles(): Promise<string[]> {
     throw new Error(`git ls-files failed: ${stderr || "unknown error"}`);
   }
 
-  return normalizePaths(stdout);
+  const candidates = normalizePaths(stdout);
+  const existing = await Promise.all(
+    candidates.map(async (file) =>
+      (await Bun.file(path.join(REPO_ROOT, file)).exists()) ? file : ""
+    )
+  );
+  return existing.filter(Boolean);
 }
 
 async function runYamllint(configPath: string, files: string[]): Promise<void> {
@@ -58,7 +66,7 @@ async function runYamllint(configPath: string, files: string[]): Promise<void> {
     `${REPO_ROOT}:/work:ro`,
     "-w",
     "/work",
-    "cytopia/yamllint",
+    YAMLLINT_IMAGE,
     "-c",
     configPath,
     ...files,

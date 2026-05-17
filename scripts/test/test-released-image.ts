@@ -159,9 +159,13 @@ async function runCommand(command: string[]): Promise<{ success: boolean; output
 /**
  * Run a command with live output (inherit stdio)
  */
-async function runCommandLive(command: string[]): Promise<boolean> {
+async function runCommandLive(
+  command: string[],
+  env: Record<string, string> = {}
+): Promise<boolean> {
   try {
     const proc = Bun.spawn(command, {
+      env: { ...Bun.env, ...env },
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -179,13 +183,14 @@ async function runCommandLive(command: string[]): Promise<boolean> {
 async function runPhase(
   name: string,
   command: string[],
-  description: string
+  description: string,
+  env: Record<string, string> = {}
 ): Promise<PhaseResult> {
   const startTime = Date.now();
 
   info(`Running: ${description}`);
 
-  const passed = await runCommandLive(command);
+  const passed = await runCommandLive(command, env);
   const duration = Date.now() - startTime;
 
   if (passed) {
@@ -201,6 +206,13 @@ async function runPhase(
     passed,
     duration,
     error: passed ? undefined : "Phase failed (see output above)",
+  };
+}
+
+function imageEnv(imageTag: string): Record<string, string> {
+  return {
+    EXPECTED_POSTGRES_IMAGE: imageTag,
+    POSTGRES_IMAGE: imageTag,
   };
 }
 
@@ -315,7 +327,8 @@ async function phase3ImageTest(imageTag: string): Promise<PhaseResult[]> {
     await runPhase(
       "Comprehensive image test",
       ["bun", "scripts/docker/test-image.ts", imageTag],
-      "Filesystem, runtime, tools verification (~27 functional tests)"
+      "Filesystem, runtime, tools verification (~27 functional tests)",
+      imageEnv(imageTag)
     )
   );
 
@@ -333,7 +346,8 @@ async function phase4AutoConfig(imageTag: string): Promise<PhaseResult[]> {
     await runPhase(
       "Auto-config tests",
       ["bun", "scripts/test/test-auto-config.ts", imageTag],
-      "RAM/CPU detection and scaling across memory tiers"
+      "RAM/CPU detection and scaling across memory tiers",
+      imageEnv(imageTag)
     )
   );
 
@@ -352,7 +366,8 @@ async function phase5Extensions(imageTag: string, fastMode: boolean): Promise<Ph
     await runPhase(
       "Extension tests",
       ["bun", "scripts/test/test-extensions.ts", imageTag],
-      "Dynamically generated extension tests from manifest"
+      "Dynamically generated extension tests from manifest",
+      imageEnv(imageTag)
     )
   );
 
@@ -362,7 +377,8 @@ async function phase5Extensions(imageTag: string, fastMode: boolean): Promise<Ph
       await runPhase(
         "Comprehensive extension functional tests",
         ["bun", "scripts/test/test-all-extensions-functional.ts", imageTag],
-        "All enabled extensions functional tests"
+        "All enabled extensions functional tests",
+        imageEnv(imageTag)
       )
     );
 
@@ -370,7 +386,8 @@ async function phase5Extensions(imageTag: string, fastMode: boolean): Promise<Ph
       await runPhase(
         "Hook extensions tests",
         ["bun", "scripts/test/test-hook-extensions.ts", imageTag],
-        "Extensions using shared_preload_libraries hooks"
+        "Extensions using shared_preload_libraries hooks",
+        imageEnv(imageTag)
       )
     );
 
@@ -378,7 +395,8 @@ async function phase5Extensions(imageTag: string, fastMode: boolean): Promise<Ph
       await runPhase(
         "Disabled extensions tests",
         ["bun", "scripts/test/test-disabled-extensions.ts", imageTag],
-        "Verify disabled extensions are properly excluded"
+        "Verify disabled extensions are properly excluded",
+        imageEnv(imageTag)
       )
     );
 
@@ -386,7 +404,8 @@ async function phase5Extensions(imageTag: string, fastMode: boolean): Promise<Ph
       await runPhase(
         "Integration extension combinations",
         ["bun", "scripts/test/test-integration-extension-combinations.ts", imageTag],
-        "Critical extension combinations (timescaledb+pgvector, postgis+pgroonga, etc.)"
+        "Critical extension combinations (timescaledb+pgvector, postgis+pgroonga, etc.)",
+        imageEnv(imageTag)
       )
     );
   }
@@ -407,7 +426,8 @@ async function phase6StackDeployment(imageTag: string, fastMode: boolean): Promi
       await runPhase(
         "Single stack deployment",
         ["bun", "scripts/test/test-single-stack.ts", imageTag],
-        "Single-node stack deployment test"
+        "Single-node stack deployment test",
+        imageEnv(imageTag)
       )
     );
   }
@@ -427,16 +447,18 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
     results.push(
       await runPhase(
         "PgBouncer health check",
-        ["bun", "scripts/test/test-pgbouncer-healthcheck.ts", imageTag],
-        "PgBouncer healthcheck and authentication"
+        ["bun", "scripts/test/test-pgbouncer-healthcheck.ts"],
+        "PgBouncer healthcheck and authentication",
+        imageEnv(imageTag)
       )
     );
 
     results.push(
       await runPhase(
         "PgBouncer failure scenarios",
-        ["bun", "scripts/test/test-pgbouncer-failures.ts", imageTag],
-        "PgBouncer error handling (wrong password, missing .pgpass, etc.)"
+        ["bun", "scripts/test/test-pgbouncer-failures.ts"],
+        "PgBouncer error handling (wrong password, missing .pgpass, etc.)",
+        imageEnv(imageTag)
       )
     );
 
@@ -444,7 +466,8 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
       await runPhase(
         "pgflow schema tests",
         ["bun", "scripts/test/test-pgflow-schema.ts", imageTag],
-        "pgflow schema verification (table/function/type counts)"
+        "pgflow schema verification (table/function/type counts)",
+        imageEnv(imageTag)
       )
     );
 
@@ -452,7 +475,8 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
       await runPhase(
         "pgflow functional tests",
         ["bun", "scripts/test/test-pgflow-functional.ts", imageTag],
-        "Comprehensive pgflow workflow orchestration"
+        "Comprehensive pgflow workflow orchestration",
+        imageEnv(imageTag)
       )
     );
 
@@ -460,7 +484,8 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
       await runPhase(
         "pgmq functional tests",
         ["bun", "scripts/test/test-pgmq-functional.ts", imageTag],
-        "PostgreSQL message queue functional tests"
+        "PostgreSQL message queue functional tests",
+        imageEnv(imageTag)
       )
     );
 
@@ -468,7 +493,8 @@ async function phase7Features(imageTag: string, fastMode: boolean): Promise<Phas
       await runPhase(
         "Security tests",
         ["bun", "test", "./scripts/test/test-security.ts"],
-        "SCRAM-SHA-256 auth, pgAudit, network binding"
+        "SCRAM-SHA-256 auth, pgAudit, network binding",
+        imageEnv(imageTag)
       )
     );
   }
@@ -488,8 +514,9 @@ async function phase8Regression(imageTag: string, fastMode: boolean): Promise<Ph
     results.push(
       await runPhase(
         "Regression tests",
-        ["bun", "scripts/test/run-all-regression-tests.ts", imageTag],
-        "All regression test tiers (Tier 1-3)"
+        ["bun", "scripts/test/run-all-regression-tests.ts"],
+        "All regression test tiers (Tier 1-3)",
+        imageEnv(imageTag)
       )
     );
   }
@@ -500,7 +527,10 @@ async function phase8Regression(imageTag: string, fastMode: boolean): Promise<Ph
 /**
  * Phase 9: Negative scenarios
  */
-async function phase9NegativeScenarios(fastMode: boolean): Promise<PhaseResult[]> {
+async function phase9NegativeScenarios(
+  imageTag: string,
+  fastMode: boolean
+): Promise<PhaseResult[]> {
   section("Phase 9: Negative Scenario Tests");
   const results: PhaseResult[] = [];
 
@@ -510,7 +540,8 @@ async function phase9NegativeScenarios(fastMode: boolean): Promise<PhaseResult[]
       await runPhase(
         "Negative scenarios",
         ["bun", "scripts/test/test-negative-scenarios.ts"],
-        "Error handling and validation scenarios"
+        "Error handling and validation scenarios",
+        imageEnv(imageTag)
       )
     );
   }
@@ -615,7 +646,7 @@ async function main(): Promise<void> {
     allResults.push(...(await phase8Regression(imageTag, fastMode)));
 
     // Phase 9: Negative scenarios
-    allResults.push(...(await phase9NegativeScenarios(fastMode)));
+    allResults.push(...(await phase9NegativeScenarios(imageTag, fastMode)));
 
     // Print final summary
     const totalDuration = Date.now() - startTime;

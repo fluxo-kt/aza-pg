@@ -10,15 +10,28 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Security
+
+- **Final image attack surface**: Purges install-only `curl`, `unzip`, GnuPG CLI tools, `lsb-release`, and `percona-release` after all repositories and release assets are installed; PostgreSQL runtime libraries and extension tools remain installed.
+
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
+- **Base image refresh**: Updated `postgres:18.3-trixie` digest to the current Docker Hub manifest for reproducible rebuilds
+- **TimescaleDB 2.25.2 → 2.26.4**: Bugfix updates for continuous aggregates, compression, upgrade handling, and planner stability
+- **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
+- **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes
+- **supautils 3.1.0 → 3.2.2**: Adds privilege-error hints and fixes ALTER ROLE hook and executor hook crash paths
+- **wrappers 0.6.0 → 0.6.1**: Updates the FDW framework with parameter rescan, aggregate pushdown for enabled FDWs, and dependency fixes
+- **PGroonga 4.0.5 → 4.0.6**: Fixes tokenizer error cleanup and fuzzy search distance initialization
 - **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
 - **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
 
 ### Development
 
-- GitHub Actions: docker/setup-buildx-action v3→v4, docker/build-push-action v6→v7, docker/metadata-action v5→v6 (Node.js 24 runtime bumps); trivy-action 0.34→0.35; new Junie AI review workflows; SHA pins refreshed across all workflows
+- Dev deps: Bun 1.3.13, @pgflow/client/dsl 0.14.1, oxlint 1.64.0, squawk-cli 2.51.0
+- Disabled/regression-only catalog sync: PostGIS 3.6.3; pg_jsonschema now pinned to release tag v0.3.4
+- GitHub Actions pins refreshed; release gates now verify public manifests, signatures, SBOM, attestation, and GitHub Release digest
 
 ---
 
@@ -118,7 +131,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **pgflow v0.13.1 Supabase Compatibility Layer**: Full integration with Supabase-to-standalone PostgreSQL compatibility
   - `realtime.send()` stub replacing Supabase Realtime API (3-layer: pg_notify + pgmq + pg_net webhooks)
-  - Template1 installation: ALL new databases inherit pgflow compatibility automatically
+  - Template1 installation: new databases inherit the `realtime.send()` compatibility stub automatically
   - Custom installation marker (`app.aza_pg_custom`) for environment detection
   - Comprehensive documentation: `docs/PGFLOW.md`
   - Test suite: `test-pgflow-security.ts`, `test-pgflow-new-database.ts`

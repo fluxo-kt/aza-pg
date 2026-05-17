@@ -25,8 +25,8 @@
  */
 
 import { $ } from "bun";
-import { detectTestMode, getTestModeSummary, type TestMode } from "./lib/test-mode.ts";
-import { CI_FAST_TESTS } from "./lib/test-groups.ts";
+import { detectTestMode, getTestModeSummary, type TestMode } from "./lib/test-mode";
+import { CI_FAST_TESTS } from "./lib/test-groups";
 
 interface Config {
   mode: TestMode;

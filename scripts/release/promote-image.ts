@@ -797,7 +797,9 @@ async function promoteImage(options: Options): Promise<void> {
     // Verify expected digest if provided
     if (options.expectedDigest) {
       console.log();
-      await verifyExpectedDigest(options.tags[0]!, options.expectedDigest);
+      for (const tag of options.tags) {
+        await verifyExpectedDigest(tag, options.expectedDigest);
+      }
     }
 
     console.log();

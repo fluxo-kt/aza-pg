@@ -12,6 +12,11 @@ export class TestHarness {
 
   constructor() {
     this.image = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
+    if (Bun.env.EXPECTED_POSTGRES_IMAGE && Bun.env.EXPECTED_POSTGRES_IMAGE !== this.image) {
+      throw new Error(
+        `POSTGRES_IMAGE mismatch: expected ${Bun.env.EXPECTED_POSTGRES_IMAGE}, got ${this.image}`
+      );
+    }
     this.prefix = `test-${Date.now()}-${process.pid}`;
 
     // Ensure cleanup on exit

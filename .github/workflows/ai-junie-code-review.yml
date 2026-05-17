@@ -42,7 +42,7 @@ jobs:
       # https://github.com/JetBrains/junie-github-action/blob/main/action.yml
       - name: Run Junie Review
         id: junie-review
-        uses: JetBrains/junie-github-action@fe548a7e4054c23c5314631757f7cd5abab8a0cf # v1.4.1
+        uses: JetBrains/junie-github-action@b534ee3eafeca7f2c02d0c3e22854afc2979a984 # v1.4.2
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}
           # Alternatively, write your custom review instructions in the prompt field

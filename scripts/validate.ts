@@ -237,6 +237,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Release Process Contracts",
+      command: ["bun", "scripts/ci/validate-release-process.ts"],
+      description: "Validate release command, publish workflow, and release harness contracts",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly

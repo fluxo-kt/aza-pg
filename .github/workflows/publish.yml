@@ -424,7 +424,25 @@ jobs:
           bun scripts/docker/validate-manifest.ts \
             --manifest "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --platforms "linux/amd64,linux/arm64" \
-            --require-annotations
+            --exact-platforms \
+            --require-annotations \
+            --title "aza-pg Single-Node PostgreSQL" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --created "${{ needs.prep.outputs.timestamp }}" \
+            --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+            --licenses "MIT" \
+            --url "${{ github.server_url }}/${{ github.repository }}" \
+            --authors "fluxo-kt" \
+            --version "${{ needs.prep.outputs.image_tag }}" \
+            --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+            --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+            --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+            --revision "${{ env.RELEASE_SHA }}" \
+            --source-url "${{ github.server_url }}/${{ github.repository }}" \
+            --verify-source \
+            --expected-digest "${{ needs.merge.outputs.image_digest }}"
 
       - name: Verify PostgreSQL version in merged image
         run: |
@@ -939,7 +957,7 @@ jobs:
           skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
@@ -1092,6 +1110,37 @@ jobs:
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
+      - name: Verify production manifests
+        run: |
+          set -euo pipefail
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            bun scripts/docker/validate-manifest.ts \
+              --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" \
+              --expected-digest "${{ needs.merge.outputs.image_digest }}" \
+              --platforms "linux/amd64,linux/arm64" \
+              --exact-platforms \
+              --require-annotations \
+              --title "aza-pg Single-Node PostgreSQL" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --created "${{ needs.prep.outputs.timestamp }}" \
+              --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+              --licenses "MIT" \
+              --url "${{ github.server_url }}/${{ github.repository }}" \
+              --authors "fluxo-kt" \
+              --version "${{ needs.prep.outputs.image_tag }}" \
+              --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+              --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+              --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+              --revision "${{ env.RELEASE_SHA }}" \
+              --source-url "${{ github.server_url }}/${{ github.repository }}"
+          done
+
       - name: Sign all convenience tags
         run: |
           set -euo pipefail
@@ -1127,6 +1176,12 @@ jobs:
 
           echo "✅ All signatures verified successfully"
 
+      - name: Verify public SBOM
+        run: |
+          set -euo pipefail
+          bun scripts/release/verify-sbom.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
       - name: Attest container image provenance
         id: attest
         if: success()
@@ -1140,6 +1195,15 @@ jobs:
           push-to-registry: true
           # Display attestation summary in workflow run (default: true, explicit for clarity)
           show-summary: true
+
+      - name: Verify public attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh attestation verify \
+            "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
+            --owner fluxo-kt
 
       - name: Generate release summary
         run: |
@@ -1184,8 +1248,7 @@ jobs:
           - **Total catalog entries:** ${{ needs.prep.outputs.catalog_total }}
           - **Enabled extensions:** ${{ needs.prep.outputs.catalog_enabled }}
           - **Disabled extensions:** ${{ needs.prep.outputs.catalog_disabled }}
-          - **Preloaded by default:** 4 (auto_explain module, pg_cron, pg_stat_statements, pgaudit)
-          - **Auto-created extensions:** 6 (pg_cron, pg_stat_statements, pg_trgm, pgaudit, plpgsql, vector)
+          - **Preload and auto-create details:** See generated release notes and docs for the manifest-derived lists.
 
           ## Platforms
 
@@ -1453,6 +1516,106 @@ jobs:
           echo "✅ GitHub Release created: v${{ needs.prep.outputs.version_tag }}"
           echo "🔗 View at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.prep.outputs.version_tag }}"
 
+  verify-public-release:
+    name: Verify Public Release
+    runs-on: ubuntu-latest
+    needs: [prep, merge, release, create-release]
+    if: success()
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.4"
+
+      - name: Verify GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun scripts/release/verify-github-release.ts \
+            --repository "${{ github.repository }}" \
+            --tag "v${{ needs.prep.outputs.version_tag }}" \
+            --expected-commit "${{ env.RELEASE_SHA }}" \
+            --image-tag "${{ needs.prep.outputs.image_tag }}" \
+            --digest "${{ needs.merge.outputs.image_digest }}"
+
+      - name: Verify public manifests
+        run: |
+          set -euo pipefail
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            bun scripts/docker/validate-manifest.ts \
+              --manifest "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" \
+              --expected-digest "${{ needs.merge.outputs.image_digest }}" \
+              --platforms "linux/amd64,linux/arm64" \
+              --exact-platforms \
+              --require-annotations \
+              --title "aza-pg Single-Node PostgreSQL" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --created "${{ needs.prep.outputs.timestamp }}" \
+              --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
+              --licenses "MIT" \
+              --url "${{ github.server_url }}/${{ github.repository }}" \
+              --authors "fluxo-kt" \
+              --version "${{ needs.prep.outputs.image_tag }}" \
+              --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
+              --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
+              --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
+              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
+              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
+              --revision "${{ env.RELEASE_SHA }}" \
+              --source-url "${{ github.server_url }}/${{ github.repository }}"
+          done
+
+      - name: Verify public signatures, SBOM, and attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
+          for tag in "${{ needs.prep.outputs.image_tag }}" \
+                     "${{ needs.prep.outputs.pg_version_full }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_major }}-single-node" \
+                     "${{ needs.prep.outputs.pg_version_full }}" \
+                     "${{ needs.prep.outputs.pg_version_major }}"; do
+            cosign verify \
+              --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+          done
+
+          bun scripts/release/verify-sbom.ts \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}"
+
+          gh attestation verify \
+            "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
+            --owner fluxo-kt
+
   cleanup:
     name: Cleanup Testing Artifacts
     runs-on: ubuntu-latest
@@ -1467,6 +1630,8 @@ jobs:
         test-complete,
         scan,
         release,
+        create-release,
+        verify-public-release,
       ]
     # Run cleanup after all jobs complete — including on test/scan failures.
     # Skipped when prep is skipped (CI cancelled = nothing was built = no testing images to clean up).

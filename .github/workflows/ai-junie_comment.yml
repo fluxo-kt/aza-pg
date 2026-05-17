@@ -47,6 +47,6 @@ jobs:
       - name: Run Junie
         id: junie
         timeout-minutes: 20
-        uses: JetBrains/junie-github-action@fe548a7e4054c23c5314631757f7cd5abab8a0cf # v1.4.1
+        uses: JetBrains/junie-github-action@b534ee3eafeca7f2c02d0c3e22854afc2979a984 # v1.4.2
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}

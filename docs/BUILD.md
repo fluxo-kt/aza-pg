@@ -117,7 +117,9 @@ Automatic on `release` branch:
 - Pushes to `ghcr.io/fluxo-kt/aza-pg`
 - Tagged with version and convenience tags
 
-**GitHub Environment Setup:** The publish workflow requires a `production` GitHub Environment with manual approval. See [GITHUB_ENVIRONMENT_SETUP.md](GITHUB_ENVIRONMENT_SETUP.md) for configuration steps.
+`publish.yml` is part of the release contract: current releases are automatic after the build, test, scan, manifest, signature, SBOM, attestation, GitHub Release, and public-artifact gates pass. Do not add a GitHub Environment approval gate without explicitly approving that release-contract change. If that change is approved, use [GITHUB_ENVIRONMENT_SETUP.md](GITHUB_ENVIRONMENT_SETUP.md).
+
+Because `workflow_run` uses workflow definitions from the default branch, release-process edits must be present on both `release` and `main` before relying on them for production publishing.
 
 **Version Format:** `MM.mm-TS-TYPE`
 
@@ -494,6 +496,8 @@ bun run validate
 # Show help
 bun scripts/test-all.ts --help
 ```
+
+Release validation requires both exit code `0` and a final summary with `Failed: 0`; a zero exit code alone is insufficient.
 
 The test suite includes:
 

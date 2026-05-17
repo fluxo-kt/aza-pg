@@ -68,11 +68,19 @@
 import { $ } from "bun";
 import { error, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import {
+  type OCIMetadataOptions,
+  buildOCIAnnotations,
+  parseOCIMetadataArg,
+  validateOCIMetadata,
+} from "../utils/oci-metadata";
 
-interface Options {
+interface Options extends OCIMetadataOptions {
   manifest: string;
   platforms: string[];
+  exactPlatforms: boolean;
   requireAnnotations: boolean;
+  expectedDigest?: string;
   verbose: boolean;
 }
 
@@ -156,12 +164,20 @@ function parseArgs(): Options {
   const options: Options = {
     manifest: "",
     platforms: ["linux/amd64", "linux/arm64"],
+    exactPlatforms: false,
     requireAnnotations: false,
+    expectedDigest: undefined,
     verbose: false,
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+
+    const iObj = { value: i };
+    if (parseOCIMetadataArg(args, iObj, options)) {
+      i = iObj.value;
+      continue;
+    }
 
     switch (arg) {
       case "--help":
@@ -193,6 +209,19 @@ function parseArgs(): Options {
 
       case "--require-annotations":
         options.requireAnnotations = true;
+        break;
+
+      case "--exact-platforms":
+        options.exactPlatforms = true;
+        break;
+
+      case "--expected-digest":
+        if (i + 1 >= args.length) {
+          error("--expected-digest requires an argument");
+          process.exit(1);
+        }
+        options.expectedDigest = args[i + 1]!;
+        i++;
         break;
 
       case "--verbose":
@@ -301,6 +330,10 @@ function formatPlatform(platform: Platform): string {
   return formatted;
 }
 
+function isRunnablePlatform(platform: Platform): boolean {
+  return platform.os !== "unknown" && platform.architecture !== "unknown";
+}
+
 /**
  * Validate OCI Image Index structure
  * @param manifest - Parsed manifest object
@@ -362,9 +395,16 @@ function validateManifestStructure(manifest: OCIImageIndex, _manifestRef: string
  * @param manifest - Parsed manifest object
  * @param expectedPlatforms - Expected platform strings (e.g., ["linux/amd64", "linux/arm64"])
  */
-function validatePlatforms(manifest: OCIImageIndex, expectedPlatforms: string[]): void {
-  // Extract actual platforms from manifest
-  const actualPlatforms = manifest.manifests.map((entry) => formatPlatform(entry.platform));
+function validatePlatforms(
+  manifest: OCIImageIndex,
+  expectedPlatforms: string[],
+  exactPlatforms: boolean
+): void {
+  // OCI attestations/SBOM descriptors are not runnable image platforms. Enforce exactness only
+  // for runnable platforms so post-release verification remains valid after attestations attach.
+  const actualPlatforms = manifest.manifests
+    .filter((entry) => isRunnablePlatform(entry.platform))
+    .map((entry) => formatPlatform(entry.platform));
 
   // Check if all expected platforms are present
   const missingPlatforms: string[] = [];
@@ -391,7 +431,19 @@ function validatePlatforms(manifest: OCIImageIndex, expectedPlatforms: string[])
   // Warn about extra platforms (not an error, just informational)
   const extraPlatforms = actualPlatforms.filter((actual) => !expectedPlatforms.includes(actual));
   if (extraPlatforms.length > 0) {
-    warning(`Additional platforms found (not expected): ${extraPlatforms.join(", ")}`);
+    const errorMsg = `Additional platforms found (not expected): ${extraPlatforms.join(", ")}`;
+    if (exactPlatforms) {
+      error(errorMsg);
+      process.exit(1);
+    }
+    warning(errorMsg);
+  }
+
+  const nonRunnablePlatforms = manifest.manifests
+    .filter((entry) => !isRunnablePlatform(entry.platform))
+    .map((entry) => formatPlatform(entry.platform));
+  if (nonRunnablePlatforms.length > 0) {
+    warning(`Non-runnable manifest descriptors found: ${nonRunnablePlatforms.join(", ")}`);
   }
 }
 
@@ -415,13 +467,62 @@ function validateAnnotations(manifest: OCIImageIndex, required: boolean): void {
   }
 }
 
+function validateExpectedAnnotations(manifest: OCIImageIndex, options: Options): void {
+  const metadataErrors = validateOCIMetadata(options);
+  if (metadataErrors.length > 0) {
+    for (const metadataError of metadataErrors) {
+      error(metadataError);
+    }
+    process.exit(1);
+  }
+
+  const expected = buildOCIAnnotations(options);
+  if (Object.keys(expected).length === 0) return;
+
+  const actual = manifest.annotations ?? {};
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    const actualValue = actual[key];
+    if (actualValue !== expectedValue) {
+      error(`Annotation mismatch for ${key}`);
+      console.error(`  Expected: ${expectedValue}`);
+      console.error(`  Actual:   ${actualValue ?? "(missing)"}`);
+      process.exit(1);
+    }
+  }
+}
+
+async function validateExpectedDigest(manifestRef: string, expectedDigest?: string): Promise<void> {
+  if (!expectedDigest) return;
+
+  const result =
+    await $`docker buildx imagetools inspect ${manifestRef} --format "{{.Manifest.Digest}}"`
+      .nothrow()
+      .quiet();
+
+  if (result.exitCode !== 0) {
+    error(`Failed to resolve manifest digest for ${manifestRef}`);
+    console.error(result.stderr.toString().trim());
+    process.exit(1);
+  }
+
+  const actualDigest = result.stdout.toString().trim();
+  if (actualDigest !== expectedDigest) {
+    error(`Manifest digest mismatch for ${manifestRef}`);
+    console.error(`  Expected: ${expectedDigest}`);
+    console.error(`  Actual:   ${actualDigest || "(empty)"}`);
+    process.exit(1);
+  }
+}
+
 /**
  * Print validation summary
  * @param manifest - Parsed manifest object
  * @param verbose - Whether to show verbose details
  */
 function printSummary(manifest: OCIImageIndex, verbose: boolean): void {
-  const platforms = manifest.manifests.map((entry) => formatPlatform(entry.platform));
+  const platforms = manifest.manifests
+    .filter((entry) => isRunnablePlatform(entry.platform))
+    .map((entry) => formatPlatform(entry.platform));
   const annotationCount = manifest.annotations ? Object.keys(manifest.annotations).length : 0;
 
   console.log();
@@ -487,6 +588,8 @@ function formatSize(bytes: number): string {
  * @param options - Parsed options
  */
 async function validateManifest(options: Options): Promise<void> {
+  await validateExpectedDigest(options.manifest, options.expectedDigest);
+
   // Fetch manifest from registry
   const manifest = await fetchManifest(options.manifest);
 
@@ -494,10 +597,11 @@ async function validateManifest(options: Options): Promise<void> {
   validateManifestStructure(manifest, options.manifest);
 
   // Validate platforms
-  validatePlatforms(manifest, options.platforms);
+  validatePlatforms(manifest, options.platforms, options.exactPlatforms);
 
   // Validate annotations if required
   validateAnnotations(manifest, options.requireAnnotations);
+  validateExpectedAnnotations(manifest, options);
 
   // Print summary
   printSummary(manifest, options.verbose);

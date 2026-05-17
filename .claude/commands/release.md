@@ -332,7 +332,7 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 ```bash
 # NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
 # If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
-if ! git merge --squash dev; then
+if ! git merge --squash refs/heads/dev; then
   echo "ABORT: Merge conflicts detected. Conflicting files:"
   git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
   echo ""
@@ -679,10 +679,14 @@ else
     echo ""
     echo "These commits will persist in history via parent-1 of the anchor merge."
     echo "Their FILE CONTENT in the working tree will be replaced by the release tree."
-    echo "Confirm: are these commits already captured in the release (e.g., same fixes done directly on release branch)?"
-    echo "If YES: safe to proceed. If NO: do another squash release first to include them."
+    if [[ -n "$NEW_ON_DEV" ]]; then
+      echo "ABORT: no Dev-Squash-Tip and dev has commits since the last anchor."
+      echo "       Do another squash release first, or get explicit user approval before anchoring over these file changes."
+      exit 1
+    fi
   else
     echo "⚠️ No previous anchor merge found. Inspect dev history manually before proceeding."
+    exit 1
   fi
 fi
 ```

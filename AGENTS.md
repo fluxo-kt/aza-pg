@@ -216,6 +216,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **psql Session Isolation**: Each `execSQL` spawns a new `docker exec ... psql -c` process — `SET` statements do NOT persist between calls. `SET enable_seqscan = OFF; SELECT ...` MUST be a single string in one `execSQL` call.
 
+**Postgres Entrypoint Readiness**: `pg_isready` can pass during the official image's temporary initdb server, right before entrypoint shutdown/restart. Fresh-container smoke tests MUST wait for `PostgreSQL init process complete; ready for start up.` in logs, then re-check `pg_isready` + `SELECT 1` against the final server.
+
 **execSQL Never Throws**: `dockerRun` (the backing function for `execSQL`) has an internal try/catch that returns `{success: false, output: errorMessage}` on spawn failure. Therefore `execSQL` NEVER rejects — `.catch()` chained on `execSQL` is dead code. Check results via the `success` field, not exception handling.
 
 **DROP TABLE CASCADE ≠ DROP FUNCTION**: `DROP TABLE x CASCADE` removes the table's triggers, indexes, constraints, and sequences — but NOT the trigger functions they reference. Functions are standalone objects reusable across multiple tables. Any function created in a test (e.g., `test_trigger_func()`) must be explicitly dropped in `cleanupTestData` or it persists until the container is removed.

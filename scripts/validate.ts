@@ -349,7 +349,7 @@ async function validate(
     },
     {
       name: "Base Image SHA",
-      command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
+      command: ["bun", "scripts/validate-base-image-sha.ts", "--check", "--require-latest-minor"],
       description: "Base image SHA validation (warn if stale)",
       required: false,
       requiresDocker: true,

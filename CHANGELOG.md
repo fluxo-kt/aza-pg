@@ -17,7 +17,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
-- **Base image refresh**: Updated `postgres:18.3-trixie` digest to the current Docker Hub manifest for reproducible rebuilds
+- **PostgreSQL 18.3 → 18.4**: Updates the pinned `postgres:18.4-trixie` base image for upstream security fixes and reproducible rebuilds
 - **TimescaleDB 2.25.2 → 2.26.4**: Bugfix updates for continuous aggregates, compression, upgrade handling, and planner stability
 - **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
 - **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes

@@ -4,9 +4,9 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.3 with comprehensive extension suite
+# PostgreSQL 18.4 with comprehensive extension suite
 
-FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db AS builder-base
+FROM postgres:18.4-trixie@sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -162,13 +162,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.3..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.3" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.3" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.4..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.4" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.4" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.3-trixie@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db
+FROM postgres:18.4-trixie@sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -325,7 +325,7 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 #   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
 #   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
 #   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
-#   5. apt-get purge gosu: no-op for postgres:18.3-trixie because gosu is a direct
+#   5. apt-get purge gosu: no-op for the pinned postgres base image because gosu is a direct
 #      binary download in the base image, not a dpkg-owned file.
 # Fix: compile and install su-exec directly in the final stage, then verify the binary size
 # is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
@@ -472,9 +472,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.3"
-LABEL org.opencontainers.image.description="PostgreSQL 18.3 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.3"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.4"
+LABEL org.opencontainers.image.description="PostgreSQL 18.4 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.4"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

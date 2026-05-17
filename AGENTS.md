@@ -194,6 +194,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
+**PostgreSQL Minor Drift Guard**: Release/publish gates MUST run `scripts/validate-base-image-sha.ts --require-latest-minor`; stale `MANIFEST_METADATA.pgVersion/baseImageSha` can pass same-tag SHA checks while PGDG/floating `postgres:N-trixie` has advanced, then fail built-image version verification. Update manifest, regenerate, validate.
+
 **git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.
 
 **Secret-Scan Heuristic Trap**: `bun run test:all` secret-scan can flag ordinary local vars when names look credential-like (e.g., `token = "..."`). In non-secret code paths, use precise neutral names (`versionChunk`, `segment`, etc.) and re-run tests; don't suppress the scan blindly.

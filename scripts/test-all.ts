@@ -459,7 +459,7 @@ const allChecks: Check[] = [
   {
     name: "Base Image SHA Validation",
     category: "validation",
-    command: ["bun", "scripts/validate-base-image-sha.ts", "--check"],
+    command: ["bun", "scripts/validate-base-image-sha.ts", "--check", "--require-latest-minor"],
     description: "Validate PostgreSQL base image SHA",
     critical: false,
     requiresDocker: true,

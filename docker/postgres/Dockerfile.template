@@ -229,7 +229,7 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode
 #   2. RUN --mount=type=bind,from=builder-base: source unverifiable vs GHA-cached stage
 #   3. apt-get install su-exec: package absent from postgres image's stripped apt repos
 #   4. COPY via builder-pgxs output dir: COPY cache key in GHA matched stale entry predating replacement
-#   5. apt-get purge gosu: no-op for postgres:18.3-trixie because gosu is a direct
+#   5. apt-get purge gosu: no-op for the pinned postgres base image because gosu is a direct
 #      binary download in the base image, not a dpkg-owned file.
 # Fix: compile and install su-exec directly in the final stage, then verify the binary size
 # is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid

@@ -124,7 +124,7 @@ jobs:
         run: bun run validate:all
 
       - name: Validate pinned base image digest is resolvable
-        run: bun scripts/validate-base-image-sha.ts --check
+        run: bun scripts/validate-base-image-sha.ts --require-latest-minor
 
       - name: Derive catalog statistics
         id: catalog

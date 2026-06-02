@@ -6,7 +6,7 @@ Reference guide for PostgreSQL extension repository availability and sourcing de
 
 | Repository         | PG18 Support | Extensions               | Use Case                                 |
 | ------------------ | ------------ | ------------------------ | ---------------------------------------- |
-| **PGDG**           | ✅ Full      | 12 (w/ exact versions)   | Primary source; stable, tested packages  |
+| **PGDG**           | ✅ Full      | 13 (w/ exact versions)   | Primary source; stable, tested packages  |
 | **Pigsty**         | ✅ Full      | 421+                     | Alternative when PGDG lacks extension    |
 | **Timescale**      | ✅ Full      | 2 (timescaledb, toolkit) | TSL-licensed TimescaleDB (not community) |
 | **Percona**        | ✅ Full      | ~10                      | PG18 packages NOW available (ppg-18)     |
@@ -57,6 +57,7 @@ Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 | pgrouting     | 4.0.1        | v4.0.1     | v4.0.0         |
 | pg_repack     | 1.5.3        | ver_1.5.3  | v1.5.3 (same)  |
 | set_user      | 4.2.0        | REL4_2_0   | v4.2.0 (same)  |
+| pg_partman    | 5.4.3        | v5.4.3     | v5.0.1         |
 
 ## Non-PGDG Extensions
 
@@ -84,19 +85,18 @@ Extensions installed via Timescale apt, Percona apt, GitHub releases, or source 
 
 ### Source-Built (Other)
 
-| Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                                    |
-| ------------------- | ------------- | ---------------- | ----------- | ---------------------------------------- |
-| **pg_partman**      | v5.4.3        | v5.0.1           | ❌          | Source for latest (PGDG has v5.3.1 only) |
-| **pg_stat_monitor** | v2.3.2        | v2.1             | v2.3.2 ✅   | Percona apt (ppg-18); not in PGDG        |
-| **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match                   |
-| **pgmq**            | v1.11.1       | v1.5.1           | ❌          | Source for latest (PG18 support)         |
-| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)           |
-| **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Percona apt; PGDG also available         |
-| **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match                   |
-| **pgq**             | v3.5.1        | v3.5.1           | ❌          | Pigsty has exact match                   |
-| **vault**           | v0.3.1        | v0.3.1           | ❌          | Supabase-specific                        |
-| **index_advisor**   | v0.2.0        | ❌               | ❌          | Supabase-specific                        |
-| **pgroonga**        | 4.0.6         | PG13-17          | ❌          | Pigsty lacks PG18                        |
+| Extension           | Version       | Pigsty Alt       | Percona Alt | Notes                             |
+| ------------------- | ------------- | ---------------- | ----------- | --------------------------------- |
+| **pg_stat_monitor** | v2.3.2        | v2.1             | v2.3.2 ✅   | Percona apt (ppg-18); not in PGDG |
+| **pgsodium**        | v3.1.9        | v3.1.9           | ❌          | Pigsty has exact match            |
+| **pgmq**            | v1.11.1       | v1.5.1           | ❌          | Source for latest (PG18 support)  |
+| **pg_hashids**      | 1.3 (git-ref) | v1.2.1 (no PG18) | ❌          | Using master v1.3 (unreleased)    |
+| **wal2json**        | 2.6           | v2.6             | v2.6 ✅     | Percona apt; PGDG also available  |
+| **pg_safeupdate**   | 1.5           | v1.5             | ❌          | Pigsty has exact match            |
+| **pgq**             | v3.5.1        | v3.5.1           | ❌          | Pigsty has exact match            |
+| **vault**           | v0.3.1        | v0.3.1           | ❌          | Supabase-specific                 |
+| **index_advisor**   | v0.2.0        | ❌               | ❌          | Supabase-specific                 |
+| **pgroonga**        | 4.0.6         | PG13-17          | ❌          | Pigsty lacks PG18                 |
 
 ## Repository Details
 

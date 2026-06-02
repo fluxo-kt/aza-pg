@@ -78,9 +78,9 @@ describe("Extension Defaults Validation", () => {
     expect(versions.pgcron).toBeDefined();
     expect(versions.pgaudit).toBeDefined();
     expect(versions.pgvector).toBeDefined();
-    expect(versions.plpgsqlCheck).toBeDefined(); // migrated from source → PGDG (2.8.11)
+    expect(versions.plpgsqlCheck).toBeDefined(); // migrated from source → PGDG
+    expect(versions.partman).toBeDefined(); // migrated from source → PGDG (postgresql-18-partman)
     // timescaledb: install_via "timescale" (dedicated repo, not PGDG) — no pgdgVersion
-    // pg_partman: install_via "source" (PGDG PG18 package unavailable) — no pgdgVersion
     expect(versions.postgis).toBeDefined();
     expect(versions.repack).toBeDefined();
     expect(versions.hll).toBeDefined();

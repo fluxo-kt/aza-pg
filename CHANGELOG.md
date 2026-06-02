@@ -34,6 +34,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Development
 
+- pg_partman now installs from the PGDG apt package (`postgresql-18-partman` 5.4.3) instead of a source build — identical upstream version and background worker, removing a compile step from the image build
 - Dev deps: Bun 1.3.14, @pgflow/client/dsl 0.14.1, oxlint 1.65.0, squawk-cli 2.52.1
 - Disabled/regression-only catalog sync: PostGIS 3.6.3; pg_jsonschema now pinned to release tag v0.3.4
 - GitHub Actions pins refreshed; release gates now verify public manifests, signatures, SBOM, attestation, and GitHub Release digest

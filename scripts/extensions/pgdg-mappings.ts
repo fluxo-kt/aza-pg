@@ -87,6 +87,12 @@ export const PGDG_MAPPINGS: readonly PgdgMapping[] = [
     argName: "PLPGSQL_CHECK_VERSION",
     versionKey: "plpgsqlCheck",
   }, // VOLATILE: frequent patch releases
+  {
+    manifestName: "pg_partman",
+    packageName: "partman",
+    argName: "PARTMAN_VERSION",
+    versionKey: "partman",
+  }, // VOLATILE: migrated source -> PGDG (PG18 package now available)
 ] as const;
 
 /**

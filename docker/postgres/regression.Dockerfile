@@ -188,7 +188,7 @@ RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
-    echo "Installing PGDG packages (regression mode): 12 packages" && \
+    echo "Installing PGDG packages (regression mode): 13 packages" && \
     (apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-hll=2.20-1.pgdg13+1 && echo "✓ Installed: postgresql-18-hll=2.20-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-hll=2.20-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.3+dfsg-1.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.3+dfsg-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.3+dfsg-1.pgdg13+1" && \
@@ -201,6 +201,7 @@ RUN set -euo pipefail && \
     (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.1-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.1-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.1-1.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-3.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-3.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-3.pgdg13+1" && \
     (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1" && \
+    (apt-get install -y --no-install-recommends postgresql-18-partman=5.4.3-1.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.4.3-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.4.3-1.pgdg13+1" && \
     # Report what was installed
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \

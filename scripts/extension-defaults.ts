@@ -20,6 +20,7 @@ export interface ExtensionDefaults {
     hll: string;
     http: string;
     hypopg: string;
+    partman: string;
     pgaudit: string;
     pgcron: string;
     pgrouting: string;
@@ -43,6 +44,7 @@ export const extensionDefaults: ExtensionDefaults = {
     hll: "2.20-1.pgdg13+1",
     http: "1.7.0-3.pgdg13+1",
     hypopg: "1.4.2-2.pgdg13+1",
+    partman: "5.4.3-1.pgdg13+1",
     pgaudit: "18.0-3.pgdg13+1",
     pgcron: "1.6.7-2.pgdg13+1",
     pgrouting: "4.0.1-1.pgdg13+1",
@@ -78,6 +80,7 @@ if (import.meta.main) {
     console.log(`HLL_VERSION="${extensionDefaults.pgdgVersions.hll}"`);
     console.log(`HTTP_VERSION="${extensionDefaults.pgdgVersions.http}"`);
     console.log(`HYPOPG_VERSION="${extensionDefaults.pgdgVersions.hypopg}"`);
+    console.log(`PARTMAN_VERSION="${extensionDefaults.pgdgVersions.partman}"`);
     console.log(`PGAUDIT_VERSION="${extensionDefaults.pgdgVersions.pgaudit}"`);
     console.log(`PGCRON_VERSION="${extensionDefaults.pgdgVersions.pgcron}"`);
     console.log(`PGROUTING_VERSION="${extensionDefaults.pgdgVersions.pgrouting}"`);

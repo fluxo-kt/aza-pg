@@ -1023,7 +1023,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
-    install_via: "source",
+    install_via: "pgdg",
+    pgdgVersion: "5.4.3-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -1031,14 +1032,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgpartman/pg_partman.git",
       tag: "v5.4.3",
     },
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "Built from source (PGDG package not available for PG18)",
+        "PGDG: postgresql-18-partman (5.4.3-1.pgdg13+1) — ships the pg_partman_bgw background worker",
         "v5.4.3: inherits toast relation options from template table; fixes version reporting bug in v5.4.2 (\\dx showed 5.4.1)",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],

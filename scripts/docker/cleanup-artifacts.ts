@@ -116,10 +116,12 @@ async function azaDanglingVolumes(): Promise<string[]> {
     const mountArgs = batch.flatMap((id, i) => ["-v", `${id}:/m/${i}:ro`]);
     // For each mounted volume dir, locate PGDATA's postgresql.auto.conf and report the index if it
     // contains the aza-pg marker. PG18's image nests PGDATA under /<major>/docker, hence -maxdepth 3.
+    // grep -F (fixed string): the marker is a literal and contains a `.`, which as a regex would
+    // match any char — this match drives DELETION, so it must be exact, not a pattern.
     const probe =
       'for d in /m/*; do i=$(basename "$d"); ' +
       'f=$(find "$d" -maxdepth 3 -name postgresql.auto.conf 2>/dev/null | head -1); ' +
-      `if [ -n "$f" ] && grep -q ${AZA_VOLUME_MARKER} "$f" 2>/dev/null; then echo "$i"; fi; done`;
+      `if [ -n "$f" ] && grep -qF ${AZA_VOLUME_MARKER} "$f" 2>/dev/null; then echo "$i"; fi; done`;
     const res = await dockerRun(["run", "--rm", ...mountArgs, "alpine", "sh", "-c", probe]);
     if (!res.success) {
       warning(`Volume probe batch ${start}-${start + batch.length} failed; skipping it`);

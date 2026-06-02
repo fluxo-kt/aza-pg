@@ -49,10 +49,10 @@ Extensions with `pgdgVersion` in manifest have verified PGDG packages:
 | pg_cron       | 1.6.7        | v1.6.7     | v1.6.7 (same)  |
 | pgaudit       | 18.0         | 18.0       | v18.0 (same)   |
 | hypopg        | 1.4.2        | 1.4.2      | v1.4.2 (same)  |
-| plpgsql_check | 2.8.11       | v2.8.11    | v2.8.4         |
+| plpgsql_check | 2.9.0        | v2.9.0     | v2.8.4         |
 | http          | 1.7.0        | v1.7.0     | v1.7.0 (same)  |
 | rum           | 1.3.15       | 1.3.15     | v1.3.15 (same) |
-| hll           | 2.19         | v2.19      | v2.19 (same)   |
+| hll           | 2.20         | v2.20      | v2.19          |
 | postgis       | 3.6.3        | 3.6.3      | v3.6.1         |
 | pgrouting     | 4.0.1        | v4.0.1     | v4.0.0         |
 | pg_repack     | 1.5.3        | ver_1.5.3  | v1.5.3 (same)  |

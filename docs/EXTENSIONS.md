@@ -65,7 +65,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                             | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                         |
 | --------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.19](https://github.com/citusdata/postgresql-hll/releases/tag/v2.19) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
+| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.20](https://github.com/citusdata/postgresql-hll/releases/tag/v2.20) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
@@ -118,9 +118,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### quality
 
-| Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
+| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.9.0](https://github.com/okbob/plpgsql_check/releases/tag/v2.9.0) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 

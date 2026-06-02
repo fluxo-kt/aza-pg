@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS hll;
 SELECT extname, extversion FROM pg_extension WHERE extname = 'hll';
 extname | extversion
 ---------+------------
-hll | 2.19
+hll | 2.20
 (1 row)
 -- Test 2: Verify hll type exists
 SELECT typname FROM pg_type WHERE typname = 'hll';

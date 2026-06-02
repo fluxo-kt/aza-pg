@@ -25,6 +25,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **supautils 3.1.0 → 3.2.2**: Adds privilege-error hints and fixes ALTER ROLE hook and executor hook crash paths
 - **wrappers 0.6.0 → 0.6.1**: Updates the FDW framework with parameter rescan, aggregate pushdown for enabled FDWs, and dependency fixes
 - **PGroonga 4.0.5 → 4.0.6**: Fixes tokenizer error cleanup and fuzzy search distance initialization
+- **plpgsql_check 2.8.11 → 2.9.0**: Rewrites the profiler internals for maintainability; statement-statistics memory is now bounded by the `plch_max_stat_size` setting
+- **hll 2.19 → 2.20**: Adds PostgreSQL 19 build support and enforces thresholds in explicit-representation handling
 - **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
 - **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
 

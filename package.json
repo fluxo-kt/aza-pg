@@ -21,6 +21,8 @@
     "test:pgflow": "bun scripts/test/test-pgflow-schema.ts && bun scripts/test/test-pgflow-functional.ts && bun scripts/test/test-pgflow-multiproject.ts",
     "pgflow:generate": "bun scripts/pgflow/generate-schema.ts",
     "build": "bun scripts/build.ts",
+    "cleanup": "bun scripts/docker/cleanup-artifacts.ts",
+    "cleanup:dry": "bun scripts/docker/cleanup-artifacts.ts --dry-run",
     "security:scan": "bun scripts/security-scan.ts",
     "generate": "bun scripts/generate-all.ts",
     "hooks:install": "bun-git-hooks",

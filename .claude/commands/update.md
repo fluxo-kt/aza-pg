@@ -1115,7 +1115,8 @@ successive update rounds: superseded image layers (each rebuild untags the previ
 the dedicated `aza-pg-builder` buildx cache, and any anonymous PGDATA volumes. Reclaim them:
 
 ```bash
-bun scripts/docker/cleanup-artifacts.ts            # add --dry-run first to preview
+bun run cleanup:dry   # preview what would be removed (no changes)
+bun run cleanup       # reclaim
 ```
 
 **Safe on a shared host**: it removes ONLY artifacts positively attributed to aza-pg by aza-pg's own

@@ -50,6 +50,12 @@ Check:
    - Ignore prereleases (`-beta`, `-rc`) unless intentionally targeting prereleases
    - Ignore downgrades (`current > candidate`) caused by mixed/non-semver tags
    - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
+   - **BLIND SPOT**: `check-updates.ts` compares upstream **git tags** only — it does NOT see PGDG
+     **packaging-revision** bumps where the upstream tag is unchanged (e.g. pgaudit `18.0-2.pgdg13+1`
+     → `18.0-3.pgdg13+1`, tag stays `18.0`). `bun run validate` (pre-flight item 4,
+     `validate-pgdg-versions.ts`) is the **authoritative** PGDG drift detector — it queries apt-madison
+     directly. ALWAYS run validate in pre-flight and treat any reported version mismatch (including
+     pure `-N` revision bumps for unchanged upstream versions) as mandatory update work.
 
 2. **Bun dependencies**:
 
@@ -205,6 +211,19 @@ existing code. Run `bun run validate` immediately and fix issues before proceedi
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
 
+**⚠️ OSV security scanner blocks install (no-TTY)**: the project pins `@bun-security-scanner/osv` in
+`bunfig.toml [install.security]`. When a newly-disclosed CVE lands on a (often transitive) dependency,
+`bun install`/`bun update` aborts with "Security warnings found. Cannot prompt for confirmation (no TTY)"
+and changes NOTHING (atomic — working tree stays clean). Do NOT bypass the scanner. The correct fix is
+to force the affected package to a patched version via a package.json `overrides` block, then re-install:
+```jsonc
+"overrides": { "ws": "^8.20.1", "uuid": "^14.0.0" }  // pin transitive deps to patched versions
+```
+Look up the fixed version (the advisory states it), prefer the latest compatible line, and VERIFY the
+override did not break the dependent — run its tests (e.g. `bun test scripts/pgflow/schema-fixture.test.ts`
+for @pgflow-tree deps) plus `bun run validate`. These dev/test-only deps are absent from the final image
+(no Bun, no node_modules), so the CHANGELOG note belongs under Development, not a user-facing section.
+
 **⚠️ ALWAYS check Bun runtime version separately** — `bun update` bumps package dependencies (incl.
 `@types/bun`) but does NOT update the Bun runtime pinned in `.tool-versions`. These are independent:
 
@@ -229,12 +248,26 @@ GitHub Actions use SHA-pinned `uses:` references for security. Run `actions-up` 
 to the latest verified commit for each action's current tag.
 
 ```bash
-# Update all GitHub Actions SHA pins to latest (respects existing pinned versions)
+# Update all GitHub Actions SHA pins to latest
 actions-up --yes
 ```
 
 This updates the `uses:` SHA in every workflow and composite action. It will report how many
 actions were updated and how many were **breaking** (major version bumps).
+
+**⚠️ MANDATORY held action — `anthropics/claude-code-action`**: this MUST stay pinned at `v1.0.123`
+(the `v1.0.13x` line is unreliable/malfunctioning). The DURABLE control is `actions-up`'s intrinsic
+inline ignore directive — a `--exclude` CLI flag is fragile (one forgotten flag re-bumps it). A
+`# actions-up-ignore-next-line` comment sits directly above each held `uses:` line (in
+`.github/workflows/ai-claude-code-review.yml` and `ai-claude_comment.yml`), so the SHA is skipped on
+every run regardless of flags. actions-up's ignore conventions (v1.14+): `# actions-up-ignore-file`,
+`# actions-up-ignore-next-line`, inline `# actions-up-ignore` (conflicts with the `# vX.Y.Z` comment —
+prefer next-line), and `# actions-up-ignore-start`/`-end`. After running actions-up, CONFIRM the hold
+held: `actions-up --dry-run` must report "All actions are up to date" (it will not list
+claude-code-action). If a directive is ever lost and it gets bumped, revert both `uses:` lines to
+`@51ea8ea73a139f2a74ff649e3092c25a904aed7e # v1.0.123` (verify the SHA with
+`git ls-remote https://github.com/anthropics/claude-code-action.git 'refs/tags/v1.0.123^{}'`) and
+restore the `# actions-up-ignore-next-line` directive.
 
 ### MANDATORY: Identify and Audit Breaking Changes
 
@@ -345,6 +378,14 @@ bun run validate:all  # catches yamllint, hadolint, workflow syntax issues
 PG minor releases include security patches (CVEs). ALWAYS check for a newer base image, even when
 not upgrading PG major version. Minor releases can fix critical CVEs (e.g., CVSS 8.8).
 
+**⚠️ Stale digest even at an unchanged PG minor**: the `postgres:18.X-trixie` tag is periodically
+re-pushed with Debian security rebuilds, so a pinned `baseImageSha` can go stale (digest no longer
+exists on Docker Hub) while `pgVersion` is still correct. ALWAYS run
+`bun scripts/validate-base-image-sha.ts --require-latest-minor` in pre-flight — it fails both when the
+pinned digest is gone AND when a newer minor exists. If it fails, repin `baseImageSha` to the current
+`docker inspect ... RepoDigests` digest (this is a security refresh; no `pgVersion` change needed and
+no separate CHANGELOG line if the existing PG-minor entry already covers it).
+
 ```bash
 # Check if a newer PG minor version is available (even staying on same major)
 docker run --rm postgres:18-trixie postgres --version  # check latest minor
@@ -364,7 +405,13 @@ command grep 'baseImageSha:' scripts/extensions/manifest-data.ts
 ```
 
 **⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
-PG 18.3). When bumping PG minor version, ALWAYS update timescaleVersion in the same commit.
+PG 18.3, `-1804` for PG 18.4). When bumping PG minor version, ALWAYS update timescaleVersion in the
+same commit. **The reverse also bites**: the suffix can silently LAG the base PG-minor (e.g. base
+already at 18.4 while timescaleVersion is still `~debian13-1803`); a Timescale bump that moves to
+`-1804` realigns it — check for this drift even when the PG minor is unchanged. Also, Timescale's apt
+repo may not carry the newest upstream git tag yet (e.g. `2.27.2` released on GitHub but apt only has
+`2.27.1`); apt is the ceiling for `install_via: "timescale"` — verify both the extension AND loader
+packages exist at the target `X.Y.Z~debianNN-NNNN` via `apt-cache madison` before pinning.
 
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
 - `scripts/docker/test-image-lib.ts` `toolBinaries` dict — `.so` paths hardcode PG major (e.g., `postgresql/18/lib/` → `postgresql/19/lib/`)
@@ -428,11 +475,33 @@ The manifest integrity validator (`scripts/ci/validate-manifest-integrity.ts`) h
 copies** of NAME_TO_KEY and PGDG_MAPPING_NAMES — these are NOT imported from the other files and
 MUST be kept in sync manually. Missing this file causes integrity validation failures.
 
+**Proactively hunt promotions** (user often asks for this): for EVERY source-built extension, check
+`apt-cache search postgresql-18 | grep -iE 'EXTNAME'` — a hit at our pinned version is a promotion
+opportunity (faster builds, official packages). Re-run the search to confirm empty results are real,
+not a transient apt glitch. Stale manifest notes like "PGDG package not available for PG18" are prime
+suspects — verify and migrate.
+
 **Source → PGDG migration** (extension now has PGDG package):
 - Remove `install_via: "source"`, add `install_via: "pgdg"` and `pgdgVersion`
-- Remove `build: { type: "pgxs" }` (PGDG handles compilation)
-- Add to NAME_TO_KEY, PGDG_MAPPINGS, and both sets in validate-manifest-integrity.ts
-- Place in appropriate tier in PGDG_MAPPINGS (VOLATILE for frequent releases)
+- Remove `build: { type: "pgxs" }` (cosmetic — the generator already excludes any `install_via: "pgdg"`
+  entry from source builds via the `install_via !== "pgdg"` guard — but removing it makes intent honest)
+- Add to NAME_TO_KEY (generate-extension-defaults.ts), PGDG_MAPPINGS (pgdg-mappings.ts), and both
+  inline copies in validate-manifest-integrity.ts (NAME_TO_KEY + PGDG_MAPPING_NAMES)
+- Update `generate-dockerfile.test.ts` "All PGDG versions are defined" (add `expect(versions.KEY)`,
+  drop the stale "source — no pgdgVersion" comment); PGDG integrity count must rise by one
+- **VERIFY THE PACKAGE before trusting the migration**: `apt-get install` it in a throwaway container, then
+  `dpkg -L postgresql-18-EXTNAME | grep '\.so$'` to confirm it ships the expected libs — ESPECIALLY any
+  preload worker (e.g. pg_partman ships `pg_partman_bgw.so` at `/usr/lib/postgresql/18/lib/`). If the
+  ext is a shared_preload, ADD that `.so` to `generate-dockerfile.ts` `soFileMap` so the build asserts it.
+  Also `grep default_version EXTNAME.control` — if the PGDG extversion equals the old source extversion,
+  the regression `expected/basic.out` needs NO change (confirm, don't assume).
+- Move the doc row from the source-built table to the PGDG table in `docs/EXTENSION-SOURCES.md` and
+  bump the PGDG count in the Repository Overview
+- Place in appropriate tier in PGDG_MAPPINGS (VOLATILE for frequent releases); cross-check the cache-tier
+  list in `docs/ARCHITECTURE.md` (it may already list the ext, making the migration accurate)
+- **PGDG may lag upstream**: the apt package can sit a release behind the latest git tag (e.g. plpgsql_check
+  upstream `v2.9.1` but PGDG only `2.9.0`). For `install_via: "pgdg"` the **`pgdgVersion` is authoritative** —
+  set `source.tag` to match the PGDG-available version, not the newest upstream tag.
 
 Update BOTH `source.tag` AND `pgdgVersion`:
 

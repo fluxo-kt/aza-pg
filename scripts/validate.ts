@@ -23,6 +23,7 @@
 import { getErrorMessage } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
+import { summarizeResults } from "./validate-summary";
 
 const HADOLINT_IMAGE =
   "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
@@ -50,6 +51,9 @@ type ValidationCheck = {
  */
 type ValidationResult = {
   passed: boolean;
+  // Sanctioned skip (requiresDocker + daemon absent + envOverride set) — counted separately from
+  // failures so the summary count stays trustworthy. See summarizeResults in validate-summary.ts.
+  skipped?: boolean;
   critical: boolean;
   name: string;
   stdout?: string;
@@ -82,7 +86,8 @@ async function runCheck(
       return { passed: false, critical: true, name: check.name };
     } else {
       if (!bufferOutput) warning(message);
-      return { passed: false, critical: false, name: check.name };
+      // Sanctioned skip, not a failure: the check is optional (envOverride set) and Docker is absent.
+      return { passed: false, skipped: true, critical: false, name: check.name };
     }
   }
 
@@ -153,9 +158,11 @@ async function runChecksParallel(checks: ValidationCheck[]): Promise<ValidationR
       if (!result.stderr.endsWith("\n")) console.log("");
     }
 
-    // Print result status
+    // Print result status (skip is distinct from failure — see summarizeResults)
     if (result.passed) {
       success(`${result.name} passed`);
+    } else if (result.skipped) {
+      warning(`${result.name} skipped`);
     } else if (result.critical) {
       error(`${result.name} failed`);
     } else {
@@ -542,13 +549,17 @@ async function validate(
   const duration = Date.now() - startTime;
   section("Validation Summary");
 
-  const passedCount = results.filter((r) => r.passed).length;
-  const failedCount = results.filter((r) => !r.passed).length;
-  const criticalFailures = results.filter((r) => !r.passed && r.critical).length;
-  const total = results.length;
+  const {
+    total,
+    passed: passedCount,
+    skipped: skippedCount,
+    failed: failedCount,
+    critical: criticalFailures,
+  } = summarizeResults(results);
 
   console.log(`Total checks: ${total}`);
   console.log(`Passed: ${passedCount}`);
+  console.log(`Skipped: ${skippedCount}`);
   console.log(`Failed: ${failedCount}`);
   console.log(`Critical failures: ${criticalFailures}`);
   console.log(`Duration: ${(duration / 1000).toFixed(2)}s`);
@@ -560,7 +571,13 @@ async function validate(
     throw new Error("Validation failed");
   } else if (failedCount > 0) {
     warning(`${failedCount} non-critical check(s) failed`);
-    success("All critical checks passed");
+    success(
+      skippedCount > 0
+        ? `All critical checks passed (${skippedCount} skipped)`
+        : "All critical checks passed"
+    );
+  } else if (skippedCount > 0) {
+    success(`All checks passed (${skippedCount} skipped)`);
   } else {
     success("All checks passed!");
   }

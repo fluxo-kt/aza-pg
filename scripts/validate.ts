@@ -448,6 +448,16 @@ async function validate(
       required: false,
     },
     {
+      name: "Bun OSV Ignore Audit",
+      command: ["bun", "scripts/security/validate-bun-osv.ts"],
+      // Static guard over the install-time CVE gate: enforces canonical/justified/expiring ignores,
+      // pins the scanner, and (once checks 3-4 land) requires SHOW_IGNORED wiring + forbids env-based
+      // ignore bypasses. fast: true so it runs in `bun run validate`, not only --all/CI.
+      description: "Audit .bun-osv.json ignore schema + scanner pin (bun OSV install gate)",
+      required: true,
+      fast: true,
+    },
+    {
       name: "Subprocess Env Safety",
       command: [
         "sh",

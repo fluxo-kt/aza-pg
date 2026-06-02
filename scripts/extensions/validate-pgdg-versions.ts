@@ -1,7 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Validates that PGDG package versions in manifest match what's available in the repository
- * Prevents build failures from incorrect version strings
+ * Validates that PGDG package versions in the manifest match the latest available in the PGDG repo.
+ * Prevents build failures from incorrect version strings, and flags pgdg packaging-revision drift
+ * (e.g. `-2` → `-3`) that git-tag-based check-updates cannot see.
+ *
+ * Scope is intentionally PGDG-only. Percona and Timescale versions are NOT checked here because:
+ *   - They are exact-pinned in the generated Dockerfile (`apt-get install pkg=version`), so a
+ *     removed version already fails the release build loudly and blocks publish — the build is the
+ *     authoritative oracle, and a pre-build apt-existence check would only move that same failure
+ *     ~15 min earlier (no new safety).
+ *   - Verifying them here would require setting up the Percona/packagecloud repos inside this check
+ *     on every run, injecting third-party-repo network fragility into the `validate` hot path.
+ *   - Their version *currency* (a newer revision exists) is surfaced informationally by
+ *     check-updates.ts, not gated here (exact-match would red every dev on each vendor release).
  */
 
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";

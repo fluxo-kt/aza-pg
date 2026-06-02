@@ -214,11 +214,17 @@ async function validate(
       required: true,
     },
     {
-      name: "Vendor Version Validation",
+      name: "PGDG Version Validation",
       command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
-      description:
-        "Vendor version consistency (PGDG, Percona, Timescale versions match source.tag)",
+      // Scoped to PGDG: it is preinstalled in the base image, so madison is cheap, and the
+      // exact-match-latest rule uniquely catches pgdg packaging-revision drift that git-tag
+      // check-updates misses. Percona/Timescale versions are exact-pinned in the Dockerfile and
+      // enforced by the build's `apt-get install =version` (fails loud on removal) — see the
+      // header note in validate-pgdg-versions.ts for why no pre-build apt check is added here.
+      description: "PGDG apt-version availability (Percona/Timescale enforced by the build)",
       required: true,
+      requiresDocker: true,
+      envOverride: "ALLOW_MISSING_DOCKER",
     },
     {
       name: "Manifest Integrity",

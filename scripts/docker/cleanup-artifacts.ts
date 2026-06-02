@@ -32,11 +32,48 @@ const VOLUME_PROBE_BATCH = 30;
 const DRY_RUN = Bun.argv.includes("--dry-run");
 
 /** Lines of `docker ... -q` output, trimmed and empties dropped. */
-function ids(output: string): string[] {
+export function ids(output: string): string[] {
   return output
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
+}
+
+// --- Pure attribution decisions (no IO) — these decide what gets DELETED, so they are unit-tested
+// in cleanup-artifacts.test.ts against the "never match a foreign project" safety property. ---
+
+/**
+ * True iff an image's OCI title marks it as an aza-pg build. Uses startsWith (anchored), NOT
+ * includes: a foreign project whose name merely contains "aza-pg" (e.g. "my-aza-pg-fork") must NOT
+ * match. aza-pg's own title is "aza-pg PostgreSQL <ver>" (docker/postgres/Dockerfile.template).
+ */
+export function isAzaImageTitle(title: string | undefined): boolean {
+  return !!title && title.startsWith(AZA_IMAGE_TITLE_PREFIX);
+}
+
+/** Parse the `title|size` line emitted by `docker image inspect --format`. */
+export function parseImageInspectLine(output: string): { title: string | undefined; size: number } {
+  const [title, sizeStr] = output.trim().split("|");
+  return { title: title || undefined, size: Number(sizeStr) || 0 };
+}
+
+/**
+ * Map the volume-probe output (one batch index per line, for volumes carrying the marker) back to
+ * volume ids. Guards against malformed/out-of-range indices so a parsing glitch can never select a
+ * volume the probe did not positively mark.
+ */
+export function parseVolumeProbeMatches(probeOutput: string, batch: string[]): string[] {
+  const matched: string[] = [];
+  for (const idx of ids(probeOutput)) {
+    const n = Number(idx);
+    if (Number.isInteger(n) && batch[n]) matched.push(batch[n]);
+  }
+  return matched;
+}
+
+/** True iff the dedicated aza-pg buildx builder appears in `docker buildx ls` output. */
+export function builderPresentInList(buildxLsOutput: string): boolean {
+  return buildxLsOutput.split("\n").some((l) => l.trim().startsWith(AZA_BUILDER));
 }
 
 /** Dangling images whose OCI title marks them as aza-pg builds. Returns [id, sizeBytes]. */
@@ -53,9 +90,9 @@ async function azaDanglingImages(): Promise<Array<{ id: string; size: number }>>
       '{{index .Config.Labels "org.opencontainers.image.title"}}|{{.Size}}',
     ]);
     if (!insp.success) continue;
-    const [title, sizeStr] = insp.output.trim().split("|");
-    if (title?.startsWith(AZA_IMAGE_TITLE_PREFIX)) {
-      matched.push({ id, size: Number(sizeStr) || 0 });
+    const { title, size } = parseImageInspectLine(insp.output);
+    if (isAzaImageTitle(title)) {
+      matched.push({ id, size });
     }
   }
   return matched;
@@ -88,10 +125,7 @@ async function azaDanglingVolumes(): Promise<string[]> {
       warning(`Volume probe batch ${start}-${start + batch.length} failed; skipping it`);
       continue;
     }
-    for (const idx of ids(res.output)) {
-      const n = Number(idx);
-      if (Number.isInteger(n) && batch[n]) matched.push(batch[n]);
-    }
+    matched.push(...parseVolumeProbeMatches(res.output, batch));
   }
   return matched;
 }
@@ -99,7 +133,7 @@ async function azaDanglingVolumes(): Promise<string[]> {
 /** Whether the dedicated aza-pg buildx builder currently exists. */
 async function azaBuilderExists(): Promise<boolean> {
   const res = await dockerRun(["buildx", "ls"]);
-  return res.success && res.output.split("\n").some((l) => l.trim().startsWith(AZA_BUILDER));
+  return res.success && builderPresentInList(res.output);
 }
 
 function fmtMB(bytes: number): string {
@@ -162,4 +196,5 @@ async function main(): Promise<void> {
   );
 }
 
-main();
+// Only run when invoked directly (`bun run cleanup`), not when imported by tests.
+if (import.meta.main) await main();

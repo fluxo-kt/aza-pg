@@ -20,7 +20,7 @@
  *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
-import { getErrorMessage } from "./utils/errors";
+import { getErrorMessage, isExecutableNotFoundError } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 import { summarizeResults } from "./validate-summary";
@@ -33,7 +33,7 @@ const ACTIONLINT_IMAGE =
 /**
  * Validation check configuration
  */
-type ValidationCheck = {
+export type ValidationCheck = {
   name: string;
   command: string[];
   description: string;
@@ -66,7 +66,7 @@ type ValidationResult = {
  * @param bufferOutput - If true, capture stdout/stderr for later printing (parallel mode)
  * @returns object with passed status, critical flag, and optional captured output
  */
-async function runCheck(
+export async function runCheck(
   check: ValidationCheck,
   bufferOutput: boolean = false
 ): Promise<ValidationResult> {
@@ -122,12 +122,18 @@ async function runCheck(
       }
     }
   } catch (err) {
-    const message = `${check.name} error: ${getErrorMessage(err)}`;
+    // A missing executable (ENOENT) means the check could not run at all — the same situation as the
+    // Docker pre-check above, so it is classified the same way: a sanctioned absence (optional) is a
+    // skip, a required tool is a hard failure. Any OTHER error is a genuine failure, never a skip.
+    const unavailable = isExecutableNotFoundError(err);
     if (effectivelyRequired) {
-      if (!bufferOutput) error(message);
+      if (!bufferOutput) error(`${check.name} error: ${getErrorMessage(err)}`);
       return { passed: false, critical: true, name: check.name };
+    } else if (unavailable) {
+      if (!bufferOutput) warning(`${check.name} skipped - not installed (${getErrorMessage(err)})`);
+      return { passed: false, skipped: true, critical: false, name: check.name };
     } else {
-      if (!bufferOutput) warning(`${message} - non-critical`);
+      if (!bufferOutput) warning(`${check.name} error: ${getErrorMessage(err)} - non-critical`);
       return { passed: false, critical: false, name: check.name };
     }
   }
@@ -583,17 +589,19 @@ async function validate(
   }
 }
 
-// Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
-const args = Bun.argv.slice(2);
-const argsSet = new Set(args);
-const mode = argsSet.has("--all") ? "all" : "fast";
-const parallel = argsSet.has("--parallel");
-const stagedOnly = argsSet.has("--staged");
-const includeRuntime = argsSet.has("--runtime");
-const includeFilesystem = argsSet.has("--filesystem");
-const fixMode = argsSet.has("--fix");
-const imageArg = args.find((arg) => arg.startsWith("--image="));
-const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
+// Only parse argv and run when invoked directly — not when imported (e.g. by runCheck unit tests).
+if (import.meta.main) {
+  // Bun.argv includes the script path, so we skip the first 2 elements like Node.
+  const args = Bun.argv.slice(2);
+  const argsSet = new Set(args);
+  const mode = argsSet.has("--all") ? "all" : "fast";
+  const parallel = argsSet.has("--parallel");
+  const stagedOnly = argsSet.has("--staged");
+  const includeRuntime = argsSet.has("--runtime");
+  const includeFilesystem = argsSet.has("--filesystem");
+  const fixMode = argsSet.has("--fix");
+  const imageArg = args.find((arg) => arg.startsWith("--image="));
+  const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
 
-// Run validation
-await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);
+  await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);
+}

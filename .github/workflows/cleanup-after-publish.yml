@@ -38,6 +38,8 @@ jobs:
         run: bun install --frozen-lockfile
         env:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+          # Omit acknowledged-CVE advisories so they don't cancel this non-TTY install (see setup-bun).
+          BUN_OSV_SHOW_IGNORED: "0"
 
       - name: Cleanup testing artifacts from cancelled workflow
         continue-on-error: true

@@ -15,14 +15,19 @@
  * `bun run validate` and `validate:all`). Pure functions (parsed input -> Violation[]) carry the logic
  * so they are unit-tested with inline fixtures (no fs, no mocks); `main()` does the IO and exit.
  *
- * Checks (1-2 here; 3-4 — CI wiring — added alongside the SHOW_IGNORED wiring):
+ * Checks:
  *   (1) Ignore schema: `.bun-osv.json` must be canonical `{ ignore: [...] }`; every entry (in BOTH
  *       `.bun-osv.json` and `package.json#bunOsv.ignore`) must carry a matcher, a `reason`, and a
  *       finite, future `expires`.
  *   (2) Scanner pin: bunfig must keep `scanner = "bun-osv-scanner-extended"` (blocks silent gate removal).
+ *   (3) Wiring: every `bun install` site (any workflow/action) must resolve `BUN_OSV_SHOW_IGNORED` to
+ *       "0"/"false", else acknowledged CVEs cancel the non-TTY install.
+ *   (4) No bypass: no CI env may set BUN_OSV_IGNORE_FILE / OSV_IGNORE_FILE / BUN_OSV_IGNORE_PKG /
+ *       BUN_OSV_IGNORE_ADVISORY (those inject ignores outside the audited file).
  */
 
 import path from "node:path";
+import { parseDocument } from "yaml";
 import { error, info, section, success } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 
@@ -205,10 +210,163 @@ export function checkScannerPin(bunfig: unknown): Violation[] {
   ];
 }
 
+/** Install sites are armed by setting this env to a disabling value; the default ("1") would cancel. */
+export const SHOW_IGNORED_ENV = "BUN_OSV_SHOW_IGNORED";
+
+/**
+ * Env keys that feed ignore rules to the scanner OUTSIDE the audited .bun-osv.json (ignore.ts:
+ * BUN_OSV_IGNORE_FILE || OSV_IGNORE_FILE, plus BUN_OSV_IGNORE_PKG / BUN_OSV_IGNORE_ADVISORY). Any of
+ * them in CI suppresses a CVE with no reason/expires — forbidden. Enumerated literally: a
+ * `BUN_OSV_IGNORE_*` glob would miss the prefix-less `OSV_IGNORE_FILE` alias.
+ */
+export const FORBIDDEN_IGNORE_ENV = [
+  "BUN_OSV_IGNORE_FILE",
+  "OSV_IGNORE_FILE",
+  "BUN_OSV_IGNORE_PKG",
+  "BUN_OSV_IGNORE_ADVISORY",
+] as const;
+
+/** GitHub passes env as strings; the scanner disables show-ignored iff "0" or "false" (index.ts). */
+function disablesShowIgnored(value: unknown): boolean {
+  const norm = String(value).trim().toLowerCase();
+  return norm === "0" || norm === "false";
+}
+
+/**
+ * True iff a shell snippet invokes `bun install` as a top-level command. Splits on shell command
+ * separators (a lexer, not a shell parser) and matches a segment's leading two tokens — so it catches
+ * `bun install`, `bun install --frozen-lockfile`, `… && bun install`, and double-spaced forms, while
+ * ignoring comments and strings like `echo "bun install"`. Obfuscated/eval'd invocations are out of
+ * scope (not a realistic CI bypass — the install would still run the scanner).
+ */
+export function invokesBunInstall(run: string): boolean {
+  let normalized = run;
+  for (const sep of ["&&", "||", ";", "|"]) normalized = normalized.split(sep).join("\n");
+  return normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .some((line) => line.split(/\s+/).slice(0, 2).join(" ") === "bun install");
+}
+function envOf(node: unknown): Record<string, unknown> | undefined {
+  return isRecord(node) && isRecord(node.env) ? node.env : undefined;
+}
+
+function stepsOf(node: unknown): unknown[] {
+  return isRecord(node) && Array.isArray(node.steps) ? node.steps : [];
+}
+
+function stepLabel(step: unknown, index: number): string {
+  return isRecord(step) && typeof step.name === "string" ? step.name : `#${index + 1}`;
+}
+
+/** Resolve a step's effective env value for one key across its scope chain (most-specific wins). */
+function resolveEnv(
+  chain: Array<Record<string, unknown> | undefined>,
+  key: string
+): { defined: boolean; value: unknown } {
+  let defined = false;
+  let value: unknown;
+  for (const scope of chain) {
+    if (scope && key in scope) {
+      defined = true;
+      value = scope[key];
+    }
+  }
+  return { defined, value };
+}
+
+export type CiKind = "workflow" | "action";
+
+/**
+ * CHECK 3 (every `bun install` site disables show-ignored) + CHECK 4 (no env feeds ignores outside the
+ * audited .bun-osv.json) for one parsed CI file. Navigates the GitHub schema (workflow jobs→steps /
+ * composite action runs→steps) — never regex over YAML. `file` is repo-relative, for messages.
+ */
+export function auditCiFile(file: string, parsed: unknown, kind: CiKind): Violation[] {
+  const violations: Violation[] = [];
+  const envBlocks: Array<{ where: string; env: Record<string, unknown> }> = [];
+  const installSites: Array<{ where: string; chain: Array<Record<string, unknown> | undefined> }> =
+    [];
+
+  const collectStep = (
+    step: unknown,
+    where: string,
+    outerEnv: Array<Record<string, unknown> | undefined>
+  ) => {
+    const stepEnv = envOf(step);
+    if (stepEnv) envBlocks.push({ where: `${where}.env`, env: stepEnv });
+    if (isRecord(step) && typeof step.run === "string" && invokesBunInstall(step.run)) {
+      installSites.push({ where, chain: [...outerEnv, stepEnv] });
+    }
+  };
+
+  if (kind === "workflow" && isRecord(parsed)) {
+    const wfEnv = envOf(parsed);
+    if (wfEnv) envBlocks.push({ where: "env", env: wfEnv });
+    const jobs = isRecord(parsed.jobs) ? parsed.jobs : {};
+    for (const [jobId, job] of Object.entries(jobs)) {
+      const jobEnv = envOf(job);
+      if (jobEnv) envBlocks.push({ where: `jobs.${jobId}.env`, env: jobEnv });
+      stepsOf(job).forEach((step, i) => {
+        collectStep(step, `jobs.${jobId}.steps[${stepLabel(step, i)}]`, [wfEnv, jobEnv]);
+      });
+    }
+  } else if (kind === "action" && isRecord(parsed)) {
+    // Composite actions have no workflow/job env; we wire SHOW_IGNORED on the install step itself.
+    stepsOf(isRecord(parsed.runs) ? parsed.runs : undefined).forEach((step, i) => {
+      collectStep(step, `runs.steps[${stepLabel(step, i)}]`, []);
+    });
+  }
+
+  for (const site of installSites) {
+    const { defined, value } = resolveEnv(site.chain, SHOW_IGNORED_ENV);
+    if (!defined) {
+      violations.push({
+        source: `${file} › ${site.where}`,
+        message:
+          `runs \`bun install\` without ${SHOW_IGNORED_ENV} in scope — acknowledged CVEs re-emit as warn and ` +
+          `cancel this non-TTY install. Add \`${SHOW_IGNORED_ENV}: "0"\` to the step/job/workflow env.`,
+      });
+    } else if (!disablesShowIgnored(value)) {
+      violations.push({
+        source: `${file} › ${site.where}`,
+        message:
+          `${SHOW_IGNORED_ENV} resolves to ${JSON.stringify(value)} — must be "0" or "false", else acknowledged ` +
+          "CVEs still cancel this non-TTY install.",
+      });
+    }
+  }
+
+  for (const block of envBlocks) {
+    for (const key of FORBIDDEN_IGNORE_ENV) {
+      if (key in block.env) {
+        violations.push({
+          source: `${file} › ${block.where}`,
+          message:
+            `sets ${key}, injecting ignore rules that bypass the audited .bun-osv.json (no reason/expires). ` +
+            "Remove it; put any ignore in .bun-osv.json with a reason + future expires.",
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
 async function readJsonIfPresent(absPath: string): Promise<{ present: boolean; value: unknown }> {
   const file = Bun.file(absPath);
   if (!(await file.exists())) return { present: false, value: undefined };
-  return { present: true, value: JSON.parse(await file.text()) };
+  const text = await file.text();
+  try {
+    return { present: true, value: JSON.parse(text) };
+  } catch (err) {
+    // A malformed ignore file is silently dropped by the scanner (file ignored, gate still armed) —
+    // surface it loudly instead, naming the file so it is fixable out of context.
+    throw new Error(
+      `${path.relative(REPO_ROOT, absPath)} is not valid JSON: ${getErrorMessage(err)}`
+    );
+  }
 }
 
 async function main(): Promise<void> {
@@ -222,6 +380,33 @@ async function main(): Promise<void> {
 
   violations.push(...checkIgnoreSchema(bunOsv.present ? bunOsv.value : undefined, packageJson));
   violations.push(...checkScannerPin(bunfig));
+
+  // Checks 3-4 over every workflow + local action (not just the known install sites): a future
+  // unwired `bun install`, or any forbidden ignore-env, must fail here.
+  const gh = path.join(REPO_ROOT, ".github");
+  const ciFiles: Array<{ abs: string; kind: CiKind }> = [
+    ...[...new Bun.Glob("workflows/*.{yml,yaml}").scanSync({ cwd: gh })].map((rel) => ({
+      abs: path.join(gh, rel),
+      kind: "workflow" as const,
+    })),
+    ...[...new Bun.Glob("actions/*/action.{yml,yaml}").scanSync({ cwd: gh })].map((rel) => ({
+      abs: path.join(gh, rel),
+      kind: "action" as const,
+    })),
+  ].sort((a, b) => a.abs.localeCompare(b.abs));
+
+  for (const { abs, kind } of ciFiles) {
+    const rel = path.relative(REPO_ROOT, abs);
+    const doc = parseDocument(await Bun.file(abs).text());
+    if (doc.errors.length > 0) {
+      violations.push({
+        source: rel,
+        message: `YAML parse error: ${doc.errors.map((e) => e.message).join("; ")}`,
+      });
+      continue;
+    }
+    violations.push(...auditCiFile(rel, doc.toJS(), kind));
+  }
 
   if (violations.length > 0) {
     for (const v of violations) error(`${v.source}: ${v.message}`);

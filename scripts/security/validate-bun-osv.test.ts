@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { parseDocument } from "yaml";
 import {
+  auditCiFile,
   checkIgnoreSchema,
   checkScannerPin,
+  invokesBunInstall,
   REQUIRED_SCANNER,
+  type CiKind,
   type Violation,
 } from "./validate-bun-osv";
 
@@ -156,5 +160,99 @@ describe("checkScannerPin", () => {
 
   test("missing install.security is rejected", () => {
     expectViolation(checkScannerPin({ install: {} }), "scanner");
+  });
+});
+
+describe("invokesBunInstall — command detection (guards against false-green)", () => {
+  test.each([
+    ["bun install", true],
+    ["bun install --frozen-lockfile", true],
+    ["set -euo pipefail\nbun install --frozen-lockfile", true],
+    ["jq -r . cfg.json && bun install", true],
+    ["bun  install", true], // collapsed whitespace
+    ['echo "bun install"', false], // string, not a command
+    ["# bun install", false], // comment
+    ["bunx install", false],
+    ["bun add left-pad", false],
+    ["", false],
+  ] as const)("%j => %p", (run, expected) => {
+    expect(invokesBunInstall(run)).toBe(expected);
+  });
+});
+
+function audit(yaml: string, kind: CiKind): Violation[] {
+  return auditCiFile("test", parseDocument(yaml).toJS(), kind);
+}
+
+describe("auditCiFile — check 3 wiring (workflow)", () => {
+  test("workflow-level SHOW_IGNORED=0 covers an inheriting install step", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "0"\njobs:\n  b:\n    steps:\n      - run: bun install --frozen-lockfile\n`;
+    expect(audit(yaml, "workflow")).toEqual([]);
+  });
+
+  test("step-level SHOW_IGNORED=0 is accepted", () => {
+    const yaml = `jobs:\n  b:\n    steps:\n      - run: bun install --frozen-lockfile\n        env:\n          BUN_OSV_SHOW_IGNORED: "0"\n`;
+    expect(audit(yaml, "workflow")).toEqual([]);
+  });
+
+  test("unquoted number 0 and 'false' both disable", () => {
+    const num = `env:\n  BUN_OSV_SHOW_IGNORED: 0\njobs:\n  b:\n    steps:\n      - run: bun install\n`;
+    const f = `env:\n  BUN_OSV_SHOW_IGNORED: "FALSE"\njobs:\n  b:\n    steps:\n      - run: bun install\n`;
+    expect(audit(num, "workflow")).toEqual([]);
+    expect(audit(f, "workflow")).toEqual([]);
+  });
+
+  test("install step with no SHOW_IGNORED anywhere FAILS", () => {
+    const yaml = `jobs:\n  b:\n    steps:\n      - run: bun install --frozen-lockfile\n`;
+    expectViolation(audit(yaml, "workflow"), "without BUN_OSV_SHOW_IGNORED");
+  });
+
+  test("SHOW_IGNORED=1 FAILS (would still cancel)", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "1"\njobs:\n  b:\n    steps:\n      - run: bun install\n`;
+    expectViolation(audit(yaml, "workflow"), "resolves to");
+  });
+
+  test("precedence: step '1' overriding workflow '0' FAILS", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "0"\njobs:\n  b:\n    steps:\n      - run: bun install\n        env:\n          BUN_OSV_SHOW_IGNORED: "1"\n`;
+    expectViolation(audit(yaml, "workflow"), "resolves to");
+  });
+
+  test("precedence: step '0' overriding workflow '1' passes", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "1"\njobs:\n  b:\n    steps:\n      - run: bun install\n        env:\n          BUN_OSV_SHOW_IGNORED: "0"\n`;
+    expect(audit(yaml, "workflow")).toEqual([]);
+  });
+
+  test("no install step => no wiring requirement (no false positive)", () => {
+    const yaml = `jobs:\n  b:\n    steps:\n      - run: echo hello\n`;
+    expect(audit(yaml, "workflow")).toEqual([]);
+  });
+});
+
+describe("auditCiFile — check 3 wiring (composite action)", () => {
+  test("action install step with SHOW_IGNORED=0 passes", () => {
+    const yaml = `runs:\n  using: composite\n  steps:\n    - run: bun install --frozen-lockfile\n      shell: bash\n      env:\n        BUN_OSV_SHOW_IGNORED: "0"\n`;
+    expect(audit(yaml, "action")).toEqual([]);
+  });
+
+  test("action install step without env FAILS", () => {
+    const yaml = `runs:\n  using: composite\n  steps:\n    - run: bun install --frozen-lockfile\n      shell: bash\n`;
+    expectViolation(audit(yaml, "action"), "without BUN_OSV_SHOW_IGNORED");
+  });
+});
+
+describe("auditCiFile — check 4 forbidden ignore-env", () => {
+  test.each([
+    "BUN_OSV_IGNORE_FILE",
+    "OSV_IGNORE_FILE",
+    "BUN_OSV_IGNORE_PKG",
+    "BUN_OSV_IGNORE_ADVISORY",
+  ])("forbids %s at workflow env", (key) => {
+    const yaml = `env:\n  ${key}: x\njobs:\n  b:\n    steps:\n      - run: echo hi\n`;
+    expectViolation(audit(yaml, "workflow"), key);
+  });
+
+  test("forbids a forbidden key at step env too", () => {
+    const yaml = `jobs:\n  b:\n    steps:\n      - run: echo hi\n        env:\n          OSV_IGNORE_FILE: x.json\n`;
+    expectViolation(audit(yaml, "workflow"), "OSV_IGNORE_FILE");
   });
 });

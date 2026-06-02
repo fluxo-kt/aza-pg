@@ -25,6 +25,10 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
   RELEASE_REF_NAME: ${{ github.event.workflow_run.head_branch }}
+  # Acknowledged-CVE advisories must be omitted from scanner output, else they re-emit as warn and
+  # cancel the non-TTY `bun install` in every job below. Workflow-level so all inline installs inherit
+  # it. No-op while .bun-osv.json is empty; enforced for every install site by validate-bun-osv.ts.
+  BUN_OSV_SHOW_IGNORED: "0"
 
 jobs:
   prep:

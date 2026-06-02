@@ -39,6 +39,10 @@ type ValidationCheck = {
   required: boolean; // If false, failure only warns but doesn't fail the whole validation
   requiresDocker?: boolean; // If true, check if Docker is available
   envOverride?: string; // Environment variable to make check non-critical
+  // Extended check cheap + safety-critical enough to ALSO run in default (fast) mode — e.g. the
+  // static grep guards. They cost milliseconds and need no Docker, so gating them behind --all/CI
+  // would let a leak land via `bun run validate` (the documented pre-commit gate) and only fail later.
+  fast?: boolean;
 };
 
 /**
@@ -449,6 +453,7 @@ async function validate(
       description:
         "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",
       required: true,
+      fast: true,
     },
     {
       name: "Docker Volume Leak Guard",
@@ -464,6 +469,11 @@ async function validate(
         // (a clueless future edit could reach for either). The trailing space excludes "docker rmi";
         // the substring does not occur in "docker volume rm". The exclusion requires the canonical
         // separate " -v" form (not the combined "-fv") — intentional, to keep one obvious idiom.
+        // Scope is `docker rm` ONLY — deliberately NOT `docker compose down/rm`. For a raw container
+        // `rm`, `-v` is always safe: it drops the anonymous volume but never a NAMED one. For compose,
+        // `-v` ALSO destroys NAMED volumes declared in the stack, so there it encodes intent, not
+        // correctness (e.g. test-persistence.ts runs a bare `compose down` on purpose to prove data
+        // survives teardown). A blanket -v rule on compose would mandate data loss — do NOT add it.
         // Comment lines (TS // and YAML #) are excluded (grep output is file:line:content), as in the
         // Subprocess Env Safety check above.
         'result=$(git ls-files scripts/ .github/workflows/ | grep -E "\\.(ts|ya?ml)$" | xargs grep -nE "docker( container)? rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*(//|#)" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
@@ -471,6 +481,7 @@ async function validate(
       description:
         "Ensure container `docker rm` always passes -v (prevents anonymous PGDATA volume leaks)",
       required: true,
+      fast: true,
     },
     {
       name: "Extension Size Regression",
@@ -520,7 +531,9 @@ async function validate(
   const checks =
     mode === "all"
       ? [...coreChecks, ...extendedChecks, ...dockerVerificationChecks]
-      : [...coreChecks, ...dockerVerificationChecks];
+      : // Default (fast) mode still runs the cheap static safety guards (fast: true) so the leak
+        // classes they catch are blocked at the pre-commit gate, not just in --all/CI.
+        [...coreChecks, ...extendedChecks.filter((c) => c.fast), ...dockerVerificationChecks];
 
   // Run all checks (parallel or sequential)
   const results = parallel ? await runChecksParallel(checks) : await runChecksSequential(checks);

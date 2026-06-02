@@ -146,21 +146,38 @@ describe("checkIgnoreSchema — package.json#bunOsv.ignore source (RED)", () => 
 });
 
 describe("checkScannerPin", () => {
-  test("correct scanner => no violations", () => {
-    expect(checkScannerPin({ install: { security: { scanner: REQUIRED_SCANNER } } })).toEqual([]);
+  const PKG = { devDependencies: { [REQUIRED_SCANNER]: "^1.0.0" } };
+  const pinned = { install: { security: { scanner: REQUIRED_SCANNER } } };
+
+  test("correct scanner + declared dep => no violations", () => {
+    expect(checkScannerPin(pinned, PKG)).toEqual([]);
+  });
+
+  test("scanner under dependencies (not devDependencies) is accepted", () => {
+    expect(checkScannerPin(pinned, { dependencies: { [REQUIRED_SCANNER]: "^1.0.0" } })).toEqual([]);
   });
 
   test("stock @bun-security-scanner/osv (no ignore capability) is rejected", () => {
-    const v = checkScannerPin({ install: { security: { scanner: "@bun-security-scanner/osv" } } });
+    const v = checkScannerPin(
+      { install: { security: { scanner: "@bun-security-scanner/osv" } } },
+      PKG
+    );
     expectViolation(v, "scanner");
   });
 
   test("missing scanner is rejected", () => {
-    expectViolation(checkScannerPin({}), "scanner");
+    expectViolation(checkScannerPin({}, PKG), "scanner");
   });
 
   test("missing install.security is rejected", () => {
-    expectViolation(checkScannerPin({ install: {} }), "scanner");
+    expectViolation(checkScannerPin({ install: {} }, PKG), "scanner");
+  });
+
+  test("pinned in bunfig but NOT a declared dependency is rejected (gate may silently not run)", () => {
+    expectViolation(
+      checkScannerPin(pinned, { devDependencies: { oxlint: "^1.0.0" } }),
+      "declared dependency"
+    );
   });
 });
 

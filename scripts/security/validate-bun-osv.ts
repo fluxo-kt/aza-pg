@@ -19,7 +19,8 @@
  *   (1) Ignore schema: `.bun-osv.json` must be canonical `{ ignore: [...] }`; every entry (in BOTH
  *       `.bun-osv.json` and `package.json#bunOsv.ignore`) must carry a matcher, a `reason`, and a
  *       finite, future `expires`.
- *   (2) Scanner pin: bunfig must keep `scanner = "bun-osv-scanner-extended"` (blocks silent gate removal).
+ *   (2) Scanner pin: bunfig must keep `scanner = "bun-osv-scanner-extended"` AND it must be a declared
+ *       dependency (blocks silent gate removal and a pin to an uninstalled, never-run scanner).
  *   (3) Wiring: every `bun install` site (any workflow/action) must resolve `BUN_OSV_SHOW_IGNORED` to
  *       "0"/"false", else acknowledged CVEs cancel the non-TTY install.
  *   (4) No bypass: no CI env may set BUN_OSV_IGNORE_FILE / OSV_IGNORE_FILE / BUN_OSV_IGNORE_PKG /
@@ -49,6 +50,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Count of entries in a canonical `{ ignore: [...] }` file (0 for any other shape). For reporting. */
+function ignoreCount(value: unknown): number {
+  return isRecord(value) && Array.isArray(value.ignore) ? value.ignore.length : 0;
 }
 
 /**
@@ -189,26 +195,48 @@ export function checkIgnoreSchema(
   return violations;
 }
 
+/** True iff `name` is listed under dependencies or devDependencies of the parsed package.json. */
+function declaresDependency(packageJson: unknown, name: string): boolean {
+  if (!isRecord(packageJson)) return false;
+  for (const field of ["dependencies", "devDependencies"] as const) {
+    const deps = packageJson[field];
+    if (isRecord(deps) && name in deps) return true;
+  }
+  return false;
+}
+
 /**
- * CHECK 2 — scanner pin. `bunfig` is the parsed bunfig.toml. Removing or swapping the scanner silently
- * disarms the install-time gate (the stock @bun-security-scanner/osv cannot ignore; no scanner = no scan).
+ * CHECK 2 — scanner pin. The bunfig must name the required scanner AND that scanner must be a declared
+ * dependency: removing or swapping the bunfig entry disarms the gate (the stock @bun-security-scanner/osv
+ * cannot ignore; no scanner = no scan), and a name with no matching dependency makes the gate's behaviour
+ * hinge on how Bun handles a missing scanner — guarantee the dep instead of trusting that.
  */
-export function checkScannerPin(bunfig: unknown): Violation[] {
+export function checkScannerPin(bunfig: unknown, packageJson: unknown): Violation[] {
+  const violations: Violation[] = [];
+
   const scanner =
     isRecord(bunfig) && isRecord(bunfig.install) && isRecord(bunfig.install.security)
       ? bunfig.install.security.scanner
       : undefined;
-
-  if (scanner === REQUIRED_SCANNER) return [];
-
-  return [
-    {
+  if (scanner !== REQUIRED_SCANNER) {
+    violations.push({
       source: "bunfig.toml › [install.security].scanner",
       message:
         `must be "${REQUIRED_SCANNER}", got ${JSON.stringify(scanner)}. This is the install-time CVE gate; ` +
         "removing/swapping it disarms scanning (the stock scanner cannot honour audited ignores). Restore it.",
-    },
-  ];
+    });
+  }
+
+  if (!declaresDependency(packageJson, REQUIRED_SCANNER)) {
+    violations.push({
+      source: "package.json › devDependencies",
+      message:
+        `"${REQUIRED_SCANNER}" must be a declared dependency — bunfig resolves the scanner from node_modules, ` +
+        "so without the dep the install-time gate may silently not run. Add it to devDependencies.",
+    });
+  }
+
+  return violations;
 }
 
 /** Install sites are armed by setting this env to a disabling value; the default ("1") would cancel. */
@@ -448,7 +476,7 @@ async function main(): Promise<void> {
   const bunfig = Bun.TOML.parse(await Bun.file(path.join(REPO_ROOT, "bunfig.toml")).text());
 
   violations.push(...checkIgnoreSchema(bunOsv.present ? bunOsv.value : undefined, packageJson));
-  violations.push(...checkScannerPin(bunfig));
+  violations.push(...checkScannerPin(bunfig, packageJson));
 
   // Checks 3-4 over every workflow + local action (not just the known install sites): a future
   // unwired `bun install`, or any forbidden ignore-env, must fail here.
@@ -488,11 +516,7 @@ async function main(): Promise<void> {
   }
 
   info(
-    `Ignore entries: ${
-      isRecord(bunOsv.value) && Array.isArray((bunOsv.value as { ignore?: unknown[] }).ignore)
-        ? (bunOsv.value as { ignore: unknown[] }).ignore.length
-        : 0
-    } (.bun-osv.json) · scanner pinned to ${REQUIRED_SCANNER}`
+    `Ignore entries: ${ignoreCount(bunOsv.value)} (.bun-osv.json) · scanner pinned to ${REQUIRED_SCANNER}`
   );
   success("Bun OSV ignore audit passed");
 }

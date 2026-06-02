@@ -76,6 +76,7 @@ bun run test:unit           # Alias for validate (fast checks + unit tests, no D
 # Build/Generation
 bun run build               # Build Docker image
 bun run generate            # Regenerate all files from manifest
+bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to preview)
 ```
 
 ## Gotchas
@@ -88,6 +89,7 @@ bun run generate            # Regenerate all files from manifest
 - **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
+- **Container teardown**: remove containers with `docker rm -f -v` — the `-v` drops PG18's anonymous `/var/lib/postgresql` PGDATA volume (named volumes always survive); omitting it orphans one per teardown → silent multi-GB bloat. Enforced by `Docker Volume Leak Guard` in `validate:all`; reclaim accumulated artifacts with `bun run cleanup` (marker-scoped via `app.aza_pg_custom` + OCI title, safe on shared hosts)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime
 
 ## Extension System

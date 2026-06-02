@@ -28,6 +28,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **PGroonga 4.0.5 → 4.0.6**: Fixes tokenizer error cleanup and fuzzy search distance initialization
 - **plpgsql_check 2.8.11 → 2.9.0**: Rewrites the profiler internals for maintainability; statement-statistics memory is now bounded by the `plch_max_stat_size` setting
 - **hll 2.19 → 2.20**: Adds PostgreSQL 19 build support and enforces thresholds in explicit-representation handling
+- **pg_net 0.20.2 → 0.20.3**: The background worker now reports its activity to `pg_stat_activity` and flushes pgstat counters so autovacuum observes its writes
 - **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
 - **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
 

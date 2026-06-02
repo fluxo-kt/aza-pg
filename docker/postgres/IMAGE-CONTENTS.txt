@@ -16,7 +16,7 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_cron                      v1.6.7         operations
   pg_hashids                   builtin        utilities
   pg_jsonschema                v0.3.4         validation
-  pg_net                       v0.20.2        integration
+  pg_net                       v0.20.3        integration
   pg_partman                   v5.4.3         maintenance
   pg_repack                    v1.5.3         maintenance
   pg_stat_monitor              v2.3.2         observability

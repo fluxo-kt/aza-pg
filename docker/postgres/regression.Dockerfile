@@ -7,7 +7,7 @@
 # PostgreSQL 18.4 Regression Test Image
 # Includes ALL extensions (enabled + regression-only) + pgTAP for comprehensive testing
 
-FROM postgres:18.4-trixie@sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce AS builder-base
+FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39 AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -149,7 +149,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final regression test image
-FROM postgres:18.4-trixie@sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce
+FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.4",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce",
+  baseImageSha: "sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39",
 } as const;
 
 export type SourceSpec =

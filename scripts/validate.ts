@@ -460,10 +460,13 @@ async function validate(
         // every test teardown — this silently accumulated hundreds of dangling volumes (tens of GB).
         // `-v` never removes NAMED volumes, so it is always safe (persistence/replica stacks keep
         // their data). Covers scripts/*.ts AND .github/workflows/*.yml (CI also runs containers).
-        // Matching notes: "docker rm " (trailing space) excludes "docker rmi"; the substring
-        // "docker rm " does not occur in "docker volume rm". Comment lines (TS // and YAML #) are
-        // excluded (grep output is file:line:content), as in the Subprocess Env Safety check above.
-        'result=$(git ls-files scripts/ .github/workflows/ | grep -E "\\.(ts|ya?ml)$" | xargs grep -nE "docker rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*(//|#)" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
+        // Matching notes: the pattern covers BOTH "docker rm " and its alias "docker container rm "
+        // (a clueless future edit could reach for either). The trailing space excludes "docker rmi";
+        // the substring does not occur in "docker volume rm". The exclusion requires the canonical
+        // separate " -v" form (not the combined "-fv") — intentional, to keep one obvious idiom.
+        // Comment lines (TS // and YAML #) are excluded (grep output is file:line:content), as in the
+        // Subprocess Env Safety check above.
+        'result=$(git ls-files scripts/ .github/workflows/ | grep -E "\\.(ts|ya?ml)$" | xargs grep -nE "docker( container)? rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*(//|#)" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
       ],
       description:
         "Ensure container `docker rm` always passes -v (prevents anonymous PGDATA volume leaks)",

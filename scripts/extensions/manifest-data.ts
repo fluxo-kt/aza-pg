@@ -941,7 +941,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.27.0~debian13-1803",
+    timescaleVersion: "2.27.1~debian13-1804",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -949,15 +949,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.27.0",
+      tag: "2.27.1",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.0 TSL)",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.1 TSL, ~debian13-1804 built for PG 18.4)",
         "v2.27.0: Hypercore vectorized filters, bloom-filter pruning for compressed UPDATE/DELETE/UPSERT, and PG18 module magic support",
+        "v2.27.1: security fixes (job_errors view leaked failed jobs to non-owners; ownership checks before recompression; policy_reorder_remove info leak) plus columnar index scan correctness for grouped/ROLLUP/CUBE queries",
         "⚠️ Upgrade blocker: affected databases with incorrect sparse bloom indexes on compressed int2 columns must drop those indexes before upgrading",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",

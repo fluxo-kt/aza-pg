@@ -80,7 +80,7 @@ Extensions installed via Timescale apt, Percona apt, GitHub releases, or source 
 
 | Extension       | Version | Pigsty Alt            | Timescale Alt | Notes               |
 | --------------- | ------- | --------------------- | ------------- | ------------------- |
-| **timescaledb** | 2.27.0  | v2.20.0 (Apache only) | v2.27.0 (TSL) | Timescale apt (TSL) |
+| **timescaledb** | 2.27.1  | v2.20.0 (Apache only) | v2.27.1 (TSL) | Timescale apt (TSL) |
 
 ### Source-Built (Other)
 
@@ -168,8 +168,8 @@ apt-get install -y timescaledb-toolkit-postgresql-18
 
 | Package                           | Version | License |
 | --------------------------------- | ------- | ------- |
-| timescaledb-2-postgresql-18       | 2.27.0  | TSL     |
-| timescaledb-2-oss-postgresql-18   | 2.27.0  | Apache  |
+| timescaledb-2-postgresql-18       | 2.27.1  | TSL     |
+| timescaledb-2-oss-postgresql-18   | 2.27.1  | Apache  |
 | timescaledb-toolkit-postgresql-18 | 1.22.0  | TSL     |
 
 - **License:** Timescale License (TSL) - not Apache 2.0

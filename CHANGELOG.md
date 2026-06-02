@@ -14,12 +14,13 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **Base OS security refresh**: Applies current Debian package updates during the final image build before runtime dependency installation. This prevents a digest-pinned base image from shipping stale fixable OS CVEs when Debian security packages move after the upstream PostgreSQL image was published.
 - **Final image attack surface**: Purges install-only `curl`, `unzip`, GnuPG CLI tools, `lsb-release`, and `percona-release` after all repositories and release assets are installed; PostgreSQL runtime libraries and extension tools remain installed.
+- **TimescaleDB 2.27.1**: Fixes an information leak where the `job_errors` view exposed failed-job details to non-owners, and adds hypertable ownership checks before recompression and a `policy_reorder_remove` info leak fix.
 
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
 - **PostgreSQL 18.3 → 18.4**: Updates the pinned `postgres:18.4-trixie` base image for upstream security fixes and reproducible rebuilds
-- **TimescaleDB 2.25.2 → 2.27.0**: Adds Hypercore vectorized filters and bloom-filter pruning for compressed `UPDATE`/`DELETE`/`UPSERT`; includes PG18 module magic support and fixes for compression, continuous aggregates, and planner stability. ⚠️ Upgrade can be blocked for databases with affected sparse bloom indexes on compressed `int2` columns; drop those indexes before upgrading.
+- **TimescaleDB 2.25.2 → 2.27.1**: Adds Hypercore vectorized filters and bloom-filter pruning for compressed `UPDATE`/`DELETE`/`UPSERT`; includes PG18 module magic support and fixes for compression, continuous aggregates, and planner stability; 2.27.1 adds columnar index scan correctness fixes for grouped/`ROLLUP`/`CUBE` queries and is built for PostgreSQL 18.4 (`~debian13-1804`). ⚠️ Upgrade can be blocked for databases with affected sparse bloom indexes on compressed `int2` columns; drop those indexes before upgrading.
 - **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
 - **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes
 - **supautils 3.1.0 → 3.2.2**: Adds privilege-error hints and fixes ALTER ROLE hook and executor hook crash paths

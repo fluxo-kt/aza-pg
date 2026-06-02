@@ -89,7 +89,7 @@ async function startContainer(image: string): Promise<boolean> {
  * Stop and remove test container
  */
 async function cleanup(): Promise<void> {
-  await $`docker rm -f ${CONTAINER_NAME}`.nothrow().quiet();
+  await $`docker rm -f -v ${CONTAINER_NAME}`.nothrow().quiet();
 }
 
 /**

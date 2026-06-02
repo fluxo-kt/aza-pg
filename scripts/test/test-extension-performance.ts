@@ -64,7 +64,7 @@ async function startContainer(): Promise<void> {
 
 async function stopContainer(): Promise<void> {
   console.log(`\n🛑 Stopping and removing container ${CONTAINER_NAME}...`);
-  await $`docker rm -f ${CONTAINER_NAME}`.quiet();
+  await $`docker rm -f -v ${CONTAINER_NAME}`.quiet();
 }
 
 async function execSQL(sql: string, quiet = false): Promise<string> {

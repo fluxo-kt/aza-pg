@@ -269,10 +269,11 @@ async function testSetupComposeStack(config: TestConfig): Promise<TestResult> {
   try {
     section("Test 4: Setup Docker Compose Stack");
 
-    // Stop and remove standalone container (keep volume)
+    // Stop and remove standalone container. `-v` drops only anonymous volumes; the named data
+    // volume is deliberately kept so the next container can re-mount it and verify persistence.
     info("Stopping standalone container...");
     await $`docker stop ${config.containerName}`;
-    await $`docker rm ${config.containerName}`;
+    await $`docker rm -v ${config.containerName}`;
 
     // Create test .env file for compose
     info("Creating compose environment configuration...");

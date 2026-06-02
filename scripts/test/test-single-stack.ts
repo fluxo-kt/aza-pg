@@ -148,7 +148,7 @@ async function main(): Promise<void> {
     if (testContainers.length > 0) {
       info(`Removing ${testContainers.length} test containers: ${testContainers.join(", ")}`);
       for (const container of testContainers) {
-        await $`docker rm -f ${container}`.nothrow().quiet();
+        await $`docker rm -f -v ${container}`.nothrow().quiet();
       }
       await Bun.sleep(2000);
     }
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
           // All containers are test containers, remove them first then the volume
           info(`Volume ${volume} used by test containers: ${usingContainers.join(", ")}`);
           for (const c of usingContainers) {
-            await $`docker rm -f ${c}`.nothrow().quiet();
+            await $`docker rm -f -v ${c}`.nothrow().quiet();
           }
           const rmResult = await $`docker volume rm ${volume}`.nothrow().quiet();
           if (rmResult.exitCode === 0) {
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
         warning(`Warning: Some containers still exist: ${remainingContainers}`);
         const containerList = remainingContainers.split("\n").filter((n) => n.trim());
         for (const container of containerList) {
-          await $`docker rm -f ${container}`.nothrow().quiet();
+          await $`docker rm -f -v ${container}`.nothrow().quiet();
         }
         // Wait again after force removal
         await Bun.sleep(2000);

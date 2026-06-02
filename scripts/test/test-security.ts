@@ -70,7 +70,7 @@ async function readImageManifest(): Promise<ImageManifest> {
  */
 async function startContainer() {
   // Clean up any existing container
-  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
+  await $`docker rm -f -v ${TEST_CONTAINER}`.quiet().nothrow();
 
   // Start container with security settings
   const result = await $`docker run --name ${TEST_CONTAINER} \
@@ -101,7 +101,7 @@ async function startContainer() {
  * Stop and remove test container
  */
 async function stopContainer() {
-  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
+  await $`docker rm -f -v ${TEST_CONTAINER}`.quiet().nothrow();
 }
 
 async function readListenAddressForBindIp(bindIp: string): Promise<string> {
@@ -129,7 +129,7 @@ async function readListenAddressForBindIp(bindIp: string): Promise<string> {
     expect(setting.success).toBe(true);
     return setting.stdout;
   } finally {
-    await $`docker rm -f ${containerName}`.quiet().nothrow();
+    await $`docker rm -f -v ${containerName}`.quiet().nothrow();
   }
 }
 

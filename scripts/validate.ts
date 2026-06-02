@@ -451,6 +451,24 @@ async function validate(
       required: true,
     },
     {
+      name: "Docker Volume Leak Guard",
+      command: [
+        "sh",
+        "-c",
+        // A container `docker rm` MUST pass `-v` so the container's anonymous PGDATA volume is
+        // dropped with it. Without `-v`, PG18's anonymous /var/lib/postgresql volume is orphaned on
+        // every test teardown — this silently accumulated hundreds of dangling volumes (tens of GB).
+        // `-v` never removes NAMED volumes, so it is always safe (persistence/replica stacks keep
+        // their data). Matching notes: "docker rm " (trailing space) excludes "docker rmi"; the
+        // substring "docker rm " does not occur in "docker volume rm". Comment lines are excluded
+        // (grep output is file:line:content), as in the Subprocess Env Safety check above.
+        'result=$(git ls-files scripts/ | grep -E "\\.ts$" | xargs grep -nE "docker rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*//" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
+      ],
+      description:
+        "Ensure container `docker rm` always passes -v (prevents anonymous PGDATA volume leaks)",
+      required: true,
+    },
+    {
       name: "Extension Size Regression",
       command: ["bun", "scripts/check-size-regression.ts"],
       description: "Check for unexpected extension binary size increases (warn-only)",

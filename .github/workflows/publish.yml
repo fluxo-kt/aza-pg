@@ -1273,7 +1273,7 @@ jobs:
           docker exec pg-test psql -U postgres -c "SELECT extname FROM pg_available_extensions ORDER BY extname;"
 
           # Cleanup
-          docker rm -f pg-test
+          docker rm -f -v pg-test
           ```
 
           ## Deployment

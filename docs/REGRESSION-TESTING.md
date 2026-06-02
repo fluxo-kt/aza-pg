@@ -472,7 +472,7 @@ docker run --name pg-test -d -e POSTGRES_PASSWORD=postgres aza-pg:pg18-regressio
 docker exec -it pg-test psql -U postgres -f /tests/regression/pgtap/01_extensions_availability.sql
 
 # Cleanup
-docker stop pg-test && docker rm pg-test
+docker stop pg-test && docker rm -v pg-test
 ```
 
 ### Common Issues

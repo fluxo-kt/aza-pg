@@ -558,7 +558,7 @@ jobs:
           echo "✅ vector functional"
 
           docker stop pg-test
-          docker rm pg-test
+          docker rm -v pg-test
           echo "✅ Extensions test passed!"
 
       - name: Test auto-config with different memory limits
@@ -585,7 +585,7 @@ jobs:
           docker exec pg-test-2gb psql -U postgres -c "SHOW max_connections;"
 
           docker stop pg-test-2gb
-          docker rm pg-test-2gb
+          docker rm -v pg-test-2gb
 
           echo "🧪 Testing auto-config with 4GB memory limit..."
           docker run -d --name pg-test-4gb \
@@ -608,7 +608,7 @@ jobs:
           docker exec pg-test-4gb psql -U postgres -c "SHOW max_connections;"
 
           docker stop pg-test-4gb
-          docker rm pg-test-4gb
+          docker rm -v pg-test-4gb
           echo "✅ Auto-config test passed!"
 
       - name: Test all extensions (comprehensive)
@@ -637,12 +637,12 @@ jobs:
             echo "❌ Extension tests failed"
             docker logs pg-ext-test --tail=100
             docker stop pg-ext-test
-            docker rm pg-ext-test
+            docker rm -v pg-ext-test
             exit 1
           fi
 
           docker stop pg-ext-test
-          docker rm pg-ext-test
+          docker rm -v pg-ext-test
           echo "✅ All extension tests passed!"
 
       - name: Deploy and test primary stack

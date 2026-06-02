@@ -171,8 +171,14 @@ describe("invokesBunInstall — command detection (guards against false-green)",
     ["set -euo pipefail\nbun install --frozen-lockfile", true],
     ["jq -r . cfg.json && bun install", true],
     ["bun  install", true], // collapsed whitespace
+    ["NODE_ENV=ci bun install", true], // NAME=value env prefix
+    ["A=1 B=2 bun install", true], // multiple assignments stripped
+    ["env BUN_OSV_SHOW_IGNORED=0 bun install", true], // `env` command prefix
+    ["env NODE_ENV=ci bun install --frozen-lockfile", true], // env + assignment + flags
     ['echo "bun install"', false], // string, not a command
+    ["echo bun install", false], // `bun install` is an argument, not the command
     ["# bun install", false], // comment
+    ["NODE_ENV=ci echo hi", false], // env prefix but not an install
     ["bunx install", false],
     ["bun add left-pad", false],
     ["", false],
@@ -211,6 +217,21 @@ describe("auditCiFile — check 3 wiring (workflow)", () => {
   test("SHOW_IGNORED=1 FAILS (would still cancel)", () => {
     const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "1"\njobs:\n  b:\n    steps:\n      - run: bun install\n`;
     expectViolation(audit(yaml, "workflow"), "resolves to");
+  });
+
+  test("padded ' 0 ' FAILS — scanner does not trim, guard must mirror exactly (not green-while-CI-cancels)", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: " 0 "\njobs:\n  b:\n    steps:\n      - run: bun install\n`;
+    expectViolation(audit(yaml, "workflow"), "resolves to");
+  });
+
+  test("env-prefixed install with no SHOW_IGNORED is detected and FAILS", () => {
+    const yaml = `jobs:\n  b:\n    steps:\n      - run: NODE_ENV=ci bun install\n`;
+    expectViolation(audit(yaml, "workflow"), "without BUN_OSV_SHOW_IGNORED");
+  });
+
+  test("env-prefixed install inherits workflow SHOW_IGNORED=0 and passes", () => {
+    const yaml = `env:\n  BUN_OSV_SHOW_IGNORED: "0"\njobs:\n  b:\n    steps:\n      - run: NODE_ENV=ci bun install\n`;
+    expect(audit(yaml, "workflow")).toEqual([]);
   });
 
   test("precedence: step '1' overriding workflow '0' FAILS", () => {
@@ -255,6 +276,11 @@ describe("auditCiFile — check 4 forbidden ignore-env", () => {
   test("forbids a forbidden key at step env too", () => {
     const yaml = `jobs:\n  b:\n    steps:\n      - run: echo hi\n        env:\n          OSV_IGNORE_FILE: x.json\n`;
     expectViolation(audit(yaml, "workflow"), "OSV_IGNORE_FILE");
+  });
+
+  test("forbids a forbidden key at composite action step env", () => {
+    const yaml = `runs:\n  using: composite\n  steps:\n    - run: echo hi\n      shell: bash\n      env:\n        BUN_OSV_IGNORE_FILE: x.json\n`;
+    expectViolation(audit(yaml, "action"), "BUN_OSV_IGNORE_FILE");
   });
 });
 

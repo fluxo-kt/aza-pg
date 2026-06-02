@@ -23,7 +23,8 @@
  *   (3) Wiring: every `bun install` site (any workflow/action) must resolve `BUN_OSV_SHOW_IGNORED` to
  *       "0"/"false", else acknowledged CVEs cancel the non-TTY install.
  *   (4) No bypass: no CI env may set BUN_OSV_IGNORE_FILE / OSV_IGNORE_FILE / BUN_OSV_IGNORE_PKG /
- *       BUN_OSV_IGNORE_ADVISORY (those inject ignores outside the audited file).
+ *       BUN_OSV_IGNORE_ADVISORY (those inject ignores outside the audited file). Covers declarative
+ *       env: blocks; runtime `$GITHUB_ENV` writes are out of scope (attacker model, not clueless-agent).
  */
 
 import path from "node:path";
@@ -226,18 +227,53 @@ export const FORBIDDEN_IGNORE_ENV = [
   "BUN_OSV_IGNORE_ADVISORY",
 ] as const;
 
-/** GitHub passes env as strings; the scanner disables show-ignored iff "0" or "false" (index.ts). */
+/**
+ * The scanner (index.ts) disables show-ignored iff the env value is exactly "0" or case-insensitively
+ * "false" — it does NOT trim. Mirror that exactly (via String() so a YAML-parsed number 0 / boolean
+ * false, which GitHub stringifies into the env, are handled too). A looser guard that trimmed would pass
+ * a padded " 0 " the scanner rejects — going green here while the non-TTY install cancels in CI.
+ */
 function disablesShowIgnored(value: unknown): boolean {
-  const norm = String(value).trim().toLowerCase();
-  return norm === "0" || norm === "false";
+  const s = String(value);
+  return s === "0" || s.toLowerCase() === "false";
+}
+
+/** Env-var name chars: first [A-Za-z_], then also [0-9]. Checked without a regex (single-token lexing). */
+function isEnvNameChar(c: string, first: boolean): boolean {
+  return (
+    (c >= "A" && c <= "Z") ||
+    (c >= "a" && c <= "z") ||
+    c === "_" ||
+    (!first && c >= "0" && c <= "9")
+  );
+}
+
+/** True iff `token` is a `NAME=value` shell assignment (NAME a valid env identifier). */
+function isEnvAssignment(token: string | undefined): boolean {
+  if (token === undefined) return false;
+  const eq = token.indexOf("=");
+  if (eq <= 0) return false;
+  for (let i = 0; i < eq; i++) {
+    const c = token[i];
+    if (c === undefined || !isEnvNameChar(c, i === 0)) return false;
+  }
+  return true;
+}
+
+/** A segment's command tokens after stripping a leading `env` and any `NAME=value` env prefixes. */
+function commandTokens(segment: string): string[] {
+  const tokens = segment.trim().split(/\s+/).filter(Boolean);
+  let i = tokens[0] === "env" ? 1 : 0;
+  while (i < tokens.length && isEnvAssignment(tokens[i])) i++;
+  return tokens.slice(i);
 }
 
 /**
- * True iff a shell snippet invokes `bun install` as a top-level command. Splits on shell command
- * separators (a lexer, not a shell parser) and matches a segment's leading two tokens — so it catches
- * `bun install`, `bun install --frozen-lockfile`, `… && bun install`, and double-spaced forms, while
- * ignoring comments and strings like `echo "bun install"`. Obfuscated/eval'd invocations are out of
- * scope (not a realistic CI bypass — the install would still run the scanner).
+ * True iff a shell snippet invokes `bun install` as a command. Splits on shell command separators (a
+ * lexer, not a shell parser), drops comment lines, and — after stripping any leading `env`/`NAME=value`
+ * prefix — matches a segment whose first two command tokens are `bun install`. Catches bare,
+ * flag-suffixed, `… &&`-chained, double-spaced, and env-prefixed forms; ignores strings like
+ * `echo "bun install"`. Obfuscated/eval'd invocations and runtime `$GITHUB_ENV` writes are out of scope.
  */
 export function invokesBunInstall(run: string): boolean {
   let normalized = run;
@@ -246,7 +282,10 @@ export function invokesBunInstall(run: string): boolean {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith("#"))
-    .some((line) => line.split(/\s+/).slice(0, 2).join(" ") === "bun install");
+    .some((line) => {
+      const cmd = commandTokens(line);
+      return cmd[0] === "bun" && cmd[1] === "install";
+    });
 }
 function envOf(node: unknown): Record<string, unknown> | undefined {
   return isRecord(node) && isRecord(node.env) ? node.env : undefined;
@@ -370,10 +409,7 @@ export function auditWorktreeConfig(file: string, parsed: unknown): Violation[] 
     isRecord(parsed) && Array.isArray(parsed["setup-worktree"]) ? parsed["setup-worktree"] : [];
   const violations: Violation[] = [];
   for (const command of commands) {
-    if (typeof command !== "string") continue;
-    const tokens = command.split(/\s+/);
-    const bunAt = tokens.indexOf("bun");
-    if (bunAt < 0 || tokens[bunAt + 1] !== "install") continue;
+    if (typeof command !== "string" || !invokesBunInstall(command)) continue;
     const value = inlineEnvValue(command, SHOW_IGNORED_ENV);
     if (value === undefined || !disablesShowIgnored(value)) {
       violations.push({

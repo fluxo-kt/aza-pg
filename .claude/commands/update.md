@@ -1108,6 +1108,25 @@ test:all → pass → DONE
 test:all → fail → fix → commit fix → test:all (loop)
 ```
 
+## Phase 13: Reclaim Test Artifacts (MANDATORY — after the gate passes)
+
+`bun run build`/`test:all` leave aza-pg-attributable Docker artifacts that bloat the host over
+successive update rounds: superseded image layers (each rebuild untags the previous aza-pg image),
+the dedicated `aza-pg-builder` buildx cache, and any anonymous PGDATA volumes. Reclaim them:
+
+```bash
+bun scripts/docker/cleanup-artifacts.ts            # add --dry-run first to preview
+```
+
+**Safe on a shared host**: it removes ONLY artifacts positively attributed to aza-pg by aza-pg's own
+identity markers — images by OCI label `org.opencontainers.image.title` ("aza-pg …"), volumes by the
+`app.aza_pg_custom` marker that `00-aza-pg-settings.sh` writes into PGDATA. It NEVER prunes by type
+(`docker system/volume/image prune` would also delete other projects' orphans).
+
+The anonymous-volume leak is fixed at source (test teardown passes `docker rm -f -v`, enforced by the
+`Docker Volume Leak Guard` check in `validate:all`), so this step now mainly reclaims superseded image
+layers and builder cache — but keep running it: it is the backstop that keeps the host from bloating.
+
 ## Recovery Procedure
 
 ### Before Push (Local Only)

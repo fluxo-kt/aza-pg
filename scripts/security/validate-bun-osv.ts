@@ -354,6 +354,39 @@ export function auditCiFile(file: string, parsed: unknown, kind: CiKind): Violat
   return violations;
 }
 
+/** Value of a leading `KEY=value` env-prefix token in a shell command, or undefined if absent. */
+function inlineEnvValue(command: string, key: string): string | undefined {
+  const token = command.split(/\s+/).find((t) => t.startsWith(`${key}=`));
+  return token?.slice(key.length + 1);
+}
+
+/**
+ * CHECK 3 for `.1code/worktree.json` — its `setup-worktree` commands run `bun install` outside any env
+ * block (worktree bootstrap), so SHOW_IGNORED must be set inline (`env BUN_OSV_SHOW_IGNORED=0 bun
+ * install` — `env` works whether the runner shells out or execs). Verify any install command carries it.
+ */
+export function auditWorktreeConfig(file: string, parsed: unknown): Violation[] {
+  const commands =
+    isRecord(parsed) && Array.isArray(parsed["setup-worktree"]) ? parsed["setup-worktree"] : [];
+  const violations: Violation[] = [];
+  for (const command of commands) {
+    if (typeof command !== "string") continue;
+    const tokens = command.split(/\s+/);
+    const bunAt = tokens.indexOf("bun");
+    if (bunAt < 0 || tokens[bunAt + 1] !== "install") continue;
+    const value = inlineEnvValue(command, SHOW_IGNORED_ENV);
+    if (value === undefined || !disablesShowIgnored(value)) {
+      violations.push({
+        source: `${file} › setup-worktree`,
+        message:
+          `\`${command}\` runs bun install but does not set ${SHOW_IGNORED_ENV}=0 inline — acknowledged CVEs ` +
+          `would cancel this non-TTY install. Prefix it: \`env ${SHOW_IGNORED_ENV}=0 bun install\`.`,
+      });
+    }
+  }
+  return violations;
+}
+
 async function readJsonIfPresent(absPath: string): Promise<{ present: boolean; value: unknown }> {
   const file = Bun.file(absPath);
   if (!(await file.exists())) return { present: false, value: undefined };
@@ -407,6 +440,11 @@ async function main(): Promise<void> {
     }
     violations.push(...auditCiFile(rel, doc.toJS(), kind));
   }
+
+  // Non-CI install site: worktree bootstrap runs `bun install` with no env block.
+  const worktree = await readJsonIfPresent(path.join(REPO_ROOT, ".1code/worktree.json"));
+  if (worktree.present)
+    violations.push(...auditWorktreeConfig(".1code/worktree.json", worktree.value));
 
   if (violations.length > 0) {
     for (const v of violations) error(`${v.source}: ${v.message}`);

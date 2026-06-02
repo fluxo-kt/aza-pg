@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseDocument } from "yaml";
 import {
   auditCiFile,
+  auditWorktreeConfig,
   checkIgnoreSchema,
   checkScannerPin,
   invokesBunInstall,
@@ -254,5 +255,25 @@ describe("auditCiFile — check 4 forbidden ignore-env", () => {
   test("forbids a forbidden key at step env too", () => {
     const yaml = `jobs:\n  b:\n    steps:\n      - run: echo hi\n        env:\n          OSV_IGNORE_FILE: x.json\n`;
     expectViolation(audit(yaml, "workflow"), "OSV_IGNORE_FILE");
+  });
+});
+
+describe("auditWorktreeConfig — non-CI install site", () => {
+  const wt = (cmd: string) => auditWorktreeConfig("test", { "setup-worktree": [cmd] });
+
+  test("env-prefixed install passes", () => {
+    expect(wt("env BUN_OSV_SHOW_IGNORED=0 bun install")).toEqual([]);
+  });
+
+  test("non-install command is ignored", () => {
+    expect(wt("echo hello")).toEqual([]);
+  });
+
+  test("bare bun install FAILS", () => {
+    expectViolation(wt("bun install"), "setup-worktree", "does not set");
+  });
+
+  test("inline value other than 0/false FAILS", () => {
+    expectViolation(wt("env BUN_OSV_SHOW_IGNORED=1 bun install"), "setup-worktree");
   });
 });

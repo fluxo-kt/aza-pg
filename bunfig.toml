@@ -13,7 +13,7 @@ production = false
 #minimumReleaseAge = 86400 # 1 day in seconds
 
 [install.security]
-scanner = "@bun-security-scanner/osv"
+scanner = "bun-osv-scanner-extended"
 #scanner = "@acme/bun-security-scanner"
 
 [console]

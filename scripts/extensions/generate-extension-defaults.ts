@@ -29,6 +29,7 @@ const NAME_TO_KEY: Record<string, string> = {
   http: "http",
   hypopg: "hypopg",
   plpgsql_check: "plpgsqlCheck",
+  pg_partman: "partman",
   pgrouting: "pgrouting",
   rum: "rum",
   set_user: "setUser",

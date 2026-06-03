@@ -66,7 +66,7 @@ export class TestHarness {
 
   async cleanup(containerName: string): Promise<void> {
     try {
-      await $`docker rm -f ${containerName}`.quiet();
+      await $`docker rm -f -v ${containerName}`.quiet();
     } catch {
       // Ignore errors
     }

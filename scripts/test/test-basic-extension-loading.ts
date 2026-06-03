@@ -30,7 +30,7 @@ function assertEqual(actual: string, expected: string, label: string): void {
 }
 
 async function cleanup(): Promise<void> {
-  await $`docker rm -f ${containerName}`.quiet().nothrow();
+  await $`docker rm -f -v ${containerName}`.quiet().nothrow();
 }
 
 async function main(): Promise<void> {

@@ -12,6 +12,27 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Security
 
+- **TimescaleDB 2.27.1**: Fixes an information leak where the `job_errors` view exposed failed-job details to non-owners, adds hypertable ownership checks before recompression, and fixes an information leak in `policy_reorder_remove`.
+
+### Changed
+
+- **TimescaleDB 2.27.0 → 2.27.1**: Adds columnar index scan correctness fixes for grouped/`ROLLUP`/`CUBE` queries; realigned to PostgreSQL 18.4 (`~debian13-1804`).
+- **plpgsql_check 2.8.11 → 2.9.0**: Rewrites the profiler internals for maintainability; statement-statistics memory is now bounded by the `plch_max_stat_size` setting.
+- **pg_net 0.20.2 → 0.20.3**: The background worker now reports its activity to `pg_stat_activity` and flushes pgstat counters so autovacuum observes its writes.
+- **hll 2.19 → 2.20**: Adds PostgreSQL 19 build support and enforces thresholds in explicit-representation handling.
+
+### Development
+
+- pg_partman now installs from the PGDG apt package (`postgresql-18-partman` 5.4.3) instead of a source build — identical upstream version and background worker, removing a compile step from the image build.
+- Hardened the build-time supply chain: adopted the `bun-osv-scanner-extended` install-time OSV scanner with an audited ignore policy, and patched transitive `ws`/`uuid` advisories via `overrides` (`ws` ^8.20.1 CVE-2026-45736, `uuid` ^14.0.0 CVE-2026-41907) — build/test tooling only, never in the runtime image.
+- Dev deps: oxlint 1.68.0, squawk-cli 2.56.0.
+
+---
+
+## [v18.4-202605172147] - 2026-05-17
+
+### Security
+
 - **Base OS security refresh**: Applies current Debian package updates during the final image build before runtime dependency installation. This prevents a digest-pinned base image from shipping stale fixable OS CVEs when Debian security packages move after the upstream PostgreSQL image was published.
 - **Final image attack surface**: Purges install-only `curl`, `unzip`, GnuPG CLI tools, `lsb-release`, and `percona-release` after all repositories and release assets are installed; PostgreSQL runtime libraries and extension tools remain installed.
 

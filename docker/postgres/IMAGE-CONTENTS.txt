@@ -9,14 +9,14 @@ EXTENSIONS (CREATE EXTENSION available)
 
   btree_gin                    builtin        indexing
   btree_gist                   builtin        indexing
-  hll                          v2.19          analytics
+  hll                          v2.20          analytics
   http                         v1.7.0         integration
   hypopg                       v1.4.2         performance
   index_advisor                v0.2.0         performance
   pg_cron                      v1.6.7         operations
   pg_hashids                   builtin        utilities
   pg_jsonschema                v0.3.4         validation
-  pg_net                       v0.20.2        integration
+  pg_net                       v0.20.3        integration
   pg_partman                   v5.4.3         maintenance
   pg_repack                    v1.5.3         maintenance
   pg_stat_monitor              v2.3.2         observability
@@ -27,11 +27,11 @@ EXTENSIONS (CREATE EXTENSION available)
   pgroonga                     v4.0.6         search
   pgsodium                     v3.1.9         security
   plpgsql                      builtin        language
-  plpgsql_check                v2.8.11        quality
+  plpgsql_check                v2.9.0         quality
   rum                          v1.3.15        search
   set_user                     v4.2.0         security
   supabase_vault               v0.3.1         security
-  timescaledb                  v2.27.0        timeseries
+  timescaledb                  v2.27.1        timeseries
   timescaledb_toolkit          v1.22.0        timeseries
   vector                       v0.8.2         ai
   vectorscale                  v0.9.0         ai

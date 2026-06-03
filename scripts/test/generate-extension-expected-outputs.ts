@@ -236,7 +236,7 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
   } catch (error) {
     // Clean up container on failure
     try {
-      await $`docker rm -f ${containerName}`.quiet();
+      await $`docker rm -f -v ${containerName}`.quiet();
     } catch {
       // Ignore cleanup errors
     }
@@ -249,7 +249,7 @@ async function startPostgresContainer(image: string, mode: TestMode): Promise<st
  */
 async function stopPostgresContainer(containerName: string): Promise<void> {
   try {
-    await $`docker rm -f ${containerName}`.quiet();
+    await $`docker rm -f -v ${containerName}`.quiet();
   } catch (error) {
     console.warn(`Warning: Failed to stop container ${containerName}: ${error}`);
   }

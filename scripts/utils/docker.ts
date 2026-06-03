@@ -89,7 +89,10 @@ export async function dockerCleanup(containerName: string): Promise<void> {
   }
 
   try {
-    const proc = spawn(["docker", "rm", "-f", containerName], {
+    // `-v` removes the container's ANONYMOUS volumes (never named ones). Test containers run the
+    // image without an explicit `-v`, so PG18's anonymous `/var/lib/postgresql` PGDATA volume would
+    // otherwise be orphaned on every teardown — the source of large dangling-volume accumulation.
+    const proc = spawn(["docker", "rm", "-f", "-v", containerName], {
       stdout: "ignore",
       stderr: "ignore",
     });
@@ -396,8 +399,9 @@ export async function cleanupContainer(containerName: string): Promise<boolean> 
   }
 
   try {
-    // Stop and remove container
-    const rmProc = spawn(["docker", "rm", "-f", containerName], {
+    // Stop and remove container. `-v` drops its anonymous PGDATA volume too (see dockerCleanup);
+    // named volumes are unaffected, so this is safe for stacks that rely on persistence.
+    const rmProc = spawn(["docker", "rm", "-f", "-v", containerName], {
       stdout: "ignore",
       stderr: "ignore",
     });

@@ -65,7 +65,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                             | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                         |
 | --------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.19](https://github.com/citusdata/postgresql-hll/releases/tag/v2.19) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
+| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.20](https://github.com/citusdata/postgresql-hll/releases/tag/v2.20) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
@@ -85,7 +85,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                                              | Version                                                             | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
 | [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl.              |
-| [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.2](https://github.com/supabase/pg_net/releases/tag/v0.20.2)  | Yes                | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
+| [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.3](https://github.com/supabase/pg_net/releases/tag/v0.20.3)  | Yes                | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
 | [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.6.1](https://github.com/supabase/wrappers/releases/tag/v0.6.1)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.                |
 
 ### maintenance
@@ -118,9 +118,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### quality
 
-| Extension                                                 | Version                                                                | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.8.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.8.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
+| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.9.0](https://github.com/okbob/plpgsql_check/releases/tag/v2.9.0) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 
@@ -157,7 +157,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                 | Version                                                                        | Enabled by Default | Shared Preload | Documentation                                                           | Notes                                                                                                                 |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.27.0](https://github.com/timescale/timescaledb/releases/tag/2.27.0)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
+| [`timescaledb`](https://github.com/timescale/timescaledb)                 | [2.27.1](https://github.com/timescale/timescaledb/releases/tag/2.27.1)         | Yes                | Yes            | [Docs](https://docs.timescale.com/)                                     | Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL). |
 | [`timescaledb_toolkit`](https://github.com/timescale/timescaledb-toolkit) | [1.22.0](https://github.com/timescale/timescaledb-toolkit/releases/tag/1.22.0) | No                 | No             | [Docs](https://github.com/timescale/timescaledb-toolkit/tree/main/docs) | Analytical hyperfunctions and sketches extending TimescaleDB.                                                         |
 
 ### utilities

@@ -19,7 +19,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.4",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce",
+  baseImageSha: "sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39",
 } as const;
 
 export type SourceSpec =
@@ -241,7 +241,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgaudit",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "18.0-2.pgdg13+1",
+    pgdgVersion: "18.0-3.pgdg13+1",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -254,7 +254,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "PGDG: postgresql-18-pgaudit (v18.0-2.pgdg13+1)",
+        "PGDG: postgresql-18-pgaudit (v18.0-3.pgdg13+1)",
         "Alt: Pigsty v18.0 (same version)",
         "Tune pgaudit.log to control verbosity.",
       ],
@@ -395,20 +395,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "plpgsql_check",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "2.8.11-1.pgdg13+1",
+    pgdgVersion: "2.9.0-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.8.11",
+      tag: "v2.9.0",
     },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-plpgsql-check (v2.8.11-1.pgdg13+1)",
-        "v2.8.11: Fixed false errors on composite constants and domain types",
+        "PGDG: postgresql-18-plpgsql-check (v2.9.0-1.pgdg13+1)",
+        "v2.9.0: Profiler rewrite for maintainability; statement statistics memory capped by plch_max_stat_size (PGDG lags upstream v2.9.1)",
       ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",
@@ -494,7 +494,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/pg_net.git",
-      tag: "v0.20.2",
+      tag: "v0.20.3",
     },
     build: { type: "pgxs" },
     aptPackages: ["libcurl4-openssl-dev"],
@@ -941,7 +941,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.27.0~debian13-1803",
+    timescaleVersion: "2.27.1~debian13-1804",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -949,15 +949,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.27.0",
+      tag: "2.27.1",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.0 TSL)",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.1 TSL, ~debian13-1804 built for PG 18.4)",
         "v2.27.0: Hypercore vectorized filters, bloom-filter pruning for compressed UPDATE/DELETE/UPSERT, and PG18 module magic support",
+        "v2.27.1: security fixes (job_errors view leaked failed jobs to non-owners; ownership checks before recompression; policy_reorder_remove info leak) plus columnar index scan correctness for grouped/ROLLUP/CUBE queries",
         "⚠️ Upgrade blocker: affected databases with incorrect sparse bloom indexes on compressed int2 columns must drop those indexes before upgrading",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
@@ -1022,7 +1023,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
-    install_via: "source",
+    install_via: "pgdg",
+    pgdgVersion: "5.4.3-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -1030,14 +1032,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgpartman/pg_partman.git",
       tag: "v5.4.3",
     },
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "Built from source (PGDG package not available for PG18)",
+        "PGDG: postgresql-18-partman (5.4.3-1.pgdg13+1) — ships the pg_partman_bgw background worker",
         "v5.4.3: inherits toast relation options from template table; fixes version reporting bug in v5.4.2 (\\dx showed 5.4.1)",
         "Set pg_partman_bgw.role and interval to enable background worker.",
       ],
@@ -1081,19 +1082,19 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
-    pgdgVersion: "2.19-2.pgdg13+2",
+    pgdgVersion: "2.20-1.pgdg13+1",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {
       type: "git",
       repository: "https://github.com/citusdata/postgresql-hll.git",
-      tag: "v2.19",
+      tag: "v2.20",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hll (v2.19-2.pgdg13+2)", "Alt: Pigsty v2.19 (same version)"],
+      notes: ["PGDG: postgresql-18-hll (v2.20-1.pgdg13+1)", "Alt: Pigsty v2.20 (same version)"],
     },
     sourceUrl: "https://github.com/citusdata/postgresql-hll",
     docsUrl: "https://github.com/citusdata/postgresql-hll#readme",

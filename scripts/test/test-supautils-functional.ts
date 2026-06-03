@@ -139,7 +139,7 @@ async function cleanupContainer(): Promise<void> {
 
   console.log(`\n🧹 Cleaning up container: ${CONTAINER}`);
   try {
-    await $`docker rm -f ${CONTAINER}`.nothrow();
+    await $`docker rm -f -v ${CONTAINER}`.nothrow();
     console.log("✅ Container cleanup complete");
   } catch (error) {
     console.error(`⚠️  Failed to cleanup container: ${error}`);
@@ -311,7 +311,7 @@ if (!isOwnContainer) {
       assert(count === 0, `Expected 0 supautils GUCs without preload, found ${count}`);
     } finally {
       // Cleanup negative test container
-      await $`docker rm -f ${negativeContainer}`.nothrow();
+      await $`docker rm -f -v ${negativeContainer}`.nothrow();
     }
   });
 }

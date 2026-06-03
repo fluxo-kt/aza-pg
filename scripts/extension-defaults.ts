@@ -20,6 +20,7 @@ export interface ExtensionDefaults {
     hll: string;
     http: string;
     hypopg: string;
+    partman: string;
     pgaudit: string;
     pgcron: string;
     pgrouting: string;
@@ -38,16 +39,17 @@ export interface ExtensionDefaults {
  */
 export const extensionDefaults: ExtensionDefaults = {
   pgVersion: "18.4",
-  baseImageSha: "sha256:f7ce845ee6873dd84be93c9828fe0d1fab0f9707dc9ac569694657398b290bce",
+  baseImageSha: "sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39",
   pgdgVersions: {
-    hll: "2.19-2.pgdg13+2",
+    hll: "2.20-1.pgdg13+1",
     http: "1.7.0-3.pgdg13+1",
     hypopg: "1.4.2-2.pgdg13+1",
-    pgaudit: "18.0-2.pgdg13+1",
+    partman: "5.4.3-1.pgdg13+1",
+    pgaudit: "18.0-3.pgdg13+1",
     pgcron: "1.6.7-2.pgdg13+1",
     pgrouting: "4.0.1-1.pgdg13+1",
     pgvector: "0.8.2-1.pgdg13+1",
-    plpgsqlCheck: "2.8.11-1.pgdg13+1",
+    plpgsqlCheck: "2.9.0-1.pgdg13+1",
     postgis: "3.6.3+dfsg-1.pgdg13+1",
     repack: "1.5.3-1.pgdg13+1",
     rum: "1.3.15-1.pgdg13+1",
@@ -78,6 +80,7 @@ if (import.meta.main) {
     console.log(`HLL_VERSION="${extensionDefaults.pgdgVersions.hll}"`);
     console.log(`HTTP_VERSION="${extensionDefaults.pgdgVersions.http}"`);
     console.log(`HYPOPG_VERSION="${extensionDefaults.pgdgVersions.hypopg}"`);
+    console.log(`PARTMAN_VERSION="${extensionDefaults.pgdgVersions.partman}"`);
     console.log(`PGAUDIT_VERSION="${extensionDefaults.pgdgVersions.pgaudit}"`);
     console.log(`PGCRON_VERSION="${extensionDefaults.pgdgVersions.pgcron}"`);
     console.log(`PGROUTING_VERSION="${extensionDefaults.pgdgVersions.pgrouting}"`);

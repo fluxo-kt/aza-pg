@@ -162,6 +162,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     hypopg: "hypopg.so",
     rum: "rum.so",
     "set-user": "set_user.so",
+    partman: "pg_partman_bgw.so",
   };
 
   // Get expected .so files for enabled packages

@@ -136,7 +136,7 @@ async function startContainer() {
   }
 
   // Clean up any existing container
-  await $`docker rm -f ${TEST_CONTAINER}`.quiet().nothrow();
+  await $`docker rm -f -v ${TEST_CONTAINER}`.quiet().nothrow();
 
   // Use image from CLI arg, environment, or default
   const testImage = resolveImageTag({
@@ -208,7 +208,7 @@ async function startContainer() {
  */
 async function stopContainer() {
   console.log("🧹 Cleaning up test container...");
-  await $`docker rm -f ${TEST_CONTAINER}`.nothrow();
+  await $`docker rm -f -v ${TEST_CONTAINER}`.nothrow();
 }
 
 async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {

@@ -92,7 +92,7 @@ async function cleanup(): Promise<void> {
         // Force remove any remaining containers
         const containerList = remainingContainers.split("\n").filter((n) => n.trim());
         for (const container of containerList) {
-          await $`docker rm -f ${container}`.nothrow().quiet();
+          await $`docker rm -f -v ${container}`.nothrow().quiet();
         }
       }
     } catch {

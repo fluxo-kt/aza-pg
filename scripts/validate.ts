@@ -20,9 +20,10 @@
  *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
-import { getErrorMessage } from "./utils/errors";
+import { getErrorMessage, isExecutableNotFoundError } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
+import { summarizeResults } from "./validate-summary";
 
 const HADOLINT_IMAGE =
   "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
@@ -32,13 +33,17 @@ const ACTIONLINT_IMAGE =
 /**
  * Validation check configuration
  */
-type ValidationCheck = {
+export type ValidationCheck = {
   name: string;
   command: string[];
   description: string;
   required: boolean; // If false, failure only warns but doesn't fail the whole validation
   requiresDocker?: boolean; // If true, check if Docker is available
   envOverride?: string; // Environment variable to make check non-critical
+  // Extended check cheap + safety-critical enough to ALSO run in default (fast) mode — e.g. the
+  // static grep guards. They cost milliseconds and need no Docker, so gating them behind --all/CI
+  // would let a leak land via `bun run validate` (the documented pre-commit gate) and only fail later.
+  fast?: boolean;
 };
 
 /**
@@ -46,6 +51,9 @@ type ValidationCheck = {
  */
 type ValidationResult = {
   passed: boolean;
+  // Sanctioned skip (requiresDocker + daemon absent + envOverride set) — counted separately from
+  // failures so the summary count stays trustworthy. See summarizeResults in validate-summary.ts.
+  skipped?: boolean;
   critical: boolean;
   name: string;
   stdout?: string;
@@ -58,7 +66,7 @@ type ValidationResult = {
  * @param bufferOutput - If true, capture stdout/stderr for later printing (parallel mode)
  * @returns object with passed status, critical flag, and optional captured output
  */
-async function runCheck(
+export async function runCheck(
   check: ValidationCheck,
   bufferOutput: boolean = false
 ): Promise<ValidationResult> {
@@ -78,7 +86,8 @@ async function runCheck(
       return { passed: false, critical: true, name: check.name };
     } else {
       if (!bufferOutput) warning(message);
-      return { passed: false, critical: false, name: check.name };
+      // Sanctioned skip, not a failure: the check is optional (envOverride set) and Docker is absent.
+      return { passed: false, skipped: true, critical: false, name: check.name };
     }
   }
 
@@ -113,12 +122,18 @@ async function runCheck(
       }
     }
   } catch (err) {
-    const message = `${check.name} error: ${getErrorMessage(err)}`;
+    // A missing executable (ENOENT) means the check could not run at all — the same situation as the
+    // Docker pre-check above, so it is classified the same way: a sanctioned absence (optional) is a
+    // skip, a required tool is a hard failure. Any OTHER error is a genuine failure, never a skip.
+    const unavailable = isExecutableNotFoundError(err);
     if (effectivelyRequired) {
-      if (!bufferOutput) error(message);
+      if (!bufferOutput) error(`${check.name} error: ${getErrorMessage(err)}`);
       return { passed: false, critical: true, name: check.name };
+    } else if (unavailable) {
+      if (!bufferOutput) warning(`${check.name} skipped - not installed (${getErrorMessage(err)})`);
+      return { passed: false, skipped: true, critical: false, name: check.name };
     } else {
-      if (!bufferOutput) warning(`${message} - non-critical`);
+      if (!bufferOutput) warning(`${check.name} error: ${getErrorMessage(err)} - non-critical`);
       return { passed: false, critical: false, name: check.name };
     }
   }
@@ -149,9 +164,11 @@ async function runChecksParallel(checks: ValidationCheck[]): Promise<ValidationR
       if (!result.stderr.endsWith("\n")) console.log("");
     }
 
-    // Print result status
+    // Print result status (skip is distinct from failure — see summarizeResults)
     if (result.passed) {
       success(`${result.name} passed`);
+    } else if (result.skipped) {
+      warning(`${result.name} skipped`);
     } else if (result.critical) {
       error(`${result.name} failed`);
     } else {
@@ -214,11 +231,17 @@ async function validate(
       required: true,
     },
     {
-      name: "Vendor Version Validation",
+      name: "PGDG Version Validation",
       command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
-      description:
-        "Vendor version consistency (PGDG, Percona, Timescale versions match source.tag)",
+      // Scoped to PGDG: it is preinstalled in the base image, so madison is cheap, and the
+      // exact-match-latest rule uniquely catches pgdg packaging-revision drift that git-tag
+      // check-updates misses. Percona/Timescale versions are exact-pinned in the Dockerfile and
+      // enforced by the build's `apt-get install =version` (fails loud on removal) — see the
+      // header note in validate-pgdg-versions.ts for why no pre-build apt check is added here.
+      description: "PGDG apt-version availability (Percona/Timescale enforced by the build)",
       required: true,
+      requiresDocker: true,
+      envOverride: "ALLOW_MISSING_DOCKER",
     },
     {
       name: "Manifest Integrity",
@@ -425,6 +448,16 @@ async function validate(
       required: false,
     },
     {
+      name: "Bun OSV Ignore Audit",
+      command: ["bun", "scripts/security/validate-bun-osv.ts"],
+      // Static guard over the install-time CVE gate: enforces canonical/justified/expiring ignores,
+      // pins the scanner, requires SHOW_IGNORED wiring at every bun install site, and forbids env-based
+      // ignore bypasses. fast: true so it runs in `bun run validate`, not only --all/CI.
+      description: "Audit bun OSV install gate (ignore schema, scanner pin, wiring, env bypass)",
+      required: true,
+      fast: true,
+    },
+    {
       name: "Subprocess Env Safety",
       command: [
         "sh",
@@ -443,6 +476,35 @@ async function validate(
       description:
         "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",
       required: true,
+      fast: true,
+    },
+    {
+      name: "Docker Volume Leak Guard",
+      command: [
+        "sh",
+        "-c",
+        // A container `docker rm` MUST pass `-v` so the container's anonymous PGDATA volume is
+        // dropped with it. Without `-v`, PG18's anonymous /var/lib/postgresql volume is orphaned on
+        // every test teardown — this silently accumulated hundreds of dangling volumes (tens of GB).
+        // `-v` never removes NAMED volumes, so it is always safe (persistence/replica stacks keep
+        // their data). Covers scripts/*.ts AND .github/workflows/*.yml (CI also runs containers).
+        // Matching notes: the pattern covers BOTH "docker rm " and its alias "docker container rm "
+        // (a clueless future edit could reach for either). The trailing space excludes "docker rmi";
+        // the substring does not occur in "docker volume rm". The exclusion requires the canonical
+        // separate " -v" form (not the combined "-fv") — intentional, to keep one obvious idiom.
+        // Scope is `docker rm` ONLY — deliberately NOT `docker compose down/rm`. For a raw container
+        // `rm`, `-v` is always safe: it drops the anonymous volume but never a NAMED one. For compose,
+        // `-v` ALSO destroys NAMED volumes declared in the stack, so there it encodes intent, not
+        // correctness (e.g. test-persistence.ts runs a bare `compose down` on purpose to prove data
+        // survives teardown). A blanket -v rule on compose would mandate data loss — do NOT add it.
+        // Comment lines (TS // and YAML #) are excluded (grep output is file:line:content), as in the
+        // Subprocess Env Safety check above.
+        'result=$(git ls-files scripts/ .github/workflows/ | grep -E "\\.(ts|ya?ml)$" | xargs grep -nE "docker( container)? rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*(//|#)" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
+      ],
+      description:
+        "Ensure container `docker rm` always passes -v (prevents anonymous PGDATA volume leaks)",
+      required: true,
+      fast: true,
     },
     {
       name: "Extension Size Regression",
@@ -492,7 +554,9 @@ async function validate(
   const checks =
     mode === "all"
       ? [...coreChecks, ...extendedChecks, ...dockerVerificationChecks]
-      : [...coreChecks, ...dockerVerificationChecks];
+      : // Default (fast) mode still runs the cheap static safety guards (fast: true) so the leak
+        // classes they catch are blocked at the pre-commit gate, not just in --all/CI.
+        [...coreChecks, ...extendedChecks.filter((c) => c.fast), ...dockerVerificationChecks];
 
   // Run all checks (parallel or sequential)
   const results = parallel ? await runChecksParallel(checks) : await runChecksSequential(checks);
@@ -501,13 +565,17 @@ async function validate(
   const duration = Date.now() - startTime;
   section("Validation Summary");
 
-  const passedCount = results.filter((r) => r.passed).length;
-  const failedCount = results.filter((r) => !r.passed).length;
-  const criticalFailures = results.filter((r) => !r.passed && r.critical).length;
-  const total = results.length;
+  const {
+    total,
+    passed: passedCount,
+    skipped: skippedCount,
+    failed: failedCount,
+    critical: criticalFailures,
+  } = summarizeResults(results);
 
   console.log(`Total checks: ${total}`);
   console.log(`Passed: ${passedCount}`);
+  console.log(`Skipped: ${skippedCount}`);
   console.log(`Failed: ${failedCount}`);
   console.log(`Critical failures: ${criticalFailures}`);
   console.log(`Duration: ${(duration / 1000).toFixed(2)}s`);
@@ -519,23 +587,31 @@ async function validate(
     throw new Error("Validation failed");
   } else if (failedCount > 0) {
     warning(`${failedCount} non-critical check(s) failed`);
-    success("All critical checks passed");
+    success(
+      skippedCount > 0
+        ? `All critical checks passed (${skippedCount} skipped)`
+        : "All critical checks passed"
+    );
+  } else if (skippedCount > 0) {
+    success(`All checks passed (${skippedCount} skipped)`);
   } else {
     success("All checks passed!");
   }
 }
 
-// Parse command line arguments (Bun.argv includes the script path, so we skip the first 2 elements like Node)
-const args = Bun.argv.slice(2);
-const argsSet = new Set(args);
-const mode = argsSet.has("--all") ? "all" : "fast";
-const parallel = argsSet.has("--parallel");
-const stagedOnly = argsSet.has("--staged");
-const includeRuntime = argsSet.has("--runtime");
-const includeFilesystem = argsSet.has("--filesystem");
-const fixMode = argsSet.has("--fix");
-const imageArg = args.find((arg) => arg.startsWith("--image="));
-const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
+// Only parse argv and run when invoked directly — not when imported (e.g. by runCheck unit tests).
+if (import.meta.main) {
+  // Bun.argv includes the script path, so we skip the first 2 elements like Node.
+  const args = Bun.argv.slice(2);
+  const argsSet = new Set(args);
+  const mode = argsSet.has("--all") ? "all" : "fast";
+  const parallel = argsSet.has("--parallel");
+  const stagedOnly = argsSet.has("--staged");
+  const includeRuntime = argsSet.has("--runtime");
+  const includeFilesystem = argsSet.has("--filesystem");
+  const fixMode = argsSet.has("--fix");
+  const imageArg = args.find((arg) => arg.startsWith("--image="));
+  const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
 
-// Run validation
-await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);
+  await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);
+}

@@ -76,6 +76,7 @@ bun run test:unit           # Alias for validate (fast checks + unit tests, no D
 # Build/Generation
 bun run build               # Build Docker image
 bun run generate            # Regenerate all files from manifest
+bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to preview)
 ```
 
 ## Gotchas
@@ -88,6 +89,7 @@ bun run generate            # Regenerate all files from manifest
 - **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
+- **Container teardown**: remove containers with `docker rm -f -v` — the `-v` drops PG18's anonymous `/var/lib/postgresql` PGDATA volume (named volumes always survive); omitting it orphans one per teardown → silent multi-GB bloat. Enforced by `Docker Volume Leak Guard` in `validate:all`; reclaim accumulated artifacts with `bun run cleanup` (marker-scoped via `app.aza_pg_custom` + OCI title, safe on shared hosts)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime
 
 ## Extension System
@@ -239,6 +241,8 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 **Digest-Pinned Base Security Drift**: A valid/latest PostgreSQL base digest can still contain stale Debian packages after Debian publishes security updates. Final image builds MUST run `apt-get upgrade -y --no-install-recommends` after `apt-get update`; the merged-image PostgreSQL version check guards against accidental PG minor drift.
 
 **BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
+
+**Bun OSV Install Gate (transitive-CVE remediation)**: `bunfig.toml` runs `scanner = "bun-osv-scanner-extended"` on every `bun install`. A newly-published `warn`-level CVE in a transitive (even dev) dep makes the non-TTY install **exit 1** (`bun install` cancels; no diff changed locally — externally-triggered). Remediate **in this order**: (1) **`overrides`** in `package.json` to a patched version (first resort — actually removes the vuln); regenerate `bun.lock` (CI uses `--frozen-lockfile`). (2) Only when **unfixable** (no patched version exists), add to `.bun-osv.json` `{"ignore":[{"advisory":"CVE-…"|"package"+"range","reason":"…","expires":"<future ISO>"}]}` — `reason` + a **future** `expires` are mandatory (scanner treats missing/unparseable `expires` as permanent silent suppression). Every install site needs `BUN_OSV_SHOW_IGNORED="0"` in env (default re-emits ignored advisories as warn → cancels); already wired at `setup-bun`, the inline-install workflows, and `.1code/worktree.json` (non-CI worktree setup — inline `env BUN_OSV_SHOW_IGNORED=0 bun install`, since a JSON command array has no layered env). `scripts/security/validate-bun-osv.ts` (fast `validate` check) enforces: canonical `{ignore:[…]}` shape + reason/future-expires (both `.bun-osv.json` and `package.json#bunOsv.ignore`), scanner pin (bunfig name **and** that it's a declared dep), SHOW_IGNORED wiring at every `bun install` site (CI files by env-precedence resolution, `.1code/worktree.json` by inline prefix), and forbids the `BUN_OSV_IGNORE_FILE`/`OSV_IGNORE_FILE`/`BUN_OSV_IGNORE_PKG`/`BUN_OSV_IGNORE_ADVISORY` env bypass. **Caveat**: the scanner is fail-open (OSV outage → install proceeds unscanned); the per-site `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE=86400` release-age delay is the backstop. The guard encodes scanner-internal behaviour — re-verify it against the scanner source on any `bun-osv-scanner-extended` bump (lockfile-hash-pinned, so a bump is a reviewable diff).
 
 ## Changelog
 

@@ -166,7 +166,7 @@ export class ContainerManager {
    */
   async stopSingleContainer(containerName: string): Promise<void> {
     try {
-      await $`docker rm -f ${containerName}`.quiet();
+      await $`docker rm -f -v ${containerName}`.quiet();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to stop container ${containerName}: ${errorMsg}`, { cause: error });

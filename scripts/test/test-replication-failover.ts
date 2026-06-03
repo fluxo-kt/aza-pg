@@ -614,7 +614,7 @@ async function cleanup(config: TestConfig): Promise<void> {
       warning(`Warning: Replica containers still exist: ${remainingReplica}`);
       const containerList = remainingReplica.split("\n").filter((n) => n.trim());
       for (const container of containerList) {
-        await $`docker rm -f ${container}`.nothrow().quiet();
+        await $`docker rm -f -v ${container}`.nothrow().quiet();
       }
     }
   } catch {
@@ -636,7 +636,7 @@ async function cleanup(config: TestConfig): Promise<void> {
       warning(`Warning: Primary containers still exist: ${remainingPrimary}`);
       const containerList = remainingPrimary.split("\n").filter((n) => n.trim());
       for (const container of containerList) {
-        await $`docker rm -f ${container}`.nothrow().quiet();
+        await $`docker rm -f -v ${container}`.nothrow().quiet();
       }
     }
   } catch {

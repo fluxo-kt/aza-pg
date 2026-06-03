@@ -49,3 +49,7 @@ runs:
       env:
         # 1-day supply chain security delay (verify packages aren't brand new)
         BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
+        # Omit acknowledged-CVE advisories from scanner output. Default re-emits ignored advisories
+        # as warn -> non-TTY install cancels. No-op while .bun-osv.json is empty; required once any
+        # entry exists. Enforced for every bun install site by validate-bun-osv.ts (check 3).
+        BUN_OSV_SHOW_IGNORED: "0"

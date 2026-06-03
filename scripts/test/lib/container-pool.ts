@@ -143,7 +143,7 @@ export class ContainerPool {
       console.log(`  Container ${index + 1}/${this.config.poolSize} ready: ${name}`);
     } catch (error) {
       // Clean up on failure
-      await $`docker rm -f ${name}`.quiet().nothrow();
+      await $`docker rm -f -v ${name}`.quiet().nothrow();
       throw error;
     }
   }
@@ -359,7 +359,7 @@ export class ContainerPool {
     // Stop all containers in parallel
     const stopPromises = this.containers.map(async (container) => {
       try {
-        await $`docker rm -f ${container.name}`.quiet();
+        await $`docker rm -f -v ${container.name}`.quiet();
       } catch (error) {
         console.warn(`Warning: Failed to stop container ${container.name}:`, error);
       }

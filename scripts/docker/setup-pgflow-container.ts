@@ -339,7 +339,7 @@ async function cleanupPgflowContainer(name: string): Promise<number> {
       warning(`Container ${name} still exists after cleanup`);
 
       // Force removal
-      await $`docker rm -f ${name}`.nothrow();
+      await $`docker rm -f -v ${name}`.nothrow();
 
       // Check again
       const stillThere = await $`docker ps -a --filter name=${name} --format "{{.Names}}"`

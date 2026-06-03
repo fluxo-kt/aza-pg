@@ -52,7 +52,7 @@ async function expectStablePostgres(containerName: string): Promise<void> {
  */
 async function cleanup() {
   for (const container of containersCreated) {
-    await $`docker rm -f ${container}`.nothrow().quiet();
+    await $`docker rm -f -v ${container}`.nothrow().quiet();
   }
 
   // Verify cleanup

@@ -12,31 +12,46 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Security
 
+- **TimescaleDB 2.27.1**: Fixes an information leak where the `job_errors` view exposed failed-job details to non-owners, adds hypertable ownership checks before recompression, and fixes an information leak in `policy_reorder_remove`.
+
+### Changed
+
+- **TimescaleDB 2.27.0 → 2.27.1**: Adds columnar index scan correctness fixes for grouped/`ROLLUP`/`CUBE` queries; realigned to PostgreSQL 18.4 (`~debian13-1804`).
+- **plpgsql_check 2.8.11 → 2.9.0**: Rewrites the profiler internals for maintainability; statement-statistics memory is now bounded by the `plch_max_stat_size` setting.
+- **pg_net 0.20.2 → 0.20.3**: The background worker now reports its activity to `pg_stat_activity` and flushes pgstat counters so autovacuum observes its writes.
+- **hll 2.19 → 2.20**: Adds PostgreSQL 19 build support and enforces thresholds in explicit-representation handling.
+
+### Development
+
+- pg_partman now installs from the PGDG apt package (`postgresql-18-partman` 5.4.3) instead of a source build — identical upstream version and background worker, removing a compile step from the image build.
+- Hardened the build-time supply chain: adopted the `bun-osv-scanner-extended` install-time OSV scanner with an audited ignore policy, and patched transitive `ws`/`uuid` advisories via `overrides` (`ws` ^8.20.1 CVE-2026-45736, `uuid` ^14.0.0 CVE-2026-41907) — build/test tooling only, never in the runtime image.
+- Dev deps: oxlint 1.68.0, squawk-cli 2.56.0.
+
+---
+
+## [v18.4-202605172147] - 2026-05-17
+
+### Security
+
 - **Base OS security refresh**: Applies current Debian package updates during the final image build before runtime dependency installation. This prevents a digest-pinned base image from shipping stale fixable OS CVEs when Debian security packages move after the upstream PostgreSQL image was published.
 - **Final image attack surface**: Purges install-only `curl`, `unzip`, GnuPG CLI tools, `lsb-release`, and `percona-release` after all repositories and release assets are installed; PostgreSQL runtime libraries and extension tools remain installed.
-- **TimescaleDB 2.27.1**: Fixes an information leak where the `job_errors` view exposed failed-job details to non-owners, and adds hypertable ownership checks before recompression and a `policy_reorder_remove` info leak fix.
 
 ### Changed
 
 - **pg_partman 5.4.2 → 5.4.3**: Fixes upstream version-reporting bug (v5.4.2 `\dx` incorrectly showed `5.4.1`); inherits toast table relation options from template table
 - **PostgreSQL 18.3 → 18.4**: Updates the pinned `postgres:18.4-trixie` base image for upstream security fixes and reproducible rebuilds
-- **TimescaleDB 2.25.2 → 2.27.1**: Adds Hypercore vectorized filters and bloom-filter pruning for compressed `UPDATE`/`DELETE`/`UPSERT`; includes PG18 module magic support and fixes for compression, continuous aggregates, and planner stability; 2.27.1 adds columnar index scan correctness fixes for grouped/`ROLLUP`/`CUBE` queries and is built for PostgreSQL 18.4 (`~debian13-1804`). ⚠️ Upgrade can be blocked for databases with affected sparse bloom indexes on compressed `int2` columns; drop those indexes before upgrading.
+- **TimescaleDB 2.25.2 → 2.27.0**: Adds Hypercore vectorized filters and bloom-filter pruning for compressed `UPDATE`/`DELETE`/`UPSERT`; includes PG18 module magic support and fixes for compression, continuous aggregates, and planner stability. ⚠️ Upgrade can be blocked for databases with affected sparse bloom indexes on compressed `int2` columns; drop those indexes before upgrading.
 - **pgflow 0.13.3 → 0.14.1**: Adds conditional step execution with skipped-state propagation and refreshed SQL schema
 - **pgmq 1.11.0 → 1.11.1**: Adds `read_grouped_head()` and SQL-only install/upgrade parity fixes
 - **supautils 3.1.0 → 3.2.2**: Adds privilege-error hints and fixes ALTER ROLE hook and executor hook crash paths
 - **wrappers 0.6.0 → 0.6.1**: Updates the FDW framework with parameter rescan, aggregate pushdown for enabled FDWs, and dependency fixes
 - **PGroonga 4.0.5 → 4.0.6**: Fixes tokenizer error cleanup and fuzzy search distance initialization
-- **plpgsql_check 2.8.11 → 2.9.0**: Rewrites the profiler internals for maintainability; statement-statistics memory is now bounded by the `plch_max_stat_size` setting
-- **hll 2.19 → 2.20**: Adds PostgreSQL 19 build support and enforces thresholds in explicit-representation handling
-- **pg_net 0.20.2 → 0.20.3**: The background worker now reports its activity to `pg_stat_activity` and flushes pgstat counters so autovacuum observes its writes
 - **pgbouncer-exporter v0.9.0 → v0.12.0** (primary stack): Adds client metrics, prepared statement metrics, and fixed stats counter tracking. ⚠️ v0.11.0 changed connection behaviour: exporter now opens a new PgBouncer connection per scrape instead of at startup (PgBouncer ≥ 1.8 required; we use v1.25.1)
 - **postgres_exporter v0.18.1 → v0.19.1** (all stacks): Fixed NULL handling in multiple collectors and excessive temp file creation in `pg_stat_statements` queries. ⚠️ Duplicate `pg_stat_statements` entries are now filtered and logged (previously silent)
 
 ### Development
 
-- pg_partman now installs from the PGDG apt package (`postgresql-18-partman` 5.4.3) instead of a source build — identical upstream version and background worker, removing a compile step from the image build
-- Patched transitive dev-dependency advisories via `overrides`: `ws` ^8.20.1 (CVE-2026-45736) and `uuid` ^14.0.0 (CVE-2026-41907) — build/test tooling only, never present in the runtime image
-- Dev deps: Bun 1.3.14, @pgflow/client/dsl 0.14.1, oxlint 1.68.0, squawk-cli 2.56.0
+- Dev deps: Bun 1.3.14, @pgflow/client/dsl 0.14.1, oxlint 1.65.0, squawk-cli 2.52.1
 - Disabled/regression-only catalog sync: PostGIS 3.6.3; pg_jsonschema now pinned to release tag v0.3.4
 - GitHub Actions pins refreshed; release gates now verify public manifests, signatures, SBOM, attestation, and GitHub Release digest
 

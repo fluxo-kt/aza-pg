@@ -264,7 +264,11 @@ git show refs/heads/dev:CHANGELOG.md
 4. **Development section**: MAX 3 brief lines, no per-file detail
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
-7. **No `[Unreleased]` rename**: CI/release tagging does that; leave it as-is
+7. **⚠️ MANDATORY: date the PREVIOUS release (lagged dating).** CI does NOT rename `[Unreleased]` — `generate-release-notes.ts` only *reads* it to build GH release notes; the repo CHANGELOG dating is **manual and lagged by one release**. Each release's squash dates the *previously-published* release. **Skipping this is what silently breaks the CHANGELOG** (a published tag with no section, content piling up in `[Unreleased]`).
+   - **Prev tag**: `git tag --points-at "$ANCHOR^2"` (anchor parent2 = the previous release commit).
+   - **Split `[Unreleased]`**: entries whose version change appears in the `anchor..dev` manifest diff (rule 5) belong to THIS release → keep in `[Unreleased]`. **Every other entry was shipped under the prev tag** → move it into a new `## [<prev-tag>] - <YYYY-MM-DD>` section inserted directly below `[Unreleased]`. Cross-validate that section against the prev tag's published body: `gh release view "<prev-tag>" --json body --jq .body`.
+   - **Backlog**: if `git tag --points-at "$ANCHOR^2"` is itself undated AND older published tags are also undated (a prior skip), fold all the already-shipped `[Unreleased]` content into the single newest-prev-tag section (its image is cumulative) — do not fabricate granular per-tag sections for superseded same-line re-tags.
+   - Apply in Phase 4.4; verify in Phase 5.5.
 8. **⚠️ Regression expected outputs**: For every extension version change in the manifest diff, check `tests/regression/extensions/EXTNAME/expected/basic.out` for hard-coded version strings. If stale, note which files need updating — you will apply them in Phase 4.4.
 
    ```bash
@@ -422,6 +426,8 @@ Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squ
 
 Also apply any regression expected output updates identified in Phase 2 audit rule 8 — update `tests/regression/extensions/EXTNAME/expected/basic.out` files with the new version strings.
 
+**MANDATORY — apply the lagged dating (Phase 2 rule 7).** Date the previous release: move the already-shipped `[Unreleased]` entries into a new `## [<prev-tag>] - <date>` section, leaving only THIS release's `anchor..dev` delta under `[Unreleased]`. Skipping this is the exact failure that orphaned `v18.4-202605172147` (published, never dated).
+
 After editing:
 
 ```bash
@@ -543,6 +549,25 @@ git diff refs/heads/dev HEAD --name-only
 echo "=============================="
 ```
 
+### 5.5 — Lagged-dating guard (structural — prevents orphaned releases)
+
+Asserts THIS squash dated its predecessor (Phase 2 rule 7). FAILS loudly if not — this is the check
+that would have caught the `v18.4-202605172147` orphaning at the next release.
+
+```bash
+PREV_TAG=$(git tag --points-at "$ANCHOR^2" | command grep -E '^v' | head -1)
+if [[ -z "$PREV_TAG" ]]; then
+  echo "⚠️  No tag on anchor parent2 ($(git rev-parse --short "$ANCHOR^2")) — hotfix lineage; verify dating manually."
+elif command grep -qF "## [$PREV_TAG]" CHANGELOG.md; then
+  echo "Lagged dating confirmed — '## [$PREV_TAG]' section present. ✓"
+else
+  echo "🚨 ABORT: previous release $PREV_TAG has NO '## [$PREV_TAG]' CHANGELOG section."
+  echo "   The squash did not date its predecessor — its content is still mixed into [Unreleased]"
+  echo "   and would re-ship as phantom notes. Apply Phase 4.4 dating, then re-commit (git commit --amend)."
+  exit 1
+fi
+```
+
 ---
 
 ## Phase 6: Kaizen
@@ -557,6 +582,7 @@ After every execution, reflect and update this command:
 
 ### Accumulated Lessons
 
+- **CHANGELOG dating is MANUAL and lagged by one release — `v18.4-202605172147` was orphaned by the old (wrong) rule 7.** The previous rule 7 claimed "CI/release tagging does the `[Unreleased]` rename." FALSE: `generate-release-notes.ts` only *reads* `[Unreleased]` for GH notes; nothing commits a repo rename. The dating happens in each release's squash commit, dating its *predecessor* (proven by `99f3e44`, which dated `[v18.3-202603040417]`). The 2026-05-17 v18.4 release skipped it, so v18.4's shipped content piled up undated in `[Unreleased]`, conflated with later work. Fix: rule 7 rewritten with the real procedure (prev tag = `git tag --points-at "$ANCHOR^2"`; split `[Unreleased]` by the `anchor..dev` manifest diff), enforced by the **Phase 5.5 guard** that ABORTS if `## [<prev-tag>]` is missing. Cross-validate dated sections against `gh release view <tag> --json body`.
 - **`workflow_run` always executes from `main` (default branch), not the triggering branch.** GitHub security restriction — prevents privilege escalation from untrusted branches. Consequence: every change to `publish.yml` on `release` is **invisible to CI** until `main` is fast-forwarded. Always push to BOTH `release` and `main` after a release commit. The Phase 6 next-steps output now makes this explicit and mandatory.
 
 - **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.

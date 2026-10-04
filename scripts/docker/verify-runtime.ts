@@ -18,6 +18,7 @@
  *   --timeout=N    - Set container startup timeout in seconds (default: 60)
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { getErrorMessage } from "../utils/errors";
 import { checkDockerDaemon, dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker";
@@ -284,7 +285,7 @@ async function testPreloadedExtensions(manifest: Manifest): Promise<TestResult> 
       )
       .map((entry) => ({
         name: entry.name,
-        libraryName: entry.runtime?.preloadLibraryName || entry.name,
+        libraryName: preloadLibraryName(entry),
       }));
 
     if (preloadedExtensions.length === 0) {

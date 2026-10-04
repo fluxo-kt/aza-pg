@@ -13,6 +13,7 @@
  * Run: bun scripts/docker/generate-image-contents.ts
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 
@@ -148,7 +149,7 @@ function generateContents(manifest: Manifest): string {
   lines.push("");
 
   const preloadNames = preloaded
-    .map((e) => e.runtime?.preloadLibraryName ?? e.name)
+    .map((e) => preloadLibraryName(e))
     .sort()
     .join(", ");
   lines.push(`  ${preloadNames}`);

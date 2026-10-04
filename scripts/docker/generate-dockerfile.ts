@@ -22,6 +22,7 @@
  *   bun scripts/docker/generate-dockerfile.ts
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
@@ -374,7 +375,7 @@ function generateRegressionPreloadLibraries(manifest: Manifest): string {
   });
 
   // Use preloadLibraryName if specified, otherwise use extension name
-  const libraryNames = preloadExtensions.map((e) => e.runtime?.preloadLibraryName || e.name).sort();
+  const libraryNames = preloadExtensions.map((e) => preloadLibraryName(e)).sort();
 
   return libraryNames.join(",");
 }

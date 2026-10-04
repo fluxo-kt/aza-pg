@@ -194,8 +194,8 @@ async function dockerText(args: string[]): Promise<{ code: number; text: string 
  * scripts, and pg_isready succeeds against it moments before it is shut down for the real start — so tests began
  * against a server about to vanish. Readiness is therefore read from the logs of the CURRENT container start
  * (`docker logs --since StartedAt`, so restarts are handled): after "init process complete" (fresh data) or
- * "Skipping initialization" (existing data), the next "ready to accept connections" is the final server; a
- * `SELECT 1` then confirms it. Fixed sleeps only pace the polling; they never decide readiness.
+ * "Skipping initialization" (existing data), the next "ready to accept connections" (a standby says "read-only
+ * connections") is the final server; a `SELECT 1` then confirms it. Fixed sleeps only pace the polling; they never decide readiness.
  */
 async function waitForContainerPostgres(
   container: string,
@@ -213,7 +213,7 @@ async function waitForContainerPostgres(
       logs.lastIndexOf("PostgreSQL init process complete"),
       logs.lastIndexOf("Skipping initialization")
     );
-    if (marker >= 0 && logs.indexOf("ready to accept connections", marker) >= 0) {
+    if (marker >= 0 && /ready to accept (read-only )?connections/.test(logs.slice(marker))) {
       const probe = await dockerText([
         "exec",
         container,

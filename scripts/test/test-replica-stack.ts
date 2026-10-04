@@ -117,8 +117,7 @@ try {
   });
   stages.push(replica);
   const replicaDb = `${replica.project}-postgres-replica`;
-  // Returns once the replica is healthy (its exporter depends on it). waitForPostgres cannot be used here: it waits
-  // for "ready to accept connections", and a standby logs "ready to accept read-only connections".
+  // Returns once the replica is healthy: its exporter's depends_on waits for the replica's healthcheck.
   await composeUp(replica);
 
   await step(

@@ -4,6 +4,7 @@
  * Validates extensions.manifest.json against expected counts, consistency rules, and cross-references
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { validateManifest } from "./manifest-schema";
 import * as logger from "../utils/logger";
@@ -184,7 +185,7 @@ async function validateDefaultEnable(manifest: Manifest): Promise<void> {
     if (entry.runtime?.defaultEnable) {
       const inBaseline = baselineExtensions.has(entry.name.toLowerCase());
       // Check both the extension name and the custom preloadLibraryName if specified
-      const preloadName = entry.runtime?.preloadLibraryName ?? entry.name;
+      const preloadName = preloadLibraryName(entry);
       const inPreload = preloadLibraries.has(preloadName);
 
       // Builtin extensions that don't require CREATE EXTENSION (like plpgsql)
@@ -227,9 +228,7 @@ async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void>
   const expectedPreloadEntries = manifest.entries.filter(
     (e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.enabled !== false
   );
-  const expectedPreload = expectedPreloadEntries.map(
-    (e) => e.runtime?.preloadLibraryName ?? e.name
-  );
+  const expectedPreload = expectedPreloadEntries.map((e) => preloadLibraryName(e));
 
   console.log(`  Expected preload (from manifest): ${expectedPreload.join(", ")}`);
 

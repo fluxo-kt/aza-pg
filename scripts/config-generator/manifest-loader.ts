@@ -69,13 +69,25 @@ export interface PreloadCandidate {
 }
 
 /**
+ * The library name an entry loads under in shared_preload_libraries: runtime.preloadLibraryName when set
+ * (pg_safeupdate loads as safeupdate, pg_plan_filter as plan_filter), else the entry name. Every list of
+ * preload libraries goes through here, so a renamed library cannot be spelled two ways.
+ * @throws Error when preloadLibraryName is empty: it names no library, and neither guessing the extension
+ *   name nor emitting an empty list element would load what was meant
+ */
+export function preloadLibraryName(entry: PreloadCandidate): string {
+  const library = entry.runtime?.preloadLibraryName;
+  if (library === "") throw new Error(`${entry.name}: runtime.preloadLibraryName is empty`);
+  return library ?? entry.name;
+}
+
+/**
  * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
  * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
  * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES and
  * the healthcheck's EXPECTED_PRELOAD (generator.ts) both read this, so the healthcheck expects exactly
  * what the entrypoint preloads.
- * @throws Error when an entry's preloadLibraryName is empty: it names no library, and neither
- *   guessing the extension name nor emitting an empty list element would load what was meant
+ * @throws Error when an entry's preloadLibraryName is empty (see preloadLibraryName)
  */
 export function getDefaultSharedPreloadLibraries(manifest: {
   entries: readonly PreloadCandidate[];
@@ -87,13 +99,7 @@ export function getDefaultSharedPreloadLibraries(manifest: {
         entry.runtime.defaultEnable === true &&
         entry.enabled !== false
     )
-    .map((entry) => {
-      const library = entry.runtime?.preloadLibraryName;
-      if (library === "") {
-        throw new Error(`${entry.name}: runtime.preloadLibraryName is empty`);
-      }
-      return library ?? entry.name;
-    })
+    .map(preloadLibraryName)
     .sort()
     .join(",");
 }

@@ -6,6 +6,7 @@
  * - regression: Tests ALL extensions and preloads (maximum coverage)
  */
 
+import { preloadLibraryName } from "../../config-generator/manifest-loader";
 import type { ManifestEntry } from "../../extensions/manifest-data";
 import { MANIFEST_ENTRIES } from "../../extensions/manifest-data";
 
@@ -122,13 +123,13 @@ export function getSharedPreloadLibraries(mode: TestMode): string {
         ext.runtime?.sharedPreload === true &&
         // Include if defaultEnable OR preloadInComprehensiveTest
         (ext.runtime?.defaultEnable === true || ext.runtime?.preloadInComprehensiveTest === true)
-    ).map((ext) => ext.runtime?.preloadLibraryName ?? ext.name);
+    ).map((ext) => preloadLibraryName(ext));
   } else {
     // Production mode: Only default preload libraries
     // Use preloadLibraryName if specified (e.g., pg_safeupdate → safeupdate)
     preloadLibraries = MANIFEST_ENTRIES.filter(
       (ext) => ext.runtime?.sharedPreload === true && ext.runtime?.defaultEnable === true
-    ).map((ext) => ext.runtime?.preloadLibraryName ?? ext.name);
+    ).map((ext) => preloadLibraryName(ext));
   }
 
   return preloadLibraries.join(",");

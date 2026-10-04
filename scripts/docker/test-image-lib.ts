@@ -7,6 +7,7 @@
  * error text) — never only that a CREATE or a SELECT succeeded — so it turns red on the defect it names.
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import type { ManifestEntry as SourceManifestEntry } from "../extensions/manifest-data";
@@ -45,8 +46,7 @@ export type { TestResult };
 const enabledEntries = (): SourceManifestEntry[] =>
   MANIFEST_ENTRIES.filter((entry) => entry.enabled !== false);
 
-const preloadName = (entry: SourceManifestEntry): string =>
-  entry.runtime?.preloadLibraryName ?? entry.name;
+const preloadName = (entry: SourceManifestEntry): string => preloadLibraryName(entry);
 
 // ============================================================================
 // EXECUTION

@@ -12,6 +12,7 @@
  *
  * Usage: bun scripts/test/test-extension-interactions.ts [image] [--mode=production|regression]
  */
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { $ } from "bun";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
@@ -43,7 +44,7 @@ try {
     mode === "production"
       ? getSharedPreloadLibraries("production")
       : MANIFEST_ENTRIES.filter((e) => e.runtime?.sharedPreload === true && e.enabled !== false)
-          .map((e) => e.runtime?.preloadLibraryName ?? e.name)
+          .map((e) => preloadLibraryName(e))
           .join(",");
   console.log(
     `Mode ${mode}: shared_preload_libraries=${mode === "production" ? "(image default)" : preload}`

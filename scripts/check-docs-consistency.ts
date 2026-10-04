@@ -13,7 +13,10 @@
 import { join } from "node:path";
 import { info, success, error, warning, section } from "./utils/logger";
 import { Glob } from "bun";
-import { getDefaultSharedPreloadLibraries } from "./config-generator/manifest-loader";
+import {
+  getDefaultSharedPreloadLibraries,
+  preloadLibraryName,
+} from "./config-generator/manifest-loader";
 import { MANIFEST_ENTRIES } from "./extensions/manifest-data";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -83,7 +86,7 @@ function checkExtensionCounts(_content: string, _data: DocsData, _file: string):
  */
 const PRELOADABLE = new Set(
   MANIFEST_ENTRIES.filter((e) => e.runtime?.sharedPreload === true && e.enabled !== false).map(
-    (e) => e.runtime?.preloadLibraryName ?? e.name
+    (e) => preloadLibraryName(e)
   )
 );
 const DEFAULT_PRELOAD = getDefaultSharedPreloadLibraries({ entries: MANIFEST_ENTRIES }).split(",");

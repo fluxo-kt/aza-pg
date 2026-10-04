@@ -150,8 +150,7 @@ Check:
    Both must show the same `X.Y.Z~debianNN-NNNN` version string.
 
 9. **Pre-plan the changelog obligation** (MANDATORY): if you touch any image-affecting source
-   (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`,
-   `scripts/config/extension-defaults.ts` via generation), you MUST update `CHANGELOG.md` in the
+   (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`), you MUST update `CHANGELOG.md` in the
    same update round before Phase 12.
 
 ## Phase 1: Review Upstream Changes (CRITICAL FOR TESTS & CHANGELOG)
@@ -465,15 +464,9 @@ bun run test:all  # Verify runtime compatibility
 
 **Identify**: `command grep 'install_via: "pgdg"' scripts/extensions/manifest-data.ts`
 
-**⚠️ CRITICAL**: When switching between PGDG and source build, update **4 files**:
-1. `scripts/extensions/manifest-data.ts`: Change `install_via`, add/remove `pgdgVersion`, add/remove `build`
-2. `scripts/extensions/generate-extension-defaults.ts`: Add/remove from `NAME_TO_KEY`
-3. `scripts/extensions/pgdg-mappings.ts`: Add/remove from `PGDG_MAPPINGS` array
-4. `scripts/ci/validate-manifest-integrity.ts`: Add/remove from both inline `NAME_TO_KEY` AND `PGDG_MAPPING_NAMES`
-
-The manifest integrity validator (`scripts/ci/validate-manifest-integrity.ts`) has its own **inline
-copies** of NAME_TO_KEY and PGDG_MAPPING_NAMES — these are NOT imported from the other files and
-MUST be kept in sync manually. Missing this file causes integrity validation failures.
+Switching between PGDG and source build is a one-entry edit in `scripts/extensions/manifest-data.ts`:
+`install_via`, `pgdgVersion` + `pgdgPackage` (apt suffix: `postgresql-18-<pgdgPackage>`), and `build`.
+Nothing else lists PGDG extensions; the generator and `validate-pgdg-versions.ts` read the entry.
 
 **Proactively hunt promotions** (user often asks for this): for EVERY source-built extension, check
 `apt-cache search postgresql-18 | grep -iE 'EXTNAME'` — a hit at our pinned version is a promotion
@@ -485,10 +478,7 @@ suspects — verify and migrate.
 - Remove `install_via: "source"`, add `install_via: "pgdg"` and `pgdgVersion`
 - Remove `build: { type: "pgxs" }` (cosmetic — the generator already excludes any `install_via: "pgdg"`
   entry from source builds via the `install_via !== "pgdg"` guard — but removing it makes intent honest)
-- Add to NAME_TO_KEY (generate-extension-defaults.ts), PGDG_MAPPINGS (pgdg-mappings.ts), and both
-  inline copies in validate-manifest-integrity.ts (NAME_TO_KEY + PGDG_MAPPING_NAMES)
-- Update `generate-dockerfile.test.ts` "All PGDG versions are defined" (add `expect(versions.KEY)`,
-  drop the stale "source — no pgdgVersion" comment); PGDG integrity count must rise by one
+- Add `pgdgPackage` (the apt name suffix — `apt-cache search --names-only '^postgresql-18-'`)
 - **VERIFY THE PACKAGE before trusting the migration**: `apt-get install` it in a throwaway container, then
   `dpkg -L postgresql-18-EXTNAME | grep '\.so$'` to confirm it ships the expected libs — ESPECIALLY any
   preload worker (e.g. pg_partman ships `pg_partman_bgw.so` at `/usr/lib/postgresql/18/lib/`). If the
@@ -497,8 +487,6 @@ suspects — verify and migrate.
   the regression `expected/basic.out` needs NO change (confirm, don't assume).
 - Move the doc row from the source-built table to the PGDG table in `docs/EXTENSION-SOURCES.md` and
   bump the PGDG count in the Repository Overview
-- Place in appropriate tier in PGDG_MAPPINGS (VOLATILE for frequent releases); cross-check the cache-tier
-  list in `docs/ARCHITECTURE.md` (it may already list the ext, making the migration accurate)
 - **PGDG may lag upstream**: the apt package can sit a release behind the latest git tag (e.g. plpgsql_check
   upstream `v2.9.1` but PGDG only `2.9.0`). For `install_via: "pgdg"` the **`pgdgVersion` is authoritative** —
   set `source.tag` to match the PGDG-available version, not the newest upstream tag.
@@ -933,7 +921,7 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
 
 **What you didn't look at**
 - List files that are related to your changes but that you haven't read. Read them now.
-- Specifically: auto-generated files (`extension-defaults.ts`, `Dockerfile`,
+- Specifically: auto-generated files (`Dockerfile`,
   `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
 
 **Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
@@ -947,10 +935,6 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
 - **Check for orphaned test files**: When migrating an extension's install method, search for
   dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
   wrong install path descriptions). Delete or migrate their valuable tests.
-- **Check unit tests in `generate-dockerfile.test.ts`**: The "All PGDG versions are defined"
-  test has inline comments listing extensions NOT expected in pgdgVersions (source-built ones).
-  When migrating an extension to/from PGDG, add/remove `expect(versions.KEY).toBeDefined()` and
-  update the comments accordingly.
 - **`scripts/test/test-timescaledb-breaking-changes.ts`**: Standalone test not in `test:all`.
   Contains a target-version helper for the TimescaleDB breaking-change series — update it when
   TimescaleDB crosses the tested minor boundary. Also update the file title and run banner.
@@ -999,16 +983,15 @@ After every update round, perform a mandatory self-reflection before closing out
 1. **What was missed in pre-flight?** Items caught mid-implementation instead of upfront
 2. **What was assumed without verification?** Version strings, API signatures, URLs, compatibility
 3. **What hardcoded values broke tests?** Document the pattern for future detection
-4. **What files were unexpectedly required?** (e.g., `validate-manifest-integrity.ts` has inline
-   copies of mappings that must be kept in sync — not obvious from other files)
+4. **What files were unexpectedly required?** A change that needs edits in several files to stay
+   consistent means a fact is stored twice — move it onto the manifest entry instead of syncing copies
 5. **What upstream API was different from expected?** (e.g., pgmq topic API uses `bind_topic`,
    not `create_topic`/`subscribe` — always verify from actual source before writing tests)
 6. **Were all tooling version files kept in sync?** `.tool-versions` (Bun runtime), `package.json`
    (@types/bun). These are updated separately — `bun update` does NOT touch `.tool-versions`.
 7. **Were validator error messages and fix instructions actually correct?** When editing any
    validator script, verify that following its own fix instructions would resolve the error it
-   reports. Validators with inline data copies (like `validate-manifest-integrity.ts`) are
-   especially prone to self-defeating instructions.
+   reports.
 8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
    automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
    section for the exact grep command and what to look for.

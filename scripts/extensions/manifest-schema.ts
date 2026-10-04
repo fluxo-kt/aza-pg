@@ -108,6 +108,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
  * - githubReleaseTag: GitHub release tag for downloading assets (required when install_via="github-release")
  * - githubAssetPattern: Asset filename pattern with {version}, {pgMajor}, {arch} placeholders (required when install_via="github-release")
+ * - pgdgPackage: PGDG apt name suffix, postgresql-<major>-<pgdgPackage> (required when install_via="pgdg" for extensions)
  * - perconaVersion: Version string for Percona packages (required when install_via="percona")
  * - perconaPackage: Package name for Percona packages (required when install_via="percona")
  * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
@@ -134,6 +135,7 @@ export const ManifestEntrySchema = type({
   "githubAssetPattern?": "string",
   "perconaVersion?": "string",
   "perconaPackage?": "string",
+  "pgdgPackage?": "string",
   "timescaleVersion?": "string",
   "timescalePackage?": "string",
   "soFileName?": "string",

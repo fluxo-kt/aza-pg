@@ -3,12 +3,12 @@
  * Generate Dockerfile from template using manifest data
  *
  * This script reads the Dockerfile.template and regression.Dockerfile.template
- * and replaces placeholders with actual values from the extensions manifest and extension-defaults.
+ * and replaces placeholders with values from the extensions manifest and MANIFEST_METADATA.
  *
  * ARG Strategy:
  * - All version dependencies are HARDCODED at generation time (PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions)
  * - Only BUILD_DATE and VCS_REF remain as ARGs WITHOUT defaults (required at build time)
- * - To test different versions: update extension-defaults.ts and regenerate
+ * - To test different versions: update scripts/extensions/manifest-data.ts and regenerate
  *
  * Placeholders:
  * - {{PG_VERSION}} - PostgreSQL version (hardcoded, e.g., "18.1")
@@ -23,8 +23,8 @@
  */
 
 import { join } from "node:path";
-import { extensionDefaults } from "../extension-defaults";
-import { PGDG_MAPPINGS, pgdgAptPackageName } from "../extensions/pgdg-mappings";
+import { MANIFEST_METADATA } from "../extensions/manifest-data";
+import { pgdgAptPackageName } from "../extensions/pgdg-package";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
@@ -36,9 +36,6 @@ const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/regression.Docke
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
-
-// PGDG_MAPPINGS imported from shared module (scripts/extensions/pgdg-mappings.ts)
-// This eliminates duplication with validate-pgdg-versions.ts
 
 interface BuildSpec {
   type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
@@ -55,6 +52,7 @@ interface ManifestEntry {
   kind?: "extension" | "tool" | "builtin";
   install_via?: string;
   pgdgVersion?: string;
+  pgdgPackage?: string;
   perconaVersion?: string;
   perconaPackage?: string;
   /** Timescale repository package name (e.g., timescaledb-2-postgresql-18) */
@@ -119,29 +117,36 @@ async function readManifest(): Promise<Manifest> {
 }
 
 /**
+ * `postgresql-<major>-<pgdgPackage>=<pgdgVersion>` for every PGDG extension `include` selects, in
+ * manifest order. Tools are excluded: they install in their own layer (generatePgdgToolsInstall).
+ * Name and version are validated here because both are interpolated into a shell command.
+ */
+function pgdgExtensionPins(
+  manifest: Manifest,
+  pgMajor: string,
+  include: (entry: ManifestEntry) => boolean
+): string[] {
+  return manifest.entries
+    .filter((e) => e.kind === "extension" && e.install_via === "pgdg" && include(e))
+    .map((entry) => {
+      if (!entry.pgdgVersion) {
+        throw new Error(
+          `PGDG extension "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
+            `shown by: apt-cache madison ${pgdgAptPackageName(entry, pgMajor)}`
+        );
+      }
+      const pin = `${pgdgAptPackageName(entry, pgMajor)}=${entry.pgdgVersion}`;
+      validatePackageName(pin, `PGDG package pin (${entry.name})`);
+      return pin;
+    });
+}
+
+/**
  * Generate PGDG package installation script
  * Versions and PG_MAJOR are hardcoded directly
  */
 function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): string {
-  const enabledPgdgPackages: string[] = [];
-
-  for (const mapping of PGDG_MAPPINGS) {
-    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
-    // Check if entry exists, is PGDG, and is enabled (default true)
-    if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
-      // Package is enabled - use hardcoded version from extensionDefaults
-      const version =
-        extensionDefaults.pgdgVersions[
-          mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
-        ];
-
-      // Validate package name and version for shell safety (SC2046/SC2086 protection)
-      validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
-      validatePackageName(version, `PGDG version (${mapping.manifestName})`);
-
-      enabledPgdgPackages.push(`${pgdgAptPackageName(entry, pgMajor)}=${version}`);
-    }
-  }
+  const enabledPgdgPackages = pgdgExtensionPins(manifest, pgMajor, (e) => e.enabled ?? true);
 
   if (enabledPgdgPackages.length === 0) {
     return `RUN echo "No PGDG packages enabled in manifest"`;
@@ -442,28 +447,11 @@ function generateRegressionPreloadLibraries(manifest: Manifest): string {
  * Installs ALL PGDG packages (including disabled ones) for regression testing
  */
 function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: string): string {
-  const allPgdgPackages: string[] = [];
-
-  for (const mapping of PGDG_MAPPINGS) {
-    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
-    // Include ALL PGDG packages (enabled OR enabledInComprehensiveTest)
-    if (entry && entry.install_via === "pgdg") {
-      const shouldInclude = (entry.enabled ?? true) || entry.enabledInComprehensiveTest === true;
-      if (shouldInclude) {
-        // Use hardcoded version from extensionDefaults
-        const version =
-          extensionDefaults.pgdgVersions[
-            mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
-          ];
-
-        // Validate package name and version for shell safety
-        validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
-        validatePackageName(version, `PGDG version (${mapping.manifestName})`);
-
-        allPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
-      }
-    }
-  }
+  const allPgdgPackages = pgdgExtensionPins(
+    manifest,
+    pgMajor,
+    (e) => (e.enabled ?? true) || e.enabledInComprehensiveTest === true
+  );
 
   if (allPgdgPackages.length === 0) {
     return `RUN echo "No PGDG packages available for regression testing"`;
@@ -711,7 +699,7 @@ function generateCargoManifest(manifest: Manifest): Manifest {
  * Extract PG_MAJOR from PG_VERSION (e.g., "18.1" -> "18")
  */
 function extractPgMajor(): string {
-  const pgVersion = extensionDefaults.pgVersion;
+  const pgVersion = MANIFEST_METADATA.pgVersion;
   const majorVersion = pgVersion.split(".")[0];
   if (!majorVersion) {
     throw new Error(`Could not extract major version from PG_VERSION: ${pgVersion}`);
@@ -777,9 +765,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
 
   // Replace placeholders
   info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
@@ -829,9 +817,9 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
 
   // Replace placeholders
   info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
   dockerfile = dockerfile.replace(
     "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
     pgdgPackagesInstallRegression

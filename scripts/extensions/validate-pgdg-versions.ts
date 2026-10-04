@@ -16,7 +16,7 @@
  */
 
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
-import { pgdgAptPackageName } from "../extensions/pgdg-mappings";
+import { pgdgAptPackageName } from "../extensions/pgdg-package";
 
 interface PgdgExtension {
   name: string;

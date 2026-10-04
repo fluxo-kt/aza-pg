@@ -7,9 +7,7 @@
  *
  * Order:
  * 1. Manifest (source of truth) - must run first
- * 2. Extension defaults (depends on manifest)
- * 3. Parallel: Configs, docs, markdown (all depend on manifest but independent of each other)
- * 4. Parallel: Dockerfile + entrypoint (depend on manifest but independent)
+ * 2. Parallel: everything else (all depend on manifest but independent of each other)
  */
 
 import { spawn } from "bun";
@@ -26,14 +24,7 @@ const generators: GeneratorTask[] = [
   // Phase 1: Manifest (must run first)
   { name: "Manifest", script: "scripts/extensions/generate-manifest.ts" },
 
-  // Phase 2: Extension defaults (depends on manifest)
-  {
-    name: "Extension Defaults",
-    script: "scripts/extensions/generate-extension-defaults.ts",
-    dependsOn: ["Manifest"],
-  },
-
-  // Phase 3: Parallel generators (all depend on manifest, but independent of each other)
+  // Phase 2: Parallel generators (all depend on manifest, but independent of each other)
   { name: "Configs", script: "scripts/config-generator/generator.ts", dependsOn: ["Manifest"] },
   { name: "Docs Data", script: "scripts/generate-docs-data.ts", dependsOn: ["Manifest"] },
   { name: "Markdown", script: "scripts/extensions/render-markdown.ts", dependsOn: ["Manifest"] },
@@ -42,13 +33,7 @@ const generators: GeneratorTask[] = [
     script: "scripts/ci/generate-workflow-config.ts",
     dependsOn: ["Manifest"],
   },
-
-  // Phase 4: Dockerfile imports extension-defaults, so it must run after that file is refreshed.
-  {
-    name: "Dockerfile",
-    script: "scripts/docker/generate-dockerfile.ts",
-    dependsOn: ["Extension Defaults"],
-  },
+  { name: "Dockerfile", script: "scripts/docker/generate-dockerfile.ts", dependsOn: ["Manifest"] },
   { name: "Entrypoint", script: "scripts/docker/generate-entrypoint.ts", dependsOn: ["Manifest"] },
   {
     name: "Image Contents",

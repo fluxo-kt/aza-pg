@@ -6,9 +6,7 @@
  *
  * Edit this file to upgrade/downgrade extensions. Run:
  *   bun run generate
- * to refresh all generated files (Dockerfile, extensions.manifest.json, extension-defaults.ts).
- *
- * IMPORTANT: Never edit scripts/extension-defaults.ts directly - it is auto-generated from this file.
+ * to refresh all generated files (Dockerfile, extensions.manifest.json, docs).
  */
 
 /**
@@ -105,6 +103,12 @@ export interface ManifestEntry {
    */
   pgdgVersion?: string;
   /**
+   * PGDG apt name suffix for an extension: installs postgresql-<major>-<pgdgPackage>.
+   * Required when install_via === "pgdg" and kind is "extension" (tools install under their name).
+   * Example: "pgvector" for vector, "cron" for pg_cron.
+   */
+  pgdgPackage?: string;
+  /**
    * Full Percona Debian package version string for Percona-installable extensions.
    * Only applicable when install_via === "percona".
    * Example: "2.3.1-1.noble" for percona-pg-stat-monitor18=2.3.1-1.noble
@@ -181,6 +185,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgvector",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "pgvector",
     pgdgVersion: "0.8.2-1.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
@@ -207,6 +212,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_cron",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "cron",
     pgdgVersion: "1.6.8-1.pgdg13+2",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
@@ -233,6 +239,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgaudit",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "pgaudit",
     pgdgVersion: "18.0-3.pgdg13+1",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
@@ -343,6 +350,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "hypopg",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "hypopg",
     pgdgVersion: "1.4.3-1.pgdg13+2",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
@@ -384,6 +392,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "plpgsql_check",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "plpgsql-check",
     pgdgVersion: "2.10.11-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
@@ -457,6 +466,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgsql-http",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "http",
     pgdgVersion: "1.7.2-2.pgdg13+2",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
@@ -566,6 +576,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "rum",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "rum",
     pgdgVersion: "1.3.15-1.pgdg13+1",
     category: "search",
     description: "RUM GiST access method for ranked full-text search.",
@@ -587,6 +598,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "postgis",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "postgis-3",
     pgdgVersion: "3.6.4+dfsg-2.pgdg13+1",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
@@ -629,6 +641,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgrouting",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "pgrouting",
     pgdgVersion: "4.0.1-1.pgdg13+1",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
@@ -853,6 +866,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_repack",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "repack",
     pgdgVersion: "1.5.3-1.pgdg13+2",
     category: "maintenance",
     description: "Online table/index reorganization without long locks.",
@@ -1011,6 +1025,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pg_partman",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "partman",
     pgdgVersion: "5.5.0-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
@@ -1068,6 +1083,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "hll",
     pgdgVersion: "2.21-1.pgdg13+2",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
@@ -1152,6 +1168,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     displayName: "pgaudit_set_user",
     kind: "extension",
     install_via: "pgdg",
+    pgdgPackage: "set-user",
     pgdgVersion: "4.2.0-1.pgdg13+2",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",

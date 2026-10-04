@@ -17,7 +17,7 @@
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { join } from "node:path";
-import { extensionDefaults } from "../extension-defaults";
+import { MANIFEST_METADATA } from "../extensions/manifest-data";
 
 // Import types from the generator module (we'll need to make some functions exportable)
 interface ManifestEntry {
@@ -54,53 +54,6 @@ const REPO_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-
-describe("Extension Defaults Validation", () => {
-  test("PG_VERSION is defined and valid", () => {
-    expect(extensionDefaults.pgVersion).toBeDefined();
-    expect(extensionDefaults.pgVersion).toMatch(/^\d+\.\d+$/);
-  });
-
-  test("PG_MAJOR can be extracted from PG_VERSION", () => {
-    const pgMajor = extensionDefaults.pgVersion.split(".")[0];
-    expect(pgMajor).toBeDefined();
-    expect(Number.parseInt(pgMajor!)).toBeGreaterThan(0);
-    expect(Number.parseInt(pgMajor!)).toBeLessThanOrEqual(20); // Reasonable upper bound
-  });
-
-  test("Base image SHA is valid format", () => {
-    expect(extensionDefaults.baseImageSha).toBeDefined();
-    expect(extensionDefaults.baseImageSha).toMatch(/^sha256:[a-f0-9]{64}$/);
-  });
-
-  test("All PGDG versions are defined", () => {
-    const versions = extensionDefaults.pgdgVersions;
-    expect(versions.pgcron).toBeDefined();
-    expect(versions.pgaudit).toBeDefined();
-    expect(versions.pgvector).toBeDefined();
-    expect(versions.plpgsqlCheck).toBeDefined(); // migrated from source → PGDG
-    expect(versions.partman).toBeDefined(); // migrated from source → PGDG (postgresql-18-partman)
-    // timescaledb: install_via "timescale" (dedicated repo, not PGDG) — no pgdgVersion
-    expect(versions.postgis).toBeDefined();
-    expect(versions.repack).toBeDefined();
-    expect(versions.hll).toBeDefined();
-    expect(versions.http).toBeDefined();
-    expect(versions.hypopg).toBeDefined();
-    expect(versions.pgrouting).toBeDefined();
-    expect(versions.rum).toBeDefined();
-    expect(versions.setUser).toBeDefined();
-  });
-
-  test("PGDG versions follow expected pattern", () => {
-    // Pattern: version-build.pgdgNN+1 (e.g., "1.6.7-2.pgdg13+1")
-    // Some packages like postgis include +dfsg in the version
-    const versionPattern = /^[\d.]+(\+\w+)?(-\d+)?\.pgdg\d+\+\d+$/;
-
-    for (const [_key, version] of Object.entries(extensionDefaults.pgdgVersions)) {
-      expect(version).toMatch(versionPattern);
-    }
-  });
-});
 
 describe("Manifest File Validation", () => {
   let manifest: Manifest;
@@ -243,18 +196,18 @@ describe("Generated Dockerfile Validation", () => {
 
   test("PG_VERSION placeholder is replaced with actual version", async () => {
     expect(generatedDockerfile).not.toContain("{{PG_VERSION}}");
-    expect(generatedDockerfile).toContain(extensionDefaults.pgVersion);
+    expect(generatedDockerfile).toContain(MANIFEST_METADATA.pgVersion);
   });
 
   test("PG_MAJOR placeholder is replaced with major version", async () => {
-    const pgMajor = extensionDefaults.pgVersion.split(".")[0];
+    const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0];
     expect(generatedDockerfile).not.toContain("{{PG_MAJOR}}");
     expect(generatedDockerfile).toContain(`postgresql-${pgMajor}`);
   });
 
   test("PG_BASE_IMAGE_SHA placeholder is replaced", async () => {
     expect(generatedDockerfile).not.toContain("{{PG_BASE_IMAGE_SHA}}");
-    expect(generatedDockerfile).toContain(extensionDefaults.baseImageSha);
+    expect(generatedDockerfile).toContain(MANIFEST_METADATA.baseImageSha);
   });
 
   test("PGDG_PACKAGES_INSTALL placeholder is replaced", async () => {
@@ -326,33 +279,6 @@ describe("Generated Dockerfile Validation", () => {
 
   test("Binary stripping is included for size optimization", async () => {
     expect(generatedDockerfile).toMatch(/strip --strip/);
-  });
-});
-
-describe("PGDG Package Name Security Validation", () => {
-  test("Package names contain only safe characters", () => {
-    const safePattern = /^[a-zA-Z0-9\-_=.+:]*$/;
-
-    const testCases = [
-      { name: "postgresql-18-pgvector=0.8.2-1.pgdg13+1", valid: true },
-      { name: "postgresql-18-cron=1.6.7-2.pgdg13+1", valid: true },
-      { name: "postgresql-18-postgis-3=3.5.1+dfsg-1.pgdg13+1", valid: true },
-      { name: "bad-package;rm -rf", valid: false },
-      { name: "package$(malicious)", valid: false },
-      { name: "package`command`", valid: false },
-    ];
-
-    for (const { name, valid } of testCases) {
-      expect(safePattern.test(name)).toBe(valid);
-    }
-  });
-
-  test("Version strings contain only safe characters", () => {
-    const safePattern = /^[a-zA-Z0-9\-_=.+:]*$/;
-
-    for (const [_key, version] of Object.entries(extensionDefaults.pgdgVersions)) {
-      expect(safePattern.test(version)).toBe(true);
-    }
   });
 });
 

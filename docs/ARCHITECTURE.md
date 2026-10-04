@@ -154,14 +154,6 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cargo build
 ```
 
-_PGDG Package Ordering (by stability score):_
-
-- STABLE tier (scores 24-46): pg_repack, hll, postgis, pgvector, rum, timescaledb, hypopg
-- MODERATE tier (scores 54-84): http, pg_cron, set_user, pgrouting
-- VOLATILE tier (scores 102-118): pgaudit, plpgsql_check, pg_partman
-- Analysis based on: manifest history (40%) + upstream release velocity (60%)
-- Impact: When pg_partman updates, only 2 layers invalidate vs 12+ previously
-
 _Performance Impact:_
 
 - Measured improvement: 70% faster warm rebuilds (17s cold → 5s warm)

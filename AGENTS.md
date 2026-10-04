@@ -12,8 +12,8 @@
 
 ## Invariants
 
-- **Manifest = single source of truth**: `manifest-data.ts` defines ALL versions (PG, base image SHA, pgdgVersions, git tags)
-- **extension-defaults.ts = auto-generated**: NEVER edit directly — regenerated from manifest
+- **Manifest = single source of truth**: `manifest-data.ts` defines ALL versions (PG, base image SHA, apt pins, git tags)
+- **Per-extension facts live on its manifest entry** (`pgdgPackage`, `perconaPackage`, `soFileName`, …) — NEVER add a side table keyed by extension name; generators/validators read the entry, so changing `install_via` stays a one-entry edit
 - **Tools ≠ extensions** (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
 - **Dockerfile is auto-generated** from template + manifest (NEVER edit directly)
@@ -83,7 +83,6 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 
 - **auto_explain**: Module (shared_preload_libraries), NOT extension — NO CREATE EXTENSION needed
 - **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
-- **extension-defaults.ts**: NEVER edit directly — auto-generated from `manifest-data.ts`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
 - **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild → **also update `tests/regression/extensions/EXTNAME/expected/basic.out`** for any extension whose version string is hard-coded in that file (e.g., `extname | 1.2.3` lines); stale expected outputs cause nightly regression failures
 - **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
@@ -142,7 +141,6 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 ## Common Mistakes
 
 - ❌ Editing `Dockerfile` directly → ✅ Edit `Dockerfile.template` + regenerate
-- ❌ Editing `extension-defaults.ts` directly → ✅ Edit `manifest-data.ts` + regenerate
 - ❌ Using Node.js fs/child_process → ✅ Use Bun.file/Bun.$
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script

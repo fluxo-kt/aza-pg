@@ -1,9 +1,9 @@
 name: Load Test Image
-description: Load Docker image from artifact or registry
+description: Load Docker image from an artifact, the actions cache, or a registry
 
 inputs:
   source:
-    description: Image source (artifact or registry)
+    description: Image source (artifact, cache or registry)
     required: true
   image-name:
     description: Docker image name/tag to use
@@ -16,6 +16,9 @@ inputs:
     description: Artifact download path (required if source=artifact)
     required: false
     default: /tmp
+  cache-key:
+    description: actions/cache key of aza-pg-ci-image.tar.gz (required if source=cache)
+    required: false
   registry-image:
     description: Full registry image reference (required if source=registry)
     required: false
@@ -34,8 +37,18 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.artifact-path }}
 
-    - name: Load Docker image from artifact
-      if: inputs.source == 'artifact'
+    # The build job saved the tarball under this key; a miss means the build job did not run or failed to save,
+    # so the test job fails here instead of testing nothing.
+    - name: Restore image from cache
+      if: inputs.source == 'cache'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz
+        key: ${{ inputs.cache-key }}
+        fail-on-cache-miss: true
+
+    - name: Load Docker image from tarball
+      if: inputs.source == 'artifact' || inputs.source == 'cache'
       shell: bash
       run: |
         set -euo pipefail

@@ -24,15 +24,15 @@
 #
 # DOCKER IMAGE SHARING:
 # --------------------
-# - build job exports image as tarball artifact
-# - test jobs download and load image from artifact
-# - Uses actions/upload-artifact@v7 and actions/download-artifact@v8 (via load-test-image action)
+# - build job keys the image by its inputs (scripts/ci/image-input-hash.ts) and builds + saves the tarball to
+#   actions/cache only when no entry has that key, so a commit that changes no image input reuses the image
+# - test jobs restore the tarball by the same key (via load-test-image, source: cache)
 #
 # DIFFERENCES FROM build-postgres-image.yml:
 # -----------------------------------------
 # - Automatic on PR/push (not manual)
 # - Single-platform amd64 only (not multi-arch)
-# - No registry push (artifact-based sharing)
+# - No registry push (actions/cache-based sharing)
 # - More comprehensive test coverage
 # - Faster feedback (parallel tests)
 #
@@ -127,13 +127,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
-  # Job 2: Build (Docker image, export as artifact)
+  # Job 2: Build (only when no cached image has this commit's image-input key)
   # ==========================================================================
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: validate
     timeout-minutes: 60
+    outputs:
+      image-key: ${{ steps.key.outputs.key }}
 
     steps:
       - name: Checkout repository
@@ -142,11 +144,29 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      - name: Compute image input key
+        id: key
+        run: |
+          set -euo pipefail
+          key=$(bun scripts/ci/image-input-hash.ts)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      # lookup-only: on a hit the test jobs restore the tarball; this job needs only to know it exists.
+      - name: Look up cached image
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/aza-pg-ci-image.tar.gz
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+
       - name: Set up Docker Buildx
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # A reused image keeps the VCS_REF label of the commit that built it; nothing in CI reads that label.
       - name: Build Docker image with layer caching
-        id: build
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -162,12 +182,8 @@ jobs:
           sbom: false
           provenance: false
 
-      - name: Set up Bun (for cache monitoring)
-        if: always()
-        uses: ./.github/actions/setup-bun
-
       - name: Monitor cache usage
-        if: always()
+        if: steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,65 +194,19 @@ jobs:
             --platform "linux/amd64" \
             --github-summary
 
-      - name: Verify image built successfully
-        run: |
-          set -euo pipefail
-          echo "Verifying image exists..."
-          docker images | grep aza-pg-ci
-
-          echo "Testing basic functionality..."
-          docker run --rm aza-pg-ci:test psql --version
-
-          echo "Checking extension count..."
-          # Derive expected count dynamically from manifest
-          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
-          EXPECTED_MIN=$((CATALOG_EXTENSIONS + CATALOG_BUILTINS))
-
-          EXTENSION_COUNT=$(docker run --rm aza-pg-ci:test \
-            sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null' | wc -l)
-          echo "Found $EXTENSION_COUNT extension control files (expected: ${EXPECTED_MIN} = ${CATALOG_EXTENSIONS} ext + ${CATALOG_BUILTINS} builtin)"
-
-          if [ "$EXTENSION_COUNT" -lt "$EXPECTED_MIN" ]; then
-            echo "::error::Expected at least ${EXPECTED_MIN} extensions, found $EXTENSION_COUNT"
-            exit 1
-          fi
-
-          echo "✅ Image verification passed"
-
       - name: Export image as tarball
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          echo "Exporting image to tarball..."
           docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Save image to cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          name: docker-image
           path: /tmp/aza-pg-ci-image.tar.gz
-          retention-days: 1
-          compression-level: 0 # Already compressed with gzip
-
-      - name: Generate build summary
-        if: always()
-        run: |
-          set -euo pipefail
-          {
-            echo "### Build Summary :package:"
-            echo ""
-            echo "**Image:** \`aza-pg-ci:test\`"
-            echo "**Platform:** linux/amd64"
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Get image size
-          IMAGE_SIZE=$(docker images aza-pg-ci:test --format "{{.Size}}")
-          echo "**Image Size:** $IMAGE_SIZE" >> "$GITHUB_STEP_SUMMARY"
-
-          # Get artifact size
-          ARTIFACT_SIZE=$(du -h /tmp/aza-pg-ci-image.tar.gz | cut -f1)
-          echo "**Artifact Size:** $ARTIFACT_SIZE (compressed)" >> "$GITHUB_STEP_SUMMARY"
+          key: ${{ steps.key.outputs.key }}
 
   # ==========================================================================
   # Job 3: Test (one job per suite group; scripts/test-all.ts owns which suites a group holds)
@@ -269,7 +239,8 @@ jobs:
         uses: ./.github/actions/test-job-setup
         with:
           ghcr-login: "false"
-          image-source: artifact
+          image-source: cache
+          cache-key: ${{ needs.build.outputs.image-key }}
           image-name: aza-pg-ci:test
 
       - name: Run ${{ matrix.group }} suites

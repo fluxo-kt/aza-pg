@@ -11,7 +11,7 @@ inputs:
     description: "GitHub token for GHCR auth (required if ghcr-login=true)"
     required: false
   image-source:
-    description: "Image source: 'artifact' or 'registry'"
+    description: "Image source: 'artifact', 'cache' or 'registry'"
     required: true
   image-name:
     description: "Docker image name/tag to use locally"
@@ -24,6 +24,9 @@ inputs:
     description: "Artifact download path (used if image-source=artifact)"
     required: false
     default: "/tmp"
+  cache-key:
+    description: "actions/cache key of the image tarball (required if image-source=cache)"
+    required: false
   registry-image:
     description: "Full registry image reference (required if image-source=registry)"
     required: false
@@ -34,10 +37,10 @@ inputs:
 
 outputs:
   bun-version:
-    description: "The Bun version that was installed (only set if image-source=artifact)"
+    description: "The Bun version that was installed (only set if image-source is artifact or cache)"
     value: ${{ steps.setup-bun-artifact.outputs.bun-version }}
   cache-hit:
-    description: "Whether there was a Bun cache hit (only set if image-source=artifact)"
+    description: "Whether there was a Bun cache hit (only set if image-source is artifact or cache)"
     value: ${{ steps.setup-bun-artifact.outputs.cache-hit }}
 
 runs:
@@ -45,10 +48,10 @@ runs:
   steps:
     # Step 1: Always set up Bun (unless load-test-image will do it)
     # NOTE: load-test-image calls setup-bun internally when source=registry,
-    # so we only call it here when source=artifact
+    # so we only call it here for the artifact and cache sources
     - name: Set up Bun and dependencies
       id: setup-bun-artifact
-      if: inputs.image-source == 'artifact'
+      if: inputs.image-source != 'registry'
       uses: ./.github/actions/setup-bun
 
     # Step 2: Conditionally login to GHCR
@@ -67,5 +70,6 @@ runs:
         image-name: ${{ inputs.image-name }}
         artifact-name: ${{ inputs.artifact-name }}
         artifact-path: ${{ inputs.artifact-path }}
+        cache-key: ${{ inputs.cache-key }}
         registry-image: ${{ inputs.registry-image }}
         max-retries: ${{ inputs.max-retries }}

@@ -4,9 +4,9 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.4 with comprehensive extension suite
+# PostgreSQL 18.6 with comprehensive extension suite
 
-FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39 AS builder-base
+FROM postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 AS builder-base
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -162,13 +162,13 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.4..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.4" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.4" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.6..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.6" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.6" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39
+FROM postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -285,13 +285,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
     curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
     apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.27.1~debian13-1804 timescaledb-2-loader-postgresql-18=2.27.1~debian13-1804 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.27.1~debian13-1804 timescaledb-2-loader-postgresql-18=2.27.1~debian13-1804 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/timescaledb.so && \
-    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.22.0.so && \
+    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.26.0.so && \
     echo "All 2 Timescale .so files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*; \
@@ -473,9 +473,9 @@ USER postgres
 # Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.4"
-LABEL org.opencontainers.image.description="PostgreSQL 18.4 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.4"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.6"
+LABEL org.opencontainers.image.description="PostgreSQL 18.6 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.6"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 

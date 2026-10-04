@@ -10,6 +10,20 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Breaking
+
+- **TimescaleDB 2.27.1 → 2.30.2**: Adaptive chunking is removed (`set_adaptive_chunking()` and the `chunk_target_size`/`chunk_sizing_func` arguments of `create_hypertable()`); the granular continuous-aggregate refresh options are renamed to `timescaledb.cagg_granular_refresh_*`.
+- **timescaledb_toolkit 1.22.0 → 1.26.0**: `gauge_agg` and its accessors moved from `toolkit_experimental` to the public schema; `time_weight`'s combine/serialize/deserialize functions are removed, so `time_weight` no longer aggregates in parallel. The extension is now `trusted`, so any role with `CREATE` on a database can install it.
+
+### Security
+
+- **PostgreSQL 18.4 → 18.6** (18.5 was never released upstream): fixes 28 CVEs, including several CVSS 8.8 memory-safety and SQL-injection issues. After upgrading: `ANALYZE` tables whose GIN indexes were built in parallel (their `reltuples` may be corrupt), `REINDEX` `btree_gist` indexes on float/bit columns and `ltree` btree indexes as the [18.6 release notes](https://www.postgresql.org/docs/release/18.6/) describe, and use `pgp_sym_decrypt(..., 'ignore-cipher-failure=1')` to recover pgcrypto data encrypted with a cipher OpenSSL had disabled.
+- **TimescaleDB 2.29.1+**: Fixes [GHSA-hcfx-29v5-2rcw](https://github.com/timescale/timescaledb/security/advisories/GHSA-hcfx-29v5-2rcw) (high; missing permission checks in chunk management functions) and decompressor crashes on malformed compressed data.
+
+### Changed
+
+- **Logical decoding plugins** (PostgreSQL 18.6, CVE-2026-6471): slots may only use plugins listed in `output_plugin_libraries`, superusers included. The image sets it to `pgoutput,test_decoding,wal2json` so wal2json CDC keeps working; change it with the new `POSTGRES_OUTPUT_PLUGIN_LIBRARIES` variable (it is passed as `-c`, so `postgresql.conf` and `ALTER SYSTEM` cannot override it). Outside this image, write `ALTER SYSTEM SET output_plugin_libraries = pgoutput, test_decoding, wal2json` as an unquoted list: one quoted string becomes a single plugin name that matches nothing.
+
 ## [v18.4-202606031012] - 2026-06-03
 
 ### Security

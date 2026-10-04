@@ -488,6 +488,13 @@ case "$WAL_LEVEL" in
         ;;
 esac
 
+# Logical decoding output plugins that slots may use. Since PostgreSQL 18.6 (CVE-2026-6471) any
+# plugin missing from output_plugin_libraries is refused, superusers included, and the built-in
+# default lists only pgoutput and test_decoding — the shipped wal2json would stop working for CDC.
+# Passed as -c (like every auto-config setting), so it outranks postgresql.conf and ALTER SYSTEM;
+# operators change it here. Keep pgoutput in any override: built-in logical replication needs it.
+OUTPUT_PLUGIN_LIBRARIES=${POSTGRES_OUTPUT_PLUGIN_LIBRARIES:-pgoutput,test_decoding,wal2json}
+
 # Override listen_addresses based on POSTGRES_BIND_IP
 # Default: 127.0.0.1 (localhost only, secure)
 # Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
@@ -509,6 +516,7 @@ set -- "$@" \
     -c "max_connections=${MAX_CONNECTIONS}" \
     -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
     -c "wal_level=${WAL_LEVEL}" \
+    -c "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
     -c "cron.database_name=${POSTGRES_DB:-postgres}" \
     -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \

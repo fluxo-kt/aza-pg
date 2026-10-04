@@ -17,9 +17,9 @@
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
-  pgVersion: "18.4",
+  pgVersion: "18.6",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39",
+  baseImageSha: "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
 } as const;
 
 export type SourceSpec =
@@ -934,7 +934,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.27.1~debian13-1804",
+    timescaleVersion: "2.30.2~debian13-1806",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -942,16 +942,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.27.1",
+      tag: "2.30.2",
     },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (v2.27.1 TSL, ~debian13-1804 built for PG 18.4)",
-        "v2.27.0: Hypercore vectorized filters, bloom-filter pruning for compressed UPDATE/DELETE/UPSERT, and PG18 module magic support",
-        "v2.27.1: security fixes (job_errors view leaked failed jobs to non-owners; ownership checks before recompression; policy_reorder_remove info leak) plus columnar index scan correctness for grouped/ROLLUP/CUBE queries",
+        "Timescale repo: timescaledb-2-postgresql-18 (v2.30.2 TSL, ~debian13-1806 built for PG 18.6; the package Depends on postgresql-18 >= 18.6)",
+        "v2.28.0: adaptive chunking removed (set_adaptive_chunking, chunk_target_size/chunk_sizing_func create_hypertable args)",
+        "v2.29.0: PostgreSQL 15 support removed; v2.29.1 fixes GHSA-hcfx-29v5-2rcw (missing permission checks in chunk management functions)",
         "⚠️ Upgrade blocker: affected databases with incorrect sparse bloom indexes on compressed int2 columns must drop those indexes before upgrading",
         "⚠️ Breaking: Old CA format removed (deprecated since 2.10.0), time_bucket_ng removed",
         "Preloaded for optimal hypertable performance",
@@ -966,21 +966,22 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-toolkit-postgresql-18",
-    timescaleVersion: "1:1.22.0~debian13",
-    soFileName: "timescaledb_toolkit-1.22.0.so",
+    timescaleVersion: "1:1.26.0~debian13",
+    soFileName: "timescaledb_toolkit-1.26.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
-      tag: "1.22.0",
+      tag: "1.26.0",
     },
     dependencies: ["timescaledb"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "Timescale repo: timescaledb-toolkit-postgresql-18 (v1.22.0)",
+        "Timescale repo: timescaledb-toolkit-postgresql-18 (v1.26.0)",
+        "v1.25.0 stabilized gauge_agg (moved out of toolkit_experimental); v1.26.0 removed time_weight combine/serialize/deserialize",
         "Switched from cargo-pgrx source build to Timescale apt (faster install)",
       ],
     },

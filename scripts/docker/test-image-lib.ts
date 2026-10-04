@@ -865,6 +865,21 @@ export async function testPostgresConfiguration(containerName: string): Promise<
         check: (val: string) => val === "logical",
         desc: "= logical (required for CDC/replication slots)",
       },
+      {
+        // PostgreSQL 18.6+ refuses logical-decoding plugins missing from this list (superusers
+        // too), so without wal2json the Phase 5 wal2json slot test fails with "may not be used as
+        // an output plugin". Splitting into elements also catches the list stored as ONE quoted
+        // element ("pgoutput, test_decoding, wal2json"), which is what a single-string
+        // SET/ALTER SYSTEM produces and which matches no plugin.
+        name: "output_plugin_libraries",
+        sql: "SELECT current_setting('output_plugin_libraries')",
+        check: (val: string) =>
+          val
+            .split(",")
+            .map((lib) => lib.trim())
+            .includes("wal2json"),
+        desc: "lists wal2json as its own element",
+      },
     ];
 
     const errors: string[] = [];

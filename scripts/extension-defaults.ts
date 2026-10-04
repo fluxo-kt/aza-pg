@@ -38,8 +38,8 @@ export interface ExtensionDefaults {
  * Generated from MANIFEST_METADATA and MANIFEST_ENTRIES in manifest-data.ts
  */
 export const extensionDefaults: ExtensionDefaults = {
-  pgVersion: "18.4",
-  baseImageSha: "sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39",
+  pgVersion: "18.6",
+  baseImageSha: "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
   pgdgVersions: {
     hll: "2.20-1.pgdg13+1",
     http: "1.7.0-3.pgdg13+1",

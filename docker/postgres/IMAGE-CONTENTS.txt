@@ -1,5 +1,5 @@
 ╔═══════════════════════════════════════════════════════════════╗
-║  aza-pg Single-Node PostgreSQL 18.4                           ║
+║  aza-pg Single-Node PostgreSQL 18.6                           ║
 ║  https://github.com/fluxo-kt/aza-pg                           ║
 ╚═══════════════════════════════════════════════════════════════╝
 
@@ -31,8 +31,8 @@ EXTENSIONS (CREATE EXTENSION available)
   rum                          v1.3.15        search
   set_user                     v4.2.0         security
   supabase_vault               v0.3.1         security
-  timescaledb                  v2.27.1        timeseries
-  timescaledb_toolkit          v1.22.0        timeseries
+  timescaledb                  v2.30.2        timeseries
+  timescaledb_toolkit          v1.26.0        timeseries
   vector                       v0.8.2         ai
   vectorscale                  v0.9.0         ai
   wrappers                     v0.6.1         integration

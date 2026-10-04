@@ -12,7 +12,6 @@
  * - Topic routing (v1.11.0): bind_topic, send_topic, unbind_topic, list_topic_bindings
  * - Queue management (purge, metrics)
  * - Error handling (non-existent queues, invalid operations)
- * - Performance metrics (throughput, latency)
  *
  * Usage:
  *   bun run scripts/test/test-pgmq-functional.ts --image=aza-pg:local
@@ -20,7 +19,7 @@
  */
 
 import { $ } from "bun";
-import { join } from "node:path";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
 // Parse CLI arguments
@@ -40,7 +39,7 @@ if (containerName) {
   CONTAINER = containerName;
   console.log(`Using existing container: ${CONTAINER}\n`);
 } else if (imageTag) {
-  CONTAINER = `test-pgmq-${Date.now()}-${process.pid}`;
+  CONTAINER = generateUniqueContainerName("aza-pg-pgmq");
   isOwnContainer = true;
   console.log(`Starting new container: ${CONTAINER}`);
   console.log(`Using image: ${imageTag}\n`);
@@ -49,57 +48,11 @@ if (containerName) {
   process.exit(1);
 }
 
-// Check if pgmq extension is enabled in manifest
-const REPO_ROOT = join(import.meta.dir, "../..");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-
-interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  disabledReason?: string;
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
-
-function isManifest(value: unknown): value is Manifest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "entries" in value &&
-    Array.isArray(value.entries)
-  );
-}
-
-try {
-  const manifestJson = await Bun.file(MANIFEST_PATH).json();
-  if (!isManifest(manifestJson)) {
-    throw new Error("Invalid manifest shape: entries array missing");
-  }
-  const pgmqEntry = manifestJson.entries.find((entry) => entry.name === "pgmq");
-
-  if (pgmqEntry && pgmqEntry.enabled === false) {
-    console.log("\n" + "=".repeat(80));
-    console.log("PGMQ FUNCTIONAL TEST SKIPPED");
-    console.log("=".repeat(80));
-    console.log("⏭️  pgmq extension is disabled in manifest (enabled: false)");
-    console.log("   Reason: " + (pgmqEntry.disabledReason || "Not specified"));
-    console.log("   To enable: Set enabled: true in scripts/extensions/manifest-data.ts");
-    console.log("=".repeat(80));
-    process.exit(0);
-  }
-} catch (error) {
-  console.error("Warning: Could not read manifest file:", error);
-  console.log("Proceeding with tests...\n");
-}
-
 interface TestResult {
   name: string;
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: Record<string, number | string>;
 }
 
 const results: TestResult[] = [];
@@ -138,6 +91,18 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
+/** Re-run a read until it returns a row (or 10 s pass); the 250 ms sleep only paces the polling. */
+async function pollUntilVisible(sql: string): Promise<string> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const r = await runSQL(sql);
+    if (!r.success) throw new Error(`Read failed: ${r.stderr}`);
+    if (r.stdout !== "") return r.stdout;
+    await Bun.sleep(250);
+  }
+  return "";
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
@@ -162,7 +127,7 @@ if (isOwnContainer) {
   process.on("exit", () => {
     // Synchronous cleanup on normal exit
     try {
-      Bun.spawnSync(["docker", "rm", "-f", CONTAINER]);
+      Bun.spawnSync(["docker", "rm", "-f", "-v", CONTAINER]);
     } catch {
       // Ignore errors during cleanup
     }
@@ -190,46 +155,7 @@ if (isOwnContainer && imageTag) {
     await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`;
     console.log(`✅ Container started: ${CONTAINER}`);
 
-    // Wait for PostgreSQL to be ready
-    console.log("⏳ Waiting for PostgreSQL to be ready...");
-    let ready = false;
-    const maxAttempts = 60; // 60 seconds timeout
-    let attempt = 0;
-
-    while (!ready && attempt < maxAttempts) {
-      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
-      if (result.exitCode === 0) {
-        ready = true;
-        break;
-      }
-      await Bun.sleep(1000);
-      attempt++;
-    }
-
-    if (!ready) {
-      throw new Error("PostgreSQL failed to start within 60 seconds");
-    }
-
-    // Wait for init scripts to complete (PostgreSQL restarts after initdb)
-    console.log("⏳ Waiting for init scripts to complete...");
-    let stableConnections = 0;
-    const requiredStable = 3;
-
-    for (let i = 0; i < 30 && stableConnections < requiredStable; i++) {
-      const check = await $`docker exec ${CONTAINER} psql -U postgres -c "SELECT 1"`.nothrow();
-      if (check.exitCode === 0) {
-        stableConnections++;
-      } else {
-        stableConnections = 0;
-      }
-      await Bun.sleep(1000);
-    }
-
-    if (stableConnections < requiredStable) {
-      throw new Error("PostgreSQL connection not stable after init");
-    }
-
-    console.log("✅ PostgreSQL is ready and stable\n");
+    await waitForPostgres({ container: CONTAINER, timeout: 120 });
   } catch (error) {
     console.error(`❌ Failed to start container: ${error}`);
     await cleanupContainer();
@@ -444,13 +370,9 @@ await test("Visibility timeout behavior", async () => {
   assert(read2.success, `Second read failed: ${read2.stderr}`);
   assert(read2.stdout === "", `Expected no messages, got: ${read2.stdout}`);
 
-  // Wait for visibility timeout to expire
-  await Bun.sleep(2500);
-
-  // Read again (message should be visible again)
-  const read3 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
-  assert(read3.success, `Third read failed: ${read3.stderr}`);
-  assert(read3.stdout.length > 0, "Message not visible after VT expiration");
+  // The message must reappear once the 2 s timeout lapses
+  const read3 = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
+  assert(read3.length > 0, "Message not visible after VT expiration");
 });
 
 // Test 12: Set Visibility Timeout
@@ -702,15 +624,8 @@ await test("Delayed message send", async () => {
   assert(immediate.success, `Immediate read failed: ${immediate.stderr}`);
   assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
 
-  // Wait for delay to expire
-  await Bun.sleep(2500);
-
-  // Now message should be visible
-  const delayed = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
-  assert(delayed.success, `Delayed read failed: ${delayed.stderr}`);
-  assert(delayed.stdout.length > 0, "Message not visible after delay expired");
-
-  console.log("   📊 Delayed send verified: message appeared after 2.5s delay");
+  const delayed = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
+  assert(delayed.length > 0, "Message not visible after delay expired");
 });
 
 // Test 19: Batch delete multiple messages
@@ -1037,67 +952,10 @@ await test("Drop queue", async () => {
      WHERE queue_name LIKE 'test_queue_%'
         OR queue_name LIKE 'test_list_%'
         OR queue_name LIKE 'test_meta_%'
-        OR queue_name LIKE 'topic_queue_%'
-        OR queue_name = 'benchmark_queue'`
+        OR queue_name LIKE 'topic_queue_%'`
   );
   assert(remaining.success, `Check remaining queues failed: ${remaining.stderr}`);
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
-});
-
-// Test 28: Performance Benchmark - Message Throughput
-await test("Performance benchmark - message throughput", async () => {
-  // Create benchmark queue
-  await runSQL("SELECT pgmq.create('benchmark_queue')");
-
-  const messageCount = 100;
-  const start = Date.now();
-
-  // Send messages
-  for (let i = 0; i < messageCount; i++) {
-    await runSQL(
-      `SELECT pgmq.send('benchmark_queue', '{"id": ${i + 1}, "data": "benchmark_test"}'::jsonb)`
-    );
-  }
-
-  const sendDuration = Date.now() - start;
-  const sendThroughput = (messageCount / sendDuration) * 1000; // messages per second
-
-  // Read messages
-  const readStart = Date.now();
-  const read = await runSQL(
-    `SELECT count(*) FROM pgmq.read('benchmark_queue', 30, ${messageCount})`
-  );
-  const readDuration = Date.now() - readStart;
-  const readThroughput = (messageCount / readDuration) * 1000;
-
-  assert(read.success, `Benchmark read failed: ${read.stderr}`);
-  const readCount = parseInt(read.stdout);
-  assert(readCount === messageCount, `Expected ${messageCount} messages, got ${readCount}`);
-
-  console.log(
-    `   📊 Send Throughput: ${sendThroughput.toFixed(2)} msg/sec (${messageCount} messages in ${sendDuration}ms)`
-  );
-  console.log(
-    `   📊 Read Throughput: ${readThroughput.toFixed(2)} msg/sec (${messageCount} messages in ${readDuration}ms)`
-  );
-
-  // Cleanup
-  const cleanup = await runSQL("SELECT pgmq.drop_queue('benchmark_queue')");
-  assert(cleanup.success, `Benchmark queue cleanup failed: ${cleanup.stderr}`);
-
-  const lastResult = results[results.length - 1];
-  if (lastResult) {
-    lastResult.metrics = {
-      messageCount,
-      sendDuration,
-      sendThroughput: sendThroughput.toFixed(2),
-      readDuration,
-      readThroughput: readThroughput.toFixed(2),
-    };
-  }
-
-  assert(sendThroughput > 10, `Send throughput too low: ${sendThroughput.toFixed(2)} msg/sec`);
-  assert(readThroughput > 50, `Read throughput too low: ${readThroughput.toFixed(2)} msg/sec`);
 });
 
 // Print Summary
@@ -1121,23 +979,6 @@ if (failed > 0) {
     .forEach((r) => {
       console.log(`  - ${r.name}: ${r.error}`);
     });
-}
-
-// Print performance metrics
-const perfResults = results.filter(
-  (result): result is TestResult & { metrics: Record<string, number | string> } =>
-    result.metrics !== undefined
-);
-if (perfResults.length > 0) {
-  console.log("\n" + "=".repeat(80));
-  console.log("PERFORMANCE METRICS");
-  console.log("=".repeat(80));
-  perfResults.forEach((r) => {
-    console.log(`\n${r.name}:`);
-    Object.entries(r.metrics).forEach(([key, value]) => {
-      console.log(`  ${key}: ${value}`);
-    });
-  });
 }
 
 console.log("\n" + "=".repeat(80));

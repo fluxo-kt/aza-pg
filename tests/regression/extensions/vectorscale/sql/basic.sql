@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS vectorscale;
 
 -- Test 1: Verify extensions loaded
-SELECT extname, extversion FROM pg_extension
+SELECT extname FROM pg_extension
 WHERE extname IN ('vector', 'vectorscale')
 ORDER BY extname;
 

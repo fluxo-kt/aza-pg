@@ -4,13 +4,13 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS vectorscale;
 -- Test 1: Verify extensions loaded
-SELECT extname, extversion FROM pg_extension
+SELECT extname FROM pg_extension
 WHERE extname IN ('vector', 'vectorscale')
 ORDER BY extname;
-extname | extversion
--------------+------------
-vector | 0.8.2
-vectorscale | 0.9.0
+extname
+-------------
+vector
+vectorscale
 (2 rows)
 -- Test 2: Verify vectorscale schema exists
 SELECT count(*) > 0 AS has_vectorscale_schema

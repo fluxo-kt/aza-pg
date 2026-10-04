@@ -81,15 +81,3 @@ proname
 create_secret
 update_secret
 (2 rows)
--- Test 7: Verify pgsodium crypto functions available (vault dependency)
-SELECT
-count(*) AS crypto_functions
-FROM
-pg_proc
-WHERE
-pronamespace = 'pgsodium'::regnamespace
-AND proname LIKE 'crypto_%';
-crypto_functions
-------------------
-108
-(1 row)

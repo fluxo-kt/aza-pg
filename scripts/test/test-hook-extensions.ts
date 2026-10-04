@@ -1,374 +1,95 @@
 #!/usr/bin/env bun
 /**
- * Test script: Validate hook-based extensions that load via shared_preload_libraries
- * Usage: bun run scripts/test/test-hook-extensions.ts [image-tag]
+ * pg_safeupdate owner (a preload hook, no CREATE EXTENSION).
  *
- * Tests extensions that don't use CREATE EXTENSION:
- *   - pg_safeupdate (hook-based, default-enabled in shared_preload_libraries)
+ * - Default image: UPDATE and DELETE without WHERE are rejected; with WHERE they run.
+ * - POSTGRES_SHARED_PRELOAD_LIBRARIES without safeupdate: the same statements run, proving the
+ *   operator override reaches shared_preload_libraries and the rejection came from safeupdate.
  *
- * Note: pg_plan_filter is tested in test-all-extensions-functional.ts (not preloaded by default).
- * Note: supautils is tested separately because it is preload-only.
+ * The two containers boot in parallel.
  *
- * Examples:
- *   bun run scripts/test/test-hook-extensions.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
- *   bun run scripts/test/test-hook-extensions.ts my-custom:tag      # Use custom tag
+ * Usage: bun scripts/test/test-hook-extensions.ts [image] [--image=TAG]
  */
-
 import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  ensureImageAvailable,
-  waitForPostgres,
-} from "../utils/docker";
-import { error } from "../utils/logger";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { resolveImageTag } from "./image-resolver";
+import { getSharedPreloadLibraries } from "./lib/test-mode";
 
-// Generate random test password at runtime
-const TEST_POSTGRES_PASSWORD =
-  Bun.env.TEST_POSTGRES_PASSWORD ?? `test_postgres_${Date.now()}_${process.pid}`;
+const image = resolveImageTag();
+const guarded = generateUniqueContainerName("aza-pg-safeupdate-on");
+const unguarded = generateUniqueContainerName("aza-pg-safeupdate-off");
+const preloadWithoutSafeupdate = getSharedPreloadLibraries("production")
+  .split(",")
+  .filter((lib) => lib !== "safeupdate")
+  .join(",");
 
-/**
- * Assert SQL command succeeds
- */
-async function assertSqlSuccess(container: string, sql: string, message: string): Promise<void> {
-  try {
-    await $`docker exec ${container} psql -U postgres -t -c ${sql}`;
-    console.log(`✅ ${message}`);
-  } catch (err) {
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   SQL: ${sql}`);
-    console.log(`   Error: ${err}`);
-    process.exit(1);
-  }
+async function sql(container: string, query: string): Promise<{ ok: boolean; out: string }> {
+  const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tA -c ${query}`
+    .quiet()
+    .nothrow();
+  return { ok: r.exitCode === 0, out: (r.stdout.toString() + r.stderr.toString()).trim() };
 }
 
-/**
- * Assert SQL command fails with expected error pattern
- */
-async function assertSqlFails(
+async function expect(
   container: string,
-  sql: string,
-  errorPatterns: string[],
-  message: string
+  query: string,
+  allowed: boolean,
+  error = ""
 ): Promise<void> {
-  const result = Bun.spawn(
-    ["docker", "exec", container, "psql", "-U", "postgres", "-t", "-c", sql],
-    { stdout: "pipe", stderr: "pipe" }
-  );
+  const r = await sql(container, query);
+  if (r.ok !== allowed || (!allowed && !r.out.includes(error))) {
+    throw new Error(
+      `${query}: expected ${allowed ? "success" : `"${error}"`}, got: ${r.out || "success"}`
+    );
+  }
+}
 
-  // Concurrent reads prevent pipe deadlock when both streams are piped
-  const [exitCode, stdout, stderr] = await Promise.all([
-    result.exited,
-    new Response(result.stdout).text(),
-    new Response(result.stderr).text(),
+const failures: string[] = [];
+async function check(name: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+    console.log(`PASS: ${name}`);
+  } catch (err) {
+    failures.push(name);
+    console.error(`FAIL: ${name}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+try {
+  await Promise.all([
+    $`docker run -d --name ${guarded} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
+    $`docker run -d --name ${unguarded} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preloadWithoutSafeupdate} ${image}`.quiet(),
   ]);
-  const output = (stdout + stderr).toLowerCase();
-
-  if (exitCode === 0) {
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   Expected failure but command succeeded`);
-    console.log(`   SQL: ${sql}`);
-    process.exit(1);
-  }
-
-  const matchedPattern = errorPatterns.some((pattern) => output.includes(pattern.toLowerCase()));
-  if (matchedPattern) {
-    console.log(`✅ ${message}`);
-  } else {
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   Expected error patterns: ${errorPatterns.join(" | ")}`);
-    console.log(`   Actual output: ${stdout}${stderr}`);
-    process.exit(1);
-  }
-}
-
-/**
- * Test case runner interface
- */
-type TestCallback = (container: string) => Promise<void>;
-
-interface RunCaseOptions {
-  memory?: string;
-  env?: Record<string, string>;
-}
-
-/**
- * Run a test case with isolated container
- */
-async function runCase(
-  name: string,
-  callback: TestCallback,
-  imageTag: string,
-  options: RunCaseOptions = {}
-): Promise<void> {
-  console.log(name);
-  console.log("=".repeat(name.length));
-
-  const container = `pg-hook-ext-${Math.floor(Math.random() * 10000)}-${process.pid}`;
-
-  try {
-    // Build docker run arguments
-    const args = ["run", "-d", "--name", container];
-
-    if (options.memory) {
-      args.push("--memory", options.memory);
-    }
-
-    if (options.env) {
-      for (const [key, value] of Object.entries(options.env)) {
-        args.push("-e", `${key}=${value}`);
-      }
-    }
-
-    args.push(imageTag);
-
-    // Start container
-    await $`docker ${args}`.quiet();
-
-    // Wait for PostgreSQL to be stable (handles initdb restart race condition)
-    // NOTE: waitForPostgres includes basic readiness check + stability verification
-    const isStable = await waitForPostgres({ container, timeout: 60 });
-    if (!isStable) {
-      console.log(`❌ FAILED: PostgreSQL not ready or not stable after init`);
-      const logs = await $`docker logs ${container}`.text();
-      console.log("Container logs:");
-      console.log(logs);
-      await dockerCleanup(container);
-      process.exit(1);
-    }
-
-    // Run test callback
-    await callback(container);
-
-    // Cleanup
-    await dockerCleanup(container);
-  } catch (err) {
-    console.log(`❌ ERROR: Failed to start container for '${name}'`);
-    console.log(err);
-    await dockerCleanup(container);
-    process.exit(1);
-  }
-
-  console.log();
-}
-
-// ==============================================================================
-// Test 1: pg_safeupdate default-enabled (blocks unsafe operations by default)
-// ==============================================================================
-async function testPgSafeupdateDefaultEnabled(container: string): Promise<void> {
-  // Verify safeupdate.so exists (note: library name is "safeupdate", not "pg_safeupdate")
-  const soPath = "/usr/lib/postgresql/18/lib/safeupdate.so";
-  try {
-    await $`docker exec ${container} test -f ${soPath}`.quiet();
-    console.log(`✅ safeupdate.so exists at ${soPath}`);
-  } catch {
-    console.log(`❌ FAILED: safeupdate.so not found at ${soPath}`);
-    process.exit(1);
-  }
-
-  // Verify safeupdate is in shared_preload_libraries
-  const preloadLibs =
-    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-  if (preloadLibs.toLowerCase().includes("safeupdate")) {
-    console.log(`✅ safeupdate is in shared_preload_libraries`);
-  } else {
-    console.log(`❌ FAILED: safeupdate not found in shared_preload_libraries`);
-    console.log(`   Actual: ${preloadLibs.trim()}`);
-    process.exit(1);
-  }
-
-  // Create test table and data
-  await assertSqlSuccess(
-    container,
-    "CREATE TABLE IF NOT EXISTS safeupdate_test (id int)",
-    "Create test table for pg_safeupdate"
-  );
-
-  await assertSqlSuccess(
-    container,
-    "INSERT INTO safeupdate_test VALUES (1), (2)",
-    "Insert test data for pg_safeupdate"
-  );
-
-  // Test: UPDATE without WHERE should FAIL (safeupdate is default-enabled)
-  await assertSqlFails(
-    container,
-    "UPDATE safeupdate_test SET id = 99;",
-    ["update requires a where clause", "rejected by safeupdate"],
-    "UPDATE without WHERE is blocked by default (safeupdate enabled)"
-  );
-
-  // Test: UPDATE with WHERE should succeed
-  await assertSqlSuccess(
-    container,
-    "UPDATE safeupdate_test SET id = 99 WHERE id = 1;",
-    "UPDATE with WHERE succeeds (safe operation)"
-  );
-
-  // Test: DELETE without WHERE should FAIL
-  await assertSqlFails(
-    container,
-    "DELETE FROM safeupdate_test;",
-    ["delete requires a where clause", "rejected by safeupdate"],
-    "DELETE without WHERE is blocked by default (safeupdate enabled)"
-  );
-
-  // Test: DELETE with WHERE should succeed
-  await assertSqlSuccess(
-    container,
-    "DELETE FROM safeupdate_test WHERE id = 99;",
-    "DELETE with WHERE succeeds (safe operation)"
-  );
-
-  // Cleanup
-  await assertSqlSuccess(container, "DROP TABLE safeupdate_test;", "Cleanup safeupdate test table");
-}
-
-// ==============================================================================
-// Test 2: pg_safeupdate override (user can disable via POSTGRES_SHARED_PRELOAD_LIBRARIES)
-// ==============================================================================
-async function testPgSafeupdateOverride(container: string): Promise<void> {
-  // Verify safeupdate is NOT in shared_preload_libraries (user override)
-  const preloadLibs =
-    await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-  if (preloadLibs.toLowerCase().includes("safeupdate")) {
-    console.log(
-      `❌ FAILED: safeupdate should NOT be in shared_preload_libraries (override active)`
+  await Promise.all([
+    waitForPostgres({ container: guarded, timeout: 120 }),
+    waitForPostgres({ container: unguarded, timeout: 120 }),
+  ]);
+  for (const c of [guarded, unguarded]) {
+    const setup = await sql(
+      c,
+      "CREATE TABLE t2b_safe (id int); INSERT INTO t2b_safe VALUES (1), (2)"
     );
-    console.log(`   Actual: ${preloadLibs.trim()}`);
-    process.exit(1);
-  } else {
-    console.log(`✅ safeupdate is NOT in shared_preload_libraries (override active)`);
+    if (!setup.ok) throw new Error(setup.out);
   }
 
-  // Create test table and data
-  await assertSqlSuccess(
-    container,
-    "CREATE TABLE IF NOT EXISTS safeupdate_test (id int)",
-    "Create test table for pg_safeupdate override test"
-  );
+  await check("safeupdate rejects UPDATE/DELETE without WHERE by default", async () => {
+    await expect(guarded, "UPDATE t2b_safe SET id = 99", false, "UPDATE requires a WHERE clause");
+    await expect(guarded, "DELETE FROM t2b_safe", false, "DELETE requires a WHERE clause");
+    await expect(guarded, "UPDATE t2b_safe SET id = 99 WHERE id = 1", true);
+    await expect(guarded, "DELETE FROM t2b_safe WHERE id = 99", true);
+  });
 
-  await assertSqlSuccess(
-    container,
-    "INSERT INTO safeupdate_test VALUES (1), (2)",
-    "Insert test data for pg_safeupdate override test"
-  );
-
-  // Test: UPDATE without WHERE should SUCCEED (safeupdate disabled via override)
-  await assertSqlSuccess(
-    container,
-    "UPDATE safeupdate_test SET id = 99;",
-    "UPDATE without WHERE succeeds (safeupdate disabled via override)"
-  );
-
-  // Reset table for DELETE test
-  await assertSqlSuccess(
-    container,
-    "TRUNCATE safeupdate_test; INSERT INTO safeupdate_test VALUES (1), (2);",
-    "Reset test table"
-  );
-
-  // Test: DELETE without WHERE should SUCCEED (safeupdate disabled via override)
-  await assertSqlSuccess(
-    container,
-    "DELETE FROM safeupdate_test;",
-    "DELETE without WHERE succeeds (safeupdate disabled via override)"
-  );
-
-  // Cleanup
-  await assertSqlSuccess(
-    container,
-    "DROP TABLE safeupdate_test;",
-    "Cleanup safeupdate override test table"
-  );
-}
-
-// ==============================================================================
-// Main execution
-// ==============================================================================
-async function main(): Promise<void> {
-  // Check prerequisites
-  try {
-    await checkCommand("docker");
-  } catch {
-    error("Docker not found");
-    console.log("   Install Docker: https://docs.docker.com/get-docker/");
-    process.exit(1);
-  }
-
-  try {
-    await checkDockerDaemon();
-  } catch {
-    error("Docker daemon not running");
-    console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
-    process.exit(1);
-  }
-
-  const imageTag = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "ghcr.io/fluxo-kt/aza-pg:pg18";
-
-  // Ensure image is available (will auto-pull from registry if needed)
-  try {
-    await ensureImageAvailable(imageTag);
-  } catch (err) {
-    error(
-      `Failed to ensure image availability: ${err instanceof Error ? err.message : String(err)}`
-    );
-    process.exit(1);
-  }
-
-  console.log("========================================");
-  console.log("Hook-Based Extensions Test Suite");
-  console.log("========================================");
-  console.log(`Image tag: ${imageTag}`);
-  console.log();
-
-  // Test 1: pg_safeupdate default-enabled behavior
-  await runCase(
-    "Test 1: pg_safeupdate default-enabled (blocks unsafe operations)",
-    testPgSafeupdateDefaultEnabled,
-    imageTag,
-    {
-      memory: "2g",
-      env: { POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD },
+  await check(
+    "removing safeupdate from POSTGRES_SHARED_PRELOAD_LIBRARIES disables it",
+    async () => {
+      await expect(unguarded, "UPDATE t2b_safe SET id = 99", true);
+      await expect(unguarded, "DELETE FROM t2b_safe", true);
     }
   );
-
-  // Test 2: pg_safeupdate override (user can disable)
-  // Use explicit POSTGRES_SHARED_PRELOAD_LIBRARIES without safeupdate
-  // IMPORTANT: Must include pg_net and pgsodium since they're required by default-enabled extensions
-  await runCase(
-    "Test 2: pg_safeupdate override (user can disable via env)",
-    testPgSafeupdateOverride,
-    imageTag,
-    {
-      memory: "2g",
-      env: {
-        POSTGRES_PASSWORD: TEST_POSTGRES_PASSWORD,
-        // Explicitly omit safeupdate from preload libraries, but keep pg_net and pgsodium for pgflow
-        POSTGRES_SHARED_PRELOAD_LIBRARIES:
-          "auto_explain,pg_cron,pg_stat_monitor,pg_stat_statements,pgaudit,timescaledb,pg_net,pgsodium",
-      },
-    }
-  );
-
-  console.log("========================================");
-  console.log("✅ All hook extension tests passed!");
-  console.log("✅ Total: 2 test cases");
-  console.log("========================================");
-  console.log();
-  console.log("Summary:");
-  console.log("  - pg_safeupdate: Default-enabled via shared_preload_libraries");
-  console.log("  - Default behavior: Blocks UPDATE/DELETE without WHERE clause");
-  console.log("  - Override: Users can disable via POSTGRES_SHARED_PRELOAD_LIBRARIES");
-  console.log();
-  console.log("Notes:");
-  console.log("  - pg_plan_filter covered by test-all-extensions-functional.ts");
-  console.log("  - supautils excluded here (covered by dedicated preload-only tests)");
+} catch (err) {
+  failures.push("setup");
+  console.error(`FAIL: setup: ${err instanceof Error ? err.message : String(err)}`);
+} finally {
+  await $`docker rm -f -v ${guarded} ${unguarded}`.quiet().nothrow();
 }
-
-// Run main function
-main().catch((err) => {
-  error(`Unexpected error: ${err}`);
-  process.exit(1);
-});
+process.exit(failures.length === 0 ? 0 : 1);

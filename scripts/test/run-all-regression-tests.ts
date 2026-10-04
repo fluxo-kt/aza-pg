@@ -1,38 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Master regression test runner
+ * Regression runner: Tier 2 (each extension's SQL file against its expected output) and Tier 3
+ * (extension interaction tests).
  *
- * Orchestrates all regression test tiers (Tier 1-3) and provides
- * flexible execution modes for different CI/CD scenarios.
+ * There is no Tier 1: PostgreSQL's own regression tests exercise the PGDG server binary this image
+ * copies unchanged, so no image defect could fail them.
  *
- * Usage:
- *   bun scripts/test/run-all-regression-tests.ts [options]
- *
- * Options:
- *   --mode=MODE           Test mode: production or regression (default: production)
- *   --tier=TIER           Run specific tier only: 1, 2, or 3
- *   --fast                Skip slow tests (use minimal test sets)
- *   --no-cleanup          Don't cleanup containers after tests
- *   --generate-expected   Generate expected outputs for extension tests
- *   --verbose             Show detailed output
- *   --help                Show this help message
- *
- * Examples:
- *   bun scripts/test/run-all-regression-tests.ts
- *   bun scripts/test/run-all-regression-tests.ts --mode=regression
- *   bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
- *   TEST_MODE=regression bun scripts/test/run-all-regression-tests.ts
+ * Usage: bun scripts/test/run-all-regression-tests.ts [--mode=production|regression] [--tier=2|3]
+ *          [--generate-expected] [--verbose]
  */
 
 import { $ } from "bun";
 import { detectTestMode, getTestModeSummary, type TestMode } from "./lib/test-mode";
-import { CI_FAST_TESTS } from "./lib/test-groups";
 
 interface Config {
   mode: TestMode;
-  tier?: 1 | 2 | 3;
-  fast: boolean;
-  noCleanup: boolean;
+  tier?: 2 | 3;
   generateExpected: boolean;
   verbose: boolean;
 }
@@ -48,8 +31,6 @@ function parseArgs(): Config {
   const config: Config = {
     mode: "production",
     tier: undefined,
-    fast: false,
-    noCleanup: false,
     generateExpected: false,
     verbose: false,
   };
@@ -64,15 +45,11 @@ function parseArgs(): Config {
       config.mode = mode;
     } else if (arg.startsWith("--tier=")) {
       const tier = Number.parseInt(arg.split("=")[1] ?? "0", 10);
-      if (tier !== 1 && tier !== 2 && tier !== 3) {
-        console.error(`Invalid tier: ${tier}. Must be 1, 2, or 3`);
+      if (tier !== 2 && tier !== 3) {
+        console.error(`Invalid tier: ${tier}. Must be 2 or 3`);
         process.exit(1);
       }
-      config.tier = tier as 1 | 2 | 3;
-    } else if (arg === "--fast") {
-      config.fast = true;
-    } else if (arg === "--no-cleanup") {
-      config.noCleanup = true;
+      config.tier = tier;
     } else if (arg === "--generate-expected") {
       config.generateExpected = true;
     } else if (arg === "--verbose") {
@@ -88,81 +65,13 @@ function parseArgs(): Config {
 }
 
 function printHelp(): void {
-  const helpText = `
-Master regression test runner
+  console.log(`Regression runner (Tier 2: extension SQL vs expected output; Tier 3: interactions)
 
-Orchestrates all regression test tiers (Tier 1-3) and provides
-flexible execution modes for different CI/CD scenarios.
-
-Usage:
-  bun scripts/test/run-all-regression-tests.ts [options]
-
-Options:
-  --mode=MODE           Test mode: production or regression (default: production)
-  --tier=TIER           Run specific tier only: 1, 2, or 3
-  --fast                Skip slow tests (use minimal test sets)
-  --no-cleanup          Don't cleanup containers after tests
-  --generate-expected   Generate expected outputs for extension tests
-  --verbose             Show detailed output
-  --help                Show this help message
-
-Test Modes:
-  production            Test exact release image behavior (enabled extensions only)
-  regression            Test all extensions including disabled ones (comprehensive)
-
-Test Tiers:
-  Tier 1                Core PostgreSQL regression tests (30 official tests)
-  Tier 2                Extension-specific regression tests (10-13 extensions)
-  Tier 3                Extension interaction tests (4-14 tests)
-
-Examples:
-  # Run all tiers in production mode
-  bun scripts/test/run-all-regression-tests.ts
-
-  # Run all tiers in regression mode
-  bun scripts/test/run-all-regression-tests.ts --mode=regression
-  TEST_MODE=regression bun scripts/test/run-all-regression-tests.ts
-
-  # Run Tier 1 only (fast PR validation)
-  bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
-
-  # Generate expected outputs for Tier 2
-  bun scripts/test/run-all-regression-tests.ts --tier=2 --generate-expected
-`.trim();
-  console.log(helpText);
-}
-
-async function runTier1(config: Config): Promise<boolean> {
-  console.log("\n============================================================");
-  console.log("  Tier 1: Core PostgreSQL Regression Tests");
-  console.log("============================================================\n");
-
-  const args = ["scripts/test/test-postgres-core-regression.ts", `--mode=${config.mode}`];
-
-  if (config.fast) {
-    // Fast tests: Self-contained tests + tests that work with minimal_setup.sql
-    // Total: 12 tests (6 self-contained + 6 minimal setup)
-    // Self-contained: boolean, strings, float4, numeric, numerology, json
-    // Minimal setup: int2, int4, int8, float8, text, varchar
-    // Uses minimal_setup.sql which creates tables with INSERT statements only
-    // (no PostgreSQL data files or regress.so library required)
-    args.push(`--tests=${CI_FAST_TESTS.join(",")}`);
-    console.log(`Fast mode: Running ${CI_FAST_TESTS.length} tests with minimal_setup`);
-  }
-  if (config.noCleanup) {
-    args.push("--no-cleanup");
-  }
-  if (config.verbose) {
-    args.push("--verbose");
-  }
-
-  try {
-    await $`bun ${args}`;
-    return true;
-  } catch (error) {
-    console.error("❌ Tier 1 failed:", error);
-    return false;
-  }
+Usage: bun scripts/test/run-all-regression-tests.ts [options]
+  --mode=MODE           production (extensions shipped enabled) | regression (also comprehensive-only)
+  --tier=TIER           2 or 3 (default: both)
+  --generate-expected   Rewrite Tier 2 expected outputs from the image (review the diff)
+  --verbose             Show detailed output`);
 }
 
 async function runTier2(config: Config): Promise<boolean> {
@@ -174,12 +83,6 @@ async function runTier2(config: Config): Promise<boolean> {
 
   if (config.generateExpected) {
     args.push("--generate-expected");
-  }
-  if (config.fast) {
-    args.push("--extensions=vector,timescaledb,pg_cron");
-  }
-  if (config.noCleanup) {
-    args.push("--no-cleanup");
   }
   if (config.verbose) {
     args.push("--verbose");
@@ -200,13 +103,6 @@ async function runTier3(config: Config): Promise<boolean> {
   console.log("============================================================\n");
 
   const args = ["scripts/test/test-extension-interactions.ts", `--mode=${config.mode}`];
-
-  if (config.noCleanup) {
-    args.push("--no-cleanup");
-  }
-  if (config.verbose) {
-    args.push("--verbose");
-  }
 
   try {
     await $`bun ${args}`;
@@ -239,12 +135,6 @@ async function main(): Promise<void> {
 
   const startTime = Date.now();
   const results: { tier: string; passed: boolean; duration: number }[] = [];
-
-  if (config.tier === 1 || !config.tier) {
-    const tierStart = Date.now();
-    const passed = await runTier1(config);
-    results.push({ tier: "Tier 1", passed, duration: Date.now() - tierStart });
-  }
 
   if (config.tier === 2 || !config.tier) {
     const tierStart = Date.now();

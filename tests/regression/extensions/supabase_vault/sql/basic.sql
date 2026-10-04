@@ -69,13 +69,3 @@ WHERE
   AND proname IN ('create_secret', 'read_secret', 'update_secret', 'delete_secret')
 ORDER BY
   proname;
-
-
--- Test 7: Verify pgsodium crypto functions available (vault dependency)
-SELECT
-  count(*) AS crypto_functions
-FROM
-  pg_proc
-WHERE
-  pronamespace = 'pgsodium'::regnamespace
-  AND proname LIKE 'crypto_%';

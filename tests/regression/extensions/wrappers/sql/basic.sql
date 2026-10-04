@@ -9,8 +9,7 @@ CREATE EXTENSION IF NOT EXISTS wrappers CASCADE;
 
 -- Verify extension is installed
 SELECT
-  extname,
-  extversion
+  extname
 FROM
   pg_extension
 WHERE

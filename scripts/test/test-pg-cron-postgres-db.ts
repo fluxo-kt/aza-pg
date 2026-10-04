@@ -1,42 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Test: pg_cron and pgflow POSTGRES_DB Integration
+ * pg_cron and pgflow follow POSTGRES_DB (regression guard for 3b8c742).
  *
- * Verifies that pg_cron and pgflow respect POSTGRES_DB environment variable:
- * - pg_cron extension is created in POSTGRES_DB (not hardcoded to 'postgres')
- * - cron.database_name configuration matches POSTGRES_DB
- * - pgflow schema is installed in POSTGRES_DB
- * - Both default (postgres) and custom database names work correctly
+ * pg_cron runs jobs only in the database named by `cron.database_name`, which the entrypoint sets
+ * from POSTGRES_DB; the init scripts must create pg_cron and install pgflow in that same database.
+ * A wrong pairing still boots cleanly, so each case schedules a 1-second job and waits for it to
+ * write a row: only a job that actually ran proves the scheduler is attached to the right database.
  *
- * Background:
- * pg_cron has a strict requirement: it can ONLY be created in the database
- * specified by the cron.database_name configuration parameter. This test
- * ensures our architecture properly handles this constraint by:
- * 1. Setting cron.database_name=${POSTGRES_DB:-postgres} in entrypoint
- * 2. Creating pg_cron in POSTGRES_DB via 01b-pg_cron.sh init script
- * 3. Installing pgflow in POSTGRES_DB via 05-pgflow-init.sh
+ * Two containers boot in parallel: the default database and a custom POSTGRES_DB.
  *
- * Usage:
- *   # Test with built image
- *   bun scripts/test/test-pg-cron-postgres-db.ts
- *
- *   # Test with specific image
- *   bun scripts/test/test-pg-cron-postgres-db.ts --image=aza-pg:latest
+ * Usage: bun scripts/test/test-pg-cron-postgres-db.ts [image] [--image=TAG]
  */
-
 import { $ } from "bun";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
-import { dockerCleanup } from "../utils/docker";
-import { error, info, section, success } from "../utils/logger";
 
-interface TestResult {
-  name: string;
-  passed: boolean;
-  duration: number;
-  error?: string;
-}
-
-const results: TestResult[] = [];
+const image = resolveImageTag();
 const REQUIRED_PGFLOW_TABLES = [
   "flows",
   "steps",
@@ -46,405 +25,94 @@ const REQUIRED_PGFLOW_TABLES = [
   "runs",
   "step_states",
   "step_tasks",
-] as const;
+];
 
-async function test(name: string, fn: () => Promise<void>): Promise<void> {
-  const start = Date.now();
-  try {
-    await fn();
-    const duration = Date.now() - start;
-    results.push({ name, passed: true, duration });
-    success(`✅ ${name} (${duration}ms)`);
-  } catch (err) {
-    const duration = Date.now() - start;
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    results.push({ name, passed: false, duration, error: errorMsg });
-    error(`❌ ${name} (${duration}ms)`);
-    error(`   ${errorMsg}`);
+interface Case {
+  container: string;
+  database: string;
+  /** Extra docker run args selecting the database. */
+  env: string[];
+}
+const cases: Case[] = [
+  { container: generateUniqueContainerName("aza-pg-cron-default"), database: "postgres", env: [] },
+  {
+    container: generateUniqueContainerName("aza-pg-cron-custom"),
+    database: "my_custom_db",
+    env: ["-e", "POSTGRES_DB=my_custom_db"],
+  },
+];
+
+async function sql(container: string, database: string, query: string): Promise<string> {
+  const r =
+    await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -d ${database} -tA -c ${query}`
+      .quiet()
+      .nothrow();
+  if (r.exitCode !== 0) throw new Error(`[${database}] ${query}\n${r.stderr.toString().trim()}`);
+  return r.stdout.toString().trim();
+}
+
+async function verify({ container, database }: Case): Promise<void> {
+  const setting = await sql(container, database, "SHOW cron.database_name");
+  if (setting !== database) throw new Error(`cron.database_name = ${setting}, want ${database}`);
+
+  const missing = await sql(
+    container,
+    database,
+    `SELECT coalesce(string_agg(t, ', '), '') FROM unnest(ARRAY['${REQUIRED_PGFLOW_TABLES.join("','")}']) t
+       WHERE to_regclass('pgflow.' || t) IS NULL`
+  );
+  if (missing !== "") throw new Error(`pgflow tables missing in ${database}: ${missing}`);
+
+  if (database !== "postgres") {
+    const stray = await sql(
+      container,
+      "postgres",
+      "SELECT (SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron') || '/' || (SELECT count(*) FROM pg_namespace WHERE nspname = 'pgflow')"
+    );
+    if (stray !== "0/0") throw new Error(`pg_cron/pgflow also present in postgres: ${stray}`);
   }
-}
 
-function assert(condition: boolean, message: string): void {
-  if (!condition) {
-    throw new Error(`Assertion failed: ${message}`);
+  await sql(container, database, "CREATE TABLE t2b_cron_tick (at timestamptz DEFAULT now())");
+  await sql(
+    container,
+    database,
+    "SELECT cron.schedule('t2b_tick', '1 seconds', 'INSERT INTO t2b_cron_tick DEFAULT VALUES')"
+  );
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (Number(await sql(container, database, "SELECT count(*) FROM t2b_cron_tick")) > 0) return;
+    await Bun.sleep(250);
   }
+  const runs = await sql(
+    container,
+    database,
+    "SELECT coalesce(string_agg(status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details"
+  );
+  throw new Error(`scheduled job never wrote a row in ${database} within 20s (${runs})`);
 }
 
-function sqlValues(values: readonly string[]): string {
-  return values.map((value) => `('${value}')`).join(",");
-}
-
-async function runSQL(
-  container: string,
-  database: string,
-  query: string
-): Promise<{ success: boolean; stdout: string; stderr: string }> {
-  const result =
-    await $`docker exec ${container} psql -U postgres -d ${database} -tAc ${query}`.nothrow();
-  return {
-    success: result.exitCode === 0,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-  };
-}
-
-async function waitForPostgres(container: string, timeout: number): Promise<boolean> {
-  const start = Date.now();
-  const timeoutMs = timeout * 1000;
-
-  while (Date.now() - start < timeoutMs) {
-    const result = await $`docker exec ${container} pg_isready -U postgres`.nothrow();
-    if (result.exitCode === 0) {
-      // PostgreSQL is ready, but init scripts might still be running or PG might restart
-      // Wait additional time to ensure initdb scripts (pgflow, pg_cron) have completed
-      await Bun.sleep(5000);
-      return true;
+let failed = false;
+try {
+  await Promise.all(
+    cases.map((c) =>
+      $`docker run -d --name ${c.container} -e POSTGRES_PASSWORD=postgres ${c.env} ${image}`.quiet()
+    )
+  );
+  await Promise.all(cases.map((c) => waitForPostgres({ container: c.container, timeout: 120 })));
+  const outcomes = await Promise.allSettled(cases.map(verify));
+  outcomes.forEach((o, i) => {
+    const name = `pg_cron + pgflow follow POSTGRES_DB=${cases[i]?.database}`;
+    if (o.status === "fulfilled") {
+      console.log(`PASS: ${name}`);
+    } else {
+      failed = true;
+      console.error(`FAIL: ${name}: ${o.reason instanceof Error ? o.reason.message : o.reason}`);
     }
-    await Bun.sleep(2000);
-  }
-
-  return false;
+  });
+} catch (err) {
+  failed = true;
+  console.error(`FAIL: setup: ${err instanceof Error ? err.message : String(err)}`);
+} finally {
+  await $`docker rm -f -v ${cases.map((c) => c.container)}`.quiet().nothrow();
 }
-
-async function testDefaultPostgresDB(): Promise<void> {
-  const container = `test-pgcron-default-${Date.now()}`;
-
-  try {
-    section("Test 1: Default POSTGRES_DB (postgres)");
-    info("Starting container with default POSTGRES_DB...");
-
-    // Start container without explicit POSTGRES_DB (defaults to 'postgres')
-    await $`docker run -d --name ${container} \
-      -e POSTGRES_PASSWORD=test \
-      -e POSTGRES_MEMORY=2048 \
-      ${imageTag}`.quiet();
-
-    // Wait for PostgreSQL
-    info("Waiting for PostgreSQL to be ready...");
-    const ready = await waitForPostgres(container, 60);
-    assert(ready, "PostgreSQL failed to start within timeout");
-    success("PostgreSQL is ready");
-
-    // Test 1.1: Verify pg_cron exists in 'postgres' database
-    await test("pg_cron exists in postgres database", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        "SELECT extname FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "pg_cron", `Expected pg_cron, got: ${result.stdout.trim()}`);
-    });
-
-    // Test 1.2: Verify cron.database_name is 'postgres'
-    await test("cron.database_name is 'postgres'", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        "SELECT current_setting('cron.database_name')"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(
-        result.stdout.trim() === "postgres",
-        `Expected 'postgres', got: ${result.stdout.trim()}`
-      );
-    });
-
-    // Test 1.3: Verify pg_cron does NOT exist in template1 (shouldn't be created there)
-    await test("pg_cron does NOT exist in template1", async () => {
-      const result = await runSQL(
-        container,
-        "template1",
-        "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "0", "pg_cron should not exist in template1");
-    });
-  } finally {
-    await dockerCleanup(container);
-    // Brief delay to ensure Docker daemon fully releases resources before next test
-    await Bun.sleep(1000);
-  }
-}
-
-async function testCustomPostgresDB(): Promise<void> {
-  const container = `test-pgcron-custom-${Date.now()}`;
-  const customDB = "my_custom_db";
-
-  try {
-    section(`Test 2: Custom POSTGRES_DB (${customDB})`);
-    info(`Starting container with POSTGRES_DB=${customDB}...`);
-
-    // Start container with custom POSTGRES_DB
-    await $`docker run -d --name ${container} \
-      -e POSTGRES_PASSWORD=test \
-      -e POSTGRES_DB=${customDB} \
-      -e POSTGRES_MEMORY=2048 \
-      ${imageTag}`.quiet();
-
-    // Wait for PostgreSQL
-    info("Waiting for PostgreSQL to be ready...");
-    const ready = await waitForPostgres(container, 60);
-    assert(ready, "PostgreSQL failed to start within timeout");
-    success("PostgreSQL is ready");
-
-    // Test 2.1: Verify pg_cron exists in custom database
-    await test(`pg_cron exists in ${customDB} database`, async () => {
-      const result = await runSQL(
-        container,
-        customDB,
-        "SELECT extname FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(
-        result.stdout.trim() === "pg_cron",
-        `Expected pg_cron in ${customDB}, got: ${result.stdout.trim()}`
-      );
-    });
-
-    // Test 2.2: Verify cron.database_name matches custom DB
-    await test(`cron.database_name is '${customDB}'`, async () => {
-      const result = await runSQL(
-        container,
-        customDB,
-        "SELECT current_setting('cron.database_name')"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(
-        result.stdout.trim() === customDB,
-        `Expected '${customDB}', got: ${result.stdout.trim()}`
-      );
-    });
-
-    // Test 2.3: Verify pg_cron does NOT exist in postgres database
-    await test("pg_cron does NOT exist in postgres database", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "0", "pg_cron should not exist in postgres database");
-    });
-  } finally {
-    await dockerCleanup(container);
-    // Brief delay to ensure Docker daemon fully releases resources before next test
-    await Bun.sleep(1000);
-  }
-}
-
-async function testPgflowDefaultDB(): Promise<void> {
-  const container = `test-pgflow-default-${Date.now()}`;
-
-  try {
-    section("Test 3: pgflow with default POSTGRES_DB");
-    info("Starting container with default POSTGRES_DB for pgflow testing...");
-
-    // Start container (pgflow init script runs automatically if prerequisites are met)
-    await $`docker run -d --name ${container} \
-      -e POSTGRES_PASSWORD=test \
-      -e POSTGRES_MEMORY=2048 \
-      ${imageTag}`.quiet();
-
-    // Wait for PostgreSQL
-    info("Waiting for PostgreSQL to be ready...");
-    const ready = await waitForPostgres(container, 60);
-    assert(ready, "PostgreSQL failed to start within timeout");
-    success("PostgreSQL is ready");
-
-    // Test 3.1: Verify pgflow schema exists in postgres database
-    await test("pgflow schema exists in postgres database", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "1", "pgflow schema should exist in postgres database");
-    });
-
-    // Test 3.2: Verify pgflow schema has required tables
-    await test("pgflow schema has required tables", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        `
-        SELECT string_agg(required.name, ', ' ORDER BY required.name)
-        FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
-        WHERE NOT EXISTS (
-          SELECT 1 FROM information_schema.tables t
-          WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
-        )
-        `
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "", `Missing pgflow tables: ${result.stdout.trim()}`);
-    });
-
-    // Test 3.3: Verify pg_cron and pgflow are in same database
-    await test("pg_cron and pgflow are both in postgres database", async () => {
-      const cronResult = await runSQL(
-        container,
-        "postgres",
-        "SELECT extname FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      const pgflowResult = await runSQL(
-        container,
-        "postgres",
-        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'pgflow'"
-      );
-
-      assert(cronResult.success && pgflowResult.success, "Queries failed");
-      assert(
-        cronResult.stdout.trim() === "pg_cron" && pgflowResult.stdout.trim() === "pgflow",
-        "pg_cron extension and pgflow schema should both be in postgres database"
-      );
-    });
-  } finally {
-    await dockerCleanup(container);
-    // Brief delay to ensure Docker daemon fully releases resources before next test
-    await Bun.sleep(1000);
-  }
-}
-
-async function testPgflowCustomDB(): Promise<void> {
-  const container = `test-pgflow-custom-${Date.now()}`;
-  const customDB = "pgflow_test_db";
-
-  try {
-    section(`Test 4: pgflow with custom POSTGRES_DB (${customDB})`);
-    info(`Starting container with POSTGRES_DB=${customDB} for pgflow testing...`);
-
-    // Start container with custom POSTGRES_DB
-    await $`docker run -d --name ${container} \
-      -e POSTGRES_PASSWORD=test \
-      -e POSTGRES_DB=${customDB} \
-      -e POSTGRES_MEMORY=2048 \
-      ${imageTag}`.quiet();
-
-    // Wait for PostgreSQL
-    info("Waiting for PostgreSQL to be ready...");
-    const ready = await waitForPostgres(container, 60);
-    assert(ready, "PostgreSQL failed to start within timeout");
-    success("PostgreSQL is ready");
-
-    // Test 4.1: Verify pgflow schema exists in custom database
-    await test(`pgflow schema exists in ${customDB} database`, async () => {
-      const result = await runSQL(
-        container,
-        customDB,
-        "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "1", `pgflow schema should exist in ${customDB} database`);
-    });
-
-    // Test 4.2: Verify pgflow schema has required tables
-    await test(`pgflow schema has required tables in ${customDB}`, async () => {
-      const result = await runSQL(
-        container,
-        customDB,
-        `
-        SELECT string_agg(required.name, ', ' ORDER BY required.name)
-        FROM (VALUES ${sqlValues(REQUIRED_PGFLOW_TABLES)}) AS required(name)
-        WHERE NOT EXISTS (
-          SELECT 1 FROM information_schema.tables t
-          WHERE t.table_schema = 'pgflow' AND t.table_name = required.name
-        )
-        `
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "", `Missing pgflow tables: ${result.stdout.trim()}`);
-    });
-
-    // Test 4.3: Verify pg_cron and pgflow are in same custom database
-    await test(`pg_cron and pgflow are both in ${customDB} database`, async () => {
-      const cronResult = await runSQL(
-        container,
-        customDB,
-        "SELECT extname FROM pg_extension WHERE extname = 'pg_cron'"
-      );
-      const pgflowResult = await runSQL(
-        container,
-        customDB,
-        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'pgflow'"
-      );
-
-      assert(cronResult.success && pgflowResult.success, "Queries failed");
-      assert(
-        cronResult.stdout.trim() === "pg_cron" && pgflowResult.stdout.trim() === "pgflow",
-        `pg_cron extension and pgflow schema should both be in ${customDB} database`
-      );
-    });
-
-    // Test 4.4: Verify pgflow does NOT exist in postgres database
-    await test("pgflow schema does NOT exist in postgres database", async () => {
-      const result = await runSQL(
-        container,
-        "postgres",
-        "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'pgflow'"
-      );
-      assert(result.success, `Query failed: ${result.stderr}`);
-      assert(result.stdout.trim() === "0", "pgflow schema should not exist in postgres database");
-    });
-  } finally {
-    await dockerCleanup(container);
-    // Brief delay to ensure Docker daemon fully releases resources before next test
-    await Bun.sleep(1000);
-  }
-}
-
-// Main execution
-let imageTag: string;
-
-async function main(): Promise<void> {
-  section("pg_cron and pgflow POSTGRES_DB Integration Tests");
-  info("Verifying pg_cron and pgflow respect POSTGRES_DB environment variable");
-  console.log();
-
-  // Resolve image tag
-  imageTag = resolveImageTag();
-  info(`Using image: ${imageTag}`);
-  console.log();
-
-  // Run all tests
-  await testDefaultPostgresDB();
-  console.log();
-
-  await testCustomPostgresDB();
-  console.log();
-
-  await testPgflowDefaultDB();
-  console.log();
-
-  await testPgflowCustomDB();
-  console.log();
-
-  // Print summary
-  section("Test Summary");
-  const passed = results.filter((r) => r.passed).length;
-  const failed = results.filter((r) => !r.passed).length;
-  const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
-
-  info(`Total: ${results.length} tests`);
-  if (passed > 0) success(`Passed: ${passed}`);
-  if (failed > 0) error(`Failed: ${failed}`);
-  info(`Duration: ${totalDuration}ms`);
-
-  if (failed > 0) {
-    console.log();
-    error("Failed tests:");
-    for (const r of results.filter((r) => !r.passed)) {
-      error(`  - ${r.name}: ${r.error}`);
-    }
-    process.exitCode = 1;
-  } else {
-    console.log();
-    success("✅ All pg_cron and pgflow POSTGRES_DB integration tests passed!");
-  }
-}
-
-main().catch((err) => {
-  error(`Test execution failed: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = 1;
-});
+process.exit(failed ? 1 : 0);

@@ -1,495 +1,130 @@
 #!/usr/bin/env bun
 /**
- * Extension Regression Test Runner (Tier 2)
+ * Extension regression tests (Tier 2): each `tests/regression/extensions/<name>/sql/basic.sql` runs
+ * against the image and its psql output must equal `expected/basic.out`.
  *
- * Runs deterministic regression tests for PostgreSQL extensions using
- * SQL + expected output comparison pattern (like pg_regress).
+ * The set is every directory under `tests/regression/extensions/` whose manifest entry is not
+ * `enabled: false` — never a hand-kept list, which silently stopped running the suites it omitted.
+ * A directory with no manifest entry is an error, not a skip. The mode only picks the preload list.
  *
- * Test Modes:
- * - production: Top 10 most critical extensions
- * - regression: All enabled extensions (24 production + 3 regression-only)
+ * All files run in the `postgres` database because pg_cron and pg_net run their background workers
+ * there; each file creates its own uniquely named objects.
  *
  * Usage:
- *   bun scripts/test/test-extension-regression.ts [options] [image]
- *
- * Options:
- *   --mode=MODE              Test mode: production | regression (default: auto-detect)
- *   --extensions=ext1,ext2   Specific extensions to test (comma-separated)
- *   --generate-expected      Generate expected output files (.out) from actual results
- *   --verbose                Detailed output including diffs
- *   --container=NAME         Use existing container instead of starting new one
- *   --help                   Show this help message
- *
- * Examples:
- *   bun scripts/test/test-extension-regression.ts
- *   bun scripts/test/test-extension-regression.ts --mode=regression
- *   bun scripts/test/test-extension-regression.ts --extensions=pgvector,timescaledb
- *   bun scripts/test/test-extension-regression.ts --generate-expected
+ *   bun scripts/test/test-extension-regression.ts [image] [--mode=production|regression]
+ *     [--extensions=a,b] [--generate-expected] [--verbose] [--container=NAME]
  */
 
 import { $ } from "bun";
-import { join, dirname } from "node:path";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { resolveImageTag } from "./image-resolver";
+import { generateRegressionDiffs, runRegressionTest } from "./lib/regression-runner";
+import type { TestResult } from "./lib/regression-runner";
 import { detectTestMode, getSharedPreloadLibraries } from "./lib/test-mode";
 import type { TestMode } from "./lib/test-mode";
-import { resolveImageTag } from "./image-resolver";
-import { runRegressionTests, generateRegressionDiffs } from "./lib/regression-runner";
-import type { TestResult, ConnectionConfig } from "./lib/regression-runner";
 
-/**
- * Top 10 most critical extensions for production mode.
- * Prioritized by usage frequency and business impact.
- */
-const TOP_10_EXTENSIONS = [
-  "vector", // pgvector - AI/ML workloads
-  "timescaledb", // time-series data
-  "pg_cron", // job scheduling
-  "pgsodium", // encryption
-  "pgaudit", // security auditing
-  "pg_stat_monitor", // observability
-  "hypopg", // index optimization
-  "pg_trgm", // fuzzy search
-  "pgmq", // message queuing
-  "timescaledb_toolkit", // time-series analytics
-];
+const SUITE_DIR = join(import.meta.dir, "../../tests/regression/extensions");
 
-/**
- * Comprehensive-only extensions (disabled in production, tested in regression mode).
- *
- * NOTE: Only include extensions that are actually COMPILED into the image.
- * Extensions with `enabled: false` in manifest are NOT built and cannot be tested.
- * - postgis: NOT built (enabled: false, too large)
- * - pgrouting: NOT built (depends on postgis)
- * - pgq: NOT built (enabled: false)
- */
-const COMPREHENSIVE_ONLY_EXTENSIONS = [
-  "wrappers", // FDW framework - compiled but not auto-enabled (defaultEnable: false)
-];
-
-interface TestOptions {
-  mode: TestMode;
-  extensions: string[];
+interface Options {
+  mode: TestMode | null;
+  only: string[];
   generateExpected: boolean;
   verbose: boolean;
   container: string | null;
-  image: string;
 }
 
-/**
- * Parse CLI arguments
- */
-function parseArgs(): TestOptions | null {
-  const args = Bun.argv.slice(2);
-
-  if (args.includes("--help") || args.includes("-h")) {
-    printHelp();
-    return null;
+function parseArgs(argv: string[]): Options {
+  const value = (flag: string) =>
+    argv.find((a) => a.startsWith(`${flag}=`))?.slice(flag.length + 1) ?? null;
+  const mode = value("--mode");
+  if (mode !== null && mode !== "production" && mode !== "regression") {
+    throw new Error(`Invalid --mode=${mode} (production | regression)`);
   }
-
-  // Parse mode
-  let mode: TestMode | null = null;
-  const modeArg = args.find((arg) => arg.startsWith("--mode="));
-  if (modeArg) {
-    const modeValue = modeArg.split("=")[1];
-    if (modeValue === "production" || modeValue === "regression") {
-      mode = modeValue;
-    }
-  }
-
-  // Parse extensions
-  let extensions: string[] = [];
-  const extensionsArg = args.find((arg) => arg.startsWith("--extensions="));
-  if (extensionsArg) {
-    const extList = extensionsArg.split("=")[1];
-    if (extList) {
-      extensions = extList.split(",").map((e) => e.trim());
-    }
-  }
-
-  // Parse flags
-  const generateExpected = args.includes("--generate-expected");
-  const verbose = args.includes("--verbose");
-
-  // Parse container name
-  let container: string | null = null;
-  const containerArg = args.find((arg) => arg.startsWith("--container="));
-  if (containerArg) {
-    container = containerArg.split("=")[1] || null;
-  }
-
-  // Resolve image
-  const image = resolveImageTag();
-
   return {
-    mode: mode as TestMode, // Will be null if not specified, handled later
-    extensions,
-    generateExpected,
-    verbose,
-    container,
-    image,
+    mode,
+    only: (value("--extensions") ?? "").split(",").filter(Boolean),
+    generateExpected: argv.includes("--generate-expected"),
+    verbose: argv.includes("--verbose"),
+    container: value("--container"),
   };
 }
 
-/**
- * Print help message
- */
-function printHelp(): void {
-  console.log(
-    `
-Extension Regression Test Runner (Tier 2)
-
-Runs deterministic regression tests for PostgreSQL extensions using
-SQL + expected output comparison pattern (like pg_regress).
-
-Usage:
-  bun scripts/test/test-extension-regression.ts [options] [image]
-
-Options:
-  --mode=MODE              Test mode: production | regression (default: auto-detect)
-  --extensions=ext1,ext2   Specific extensions to test (comma-separated)
-  --generate-expected      Generate expected output files (.out) from actual results
-  --verbose                Detailed output including diffs
-  --container=NAME         Use existing container instead of starting new one
-  --help                   Show this help message
-
-Test Modes:
-  production               Test top 10 most critical extensions (${TOP_10_EXTENSIONS.length} total)
-  regression            Test all enabled extensions (${TOP_10_EXTENSIONS.length + COMPREHENSIVE_ONLY_EXTENSIONS.length}+ total)
-
-Top 10 Production Extensions:
-  ${TOP_10_EXTENSIONS.join(", ")}
-
-Comprehensive-Only Extensions:
-  ${COMPREHENSIVE_ONLY_EXTENSIONS.join(", ")}
-
-Examples:
-  bun scripts/test/test-extension-regression.ts
-  bun scripts/test/test-extension-regression.ts --mode=regression
-  bun scripts/test/test-extension-regression.ts --extensions=pgvector,timescaledb
-  bun scripts/test/test-extension-regression.ts --generate-expected
-  `.trim()
-  );
-}
-
-/**
- * Get list of extensions to test based on mode
- */
-function getExtensionsToTest(mode: TestMode, explicitExtensions: string[]): string[] {
-  if (explicitExtensions.length > 0) {
-    return explicitExtensions;
+/** Directories to run: those whose manifest entry is enabled. */
+export async function selectSuites(): Promise<string[]> {
+  const dirs = (await readdir(SUITE_DIR, { withFileTypes: true }))
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort();
+  const selected: string[] = [];
+  for (const dir of dirs) {
+    const entry = MANIFEST_ENTRIES.find((e) => e.name === dir);
+    if (!entry) throw new Error(`tests/regression/extensions/${dir} matches no manifest entry`);
+    if (entry.enabled !== false) selected.push(dir);
   }
-
-  if (mode === "regression") {
-    return [...TOP_10_EXTENSIONS, ...COMPREHENSIVE_ONLY_EXTENSIONS];
-  } else {
-    return TOP_10_EXTENSIONS;
-  }
+  return selected;
 }
 
-/**
- * Get paths for extension test files
- */
-function getExtensionTestPaths(extensionName: string) {
-  const baseDir = join(import.meta.dir, "../../tests/regression/extensions", extensionName);
-  const sqlFile = join(baseDir, "sql/basic.sql");
-  const expectedFile = join(baseDir, "expected/basic.out");
-
-  return { sqlFile, expectedFile, baseDir };
-}
-
-/**
- * Check if extension test files exist
- */
-async function extensionTestExists(extensionName: string): Promise<boolean> {
-  const { sqlFile, expectedFile } = getExtensionTestPaths(extensionName);
-
-  const sqlExists = await Bun.file(sqlFile).exists();
-  const expectedExists = await Bun.file(expectedFile).exists();
-
-  return sqlExists && expectedExists;
-}
-
-/**
- * Start PostgreSQL container for testing
- */
-async function startPostgresContainer(image: string, mode: TestMode): Promise<string> {
-  const containerName = `ext-regression-test-${Date.now()}`;
-
-  console.log(`Starting PostgreSQL container: ${containerName}`);
-  console.log(`  Image: ${image}`);
-  console.log(`  Mode:  ${mode}`);
-
-  try {
-    // Get shared_preload_libraries from manifest (ensures all required extensions like pg_net are included)
-    const sharedPreload = getSharedPreloadLibraries(mode);
-
-    await $`docker run -d --name ${containerName} \
-      -e POSTGRES_PASSWORD=postgres \
-      -e TEST_MODE=${mode} \
-      -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${sharedPreload} \
-      -p 5432 \
-      ${image}`.quiet();
-
-    // Wait for PostgreSQL to be ready
-    console.log("Waiting for PostgreSQL to be ready...");
-
-    let ready = false;
-    for (let i = 0; i < 60; i++) {
-      try {
-        const result = await $`docker exec ${containerName} pg_isready -U postgres`.nothrow();
-        if (result.exitCode === 0) {
-          ready = true;
-          break;
-        }
-      } catch {
-        // Container not ready yet
-      }
-      await Bun.sleep(1000);
-    }
-
-    if (!ready) {
-      throw new Error("PostgreSQL failed to start within 60 seconds");
-    }
-
-    // Additional wait for initialization
-    await Bun.sleep(3000);
-
-    console.log("PostgreSQL is ready\n");
-    return containerName;
-  } catch (error) {
-    // Clean up container on failure
-    try {
-      await $`docker rm -f -v ${containerName}`.quiet();
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error;
-  }
-}
-
-/**
- * Stop and remove PostgreSQL container
- */
-async function stopPostgresContainer(containerName: string): Promise<void> {
-  try {
-    await $`docker rm -f -v ${containerName}`.quiet();
-  } catch (error) {
-    console.warn(`Warning: Failed to stop container ${containerName}: ${error}`);
-  }
-}
-
-/**
- * Get connection configuration for container
- *
- * Uses containerName to run psql via docker exec instead of host TCP connection.
- * This avoids network issues and matches how Tier 3 (interaction tests) works.
- */
-async function getConnectionConfig(containerName: string): Promise<ConnectionConfig> {
-  // Use docker exec to run psql inside the container (not host TCP connection)
-  // This is more reliable and matches Tier 3 behavior
-  return {
-    containerName, // This tells regression-runner to use docker exec
-    database: "postgres",
-    user: "postgres",
-    password: "postgres",
-  };
-}
-
-/**
- * Generate expected output file from actual test result
- */
-async function generateExpectedOutput(extensionName: string, actualOutput: string): Promise<void> {
-  const { expectedFile } = getExtensionTestPaths(extensionName);
-
-  // Ensure directory exists
-  const expectedDir = dirname(expectedFile);
-  await $`mkdir -p ${expectedDir}`.quiet();
-
-  // Write actual output as expected
-  await Bun.write(expectedFile, actualOutput);
-
-  console.log(`  Generated expected output: ${expectedFile}`);
-}
-
-/**
- * Print test results summary
- */
-function printTestResults(
-  results: TestResult[],
-  verbose: boolean,
-  generateExpected: boolean
-): void {
-  console.log("\nTest Results:");
-  console.log("=".repeat(60));
-
-  const passed = results.filter((r) => r.passed);
-  const failed = results.filter((r) => !r.passed);
-
-  for (const result of results) {
-    const status = result.passed ? "✓" : "✗";
-    const duration = `${Math.round(result.duration)}ms`;
-
-    if (result.passed) {
-      console.log(`  ${status} ${result.testName} (${duration})`);
-    } else {
-      const reason = result.error || "output mismatch";
-      console.log(`  ${status} ${result.testName} (${duration}) - ${reason}`);
-
-      if (verbose && result.diff) {
-        console.log(`\n${result.diff}\n`);
-      }
-    }
-  }
-
-  console.log("=".repeat(60));
-  console.log(`\nSummary:`);
-  console.log(`  Passed: ${passed.length}/${results.length}`);
-  console.log(`  Failed: ${failed.length}/${results.length}`);
-
-  if (failed.length > 0 && !generateExpected) {
-    console.log(`\nFailed tests: ${failed.map((r) => r.testName).join(", ")}`);
-    console.log(
-      `\nTip: Run with --generate-expected to create expected output files for new tests`
-    );
-  }
-}
-
-/**
- * Main execution
- */
 async function main(): Promise<number> {
-  const options = parseArgs();
-  if (!options) {
-    return 0; // Help was shown
+  const options = parseArgs(Bun.argv.slice(2));
+  const mode = options.mode ?? (await detectTestMode());
+  let suites = await selectSuites();
+  if (options.only.length > 0) {
+    const unknown = options.only.filter((name) => !suites.includes(name));
+    if (unknown.length > 0) throw new Error(`No enabled regression suite: ${unknown.join(", ")}`);
+    suites = options.only;
   }
+  console.log(`Extension regression (${mode}): ${suites.join(", ")}`);
 
-  // Detect test mode if not specified
-  const mode = options.mode || (await detectTestMode());
-
-  console.log(`Extension Regression Tests (${mode} mode)`);
-  console.log("=".repeat(60));
-
+  const container = options.container ?? generateUniqueContainerName("aza-pg-ext-regression");
+  const owned = options.container === null;
   try {
-    // Determine which extensions to test
-    const extensionsToTest = getExtensionsToTest(mode, options.extensions);
-
-    console.log(`\nExtensions to test: ${extensionsToTest.length}`);
-    console.log(`  ${extensionsToTest.join(", ")}\n`);
-
-    // Check which tests exist
-    const existingTests: string[] = [];
-    const missingTests: string[] = [];
-
-    for (const ext of extensionsToTest) {
-      if (await extensionTestExists(ext)) {
-        existingTests.push(ext);
-      } else {
-        missingTests.push(ext);
+    if (owned) {
+      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres -e TEST_MODE=${mode} -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries(mode)} ${resolveImageTag()}`.quiet();
+      await waitForPostgres({ container, timeout: 120 });
+    }
+    const results: TestResult[] = [];
+    for (const name of suites) {
+      const sqlFile = join(SUITE_DIR, name, "sql/basic.sql");
+      const expectedFile = join(SUITE_DIR, name, "expected/basic.out");
+      if (options.generateExpected && !(await Bun.file(expectedFile).exists())) {
+        await Bun.write(expectedFile, "");
       }
-    }
-
-    if (missingTests.length > 0) {
-      console.log(`\n⚠️  Missing test files for ${missingTests.length} extensions:`);
-      console.log(`  ${missingTests.join(", ")}`);
-
-      if (!options.generateExpected) {
-        console.log(
-          `\nRun with --generate-expected to create tests for these extensions automatically`
-        );
-        console.log(`(requires SQL test files to exist in tests/regression/extensions/{ext}/sql/)`);
-      }
-    }
-
-    if (existingTests.length === 0) {
-      console.error(`\nError: No test files found for any extension`);
-      console.error(`Create test files in: tests/regression/extensions/{extension}/sql/basic.sql`);
-      return 1;
-    }
-
-    // Start container or use existing one
-    let containerName: string;
-    let shouldCleanup = false;
-
-    if (options.container) {
-      containerName = options.container;
-      console.log(`\nUsing existing container: ${containerName}\n`);
-    } else {
-      containerName = await startPostgresContainer(options.image, mode);
-      shouldCleanup = true;
-    }
-
-    try {
-      // Get connection configuration
-      const connection = await getConnectionConfig(containerName);
-
-      // Build test list
-      const testList = existingTests.map((extName) => {
-        const paths = getExtensionTestPaths(extName);
-        return {
-          testName: extName,
-          sqlFile: paths.sqlFile,
-          expectedFile: paths.expectedFile,
-        };
+      const result = await runRegressionTest(name, sqlFile, expectedFile, {
+        containerName: container,
+        database: "postgres",
+        user: "postgres",
       });
-
-      console.log(`Running ${testList.length} extension tests...\n`);
-
-      // Run tests
-      const results = await runRegressionTests(testList, connection, (testName, index, total) => {
-        if (options.verbose) {
-          console.log(`[${index}/${total}] Testing ${testName}...`);
-        } else {
-          // Simple progress indicator
-          process.stdout.write(".");
-        }
-      });
-
-      if (!options.verbose) {
-        console.log(""); // Newline after progress dots
-      }
-
-      // Generate expected outputs if requested
-      if (options.generateExpected) {
-        console.log("\nGenerating expected output files...");
-        for (const result of results) {
-          await generateExpectedOutput(result.testName, result.actualOutput);
-        }
-      }
-
-      // Print results
-      printTestResults(results, options.verbose, options.generateExpected);
-
-      // Generate regression.diffs for failures
-      if (!options.generateExpected) {
-        const diffsPath = join(import.meta.dir, "../../extension-regression.diffs");
-        await generateRegressionDiffs(results, diffsPath);
-
-        const failedCount = results.filter((r) => !r.passed).length;
-        if (failedCount > 0) {
-          console.log(`\nRegression diffs written to: ${diffsPath}`);
-        }
-      }
-
-      // Determine exit code
-      const failedCount = results.filter((r) => !r.passed).length;
-      return failedCount > 0 && !options.generateExpected ? 1 : 0;
-    } finally {
-      // Clean up container if we started it
-      if (shouldCleanup) {
-        console.log(`\nCleaning up container: ${containerName}`);
-        await stopPostgresContainer(containerName);
+      results.push(result);
+      if (options.generateExpected) await Bun.write(expectedFile, result.actualOutput);
+      const mark = result.passed ? "PASS" : "FAIL";
+      console.log(
+        `${mark}: ${name} (${Math.round(result.duration)}ms)${result.error ? ` - ${result.error}` : ""}`
+      );
+      if (!result.passed && result.diff && (options.verbose || !options.generateExpected)) {
+        console.log(result.diff);
       }
     }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`\nError: ${errorMsg}`);
-    return 1;
+    if (options.generateExpected) return 0;
+    const failed = results.filter((r) => !r.passed);
+    await generateRegressionDiffs(
+      results,
+      join(import.meta.dir, "../../extension-regression.diffs")
+    );
+    console.log(`Passed ${results.length - failed.length}/${results.length}`);
+    return failed.length === 0 ? 0 : 1;
+  } finally {
+    if (owned) await $`docker rm -f -v ${container}`.quiet().nothrow();
   }
 }
 
-// Execute if run directly
 if (import.meta.main) {
-  const exitCode = await main();
-  process.exit(exitCode);
+  try {
+    process.exit(await main());
+  } catch (err) {
+    console.error(`FAIL: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 }
-
-export { main, parseArgs, TOP_10_EXTENSIONS, COMPREHENSIVE_ONLY_EXTENSIONS };

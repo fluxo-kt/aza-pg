@@ -112,7 +112,15 @@ try {
   );
 
   await check("a malformed PGSODIUM_KEY_FILE stops the container naming the file", async () => {
-    const code = (await $`docker wait ${bad}`.quiet()).text().trim();
+    // Bounded: an image that ignores PGSODIUM_KEY_FILE keeps running, and an unbounded docker wait would hang
+    // the suite instead of failing it. The others are already ready, so a validating entrypoint has exited.
+    const code = await Promise.race([
+      $`docker wait ${bad}`
+        .quiet()
+        .nothrow()
+        .then((r) => r.text().trim()),
+      Bun.sleep(30_000).then(() => "still running after 30s"),
+    ]);
     const logs = (await $`docker logs ${bad}`.quiet().nothrow()).stderr.toString();
     if (code !== "1") throw new Error(`exit code ${code}, want 1`);
     if (!logs.includes("PGSODIUM_KEY_FILE=/run/secrets/pgsodium.key")) {

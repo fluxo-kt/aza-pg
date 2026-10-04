@@ -25,7 +25,7 @@ import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 import { summarizeResults } from "./validate-summary";
 
-const HADOLINT_IMAGE =
+export const HADOLINT_IMAGE =
   "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
 const ACTIONLINT_IMAGE =
   "rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36";

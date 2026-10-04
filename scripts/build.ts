@@ -20,6 +20,7 @@
 //
 
 import { $ } from "bun";
+import { HADOLINT_IMAGE } from "./validate";
 
 // Get current git commit SHA for image labels
 async function getGitCommitSha(): Promise<string> {
@@ -154,41 +155,23 @@ async function validateManifest(): Promise<void> {
   console.log("");
 }
 
-// Check Dockerfile with hadolint
+// Check Dockerfile with the same pinned hadolint and config as validate:all, so the verdict cannot
+// depend on whichever hadolint is installed locally (2.15.1 flags every RUN under a bash SHELL as
+// POSIX sh, SC3040, where the pinned 2.14.0 does not).
 async function checkHadolint(): Promise<void> {
   console.log("Checking Dockerfile with hadolint...");
-
-  // Check if hadolint is available
-  try {
-    await $`which hadolint`.quiet();
-  } catch {
-    console.log("WARNING: hadolint not found, skipping Dockerfile lint");
-    console.log("Install hadolint for Dockerfile validation:");
-    console.log("  brew install hadolint  (macOS)");
-    console.log("  or visit: https://github.com/hadolint/hadolint");
-    console.log("");
-    return;
-  }
-
-  // Run hadolint on the Dockerfile
-  try {
-    const result = await $`hadolint docker/postgres/Dockerfile`.quiet();
-    if (result.exitCode !== 0) {
-      console.error("ERROR: hadolint found issues in Dockerfile");
-      console.error("");
-      // Show the actual hadolint output
-      const output = await $`hadolint docker/postgres/Dockerfile`.text();
-      console.error(output);
-      console.error("Fix the Dockerfile issues before building");
-      process.exit(1);
-    }
-    console.log("Dockerfile passed hadolint validation");
-  } catch (err) {
-    console.error("ERROR: hadolint validation failed");
-    console.error(String(err));
+  const result =
+    await $`docker run --rm -i -v ${`${process.cwd()}:/work:ro`} ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`
+      .nothrow()
+      .quiet();
+  if (result.exitCode !== 0) {
+    console.error(`ERROR: hadolint found issues in Dockerfile\n${result.stdout}${result.stderr}`);
+    console.error(
+      "Fix docker/postgres/Dockerfile.template (then bun run generate) before building"
+    );
     process.exit(1);
   }
-  console.log("");
+  console.log("Dockerfile passed hadolint validation\n");
 }
 
 // Check if logged into Docker registry

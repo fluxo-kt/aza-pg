@@ -1385,7 +1385,7 @@ psql -U postgres -c "SELECT sum(blks_hit)::float / (sum(blks_hit) + sum(blks_rea
 
 ```bash
 # Run locally in repo
-bun run scripts/generate-ssl-certs.ts
+bun scripts/tools/generate-ssl-certs.ts
 
 # Or manually on VPS:
 cd /opt/aza-pg-stack/ssl

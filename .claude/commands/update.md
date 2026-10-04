@@ -909,7 +909,7 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
 - **Check for orphaned test files**: When migrating an extension's install method, search for
   dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
   wrong install path descriptions). Delete or migrate their valuable tests.
-- **`scripts/test/test-timescaledb-breaking-changes.ts`**: Standalone test not in `test:all`.
+- **`scripts/test/test-timescaledb-breaking-changes.ts`** (suite group `extensions`):
   Contains a target-version helper for the TimescaleDB breaking-change series — update it when
   TimescaleDB crosses the tested minor boundary. Also update the file title and run banner.
 - **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version

@@ -72,13 +72,9 @@ docker buildx build \
 
 GitHub Actions workflows handle automated builds:
 
-#### Fast Validation (ci.yml)
+#### CI (ci.yml)
 
-Runs on every commit:
-
-- Fast validation (~10 min)
-- No Docker build
-- Code checks only (TypeScript, linting, formatting, shell scripts)
+Runs on every push to main/dev/release and every PR: `bun run validate:all`, an amd64 image build, then one job per routine suite group (`bun scripts/test-all.ts --group <group>`).
 
 #### Manual Testing Workflow (build-postgres-image.yml)
 
@@ -604,66 +600,13 @@ docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
 
 ### CI Workflow Failure Diagnostics
 
-Both `publish.yml` and `build-postgres-image.yml` workflows automatically capture comprehensive failure diagnostics when tests or scans fail.
+**Test failures:** each `Test <group>` job prints every failed suite's full output (a suite that cannot start PostgreSQL includes the container's last log lines). Read the job log first.
 
-**Diagnostic Artifacts Available:**
+The job also uploads `<group>-test-failures-<SHA>` (publish: `publish-<group>-test-failures-<SHA>`) with the logs of containers still present. Suites remove their own containers, so this artifact matters mainly when `test-all` killed a suite at its 5-minute limit and its containers were left behind.
 
-**Test Failures** (`test-failure-diagnostics-<SHA>`):
+**Scan failures** (`scan-failure-diagnostics-<SHA>`): full Trivy output, Trivy JSON, image manifest metadata and the SARIF file when generated.
 
-- PostgreSQL container logs (full output)
-- Complete PostgreSQL configuration (`SHOW ALL`)
-- Shared preload libraries configuration
-- Installed extensions list
-- Image version info (`/etc/postgresql/version-info.txt`)
-- Docker Compose logs (for stack tests)
-
-**Scan Failures** (`scan-failure-diagnostics-<SHA>`):
-
-- Full Trivy scan output (all severities)
-- Trivy JSON results (for programmatic analysis)
-- Image metadata (manifest inspection)
-- SARIF file (if generated)
-
-**Stack Test Failures** (`replica-test-failure-diagnostics-<SHA>`, `single-test-failure-diagnostics-<SHA>`):
-
-- Docker Compose logs from respective stacks
-
-**Accessing Diagnostics:**
-
-1. Navigate to failed workflow run in GitHub Actions
-2. Scroll to "Artifacts" section at bottom of run summary
-3. Download diagnostic artifact(s) for the specific failure
-4. Extract and review logs/configs
-
-**Retention:** All diagnostic artifacts are retained for 7 days.
-
-**Example - Debugging Test Failure:**
-
-```bash
-# Download test-failure-diagnostics artifact from GitHub Actions UI
-unzip test-failure-diagnostics-abc1234.zip
-cd diagnostics/
-
-# Review PostgreSQL logs
-cat pg-ext-test-logs.txt
-
-# Check configuration
-cat postgres-config.txt
-
-# Verify shared preload libraries
-cat shared-preload.txt
-
-# Check which extensions are available
-cat extensions.txt
-```
-
-**When diagnostics are NOT captured:**
-
-- Successful workflows (no failures)
-- Build step failures (before test/scan jobs run)
-- Cancelled workflows (manual cancellation)
-
-**Pro tip:** Check diagnostic artifacts BEFORE re-running failed workflows - they often contain the root cause immediately.
+Artifacts are kept for 7 days (GitHub Actions run page → Artifacts).
 
 ### Performance Issues
 
@@ -749,97 +692,7 @@ await waitForPostgres("localhost", 5432, "postgres", 60);
 
 ### Test Scripts
 
-#### test-build.ts [image-tag]
-
-Builds Docker image and verifies extensions are functional.
-
-**What it tests:**
-
-- Image build process (via buildx)
-- PostgreSQL version
-- Auto-config entrypoint presence
-- Extension creation (vector, pg_trgm, pg_cron, pgaudit, etc.)
-- Extension functionality (vector types, similarity, cron jobs)
-
-**Usage:**
-
-```bash
-bun scripts/test/test-build.ts                # Default tag: aza-pg:pg18
-bun scripts/test/test-build.ts my-custom:tag  # Custom tag
-```
-
-**Dependencies:** `docker`, `buildx`
-
----
-
-#### test-auto-config.ts [image-tag]
-
-Validates auto-config RAM/CPU detection and PostgreSQL tuning.
-
-**What it tests:**
-
-1. Manual memory override (`POSTGRES_MEMORY`)
-2. 2GB cgroup v2 detection
-3. 512MB minimum memory limit
-4. 64GB high-memory override
-5. CPU core detection and worker tuning
-6. Below-minimum memory rejection (256MB)
-7. Custom `shared_preload_libraries` override
-
-**Usage:**
-
-```bash
-bun scripts/test/test-auto-config.ts                # Default tag: aza-pg:pg18
-bun scripts/test/test-auto-config.ts my-custom:tag  # Custom tag
-```
-
-**Dependencies:** `docker`
-
----
-
-#### run-extension-smoke.ts [image-tag]
-
-Tests extension loading in dependency order using manifest.
-
-**What it tests:**
-
-- Topological sort of extension dependencies
-- CREATE EXTENSION for all extensions (excluding tools)
-- Dependency resolution accuracy
-
-**Usage:**
-
-```bash
-bun scripts/test/run-extension-smoke.ts                # Default tag: aza-pg:test
-bun scripts/test/run-extension-smoke.ts my-custom:tag  # Custom tag
-```
-
-**Dependencies:** `docker`
-
----
-
-#### test-pgbouncer-healthcheck.ts [stack-dir]
-
-Validates PgBouncer healthcheck and authentication.
-
-**What it tests:**
-
-- Stack deployment (compose up)
-- PostgreSQL readiness
-- PgBouncer auth via `pgbouncer_lookup()` function
-- Health check connectivity
-- Query execution through PgBouncer
-
-**Usage:**
-
-```bash
-bun scripts/test/test-pgbouncer-healthcheck.ts                  # Default: stacks/primary
-bun scripts/test/test-pgbouncer-healthcheck.ts stacks/primary   # Explicit path
-```
-
-**Dependencies:** `docker`, `docker compose`, `psql`
-
----
+Docker suites are listed once, in `SUITES` of `scripts/test-all.ts`, and run by group; `docs/TESTING.md` "Running Tests" has the commands and what each group proves.
 
 #### wait-for-postgres.ts [host] [port] [user] [timeout]
 
@@ -1026,28 +879,7 @@ logError("Critical failure");
 
 ### Recommended Test Sequence
 
-1. **Build verification:**
-
-   ```bash
-   bun scripts/test/test-build.ts
-   ```
-
-2. **Auto-config validation:**
-
-   ```bash
-   bun scripts/test/test-auto-config.ts
-   ```
-
-3. **Extension smoke test:**
-
-   ```bash
-   bun scripts/test/run-extension-smoke.ts
-   ```
-
-4. **PgBouncer integration:**
-   ```bash
-   bun scripts/test/test-pgbouncer-healthcheck.ts
-   ```
+`bun run test:all` builds the image, runs `validate:all`, then every routine suite group. Docker suites are listed once, in `SUITES` of `scripts/test-all.ts`, and run by group; `docs/TESTING.md` "Running Tests" has the commands and what each group proves.
 
 ### Operational Workflows
 

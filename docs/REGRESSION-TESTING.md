@@ -210,9 +210,6 @@ bun scripts/test/run-all-regression-tests.ts
 bun scripts/test/run-all-regression-tests.ts --mode=regression
 TEST_MODE=regression bun scripts/test/run-all-regression-tests.ts
 
-# Tier 1 only, fast mode (PR validation)
-bun scripts/test/run-all-regression-tests.ts --tier=1 --fast
-
 # Generate expected outputs for Tier 2
 bun scripts/test/run-all-regression-tests.ts --tier=2 --generate-expected
 
@@ -222,43 +219,10 @@ bun scripts/test/run-all-regression-tests.ts --verbose
 
 ## CI/CD Integration
 
-### PR Validation (ci.yml)
+The runner is `scripts/test-all.ts`, which owns which suites each group holds.
 
-Fast feedback for pull requests.
-
-**Strategy:**
-
-- Tier 1 only (fast mode): ~2-3 minutes
-- Production mode only
-- 4 core tests: boolean, int2, int4, select
-
-**Trigger:** All PRs
-
-### Release Validation (regression-tests.yml)
-
-Comprehensive validation for release candidates.
-
-**Strategy:**
-
-- All tiers (Tier 1-3)
-- Production mode
-- Full test sets
-- Duration: ~10-15 minutes
-
-**Trigger:** Manual dispatch, release tags
-
-### Nightly Regression (nightly-regression.yml)
-
-Comprehensive nightly testing for early issue detection.
-
-**Strategy:**
-
-- All tiers (Tier 1-4)
-- Regression mode (all extensions)
-- pgTAP tests included
-- Duration: ~20-30 minutes
-
-**Trigger:** Nightly schedule (2 AM UTC)
+- **`regression` group** (production mode, release image): `ci.yml` on every push and PR, `publish.yml` before every release, and `regression-tests.yml` on demand against any image reference.
+- **`nightly` group** (regression mode, regression image built from `regression.Dockerfile`): `nightly-regression.yml`, weekly.
 
 ## Docker Images
 

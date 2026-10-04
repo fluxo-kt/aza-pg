@@ -81,11 +81,11 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## Images
 
-| Variable                  | Default                                         | Description                                   |
-| ------------------------- | ----------------------------------------------- | --------------------------------------------- |
-| `POSTGRES_IMAGE`          | `ghcr.io/fluxo-kt/aza-pg:18`                    | PostgreSQL image (use versioned tag for prod) |
-| `POSTGRES_EXPORTER_IMAGE` | `prometheuscommunity/postgres-exporter:v0.18.1` | Prometheus exporter                           |
-| `PGBOUNCER_IMAGE`         | `edoburu/pgbouncer:v1.25.1-p0`                  | PgBouncer (primary only)                      |
+| Variable                  | Default                                                                                                                 | Description                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `POSTGRES_IMAGE`          | `ghcr.io/fluxo-kt/aza-pg:18`                                                                                            | PostgreSQL image (use versioned tag for prod) |
+| `POSTGRES_EXPORTER_IMAGE` | `prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e` | Prometheus exporter                           |
+| `PGBOUNCER_IMAGE`         | `edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711`                  | PgBouncer (primary only)                      |
 
 ## Stack Defaults
 

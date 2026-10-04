@@ -91,7 +91,7 @@ services:
 
   # Prometheus PostgreSQL Exporter
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.18.1
+    image: prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     container_name: postgres-exporter
     restart: unless-stopped
     environment:
@@ -117,7 +117,7 @@ services:
 
   # PgBouncer Exporter
   pgbouncer-exporter:
-    image: prometheuscommunity/pgbouncer-exporter:v0.9.0
+    image: prometheuscommunity/pgbouncer-exporter:v0.12.1@sha256:30f31b6c2efdad3647f8182cc7c1a3a19e42bae5d17387694989f969371c230d
     container_name: pgbouncer-exporter
     restart: unless-stopped
     environment:

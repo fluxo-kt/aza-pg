@@ -51,7 +51,7 @@ services:
 
   postgres_exporter:
     image: >-
-      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f}
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-single
     restart: unless-stopped
 
@@ -62,8 +62,6 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
       PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
-      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
-      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: "false"
 
     volumes:
       - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro

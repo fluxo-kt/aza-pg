@@ -288,6 +288,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Companion Image Pins",
+      command: ["bun", "scripts/validate/companion-image-pins.ts"],
+      description: "Every mention of a stack's pgbouncer/exporter image carries the compose pin",
+      required: true,
+    },
+    {
       name: "Release Process Contracts",
       command: ["bun", "scripts/ci/validate-release-process.ts"],
       description: "Validate release command, publish workflow, and release harness contracts",

@@ -241,7 +241,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "pg_stat_bgwriter_buffers_alloc / (pg_stat_bgwriter_buffers_alloc + pg_stat_bgwriter_buffers_backend) or vector(0)",
+          "expr": "sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])))",
           "refId": "A"
         }
       ],
@@ -575,13 +575,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(pg_stat_bgwriter_buffers_checkpoint[5m])) * 8192",
+          "expr": "sum(rate(pg_stat_checkpointer_buffers_written[5m])) * 8192",
           "legendFormat": "Checkpoint Write",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(pg_stat_bgwriter_buffers_backend[5m])) * 8192",
+          "expr": "sum(rate(pg_backend_io_writes[5m])) * 8192",
           "legendFormat": "Backend Write",
           "refId": "B"
         },
@@ -1101,7 +1101,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "topk(10, pg_stat_user_tables_size_bytes)",
+          "expr": "topk(10, pg_stat_user_tables_table_size_bytes)",
           "format": "table",
           "instant": true,
           "refId": "A"

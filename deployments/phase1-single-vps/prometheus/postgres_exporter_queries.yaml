@@ -158,8 +158,9 @@ pg_database:
         usage: "GAUGE"
         description: "Disk space used by the database"
 
+# No op_bytes: PostgreSQL 18 removed it (per-operation byte counts became read_bytes/write_bytes/extend_bytes).
 pg_stat_io:
-  query: "SELECT backend_type, object, context, reads, read_time, writes, write_time, writebacks, writeback_time, extends, extend_time, op_bytes, hits, evictions, reuses, fsyncs, fsync_time FROM pg_stat_io WHERE backend_type != 'autovacuum worker'"
+  query: "SELECT backend_type, object, context, reads, read_time, writes, write_time, writebacks, writeback_time, extends, extend_time, hits, evictions, reuses, fsyncs, fsync_time FROM pg_stat_io WHERE backend_type != 'autovacuum worker'"
   master: true
   cache_seconds: 30
   metrics:
@@ -196,9 +197,6 @@ pg_stat_io:
     - extend_time:
         usage: "COUNTER"
         description: "Time spent extending relations, in milliseconds"
-    - op_bytes:
-        usage: "GAUGE"
-        description: "Bytes per operation"
     - hits:
         usage: "COUNTER"
         description: "Number of times a desired block was found in shared buffer"
@@ -215,41 +213,57 @@ pg_stat_io:
         usage: "COUNTER"
         description: "Time spent in fsync operations, in milliseconds"
 
+# PostgreSQL 17 split pg_stat_bgwriter: checkpoint counters moved to pg_stat_checkpointer, backend writes and fsyncs
+# to pg_stat_io. The three queries below read each counter from where PostgreSQL 17+ keeps it.
 pg_stat_bgwriter:
-  query: "SELECT checkpoints_timed, checkpoints_req, checkpoint_write_time, checkpoint_sync_time, buffers_checkpoint, buffers_clean, maxwritten_clean, buffers_backend, buffers_backend_fsync, buffers_alloc FROM pg_stat_bgwriter"
+  query: "SELECT buffers_clean, maxwritten_clean, buffers_alloc FROM pg_stat_bgwriter"
   master: true
   cache_seconds: 60
   metrics:
-    - checkpoints_timed:
-        usage: "COUNTER"
-        description: "Number of scheduled checkpoints that have been performed"
-    - checkpoints_req:
-        usage: "COUNTER"
-        description: "Number of requested checkpoints that have been performed"
-    - checkpoint_write_time:
-        usage: "COUNTER"
-        description: "Total amount of time spent writing checkpoint files to disk, in milliseconds"
-    - checkpoint_sync_time:
-        usage: "COUNTER"
-        description: "Total amount of time spent synchronizing checkpoint files to disk, in milliseconds"
-    - buffers_checkpoint:
-        usage: "COUNTER"
-        description: "Number of buffers written during checkpoints"
     - buffers_clean:
         usage: "COUNTER"
         description: "Number of buffers written by the background writer"
     - maxwritten_clean:
         usage: "COUNTER"
         description: "Number of times the background writer stopped a cleaning scan"
-    - buffers_backend:
-        usage: "COUNTER"
-        description: "Number of buffers written directly by a backend"
-    - buffers_backend_fsync:
-        usage: "COUNTER"
-        description: "Number of times a backend executed its own fsync"
     - buffers_alloc:
         usage: "COUNTER"
         description: "Number of buffers allocated"
+
+pg_stat_checkpointer:
+  query: "SELECT num_timed, num_requested, write_time, sync_time, buffers_written FROM pg_stat_checkpointer"
+  master: true
+  cache_seconds: 60
+  metrics:
+    - num_timed:
+        usage: "COUNTER"
+        description: "Number of scheduled checkpoints"
+    - num_requested:
+        usage: "COUNTER"
+        description: "Number of requested checkpoints"
+    - write_time:
+        usage: "COUNTER"
+        description: "Time spent writing checkpoint files to disk, in milliseconds"
+    - sync_time:
+        usage: "COUNTER"
+        description: "Time spent synchronizing checkpoint files to disk, in milliseconds"
+    - buffers_written:
+        usage: "COUNTER"
+        description: "Number of buffers written during checkpoints and restartpoints"
+
+# Relation blocks written and fsynced by processes other than the checkpointer and background writer
+# (what pg_stat_bgwriter called buffers_backend and buffers_backend_fsync before PostgreSQL 17).
+pg_backend_io:
+  query: "SELECT coalesce(sum(writes), 0) AS writes, coalesce(sum(fsyncs), 0) AS fsyncs FROM pg_stat_io WHERE object = 'relation' AND backend_type NOT IN ('checkpointer', 'background writer')"
+  master: true
+  cache_seconds: 60
+  metrics:
+    - writes:
+        usage: "COUNTER"
+        description: "Relation blocks written by backends and workers"
+    - fsyncs:
+        usage: "COUNTER"
+        description: "fsync calls made by backends and workers"
 
 pg_stat_database_conflicts:
   query: "SELECT datname, confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock FROM pg_stat_database_conflicts"

@@ -665,30 +665,7 @@ await test("auto_explain - Verify plan logging", "observability", async () => {
 
 **Why**: `LOAD 'auto_explain'` and `SET` commands must be in same session as the SELECT query they affect.
 
-#### Example 2: pg_plan_filter Query Execution
-
-```typescript
-await test(
-  "pg_plan_filter - Execute queries with plan filter active",
-  "safety",
-  async () => {
-    const result = await runSQL(`
-    LOAD 'plan_filter';
-    SELECT count(*) FROM pg_tables;
-  `);
-    const lines = result.stdout.split("\n").filter((l) => l.trim());
-    const count = parseInt(lines[lines.length - 1]);
-    assert(
-      result.success && count > 0,
-      "Query execution with pg_plan_filter failed"
-    );
-  }
-);
-```
-
-**Why**: pg_plan_filter hook must be loaded in the same session where queries execute.
-
-#### Example 3: HypoPG Hypothetical Indexes
+#### Example 2: HypoPG Hypothetical Indexes
 
 ```typescript
 await test(
@@ -723,7 +700,7 @@ await test(
 
 **Pattern**: Each test creates its own hypothetical index within the same session where it's used, since indexes don't persist.
 
-#### Example 4: Session vs Persistent State
+#### Example 3: Session vs Persistent State
 
 ```typescript
 // ✅ Persistent state - can split across calls
@@ -906,7 +883,7 @@ await runSQL(`
 
 ```bash
 # pg_plan_filter requires shared_preload_libraries
-POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,pg_plan_filter"
+POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,plan_filter"
 
 # pg_safeupdate uses session_preload_libraries
 psql -c "SET session_preload_libraries = 'pg_safeupdate'; UPDATE table SET col = 1;"

@@ -6,7 +6,7 @@
  * Tests extensions that don't use CREATE EXTENSION:
  *   - pg_safeupdate (hook-based, default-enabled in shared_preload_libraries)
  *
- * Note: pg_plan_filter removed (incompatible with PostgreSQL 18)
+ * Note: pg_plan_filter is tested in test-all-extensions-functional.ts (not preloaded by default).
  * Note: supautils is tested separately because it is preload-only.
  *
  * Examples:
@@ -363,7 +363,7 @@ async function main(): Promise<void> {
   console.log("  - Override: Users can disable via POSTGRES_SHARED_PRELOAD_LIBRARIES");
   console.log();
   console.log("Notes:");
-  console.log("  - pg_plan_filter excluded (incompatible with PostgreSQL 18)");
+  console.log("  - pg_plan_filter covered by test-all-extensions-functional.ts");
   console.log("  - supautils excluded here (covered by dedicated preload-only tests)");
 }
 

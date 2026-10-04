@@ -112,7 +112,7 @@ describe("Tool Binary Path Validation", () => {
     // Exclude .so-module tools (no standalone CLI binary to document):
     //   wal2json     — output plugin .so, loaded by logical replication
     //   pg_safeupdate — hook .so, loaded via shared_preload_libraries
-    //   pg_plan_filter — hook .so, disabled (PG18 incompatible), no binary
+    //   pg_plan_filter — hook .so (plan_filter), optional preload
     const SO_MODULE_TOOLS = new Set(["wal2json", "pg_safeupdate", "pg_plan_filter"]);
     const tools = manifest.entries.filter((e) => e.kind === "tool" && !SO_MODULE_TOOLS.has(e.name));
 

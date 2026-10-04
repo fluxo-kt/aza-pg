@@ -18,12 +18,11 @@ Key principles:
 
 aza-pg classifies bundled functionality into four buckets:
 
-- **Tools** (4): CLI / hook utilities that do not require `CREATE EXTENSION`
+- **Tools**: CLI / hook utilities that do not require `CREATE EXTENSION`
   - Examples: pgbackrest, pgbadger, wal2json, pg_safeupdate
   - Installed in `/usr/local/bin/` or wired via PostgreSQL hooks
-  - Note: pg_plan_filter is currently disabled (manifest-controlled)
 
-- **Builtins** (6): Core PostgreSQL contrib extensions
+- **Builtins**: Core PostgreSQL contrib extensions
   - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist
   - Shipped with PostgreSQL; require `CREATE EXTENSION` (except auto_explain module)
 
@@ -33,7 +32,7 @@ aza-pg classifies bundled functionality into four buckets:
   - Remaining enabled entries are available on demand via `CREATE EXTENSION`
   - Some extensions are disabled by default (tracked in manifest with `disabledReason`)
 
-- **Preloaded** (9): Modules/extensions loaded by default via `shared_preload_libraries`
+- **Preloaded**: Modules/extensions loaded by default via `shared_preload_libraries`
   - auto_explain (module)
   - pg_cron (extension)
   - pg_net (extension)
@@ -131,11 +130,11 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### safety
 
-| Extension                                                       | Version                                                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                                                |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [5081a7b5](https://github.com/pgexperts/pg_plan_filter/commit/5081a7b5cb890876e67d8e7486b6a64c38c9a492) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
-| [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.7](https://github.com/eradman/pg-safeupdate/releases/tag/1.7)                                        | Yes                | Yes            | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| [`supautils`](https://github.com/supabase/supautils)            | [v3.4.4](https://github.com/supabase/supautils/releases/tag/v3.4.4)                                     | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
+| Extension                                                       | Version                                                                   | Enabled by Default | Shared Preload | Documentation                                              | Notes                                                                |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [v1.0.0](https://github.com/pgexperts/pg_plan_filter/releases/tag/v1.0.0) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
+| [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.7](https://github.com/eradman/pg-safeupdate/releases/tag/1.7)          | Yes                | Yes            | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
+| [`supautils`](https://github.com/supabase/supautils)            | [v3.4.4](https://github.com/supabase/supautils/releases/tag/v3.4.4)       | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 
@@ -188,7 +187,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
   - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pgmq`, `plpgsql`, `timescaledb`, `vector`, `vectorscale`
   - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
 - Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb` (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
-- Optional extensions can be preloaded: `supautils`, `pg_partman_bgw` (background worker), `set_user`, `pg_plan_filter`.
+- Optional extensions can be preloaded: `supautils`, `pg_partman_bgw` (background worker), `set_user`, `plan_filter` (pg_plan_filter's library name).
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category

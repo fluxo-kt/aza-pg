@@ -949,19 +949,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "tool",
     category: "safety",
     description: "Block high-cost plans or disallowed operations using planner hooks.",
-    enabled: false,
-    disabledReason:
-      "Not compatible with PostgreSQL 18. Last updated for PG13 (2021). Maintainer inactive. Enable when updated upstream.",
     source: {
-      type: "git-ref",
+      type: "git",
       repository: "https://github.com/pgexperts/pg_plan_filter.git",
-      ref: "5081a7b5cb890876e67d8e7486b6a64c38c9a492",
+      tag: "v1.0.0",
     },
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
-      notes: ["NOT in PGDG. Source build required."],
+      preloadLibraryName: "plan_filter",
+      notes: [
+        "NOT in PGDG. Source build required.",
+        "Optional: add plan_filter to POSTGRES_SHARED_PRELOAD_LIBRARIES, then set plan_filter.statement_cost_limit (superuser-only GUC).",
+      ],
     },
     sourceUrl: "https://github.com/pgexperts/pg_plan_filter",
     docsUrl: "https://github.com/pgexperts/pg_plan_filter#readme",

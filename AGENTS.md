@@ -34,13 +34,13 @@
 
 ### Extension Compatibility (PG18)
 
-| Extension        | Status                           |
-| ---------------- | -------------------------------- |
-| `pg_plan_filter` | INCOMPATIBLE - last updated PG13 |
-| `citus`          | FAILS TO BUILD                   |
-| `periods`        | OBSOLETE - now in PG18 core      |
-| `pgvector`       | Still 0.8.x (0.9 NOT released)   |
-| `pgrx`           | Requires Rust 1.88.0+ (v0.16.1)  |
+| Extension        | Status                                                 |
+| ---------------- | ------------------------------------------------------ |
+| `pg_plan_filter` | v1.0.0 supports PG18; preload library is `plan_filter` |
+| `citus`          | FAILS TO BUILD                                         |
+| `periods`        | OBSOLETE - now in PG18 core                            |
+| `pgvector`       | Still 0.8.x (0.9 NOT released)                         |
+| `pgrx`           | Requires Rust 1.88.0+ (v0.16.1)                        |
 
 ### Version String Formats
 
@@ -101,7 +101,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Default preload**: auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb
 
-**Optional preload** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`): supautils, set_user, pg_partman_bgw, pg_plan_filter
+**Optional preload** (enable via `POSTGRES_SHARED_PRELOAD_LIBRARIES`): supautils, set_user, pg_partman_bgw, plan_filter
 
 ## Auto-Config
 

@@ -32,6 +32,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgvectorscale 0.9.0 → 0.9.1**: Hardens DiskANN against type confusion and malformed vectors that could crash the backend, leak memory or write out of bounds.
 - **pgsodium 3.1.9 → 3.1.11, libsodium 1.0.18 → 1.0.22**: Fixes a SQL injection in `pgsodium.mask_role` and a buffer-size error in `crypto_aead_ietf_encrypt_by_id`, and adds IP-address encryption (`crypto_ipcrypt_*`). libsodium is now built from the signed upstream release and shared by pgsodium and supabase_vault; it replaces Debian's `libsodium23`. Run `ALTER EXTENSION pgsodium UPDATE` in existing databases.
 
+### Added
+
+- **pg_plan_filter 1.0.0** (PostgreSQL 14–18 support upstream): rejects statements whose estimated plan cost exceeds `plan_filter.statement_cost_limit` (and, new in 1.0.0, a per-transaction `plan_filter.transaction_cost_limit`). Not preloaded by default: add `plan_filter` (the library name, not `pg_plan_filter`) to `POSTGRES_SHARED_PRELOAD_LIBRARIES`; the limits are superuser-only settings.
+
 ### Changed
 
 - **Logical decoding plugins** (PostgreSQL 18.6, CVE-2026-6471): slots may only use plugins listed in `output_plugin_libraries`, superusers included. The image sets it to `pgoutput,test_decoding,wal2json` so wal2json CDC keeps working; change it with the new `POSTGRES_OUTPUT_PLUGIN_LIBRARIES` variable (it is passed as `-c`, so `postgresql.conf` and `ALTER SYSTEM` cannot override it). Outside this image, write `ALTER SYSTEM SET output_plugin_libraries = pgoutput, test_decoding, wal2json` as an unquoted list: one quoted string becomes a single plugin name that matches nothing.

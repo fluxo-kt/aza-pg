@@ -16,7 +16,7 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 **Default preload**: `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb`
 
-**Optional preload**: `supautils`, `set_user`, `pg_partman_bgw`, `pg_plan_filter`
+**Optional preload**: `supautils`, `set_user`, `pg_partman_bgw`, `plan_filter` (pg_plan_filter)
 
 ## PostgreSQL Connection
 

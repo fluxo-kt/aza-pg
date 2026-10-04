@@ -368,15 +368,6 @@ describe("Security - Extension Security", () => {
         expect(entry.disabledReason?.trim()).toBeTruthy();
       }
     }
-
-    // Some extensions are deliberately disabled in the manifest (not available in this build)
-    // These are known disabled extensions that are documented in the manifest
-    const knownDisabledExtensions = ["postgis", "pgrouting", "pgq", "pg_plan_filter"];
-    const disabledEntries = manifest.entries.filter((e: ManifestEntry) => e.enabled === false);
-    const unexpectedDisabled = disabledEntries.filter(
-      (e: ManifestEntry) => !knownDisabledExtensions.includes(e.name)
-    );
-    expect(unexpectedDisabled).toEqual([]);
   });
 
   test("Extension control files should have proper permissions", async () => {

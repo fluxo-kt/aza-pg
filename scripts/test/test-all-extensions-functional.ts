@@ -1256,35 +1256,21 @@ await test("pgmq - Archive message", "queueing", async () => {
 console.log("\n🛡️  Safety Extensions");
 console.log("-".repeat(80));
 
-await test("pg_plan_filter - Verify loaded via shared_preload_libraries", "safety", async () => {
+// The image does not preload plan_filter (defaultEnable: false); LOAD installs the same planner hook
+// for this session. A limit of 1 must reject any real scan and still admit a constant SELECT, so a
+// filter that blocks nothing and one that blocks everything both fail.
+await test("pg_plan_filter - Rejects plans above statement_cost_limit only", "safety", async () => {
   if (disabledExtensions.has("pg_plan_filter")) {
-    throw new Error(
-      "SKIPPED: pg_plan_filter extension disabled in manifest (not compatible with PostgreSQL 18)"
-    );
+    throw new Error("SKIPPED: pg_plan_filter extension disabled in manifest");
   }
-  // pg_plan_filter is a hook-based tool, library file is plan_filter.so
-  const load = await runSQL("LOAD 'plan_filter'; SELECT 1");
-  assert(load.success, "pg_plan_filter not loadable");
-});
-
-await test("pg_plan_filter - Execute queries with plan filter active", "safety", async () => {
-  if (disabledExtensions.has("pg_plan_filter")) {
-    throw new Error(
-      "SKIPPED: pg_plan_filter extension disabled in manifest (not compatible with PostgreSQL 18)"
-    );
-  }
-  // Verify pg_plan_filter allows normal query execution
-  const result = await runSQL(`
-    LOAD 'plan_filter';
-    SELECT count(*) FROM pg_tables;
-  `);
-  const lines = result.stdout.split("\n").filter((l) => l.trim());
-  const lastLine = lines[lines.length - 1];
-  if (!lastLine) {
-    throw new Error("No output from pg_plan_filter query");
-  }
-  const count = parseInt(lastLine);
-  assert(result.success && count > 0, "Query execution with pg_plan_filter failed");
+  const limited = "LOAD 'plan_filter'; SET plan_filter.statement_cost_limit = 1;";
+  const costly = await runSQL(`${limited} SELECT count(*) FROM generate_series(1, 100000)`);
+  assert(
+    !costly.success && costly.stderr.includes("plan cost limit exceeded"),
+    `costly plan was not rejected: ${costly.stdout} ${costly.stderr}`
+  );
+  const cheap = await runSQL(`${limited} SELECT 1`);
+  assert(cheap.success, `plan under the limit was rejected: ${cheap.stderr}`);
 });
 
 await test("pg_safeupdate - Verify correct default state (preloaded)", "safety", async () => {

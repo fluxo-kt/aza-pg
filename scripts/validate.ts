@@ -290,6 +290,13 @@ async function validate(
       required: true,
     },
     {
+      name: "Image Runtime Contract",
+      command: ["bun", "scripts/validate/image-runtime-contract.ts"],
+      description:
+        "Compose files and documented commands match the PG18 image: data volume, bind IP, integer memory, no pre-18 data path",
+      required: true,
+    },
+    {
       name: "Suite Registry",
       command: ["bun", "scripts/validate/check-suite-registry.ts"],
       description:

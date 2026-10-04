@@ -56,8 +56,16 @@ interface BuildSpec {
   features?: string[];
   noDefaultFeatures?: boolean;
   mesonOptions?: string[];
+  makeOptions?: string[];
   script?: string;
   patches?: string[];
+}
+
+interface SourceLibrary {
+  version: string;
+  url: string;
+  sha256: string;
+  soname: string;
 }
 
 interface RuntimeSpec {
@@ -79,6 +87,8 @@ interface ManifestEntry {
   dependencies?: string[];
   provides?: string[];
   aptPackages?: string[];
+  sourceLibraries?: string[];
+  soFileName?: string;
   notes?: string[];
   install_via?: "pgdg" | "percona" | "source";
   perconaVersion?: string;
@@ -90,6 +100,7 @@ interface ManifestEntry {
 interface Manifest {
   generatedAt: string;
   entries: ManifestEntry[];
+  sourceLibraries?: Record<string, SourceLibrary>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -302,18 +313,109 @@ async function getPgrxVersion(dir: string): Promise<string> {
 // refuses any host tuning that arrives under another variable name.
 const PORTABLE_PGXS = ["USE_PGXS=1", "OPTFLAGS="];
 
-async function buildPgxs(dir: string): Promise<void> {
-  log(`Running pgxs build in ${dir}`);
-  const plan = await $`make -n -C ${dir} ${PORTABLE_PGXS}`.text();
-  const native = plan.match(/-m(?:arch|tune|cpu)=native/);
+function refuseHostTuning(flags: string, what: string, remedy: string): void {
+  const native = flags.match(/-m(?:arch|tune|cpu)=native/);
   if (native) {
     throw new Error(
-      `${dir}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ` +
-        `Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts).`
+      `${what}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ${remedy}`
     );
   }
-  await $`make -C ${dir} ${PORTABLE_PGXS} -j${NPROC}`;
-  await $`make -C ${dir} ${PORTABLE_PGXS} install`;
+}
+
+// The last -O on a compile line wins, so an upstream PG_CPPFLAGS = -O0 silently undoes PostgreSQL's
+// -O2 (it lands after CFLAGS). Refusing it makes every unoptimised build a recorded decision.
+export function unoptimisedCompileLine(plan: string): string | undefined {
+  // A compile line starts with the compiler (gcc, cc, clang, a triplet- or version-suffixed one, or
+  // ccache in front); make -n also prints echo and link recipe lines, which carry no -c.
+  const compiler = /^\s*(?:\S*\/)?(?:ccache\s+)?(?:\S*\/)?(?:[\w.]+-)*(?:gcc|cc|clang)(?:-\d+)?\s/;
+  return plan
+    .split("\n")
+    .filter((line) => compiler.test(line) && / -c /.test(line))
+    .find(
+      (line) =>
+        line
+          .match(/(?:^|\s)-O\S*/g)
+          ?.at(-1)
+          ?.trim() === "-O0"
+    );
+}
+
+async function buildPgxs(dir: string, build: BuildSpec): Promise<void> {
+  log(`Running pgxs build in ${dir}`);
+  const args = [...PORTABLE_PGXS, ...(build.makeOptions ?? [])];
+  const plan = await $`make -n -C ${dir} ${args}`.text();
+  refuseHostTuning(
+    plan,
+    dir,
+    "Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts)."
+  );
+  const unoptimised = unoptimisedCompileLine(plan);
+  if (unoptimised) {
+    throw new Error(
+      `${dir}: the build would compile without optimisation (-O0): ${unoptimised.trim()}\n` +
+        `Find the Makefile variable that adds -O0 and clear it with build.makeOptions in manifest-data.ts.`
+    );
+  }
+  await $`make -C ${dir} ${args} -j${NPROC}`;
+  await $`make -C ${dir} ${args} install`;
+}
+
+const builtLibraries = new Set<string>();
+
+// Builds each library the entry links into /usr/local once per run. The tarball is trusted only through
+// its pinned SHA-256; the Dockerfile copies /usr/local/lib into the final image.
+async function ensureSourceLibraries(entry: ManifestEntry, manifest: Manifest): Promise<void> {
+  for (const name of entry.sourceLibraries ?? []) {
+    if (builtLibraries.has(name)) continue;
+    const lib = manifest.sourceLibraries?.[name];
+    if (!lib) throw new Error(`${entry.name}: source library ${name} is not in the manifest`);
+
+    log(`Building source library ${name} ${lib.version} for ${entry.name}`);
+    let tarball: Uint8Array | undefined;
+    for (let attempt = 1; attempt <= 5 && !tarball; attempt++) {
+      const response = await fetch(lib.url).catch(() => undefined);
+      if (response?.ok) tarball = new Uint8Array(await response.arrayBuffer());
+      else if (attempt < 5) await Bun.sleep(1000 * attempt);
+    }
+    if (!tarball) throw new Error(`${name}: could not download ${lib.url}`);
+    const digest = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
+    if (digest !== lib.sha256) {
+      throw new Error(`${name}: ${lib.url} has sha256 ${digest}, manifest pins ${lib.sha256}`);
+    }
+
+    const dir = join(BUILD_ROOT, `lib-${name}`);
+    await ensureCleanDir(dir);
+    await Bun.write(join(dir, "src.tar.gz"), tarball);
+    await $`tar -xzf ${join(dir, "src.tar.gz")} -C ${dir} --strip-components=1`;
+    await $`./configure --prefix=/usr/local --disable-static`.cwd(dir).quiet();
+    refuseHostTuning(
+      await $`make -n`.cwd(dir).text(),
+      name,
+      "Configure it without the option that enables host tuning (libsodium: --enable-opt)."
+    );
+    await $`make -j${NPROC}`.cwd(dir).quiet();
+    await $`make install`.cwd(dir).quiet();
+    // libtool archives only help other libtool builds and would ship into the image.
+    await $`find /usr/local/lib -maxdepth 1 -name ${`${name}.la`} -delete`;
+    await $`ldconfig`;
+    builtLibraries.add(name);
+  }
+}
+
+// A consumer that found a different copy (a Debian -dev package, a stale build) would still link and
+// load, so prove the module records the soname we built.
+async function assertLinksSourceLibraries(entry: ManifestEntry, manifest: Manifest): Promise<void> {
+  if (!entry.sourceLibraries?.length) return;
+  const pkglibdir = (await $`pg_config --pkglibdir`.text()).trim();
+  const module = join(pkglibdir, entry.soFileName ?? `${entry.name}.so`);
+  const needed = await $`readelf -d ${module}`.text();
+  for (const name of entry.sourceLibraries) {
+    const soname = manifest.sourceLibraries?.[name]?.soname;
+    if (!soname || !needed.includes(`[${soname}]`)) {
+      throw new Error(`${module} does not record NEEDED ${soname ?? name}:\n${needed}`);
+    }
+  }
+  log(`${entry.name} links ${entry.sourceLibraries.join(", ")}`);
 }
 
 async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> {
@@ -740,6 +842,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   // Validate dependencies before building
   await validateDependencies(entry, name, manifest);
+  await ensureSourceLibraries(entry, manifest);
 
   // Build extension based on build type
   const buildType = build?.type;
@@ -750,7 +853,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   switch (buildType) {
     case "pgxs":
-      await buildPgxs(workdir);
+      await buildPgxs(workdir, build);
       break;
 
     case "cargo-pgrx":
@@ -794,6 +897,8 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
       log(`Unsupported build type ${buildType} for ${name}`);
       process.exit(1);
   }
+
+  await assertLinksSourceLibraries(entry, manifest);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -825,9 +930,11 @@ async function main(): Promise<void> {
   log("Extension build complete");
 }
 
-// Run main function
-main().catch((error) => {
-  log(`FATAL ERROR: ${error.message}`);
-  console.error(error);
-  process.exit(1);
-});
+// Guarded so unit tests can import the pure helpers; Docker runs this file directly.
+if (import.meta.main) {
+  main().catch((error) => {
+    log(`FATAL ERROR: ${error.message}`);
+    console.error(error);
+    process.exit(1);
+  });
+}

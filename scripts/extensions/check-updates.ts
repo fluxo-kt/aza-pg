@@ -16,7 +16,7 @@
  *   2 - Error occurred
  */
 
-import { MANIFEST_ENTRIES } from "./manifest-data";
+import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 
 interface UpdateInfo {
@@ -599,6 +599,24 @@ async function main() {
 
   for (const entry of MANIFEST_ENTRIES) {
     const update = await checkExtensionUpdates(entry);
+    if (update) {
+      results.push(update);
+    }
+  }
+
+  // Libraries built from source get no Debian security updates, so they are checked like extensions;
+  // a library counts as enabled while any enabled extension links it.
+  for (const [name, library] of Object.entries(SOURCE_LIBRARIES)) {
+    const update = await checkExtensionUpdates({
+      name,
+      kind: "tool",
+      category: "library",
+      description: `Source-built library (${library.soname})`,
+      source: library.source,
+      enabled: MANIFEST_ENTRIES.some(
+        (e) => e.enabled !== false && (e.sourceLibraries ?? []).includes(name)
+      ),
+    });
     if (update) {
       results.push(update);
     }

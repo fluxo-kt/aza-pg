@@ -20,6 +20,45 @@ export const MANIFEST_METADATA = {
   baseImageSha: "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
 } as const;
 
+/** A C library compiled from a release tarball because Debian trixie's package is too old. */
+export interface SourceLibrary {
+  version: string;
+  /** Release tarball; the build refuses it unless its SHA-256 equals `sha256`. */
+  url: string;
+  /** SHA-256 of the tarball, recorded after verifying the upstream signature (see `notes`). */
+  sha256: string;
+  /** Shared-object name every consumer must record as NEEDED; the build checks it. */
+  soname: string;
+  /** Where check-updates.ts looks for newer releases; `tag` is the current release's tag. */
+  source: { type: "git"; repository: string; tag: string };
+  notes?: string[];
+}
+
+/**
+ * Libraries built in the builder stage into /usr/local and shipped in the image, ahead of any
+ * extension listing them in `sourceLibraries`. The image then carries ONE copy, which every consumer
+ * links: two versions loaded into one backend would cross-bind symbols, because PostgreSQL loads
+ * modules with RTLD_GLOBAL. Security updates for these are ours, not Debian's.
+ */
+export const SOURCE_LIBRARIES: Record<string, SourceLibrary> = {
+  libsodium: {
+    version: "1.0.22",
+    url: "https://github.com/jedisct1/libsodium/releases/download/1.0.22-RELEASE/libsodium-1.0.22.tar.gz",
+    sha256: "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
+    soname: "libsodium.so.26",
+    source: {
+      type: "git",
+      repository: "https://github.com/jedisct1/libsodium.git",
+      tag: "1.0.22-RELEASE",
+    },
+    notes: [
+      "pgsodium 3.1.11 needs libsodium >= 1.0.21; trixie ships 1.0.18.",
+      "Before changing the pin, verify the tarball: minisign -VP RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 -m <tarball> (key from https://doc.libsodium.org/installation), then record its sha256.",
+      "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast.",
+    ],
+  },
+};
+
 export type SourceSpec =
   | { type: "builtin" }
   | { type: "git"; repository: string; tag: string }
@@ -44,6 +83,11 @@ export interface BuildSpec {
    * When type === "meson", pass-through setup options.
    */
   mesonOptions?: string[];
+  /**
+   * When type === "pgxs", extra make command-line assignments. Command-line variables override the
+   * Makefile's own, so this can undo an upstream setting such as PG_CPPFLAGS = -O0.
+   */
+  makeOptions?: string[];
   /**
    * Optional script identifier for bespoke installers.
    */
@@ -91,6 +135,8 @@ export interface ManifestEntry {
   dependencies?: string[];
   provides?: string[];
   aptPackages?: string[];
+  /** Keys of SOURCE_LIBRARIES this module links against; they are built before it. */
+  sourceLibraries?: string[];
   notes?: string[];
   install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
   /**
@@ -666,10 +712,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/michelp/pgsodium.git",
-      tag: "v3.1.9",
+      tag: "v3.1.11",
     },
-    build: { type: "pgxs" },
-    aptPackages: ["libsodium-dev"],
+    // Upstream's Makefile sets PG_CPPFLAGS = -O0 (since 2017, no stated reason), which outranks
+    // PostgreSQL's -O2. Secrets are wiped with sodium_memzero, which optimisation cannot remove.
+    build: { type: "pgxs", makeOptions: ["PG_CPPFLAGS="] },
+    sourceLibraries: ["libsodium"],
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
@@ -697,6 +745,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v0.3.1",
     },
     build: { type: "pgxs" },
+    sourceLibraries: ["libsodium"],
     dependencies: ["pgsodium"],
     runtime: {
       sharedPreload: false,

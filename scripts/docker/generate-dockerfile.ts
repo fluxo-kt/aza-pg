@@ -85,6 +85,7 @@ interface ManifestEntry {
 
 interface Manifest {
   entries: ManifestEntry[];
+  sourceLibraries?: Record<string, unknown>;
 }
 
 /**
@@ -686,6 +687,7 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
 
   return {
     entries: filteredEntries,
+    sourceLibraries: manifest.sourceLibraries,
   };
 }
 
@@ -707,6 +709,7 @@ function generateCargoManifest(manifest: Manifest): Manifest {
 
   return {
     entries: filteredEntries,
+    sourceLibraries: manifest.sourceLibraries,
   };
 }
 

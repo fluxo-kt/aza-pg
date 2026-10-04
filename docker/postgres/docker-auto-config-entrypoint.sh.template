@@ -475,7 +475,7 @@ else
 fi
 
 # Auto-detect pgsodium support: only include if getkey script exists and works
-# pgsodium v3.1.9 crashes PostgreSQL if loaded without valid getkey script
+# A preloaded pgsodium stops the server (proc_exit) when its getkey script is missing or fails
 # Use pg_config to get sharedir path (works for any PG version)
 PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
 PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"

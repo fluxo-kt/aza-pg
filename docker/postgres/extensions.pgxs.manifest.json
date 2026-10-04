@@ -229,13 +229,14 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/michelp/pgsodium.git",
-        "tag": "v3.1.9",
-        "commit": "7222ebc5ed87084a68d526aef977be0f4eb319a2"
+        "tag": "v3.1.11",
+        "commit": "a8b8a2739bab1f7a07445b1c911e2bd1abf67784"
       },
       "build": {
-        "type": "pgxs"
+        "type": "pgxs",
+        "makeOptions": ["PG_CPPFLAGS="]
       },
-      "aptPackages": ["libsodium-dev"],
+      "sourceLibraries": ["libsodium"],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
@@ -266,6 +267,7 @@
       "build": {
         "type": "pgxs"
       },
+      "sourceLibraries": ["libsodium"],
       "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": false,
@@ -332,5 +334,23 @@
       "sourceUrl": "https://github.com/pgvector/pgvector",
       "docsUrl": "https://github.com/pgvector/pgvector#readme"
     }
-  ]
+  ],
+  "sourceLibraries": {
+    "libsodium": {
+      "version": "1.0.22",
+      "url": "https://github.com/jedisct1/libsodium/releases/download/1.0.22-RELEASE/libsodium-1.0.22.tar.gz",
+      "sha256": "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
+      "soname": "libsodium.so.26",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/jedisct1/libsodium.git",
+        "tag": "1.0.22-RELEASE"
+      },
+      "notes": [
+        "pgsodium 3.1.11 needs libsodium >= 1.0.21; trixie ships 1.0.18.",
+        "Before changing the pin, verify the tarball: minisign -VP RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 -m <tarball> (key from https://doc.libsodium.org/installation), then record its sha256.",
+        "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast."
+      ]
+    }
+  }
 }

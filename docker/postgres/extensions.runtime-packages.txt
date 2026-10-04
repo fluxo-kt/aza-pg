@@ -6,7 +6,6 @@ libjson-xs-perl
 liblz4-1
 libmecab2
 libmsgpack-c2
-libsodium23
 libssl3t64
 libtext-csv-xs-perl
 libyaml-0-2

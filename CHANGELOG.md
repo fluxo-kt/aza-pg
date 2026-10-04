@@ -30,6 +30,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgvector 0.8.2 → 0.8.7**: Fixes [CVE-2026-103484](https://github.com/pgvector/pgvector/issues/1036) (a role that can build an IVFFlat index can write out of bounds, leading to arbitrary code execution), plus possible HNSW index corruption during vacuum and IVFFlat memory use above `maintenance_work_mem`. PGDG does not ship 0.8.7 yet, so the image now builds pgvector from source.
 - **supautils 3.2.2 → 3.4.4**: Fixes four critical privilege escalations to superuser ([GHSA-5pqj-rc76-r669](https://github.com/supabase/supautils/security/advisories/GHSA-5pqj-rc76-r669), [GHSA-v9vh-54vv-7vfg](https://github.com/supabase/supautils/security/advisories/GHSA-v9vh-54vv-7vfg), [GHSA-vxh6-6m4g-c39q](https://github.com/supabase/supautils/security/advisories/GHSA-vxh6-6m4g-c39q), [GHSA-xj9m-rx42-rfc7](https://github.com/supabase/supautils/security/advisories/GHSA-xj9m-rx42-rfc7)); the library is no longer compiled with test-only code enabled. Affects only deployments that preload `supautils`.
 - **pgvectorscale 0.9.0 → 0.9.1**: Hardens DiskANN against type confusion and malformed vectors that could crash the backend, leak memory or write out of bounds.
+- **pgsodium 3.1.9 → 3.1.11, libsodium 1.0.18 → 1.0.22**: Fixes a SQL injection in `pgsodium.mask_role` and a buffer-size error in `crypto_aead_ietf_encrypt_by_id`, and adds IP-address encryption (`crypto_ipcrypt_*`). libsodium is now built from the signed upstream release and shared by pgsodium and supabase_vault; it replaces Debian's `libsodium23`. Run `ALTER EXTENSION pgsodium UPDATE` in existing databases.
 
 ### Changed
 
@@ -41,7 +42,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **wrappers 0.6.1 → 0.6.3**: Adds a MongoDB wrapper; `mysql_fdw` no longer leaks MySQL error details and supports `varchar`/`bpchar` text columns; Iceberg REST catalog HTTP timeouts are configurable.
 - **PGroonga 4.0.6 → 4.0.9**: Adds `pgroonga_physical_table_names()` and an index option that raises the lexicon key-size limit from 4 GiB to 1 TiB.
 - **pgmq 1.11.1 → 1.13.0**: Fixes partitioned queues that silently overran their pre-created partitions and could not recover.
-- **Build optimisation**: PGroonga is now compiled with optimisation (`-O3`; it was built unoptimised at `-O0`), and the Rust extensions (`wrappers`, `pg_jsonschema`) use their upstream release profile (opt-level 3, fat LTO) instead of size-tuned settings.
+- **Build optimisation**: PGroonga (`-O3`) and pgsodium (`-O2`) are now compiled with optimisation (both were built unoptimised at `-O0`), and the Rust extensions (`wrappers`, `pg_jsonschema`) use their upstream release profile (opt-level 3, fat LTO) instead of size-tuned settings.
 
 ### Fixed
 

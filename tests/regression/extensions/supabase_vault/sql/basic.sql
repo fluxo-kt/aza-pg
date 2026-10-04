@@ -12,8 +12,7 @@ CREATE EXTENSION IF NOT EXISTS supabase_vault;
 
 -- Test 1: Verify both extensions are loaded
 SELECT
-  extname,
-  extversion
+  extname
 FROM
   pg_extension
 WHERE

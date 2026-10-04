@@ -6,7 +6,12 @@
 
 import { dirname, join } from "node:path";
 import { spawn } from "bun";
-import { MANIFEST_ENTRIES, ManifestEntry, SourceSpec } from "./manifest-data";
+import {
+  MANIFEST_ENTRIES,
+  SOURCE_LIBRARIES,
+  type ManifestEntry,
+  type SourceSpec,
+} from "./manifest-data";
 
 type ResolvedSource =
   | { type: "builtin" }
@@ -76,6 +81,7 @@ async function main() {
 
   const manifest = {
     entries: resolved,
+    sourceLibraries: SOURCE_LIBRARIES,
   };
 
   const outputPath = join("docker", "postgres", "extensions.manifest.json");

@@ -213,8 +213,10 @@ RUN set -euo pipefail && \
 COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
-# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-RUN rm -rf /usr/lib/postgresql/18/lib/bitcode
+# Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
+# ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
+# manifest-data.ts): the dynamic loader finds that directory only through its cache.
+RUN rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
 
 # Pre-compiled extensions from GitHub releases (for packages not available in apt)
 # IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
@@ -267,7 +269,7 @@ RUN set -euo pipefail && \
     rm -rf /tmp/pgtap
 
 # Create stub pgsodium_getkey script (required when pgsodium is preloaded)
-# pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
+# pgsodium requires this script to exist when loaded via shared_preload_libraries.
 # This stub script returns a test key in hex format (64 hex characters = 32 bytes).
 # Production deployments using Transparent Column Encryption (TCE) should replace this
 # with a proper key management script that fetches the server secret securely from vault/KMS.

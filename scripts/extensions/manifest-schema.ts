@@ -46,6 +46,7 @@ export const BuildKindSchema = type(
  * - features: Optional Cargo feature flags (for cargo-pgrx builds)
  * - noDefaultFeatures: Disable default Cargo features (for cargo-pgrx builds)
  * - mesonOptions: Optional Meson setup options (for meson builds)
+ * - makeOptions: Optional make command-line assignments (for pgxs builds)
  * - script: Optional script identifier for custom build logic
  * - patches: Optional sed expressions to apply before building
  */
@@ -55,6 +56,7 @@ export const BuildSpecSchema = type({
   "features?": "string[]",
   "noDefaultFeatures?": "boolean",
   "mesonOptions?": "string[]",
+  "makeOptions?": "string[]",
   "script?": "string",
   "patches?": "string[]",
 });
@@ -103,6 +105,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - dependencies: List of extension dependencies
  * - provides: List of features/extensions provided
  * - aptPackages: System packages required for building
+ * - sourceLibraries: SOURCE_LIBRARIES keys the module links against (built first, shipped once)
  * - notes: General notes about the extension
  * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build, "github-release" for GitHub binaries)
  * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
@@ -129,6 +132,7 @@ export const ManifestEntrySchema = type({
   "dependencies?": "string[]",
   "provides?": "string[]",
   "aptPackages?": "string[]",
+  "sourceLibraries?": "string[]",
   "notes?": "string[]",
   "install_via?": "'pgdg'|'percona'|'timescale'|'source'|'github-release'",
   "githubRepo?": "string",

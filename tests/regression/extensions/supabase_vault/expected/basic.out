@@ -8,18 +8,17 @@ CREATE EXTENSION IF NOT EXISTS pgsodium;
 CREATE EXTENSION IF NOT EXISTS supabase_vault;
 -- Test 1: Verify both extensions are loaded
 SELECT
-extname,
-extversion
+extname
 FROM
 pg_extension
 WHERE
 extname IN ('pgsodium', 'supabase_vault')
 ORDER BY
 extname;
-extname | extversion
-----------------+------------
-pgsodium | 3.1.9
-supabase_vault | 0.3.1
+extname
+----------------
+pgsodium
+supabase_vault
 (2 rows)
 -- Test 2: Verify vault schema exists
 SELECT

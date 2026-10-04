@@ -20,7 +20,6 @@ libnuma-dev
 libproj-dev
 libprotobuf-c-dev
 libreadline-dev
-libsodium-dev
 libssl-dev
 libtext-csv-xs-perl
 libtool

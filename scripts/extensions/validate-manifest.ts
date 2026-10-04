@@ -55,12 +55,14 @@ interface ManifestEntry {
   source?: SourceSpec;
   runtime?: RuntimeSpec;
   dependencies?: string[];
+  sourceLibraries?: string[];
   enabled?: boolean;
 }
 
 interface Manifest {
   generatedAt: string;
   entries: ManifestEntry[];
+  sourceLibraries?: Record<string, { url: string; sha256: string; soname: string }>;
 }
 
 const errors: string[] = [];
@@ -327,6 +329,33 @@ function validateDependencies(manifest: Manifest): void {
   }
 }
 
+// Source-built libraries: every name an entry links must be defined, and each definition must pin
+// an HTTPS tarball by SHA-256, because build-extensions.ts trusts the tarball only through that hash.
+function validateSourceLibraries(manifest: Manifest): void {
+  console.log(); // Empty line for spacing
+  logger.info("[SOURCE LIBRARY VALIDATION]");
+
+  const libraries = manifest.sourceLibraries ?? {};
+  for (const [name, lib] of Object.entries(libraries)) {
+    if (!lib.url.startsWith("https://")) error(`Source library '${name}' url must be https`);
+    if (!/^[0-9a-f]{64}$/.test(lib.sha256)) {
+      error(`Source library '${name}' sha256 must be 64 lowercase hex characters`);
+    }
+    if (!/^lib[\w.+-]+\.so\.\d+$/.test(lib.soname)) {
+      error(`Source library '${name}' soname must look like libNAME.so.N`);
+    }
+  }
+  for (const entry of manifest.entries) {
+    for (const name of entry.sourceLibraries ?? []) {
+      if (!(name in libraries)) {
+        error(
+          `Extension '${entry.name}' links source library '${name}', which SOURCE_LIBRARIES does not define`
+        );
+      }
+    }
+  }
+}
+
 // 7. GitHub release entry validation
 function validateGithubReleaseEntries(manifest: Manifest): void {
   console.log(); // Empty line for spacing
@@ -428,6 +457,7 @@ async function main(): Promise<void> {
     await validateSharedPreloadLibraries(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
+    validateSourceLibraries(manifest);
     validateGithubReleaseEntries(manifest);
 
     // Store counts for success message

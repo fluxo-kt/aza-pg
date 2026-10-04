@@ -7,7 +7,8 @@
 #
 # Gating:
 # - Only runs if ENABLE_PGSODIUM_INIT=true (default: disabled)
-# - pgsodium is marked as optional in manifest (defaultEnable: false)
+# - pgsodium itself is preloaded and created by default (01-extensions.sql); this script only adds
+#   its server secret key
 #
 # Prerequisites (if enabled):
 # - pgsodium extension will be created by this script
@@ -40,14 +41,13 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         CREATE EXTENSION IF NOT EXISTS pgsodium;
 
         -- IMPORTANT: pgsodium event triggers require preloading to avoid GUC parameter errors
-        -- pgsodium v3.1.9 event triggers call current_setting('pgsodium.enable_event_trigger')
+        -- pgsodium event triggers call current_setting('pgsodium.enable_event_trigger')
         -- without missing_ok=true. The parameter is only registered when pgsodium is preloaded.
         -- Without preload, event triggers fail during DDL operations with:
         -- "unrecognized configuration parameter 'pgsodium.enable_event_trigger'"
         --
-        -- By default, pgsodium is NOT preloaded (optional module, defaultEnable: false).
-        -- To enable pgsodium + vault: Add to POSTGRES_SHARED_PRELOAD_LIBRARIES:
-        --   POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pgsodium"
+        -- The image preloads pgsodium by default; the entrypoint drops it when the getkey script is
+        -- missing or invalid, and a POSTGRES_SHARED_PRELOAD_LIBRARIES override must keep it.
         --
         -- Full Transparent Column Encryption (TCE) additionally requires:
         --   - pgsodium_getkey script configured via pgsodium.getkey_script GUC parameter

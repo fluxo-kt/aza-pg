@@ -59,18 +59,11 @@ await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERA
 
 ### Testing TSL Features
 
-Use the provided test script to verify TSL features are available:
+`scripts/test/test-timescaledb-breaking-changes.ts` (suite group `extensions`) proves the image ships the TSL module: it compresses chunks, refreshes a continuous aggregate over them and compares its rows with the same aggregate computed directly; any error, including a license error, fails it.
 
 ```bash
-bun scripts/test/verify-timescaledb-tsl.ts
+bun scripts/test/test-timescaledb-breaking-changes.ts [image]
 ```
-
-The script tests:
-
-1. Extension loads successfully
-2. Compression can be enabled on hypertables
-3. Continuous aggregates can be created
-4. License information (if available)
 
 ### Manual Verification
 

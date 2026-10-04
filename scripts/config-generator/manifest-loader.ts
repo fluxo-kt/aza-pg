@@ -59,32 +59,41 @@ export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[]
 }
 
 /**
- * Get comma-separated list of extensions/modules that should be preloaded at server start
- * Filters for entries with shared_preload and defaultEnable = true
- * @param manifest - Parsed manifest object
- * @returns Comma-separated list of preload libraries (e.g., "auto_explain,pg_cron,timescaledb")
+ * The manifest fields that decide whether an entry is preloaded by default. Structural, so a caller
+ * holding only these fields (the entrypoint generator) shares this one implementation.
  */
-export function getDefaultSharedPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true (must be loaded at server start)
-  // 2. runtime.defaultEnable == true (enabled by default)
-  // 3. enabled != false (not explicitly disabled in manifest)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime) return false;
+export interface PreloadCandidate {
+  name: string;
+  enabled?: boolean;
+  runtime?: { sharedPreload?: boolean; defaultEnable?: boolean; preloadLibraryName?: string };
+}
 
-    const isSharedPreload = runtime.sharedPreload === true;
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isEnabled = entry.enabled !== false; // null or true
-
-    return isSharedPreload && isDefaultEnable && isEnabled;
-  });
-
-  // Sort alphabetically for consistency across regenerations
-  // Use preloadLibraryName if specified (e.g., pg_safeupdate → safeupdate)
-  const extensionNames = preloadExtensions
-    .map((e) => e.runtime?.preloadLibraryName ?? e.name)
-    .sort();
-
-  return extensionNames.join(",");
+/**
+ * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
+ * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
+ * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES and
+ * the healthcheck's EXPECTED_PRELOAD (generator.ts) both read this, so the healthcheck expects exactly
+ * what the entrypoint preloads.
+ * @throws Error when an entry's preloadLibraryName is empty: it names no library, and neither
+ *   guessing the extension name nor emitting an empty list element would load what was meant
+ */
+export function getDefaultSharedPreloadLibraries(manifest: {
+  entries: readonly PreloadCandidate[];
+}): string {
+  return manifest.entries
+    .filter(
+      (entry) =>
+        entry.runtime?.sharedPreload === true &&
+        entry.runtime.defaultEnable === true &&
+        entry.enabled !== false
+    )
+    .map((entry) => {
+      const library = entry.runtime?.preloadLibraryName;
+      if (library === "") {
+        throw new Error(`${entry.name}: runtime.preloadLibraryName is empty`);
+      }
+      return library ?? entry.name;
+    })
+    .sort()
+    .join(",");
 }

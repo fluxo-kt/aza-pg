@@ -15,6 +15,11 @@
  */
 
 import { join } from "node:path";
+import {
+  getDefaultSharedPreloadLibraries,
+  loadManifest,
+  type Manifest,
+} from "../config-generator/manifest-loader";
 import { cpuGatedShareDir, requiredX86Flags } from "../extensions/cpu-gate";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { error, info, section, success } from "../utils/logger";
@@ -23,66 +28,6 @@ import { error, info, section, success } from "../utils/logger";
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-
-export interface RuntimeSpec {
-  sharedPreload?: boolean;
-  defaultEnable?: boolean;
-  preloadOnly?: boolean;
-  preloadLibraryName?: string;
-  notes?: string[];
-}
-
-export interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  runtime?: RuntimeSpec;
-  x86CpuFlags?: string[];
-}
-
-export interface Manifest {
-  entries: ManifestEntry[];
-}
-
-/**
- * Read and parse manifest
- */
-async function readManifest(): Promise<Manifest> {
-  if (!(await Bun.file(MANIFEST_PATH).exists())) {
-    throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
-  }
-
-  const content = Bun.file(MANIFEST_PATH);
-  return (await content.json()) as Manifest;
-}
-
-/**
- * Generate comma-separated list of extensions to preload by default
- */
-export function generateDefaultSharedPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true
-  // 2. runtime.defaultEnable == true
-  // 3. enabled != false (i.e., enabled is null or true)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime) return false;
-
-    const isSharedPreload = runtime.sharedPreload === true;
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isEnabled = entry.enabled !== false; // null or true
-
-    return isSharedPreload && isDefaultEnable && isEnabled;
-  });
-
-  // Sort alphabetically for consistency
-  // Use preloadLibraryName if specified, otherwise use extension name
-  const extensionNames = preloadExtensions
-    .map((e) => e.runtime?.preloadLibraryName || e.name)
-    .sort();
-
-  return extensionNames.join(",");
-}
 
 /**
  * Lines for CPU_GATED_EXTENSIONS: name|space-separated flags|share directory, one per enabled entry
@@ -106,7 +51,7 @@ async function generateEntrypoint(): Promise<void> {
 
   // Read manifest
   info("Reading manifest...");
-  const manifest = await readManifest();
+  const manifest = await loadManifest(REPO_ROOT);
   info(`Manifest loaded: ${manifest.entries.length} total entries`);
 
   // Read template
@@ -120,7 +65,7 @@ async function generateEntrypoint(): Promise<void> {
 
   // Generate DEFAULT_SHARED_PRELOAD_LIBRARIES
   info("Generating DEFAULT_SHARED_PRELOAD_LIBRARIES...");
-  const defaultPreloadLibs = generateDefaultSharedPreloadLibraries(manifest);
+  const defaultPreloadLibs = getDefaultSharedPreloadLibraries(manifest);
   info(`Extensions to preload by default: ${defaultPreloadLibs}`);
 
   // Replace placeholder

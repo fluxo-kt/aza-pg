@@ -15,11 +15,18 @@ CREATE EXTENSION if NOT EXISTS pg_net;
 
 
 -- supabase_vault: Secure credential storage (service role key, base URL)
-CREATE EXTENSION if NOT EXISTS supabase_vault;
-
-
+-- supabase_vault: created below only where available (aza-pg)
 -- pg_cron: Scheduled job execution (ensure_workers cron)
-CREATE EXTENSION if NOT EXISTS pg_cron;
+DO $extensions$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'supabase_vault') THEN
+    CREATE EXTENSION IF NOT EXISTS supabase_vault;
+  END IF;
+  IF current_database() = current_setting('cron.database_name', true) THEN
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
+  END IF;
+END
+$extensions$;
 
 
 -- ============================================================================

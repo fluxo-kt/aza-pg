@@ -239,7 +239,40 @@ function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string
   return `${VAULT_SECRET_COMPAT_SQL}\n\n\n${patched}`;
 }
 
+// Upstream creates supabase_vault and pg_cron unconditionally, so the shipped schema.sql failed in any database where
+// either cannot exist: supabase_vault is optional in aza-pg (ensure_workers reads it through aza_vault_secret), and
+// pg_cron can only be created in the database named by cron.database_name (pgflow's cron setup functions report
+// "skipped" elsewhere). Guarding them here lets initdb, new databases (docs/PGFLOW.md) and tests run the file as is.
+const OPTIONAL_EXTENSIONS_SQL = `DO $extensions$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'supabase_vault') THEN
+    CREATE EXTENSION IF NOT EXISTS supabase_vault;
+  END IF;
+  IF current_database() = current_setting('cron.database_name', true) THEN
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
+  END IF;
+END
+$extensions$;`;
+
+function patchOptionalExtensions(filename: string, upstreamContent: string): string {
+  const patched = replaceRequired(
+    filename,
+    upstreamContent,
+    "create extension if not exists supabase_vault;",
+    "-- supabase_vault: created below only where available (aza-pg)"
+  );
+  return replaceRequired(
+    filename,
+    patched,
+    "create extension if not exists pg_cron;",
+    OPTIONAL_EXTENSIONS_SQL
+  );
+}
+
 function localSchemaContent(filename: string, upstreamContent: string): string {
+  if (filename === "0010_extensions.sql") {
+    return patchOptionalExtensions(filename, upstreamContent);
+  }
   if (filename === "0059_function_ensure_workers.sql") {
     return patchEnsureWorkersVaultAccess(filename, upstreamContent);
   }

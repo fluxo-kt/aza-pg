@@ -122,10 +122,8 @@ for db in "${dbs[@]}"; do
     # Migrations create functions that read supabase_vault or pg_cron objects absent from many aza-pg databases;
     # aza-overrides.sql replaces exactly those functions in the same transaction, so body checks are deferred.
     echo "SET LOCAL check_function_bodies = off;"
-    for f in "${pending[@]}"; do
-      # Same rule as initdb (05-pgflow-init.sh): supabase_vault is optional in aza-pg.
-      sed '/CREATE EXTENSION.*supabase_vault/d' "$DIR/migrations/$f"
-    done
+    # cat with no file operands would read stdin, so an empty pending list must not reach it.
+    [ "${#pending[@]}" -eq 0 ] || (cd "$DIR/migrations" && cat "${pending[@]}")
     cat "$DIR/aza-overrides.sql" /opt/pgflow/security-patches.sql
     echo "COMMENT ON SCHEMA pgflow IS 'pgflow $target';"
   } | "${PSQL[@]}" -1 -q -d "$db" >/dev/null || {

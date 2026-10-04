@@ -24,36 +24,6 @@ export interface InstallResult {
 }
 
 /**
- * Get the configured cron.database_name setting from PostgreSQL.
- * pg_cron can only be created in the database matching this setting.
- */
-async function getCronDatabaseName(
-  container: string,
-  user: string = "postgres"
-): Promise<string | null> {
-  const sql = `SELECT current_setting('cron.database_name', true)`;
-  const result = await runSQL(container, "postgres", sql, user);
-  if (!result.success || !result.stdout.trim()) {
-    return null;
-  }
-  return result.stdout.trim();
-}
-
-/**
- * Check if a specific extension exists in a database.
- */
-async function checkExtension(
-  container: string,
-  database: string,
-  extname: string,
-  user: string = "postgres"
-): Promise<boolean> {
-  const sql = `SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '${extname}')`;
-  const result = await runSQL(container, database, sql, user);
-  return result.success && result.stdout.trim() === "t";
-}
-
-/**
  * Install pgflow schema into a PostgreSQL database via Docker container.
  * The database must already have the image's realtime.send() (see the module comment).
  */
@@ -90,73 +60,11 @@ export async function installPgflowSchema(
       };
     }
 
-    // Step 2: Read and prepare pgflow schema
-    let schemaContent = await Bun.file(SCHEMA_FILE).text();
-
-    // Step 2a: Handle pg_cron database mismatch (defensive layer)
-    // pg_cron can ONLY be created in database matching cron.database_name
-    const cronDB = await getCronDatabaseName(container, user);
-
-    if (cronDB && database !== cronDB) {
-      // Target database differs from cron.database_name
-      // Filter out pg_cron creation line to prevent error
-      const originalContent = schemaContent;
-      schemaContent = schemaContent.replace(
-        /CREATE EXTENSION\s+if\s+NOT\s+EXISTS\s+pg_cron;?\s*/gi,
-        `-- pg_cron exists in database '${cronDB}' (cron.database_name)\n`
-      );
-
-      // Verify pg_cron exists where expected
-      const cronExists = await checkExtension(container, cronDB, "pg_cron", user);
-      if (!cronExists) {
-        return {
-          success: false,
-          stdout: "",
-          stderr: `pgflow requires pg_cron extension, but it was not found in configured database '${cronDB}' (cron.database_name). Please ensure pg_cron is installed.`,
-        };
-      }
-
-      // Log filtering for diagnostics
-      if (originalContent !== schemaContent) {
-        console.warn(
-          `[pgflow] Filtered pg_cron from schema (target: ${database}, cron.database_name: ${cronDB})`
-        );
-      }
-    }
-
-    // Step 3: Install prepared schema
-    const proc = Bun.spawn(
-      [
-        "docker",
-        "exec",
-        "-i",
-        "-u",
-        user,
-        container,
-        "psql",
-        "-d",
-        database,
-        "-v",
-        "ON_ERROR_STOP=1",
-      ],
-      { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
-    );
-
-    proc.stdin.write(schemaContent);
-    proc.stdin.end();
-
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-
-    if (exitCode !== 0) {
-      return {
-        success: false,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-      };
+    // Step 2: the schema file as shipped — it creates supabase_vault and pg_cron only where they can exist, so any
+    // database takes it unchanged (rewriting it here would test a file the image does not ship).
+    const installed = await runSQL(container, database, await Bun.file(SCHEMA_FILE).text(), user);
+    if (!installed.success) {
+      return { success: false, stdout: installed.stdout, stderr: installed.stderr };
     }
 
     // Verify installation
@@ -164,8 +72,8 @@ export async function installPgflowSchema(
 
     return {
       success: true,
-      stdout: stdout.trim(),
-      stderr: stderr.trim(),
+      stdout: installed.stdout,
+      stderr: installed.stderr,
       tablesCreated: verification.tables,
       functionsCreated: verification.functions,
     };

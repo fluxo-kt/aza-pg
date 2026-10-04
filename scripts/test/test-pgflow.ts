@@ -365,15 +365,15 @@ SELECT count(*) FROM pg_extension WHERE extname IN ('pgmq', 'pg_net');`
   await test("pgflow installs from /opt/pgflow into a new database without vault and pg_cron", async () => {
     await query(MAIN_DB, `CREATE DATABASE ${NO_VAULT_DB}`);
     await query(NO_VAULT_DB, "CREATE EXTENSION pgmq; CREATE EXTENSION pg_net;");
-    // pg_cron can only exist in cron.database_name and vault is optional: drop their CREATE EXTENSION lines, as
-    // 05-pgflow-init.sh does for vault. ON_ERROR_STOP makes any other failure fail the install.
+    // Exactly the documented commands (docs/PGFLOW.md "New Databases"): the shipped schema.sql must install unchanged
+    // outside cron.database_name, skipping pg_cron there. Vault is then dropped so the next case runs without it.
     const install = await dockerExec([
       "bash",
       "-c",
       `set -euo pipefail
-sed -e '/create extension.*supabase_vault/Id' -e '/create extension.*pg_cron/Id' /opt/pgflow/schema.sql \
-  | psql -X -q -v ON_ERROR_STOP=1 -U postgres -d ${NO_VAULT_DB} >/dev/null
-psql -X -q -v ON_ERROR_STOP=1 -U postgres -d ${NO_VAULT_DB} -f /opt/pgflow/security-patches.sql >/dev/null`,
+psql -X -q -v ON_ERROR_STOP=1 -U postgres -d ${NO_VAULT_DB} -f /opt/pgflow/schema.sql >/dev/null
+psql -X -q -v ON_ERROR_STOP=1 -U postgres -d ${NO_VAULT_DB} -f /opt/pgflow/security-patches.sql >/dev/null
+psql -X -q -v ON_ERROR_STOP=1 -U postgres -d ${NO_VAULT_DB} -c 'DROP EXTENSION IF EXISTS supabase_vault' >/dev/null`,
     ]);
     if (install.code !== 0) throw new Error(`install failed:\n${install.output}`);
     expectEqual(

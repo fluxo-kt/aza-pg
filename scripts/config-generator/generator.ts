@@ -59,9 +59,9 @@ function generatePostgresqlConf(
   lines.push("#");
   lines.push("# DO NOT EDIT MANUALLY - Changes will be overwritten");
   lines.push("# Edit scripts/config-generator/base-config.ts and regenerate");
-  lines.push("");
-  lines.push("# Base Configuration");
-  lines.push("include = '/etc/postgresql/postgresql-base.conf'");
+  lines.push(
+    "# The image's entrypoint includes /etc/postgresql/postgresql-base.conf before this file."
+  );
   lines.push("");
 
   const categories = {

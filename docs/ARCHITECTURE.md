@@ -262,9 +262,10 @@ Highest wins:
 
 1. Operator `-c name=value` on the command line (compose `command:`).
 2. `ALTER SYSTEM` (`postgresql.auto.conf` in the data directory; reloadable settings apply on `SELECT pg_reload_conf()`).
-3. Auto-tuned values, written at every start to `/var/run/postgresql/aza-auto-config.conf`, which first includes the config file below.
-4. The config file: a stack's `postgresql-*.conf` (which includes `postgresql-base.conf`), or the data directory's `postgresql.conf`.
-5. PostgreSQL built-in defaults.
+3. Auto-tuned values, written at every start to `/var/run/postgresql/aza-auto-config.conf`, which first includes the two files below.
+4. The config file: a stack's `postgresql-*.conf`, or the data directory's `postgresql.conf`.
+5. aza-pg's base settings, `/etc/postgresql/postgresql-base.conf` (logging, `pg_stat_statements`, `auto_explain`, autovacuum, TimescaleDB telemetry off), in every container.
+6. PostgreSQL built-in defaults.
 
 Config files rank below auto-tuning because initdb writes `max_connections`, `shared_buffers`, `max_wal_size`, `min_wal_size` and `listen_addresses = '*'` into every data directory's `postgresql.conf`; letting the file win would switch auto-tuning off for every database. The shipped config files therefore never set a tuned setting.
 

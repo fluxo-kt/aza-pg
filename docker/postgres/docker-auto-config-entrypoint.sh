@@ -593,6 +593,10 @@ AUTO_CONFIG_FILE="${AUTO_CONFIG_DIR}/aza-auto-config.conf"
 {
     echo "# Written at every start by docker-auto-config-entrypoint.sh; edits here are lost."
     echo "# Override a value with ALTER SYSTEM or -c name=value; postgresql.conf values below are replaced."
+    # Later lines win, so the order is the precedence: aza-pg's base settings (logging, telemetry off, …) for every
+    # container, then the operator's file, then auto-tuning. A plain include, not include_if_exists: the image ships
+    # the file, and a missing one should stop the server rather than silently drop the base settings.
+    echo "include '/etc/postgresql/postgresql-base.conf'"
     echo "include $(conf_quote "$OPERATOR_CONFIG")"
     for setting in "${AUTO_SETTINGS[@]}"; do
         echo "${setting%%=*} = $(conf_quote "${setting#*=}")"

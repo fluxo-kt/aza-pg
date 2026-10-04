@@ -24,6 +24,7 @@ import { resolveImageTag } from "./image-resolver";
 const IMAGE = resolveImageTag();
 const RUN_ID = generateUniqueProjectName("aza-pg-autoconfig");
 const AUTO_CONFIG_FILE = "/var/run/postgresql/aza-auto-config.conf";
+const BASE_CONFIG = "/etc/postgresql/postgresql-base.conf";
 const REPO_ENTRYPOINT = join(
   import.meta.dir,
   "../../docker/postgres/docker-auto-config-entrypoint.sh"
@@ -464,10 +465,11 @@ function checkRow(row: Row, result: { code: number; stdout: string; stderr: stri
   const confStart = stdoutLines.indexOf(`CONFIG ${AUTO_CONFIG_FILE}`);
   if (confStart < 0) return [...failures, "stub printed no config file"];
   const confLines = stdoutLines.slice(confStart + 1);
-  const include = confLines.find((l) => !l.startsWith("#"));
-  if (row.include && include !== `include '${row.include}'`) {
+  const includes = confLines.filter((l) => !l.startsWith("#")).slice(0, 2);
+  const wantIncludes = [`include '${BASE_CONFIG}'`, `include '${row.include}'`];
+  if (row.include && JSON.stringify(includes) !== JSON.stringify(wantIncludes)) {
     failures.push(
-      `first setting line ${JSON.stringify(include)}, expected include '${row.include}'`
+      `first setting lines ${JSON.stringify(includes)}, expected ${JSON.stringify(wantIncludes)}`
     );
   }
   const conf = parseConf(confLines.join("\n"));
@@ -622,6 +624,19 @@ async function main(): Promise<void> {
           entrypoint,
           async (container) => {
             await assertGeneratedSettingsApplied(container);
+            // Base settings reach a plain container, and the operator's file still beats them: initdb writes
+            // log_timezone into the data directory's postgresql.conf, which the base file also sets. pg_settings
+            // spells timezone TimeZone, so that name would match no row.
+            const sources = await psql(
+              container,
+              `SELECT string_agg(name || '=' || setting || '@' || sourcefile, ',' ORDER BY name) FROM pg_settings
+                 WHERE name IN ('pg_stat_statements.track', 'timescaledb.telemetry_level', 'log_timezone')`
+            );
+            const pgConf = `${await psql(container, "SHOW data_directory")}/postgresql.conf`;
+            const want = `log_timezone=Etc/UTC@${pgConf},pg_stat_statements.track=all@${BASE_CONFIG},timescaledb.telemetry_level=off@${BASE_CONFIG}`;
+            if (sources !== want) {
+              throw new Error(`base/operator precedence: ${sources}; want ${want}`);
+            }
             const preload = await psql(container, "SHOW shared_preload_libraries");
             if (preload !== `${defaultPreload},set_user`) {
               throw new Error(

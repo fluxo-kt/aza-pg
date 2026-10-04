@@ -1,524 +1,133 @@
 #!/usr/bin/env bun
 /**
- * Security Test Suite
- * Verifies security hardening and authentication configuration
+ * Security defaults of the image: password hashing, client authentication, network binding and
+ * schema privileges, each asserted by what a client experiences rather than by a setting's name.
  *
- * Coverage:
- * - SCRAM-SHA-256 authentication enforcement
- * - PgBouncer auth_query function security
- * - Network binding configuration
- * - Extension security (SHA pins, manifest validation)
- * - pgAudit logging verification
+ * Two containers start in parallel: one with no POSTGRES_BIND_IP (the entrypoint default) and one
+ * with POSTGRES_BIND_IP=0.0.0.0, the only one reachable on a non-loopback address. Loopback TCP is
+ * `trust` in pg_hba (the official image's initdb default), so password authentication can only be
+ * observed through the container's own network address.
  *
- * Usage: bun test scripts/test/test-security.ts
+ * Usage: POSTGRES_IMAGE=<ref> bun test ./scripts/test/test-security.ts
  */
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { $ } from "bun";
-import type { ManifestEntry } from "../extensions/manifest-data";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { resolveImageTag } from "./image-resolver";
 
-const TEST_CONTAINER = `aza-pg-security-test-${Date.now()}`;
-const TEST_PASSWORD = "secureTestPass123!";
-const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "localhost/aza-pg:latest";
-const IMAGE_MANIFEST_PATH = "/etc/postgresql/extensions.manifest.json";
+// argv is NOT passed: under `bun test` it holds the test runner's own arguments, not an image.
+const IMAGE = resolveImageTag({ argv: [] });
+const PASSWORD = "secureTestPass123!";
+const DEFAULT_CONTAINER = generateUniqueContainerName("aza-pg-security-default");
+const NETWORK_CONTAINER = generateUniqueContainerName("aza-pg-security-network");
 
-type ImageSourceSpec = ManifestEntry["source"] & { commit?: string };
-
-interface ImageManifestEntry extends Omit<ManifestEntry, "source"> {
-  source: ImageSourceSpec;
+async function startContainer(name: string, env: string[]): Promise<void> {
+  const flags = env.flatMap((e) => ["-e", e]);
+  const run =
+    await $`docker run -d --name ${name} -e POSTGRES_PASSWORD=${PASSWORD} ${flags} ${IMAGE}`
+      .quiet()
+      .nothrow();
+  if (run.exitCode !== 0) throw new Error(`docker run ${name} failed: ${run.stderr.toString()}`);
+  await waitForPostgres({ container: name, timeout: 120 });
 }
 
-interface ImageManifest {
-  entries: ImageManifestEntry[];
-}
-
-/**
- * Execute SQL command in test container
- */
-async function runSQLInContainer(
-  containerName: string,
-  sql: string
-): Promise<{ stdout: string; stderr: string; success: boolean }> {
-  const result = await $`docker exec ${containerName} psql -U postgres -t -A -c ${sql}`
+async function sql(
+  container: string,
+  query: string,
+  user = "postgres"
+): Promise<{ ok: boolean; out: string; err: string }> {
+  const result = await $`docker exec ${container} psql -X -U ${user} -d postgres -tAc ${query}`
     .quiet()
     .nothrow();
   return {
-    stdout: result.stdout.toString().trim(),
-    stderr: result.stderr.toString().trim(),
-    success: result.exitCode === 0,
+    ok: result.exitCode === 0,
+    out: result.stdout.toString().trim(),
+    err: result.stderr.toString().trim(),
   };
 }
 
-async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; success: boolean }> {
-  return runSQLInContainer(TEST_CONTAINER, sql);
-}
-
-async function readImageManifest(): Promise<ImageManifest> {
-  const result = await $`docker exec ${TEST_CONTAINER} cat ${IMAGE_MANIFEST_PATH}`
-    .quiet()
-    .nothrow();
-  expect(result.exitCode).toBe(0);
-
-  const manifest = JSON.parse(result.stdout.toString()) as ImageManifest;
-  expect(Array.isArray(manifest.entries)).toBe(true);
-  return manifest;
-}
-
-/**
- * Start test container
- */
-async function startContainer() {
-  // Clean up any existing container
-  await $`docker rm -f -v ${TEST_CONTAINER}`.quiet().nothrow();
-
-  // Start container with security settings
-  const result = await $`docker run --name ${TEST_CONTAINER} \
-    -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
-    -e POSTGRES_MEMORY=2048 \
-    -e POSTGRES_BIND_IP=127.0.0.1 \
-    -d ${TEST_IMAGE}`
-    .quiet()
-    .nothrow();
-
-  if (result.exitCode !== 0) {
-    throw new Error("Failed to start test container - image may not be built");
-  }
-
-  const ready = await waitForPostgres({
-    container: TEST_CONTAINER,
-    timeout: 120,
-  });
-  if (!ready) {
-    throw new Error("Database did not become stable in time (120s timeout)");
-  }
-  console.log("Database is ready");
-}
-
-/**
- * Stop and remove test container
- */
-async function stopContainer() {
-  await $`docker rm -f -v ${TEST_CONTAINER}`.quiet().nothrow();
-}
-
-async function readListenAddressForBindIp(bindIp: string): Promise<string> {
-  const containerName = generateUniqueContainerName("aza-pg-security-bind");
-
-  try {
-    const result = await $`docker run --name ${containerName} \
-      -e POSTGRES_PASSWORD=${TEST_PASSWORD} \
-      -e POSTGRES_MEMORY=1024 \
-      -e POSTGRES_BIND_IP=${bindIp} \
-      -d ${TEST_IMAGE}`
-      .quiet()
-      .nothrow();
-    expect(result.exitCode).toBe(0);
-
-    const ready = await waitForPostgres({
-      container: containerName,
-      timeout: 90,
-    });
-    expect(ready).toBe(true);
-
-    const setting = await runSQLInContainer(containerName, "SHOW listen_addresses");
-    expect(setting.success).toBe(true);
-    return setting.stdout;
-  } finally {
-    await $`docker rm -f -v ${containerName}`.quiet().nothrow();
-  }
-}
-
 beforeAll(async () => {
-  await startContainer();
-}, 90000); // 90 second timeout for container startup
+  await Promise.all([
+    startContainer(DEFAULT_CONTAINER, []),
+    startContainer(NETWORK_CONTAINER, ["POSTGRES_BIND_IP=0.0.0.0"]),
+  ]);
+}, 150_000);
 
 afterAll(async () => {
-  await stopContainer();
-}, 15000); // 15 second timeout for cleanup
+  await $`docker rm -f -v ${DEFAULT_CONTAINER} ${NETWORK_CONTAINER}`.quiet().nothrow();
+}, 30_000);
 
-describe("Security - Authentication", () => {
-  test("SCRAM-SHA-256 should be enforced (no MD5)", async () => {
-    const result = await runSQL("SHOW password_encryption");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("scram-sha-256");
+describe("Authentication", () => {
+  test("passwords are hashed with SCRAM-SHA-256", async () => {
+    const result = await sql(DEFAULT_CONTAINER, "SHOW password_encryption");
+    expect(result.out).toBe("scram-sha-256");
   });
 
-  test("Password authentication should work with correct password", async () => {
-    // Test by connecting as postgres (we're already connected via docker exec)
-    const result = await runSQL("SELECT current_user");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("postgres");
-  });
-
-  test("pg_hba.conf should use scram-sha-256 method", async () => {
-    // Detect data directory dynamically
-    const dataDirResult = await runSQL("SHOW data_directory");
-    if (!dataDirResult.success) {
-      throw new Error("Failed to detect data_directory");
-    }
-    const dataDir = dataDirResult.stdout.trim();
-    const hbaPath = `${dataDir}/pg_hba.conf`;
-
-    const result = await $`docker exec ${TEST_CONTAINER} cat ${hbaPath}`.quiet().nothrow();
-    expect(result.exitCode).toBe(0);
-
-    const hbaContent = result.stdout.toString();
-
-    // Should use scram-sha-256 for non-local connections
-    expect(hbaContent).toMatch(/scram-sha-256/);
-
-    // Check that network connections (non-localhost) use scram-sha-256
-    const lines = hbaContent
+  test("every pg_hba rule for non-loopback clients requires scram-sha-256", async () => {
+    const hba = await $`docker exec ${DEFAULT_CONTAINER} sh -c ${'cat "$PGDATA/pg_hba.conf"'}`
+      .quiet()
+      .nothrow();
+    expect(hba.exitCode).toBe(0);
+    const networkRules = hba.stdout
+      .toString()
       .split("\n")
-      .filter((line) => !line.trim().startsWith("#") && line.trim());
-    const networkLines = lines.filter(
-      (line) =>
-        (line.includes("0.0.0.0") ||
-          line.includes("::0") ||
-          (line.includes("all") && line.includes("host"))) &&
-        !line.includes("127.0.0.1") &&
-        !line.includes("::1")
-    );
-
-    for (const line of networkLines) {
-      // Network connections should use scram-sha-256, not trust or md5
-      expect(line).toMatch(/scram-sha-256/);
-    }
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("host") && !/127\.0\.0\.1\/32|::1\/128/.test(line));
+    expect(networkRules.length).toBeGreaterThan(0);
+    for (const rule of networkRules) expect(rule).toMatch(/scram-sha-256$/);
   });
 
-  test("SSL should be available for secure connections", async () => {
-    const result = await runSQL("SHOW ssl");
-    expect(result.success).toBe(true);
-    // SSL should be 'on' or at least available
-    expect(["on", "off"]).toContain(result.stdout);
-  });
-});
-
-describe("Security - PgBouncer auth_query", () => {
-  test("auth_query function should exist", async () => {
-    // Create pgbouncer schema first
-    await runSQL("CREATE SCHEMA IF NOT EXISTS pgbouncer");
-
-    // Create auth_query function if using PgBouncer
-    const createFunction = await runSQL(`
-      CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(
-        IN p_username text,
-        OUT uname text,
-        OUT phash text
-      ) RETURNS record AS $$
-      BEGIN
-        SELECT usename, passwd
-        INTO uname, phash
-        FROM pg_shadow
-        WHERE usename = p_username;
-      END;
-      $$ LANGUAGE plpgsql SECURITY DEFINER
-    `);
-
-    // Function creation should succeed
-    expect(createFunction.success).toBe(true);
-  });
-
-  test("auth_query function should be SECURITY DEFINER", async () => {
-    // First ensure pgbouncer schema exists
-    await runSQL("CREATE SCHEMA IF NOT EXISTS pgbouncer");
-
-    // Create the function
-    await runSQL(`
-      CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(
-        IN p_username text,
-        OUT uname text,
-        OUT phash text
-      ) RETURNS record AS $$
-      BEGIN
-        SELECT usename, passwd
-        INTO uname, phash
-        FROM pg_shadow
-        WHERE usename = p_username;
-      END;
-      $$ LANGUAGE plpgsql SECURITY DEFINER
-    `);
-
-    // Verify it's SECURITY DEFINER
-    const result = await runSQL(`
-      SELECT prosecdef
-      FROM pg_proc
-      WHERE proname = 'user_lookup'
-      AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'pgbouncer')
-    `);
-
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("t");
-  });
-
-  test("auth_query should validate credentials correctly", async () => {
-    // Create test schema and function
-    await runSQL("CREATE SCHEMA IF NOT EXISTS pgbouncer");
-    await runSQL(`
-      CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(
-        IN p_username text,
-        OUT uname text,
-        OUT phash text
-      ) RETURNS record AS $$
-      BEGIN
-        SELECT usename, passwd
-        INTO uname, phash
-        FROM pg_shadow
-        WHERE usename = p_username;
-      END;
-      $$ LANGUAGE plpgsql SECURITY DEFINER
-    `);
-
-    // Test lookup for postgres user
-    const result = await runSQL("SELECT uname FROM pgbouncer.user_lookup('postgres')");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("postgres");
-  });
-
-  test("No plaintext passwords in userlist.txt (when used)", async () => {
-    // Check if userlist.txt exists in container
-    const checkFile =
-      await $`docker exec ${TEST_CONTAINER} test -f /etc/pgbouncer/userlist.txt && echo exists || echo missing`
+  test("TCP login from the network rejects a wrong password and accepts the right one", async () => {
+    // The container's IPv4 bridge address: listen_addresses=0.0.0.0 does not cover IPv6.
+    const address = (
+      await $`docker inspect -f ${"{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"} ${NETWORK_CONTAINER}`.quiet()
+    )
+      .text()
+      .trim()
+      .split(" ")[0];
+    expect(address).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+    const login = (password: string) =>
+      $`docker exec -e PGPASSWORD=${password} ${NETWORK_CONTAINER} psql -X -h ${address} -U postgres -d postgres -tAc ${"SELECT 1"}`
         .quiet()
         .nothrow();
-
-    if (checkFile.stdout.toString().includes("exists")) {
-      const result = await $`docker exec ${TEST_CONTAINER} cat /etc/pgbouncer/userlist.txt`
-        .quiet()
-        .nothrow();
-
-      if (result.exitCode === 0) {
-        const content = result.stdout.toString();
-
-        // Should not contain plaintext passwords (should use hashes or auth_query)
-        // Hashed passwords start with SCRAM-SHA-256 or md5
-        const lines = content
-          .split("\n")
-          .filter((line) => line.trim() && !line.trim().startsWith("#"));
-
-        for (const line of lines) {
-          if (line.includes('"')) {
-            // If there's a password field, it should be hashed
-            expect(line).toMatch(/SCRAM-SHA-256\$|md5[a-f0-9]{32}|""/);
-          }
-        }
-      }
-    } else {
-      // No userlist.txt - likely using auth_query, which is more secure
-      expect(checkFile.stdout.toString()).toContain("missing");
-    }
+    const wrong = await login("not-the-password");
+    expect(wrong.exitCode).not.toBe(0);
+    expect(wrong.stderr.toString()).toContain('password authentication failed for user "postgres"');
+    const right = await login(PASSWORD);
+    expect(right.stderr.toString()).toBe("");
+    expect(right.stdout.toString().trim()).toBe("1");
   });
 });
 
-describe("Security - Network Binding", () => {
-  test("Default binding should be 127.0.0.1 (localhost)", async () => {
-    const result = await runSQL("SHOW listen_addresses");
-    expect(result.success).toBe(true);
-
-    // Should be either 127.0.0.1 or localhost, not *
-    const listenAddr = result.stdout;
-    expect(listenAddr).toMatch(/127\.0\.0\.1|localhost/);
+describe("Network binding", () => {
+  test("with no POSTGRES_BIND_IP the server listens on loopback only", async () => {
+    const result = await sql(DEFAULT_CONTAINER, "SHOW listen_addresses");
+    expect(result.out).toBe("127.0.0.1");
   });
 
-  test("POSTGRES_BIND_IP=0.0.0.0 should change binding", async () => {
-    const listenAddress = await readListenAddressForBindIp("0.0.0.0");
-    expect(listenAddress).toBe("0.0.0.0");
-  }, 120000);
-
-  test("Port should be standard PostgreSQL port (5432)", async () => {
-    const result = await runSQL("SHOW port");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("5432");
+  test("POSTGRES_BIND_IP=0.0.0.0 listens on all interfaces", async () => {
+    const result = await sql(NETWORK_CONTAINER, "SHOW listen_addresses");
+    expect(result.out).toBe("0.0.0.0");
   });
 });
 
-describe("Security - Extension Security", () => {
-  test("All extensions should have correct SHA pins in manifest", async () => {
-    const manifest = await readImageManifest();
-    expect(manifest.entries).toBeDefined();
-    expect(Array.isArray(manifest.entries)).toBe(true);
-
-    // Check that git-sourced extensions have commit SHAs
-    for (const entry of manifest.entries) {
-      if (entry.source.type === "git" || entry.source.type === "git-ref") {
-        expect(entry.source.repository).toBeDefined();
-        expect(entry.source.repository).toMatch(/^https?:\/\//);
-
-        if (entry.source.type === "git") {
-          expect(entry.source.tag).toBeDefined();
-        } else {
-          expect(entry.source.ref).toBeDefined();
-        }
-
-        expect(entry.source.commit).toMatch(/^[a-f0-9]{40}$/);
-      }
-    }
-  });
-
-  test("Manifest should have no enabled:false extensions with empty disabledReason", async () => {
-    const manifest = await readImageManifest();
-
-    for (const entry of manifest.entries) {
-      if (entry.enabled === false) {
-        expect(entry.disabledReason?.trim()).toBeTruthy();
-      }
-    }
-  });
-
-  test("Extension control files should have proper permissions", async () => {
-    // Check that extension control files are readable but not writable by postgres user
-    const result = await runSQL(`
-      SELECT setting FROM pg_settings WHERE name = 'data_directory'
-    `);
-
-    expect(result.success).toBe(true);
-    const dataDir = result.stdout;
-    expect(dataDir).toBeDefined();
-
-    // Check that we can query extension information
-    const extCheck = await runSQL("SELECT count(*) FROM pg_available_extensions");
-    expect(extCheck.success).toBe(true);
-    expect(parseInt(extCheck.stdout)).toBeGreaterThan(0);
-  });
-});
-
-describe("Security - pgAudit Logging", () => {
-  test("pgAudit should be loaded via shared_preload_libraries", async () => {
-    const result = await runSQL("SHOW shared_preload_libraries");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toMatch(/pgaudit/);
-  });
-
-  test("pgAudit should be configured for logging", async () => {
-    // Check if pgaudit extension is available
-    const available = await runSQL(`
-      SELECT count(*) FROM pg_available_extensions WHERE name = 'pgaudit'
-    `);
-    expect(available.success).toBe(true);
-    expect(parseInt(available.stdout)).toBeGreaterThan(0);
-
-    // Create extension if not exists
-    await runSQL("CREATE EXTENSION IF NOT EXISTS pgaudit");
-
-    // Verify pgaudit.log setting exists
-    const setting = await runSQL("SELECT count(*) FROM pg_settings WHERE name = 'pgaudit.log'");
-    expect(setting.success).toBe(true);
-    expect(parseInt(setting.stdout)).toBeGreaterThan(0);
-  });
-
-  test("pgAudit should log DDL statements when enabled", async () => {
-    // Create extension
-    await runSQL("CREATE EXTENSION IF NOT EXISTS pgaudit");
-
-    // Enable DDL logging using ALTER SYSTEM for persistence
-    await runSQL("ALTER SYSTEM SET pgaudit.log = 'ddl'");
-    await runSQL("SELECT pg_reload_conf()");
-
-    // Wait a moment for config reload
-    await Bun.sleep(500);
-
-    // Verify the setting is active
-    const result = await runSQL("SHOW pgaudit.log");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toMatch(/ddl/i);
-
-    // Execute a DDL statement to test logging
-    await runSQL("CREATE TABLE IF NOT EXISTS audit_test (id serial PRIMARY KEY)");
-
-    // Reset to default
-    await runSQL("ALTER SYSTEM RESET pgaudit.log");
-    await runSQL("SELECT pg_reload_conf()");
-  });
-
-  test("pgAudit should support role-based logging", async () => {
-    // Create extension
-    await runSQL("CREATE EXTENSION IF NOT EXISTS pgaudit");
-
-    // Check if pgaudit.role setting exists
-    const setting = await runSQL("SELECT count(*) FROM pg_settings WHERE name = 'pgaudit.role'");
-    expect(setting.success).toBe(true);
-    expect(parseInt(setting.stdout)).toBeGreaterThan(0);
-  });
-});
-
-describe("Security - User Privileges", () => {
-  test("Postgres superuser should have expected privileges", async () => {
-    const result = await runSQL("SELECT usesuper FROM pg_user WHERE usename = 'postgres'");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("t");
-  });
-
-  test("Should be able to create restricted user without superuser", async () => {
-    // Create a test user without superuser privileges
-    await runSQL("DROP USER IF EXISTS test_restricted_user");
-    const createResult = await runSQL(
-      "CREATE USER test_restricted_user WITH PASSWORD 'testpass123'"
-    );
-    expect(createResult.success).toBe(true);
-
-    // Verify user is not superuser
-    const checkResult = await runSQL(
-      "SELECT usesuper FROM pg_user WHERE usename = 'test_restricted_user'"
-    );
-    expect(checkResult.success).toBe(true);
-    expect(checkResult.stdout).toBe("f");
-
-    // Cleanup
-    await runSQL("DROP USER test_restricted_user");
-  });
-
-  test("Public schema should not allow dangerous operations by default", async () => {
-    // Create test user
-    await runSQL("DROP USER IF EXISTS test_public_user");
-    await runSQL("CREATE USER test_public_user WITH PASSWORD 'testpass'");
-
-    // Grant connect permission
-    await runSQL("GRANT CONNECT ON DATABASE postgres TO test_public_user");
-
-    // Verify user exists and doesn't have superuser
-    const result = await runSQL("SELECT usesuper FROM pg_user WHERE usename = 'test_public_user'");
-    expect(result.success).toBe(true);
-    expect(result.stdout).toBe("f");
-
-    // Cleanup
-    await runSQL("DROP USER test_public_user");
-  });
-});
-
-describe("Security - SSL/TLS Configuration", () => {
-  test("SSL certificates should exist if SSL is enabled", async () => {
-    const sslSetting = await runSQL("SHOW ssl");
-
-    if (sslSetting.stdout === "on") {
-      // Check for SSL certificate files (use $PGDATA for portability)
-      const certCheck =
-        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.crt" && echo exists || echo missing'`
-          .quiet()
-          .nothrow();
-      const keyCheck =
-        await $`docker exec ${TEST_CONTAINER} bash -c 'test -f "$PGDATA/server.key" && echo exists || echo missing'`
-          .quiet()
-          .nothrow();
-
-      // If SSL is on, certificates should exist
-      expect(certCheck.stdout.toString()).toContain("exists");
-      expect(keyCheck.stdout.toString()).toContain("exists");
-    } else {
-      // SSL is off - that's acceptable for testing
-      expect(sslSetting.stdout).toBe("off");
-    }
-  });
-
-  test("ssl_ciphers should use strong ciphers when SSL enabled", async () => {
-    const sslSetting = await runSQL("SHOW ssl");
-
-    if (sslSetting.stdout === "on") {
-      const ciphers = await runSQL("SHOW ssl_ciphers");
-      expect(ciphers.success).toBe(true);
-
-      // Should not use weak ciphers
-      expect(ciphers.stdout).not.toMatch(/NULL|EXPORT|DES|MD5|RC4/i);
+describe("Privileges", () => {
+  test("a non-superuser cannot create objects in the public schema", async () => {
+    const role = "test_public_create_role";
+    await sql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
+    expect((await sql(DEFAULT_CONTAINER, `CREATE ROLE ${role} LOGIN`)).ok).toBe(true);
+    try {
+      const attempt = await sql(
+        DEFAULT_CONTAINER,
+        "CREATE TABLE public.test_public_create (id int)",
+        role
+      );
+      expect(attempt.ok).toBe(false);
+      expect(attempt.err).toContain("permission denied for schema public");
+    } finally {
+      await sql(DEFAULT_CONTAINER, "DROP TABLE IF EXISTS public.test_public_create");
+      await sql(DEFAULT_CONTAINER, `DROP ROLE IF EXISTS ${role}`);
     }
   });
 });

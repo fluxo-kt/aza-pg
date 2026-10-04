@@ -1,35 +1,27 @@
 /**
- * Shared Test Library for Docker Image Tests
+ * Image behaviour checks — the single owner of "does each shipped extension and tool work".
  *
- * Single source of truth for all 39 test functions. Primary consumer is
- * test-image.ts (CI, ~350-line thin wrapper that owns container lifecycle).
- * Standalone on-demand scripts (test-image-core.ts, test-image-functional-1/2/3.ts)
- * also import from here but are NOT in CI.
- *
- * All functions accept a containerName parameter for independent test containers.
+ * scripts/docker/test-image.ts owns the container lifecycle and runs these against ONE container in
+ * order. Every check returns a TestResult instead of throwing so one broken extension never hides
+ * the rest. Each check asserts the extension's observable behaviour (a row, a plan, a log line, an
+ * error text) — never only that a CREATE or a SELECT succeeded — so it turns red on the defect it names.
  */
 
 import { join } from "node:path";
+import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
+import type { ManifestEntry as SourceManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
-import {
-  dockerCleanup,
-  dockerRun,
-  dockerRunLive,
-  waitForPostgres as waitForPostgresReady,
-} from "../utils/docker";
 import type { TestResult } from "../utils/logger";
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
 export const REPO_ROOT = join(import.meta.dir, "../..");
+/** Generated JSON copy of the manifest; scripts/test/test-disabled-extensions.ts reads it. */
 export const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+const INITDB_EXTENSIONS_SQL = join(
+  REPO_ROOT,
+  "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
+);
 
-// ============================================================================
-// INTERFACES & TYPES
-// ============================================================================
-
+/** Shape of MANIFEST_PATH as scripts/test/test-disabled-extensions.ts consumes it. */
 export interface ManifestEntry {
   name: string;
   kind: "extension" | "tool" | "builtin";
@@ -50,361 +42,117 @@ export interface Manifest {
 
 export type { TestResult };
 
+const enabledEntries = (): SourceManifestEntry[] =>
+  MANIFEST_ENTRIES.filter((entry) => entry.enabled !== false);
+
+const preloadName = (entry: SourceManifestEntry): string =>
+  entry.runtime?.preloadLibraryName ?? entry.name;
+
 // ============================================================================
-// MANIFEST UTILITIES
+// EXECUTION
 // ============================================================================
 
-/**
- * Read and parse manifest
- */
-export async function readManifest(): Promise<Manifest> {
-  const content = await Bun.file(MANIFEST_PATH).json();
-  return content as Manifest;
+export interface PsqlResult {
+  ok: boolean;
+  out: string;
+  err: string;
 }
 
 /**
- * Check if an extension is enabled in the manifest
+ * Run statements in ONE psql session (one `-c` each, so a SET applies to the statements after it)
+ * and keep stderr even on success: NOTICE/DEBUG lines are evidence some checks assert on.
  */
-export function isExtensionEnabled(manifest: Manifest, extensionName: string): boolean {
-  const entry = manifest.entries.find((e) => e.name === extensionName);
-  if (!entry) {
-    return false;
+export async function psql(container: string, statements: string | string[]): Promise<PsqlResult> {
+  const list = Array.isArray(statements) ? statements : [statements];
+  const proc = Bun.spawn(
+    [
+      "docker",
+      "exec",
+      container,
+      "psql",
+      "-X",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-tA",
+      ...list.flatMap((sql) => ["-c", sql]),
+    ],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { ok: code === 0, out: out.trim(), err: err.trim() };
+}
+
+/** Run statements and return stdout; throw with psql's error text when any statement fails. */
+async function sqlOk(container: string, statements: string | string[]): Promise<string> {
+  const result = await psql(container, statements);
+  if (!result.ok) {
+    // NOTICE lines (e.g. from DROP ... IF EXISTS) precede the error; report the error itself.
+    const errors = result.err.split("\n").filter((line) => /ERROR|FATAL|error:/.test(line));
+    throw new Error(`SQL failed: ${errors.join("\n") || result.err || result.out}`);
   }
-  return entry.enabled !== false;
+  return result.out;
 }
 
-// ============================================================================
-// CONTAINER UTILITIES
-// ============================================================================
-
-/**
- * Start test container
- */
-export async function startContainer(image: string, containerName: string): Promise<boolean> {
-  // Clean up any existing container with same name
-  await dockerCleanup(containerName);
-
-  // Start container with test environment
-  // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES from entrypoint
-  const exitCode = await dockerRunLive([
-    "run",
-    "-d",
-    "--name",
-    containerName,
-    "-e",
-    "POSTGRES_PASSWORD=test123",
-    "-e",
-    "POSTGRES_DB=postgres",
-    image,
-  ]);
-
-  return exitCode === 0;
+/** Last non-empty stdout line: a session's earlier statements print their own rows first. */
+function lastLine(output: string): string {
+  return output.split("\n").filter(Boolean).at(-1)?.trim() ?? "";
 }
 
-/** Wait for the container's final PostgreSQL server; the single readiness rule lives in scripts/utils/docker.ts. */
-export async function waitForPostgres(
-  containerName: string,
-  timeoutSeconds: number = 90
-): Promise<boolean> {
-  return waitForPostgresReady({ container: containerName, timeout: timeoutSeconds });
-}
-
-/**
- * Execute SQL query in container
- */
-export async function execSQL(
-  sql: string,
-  containerName: string
-): Promise<{ success: boolean; output: string }> {
-  return await dockerRun([
-    "exec",
-    containerName,
-    "psql",
-    "-U",
-    "postgres",
-    "-d",
-    "postgres",
-    "-t", // Tuples only
-    "-A", // Unaligned
-    "-c",
-    sql,
-  ]);
-}
-
-/**
- * Extract the last non-empty line from psql output.
- * Multi-statement calls (e.g. "SET ...; SELECT ...") return command tags and rows.
- * Tests that assert on scalar results should use the final data row.
- */
-function getLastOutputLine(output: string): string {
-  const lines = output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines[lines.length - 1] ?? "";
-}
-
-/**
- * Execute command in container
- */
 export async function execCommand(
   command: string[],
-  containerName: string
-): Promise<{ success: boolean; output: string }> {
-  return await dockerRun(["exec", containerName, ...command]);
+  container: string,
+  user?: string
+): Promise<{ ok: boolean; output: string }> {
+  const proc = Bun.spawn(["docker", "exec", ...(user ? ["-u", user] : []), container, ...command], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { ok: code === 0, output: `${out}${err}`.trim() };
 }
 
-/**
- * Check if file exists in container
- */
-export async function fileExists(path: string, containerName: string): Promise<boolean> {
-  const result = await execCommand(["test", "-f", path], containerName);
-  return result.success;
+function expect(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(message);
 }
 
-/**
- * Derive PostgreSQL major version from the running server.
- * server_version_num: e.g. 180003 → major = floor(180003 / 10000) = 18
- * Avoids hardcoding "18" in filesystem paths so tests stay correct across PG bumps.
- *
- * Cached per containerName: PG version is immutable during a test run and
- * shared by multiple Phase 1 and Phase 3 tests — no need to re-query each time.
- */
-const _pgMajorVersionCache = new Map<string, string>();
-async function getPgMajorVersion(containerName: string): Promise<string> {
-  const cached = _pgMajorVersionCache.get(containerName);
-  if (cached !== undefined) return cached;
-  const result = await execSQL("SHOW server_version_num", containerName);
-  // Container is ready at this point — the fallback is unreachable in practice.
-  // isNaN guard: if output is unexpectedly empty/non-numeric, String(NaN) would produce "NaN"
-  // as the version string and break all filesystem paths. Treat that as fallback too.
-  const num = parseInt(result.output.trim(), 10);
-  const version = result.success && !isNaN(num) ? String(Math.floor(num / 10000)) : "18";
-  _pgMajorVersionCache.set(containerName, version);
-  return version;
+/** Wrap one check so a thrown assertion becomes a failed TestResult with its message. */
+async function check(name: string, body: () => Promise<string | void>): Promise<TestResult> {
+  const start = Date.now();
+  try {
+    const detail = await body();
+    return {
+      name: detail ? `${name} (${detail})` : name,
+      passed: true,
+      duration: Date.now() - start,
+    };
+  } catch (err) {
+    return { name, passed: false, duration: Date.now() - start, error: getErrorMessage(err) };
+  }
 }
 
 // ============================================================================
-// FILESYSTEM VERIFICATION TESTS
+// IMAGE CONTENTS AND STARTUP STATE
 // ============================================================================
 
 /**
- * Test: Extension directory structure exists
- */
-export async function testExtensionDirectoryStructure(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const pgMajor = await getPgMajorVersion(containerName);
-    const dirs = [
-      `/usr/share/postgresql/${pgMajor}/extension`,
-      `/usr/lib/postgresql/${pgMajor}/lib`,
-    ];
-
-    const missing: string[] = [];
-
-    for (const dir of dirs) {
-      const result = await execCommand(["test", "-d", dir], containerName);
-      if (!result.success) {
-        missing.push(dir);
-      }
-    }
-
-    if (missing.length > 0) {
-      return {
-        name: "Extension directory structure",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Missing directories: ${missing.join(", ")}`,
-      };
-    }
-
-    return {
-      name: "Extension directory structure",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Extension directory structure",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Manifest file is present in image
- */
-export async function testManifestPresent(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const manifestPath = "/etc/postgresql/extensions.manifest.json";
-    const exists = await fileExists(manifestPath, containerName);
-
-    if (!exists) {
-      return {
-        name: "Manifest file present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${manifestPath} not found in image`,
-      };
-    }
-
-    // Try to read and parse it
-    const result = await execCommand(["cat", manifestPath], containerName);
-
-    if (!result.success) {
-      return {
-        name: "Manifest file present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Failed to read ${manifestPath}`,
-      };
-    }
-
-    try {
-      JSON.parse(result.output);
-    } catch {
-      return {
-        name: "Manifest file present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${manifestPath} contains invalid JSON`,
-      };
-    }
-
-    return {
-      name: "Manifest file present",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Manifest file present",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Version info files are present
- */
-export async function testVersionInfoFilesPresent(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const files = ["/etc/postgresql/version-info.txt", "/etc/postgresql/version-info.json"];
-
-    const missing: string[] = [];
-
-    for (const file of files) {
-      const exists = await fileExists(file, containerName);
-      if (!exists) {
-        missing.push(file);
-      }
-    }
-
-    if (missing.length > 0) {
-      return {
-        name: "Version info files present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Missing files: ${missing.join(", ")}`,
-      };
-    }
-
-    return {
-      name: "Version info files present",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Version info files present",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Enabled PGDG extensions are present
- */
-export async function testEnabledPgdgExtensionsPresent(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const enabledPgdgExtensions = manifest.entries.filter(
-      (entry) =>
-        entry.enabled !== false &&
-        entry.install_via === "pgdg" &&
-        entry.kind !== "tool" &&
-        entry.runtime?.preloadOnly !== true
-    );
-
-    if (enabledPgdgExtensions.length === 0) {
-      return {
-        name: "Enabled PGDG extensions present (0 to check)",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const pgMajor = await getPgMajorVersion(containerName);
-    const missing: string[] = [];
-
-    for (const ext of enabledPgdgExtensions) {
-      const controlFile = `/usr/share/postgresql/${pgMajor}/extension/${ext.name}.control`;
-      const exists = await fileExists(controlFile, containerName);
-
-      if (!exists) {
-        missing.push(ext.name);
-      }
-    }
-
-    if (missing.length > 0) {
-      return {
-        name: "Enabled PGDG extensions present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${missing.length} enabled extension(s) missing: ${missing.join(", ")}`,
-      };
-    }
-
-    return {
-      name: `Enabled PGDG extensions present (${enabledPgdgExtensions.length} verified)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Enabled PGDG extensions present",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: every shared object in the module directory and /usr/local/lib resolves all its libraries.
  * A module whose library is missing still installs and lists in pg_available_extensions; it fails only
  * when a backend loads it, which for most extensions no other check does. Libraries built from source
  * (SOURCE_LIBRARIES) have no Debian package behind them, so this is what catches one left unshipped.
  */
-export async function testSharedLibrariesResolve(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-  const name = "Shared libraries resolve";
-  try {
+export function testSharedLibrariesResolve(container: string): Promise<TestResult> {
+  return check("Shared libraries resolve", async () => {
     const scan = await execCommand(
       [
         "sh",
@@ -412,2484 +160,720 @@ export async function testSharedLibrariesResolve(containerName: string): Promise
         'n=0; for f in "$(pg_config --pkglibdir)"/*.so /usr/local/lib/*.so*; do [ -f "$f" ] || continue; ' +
           'n=$((n+1)); ldd "$f" 2>&1 | grep "not found" | sed "s|^|$f: |"; done; echo "scanned $n"',
       ],
-      containerName
+      container
     );
-    const lines = scan.output.trim().split("\n");
+    const lines = scan.output.split("\n");
     const scanned = Number(lines.at(-1)?.match(/^scanned (\d+)$/)?.[1] ?? 0);
     const unresolved = lines.filter((line) => line.includes("not found"));
-    if (!scan.success || scanned === 0 || unresolved.length > 0) {
-      return {
-        name,
-        passed: false,
-        duration: Date.now() - startTime,
-        error: unresolved.length > 0 ? unresolved.join("\n") : `scan failed: ${scan.output}`,
-      };
-    }
-    return { name: `${name} (${scanned} objects)`, passed: true, duration: Date.now() - startTime };
-  } catch (err) {
-    return { name, passed: false, duration: Date.now() - startTime, error: getErrorMessage(err) };
-  }
+    expect(scan.ok && scanned > 0, `scan failed: ${scan.output}`);
+    expect(unresolved.length === 0, unresolved.join("\n"));
+    return `${scanned} objects`;
+  });
 }
 
 /**
- * Test: Disabled PGDG extensions are not present
+ * Forward: every default-enabled preload is loaded. Reverse: everything loaded is a library the
+ * manifest declares preloadable, so a rogue or misspelled entry fails too.
  */
-export async function testDisabledPgdgExtensionsNotPresent(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const disabledPgdgExtensions = manifest.entries.filter(
-      (entry) => entry.enabled === false && entry.install_via === "pgdg" && entry.kind !== "tool"
-    );
-
-    if (disabledPgdgExtensions.length === 0) {
-      return {
-        name: "Disabled PGDG extensions not present (0 to check)",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const pgMajor = await getPgMajorVersion(containerName);
-    const unexpectedlyPresent: string[] = [];
-
-    for (const ext of disabledPgdgExtensions) {
-      // Skip preload-only modules
-      if (ext.runtime?.preloadOnly) {
-        continue;
-      }
-
-      const controlFile = `/usr/share/postgresql/${pgMajor}/extension/${ext.name}.control`;
-      const exists = await fileExists(controlFile, containerName);
-
-      if (exists) {
-        unexpectedlyPresent.push(ext.name);
-      }
-    }
-
-    if (unexpectedlyPresent.length > 0) {
-      return {
-        name: "Disabled PGDG extensions not present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${unexpectedlyPresent.length} disabled extension(s) unexpectedly present: ${unexpectedlyPresent.join(", ")}`,
-      };
-    }
-
-    return {
-      name: `Disabled PGDG extensions not present (${disabledPgdgExtensions.length} verified)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Disabled PGDG extensions not present",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-// ============================================================================
-// MANIFEST COUNT UTILITIES
-// ============================================================================
-
-/**
- * Compute manifest extension counts — matches generate-version-info.ts definition.
- * Centralised here so testVersionInfoTxt and testVersionInfoJson stay in sync.
- */
-function getManifestCounts(manifest: Manifest): {
-  total: number;
-  enabled: number;
-  disabled: number;
-  preloaded: number;
-} {
-  return {
-    total: manifest.entries.length,
-    enabled: manifest.entries.filter((e) => e.enabled !== false).length,
-    disabled: manifest.entries.filter((e) => e.enabled === false).length,
-    // ALL enabled sharedPreload entries, including optional preloads
-    preloaded: manifest.entries.filter(
-      (e) => e.enabled !== false && e.runtime?.sharedPreload === true
-    ).length,
-  };
-}
-
-// ============================================================================
-// RUNTIME VERIFICATION TESTS
-// ============================================================================
-
-/**
- * Test: Enabled extensions can be created
- */
-export async function testEnabledExtensions(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const enabledExtensions = manifest.entries.filter((entry) => {
-      const isEnabled = entry.enabled !== false;
-      const isNotTool = entry.kind !== "tool";
-      const isNotPreloadOnly = entry.runtime?.preloadOnly !== true;
-      // Skip extensions that require shared_preload_libraries but are NOT in the DEFAULT
-      // shared_preload_libraries (e.g. pg_partman_bgw, set_user, supautils — optional preloads
-      // that users must explicitly enable via POSTGRES_SHARED_PRELOAD_LIBRARIES).
-      // Extensions with defaultEnable: true ARE in the default preload (e.g. timescaledb, pgaudit).
-      const isNotOptionalPreload = !(
-        entry.runtime?.sharedPreload === true && entry.runtime?.defaultEnable === false
-      );
-      return isEnabled && isNotTool && isNotPreloadOnly && isNotOptionalPreload;
-    });
-
-    const failed: string[] = [];
-
-    for (const ext of enabledExtensions) {
-      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS "${ext.name}";`, containerName);
-
-      if (!result.success) {
-        failed.push(`${ext.name}: ${result.output.slice(0, 100)}`);
-      }
-    }
-
-    if (failed.length > 0) {
-      return {
-        name: "Enabled extensions can be created",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${failed.length} extension(s) failed:\n  ${failed.join("\n  ")}`,
-      };
-    }
-
-    return {
-      name: `Enabled extensions can be created (${enabledExtensions.length} tested)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Enabled extensions can be created",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Pre-created extensions are already available on startup
- */
-export async function testPrecreatedExtensions(
-  _manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Extensions pre-created by initdb scripts (01-extensions.sql + 01b-pg_cron.sh).
-    // Update this list whenever 01-extensions.sql or pg_cron initdb script changes.
-    const precreatedExtensions = [
-      "pg_cron", // 01b-pg_cron.sh
-      "pg_net",
-      "pg_stat_monitor",
-      "pg_stat_statements",
-      "pg_trgm",
-      "pgaudit",
-      "pgmq",
-      "pgsodium",
-      "plpgsql",
-      "supabase_vault",
-      "timescaledb",
-      "vector",
-      "vectorscale",
-    ];
-
-    // Single query: unnest the expected list and find any NOT in pg_extension.
-    // One round-trip instead of 2 per extension. Empty output = all present.
-    const arrayLiteral = precreatedExtensions.map((e) => `'${e}'`).join(",");
-    const missing = await execSQL(
-      `SELECT e FROM unnest(ARRAY[${arrayLiteral}]::text[]) e
-       WHERE e NOT IN (SELECT extname FROM pg_extension)
-       ORDER BY e`,
-      containerName
-    );
-
-    if (!missing.success) {
-      return {
-        name: "Pre-created extensions available on startup",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `pg_extension query failed: ${missing.output.slice(0, 100)}`,
-      };
-    }
-
-    const missingList = missing.output.trim()
-      ? missing.output
-          .trim()
-          .split("\n")
-          .map((e) => e.trim())
-          .filter(Boolean)
-      : [];
-
-    if (missingList.length > 0) {
-      return {
-        name: "Pre-created extensions available on startup",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${missingList.length} extension(s) not in pg_extension: ${missingList.join(", ")}`,
-      };
-    }
-
-    return {
-      name: `Pre-created extensions available on startup (${precreatedExtensions.length} verified)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Pre-created extensions available on startup",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Disabled extensions cannot be created
- */
-export async function testDisabledExtensions(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const disabledExtensions = manifest.entries.filter(
-      (entry) => entry.enabled === false && entry.kind !== "tool"
-    );
-
-    if (disabledExtensions.length === 0) {
-      return {
-        name: "Disabled extensions cannot be created (0 to test)",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const unexpectedlyAvailable: string[] = [];
-
-    for (const ext of disabledExtensions) {
-      const result = await execSQL(`CREATE EXTENSION IF NOT EXISTS "${ext.name}";`, containerName);
-
-      // If it succeeds, the extension is unexpectedly available
-      if (result.success) {
-        unexpectedlyAvailable.push(ext.name);
-      }
-    }
-
-    if (unexpectedlyAvailable.length > 0) {
-      return {
-        name: "Disabled extensions cannot be created",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${unexpectedlyAvailable.length} disabled extension(s) unexpectedly available: ${unexpectedlyAvailable.join(", ")}`,
-      };
-    }
-
-    return {
-      name: `Disabled extensions cannot be created (${disabledExtensions.length} verified)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Disabled extensions cannot be created",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Preloaded extensions are in shared_preload_libraries
- */
-export async function testPreloadedExtensions(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Required: must be present (defaultEnable: true)
-    const preloadedExtensions = manifest.entries
-      .filter(
-        (entry) =>
-          entry.enabled !== false &&
-          entry.runtime?.sharedPreload === true &&
-          entry.runtime?.defaultEnable === true
-      )
-      // Use preloadLibraryName if specified (e.g., pg_safeupdate -> safeupdate)
-      .map((entry) => entry.runtime?.preloadLibraryName || entry.name);
-
-    // Allowable: valid to be present (all sharedPreload: true, including optional preloads).
-    // Used for the reverse check — any lib in shared_preload_libraries NOT in this set is a bug.
-    const allPreloadableNames = manifest.entries
-      .filter((entry) => entry.enabled !== false && entry.runtime?.sharedPreload === true)
-      .map((entry) => entry.runtime?.preloadLibraryName || entry.name);
-
-    if (preloadedExtensions.length === 0) {
-      return {
-        name: "Preloaded extensions in shared_preload_libraries (0 expected)",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const result = await execSQL("SHOW shared_preload_libraries;", containerName);
-
-    if (!result.success) {
-      return {
-        name: "Preloaded extensions in shared_preload_libraries",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Failed to read shared_preload_libraries: ${result.output}`,
-      };
-    }
-
-    const preloadedLibs = result.output
+export function testPreloadedExtensions(container: string): Promise<TestResult> {
+  return check("Preloaded libraries match the manifest", async () => {
+    const preloadable = enabledEntries().filter((e) => e.runtime?.sharedPreload === true);
+    const required = preloadable.filter((e) => e.runtime?.defaultEnable === true).map(preloadName);
+    const allowed = new Set(preloadable.map(preloadName));
+    const loaded = (await sqlOk(container, "SHOW shared_preload_libraries"))
       .split(",")
       .map((lib) => lib.trim())
-      .filter((lib) => lib.length > 0);
-
-    // Forward check: every required lib must be present
-    const missing: string[] = [];
-    for (const ext of preloadedExtensions) {
-      if (!preloadedLibs.includes(ext)) {
-        missing.push(ext);
-      }
-    }
-
-    if (missing.length > 0) {
-      return {
-        name: "Preloaded extensions in shared_preload_libraries",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${missing.length} extension(s) missing from shared_preload_libraries: ${missing.join(", ")}`,
-      };
-    }
-
-    // Reverse check: every active lib must be known to the manifest (no rogue preloads)
-    const unexpected: string[] = [];
-    for (const lib of preloadedLibs) {
-      if (!allPreloadableNames.includes(lib)) {
-        unexpected.push(lib);
-      }
-    }
-
-    if (unexpected.length > 0) {
-      return {
-        name: "Preloaded extensions in shared_preload_libraries",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${unexpected.length} unexpected library/ies in shared_preload_libraries (not declared as preloadable in manifest): ${unexpected.join(", ")}`,
-      };
-    }
-
-    return {
-      name: `Preloaded extensions in shared_preload_libraries (${preloadedExtensions.length} required, ${preloadedLibs.length} active)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Preloaded extensions in shared_preload_libraries",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+      .filter(Boolean);
+    const missing = required.filter((lib) => !loaded.includes(lib));
+    const rogue = loaded.filter((lib) => !allowed.has(lib));
+    expect(missing.length === 0, `missing from shared_preload_libraries: ${missing.join(", ")}`);
+    expect(rogue.length === 0, `not declared preloadable in the manifest: ${rogue.join(", ")}`);
+    return `${required.length} required, ${loaded.length} loaded`;
+  });
 }
 
 /**
- * Test: PostgreSQL configuration is valid
+ * The initdb scripts create a baseline set of extensions. The expected set is read from the generated
+ * 01-extensions.sql (plus pg_cron, which 01b-pg_cron.sh creates), never copied here. An extension the
+ * SQL gates on pg_available_extensions (CPU-gated vectorscale) may be absent only when the image hid it.
  */
-export async function testPostgresConfiguration(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Use pg_size_bytes() to get numeric bytes for memory settings — avoids JS unit parsing
-    const configs = [
-      {
-        name: "shared_buffers",
-        sql: "SELECT pg_size_bytes(current_setting('shared_buffers'))",
-        check: (val: string) => parseInt(val, 10) >= 16 * 1024 * 1024, // >= 16MB
-        desc: ">= 16MB",
-      },
-      {
-        name: "max_connections",
-        sql: "SELECT current_setting('max_connections')",
-        check: (val: string) => parseInt(val, 10) >= 20,
-        desc: ">= 20",
-      },
-      {
-        name: "work_mem",
-        sql: "SELECT pg_size_bytes(current_setting('work_mem'))",
-        check: (val: string) => parseInt(val, 10) >= 1024 * 1024, // >= 1MB
-        desc: ">= 1MB",
-      },
-      {
-        // wal_level=logical is required for CDC (wal2json, pg_logical). Checking early here
-        // gives a clear Phase 2 failure vs a cryptic "slot creation failed" in Phase 5.
-        name: "wal_level",
-        sql: "SELECT current_setting('wal_level')",
-        check: (val: string) => val === "logical",
-        desc: "= logical (required for CDC/replication slots)",
-      },
-      {
-        // PostgreSQL 18.6+ refuses logical-decoding plugins missing from this list (superusers
-        // too), so without wal2json the Phase 5 wal2json slot test fails with "may not be used as
-        // an output plugin". Splitting into elements also catches the list stored as ONE quoted
-        // element ("pgoutput, test_decoding, wal2json"), which is what a single-string
-        // SET/ALTER SYSTEM produces and which matches no plugin.
-        name: "output_plugin_libraries",
-        sql: "SELECT current_setting('output_plugin_libraries')",
-        check: (val: string) =>
-          val
-            .split(",")
-            .map((lib) => lib.trim())
-            .includes("wal2json"),
-        desc: "lists wal2json as its own element",
-      },
-    ];
-
-    const errors: string[] = [];
-
-    for (const config of configs) {
-      const result = await execSQL(config.sql, containerName);
-
-      if (!result.success) {
-        errors.push(`Failed to read ${config.name}`);
-        continue;
-      }
-
-      if (!config.check(result.output.trim())) {
-        errors.push(`${config.name} below threshold (${config.desc}): ${result.output.trim()}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      return {
-        name: "PostgreSQL configuration",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: errors.join(", "),
-      };
-    }
-
-    return {
-      name: "PostgreSQL configuration",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "PostgreSQL configuration",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Version info txt contains correct counts
- */
-export async function testVersionInfoTxt(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const result = await execCommand(["cat", "/etc/postgresql/version-info.txt"], containerName);
-
-    if (!result.success) {
-      return {
-        name: "Version info (version-info.txt)",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "version-info.txt not found or not readable",
-      };
-    }
-
-    const content = result.output;
-
-    const {
-      total: totalCount,
-      enabled: enabledCount,
-      disabled: disabledCount,
-      preloaded: preloadedCount,
-    } = getManifestCounts(manifest);
-
-    const errors: string[] = [];
-
-    // Extract actual values from file content for "expected X, got Y" error messages,
-    // consistent with testVersionInfoJson's error format.
-    const actualTotal = content.match(/Total Catalog:\s*(\d+)/)?.[1] ?? "not found";
-    if (actualTotal !== String(totalCount)) {
-      errors.push(`Total count mismatch (expected: ${totalCount}, got: ${actualTotal})`);
-    }
-
-    const actualEnabled = content.match(/Enabled:\s*(\d+)/)?.[1] ?? "not found";
-    if (actualEnabled !== String(enabledCount)) {
-      errors.push(`Enabled count mismatch (expected: ${enabledCount}, got: ${actualEnabled})`);
-    }
-
-    const actualDisabled = content.match(/Disabled:\s*(\d+)/)?.[1] ?? "not found";
-    if (actualDisabled !== String(disabledCount)) {
-      errors.push(`Disabled count mismatch (expected: ${disabledCount}, got: ${actualDisabled})`);
-    }
-
-    const actualPreloaded = content.match(/Preloaded:\s*(\d+)/)?.[1] ?? "not found";
-    if (actualPreloaded !== String(preloadedCount)) {
-      errors.push(
-        `Preloaded count mismatch (expected: ${preloadedCount}, got: ${actualPreloaded})`
-      );
-    }
-
-    if (errors.length > 0) {
-      return {
-        name: "Version info (version-info.txt)",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: errors.join(", "),
-      };
-    }
-
-    return {
-      name: "Version info (version-info.txt)",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Version info (version-info.txt)",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Version info json contains correct counts
- */
-export async function testVersionInfoJson(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const result = await execCommand(["cat", "/etc/postgresql/version-info.json"], containerName);
-
-    if (!result.success) {
-      return {
-        name: "Version info (version-info.json)",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "version-info.json not found or not readable",
-      };
-    }
-
-    const versionInfo = JSON.parse(result.output);
-
-    const expectedCounts = getManifestCounts(manifest);
-
-    const errors: string[] = [];
-
-    if (!versionInfo.extensions) {
-      errors.push("Missing 'extensions' object");
-    } else {
-      if (versionInfo.extensions.total !== expectedCounts.total) {
-        errors.push(
-          `Total count mismatch (expected: ${expectedCounts.total}, got: ${versionInfo.extensions.total})`
-        );
-      }
-
-      if (versionInfo.extensions.enabled !== expectedCounts.enabled) {
-        errors.push(
-          `Enabled count mismatch (expected: ${expectedCounts.enabled}, got: ${versionInfo.extensions.enabled})`
-        );
-      }
-
-      if (versionInfo.extensions.disabled !== expectedCounts.disabled) {
-        errors.push(
-          `Disabled count mismatch (expected: ${expectedCounts.disabled}, got: ${versionInfo.extensions.disabled})`
-        );
-      }
-
-      if (versionInfo.extensions.preloaded !== expectedCounts.preloaded) {
-        errors.push(
-          `Preloaded count mismatch (expected: ${expectedCounts.preloaded}, got: ${versionInfo.extensions.preloaded})`
-        );
-      }
-    }
-
-    if (errors.length > 0) {
-      return {
-        name: "Version info (version-info.json)",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: errors.join(", "),
-      };
-    }
-
-    return {
-      name: "Version info (version-info.json)",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Version info (version-info.json)",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-// ============================================================================
-// TOOLS VERIFICATION TESTS
-// ============================================================================
-
-/**
- * Test: Tools are present in container
- */
-export async function testToolsPresent(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Only check enabled tools — disabled tools are intentionally not installed.
-    const tools = manifest.entries.filter(
-      (entry) => entry.kind === "tool" && entry.enabled !== false
+export function testPrecreatedExtensions(container: string): Promise<TestResult> {
+  return check("Initdb-created extensions exist", async () => {
+    const initSql = await Bun.file(INITDB_EXTENSIONS_SQL).text();
+    const arrayLiteral = initSql.match(/v_expected_exts\s+TEXT\[\]\s*:=\s*ARRAY\[([^\]]*)\]/)?.[1];
+    expect(arrayLiteral !== undefined, "v_expected_exts array not found in 01-extensions.sql");
+    const expected = [...arrayLiteral.matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
+    expect(expected.length > 0, "v_expected_exts array in 01-extensions.sql is empty");
+    expected.push("pg_cron");
+    const gated = new Set(
+      [...initSql.matchAll(/pg_available_extensions WHERE name = '([^']+)'/g)].map(
+        (m) => m[1] as string
+      )
     );
+    const list = expected.map((name) => `'${name}'`).join(",");
+    const missing = await sqlOk(
+      container,
+      `SELECT e FROM unnest(ARRAY[${list}]::text[]) e
+       WHERE e NOT IN (SELECT extname FROM pg_extension)
+         AND (e <> ALL(ARRAY[${[...gated].map((g) => `'${g}'`).join(",") || "''"}]::text[])
+              OR e IN (SELECT name FROM pg_available_extensions))
+       ORDER BY e`
+    );
+    expect(missing === "", `not in pg_extension: ${missing.split("\n").join(", ")}`);
+    return `${expected.length} expected`;
+  });
+}
 
-    if (tools.length === 0) {
-      return {
-        name: "Tools present (0 to check)",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
+/**
+ * Every enabled extension that needs no optional preload can be created. Optional preloads
+ * (sharedPreload with defaultEnable false) are excluded: they refuse CREATE until an operator preloads them.
+ */
+export function testEnabledExtensions(container: string): Promise<TestResult> {
+  return check("Enabled extensions can be created", async () => {
+    const creatable = enabledEntries().filter(
+      (e) =>
+        e.kind !== "tool" &&
+        e.runtime?.preloadOnly !== true &&
+        !(e.runtime?.sharedPreload === true && e.runtime?.defaultEnable === false)
+    );
+    const failed: string[] = [];
+    for (const entry of creatable) {
+      const result = await psql(
+        container,
+        `CREATE EXTENSION IF NOT EXISTS "${entry.name}" CASCADE`
+      );
+      if (!result.ok) failed.push(`${entry.name}: ${result.err.slice(0, 160)}`);
     }
+    expect(failed.length === 0, failed.join("\n"));
+    return `${creatable.length} created`;
+  });
+}
 
-    const pgMajor = await getPgMajorVersion(containerName);
+/**
+ * Settings the CDC checks depend on, asserted up front so a wrong value fails with its name instead of
+ * as a cryptic slot error later. PostgreSQL 18.6+ refuses logical-decoding plugins missing from
+ * output_plugin_libraries (superusers too); splitting into elements also catches the list stored as one
+ * quoted element, which is what a single-string SET/ALTER SYSTEM produces and which matches no plugin.
+ */
+export function testPostgresConfiguration(container: string): Promise<TestResult> {
+  return check("CDC settings (wal_level, output_plugin_libraries)", async () => {
+    const walLevel = await sqlOk(container, "SELECT current_setting('wal_level')");
+    expect(walLevel === "logical", `wal_level = ${walLevel}, expected logical`);
+    const plugins = await sqlOk(container, "SELECT current_setting('output_plugin_libraries')");
+    const list = plugins.split(",").map((lib) => lib.trim());
+    expect(list.includes("wal2json"), `output_plugin_libraries lacks wal2json: ${plugins}`);
+  });
+}
 
-    // Keys MUST match manifest entry names (kind: "tool") exactly.
-    // When adding a new tool to the manifest, add its binary path here.
-    const toolBinaries: Record<string, string> = {
-      pgbackrest: "/usr/bin/pgbackrest", // PGDG package path
-      pgbadger: "/usr/bin/pgbadger", // PGDG package path
-      wal2json: `/usr/lib/postgresql/${pgMajor}/lib/wal2json.so`,
-      pg_safeupdate: `/usr/lib/postgresql/${pgMajor}/lib/safeupdate.so`,
-    };
-
-    const missing: string[] = [];
-
+/**
+ * Every enabled tool declares its installed file on its manifest entry (binaryPath for an executable,
+ * soFileName for a server library under `pg_config --pkglibdir`), and that file exists. An enabled tool
+ * declaring neither fails, so a new tool cannot ship unchecked.
+ */
+export function testToolsPresent(container: string): Promise<TestResult> {
+  return check("Tool files present", async () => {
+    const tools = enabledEntries().filter((e) => e.kind === "tool");
+    const pkglibdir = (await execCommand(["pg_config", "--pkglibdir"], container)).output;
+    const problems: string[] = [];
     for (const tool of tools) {
-      const binaryPath = toolBinaries[tool.name];
-      if (!binaryPath) {
-        // Unknown enabled tool — add its path to toolBinaries above.
-        missing.push(
-          `${tool.name} (path unknown — add entry to toolBinaries in test-image-lib.ts)`
-        );
+      const path =
+        tool.binaryPath ?? (tool.soFileName ? `${pkglibdir}/${tool.soFileName}` : undefined);
+      if (!path) {
+        problems.push(`${tool.name}: manifest entry declares neither binaryPath nor soFileName`);
         continue;
       }
-
-      const exists = await fileExists(binaryPath, containerName);
-      if (!exists) {
-        missing.push(`${tool.name} (${binaryPath})`);
+      if (!(await execCommand(["test", "-f", path], container)).ok) {
+        problems.push(`${tool.name}: ${path} missing`);
       }
     }
+    expect(problems.length === 0, problems.join("\n"));
+    return `${tools.length} tools`;
+  });
+}
 
-    if (missing.length > 0) {
-      return {
-        name: "Tools present",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${missing.length} tool(s) missing: ${missing.join(", ")}`,
-      };
-    }
+/** Runs the binary, which loads its shared libraries — a broken dependency fails here. */
+export function testPgBackRestFunctional(container: string): Promise<TestResult> {
+  return check("pgBackRest runs", async () => {
+    const result = await execCommand(["pgbackrest", "version"], container, "postgres");
+    expect(
+      result.ok && result.output.includes("pgBackRest"),
+      `pgbackrest version: ${result.output}`
+    );
+  });
+}
 
-    return {
-      name: `Tools present (${tools.length} verified)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Tools present",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+/** Runs the Perl script, which loads its modules — a missing Perl dependency fails here. */
+export function testPgBadgerFunctional(container: string): Promise<TestResult> {
+  return check("pgBadger runs", async () => {
+    const result = await execCommand(["pgbadger", "--version"], container);
+    expect(
+      result.ok && result.output.toLowerCase().includes("pgbadger"),
+      `pgbadger --version: ${result.output}`
+    );
+  });
 }
 
 /**
- * Test: pgBackRest is functional
+ * SHOW cannot tell a configured value from a default, so this reads pg_settings.source: any key setting
+ * not written by the config file or command line means auto-config did not write it.
  */
-export async function testPgBackRestFunctional(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const result = await execCommand(["pgbackrest", "version"], containerName);
-
-    if (!result.success) {
-      return {
-        name: "pgBackRest functional",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgbackrest version command failed",
-      };
-    }
-
-    if (!result.output.includes("pgBackRest")) {
-      return {
-        name: "pgBackRest functional",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgbackrest version output unexpected",
-      };
-    }
-
-    return {
-      name: "pgBackRest functional",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgBackRest functional",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: pgBadger is functional
- */
-export async function testPgBadgerFunctional(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const result = await execCommand(["pgbadger", "--version"], containerName);
-
-    if (!result.success) {
-      return {
-        name: "pgBadger functional",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgbadger --version command failed",
-      };
-    }
-
-    if (!result.output.toLowerCase().includes("pgbadger")) {
-      return {
-        name: "pgBadger functional",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgbadger version output unexpected",
-      };
-    }
-
-    return {
-      name: "pgBadger functional",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgBadger functional",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-// ============================================================================
-// AUTO-CONFIG TESTS
-// ============================================================================
-
-/**
- * Test: Auto-config is applied
- */
-export async function testAutoConfigApplied(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Verify auto-config actually ran for ALL key settings in ONE query.
-    //
-    // Strategy: query pg_settings for any key setting still at 'default' source.
-    // If auto-config wrote postgresql.conf, ALL of these will be 'configuration file'
-    // or 'command line'. Any 'default' means that setting was never written — auto-config
-    // partially or fully failed.
-    //
-    // The 5 prior SHOW queries were removed: SHOW always returns a non-empty value for
-    // built-in settings regardless of whether auto-config ran. They tested nothing useful
-    // and added 5 round-trips. The source check is the only meaningful gate.
-    const defaultSettings = await execSQL(
+export function testAutoConfigApplied(container: string): Promise<TestResult> {
+  return check("Auto-config wrote the memory and connection settings", async () => {
+    const atDefault = await sqlOk(
+      container,
       `SELECT name FROM pg_settings
        WHERE name IN ('shared_buffers','effective_cache_size','maintenance_work_mem','work_mem','max_connections')
          AND source NOT IN ('configuration file','command line')
-       ORDER BY name`,
-      containerName
+       ORDER BY name`
     );
-
-    if (!defaultSettings.success) {
-      return {
-        name: "Auto-config applied",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to query pg_settings source",
-      };
-    }
-
-    const stillAtDefault = defaultSettings.output.trim()
-      ? defaultSettings.output
-          .trim()
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
-    if (stillAtDefault.length > 0) {
-      return {
-        name: "Auto-config applied",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `${stillAtDefault.length} setting(s) not written by auto-config (source = default): ${stillAtDefault.join(", ")}`,
-      };
-    }
-
-    return {
-      name: "Auto-config applied",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "Auto-config applied",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    expect(atDefault === "", `not written by auto-config: ${atDefault.split("\n").join(", ")}`);
+  });
 }
 
 // ============================================================================
-// COMPREHENSIVE FUNCTIONAL TESTS
+// EXTENSION BEHAVIOUR
 // ============================================================================
 
-/**
- * Test: AI/Vector - pgvector HNSW index and similarity search
- */
-export async function testPgvectorComprehensive(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Create table and truncate to ensure exact id=1 assertion holds on container reuse
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_vectors (id serial PRIMARY KEY, embedding vector(3))",
-      containerName
-    );
-    await execSQL("TRUNCATE test_vectors RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_vectors (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'), ('[7,8,9]')",
-      containerName
-    );
-
-    // Build HNSW index
-    const index = await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_vectors_hnsw_idx ON test_vectors USING hnsw (embedding vector_l2_ops)",
-      containerName
-    );
-    if (!index.success) {
-      return {
-        name: "pgvector - HNSW index and similarity search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create HNSW index",
-      };
-    }
-
-    // Force HNSW index: SET + query in one session (SET does not persist across execSQL calls)
-    // [1,2,3] is nearest to query [3,1,2] by L2 — nearest id must be 1
-    const search = await execSQL(
-      "SET enable_seqscan = OFF; SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1",
-      containerName
-    );
-    const nearestId = getLastOutputLine(search.output);
-    if (!search.success || nearestId !== "1") {
-      return {
-        name: "pgvector - HNSW index and similarity search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected nearest vector id=1, got: '${search.output.trim()}'`,
-      };
-    }
-
-    return {
-      name: "pgvector - HNSW index and similarity search",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgvector - HNSW index and similarity search",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+export function testPgvectorHnsw(container: string): Promise<TestResult> {
+  return check("pgvector - HNSW nearest neighbour", async () => {
+    await sqlOk(container, [
+      "DROP TABLE IF EXISTS test_vectors",
+      "CREATE TABLE test_vectors (id int PRIMARY KEY, embedding vector(3))",
+      "INSERT INTO test_vectors VALUES (1, '[1,2,3]'), (2, '[4,5,6]'), (3, '[7,8,9]')",
+      "CREATE INDEX test_vectors_hnsw_idx ON test_vectors USING hnsw (embedding vector_l2_ops)",
+    ]);
+    const out = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "EXPLAIN (COSTS OFF) SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1",
+      "SELECT id FROM test_vectors ORDER BY embedding <-> '[3,1,2]' LIMIT 1",
+    ]);
+    expect(out.includes("test_vectors_hnsw_idx"), `plan does not use the HNSW index:\n${out}`);
+    expect(lastLine(out) === "1", `nearest id should be 1, got ${lastLine(out)}`);
+  });
 }
 
 /**
- * Test: AI/Vector - vectorscale diskann index
+ * pgvector 0.8.2 fixed a buffer overflow in parallel HNSW builds. A table this small builds serially
+ * unless min_parallel_table_scan_size is 0, so the check sets it and asserts pgvector's own
+ * "using N parallel workers" line, proving the parallel path ran.
  */
-export async function testVectorscaleDiskann(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_vectorscale (id serial PRIMARY KEY, vec vector(3))",
-      containerName
+export function testPgvectorParallelHnswBuild(container: string): Promise<TestResult> {
+  return check("pgvector - parallel HNSW build", async () => {
+    await sqlOk(container, [
+      "DROP TABLE IF EXISTS test_vectors_parallel",
+      "CREATE TABLE test_vectors_parallel (id int PRIMARY KEY, embedding vector(3))",
+      "INSERT INTO test_vectors_parallel SELECT g, ARRAY[g, g, g]::vector(3) FROM generate_series(1, 5000) g",
+    ]);
+    const build = await psql(container, [
+      "SET max_parallel_maintenance_workers = 2",
+      "SET min_parallel_table_scan_size = 0",
+      "SET client_min_messages = debug1",
+      "CREATE INDEX test_vectors_parallel_idx ON test_vectors_parallel USING hnsw (embedding vector_l2_ops)",
+    ]);
+    expect(build.ok, `parallel HNSW build failed: ${build.err.slice(-400)}`);
+    const workers = build.err.match(/using (\d+) parallel workers/);
+    expect(workers !== null && Number(workers[1]) > 0, "build did not take the parallel path");
+    const nearest = lastLine(
+      await sqlOk(container, [
+        "SET enable_seqscan = off",
+        "SELECT id FROM test_vectors_parallel ORDER BY embedding <-> '[4200,4200,4200]' LIMIT 1",
+      ])
     );
-    // Truncate and rebuild index so DiskANN always covers exactly the 3 fresh rows
-    await execSQL("TRUNCATE test_vectorscale RESTART IDENTITY", containerName);
-    await execSQL("DROP INDEX IF EXISTS test_vectorscale_diskann_idx", containerName);
-    await execSQL(
-      "INSERT INTO test_vectorscale (vec) VALUES ('[1,0,0]'), ('[0,1,0]'), ('[0,0,1]')",
-      containerName
-    );
+    expect(nearest === "4200", `nearest id should be 4200, got ${nearest}`);
+    return `${workers[1]} workers`;
+  });
+}
 
-    const index = await execSQL(
+/**
+ * DiskANN indexes cosine distance by default, so the query uses <=>; a query on <-> would never reach
+ * the index. The query vector points at row 3, so a scan returning any other row fails.
+ */
+export function testVectorscaleDiskann(container: string): Promise<TestResult> {
+  return check("vectorscale - DiskANN nearest neighbour", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE",
+      "DROP TABLE IF EXISTS test_vectorscale",
+      "CREATE TABLE test_vectorscale (id int PRIMARY KEY, vec vector(3))",
+      "INSERT INTO test_vectorscale VALUES (1, '[1,0,0]'), (2, '[0,1,0]'), (3, '[0,0,1]')",
       "CREATE INDEX test_vectorscale_diskann_idx ON test_vectorscale USING diskann (vec)",
-      containerName
-    );
-    if (!index.success) {
-      return {
-        name: "vectorscale - DiskANN index",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create DiskANN index",
-      };
-    }
-
-    // Force DiskANN index usage: SET + query in one session (SET does not persist across execSQL calls).
-    // Query vector [1,1,1] is equidistant from all 3 stored vectors ([1,0,0], [0,1,0], [0,0,1])
-    // at L2 distance sqrt(2) each — any id is a correct nearest neighbour, so we assert non-empty.
-    const search = await execSQL(
-      "SET enable_seqscan = OFF; SELECT id FROM test_vectorscale ORDER BY vec <-> '[1,1,1]' LIMIT 1",
-      containerName
-    );
-    if (!search.success || search.output.trim() === "") {
-      return {
-        name: "vectorscale - DiskANN index",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "DiskANN search failed",
-      };
-    }
-
-    return {
-      name: "vectorscale - DiskANN index",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "vectorscale - DiskANN index",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    ]);
+    const out = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "EXPLAIN (COSTS OFF) SELECT id FROM test_vectorscale ORDER BY vec <=> '[0.1,0.2,0.9]' LIMIT 1",
+      "SELECT id FROM test_vectorscale ORDER BY vec <=> '[0.1,0.2,0.9]' LIMIT 1",
+    ]);
+    expect(out.includes("test_vectorscale_diskann_idx"), `plan does not use DiskANN:\n${out}`);
+    expect(lastLine(out) === "3", `nearest id should be 3, got ${lastLine(out)}`);
+  });
 }
 
-/**
- * Test: Analytics - hll cardinality estimation
- */
-export async function testHllCardinality(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS hll CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_hll (id serial PRIMARY KEY, users hll)",
-      containerName
+export function testHllCardinality(container: string): Promise<TestResult> {
+  return check("hll - cardinality estimate", async () => {
+    await sqlOk(container, "CREATE EXTENSION IF NOT EXISTS hll CASCADE");
+    const estimate = await sqlOk(
+      container,
+      "SELECT round(hll_cardinality(hll_add_agg(hll_hash_integer(g % 1000))))::int FROM generate_series(1, 10000) g"
     );
-    // Truncate so INSERT always produces id=1 and UPDATE targets the correct fresh row
-    await execSQL("TRUNCATE test_hll RESTART IDENTITY", containerName);
-    await execSQL("INSERT INTO test_hll (users) VALUES (hll_empty())", containerName);
-    await execSQL(
-      "UPDATE test_hll SET users = hll_add(users, hll_hash_integer(1)) WHERE id = 1",
-      containerName
-    );
-
-    const count = await execSQL(
-      "SELECT hll_cardinality(users)::int FROM test_hll WHERE id = 1",
-      containerName
-    );
-    if (!count.success || count.output.trim() !== "1") {
-      return {
-        name: "hll - Cardinality estimation",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected cardinality 1, got ${count.output}`,
-      };
-    }
-
-    return {
-      name: "hll - Cardinality estimation",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "hll - Cardinality estimation",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    // hll's default precision has about 2% standard error; 1000 distinct values must land near 1000.
+    expect(Math.abs(Number(estimate) - 1000) < 100, `estimate ${estimate}, expected about 1000`);
+  });
 }
 
-/**
- * Test: CDC - wal2json logical replication
- */
-export async function testWal2jsonReplication(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Drop slot if exists
-    await execSQL(
-      "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'",
-      containerName
-    );
-
-    const slot = await execSQL(
+/** The slot output must contain the INSERT itself; format-version 2 also emits B/C records for DDL. */
+export function testWal2jsonReplication(container: string): Promise<TestResult> {
+  return check("wal2json - captures an INSERT", async () => {
+    const dropSlot =
+      "SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'";
+    await sqlOk(container, [
+      dropSlot,
+      "DROP TABLE IF EXISTS test_wal2json_table",
+      "CREATE TABLE test_wal2json_table (id int PRIMARY KEY, data text)",
       "SELECT pg_create_logical_replication_slot('test_wal2json_slot', 'wal2json')",
-      containerName
-    );
-    if (!slot.success) {
-      return {
-        name: "wal2json - Logical replication",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create replication slot",
-      };
+    ]);
+    try {
+      await sqlOk(container, "INSERT INTO test_wal2json_table VALUES (42, 'wal2json-marker')");
+      const changes = await sqlOk(
+        container,
+        "SELECT data FROM pg_logical_slot_get_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')"
+      );
+      const insert = changes
+        .split("\n")
+        .map((line) => JSON.parse(line) as { action?: string; table?: string; columns?: unknown })
+        .find((change) => change.action === "I" && change.table === "test_wal2json_table");
+      expect(insert !== undefined, `no INSERT record for test_wal2json_table in:\n${changes}`);
+      expect(
+        JSON.stringify(insert.columns).includes("wal2json-marker"),
+        `INSERT record lacks the inserted value: ${JSON.stringify(insert)}`
+      );
+    } finally {
+      await psql(container, dropSlot);
     }
+  });
+}
 
-    // Perform DML and read changes
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_wal2json_table (id int, data text)",
-      containerName
+/** Equality on a plain integer in a GiST exclusion constraint needs btree_gist's operator class. */
+export function testBtreeGistExclusion(container: string): Promise<TestResult> {
+  return check("btree_gist - integer equality exclusion", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS btree_gist",
+      "DROP TABLE IF EXISTS test_exclusion",
+      "CREATE TABLE test_exclusion (room int, EXCLUDE USING gist (room WITH =))",
+      "INSERT INTO test_exclusion VALUES (1), (2)",
+    ]);
+    const duplicate = await psql(container, "INSERT INTO test_exclusion VALUES (1)");
+    expect(
+      !duplicate.ok &&
+        duplicate.err.includes("conflicting key value violates exclusion constraint"),
+      `duplicate room was not rejected by the exclusion constraint: ${duplicate.err || duplicate.out}`
     );
-    await execSQL("INSERT INTO test_wal2json_table VALUES (1, 'test')", containerName);
+  });
+}
 
-    const changes = await execSQL(
-      "SELECT data FROM pg_logical_slot_peek_changes('test_wal2json_slot', NULL, NULL, 'format-version', '2')",
-      containerName
-    );
-    if (!changes.success) {
-      await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')", containerName);
-      return {
-        name: "wal2json - Logical replication",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to read wal2json changes",
-      };
-    }
-
-    // Verify wal2json actually captured the INSERT — success with empty output means
-    // the slot was created but change capture is not working (e.g., wal_level != logical)
-    if (changes.output.trim() === "") {
-      await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')", containerName);
-      return {
-        name: "wal2json - Logical replication",
-        passed: false,
-        duration: Date.now() - startTime,
-        error:
-          "wal2json slot created but no changes captured (INSERT not reflected in slot output)",
-      };
-    }
-
-    // Cleanup
-    await execSQL("SELECT pg_drop_replication_slot('test_wal2json_slot')", containerName);
-
-    return {
-      name: "wal2json - Logical replication",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    // Best-effort cleanup — slot may be open if error fired after slot creation
-    await execSQL(
-      "SELECT pg_drop_replication_slot('test_wal2json_slot') FROM pg_replication_slots WHERE slot_name = 'test_wal2json_slot'",
-      containerName
-    );
-    return {
-      name: "wal2json - Logical replication",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+/** A GIN index on a plain integer needs btree_gin's operator class; the plan must use it. */
+export function testBtreeGinIndex(container: string): Promise<TestResult> {
+  return check("btree_gin - integer GIN index", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS btree_gin",
+      "DROP TABLE IF EXISTS test_btree_gin",
+      "CREATE TABLE test_btree_gin (id int, val int)",
+      "INSERT INTO test_btree_gin SELECT g, g % 100 FROM generate_series(1, 1000) g",
+      "CREATE INDEX test_btree_gin_idx ON test_btree_gin USING gin (val)",
+    ]);
+    const out = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "EXPLAIN (COSTS OFF) SELECT count(*) FROM test_btree_gin WHERE val = 42",
+      "SELECT count(*) FROM test_btree_gin WHERE val = 42",
+    ]);
+    expect(out.includes("test_btree_gin_idx"), `plan does not use the GIN index:\n${out}`);
+    expect(lastLine(out) === "10", `expected 10 rows with val = 42, got ${lastLine(out)}`);
+  });
 }
 
 /**
- * Test: GIS - PostGIS spatial queries
+ * A request to a closed local port must reach libcurl and come back as a curl connection error. That
+ * needs no network, and fails if the extension is missing, its function signatures changed, or the
+ * library cannot load libcurl.
  */
-export async function testPostgisSpatialQuery(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS postgis CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_postgis (id serial PRIMARY KEY, geom geometry(Point, 4326))",
-      containerName
+export function testHttpRequests(container: string): Promise<TestResult> {
+  return check("http - request reaches libcurl", async () => {
+    await sqlOk(container, "CREATE EXTENSION IF NOT EXISTS http");
+    const result = await psql(container, "SELECT status FROM http_get('http://127.0.0.1:1/')");
+    expect(!result.ok, `request to a closed port succeeded: ${result.out}`);
+    expect(
+      /Failed to connect to 127\.0\.0\.1 port 1/.test(result.err),
+      `expected a curl connection error, got: ${result.err}`
     );
-    await execSQL("TRUNCATE test_postgis RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_postgis (geom) VALUES (ST_SetSRID(ST_MakePoint(-71.060316, 48.432044), 4326))",
-      containerName
-    );
-
-    const query = await execSQL(
-      "SELECT count(*) FROM test_postgis WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-71, 48), 4326)::geography, 100000)",
-      containerName
-    );
-    if (!query.success || parseInt(query.output.trim(), 10) === 0) {
-      return {
-        name: "PostGIS - Spatial query",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Spatial query failed",
-      };
-    }
-
-    // Build spatial index
-    await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_postgis_geom_idx ON test_postgis USING GIST (geom)",
-      containerName
-    );
-
-    return {
-      name: "PostGIS - Spatial query",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "PostGIS - Spatial query",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+  });
 }
 
 /**
- * Test: GIS - pgRouting shortest path
+ * pgsodium's DDL event trigger fires on pg_partman's child-table creation and can interfere; it is
+ * disabled for this check and always re-enabled, since every later check shares this container.
  */
-export async function testPgroutingShortestPath(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE", containerName);
-    await execSQL(
-      `CREATE TABLE IF NOT EXISTS test_routing (
-      id serial PRIMARY KEY,
-      source int,
-      target int,
-      cost float
-    )`,
-      containerName
-    );
-    // Truncate so Dijkstra sees exactly 3 edges and computes the deterministic optimal cost
-    await execSQL("TRUNCATE test_routing RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_routing (source, target, cost) VALUES (1, 2, 1.0), (2, 3, 2.0), (1, 3, 5.0)",
-      containerName
-    );
-
-    // Optimal path 1→2→3 costs 3.0 (vs direct 1→3 at 5.0); verify exact aggregate cost
-    const path = await execSQL(
-      "SELECT sum(cost)::numeric(4,1)::text FROM pgr_dijkstra('SELECT id, source, target, cost FROM test_routing', 1, 3, false) WHERE edge != -1",
-      containerName
-    );
-    if (!path.success || path.output.trim() !== "3.0") {
-      return {
-        name: "pgRouting - Shortest path",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected Dijkstra cost 3.0 (1→2→3), got: '${path.output.trim()}'`,
-      };
-    }
-
-    return {
-      name: "pgRouting - Shortest path",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgRouting - Shortest path",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Indexing - btree_gist exclusion constraint
- */
-export async function testBtreeGistExclusion(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS btree_gist CASCADE", containerName);
-    const create = await execSQL(
-      `CREATE TABLE IF NOT EXISTS test_exclusion (
-      id serial PRIMARY KEY,
-      period int4range,
-      EXCLUDE USING GIST (period WITH &&)
-    )`,
-      containerName
-    );
-
-    if (!create.success) {
-      return {
-        name: "btree_gist - Exclusion constraint",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create exclusion constraint",
-      };
-    }
-
-    // Truncate so [1,10) insert always succeeds and [5,15) is blocked by the constraint
-    await execSQL("TRUNCATE test_exclusion RESTART IDENTITY", containerName);
-    await execSQL("INSERT INTO test_exclusion (period) VALUES (int4range(1, 10))", containerName);
-    const conflict = await execSQL(
-      "INSERT INTO test_exclusion (period) VALUES (int4range(5, 15))",
-      containerName
-    );
-
-    if (conflict.success) {
-      return {
-        name: "btree_gist - Exclusion constraint",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Exclusion constraint should prevent overlapping ranges",
-      };
-    }
-
-    return {
-      name: "btree_gist - Exclusion constraint",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "btree_gist - Exclusion constraint",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Integration - http GET request
- */
-export async function testHttpRequests(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS http CASCADE", containerName);
-
-    // GET request — verifies the extension is installed and functional.
-    // POST is not tested; network/service failures are treated as pass to avoid
-    // false negatives in CI environments with restricted egress.
-    const getResult = await execSQL(
-      "SELECT status FROM http_get('https://httpbin.org/status/200')",
-      containerName
-    );
-
-    // Network infrastructure failures (DNS failure, timeout, connection refused) surface as
-    // success: false — treat gracefully to avoid false negatives from environment restrictions.
-    if (!getResult.success) {
-      return {
-        name: "http - GET request",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    // Rate limiting or service unavailability from httpbin.org is not an extension failure
-    if (getResult.output.trim() === "503" || getResult.output.trim() === "429") {
-      return {
-        name: "http - GET request",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
-    }
-
-    if (getResult.output.trim() !== "200") {
-      return {
-        name: "http - GET request",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `HTTP GET returned unexpected status: ${getResult.output.trim()}`,
-      };
-    }
-
-    return {
-      name: "http - GET request",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "http - GET request",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Language - plpgsql triggers
- */
-export async function testPlpgsqlTriggers(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_trigger_table (id serial PRIMARY KEY, val int)",
-      containerName
-    );
-
-    const triggerFunc = await execSQL(
-      `CREATE OR REPLACE FUNCTION test_trigger_func() RETURNS TRIGGER AS $$
-    BEGIN
-      NEW.val := NEW.val * 2;
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql`,
-      containerName
-    );
-
-    if (!triggerFunc.success) {
-      return {
-        name: "plpgsql - Triggers",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create trigger function",
-      };
-    }
-
-    await execSQL("DROP TRIGGER IF EXISTS test_trigger ON test_trigger_table", containerName);
-    await execSQL("TRUNCATE test_trigger_table RESTART IDENTITY", containerName);
-    await execSQL(
-      "CREATE TRIGGER test_trigger BEFORE INSERT ON test_trigger_table FOR EACH ROW EXECUTE FUNCTION test_trigger_func()",
-      containerName
-    );
-
-    await execSQL("INSERT INTO test_trigger_table (val) VALUES (5)", containerName);
-    const result = await execSQL(
-      "SELECT val FROM test_trigger_table ORDER BY id DESC LIMIT 1",
-      containerName
-    );
-
-    if (!result.success || result.output.trim() !== "10") {
-      return {
-        name: "plpgsql - Triggers",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Trigger did not execute correctly",
-      };
-    }
-
-    return {
-      name: "plpgsql - Triggers",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "plpgsql - Triggers",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Maintenance - pg_partman partitioning
- */
-export async function testPgPartmanPartitioning(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE", containerName);
-    // Drop parent CASCADE (removes partition children too); CREATE fresh for clean create_parent call
-    await execSQL("DROP TABLE IF EXISTS test_partman CASCADE", containerName);
-    await execSQL(
-      `CREATE TABLE test_partman (
-      id serial,
-      created_at timestamp NOT NULL DEFAULT now(),
-      data text
-    ) PARTITION BY RANGE (created_at)`,
-      containerName
-    );
-
-    // Clean up any stale partman config (should be none after DROP CASCADE, but be safe)
-    await execSQL(
+export function testPgPartmanPartitioning(container: string): Promise<TestResult> {
+  return check("pg_partman - creates partitions", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS pg_partman CASCADE",
+      "DROP TABLE IF EXISTS test_partman CASCADE",
       "DELETE FROM part_config WHERE parent_table = 'public.test_partman'",
-      containerName
-    );
-
-    // pgsodium's DDL event trigger fires on pg_partman child table creation and can
-    // interfere with mask metadata. Pre-load pgsodium and disable the trigger to
-    // prevent spurious failures — this is NOT a pg_partman dependency.
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE", containerName);
-    // success:false is OK — trigger may not exist if pgsodium version differs
-    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName);
-
-    // Re-enable trigger in finally to avoid state pollution for subsequent tests
+      "CREATE TABLE test_partman (id int, created_at timestamp NOT NULL) PARTITION BY RANGE (created_at)",
+    ]);
+    await psql(container, "ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE");
     try {
-      const config = await execSQL(
-        "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := (now() - interval '7 days')::text)",
-        containerName
+      await sqlOk(
+        container,
+        "SELECT create_parent('public.test_partman', 'created_at', '1 day', 'range', p_start_partition := (now() - interval '7 days')::text)"
       );
-      if (!config.success) {
-        return {
-          name: "pg_partman - Partitioning",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: `Failed to configure pg_partman: ${config.output}`,
-        };
-      }
-
-      // Verify partitions created
-      const check = await execSQL(
-        "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test_partman_p%'",
-        containerName
+      const partitions = await sqlOk(
+        container,
+        "SELECT count(*) FROM pg_inherits WHERE inhparent = 'public.test_partman'::regclass"
       );
-      if (!check.success || parseInt(check.output.trim(), 10) === 0) {
-        return {
-          name: "pg_partman - Partitioning",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: "No partitions created",
-        };
-      }
-
-      return {
-        name: "pg_partman - Partitioning",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
+      expect(Number(partitions) > 7, `expected more than 7 partitions, got ${partitions}`);
+      return `${partitions} partitions`;
     } finally {
-      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName);
+      await psql(container, "ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE");
     }
-  } catch (err) {
-    return {
-      name: "pg_partman - Partitioning",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+  });
+}
+
+export function testPgStatStatements(container: string): Promise<TestResult> {
+  return check("pg_stat_statements - records a query", async () => {
+    await sqlOk(container, "SELECT pg_stat_statements_reset()");
+    // The marker is a column alias: pg_stat_statements normalises constants to $1, never identifiers.
+    await sqlOk(container, "SELECT 1 AS pgss_marker");
+    const calls = await sqlOk(
+      container,
+      "SELECT coalesce(sum(calls), 0) FROM pg_stat_statements WHERE query LIKE '%AS pgss_marker%' AND query NOT LIKE '%pg_stat_statements%'"
+    );
+    expect(Number(calls) >= 1, `the marker query was not recorded (calls = ${calls})`);
+  });
 }
 
 /**
- * Test: Observability - pg_stat_statements
+ * pg_cron runs jobs through its launcher in cron.database_name; a wrong database, a dead launcher or a
+ * failing connection leaves no 'succeeded' run. Jobs are filtered by id because the image schedules its
+ * own (pgflow) jobs too.
  */
-export async function testPgStatStatements(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    const reset = await execSQL("SELECT pg_stat_statements_reset()", containerName);
-    if (!reset.success) {
-      return {
-        name: "pg_stat_statements - Statistics",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to reset pg_stat_statements",
-      };
+export function testPgCronScheduling(container: string): Promise<TestResult> {
+  return check("pg_cron - a scheduled job runs", async () => {
+    await psql(container, "SELECT cron.unschedule('test-cron-run')");
+    const jobId = await sqlOk(
+      container,
+      "SELECT cron.schedule('test-cron-run', '1 seconds', 'SELECT 1')"
+    );
+    try {
+      const deadline = Date.now() + 20_000;
+      let runs = "";
+      while (Date.now() < deadline) {
+        runs = await sqlOk(
+          container,
+          `SELECT status || ': ' || coalesce(return_message, '') FROM cron.job_run_details WHERE jobid = ${Number(jobId)} AND status IN ('succeeded', 'failed') ORDER BY runid`
+        );
+        if (runs !== "") break;
+        await Bun.sleep(250);
+      }
+      expect(runs !== "", "no run of the job finished within 20 s");
+      expect(runs.split("\n")[0]?.startsWith("succeeded") === true, `job run failed: ${runs}`);
+    } finally {
+      await psql(container, "SELECT cron.unschedule('test-cron-run')");
     }
+  });
+}
 
-    // Execute a tracked query so the extension has something to collect
-    await execSQL("SELECT 'pg_stat_statements tracking test'", containerName);
+/** The planner must choose the hypothetical index, which exists only inside hypopg. */
+export function testHypopgHypotheticalIndexes(container: string): Promise<TestResult> {
+  return check("hypopg - planner uses a hypothetical index", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS hypopg",
+      "DROP TABLE IF EXISTS test_hypopg",
+      "CREATE TABLE test_hypopg (id int, val int)",
+      "INSERT INTO test_hypopg SELECT g, g FROM generate_series(1, 10000) g",
+      "ANALYZE test_hypopg",
+    ]);
+    const plan = await sqlOk(container, [
+      "SELECT indexname FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)')",
+      "EXPLAIN (COSTS OFF) SELECT * FROM test_hypopg WHERE val = 5",
+    ]);
+    expect(
+      /Index Scan using "?<\d+>btree_test_hypopg_val/.test(plan),
+      `plan ignores the hypothetical index:\n${plan}`
+    );
+  });
+}
 
-    const verify = await execSQL("SELECT count(*) FROM pg_stat_statements", containerName);
-    if (!verify.success) {
-      return {
-        name: "pg_stat_statements - Statistics",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to query pg_stat_statements",
-      };
+export function testIndexAdvisor(container: string): Promise<TestResult> {
+  return check("index_advisor - recommends an index", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS index_advisor CASCADE",
+      "DROP TABLE IF EXISTS test_index_advisor",
+      "CREATE TABLE test_index_advisor (id int, val int)",
+    ]);
+    const advice = await sqlOk(
+      container,
+      "SELECT index_statements::text || ' ' || errors::text FROM index_advisor('SELECT * FROM test_index_advisor WHERE val = 5')"
+    );
+    expect(
+      advice.includes("CREATE INDEX ON public.test_index_advisor USING btree (val)"),
+      `unexpected advice: ${advice}`
+    );
+  });
+}
+
+/** A wrong return type must be reported and a clean function must produce no rows. */
+export function testPlpgsqlCheck(container: string): Promise<TestResult> {
+  return check("plpgsql_check - reports a type error, passes clean code", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS plpgsql_check",
+      "CREATE OR REPLACE FUNCTION test_plcheck_bad() RETURNS int LANGUAGE plpgsql AS $$ DECLARE v text := 'x'; BEGIN RETURN v; END $$",
+      "CREATE OR REPLACE FUNCTION test_plcheck_good() RETURNS int LANGUAGE plpgsql AS $$ DECLARE v int := 42; BEGIN RETURN v; END $$",
+    ]);
+    try {
+      const bad = await sqlOk(
+        container,
+        "SELECT * FROM plpgsql_check_function('test_plcheck_bad()')"
+      );
+      expect(
+        /target type is different type than source type/.test(bad),
+        `type error not reported: ${bad}`
+      );
+      const good = await sqlOk(
+        container,
+        "SELECT * FROM plpgsql_check_function('test_plcheck_good()')"
+      );
+      expect(good === "", `clean function reported: ${good}`);
+    } finally {
+      await psql(container, "DROP FUNCTION IF EXISTS test_plcheck_bad(), test_plcheck_good()");
     }
-
-    // After executing a query post-reset, count must be >= 1 — zero means the extension
-    // is loaded but not collecting statements (misconfigured track setting, etc.)
-    const count = parseInt(verify.output.trim(), 10);
-    if (count < 1) {
-      return {
-        name: "pg_stat_statements - Statistics",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `pg_stat_statements is not collecting queries (count = ${count} after tracked query)`,
-      };
-    }
-
-    return {
-      name: "pg_stat_statements - Statistics",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_stat_statements - Statistics",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+  });
 }
 
 /**
- * Test: Operations - pg_cron job scheduling
+ * The image does not preload plan_filter (defaultEnable false); LOAD installs the same planner hook for
+ * the session. A limit of 1 must reject a real scan and still admit a constant SELECT, so a filter that
+ * blocks nothing and one that blocks everything both fail.
  */
-export async function testPgCronScheduling(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE", containerName);
-
-    // Pre-cleanup: remove any leftover test-job from a prior run
-    // (if prior run failed between schedule and unschedule, job persists)
-    await execSQL("SELECT cron.unschedule('test-job')", containerName);
-
-    const schedule = await execSQL(
-      "SELECT cron.schedule('test-job', '* * * * *', 'SELECT 1')",
-      containerName
+export function testPgPlanFilter(container: string): Promise<TestResult> {
+  return check("pg_plan_filter - rejects plans above the cost limit only", async () => {
+    const limited = ["LOAD 'plan_filter'", "SET plan_filter.statement_cost_limit = 1"];
+    const costly = await psql(container, [
+      ...limited,
+      "SELECT count(*) FROM generate_series(1, 100000)",
+    ]);
+    expect(
+      !costly.ok && costly.err.includes("plan cost limit exceeded"),
+      `costly plan was not rejected: ${costly.err || costly.out}`
     );
-    if (!schedule.success) {
-      return {
-        name: "pg_cron - Job scheduling",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to schedule cron job",
-      };
-    }
-
-    const check = await execSQL(
-      "SELECT count(*) FROM cron.job WHERE jobname = 'test-job'",
-      containerName
-    );
-    if (!check.success || parseInt(check.output.trim(), 10) !== 1) {
-      return {
-        name: "pg_cron - Job scheduling",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Cron job not found",
-      };
-    }
-
-    // Cleanup — use jobname to avoid integer-parsing fragility of jobid output
-    await execSQL("SELECT cron.unschedule('test-job')", containerName);
-
-    return {
-      name: "pg_cron - Job scheduling",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_cron - Job scheduling",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    const cheap = await psql(container, [...limited, "SELECT 1"]);
+    expect(cheap.ok, `plan under the limit was rejected: ${cheap.err}`);
+  });
 }
 
 /**
- * Test: Performance - hypopg hypothetical indexes
+ * Runs the pg_repack client against the server extension: a client/extension version mismatch or a
+ * broken client fails, and a successful repack rewrites the table (new relfilenode) keeping every row.
  */
-export async function testHypopgHypotheticalIndexes(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS hypopg CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_hypopg (id serial PRIMARY KEY, val int)",
-      containerName
+export function testPgRepack(container: string): Promise<TestResult> {
+  return check("pg_repack - repacks a table online", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS pg_repack",
+      "DROP TABLE IF EXISTS test_repack",
+      "CREATE TABLE test_repack (id int PRIMARY KEY, val text)",
+      "INSERT INTO test_repack SELECT g, md5(g::text) FROM generate_series(1, 1000) g",
+      "DELETE FROM test_repack WHERE id % 2 = 0",
+    ]);
+    const before = await sqlOk(container, "SELECT pg_relation_filenode('test_repack')");
+    const run = await execCommand(
+      ["pg_repack", "-U", "postgres", "-d", "postgres", "-t", "public.test_repack"],
+      container,
+      "postgres"
     );
-    await execSQL("TRUNCATE test_hypopg RESTART IDENTITY", containerName);
-    await execSQL("INSERT INTO test_hypopg (val) SELECT generate_series(1, 1000)", containerName);
+    expect(run.ok, `pg_repack failed: ${run.output}`);
+    const after = await sqlOk(container, [
+      "SELECT pg_relation_filenode('test_repack') || ' ' || count(*) FROM test_repack",
+    ]);
+    const [filenode, rows] = after.split(" ");
+    expect(filenode !== before, "table was not rewritten (relfilenode unchanged)");
+    expect(rows === "500", `expected 500 rows after repack, got ${rows}`);
+  });
+}
 
-    // Create and verify in same session (hypothetical indexes are session-local)
-    const result = await execSQL(
-      `
-      SELECT * FROM hypopg_create_index('CREATE INDEX ON test_hypopg (val)');
-      SELECT count(*) FROM hypopg_list_indexes;
-    `,
-      containerName
-    );
-
-    const lines = result.output.split("\n").filter((l: string) => l.trim());
-    const lastLine = lines[lines.length - 1];
-
-    if (!result.success || !lastLine || parseInt(lastLine, 10) === 0) {
-      return {
-        name: "hypopg - Hypothetical indexes",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create hypothetical index",
-      };
+export function testPgmqQueue(container: string): Promise<TestResult> {
+  return check("pgmq - send then read returns the message", async () => {
+    await psql(container, "SELECT pgmq.drop_queue('test_queue')");
+    await sqlOk(container, "SELECT pgmq.create('test_queue')");
+    try {
+      const sent = await sqlOk(
+        container,
+        `SELECT pgmq.send('test_queue', '{"order_id": 123}'::jsonb)`
+      );
+      const read = await sqlOk(
+        container,
+        "SELECT msg_id || ' ' || (message->>'order_id') FROM pgmq.read('test_queue', 30, 1)"
+      );
+      expect(read === `${sent} 123`, `read returned '${read}', expected '${sent} 123'`);
+    } finally {
+      await psql(container, "SELECT pgmq.drop_queue('test_queue')");
     }
+  });
+}
 
-    return {
-      name: "hypopg - Hypothetical indexes",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "hypopg - Hypothetical indexes",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+export function testPgTrgmSimilarity(container: string): Promise<TestResult> {
+  return check("pg_trgm - similarity search through a GIN index", async () => {
+    await sqlOk(container, [
+      "DROP TABLE IF EXISTS test_trgm",
+      "CREATE TABLE test_trgm (id int, text_col text)",
+      "INSERT INTO test_trgm VALUES (1, 'hello world'), (2, 'hello universe'), (3, 'goodbye world')",
+      "CREATE INDEX test_trgm_idx ON test_trgm USING gin (text_col gin_trgm_ops)",
+    ]);
+    const out = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
+    ]);
+    expect(
+      lastLine(out) === "hello world",
+      `top match should be 'hello world', got '${lastLine(out)}'`
+    );
+  });
 }
 
 /**
- * Test: Queueing - pgmq message queue
+ * PGroonga keeps index data in external Groonga files that TRUNCATE does not clear, so the index is
+ * dropped with the table and created after the INSERTs.
  */
-export async function testPgmqQueue(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE", containerName);
-
-    // Pre-cleanup: drop queue to eliminate stale messages from a prior failed run.
-    // pgmq.read is FIFO — stale messages cause msg_id mismatch assertions to fail.
-    await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName);
-
-    const create = await execSQL("SELECT pgmq.create('test_queue')", containerName);
-    if (!create.success) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create queue",
-      };
-    }
-
-    const send = await execSQL(
-      'SELECT pgmq.send(\'test_queue\', \'{"task": "process_order", "order_id": 123}\'::jsonb)',
-      containerName
-    );
-    if (!send.success || send.output.trim() === "") {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to send message",
-      };
-    }
-    const sentMsgId = send.output.trim();
-
-    const read = await execSQL("SELECT msg_id FROM pgmq.read('test_queue', 30, 1)", containerName);
-    if (!read.success || read.output.trim() === "") {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to read message",
-      };
-    }
-    if (read.output.trim() !== sentMsgId) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Read returned msg_id ${read.output.trim()}, expected ${sentMsgId}`,
-      };
-    }
-
-    // Topic routing (pgmq 1.11.0+): bind_topic → send_topic → verify message arrives in bound queue.
-    // Verifies the AMQP-style fan-out routing path end-to-end, not just basic queue mechanics.
-    await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
-    const topicCreate = await execSQL("SELECT pgmq.create('test_topic_queue')", containerName);
-    if (!topicCreate.success) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Failed to create queue for topic routing: ${topicCreate.output.slice(0, 100)}`,
-      };
-    }
-
-    // Bind queue to topic pattern — '#' matches zero or more segments (e.g. 'test.event.created')
-    const bindResult = await execSQL(
-      "SELECT pgmq.bind_topic('test.#', 'test_topic_queue')",
-      containerName
-    );
-    if (!bindResult.success) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `bind_topic failed: ${bindResult.output.slice(0, 100)}`,
-      };
-    }
-
-    // Verify binding is registered before sending (list_topic_bindings sanity check)
-    const bindings = await execSQL(
-      "SELECT count(*) FROM pgmq.list_topic_bindings('test_topic_queue')",
-      containerName
-    );
-    if (!bindings.success || parseInt(bindings.output.trim(), 10) < 1) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Topic binding not listed after bind_topic call (count=${bindings.output.trim()})`,
-      };
-    }
-
-    // Fan out a message via topic routing key — 'test.event' matches bound pattern 'test.#'
-    const topicSend = await execSQL(
-      "SELECT pgmq.send_topic('test.event', '{\"action\": \"created\"}'::jsonb)",
-      containerName
-    );
-    if (!topicSend.success) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `send_topic failed: ${topicSend.output.slice(0, 100)}`,
-      };
-    }
-
-    // Message must have been routed into the bound queue
-    const topicRead = await execSQL(
-      "SELECT count(*) FROM pgmq.read('test_topic_queue', 30, 10)",
-      containerName
-    );
-    if (!topicRead.success || parseInt(topicRead.output.trim(), 10) < 1) {
-      return {
-        name: "pgmq - Message queue",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Topic message not received in bound queue (count=${topicRead.output.trim()})`,
-      };
-    }
-
-    await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
-
-    return {
-      name: "pgmq - Message queue",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgmq - Message queue",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Safety - pg_safeupdate blocks unsafe updates
- */
-export async function testPgSafeupdateProtection(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_safeupdate (id serial PRIMARY KEY, val int)",
-      containerName
-    );
-    await execSQL("TRUNCATE test_safeupdate RESTART IDENTITY", containerName);
-    await execSQL("INSERT INTO test_safeupdate (val) VALUES (1), (2), (3)", containerName);
-
-    // Attempt UPDATE without WHERE (should be blocked)
-    const updateResult = await execSQL("UPDATE test_safeupdate SET val = 99", containerName);
-
-    if (updateResult.success) {
-      return {
-        name: "pg_safeupdate - UPDATE/DELETE protection",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pg_safeupdate should block UPDATE without WHERE",
-      };
-    }
-
-    // Verify UPDATE with WHERE works
-    const safeUpdate = await execSQL(
-      "UPDATE test_safeupdate SET val = 99 WHERE id = 1",
-      containerName
-    );
-    if (!safeUpdate.success) {
-      return {
-        name: "pg_safeupdate - UPDATE/DELETE protection",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "UPDATE with WHERE should succeed",
-      };
-    }
-
-    // Attempt DELETE without WHERE (should also be blocked)
-    const deleteResult = await execSQL("DELETE FROM test_safeupdate", containerName);
-    if (deleteResult.success) {
-      return {
-        name: "pg_safeupdate - UPDATE/DELETE protection",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pg_safeupdate should block DELETE without WHERE",
-      };
-    }
-
-    // Verify DELETE with WHERE works
-    const safeDelete = await execSQL("DELETE FROM test_safeupdate WHERE id = 1", containerName);
-    if (!safeDelete.success) {
-      return {
-        name: "pg_safeupdate - UPDATE/DELETE protection",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "DELETE with WHERE should succeed",
-      };
-    }
-
-    return {
-      name: "pg_safeupdate - UPDATE/DELETE protection",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_safeupdate - UPDATE/DELETE protection",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Search - pg_trgm similarity search
- */
-export async function testPgTrgmSimilarity(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_trgm (id serial PRIMARY KEY, text_col text)",
-      containerName
-    );
-    await execSQL("TRUNCATE test_trgm RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_trgm (text_col) VALUES ('hello world'), ('hello universe'), ('goodbye world')",
-      containerName
-    );
-    await execSQL(
-      "CREATE INDEX IF NOT EXISTS test_trgm_idx ON test_trgm USING GIN (text_col gin_trgm_ops)",
-      containerName
-    );
-    // Force GIN index usage: SET + query in one session (SET does not persist across execSQL calls)
-    const search = await execSQL(
-      "SET enable_seqscan = OFF; SELECT text_col FROM test_trgm WHERE text_col % 'helo wrld' ORDER BY similarity(text_col, 'helo wrld') DESC LIMIT 1",
-      containerName
-    );
-    const topMatch = getLastOutputLine(search.output);
-    // Verify the TOP result is the expected closest match — any non-empty result would pass
-    // even if the wrong row is returned (e.g., similarity operator misconfigured)
-    if (!search.success || topMatch !== "hello world") {
-      return {
-        name: "pg_trgm - Similarity search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected 'hello world' as top similarity match, got: '${search.output.trim()}'`,
-      };
-    }
-
-    return {
-      name: "pg_trgm - Similarity search",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_trgm - Similarity search",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
-}
-
-/**
- * Test: Search - pgroonga full-text search
- */
-export async function testPgroongaFullText(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pgroonga CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_pgroonga (id serial PRIMARY KEY, content text)",
-      containerName
-    );
-    // DROP INDEX before TRUNCATE: PGroonga uses external Groonga storage — TRUNCATE alone
-    // does not reliably clear PGroonga's index. Stale Groonga entries would inflate count
-    // past 2, breaking the exact-count assertion on --no-cleanup container reuse.
-    await execSQL("DROP INDEX IF EXISTS test_pgroonga_idx", containerName);
-    await execSQL("TRUNCATE test_pgroonga RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_pgroonga (content) VALUES ('PostgreSQL full-text search'), ('Groonga is fast'), ('Full-text search engine')",
-      containerName
-    );
-    await execSQL(
+export function testPgroongaFullText(container: string): Promise<TestResult> {
+  return check("pgroonga - full-text search", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS pgroonga",
+      "DROP TABLE IF EXISTS test_pgroonga",
+      "CREATE TABLE test_pgroonga (id int, content text)",
+      "INSERT INTO test_pgroonga VALUES (1, 'PostgreSQL full-text search'), (2, 'Groonga is fast'), (3, 'Full-text search engine')",
       "CREATE INDEX test_pgroonga_idx ON test_pgroonga USING pgroonga (content)",
-      containerName
-    );
-
-    // Exactly 2 rows match 'full-text': "PostgreSQL full-text search" and "Full-text search engine"
-    // "Groonga is fast" must NOT match — verifying both precision and recall of the pgroonga index
-    const search = await execSQL(
-      "SELECT count(*) FROM test_pgroonga WHERE content &@~ 'full-text'",
-      containerName
-    );
-    if (!search.success || parseInt(search.output.trim(), 10) !== 2) {
-      return {
-        name: "pgroonga - Full-text search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected 2 matching rows, got: '${search.output.trim()}'`,
-      };
-    }
-
-    return {
-      name: "pgroonga - Full-text search",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgroonga - Full-text search",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    ]);
+    const ids = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "SELECT string_agg(id::text, ',' ORDER BY id) FROM test_pgroonga WHERE content &@~ 'full-text'",
+    ]);
+    expect(lastLine(ids) === "1,3", `expected rows 1,3 to match, got '${lastLine(ids)}'`);
+  });
 }
 
-/**
- * Test: Search - rum ranked search
- */
-export async function testRumRankedSearch(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS rum CASCADE", containerName);
-    await execSQL(
-      "CREATE TABLE IF NOT EXISTS test_rum (id serial PRIMARY KEY, content tsvector)",
-      containerName
-    );
-    // DROP INDEX before TRUNCATE: RUM is a custom index AM (GIN fork with positional storage).
-    // Relying on TRUNCATE alone to clear the RUM index risks stale entries inflating count
-    // past 2, breaking the exact-count assertion on --no-cleanup container reuse.
-    await execSQL("DROP INDEX IF EXISTS test_rum_idx", containerName);
-    await execSQL("TRUNCATE test_rum RESTART IDENTITY", containerName);
-    await execSQL(
-      "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'The quick brown fox jumps over the lazy dog'))",
-      containerName
-    );
-    await execSQL(
-      "INSERT INTO test_rum (content) VALUES (to_tsvector('english', 'A fast brown fox leaps over a sleepy dog'))",
-      containerName
-    );
-    await execSQL(
+/** <=> on tsvector is RUM's ranking operator; it does not exist without the extension. */
+export function testRumRankedSearch(container: string): Promise<TestResult> {
+  return check("rum - ranked full-text search", async () => {
+    await sqlOk(container, [
+      "CREATE EXTENSION IF NOT EXISTS rum",
+      "DROP TABLE IF EXISTS test_rum",
+      "CREATE TABLE test_rum (id int, content tsvector)",
+      "INSERT INTO test_rum VALUES (1, to_tsvector('english', 'fox')), (2, to_tsvector('english', 'fox fox fox dog'))",
       "CREATE INDEX test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)",
-      containerName
+    ]);
+    const out = await sqlOk(container, [
+      "SET enable_seqscan = off",
+      "SELECT string_agg(id::text, ',') FROM (SELECT id FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog') ORDER BY content <=> to_tsquery('english', 'fox & dog')) s",
+    ]);
+    expect(
+      lastLine(out) === "2",
+      `expected only row 2 to match 'fox & dog', got '${lastLine(out)}'`
     );
-
-    // Exact count: both rows contain 'fox' AND 'dog'
-    const search = await execSQL(
-      "SELECT count(*) FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog')",
-      containerName
-    );
-    if (!search.success || parseInt(search.output.trim(), 10) !== 2) {
-      return {
-        name: "rum - Ranked search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Expected 2 rows matching 'fox & dog', got: ${search.output.trim()}`,
-      };
-    }
-
-    // RUM-specific: use <=> operator for tsvector distance ranking — this operator
-    // is provided exclusively by the rum index access method and does NOT exist in GIN.
-    // A broken rum installation that falls back to GIN would fail here.
-    const ranked = await execSQL(
-      "SELECT content <=> to_tsquery('english', 'fox') FROM test_rum ORDER BY 1 LIMIT 1",
-      containerName
-    );
-    if (!ranked.success || ranked.output.trim() === "") {
-      return {
-        name: "rum - Ranked search",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "RUM <=> ranking operator failed (RUM-specific operator not available)",
-      };
-    }
-
-    return {
-      name: "rum - Ranked search",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "rum - Ranked search",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+  });
 }
 
 /**
- * Test: Security - pgaudit logging
+ * A dotted GUC is accepted as a placeholder even when pgaudit is not loaded, so SHOW proves nothing;
+ * the AUDIT line in the server log (stderr, which `docker logs` reads) is the only evidence.
  */
-export async function testPgauditLogging(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    // Verify extension is installed (shared_preload_libraries must include pgaudit)
-    const installed = await execSQL(
-      "SELECT count(*) FROM pg_extension WHERE extname = 'pgaudit'",
-      containerName
-    );
-    if (!installed.success || parseInt(installed.output.trim(), 10) !== 1) {
-      return {
-        name: "pgaudit - Audit logging",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgaudit extension not installed",
-      };
+export function testPgauditLogging(container: string): Promise<TestResult> {
+  return check("pgaudit - writes an AUDIT line for DDL", async () => {
+    const marker = `test_pgaudit_${Date.now()}`;
+    await sqlOk(container, ["SET pgaudit.log = 'ddl'", `CREATE TABLE ${marker} (id int)`]);
+    await psql(container, `DROP TABLE IF EXISTS ${marker}`);
+    const deadline = Date.now() + 5_000;
+    let found = false;
+    while (!found && Date.now() < deadline) {
+      const logs = Bun.spawn(["docker", "logs", container], { stdout: "pipe", stderr: "pipe" });
+      const [out, err] = await Promise.all([
+        new Response(logs.stdout).text(),
+        new Response(logs.stderr).text(),
+        logs.exited,
+      ]);
+      found = `${out}${err}`
+        .split("\n")
+        .some((line) => line.includes("AUDIT: SESSION") && line.includes(`public.${marker}`));
+      if (!found) await Bun.sleep(200);
     }
-
-    // Verify the audit log GUC is settable — confirms the module is loaded and hooking is active.
-    // Full behavioral verification (checking log lines) requires container log inspection,
-    // which is outside the scope of SQL-level tests.
-    const result = await execSQL(
-      `
-      SET pgaudit.log = 'write, ddl';
-      SHOW pgaudit.log;
-    `,
-      containerName
-    );
-
-    const lines = result.output.split("\n").filter((l: string) => l.trim());
-    const setting = lines[lines.length - 1];
-
-    if (!result.success || !setting || !setting.includes("write")) {
-      return {
-        name: "pgaudit - Audit logging",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "pgaudit not configured correctly",
-      };
-    }
-
-    return {
-      name: "pgaudit - Audit logging",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pgaudit - Audit logging",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    expect(found, `no 'AUDIT: SESSION' line naming public.${marker} in docker logs`);
+  });
 }
 
 /**
- * Test: Security - pgsodium encryption
+ * pgsodium's DDL event trigger is disabled for the crypto calls and always re-enabled, since every later
+ * check shares this container.
  */
-export async function testPgsodiumEncryption(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pgsodium CASCADE", containerName);
-
-    // Disable event trigger to prevent GUC parameter errors during crypto operations.
-    // Wrapped in try/finally to always re-enable — leaving it disabled poisons subsequent
-    // tests that depend on pgsodium's DDL masking (same pattern as testPgPartmanPartitioning).
-    // success:false is OK — trigger may not exist if pgsodium version differs
-    await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE", containerName);
-
+export function testPgsodiumEncryption(container: string): Promise<TestResult> {
+  return check("pgsodium - secretbox round trip", async () => {
+    await psql(container, "ALTER EVENT TRIGGER pgsodium_trg_mask_update DISABLE");
     try {
-      const key = await execSQL(
-        "SELECT encode(pgsodium.crypto_secretbox_keygen(), 'hex')",
-        containerName
+      const plaintext = await sqlOk(
+        container,
+        `WITH k AS (SELECT pgsodium.crypto_secretbox_keygen() AS key, pgsodium.crypto_secretbox_noncegen() AS nonce)
+         SELECT convert_from(pgsodium.crypto_secretbox_open(pgsodium.crypto_secretbox('secret data'::bytea, nonce, key), nonce, key), 'utf8') FROM k`
       );
-      if (!key.success || key.output.trim() === "") {
-        return {
-          name: "pgsodium - Encryption",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: "Key generation failed",
-        };
-      }
-
-      const nonce = await execSQL(
-        "SELECT encode(pgsodium.crypto_secretbox_noncegen(), 'hex')",
-        containerName
-      );
-      if (!nonce.success || nonce.output.trim() === "") {
-        return {
-          name: "pgsodium - Encryption",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: "Nonce generation failed",
-        };
-      }
-
-      const keyHex = key.output.trim();
-      const nonceHex = nonce.output.trim();
-      const plaintext = "secret data";
-      const encrypt = await execSQL(
-        `
-        SELECT encode(
-          pgsodium.crypto_secretbox(
-            '${plaintext}'::bytea,
-            decode('${nonceHex}', 'hex'),
-            decode('${keyHex}', 'hex')
-          ),
-          'hex'
-        )
-      `,
-        containerName
-      );
-
-      if (!encrypt.success || encrypt.output.trim() === "") {
-        return {
-          name: "pgsodium - Encryption",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: "Encryption failed",
-        };
-      }
-
-      const decrypt = await execSQL(
-        `
-        SELECT convert_from(
-          pgsodium.crypto_secretbox_open(
-            decode('${encrypt.output.trim()}', 'hex'),
-            decode('${nonceHex}', 'hex'),
-            decode('${keyHex}', 'hex')
-          ),
-          'utf8'
-        )
-      `,
-        containerName
-      );
-
-      if (!decrypt.success || decrypt.output.trim() !== plaintext) {
-        return {
-          name: "pgsodium - Encryption",
-          passed: false,
-          duration: Date.now() - startTime,
-          error: "Decryption failed",
-        };
-      }
-
-      return {
-        name: "pgsodium - Encryption",
-        passed: true,
-        duration: Date.now() - startTime,
-      };
+      expect(plaintext === "secret data", `decrypted '${plaintext}', expected 'secret data'`);
     } finally {
-      await execSQL("ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE", containerName);
+      await psql(container, "ALTER EVENT TRIGGER pgsodium_trg_mask_update ENABLE");
     }
-  } catch (err) {
-    return {
-      name: "pgsodium - Encryption",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+  });
 }
 
-/**
- * Test: Timeseries - timescaledb hypertables
- */
-export async function testTimescaledbHypertables(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE", containerName);
-    await execSQL(
-      `CREATE TABLE IF NOT EXISTS test_timescale (
-      time timestamptz NOT NULL,
-      device_id int,
-      temperature float
-    )`,
-      containerName
+export function testTimescaledbHypertables(container: string): Promise<TestResult> {
+  return check("timescaledb - hypertable chunks data", async () => {
+    await sqlOk(container, [
+      "DROP TABLE IF EXISTS test_timescale",
+      "CREATE TABLE test_timescale (time timestamptz NOT NULL, device_id int, temperature float)",
+      "SELECT create_hypertable('test_timescale', by_range('time', interval '1 day'))",
+      "INSERT INTO test_timescale SELECT t, 1, 20 FROM generate_series(now() - interval '7 days', now(), interval '1 hour') t",
+    ]);
+    const chunks = await sqlOk(
+      container,
+      "SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'test_timescale'"
     );
-
-    const hypertable = await execSQL(
-      "SELECT create_hypertable('test_timescale', 'time', if_not_exists => TRUE, migrate_data => TRUE)",
-      containerName
-    );
-    if (!hypertable.success) {
-      return {
-        name: "timescaledb - Hypertables",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to create hypertable",
-      };
-    }
-
-    // TRUNCATE drops all chunks and resets state — prevents ~840-row accumulation per reuse
-    await execSQL("TRUNCATE test_timescale", containerName);
-
-    const insert = await execSQL(
-      `
-      INSERT INTO test_timescale (time, device_id, temperature)
-      SELECT time, device_id, random() * 30
-      FROM generate_series(now() - interval '7 days', now(), interval '1 hour') AS time,
-           generate_series(1, 5) AS device_id
-    `,
-      containerName
-    );
-
-    if (!insert.success) {
-      return {
-        name: "timescaledb - Hypertables",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Failed to insert time-series data",
-      };
-    }
-
-    // Verify TimescaleDB actually chunked the data — this is the defining hypertable feature.
-    // 7 days of hourly data with default 7-day chunks should produce >= 1 chunk.
-    const chunks = await execSQL(
-      "SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'test_timescale'",
-      containerName
-    );
-    if (!chunks.success || parseInt(chunks.output.trim(), 10) < 1) {
-      return {
-        name: "timescaledb - Hypertables",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Hypertable created but no chunks found (count = ${chunks.output.trim()}) — TimescaleDB chunking may be broken`,
-      };
-    }
-
-    return {
-      name: "timescaledb - Hypertables",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "timescaledb - Hypertables",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    expect(Number(chunks) >= 7, `7 days of data in 1-day chunks gave ${chunks} chunks`);
+  });
 }
 
-/**
- * Test: Utilities - pg_hashids encoding
- */
-export async function testPgHashidsEncoding(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_hashids CASCADE", containerName);
-
-    // CTE round-trip: encode then decode in a single session — avoids runtime SQL interpolation
-    const roundtrip = await execSQL(
-      "WITH encoded AS (SELECT id_encode(12345) AS h) SELECT (id_decode(h))[1]::text FROM encoded",
-      containerName
-    );
-    if (!roundtrip.success || roundtrip.output.trim() !== "12345") {
-      return {
-        name: "pg_hashids - Encoding",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: `Hashid encode/decode roundtrip failed (expected '12345', got '${roundtrip.output.trim()}')`,
-      };
-    }
-
-    return {
-      name: "pg_hashids - Encoding",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_hashids - Encoding",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+export function testPgHashidsEncoding(container: string): Promise<TestResult> {
+  return check("pg_hashids - encode/decode round trip", async () => {
+    await sqlOk(container, "CREATE EXTENSION IF NOT EXISTS pg_hashids");
+    const decoded = await sqlOk(container, "SELECT (id_decode(id_encode(12345)))[1]::text");
+    expect(decoded === "12345", `round trip gave '${decoded}'`);
+  });
 }
 
-/**
- * Test: Validation - pg_jsonschema validation
- */
-export async function testPgJsonschemaValidation(containerName: string): Promise<TestResult> {
-  const startTime = Date.now();
-
-  try {
-    await execSQL("CREATE EXTENSION IF NOT EXISTS pg_jsonschema CASCADE", containerName);
-
-    const schema = `{
-      "type": "object",
-      "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "number"}
-      },
-      "required": ["name"]
-    }`;
-
-    const validDoc = `{"name": "John", "age": 30}`;
-    const validate = await execSQL(
-      `SELECT json_matches_schema('${schema}'::json, '${validDoc}'::json)`,
-      containerName
+export function testPgJsonschemaValidation(container: string): Promise<TestResult> {
+  return check("pg_jsonschema - accepts valid, rejects invalid", async () => {
+    await sqlOk(container, "CREATE EXTENSION IF NOT EXISTS pg_jsonschema");
+    const schema = `'{"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}'::json`;
+    const verdicts = await sqlOk(
+      container,
+      `SELECT json_matches_schema(${schema}, '{"name": "John"}'::json)::text || ',' || json_matches_schema(${schema}, '{"age": 30}'::json)::text`
     );
-
-    if (!validate.success || validate.output.trim() !== "t") {
-      return {
-        name: "pg_jsonschema - Validation",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Valid document should pass validation",
-      };
-    }
-
-    const invalidDoc = `{"age": 30}`;
-    const validateInvalid = await execSQL(
-      `SELECT json_matches_schema('${schema}'::json, '${invalidDoc}'::json)`,
-      containerName
-    );
-
-    if (!validateInvalid.success || validateInvalid.output.trim() !== "f") {
-      return {
-        name: "pg_jsonschema - Validation",
-        passed: false,
-        duration: Date.now() - startTime,
-        error: "Invalid document should fail validation",
-      };
-    }
-
-    return {
-      name: "pg_jsonschema - Validation",
-      passed: true,
-      duration: Date.now() - startTime,
-    };
-  } catch (err) {
-    return {
-      name: "pg_jsonschema - Validation",
-      passed: false,
-      duration: Date.now() - startTime,
-      error: getErrorMessage(err),
-    };
-  }
+    expect(verdicts === "true,false", `valid,invalid gave '${verdicts}', expected 'true,false'`);
+  });
 }
 
-// ============================================================================
-// CLEANUP UTILITIES
-// ============================================================================
-
-/**
- * Cleanup test tables and data
- */
-export async function cleanupTestData(containerName: string): Promise<void> {
-  // Server-side PL/pgSQL loop: one round-trip drops all public test_* tables using
-  // format('%I') for correct identifier quoting (handles any identifier, including
-  // those with spaces or special chars). Partition children (test_partman_p*) are
-  // removed automatically via CASCADE on the parent drop.
-  // Also drops test_trigger_func(): a trigger function left by testPlpgsqlTriggers
-  // that survives DROP TABLE CASCADE (functions are not dependents of the tables
-  // that reference them — they can be used by multiple triggers on different tables).
-  await execSQL(
+/** Drops what the checks create, so a run against a reused container (--container) starts clean. */
+export async function cleanupTestData(container: string): Promise<void> {
+  await psql(
+    container,
     `DO $$
 DECLARE t text;
 BEGIN
-  FOR t IN
-    SELECT tablename FROM pg_tables
-    WHERE schemaname = 'public' AND tablename LIKE 'test%'
-    ORDER BY tablename  -- parents before partition children (test_partman < test_partman_p*)
-  LOOP
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'test%' ORDER BY tablename LOOP
     EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', t);
   END LOOP;
-  DROP FUNCTION IF EXISTS test_trigger_func() CASCADE;
-END;$$`,
-    containerName
+END $$`
   );
-
-  // Cleanup pg_partman config for test_ tables (parent_table is a TEXT column, not a FK —
-  // not removed by DROP TABLE CASCADE above)
-  await execSQL("DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'", containerName);
-
-  // Cleanup pgmq queues (live in pgmq schema, not affected by table drops above).
-  // Both queues are dropped unconditionally — success:false silently ignored if
-  // pgmq is not installed or a queue was already removed by testPgmqQueue's own cleanup.
-  // test_topic_queue can linger when testPgmqQueue fails mid-topic-routing-test.
-  await execSQL("SELECT pgmq.drop_queue('test_queue')", containerName);
-  await execSQL("SELECT pgmq.drop_queue('test_topic_queue')", containerName);
+  await psql(container, "DELETE FROM part_config WHERE parent_table LIKE 'public.test_%'");
+  await psql(container, "SELECT pgmq.drop_queue('test_queue')");
+  await psql(container, "SELECT cron.unschedule('test-cron-run')");
 }

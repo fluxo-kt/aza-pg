@@ -777,27 +777,13 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   // Clone repository based on source type
   if (source.type === "git" && source.repository && source.tag) {
-    validateGitUrl(source.repository);
-    // Resolve tag → commit SHA via ls-remote (no temp clone or rm -rf needed).
-    // Request both TAG^{} (peeled commit for annotated tags) and TAG (lightweight tags).
-    const lsOutput = await gitWithRetry(
-      ["ls-remote", source.repository, `refs/tags/${source.tag}^{}`, `refs/tags/${source.tag}`],
-      `resolve tag ${source.tag} for ${source.repository}`
-    );
-    const lines = lsOutput
-      .trim()
-      .split("\n")
-      .filter((l) => l.includes("\t"));
-    // Annotated tags: prefer the peeled ^{} entry (actual commit SHA, not tag-object SHA)
-    const peeledLine = lines.find((l) => l.includes("^{}"));
-    const regularLine = lines.find((l) => !l.includes("^{}"));
-    const commit = (peeledLine ?? regularLine)?.split("\t")[0]?.trim();
-    if (!commit) {
-      log(`Could not resolve tag ${source.tag} for ${source.repository} — check tag exists`);
+    // Clone the commit generate-manifest.ts locked for this tag, never the tag itself: a tag moved
+    // upstream would otherwise change the built code with no diff in this repository.
+    if (!source.commit) {
+      log(`${name}: no locked commit for tag ${source.tag}; run \`bun run generate\` and commit`);
       process.exit(1);
     }
-
-    await cloneRepo(source.repository, commit, dest);
+    await cloneRepo(source.repository, source.commit, dest);
   } else if (source.type === "git-ref" && source.repository && (source.ref || source.commit)) {
     const commit = source.commit || source.ref!;
     await cloneRepo(source.repository, commit, dest);

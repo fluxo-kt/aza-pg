@@ -28,9 +28,11 @@ async function resolveGitCommit(repo: string, tag: string): Promise<string> {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
     if (exitCode === 0) {
       const lines = stdout
         .split("\n")
@@ -58,12 +60,47 @@ async function resolveGitCommit(repo: string, tag: string): Promise<string> {
   );
 }
 
-async function resolveSource(source: SourceSpec): Promise<ResolvedSource> {
+const outputPath = join("docker", "postgres", "extensions.manifest.json");
+
+const lockKey = (repository: string, tag: string) => `${repository}#${tag}`;
+
+/**
+ * The generated manifest is the lock file for tagged sources, as bun.lock is for package.json: a tag is
+ * resolved to a commit once, when an entry's repository or tag changes, and the commit is reused after
+ * that. `generate` runs in the pre-commit hook and in the freshness checks, so re-resolving every tag
+ * there cost a minute of network round trips per run and made the output depend on the network. The
+ * build clones this commit (build-extensions.ts), so a tag moved upstream later changes nothing that is
+ * built until someone edits the tag in manifest-data.ts.
+ */
+async function readLockedCommits(): Promise<Map<string, string>> {
+  const file = Bun.file(outputPath);
+  if (!(await file.exists())) return new Map();
+  let previous: { entries: ResolvedEntry[] };
+  try {
+    previous = await file.json();
+  } catch (err) {
+    throw new Error(
+      `${outputPath} is not valid JSON (${err}); delete it and rerun \`bun run generate\` to resolve every tag again`
+    );
+  }
+  return new Map(
+    previous.entries.flatMap(({ source }) =>
+      source.type === "git" ? [[lockKey(source.repository, source.tag), source.commit]] : []
+    )
+  );
+}
+
+async function resolveSource(
+  source: SourceSpec,
+  locked: Map<string, string>
+): Promise<ResolvedSource> {
   if (source.type === "builtin") {
     return source;
   }
   if (source.type === "git") {
-    const commit = await resolveGitCommit(source.repository, source.tag);
+    const commit =
+      locked.get(lockKey(source.repository, source.tag)) ??
+      (await resolveGitCommit(source.repository, source.tag));
     return { ...source, commit };
   }
   // git-ref
@@ -71,11 +108,13 @@ async function resolveSource(source: SourceSpec): Promise<ResolvedSource> {
 }
 
 async function main() {
-  const resolved: ResolvedEntry[] = [];
-  for (const entry of MANIFEST_ENTRIES) {
-    const source = await resolveSource(entry.source);
-    resolved.push({ ...entry, source });
-  }
+  const locked = await readLockedCommits();
+  const resolved: ResolvedEntry[] = await Promise.all(
+    MANIFEST_ENTRIES.map(async (entry) => ({
+      ...entry,
+      source: await resolveSource(entry.source, locked),
+    }))
+  );
 
   resolved.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -84,7 +123,6 @@ async function main() {
     sourceLibraries: SOURCE_LIBRARIES,
   };
 
-  const outputPath = join("docker", "postgres", "extensions.manifest.json");
   await Bun.$`mkdir -p ${dirname(outputPath)}`;
   await Bun.write(outputPath, JSON.stringify(manifest, null, 2) + "\n");
 

@@ -532,20 +532,6 @@ const allChecks: Check[] = [
     critical: true,
   },
   {
-    name: "Manifest Sync Verification",
-    category: "validation",
-    command: ["bun", "scripts/ci/verify-manifest-sync.ts"],
-    description: "Verify extensions.manifest.json matches generated version",
-    critical: true,
-  },
-  {
-    name: "Dockerfile Validation",
-    category: "validation",
-    command: ["bun", "scripts/docker/validate-dockerfile.ts"],
-    description: "Verify Dockerfile is up-to-date with template and manifest",
-    critical: true,
-  },
-  {
     name: "Config Validation",
     category: "validation",
     command: ["bun", "scripts/config-generator/validate-configs.ts"],

@@ -3,9 +3,11 @@
  *
  * Used by:
  * - pre-commit.ts: Auto-stage these files when manifest changes
- * - generate-all.ts: Could verify all outputs exist (future)
+ * - generate-all.ts: Prettier-formats the JSON and Markdown ones
+ * - verify-generated.ts: Fails when `bun run generate` would change any of them
  *
- * When adding a new generator, add its output file(s) here.
+ * When adding a new generator, add its output file(s) here: a file missing from this list is neither
+ * auto-staged nor checked for staleness.
  */
 
 export const GENERATED_FILES = [
@@ -17,6 +19,7 @@ export const GENERATED_FILES = [
   "docker/postgres/extensions.cargo.manifest.json",
   "docker/postgres/extensions.build-packages.txt",
   "docker/postgres/healthcheck.sh",
+  "docker/postgres/docker-auto-config-entrypoint.sh",
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",
   "docker/postgres/IMAGE-CONTENTS.txt",
 

@@ -244,9 +244,9 @@ async function validate(
       envOverride: "ALLOW_MISSING_DOCKER",
     },
     {
-      name: "Dockerfile Validation",
-      command: ["bun", "scripts/docker/validate-dockerfile.ts"],
-      description: "Verify Dockerfile is up-to-date with template and manifest",
+      name: "Generated Files Verification",
+      command: ["bun", "scripts/verify-generated.ts"],
+      description: "Fail when `bun run generate` would change any generated file",
       required: true,
     },
     {

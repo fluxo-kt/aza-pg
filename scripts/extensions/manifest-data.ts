@@ -28,14 +28,7 @@ export type SourceSpec =
   | { type: "git-ref"; repository: string; ref: string };
 
 export type BuildKind =
-  | "pgxs"
-  | "cargo-pgrx"
-  | "timescaledb"
-  | "autotools"
-  | "cmake"
-  | "meson"
-  | "make"
-  | "script";
+  "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
 
 export interface BuildSpec {
   type: BuildKind;

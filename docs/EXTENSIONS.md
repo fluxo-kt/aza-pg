@@ -75,10 +75,10 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### gis
 
-| Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                             |
-| ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.1](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.1) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A\*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.3](https://github.com/postgis/postgis/releases/tag/3.6.3)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.    |
+| Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                            |
+| ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.1](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.1) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs. |
+| [`postgis`](https://github.com/postgis/postgis)       | [3.6.3](https://github.com/postgis/postgis/releases/tag/3.6.3)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.   |
 
 ### integration
 

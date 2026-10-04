@@ -9,13 +9,12 @@
 
 import { $ } from "bun";
 import { join } from "node:path";
-import { dockerCleanup } from "../utils/docker";
+import { dockerCleanup, waitForPostgres } from "../utils/docker";
 
 // Get script directory
 const scriptDir = import.meta.dir;
 const projectRoot = join(scriptDir, "../..");
 const manifestPath = join(projectRoot, "docker/postgres/extensions.manifest.json");
-const ENTRYPOINT_READY_MARKER = "PostgreSQL init process complete; ready for start up.";
 
 interface ManifestEntry {
   name: string;
@@ -225,41 +224,12 @@ async function main(): Promise<void> {
     console.log(`[smoke] Launching container ${containerName} with image ${image}...`);
     await $`docker run -d --rm --name ${containerName} -e POSTGRES_PASSWORD=${postgresPassword} ${image}`.quiet();
 
-    // Wait for PostgreSQL to accept connections
-    console.log("[smoke] Waiting for PostgreSQL to accept connections...");
-    let attempt = 0;
-    const maxAttempts = 60;
-
-    while (attempt < maxAttempts) {
-      const logs = await readContainerLogs(containerName);
-      if (
-        logs.stdout.includes(ENTRYPOINT_READY_MARKER) ||
-        logs.stderr.includes(ENTRYPOINT_READY_MARKER)
-      ) {
-        const ready = await dockerExec(containerName, ["pg_isready", "-U", "postgres"]);
-        const sqlReady =
-          ready.exitCode === 0
-            ? await dockerExec(containerName, [
-                "psql",
-                "-U",
-                "postgres",
-                "-d",
-                "postgres",
-                "-tAc",
-                "SELECT 1",
-              ])
-            : undefined;
-        if (ready.exitCode === 0 && sqlReady?.exitCode === 0 && sqlReady.stdout.trim() === "1") {
-          break;
-        }
-      }
-      await Bun.sleep(2000);
-      attempt++;
-    }
-
-    if (attempt === maxAttempts) {
-      console.error(`[smoke] postgres did not become ready in time (${maxAttempts} attempts)`);
-      await printContainerLogs(containerName);
+    // The shared helper waits for the final server, not the entrypoint's temporary initdb one, and throws with the
+    // container's last log lines on timeout.
+    try {
+      await waitForPostgres({ container: containerName, timeout: 120 });
+    } catch (err) {
+      console.error(`[smoke] ${err instanceof Error ? err.message : String(err)}`);
       await cleanup();
       process.exit(1);
     }

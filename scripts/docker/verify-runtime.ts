@@ -21,16 +21,14 @@
 import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { getErrorMessage } from "../utils/errors";
-import { checkDockerDaemon, dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker";
 import {
-  error,
-  formatDuration,
-  info,
-  section,
-  success,
-  testSummary,
-  warning,
-} from "../utils/logger";
+  checkDockerDaemon,
+  dockerCleanup,
+  dockerRun,
+  dockerRunLive,
+  waitForPostgres,
+} from "../utils/docker";
+import { error, info, section, success, testSummary, warning } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
@@ -100,38 +98,6 @@ async function startContainer(image: string): Promise<boolean> {
 
   success("Container started");
   return true;
-}
-
-/**
- * Wait for PostgreSQL to be ready
- * Waits for Docker healthcheck (healthy status) which ensures init DB phase completes
- */
-async function waitForPostgres(timeoutSeconds: number): Promise<boolean> {
-  info(`Waiting for PostgreSQL to be ready (timeout: ${timeoutSeconds}s)...`);
-
-  const startTime = Date.now();
-  const timeoutMs = timeoutSeconds * 1000;
-
-  while (Date.now() - startTime < timeoutMs) {
-    // Check container health status (not just pg_isready)
-    // The healthcheck waits for init DB completion before reporting healthy
-    const healthResult = await dockerRun([
-      "inspect",
-      "--format",
-      "{{.State.Health.Status}}",
-      CONTAINER_NAME,
-    ]);
-
-    if (healthResult.success && healthResult.output === "healthy") {
-      success(`PostgreSQL ready in ${formatDuration(Date.now() - startTime)}`);
-      return true;
-    }
-
-    await Bun.sleep(2000);
-  }
-
-  error(`PostgreSQL not ready after ${timeoutSeconds}s`);
-  return false;
 }
 
 /**
@@ -614,11 +580,9 @@ async function main(): Promise<void> {
   }
 
   try {
-    // Wait for PostgreSQL
-    const ready = await waitForPostgres(timeout);
-    if (!ready) {
-      process.exit(1);
-    }
+    // The shared helper waits for the final server: a health or pg_isready probe also passes on the entrypoint's
+    // temporary initdb server, and queries then hit "the database system is shutting down".
+    await waitForPostgres({ container: CONTAINER_NAME, timeout });
 
     // Run all tests
     console.log("");

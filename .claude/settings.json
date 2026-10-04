@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "deny": ["Bash(bunx:*)", "Bash(bun x:*)"]
+  }
+}

@@ -10,6 +10,8 @@
  * - docs and the agent commands cite a backticked repo path (`scripts/…`, `docker/…`, `stacks/…`, `tests/…`)
  *   that no longer exists, so a reader (often an agent) follows it into nothing. Globs and placeholders
  *   (`*`, `<name>`, `{a,b}`, `$VAR`) name no single file and are skipped; a `:line` suffix is ignored.
+ *   The file of a `bun <path>` command counts too, backticked or not: commands in fenced code blocks carry no
+ *   backticks, and that is where docs kept citing deleted suites.
  *
  * Usage: bun scripts/ci/check-script-references.ts
  */
@@ -23,6 +25,8 @@ const DOC_PATTERNS = ["AGENTS.md", "README.md", "docs/**/*.md"];
 // Agent commands are read by agents mid-task, so a dead path there misdirects work, not just a reader.
 const PATH_DOC_PATTERNS = [...DOC_PATTERNS, ".claude/commands/*.md"];
 const REPO_PATH = /`((?:scripts|docker|stacks|tests)\/[^`\s]*)`/g;
+const BUN_FILE =
+  /\bbun\s+(?:run\s+|test\s+)?(?:\.\/)?((?:scripts|docker|stacks|tests)\/[\w./-]+\.(?:ts|js|sh))/g;
 const PLACEHOLDER = /[*<>{}$]|\bX{2,}\b|EXTNAME/;
 // GitHub Actions published by the docker org (`docker/login-action`) share the docker/ prefix.
 const NOT_A_PATH = /^docker\/[\w-]+-action$/;
@@ -81,8 +85,12 @@ export async function findBrokenReferences(root: string): Promise<string[]> {
       if (file.includes("node_modules") || file.includes(".archived")) continue;
       const lines = (await Bun.file(join(root, file)).text()).split("\n");
       for (const [index, line] of lines.entries()) {
-        for (const match of line.matchAll(REPO_PATH)) {
-          const cited = match[1]?.replace(/:\d.*$/, "").replace(/[.,;:]$/, "");
+        const cites = new Set(
+          [...line.matchAll(REPO_PATH), ...line.matchAll(BUN_FILE)].map((m) =>
+            m[1]?.replace(/:\d.*$/, "").replace(/[.,;:]$/, "")
+          )
+        );
+        for (const cited of cites) {
           if (!cited || PLACEHOLDER.test(cited) || NOT_A_PATH.test(cited)) continue;
           const exists = await stat(join(root, cited)).then(
             () => true,

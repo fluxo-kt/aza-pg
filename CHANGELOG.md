@@ -14,15 +14,24 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **TimescaleDB 2.27.1 → 2.30.2**: Adaptive chunking is removed (`set_adaptive_chunking()` and the `chunk_target_size`/`chunk_sizing_func` arguments of `create_hypertable()`); the granular continuous-aggregate refresh options are renamed to `timescaledb.cagg_granular_refresh_*`.
 - **timescaledb_toolkit 1.22.0 → 1.26.0**: `gauge_agg` and its accessors moved from `toolkit_experimental` to the public schema; `time_weight`'s combine/serialize/deserialize functions are removed, so `time_weight` no longer aggregates in parallel. The extension is now `trusted`, so any role with `CREATE` on a database can install it.
+- **pg_partman 5.4.3 → 5.5.0**: `pg_partman_bgw.role` now defaults to `partman_maintainer`; a background worker relying on the old default (`postgres`) fails until that role exists or the setting names a role (upstream advises a non-superuser one). A target retention schema must now be owned by the child table's owner.
+- **plpgsql_check 2.9.0 → 2.10.11**: Upstream ships no 2.9 → 2.10 upgrade script, so on data volumes created by an older image every call errors until `DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;`. Adds `plpgsql_make_pragma()` and a `pragmas` argument to `plpgsql_check_function()`.
+- **pgBackRest 2.58.0 → 2.59.2**: Only `restore` may run as root; run other commands as `postgres` (`docker exec -u postgres …`) or set `allow-root`.
+- **pg_stat_monitor 2.3.2 → 2.4.0**: The `pgsm_overflow_target` setting is removed and `pgsm_track_application_names` is deprecated (always on); `application_name` shows `NULL` instead of `'unknown'`.
 
 ### Security
 
 - **PostgreSQL 18.4 → 18.6** (18.5 was never released upstream): fixes 28 CVEs, including several CVSS 8.8 memory-safety and SQL-injection issues. After upgrading: `ANALYZE` tables whose GIN indexes were built in parallel (their `reltuples` may be corrupt), `REINDEX` `btree_gist` indexes on float/bit columns and `ltree` btree indexes as the [18.6 release notes](https://www.postgresql.org/docs/release/18.6/) describe, and use `pgp_sym_decrypt(..., 'ignore-cipher-failure=1')` to recover pgcrypto data encrypted with a cipher OpenSSL had disabled.
 - **TimescaleDB 2.29.1+**: Fixes [GHSA-hcfx-29v5-2rcw](https://github.com/timescale/timescaledb/security/advisories/GHSA-hcfx-29v5-2rcw) (high; missing permission checks in chunk management functions) and decompressor crashes on malformed compressed data.
+- **pg_partman 5.5.0**: Fixes SQL-injection/privilege-escalation CVE-2026-61781 (critical), CVE-2026-61817 to CVE-2026-61821, and CVE-2026-61822.
+- **pgsql-http 1.7.0 → 1.7.2**: The `http.curlopt_*` settings for CA file, credentials, client certificate/key and TLS verification become superuser-only, and a buffer overrun in header parsing is fixed.
+- **hll 2.20 → 2.21**: Hardens input validation of serialized hll values.
 
 ### Changed
 
 - **Logical decoding plugins** (PostgreSQL 18.6, CVE-2026-6471): slots may only use plugins listed in `output_plugin_libraries`, superusers included. The image sets it to `pgoutput,test_decoding,wal2json` so wal2json CDC keeps working; change it with the new `POSTGRES_OUTPUT_PLUGIN_LIBRARIES` variable (it is passed as `-c`, so `postgresql.conf` and `ALTER SYSTEM` cannot override it). Outside this image, write `ALTER SYSTEM SET output_plugin_libraries = pgoutput, test_decoding, wal2json` as an unquoted list: one quoted string becomes a single plugin name that matches nothing.
+- **pg_cron 1.6.7 → 1.6.8**: Fixes a shutdown hang with synchronous replication and a launcher shared-memory leak; job owner checks are now case-sensitive; adds `cron.match_dom_and_dow`.
+- **hypopg 1.4.2 → 1.4.3**, **pg_repack** and **set_user** (PGDG packaging rebuilds), **wal2json** (Percona packaging rebuild): bug-fix and rebuild updates.
 
 ## [v18.4-202606031012] - 2026-06-03
 

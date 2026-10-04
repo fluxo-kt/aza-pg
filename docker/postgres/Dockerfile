@@ -214,8 +214,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.20-1.pgdg13+1 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1 postgresql-18-partman=5.4.3-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.20-1.pgdg13+1 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1 postgresql-18-partman=5.4.3-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 postgresql-18-partman=5.5.0-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 postgresql-18-partman=5.5.0-1.pgdg13+1 && \
     # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
     dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
@@ -257,8 +257,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     dpkg -i /tmp/percona-release.deb && \
     percona-release enable ppg-18 release && \
     apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \
@@ -302,8 +302,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
+    echo "Installing PGDG tools: pgbackrest=2.59.2-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.59.2-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \

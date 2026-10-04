@@ -65,7 +65,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                             | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                              | Notes                                         |
 | --------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.20](https://github.com/citusdata/postgresql-hll/releases/tag/v2.20) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
+| [`hll (postgresql-hll)`](https://github.com/citusdata/postgresql-hll) | [v2.21](https://github.com/citusdata/postgresql-hll/releases/tag/v2.21) | No                 | No             | [Docs](https://github.com/citusdata/postgresql-hll#readme) | HyperLogLog probabilistic counting data type. |
 
 ### cdc
 
@@ -78,13 +78,13 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | Extension                                             | Version                                                              | Enabled by Default | Shared Preload | Documentation                             | Notes                                                            |
 | ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------- | ---------------------------------------------------------------- |
 | [`pgrouting`](https://github.com/pgRouting/pgrouting) | [v4.0.1](https://github.com/pgRouting/pgrouting/releases/tag/v4.0.1) | No                 | No             | [Docs](https://docs.pgrouting.org)        | Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs. |
-| [`postgis`](https://github.com/postgis/postgis)       | [3.6.3](https://github.com/postgis/postgis/releases/tag/3.6.3)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.   |
+| [`postgis`](https://github.com/postgis/postgis)       | [3.6.4](https://github.com/postgis/postgis/releases/tag/3.6.4)       | No                 | No             | [Docs](https://postgis.net/documentation) | Spatial types, functions, raster, and topology for PostgreSQL.   |
 
 ### integration
 
 | Extension                                                              | Version                                                             | Enabled by Default | Shared Preload | Documentation                                                                  | Notes                                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.0](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.0) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl.              |
+| [`http (pgsql-http)`](https://github.com/pramsey/pgsql-http)           | [v1.7.2](https://github.com/pramsey/pgsql-http/releases/tag/v1.7.2) | No                 | No             | [Docs](https://github.com/pramsey/pgsql-http#readme)                           | Synchronous HTTP client for PostgreSQL built on libcurl.              |
 | [`pg_net`](https://github.com/supabase/pg_net)                         | [v0.20.3](https://github.com/supabase/pg_net/releases/tag/v0.20.3)  | Yes                | Yes            | [Docs](https://supabase.github.io/pg_net/)                                     | Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls. |
 | [`wrappers (supabase-wrappers)`](https://github.com/supabase/wrappers) | [v0.6.1](https://github.com/supabase/wrappers/releases/tag/v0.6.1)  | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/wrappers/overview) | Rust FDW framework powering Supabase foreign wrappers.                |
 
@@ -92,35 +92,35 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                               | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.4.3](https://github.com/pgpartman/pg_partman/releases/tag/v5.4.3)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman) | [v5.5.0](https://github.com/pgpartman/pg_partman/releases/tag/v5.5.0)  | No                 | Yes            | [Docs](https://github.com/pgpartman/pg_partman#readme) | Declarative partition maintenance with optional background worker. |
 | [`pg_repack`](https://github.com/reorg/pg_repack)       | [ver_1.5.3](https://github.com/reorg/pg_repack/releases/tag/ver_1.5.3) | No                 | No             | [Docs](https://reorg.github.io/pg_repack)              | Online table/index reorganization without long locks.              |
 
 ### observability
 
 | Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.3.2](https://github.com/percona/pg_stat_monitor/releases/tag/2.3.2) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.4.0](https://github.com/percona/pg_stat_monitor/releases/tag/2.4.0) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
 | [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.2](https://github.com/darold/pgbadger/releases/tag/v13.2)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
 
 ### operations
 
 | Extension                                                | Version                                                                                | Enabled by Default | Shared Preload | Documentation                                       | Notes                                                |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------- | ---------------------------------------------------- |
-| [`pg_cron`](https://github.com/citusdata/pg_cron)        | [v1.6.7](https://github.com/citusdata/pg_cron/releases/tag/v1.6.7)                     | Yes                | Yes            | [Docs](https://github.com/citusdata/pg_cron#readme) | Lightweight cron-based job runner inside PostgreSQL. |
-| [`pgbackrest`](https://github.com/pgbackrest/pgbackrest) | [release/2.58.0](https://github.com/pgbackrest/pgbackrest/releases/tag/release/2.58.0) | No                 | No             | [Docs](https://pgbackrest.org/user-guide.html)      | Parallel, incremental backup and restore CLI.        |
+| [`pg_cron`](https://github.com/citusdata/pg_cron)        | [v1.6.8](https://github.com/citusdata/pg_cron/releases/tag/v1.6.8)                     | Yes                | Yes            | [Docs](https://github.com/citusdata/pg_cron#readme) | Lightweight cron-based job runner inside PostgreSQL. |
+| [`pgbackrest`](https://github.com/pgbackrest/pgbackrest) | [release/2.59.2](https://github.com/pgbackrest/pgbackrest/releases/tag/release/2.59.2) | No                 | No             | [Docs](https://pgbackrest.org/user-guide.html)      | Parallel, incremental backup and restore CLI.        |
 
 ### performance
 
 | Extension                                                    | Version                                                                 | Enabled by Default | Shared Preload | Documentation                                                              | Notes                                                               |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------ | -------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`hypopg`](https://github.com/HypoPG/hypopg)                 | [1.4.2](https://github.com/HypoPG/hypopg/releases/tag/1.4.2)            | No                 | No             | [Docs](https://hypopg.readthedocs.io)                                      | Simulate hypothetical indexes for planner what-if analysis.         |
+| [`hypopg`](https://github.com/HypoPG/hypopg)                 | [1.4.3](https://github.com/HypoPG/hypopg/releases/tag/1.4.3)            | No                 | No             | [Docs](https://hypopg.readthedocs.io)                                      | Simulate hypothetical indexes for planner what-if analysis.         |
 | [`index_advisor`](https://github.com/supabase/index_advisor) | [v0.2.0](https://github.com/supabase/index_advisor/releases/tag/v0.2.0) | No                 | No             | [Docs](https://supabase.com/docs/guides/database/extensions/index_advisor) | Suggest indexes by pairing HypoPG simulations with cost heuristics. |
 
 ### quality
 
-| Extension                                                 | Version                                                              | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.9.0](https://github.com/okbob/plpgsql_check/releases/tag/v2.9.0) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| Extension                                                 | Version                                                                  | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
+| --------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.10.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.10.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 

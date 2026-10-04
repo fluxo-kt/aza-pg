@@ -76,7 +76,7 @@ CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_P
 3. Add to pg_hba.conf via terminal:
 
 ```bash
-echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf
+echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> "$PGDATA/pg_hba.conf"
 psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
@@ -87,34 +87,28 @@ docker exec postgres psql -U postgres <<EOF
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_PASSWORD';
 EOF
 
-docker exec postgres bash -c "echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+docker exec postgres bash -c 'echo "host replication replicator 10.0.0.3/32 scram-sha-256" >> "$PGDATA/pg_hba.conf"'
 docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
-### 3. Enable WAL Settings
+### 3. Keep WAL for the Replica
+
+The image already ships `wal_level = logical` (a superset of `replica`), `max_wal_senders = 10` and `hot_standby = on`. Never lower `wal_level`: with a logical slot present PostgreSQL refuses to start. Only retain WAL so a briefly disconnected replica can catch up (reload, no restart):
 
 **Coolify Method:** Execute via PostgreSQL terminal tab:
 
 ```sql
-ALTER SYSTEM SET wal_level = 'replica';
-ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 ```
-
-Then restart PostgreSQL via Coolify UI (Service → Restart button).
 
 **Bare VPS Method:**
 
 ```bash
 docker exec postgres psql -U postgres <<EOF
-ALTER SYSTEM SET wal_level = 'replica';
-ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 EOF
-
-docker restart postgres
 ```
 
 ### 4. Create Base Backup on Replica
@@ -140,24 +134,26 @@ docker volume rm aza-pg-stack-replica_postgres_data || true
 # Create volume
 docker volume create aza-pg-stack-replica_postgres_data
 
-# Run pg_basebackup (replace USERNAME with your GitHub username)
+# Run pg_basebackup into the image's PGDATA (the volume holds /var/lib/postgresql)
 docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
+    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
     -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    pg_basebackup -h 10.0.0.2 -D /var/lib/postgresql/data -U replicator -v -P
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'pg_basebackup -h 10.0.0.2 -D "$PGDATA" -U replicator -v -P'
 
 # Create standby.signal
 docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "touch /var/lib/postgresql/data/standby.signal"
+    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'touch "$PGDATA/standby.signal"'
 
 # Configure primary_conninfo
-docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "echo \"primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
+docker run --rm -i \
+    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'cat >> "$PGDATA/postgresql.auto.conf"' <<'EOF'
+primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'
+EOF
 ```
 
 ### 5. Start Replica
@@ -291,7 +287,7 @@ systemctl start keepalived
 
 ```bash
 # On replica - promote to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
+docker exec postgres pg_ctl promote  # pg_ctl reads the container's $PGDATA
 
 # Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"

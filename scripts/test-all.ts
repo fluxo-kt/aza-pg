@@ -785,7 +785,7 @@ const allChecks: Check[] = [
       "bun scripts/test/test-integration-extension-combinations.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
     ],
     description:
-      "Test critical extension combinations (timescaledb+pgvector, postgis+pgroonga, pgsodium+supabase_vault, pg_partman+timescaledb)",
+      "pgsodium per-database root key (random, persistent, operator file, malformed file) and supabase_vault on defaults",
     critical: true,
     requiresDocker: true,
     requiresBuild: true,

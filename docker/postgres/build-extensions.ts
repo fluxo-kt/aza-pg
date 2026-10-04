@@ -515,79 +515,6 @@ async function buildPgbadger(dir: string): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// GATE 1: DEPENDENCY VALIDATION
-// ────────────────────────────────────────────────────────────────────────────
-// Validates that all dependencies for an extension are enabled.
-// Fails fast with clear error message if any dependency is missing or disabled.
-
-async function validateDependencies(
-  entry: ManifestEntry,
-  name: string,
-  manifest: Manifest
-): Promise<void> {
-  const dependencies = entry.dependencies || [];
-  if (dependencies.length === 0) {
-    return;
-  }
-
-  log(`Validating ${dependencies.length} dependencies for ${name}`);
-
-  for (const depName of dependencies) {
-    // Check if dependency exists and is enabled in current manifest
-    const depEntry = manifest.entries.find((e) => e.name === depName);
-
-    if (!depEntry) {
-      // Dependency not in current manifest - check full manifest (cross-build-type dependencies)
-      const fullManifestPath = "/tmp/extensions.manifest.json";
-      if (await Bun.file(fullManifestPath).exists()) {
-        const fullManifest = (await Bun.file(fullManifestPath).json()) as Manifest;
-        const depEntryFull = fullManifest.entries.find((e) => e.name === depName);
-
-        if (depEntryFull) {
-          // Check if dependency is enabled in full manifest
-          const depEnabledInFull = depEntryFull.enabled !== false;
-          if (!depEnabledInFull) {
-            const depReason = depEntryFull.disabledReason || "No reason specified";
-            log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
-            log(`       Dependency disabled reason: ${depReason}`);
-            log(`       Either enable '${depName}' or disable '${name}'`);
-            process.exit(1);
-          }
-
-          // Dependency exists and is enabled - accept regardless of how it's built
-          if (depEntryFull.install_via === "pgdg") {
-            log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
-          } else if (depEntryFull.install_via === "percona") {
-            log(`  ✓ Dependency '${depName}' will be installed via Percona`);
-          } else if (depEntryFull.install_via === "source") {
-            log(`  ✓ Dependency '${depName}' will be built from source (different build phase)`);
-          } else if (depEntryFull.kind === "builtin") {
-            log(`  ✓ Dependency '${depName}' is builtin (included in PostgreSQL)`);
-          } else {
-            log(`  ✓ Dependency '${depName}' will be built from source`);
-          }
-          continue;
-        }
-      }
-
-      log(`ERROR: Extension ${name} requires dependency '${depName}' which is not in manifest`);
-      process.exit(1);
-    }
-
-    const depEnabled = depEntry.enabled !== false;
-    if (!depEnabled) {
-      const depReason = depEntry.disabledReason || "No reason specified";
-      log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
-      log(`       Dependency disabled reason: ${depReason}`);
-      log(`       Either enable '${depName}' or disable '${name}'`);
-      process.exit(1);
-    }
-
-    log(`  ✓ Dependency '${depName}' is enabled`);
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Patch Application
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -675,8 +602,6 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   // Determine working directory
   const workdir = build?.subdir ? join(dest, build.subdir) : dest;
 
-  // Validate dependencies before building
-  await validateDependencies(entry, name, manifest);
   await ensureSourceLibraries(entry, manifest);
 
   // Build extension based on build type

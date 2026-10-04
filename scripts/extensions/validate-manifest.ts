@@ -52,6 +52,7 @@ interface ManifestEntry {
   runtime?: RuntimeSpec;
   dependencies?: string[];
   enabled?: boolean;
+  disabledReason?: string;
 }
 
 interface Manifest {
@@ -300,21 +301,28 @@ async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   }
 }
 
-// 6. Dependency validation
+// 6. Dependency validation: every dependency of an enabled entry exists and is enabled. This is the only
+// such check: it sees the whole manifest, and the builders run only after it (bun run build's preflight),
+// so they need no copy of the full manifest — a copy would tie their cache to every entry's text.
 function validateDependencies(manifest: Manifest): void {
   console.log(); // Empty line for spacing
   logger.info("[DEPENDENCY VALIDATION]");
 
-  const extensionNames = new Set(manifest.entries.map((e) => e.name));
+  const byName = new Map(manifest.entries.map((e) => [e.name, e]));
 
   for (const entry of manifest.entries) {
-    if (entry.dependencies) {
-      for (const dep of entry.dependencies) {
-        if (!extensionNames.has(dep)) {
-          error(
-            `Extension '${entry.name}' has dependency on '${dep}' which does NOT exist in manifest`
-          );
-        }
+    if (entry.enabled === false) continue;
+    for (const dep of entry.dependencies ?? []) {
+      const target = byName.get(dep);
+      if (!target) {
+        error(
+          `Extension '${entry.name}' has dependency on '${dep}' which does NOT exist in manifest`
+        );
+      } else if (target.enabled === false) {
+        error(
+          `Extension '${entry.name}' requires '${dep}', which is disabled (${target.disabledReason ?? "no disabledReason"}). ` +
+            `Enable '${dep}' or disable '${entry.name}' in scripts/extensions/manifest-data.ts.`
+        );
       }
     }
   }

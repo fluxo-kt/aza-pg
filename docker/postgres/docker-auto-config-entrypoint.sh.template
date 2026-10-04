@@ -7,12 +7,7 @@ set -euo pipefail
 readonly DEFAULT_RAM_MB=1024
 
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
-# This list is automatically derived from the extensions manifest and regenerated when the manifest changes.
-# Note: timescaledb is now enabled by default for time-series features
-# Optional libraries requiring preload (enable via POSTGRES_SHARED_PRELOAD_LIBRARIES):
-#   - pgsodium: Requires pgsodium_getkey script for TCE (Transparent Column Encryption)
-#   - supautils: Superuser guards for managed Postgres
-#   - safeupdate: UPDATE/DELETE safety guard
+# POSTGRES_SHARED_PRELOAD_LIBRARIES replaces this list (optional ones such as supautils are added that way).
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
 readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="{{DEFAULT_SHARED_PRELOAD_LIBRARIES}}"
 
@@ -439,33 +434,11 @@ else
     EFFECTIVE_IO_CONCURRENCY=""
 fi
 
-# Auto-detect pgsodium support: only include if getkey script exists and works
-# A preloaded pgsodium stops the server (proc_exit) when its getkey script is missing or fails
-# Use pg_config to get sharedir path (works for any PG version)
+# The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
+# after this script) refuses a non-empty directory. Its failures surface when the server starts.
 PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
 PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
-PGSODIUM_ENABLED=""
-if [ -x "${PGSODIUM_GETKEY_PATH}" ]; then
-    # Verify script produces valid output (64 hex chars, trim whitespace)
-    GETKEY_OUTPUT=$("${PGSODIUM_GETKEY_PATH}" 2>/dev/null | tr -d '[:space:]' || echo "")
-    if [[ "${GETKEY_OUTPUT}" =~ ^[0-9a-fA-F]{64}$ ]]; then
-        PGSODIUM_ENABLED="true"
-        echo "[POSTGRES] [AUTO-CONFIG] pgsodium enabled (getkey script at ${PGSODIUM_GETKEY_PATH} validated)"
-    else
-        echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (getkey script output invalid: expected 64 hex chars)"
-    fi
-else
-    echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (no executable script at ${PGSODIUM_GETKEY_PATH})"
-fi
-
-# Build shared_preload_libraries - remove pgsodium if not enabled
-BASE_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
-if [ "${PGSODIUM_ENABLED}" != "true" ]; then
-    # Remove pgsodium from list (handles: "pgsodium,x", "x,pgsodium", "x,pgsodium,y")
-    SHARED_PRELOAD_LIBRARIES=$(echo "${BASE_PRELOAD_LIBRARIES}" | sed 's/,pgsodium//g; s/pgsodium,//g; s/^pgsodium$//g')
-else
-    SHARED_PRELOAD_LIBRARIES="${BASE_PRELOAD_LIBRARIES}"
-fi
+SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
 # Default: logical (safest, enables CDC extensions like wal2json)
@@ -536,10 +509,8 @@ fi
 if [ "$WAL_LEVEL" = "minimal" ]; then
     AUTO_SETTINGS+=("max_wal_senders=0")
 fi
-# pgsodium getkey_script (only if enabled - explicitly set to avoid path detection issues)
-if [ "${PGSODIUM_ENABLED}" = "true" ]; then
-    AUTO_SETTINGS+=("pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}")
-fi
+# Set explicitly so the path does not depend on how pgsodium resolves its share directory.
+AUTO_SETTINGS+=("pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}")
 
 # Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
 # postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
@@ -575,6 +546,34 @@ while [ "$#" -gt 0 ]; do
 done
 OPERATOR_CONFIG="${OPERATOR_CONFIG:-${DATA_DIR}/postgresql.conf}"
 
+as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
+
+# pgsodium root key, read by the image's pgsodium_getkey (its header explains where it lives). The operator's
+# PGSODIUM_KEY_FILE is checked here so a wrong path or content stops the container naming it, before the
+# server would stop on it with a less direct message.
+# Images before per-database keys shipped one fixed key, published in this repository. A data directory they
+# created may hold data encrypted with it, and a new key would make that data unreadable, so it keeps that key
+# as its key file and every start warns until the operator rotates it (docs/PGSODIUM-SETUP.md).
+readonly PUBLISHED_PGSODIUM_KEY=4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2
+if [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
+    operator_key=$(as_postgres cat "$PGSODIUM_KEY_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+    if ! [[ "$operator_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: PGSODIUM_KEY_FILE=${PGSODIUM_KEY_FILE} must be readable by postgres and hold 64 hex characters; create one with: head -c 32 /dev/urandom | od -An -v -tx1 | tr -d ' \\n'" >&2
+        exit 1
+    fi
+    pgsodium_key_file="$PGSODIUM_KEY_FILE"
+else
+    pgsodium_key_file="${PGDATA}/pgsodium_root.key"
+    if [ -f "${PGDATA}/PG_VERSION" ] && [ ! -e "$pgsodium_key_file" ]; then
+        # shellcheck disable=SC2016 # $1/$2 are the inner sh's arguments
+        as_postgres sh -c 'umask 077 && printf "%s\n" "$1" > "$2"' sh "$PUBLISHED_PGSODIUM_KEY" "$pgsodium_key_file"
+    fi
+fi
+current_key=$(as_postgres cat "$pgsodium_key_file" 2>/dev/null | tr -d '[:space:]' || true)
+if [ "${current_key,,}" = "$PUBLISHED_PGSODIUM_KEY" ]; then
+    echo "[POSTGRES] [AUTO-CONFIG] WARNING: pgsodium uses the key older aza-pg images published (${pgsodium_key_file}); anyone can decrypt data encrypted with it. Rotate it: docs/PGSODIUM-SETUP.md, section \"Rotating the published key\"" >&2
+fi
+
 # A config-file string literal doubles single quotes and treats backslash as an escape character.
 conf_quote() {
     local q="'" text="${1//\\/\\\\}"
@@ -600,7 +599,6 @@ chmod 0644 "$AUTO_CONFIG_FILE"
 # units (8kB pages, kB) and needs an initialised data directory, so the check skips the very first start. A file
 # value equal to the built-in default is indistinguishable from initdb's own lines (max_connections = 100, …), and one
 # equal to the tuned value changes nothing; neither is reported.
-as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
 for setting in "${AUTO_SETTINGS[@]}"; do
     name="${setting%%=*}"

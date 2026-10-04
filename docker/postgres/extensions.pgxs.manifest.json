@@ -297,8 +297,7 @@
           "NOT in PGDG.",
           "Preloaded by default for pgflow and supabase_vault support",
           "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
-          "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
-          "Basic cryptography functions work without getkey script"
+          "Root key: random per data directory ($PGDATA/pgsodium_root.key) or the operator's PGSODIUM_KEY_FILE (docs/PGSODIUM-SETUP.md)"
         ]
       },
       "sourceUrl": "https://github.com/michelp/pgsodium",

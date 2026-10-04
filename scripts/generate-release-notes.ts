@@ -685,9 +685,9 @@ function generateConfigurationSection(): string[] {
   lines.push("");
 
   // pgsodium TCE callout
-  lines.push("> ⚠️ **pgsodium TCE Setup**");
+  lines.push("> 🔑 **pgsodium & Vault**");
   lines.push(
-    `> For Transparent Column Encryption, set \`ENABLE_PGSODIUM_INIT=true\` and mount \`pgsodium_getkey\` script. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
+    `> Each database gets its own random root key in its data directory; back it up, or supply your own with \`PGSODIUM_KEY_FILE\`. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
   );
   lines.push("");
 

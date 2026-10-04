@@ -46,11 +46,8 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         -- Without preload, event triggers fail during DDL operations with:
         -- "unrecognized configuration parameter 'pgsodium.enable_event_trigger'"
         --
-        -- The image preloads pgsodium by default; the entrypoint drops it when the getkey script is
-        -- missing or invalid, and a POSTGRES_SHARED_PRELOAD_LIBRARIES override must keep it.
-        --
-        -- Full Transparent Column Encryption (TCE) additionally requires:
-        --   - pgsodium_getkey script configured via pgsodium.getkey_script GUC parameter
+        -- The image preloads pgsodium by default with a root key per data directory (or the operator's
+        -- PGSODIUM_KEY_FILE); a POSTGRES_SHARED_PRELOAD_LIBRARIES override must keep it.
 
         -- Create server secret key if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pgsodium.key WHERE name = 'pgsodium_root') THEN

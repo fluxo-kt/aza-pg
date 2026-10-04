@@ -79,9 +79,6 @@ FROM builder-base AS builder-pgxs
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Copy full manifest for cross-stage dependency validation
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
 RUN --mount=type=cache,target=/root/.cache \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
@@ -109,9 +106,6 @@ FROM builder-base AS builder-cargo
 
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Copy full manifest for cross-stage dependency validation
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Each crate builds with its own [profile.release] (upstream picks opt-level 3 + fat LTO for runtime speed);
 # only symbols are stripped. A global opt-level=s/thin-LTO override existed to shrink timescaledb_toolkit,
@@ -234,19 +228,8 @@ RUN set -euo pipefail && \
     cd / && \
     rm -rf /tmp/pgtap
 
-# Create stub pgsodium_getkey script (required when pgsodium is preloaded)
-# pgsodium requires this script to exist when loaded via shared_preload_libraries.
-# This stub script returns a test key in hex format (64 hex characters = 32 bytes).
-# Production deployments using Transparent Column Encryption (TCE) should replace this
-# with a proper key management script that fetches the server secret securely from vault/KMS.
-# See: https://github.com/michelp/pgsodium/tree/main/getkey_scripts for examples
-RUN set -euo pipefail && \
-    echo '#!/bin/sh' > /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
+# pgsodium root key: a random key per data directory, or the operator's PGSODIUM_KEY_FILE (script header).
+COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/share/postgresql/18/extension/pgsodium_getkey
 
 # Create backup directory with proper ownership
 RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup

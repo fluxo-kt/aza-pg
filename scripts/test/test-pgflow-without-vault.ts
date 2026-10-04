@@ -91,16 +91,18 @@ async function main(): Promise<void> {
       testsPassed = false;
     }
 
-    // Test 5: Verify pgflow.is_local() works
+    // Test 5: pgflow.is_local() is upstream's production-safe false (no Supabase CLI jwt_secret here)
     info("Test 5: Verify pgflow.is_local() function...");
     try {
       const isLocal =
         await $`docker exec ${containerName} psql -U postgres -d test_no_vault -tAc "SELECT pgflow.is_local()"`.text();
       const result = isLocal.trim();
-      if (result === "t" || result === "true") {
-        success(`Test 5 PASSED: pgflow.is_local() returns true (value: "${result}")`);
+      if (result === "f" || result === "false") {
+        success(`Test 5 PASSED: pgflow.is_local() returns false (value: "${result}")`);
       } else {
-        error(`Test 5 FAILED: pgflow.is_local() returned "${result}", expected "t" or "true"`);
+        error(
+          `Test 5 FAILED: pgflow.is_local() returned "${result}", expected "f" (production-safe default)`
+        );
         testsPassed = false;
       }
     } catch (err) {

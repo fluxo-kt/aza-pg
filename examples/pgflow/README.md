@@ -15,7 +15,7 @@ the pgflow schema into each additional database explicitly.
 
 ```sql
 -- Verify installation
-SELECT pgflow.is_local();  -- Returns: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
 -- List tables
 \dt pgflow.*

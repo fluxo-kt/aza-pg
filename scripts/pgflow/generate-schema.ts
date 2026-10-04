@@ -359,6 +359,14 @@ ${localSchemaContent(filename, content).trim()}
 `);
   }
 
+  // Every fresh install records its version on the schema; pgflow-upgrade reads it as the starting point, so an
+  // operator upgrading a database created by this image never has to remember which pgflow it shipped.
+  sections.push(`-- ============================================================================
+-- aza-pg: installed pgflow version
+-- ============================================================================
+COMMENT ON SCHEMA pgflow IS 'pgflow ${version}';
+`);
+
   return sections.join("\n");
 }
 
@@ -399,9 +407,10 @@ async function main(): Promise<void> {
     const schemaLower = combinedSchema.toLowerCase();
     const checks = [
       {
-        name: "read_with_poll removed",
-        pass: !schemaLower.includes("read_with_poll"),
-        fail: "read_with_poll should not exist in v0.9.0+",
+        // Matches only a pgflow-owned definition: 0.17 schemas mention pgmq's read_with_poll in comments.
+        name: "pgflow.read_with_poll removed",
+        pass: !/create\s+(or\s+replace\s+)?function\s+pgflow\.read_with_poll\b/.test(schemaLower),
+        fail: "pgflow.read_with_poll should not be defined in v0.9.0+",
       },
       {
         name: "set_vt_batch returns table",

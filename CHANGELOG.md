@@ -19,6 +19,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgBackRest 2.58.0 → 2.59.2**: Only `restore` may run as root; run other commands as `postgres` (`docker exec -u postgres …`) or set `allow-root`.
 - **pg_stat_monitor 2.3.2 → 2.4.0**: The `pgsm_overflow_target` setting is removed and `pgsm_track_application_names` is deprecated (always on); `application_name` shows `NULL` instead of `'unknown'`.
 - **pgvectorscale 0.9.0 → 0.9.1**: DiskANN indexes need a `vector(N)` column; an existing index built on a column without a dimension now errors on scan, insert and vacuum and must be dropped and recreated (`REINDEX` cannot repair it). Run `ALTER EXTENSION vectorscale UPDATE` in existing databases.
+- **pgflow 0.14.1 → 0.17.2**: `pgflow.is_local()` now behaves as upstream (false unless the Supabase CLI's local JWT secret is set) instead of always true, so a worker deploying a changed flow definition refuses to start rather than deleting that flow and all its runs. `start_tasks()` takes the queue name (and optional step) explicitly; use `@pgflow/client` and `@pgflow/dsl` 0.17.2. Workers compile or verify their flow before polling (migration-based compilation is gone). New databases get 0.17.2; databases created by an older image keep their pgflow schema until upgraded.
 
 ### Security
 

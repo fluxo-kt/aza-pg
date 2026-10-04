@@ -43,7 +43,7 @@ Total: 29 extensions
 NON-CREATE-EXTENSION ENTRIES (preload or init managed)
 ═══════════════════════════════════════════════════════════════
 
-  pgflow                       v0.14.1        workflow
+  pgflow                       v0.17.2        workflow
   supautils                    v3.4.4         safety
 
 ═══════════════════════════════════════════════════════════════

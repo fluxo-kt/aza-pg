@@ -134,15 +134,15 @@ async function runTest() {
     }
     await $`docker exec ${containerName} psql -v ON_ERROR_STOP=1 -U postgres -d testdb -f /opt/pgflow/security-patches.sql`;
 
-    // Verify pgflow.is_local() works
+    // pgflow.is_local() is upstream's production-safe false (no Supabase CLI jwt_secret here)
     const isLocalCheck = await $`docker exec ${containerName} psql -U postgres -d testdb -t -c "
       SELECT pgflow.is_local();
     "`.text();
 
     const result = isLocalCheck.trim();
-    if (result !== "t" && result !== "true") {
+    if (result !== "f" && result !== "false") {
       throw new Error(
-        `❌ pgflow.is_local() returned unexpected value: "${result}" (expected "t" or "true")`
+        `❌ pgflow.is_local() returned unexpected value: "${result}" (expected "f": production-safe default)`
       );
     }
     console.log("✅ pgflow installed and working in new database");

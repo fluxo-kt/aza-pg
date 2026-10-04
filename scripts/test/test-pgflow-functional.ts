@@ -90,6 +90,24 @@ const harness = new TestHarness();
 // Test Cases
 // ============================================================================
 
+/**
+ * Claims a queued task the way a pgflow worker does: pgmq.read has hidden the message, start_tasks marks the task
+ * started. pgflow 0.17 takes the queue name explicitly and never falls back to the flow slug; plain flows store
+ * lower(flow_slug). The claim must succeed: a test that patched step_tasks by hand instead would pass while the
+ * worker path is broken.
+ */
+async function claimTask(container: string, flowSlug: string, msgId: string): Promise<void> {
+  const claim = await runSQL(
+    container,
+    DATABASE,
+    `SELECT count(*) FROM pgflow.start_tasks('${flowSlug}', ARRAY[${msgId}]::bigint[], gen_random_uuid(), lower('${flowSlug}'))`
+  );
+  assert(
+    claim.success && claim.stdout.trim() === "1",
+    `start_tasks claimed '${claim.stdout.trim()}' tasks for message ${msgId} (expected 1): ${claim.stderr}`
+  );
+}
+
 async function runTests(): Promise<void> {
   let CONTAINER = existingContainer || "";
 
@@ -379,27 +397,9 @@ async function runTests(): Promise<void> {
       // The msg_id from pgmq should match message_id in step_tasks
       const queueMsgId = readResult.stdout.split("|")[0]?.trim() || readResult.stdout.trim();
 
-      // Step 3: Call start_tasks with the message ID from pgmq
-      await runSQL(
-        CONTAINER,
-        DATABASE,
-        `SELECT * FROM pgflow.start_tasks('${FLOW_SLUG}', ARRAY[${queueMsgId || msgId}]::bigint[], gen_random_uuid())`
-      );
-
-      // If start_tasks didn't work, manually update (fallback for testing)
-      const taskStatus = await runSQL(
-        CONTAINER,
-        DATABASE,
-        `SELECT status FROM pgflow.step_tasks WHERE run_id = '${RUN_ID}'::uuid AND step_slug = 'extract'`
-      );
-      if (taskStatus.stdout.trim() === "queued") {
-        // Fallback: directly mark as started for testing purposes
-        await runSQL(
-          CONTAINER,
-          DATABASE,
-          `UPDATE pgflow.step_tasks SET status = 'started', started_at = now() WHERE run_id = '${RUN_ID}'::uuid AND step_slug = 'extract'`
-        );
-      }
+      // Step 3: Claim the task with the message ID from pgmq
+      assert(queueMsgId === msgId, `pgmq returned message ${queueMsgId}, task expects ${msgId}`);
+      await claimTask(CONTAINER, FLOW_SLUG, msgId);
 
       // Step 3: Complete task
       const result = await runSQL(
@@ -446,36 +446,19 @@ async function runTests(): Promise<void> {
     });
 
     await test("TEST 11: Complete remaining tasks", async () => {
-      // Helper to start a task (read from queue + start_tasks + fallback)
+      // Read the next message from the flow's queue and claim its task, as a worker does
       const startAndCompleteTask = async (stepSlug: string, output: object) => {
-        // Read from queue
         const readResult = await runSQL(
           CONTAINER,
           DATABASE,
           `SELECT msg_id FROM pgmq.read('${FLOW_SLUG}', 60, 1)`
         );
-        if (readResult.success && readResult.stdout.trim()) {
-          const msgId = readResult.stdout.trim();
-          await runSQL(
-            CONTAINER,
-            DATABASE,
-            `SELECT * FROM pgflow.start_tasks('${FLOW_SLUG}', ARRAY[${msgId}]::bigint[], gen_random_uuid())`
-          );
-        }
-
-        // Check status, fallback to manual update if needed
-        const status = await runSQL(
-          CONTAINER,
-          DATABASE,
-          `SELECT status FROM pgflow.step_tasks WHERE run_id = '${RUN_ID}'::uuid AND step_slug = '${stepSlug}'`
+        const msgId = readResult.stdout.trim();
+        assert(
+          readResult.success && msgId !== "",
+          `No queued message for step ${stepSlug}: ${readResult.stderr}`
         );
-        if (status.stdout.trim() === "queued" || status.stdout.trim() === "created") {
-          await runSQL(
-            CONTAINER,
-            DATABASE,
-            `UPDATE pgflow.step_tasks SET status = 'started', started_at = now() WHERE run_id = '${RUN_ID}'::uuid AND step_slug = '${stepSlug}'`
-          );
-        }
+        await claimTask(CONTAINER, FLOW_SLUG, msgId);
 
         // Complete the task
         const result = await runSQL(
@@ -539,34 +522,18 @@ async function runTests(): Promise<void> {
       const retryRunId = startResult.stdout.trim();
       assert(retryRunId.length > 0, "Failed to get retry run_id");
 
-      // Read from queue and start task
+      // Read from queue and claim the task, as a worker does
       const readResult = await runSQL(
         CONTAINER,
         DATABASE,
         `SELECT msg_id FROM pgmq.read('${RETRY_FLOW}', 60, 1)`
       );
-      if (readResult.success && readResult.stdout.trim()) {
-        const msgId = readResult.stdout.trim();
-        await runSQL(
-          CONTAINER,
-          DATABASE,
-          `SELECT * FROM pgflow.start_tasks('${RETRY_FLOW}', ARRAY[${msgId}]::bigint[], gen_random_uuid())`
-        );
-      }
-
-      // Fallback: manually start if needed
-      const taskStatus = await runSQL(
-        CONTAINER,
-        DATABASE,
-        `SELECT status FROM pgflow.step_tasks WHERE run_id = '${retryRunId}'::uuid AND step_slug = 'failing_step'`
+      const msgId = readResult.stdout.trim();
+      assert(
+        readResult.success && msgId !== "",
+        `No queued message for ${RETRY_FLOW}: ${readResult.stderr}`
       );
-      if (taskStatus.stdout.trim() === "queued") {
-        await runSQL(
-          CONTAINER,
-          DATABASE,
-          `UPDATE pgflow.step_tasks SET status = 'started', started_at = now(), attempts_count = 1 WHERE run_id = '${retryRunId}'::uuid AND step_slug = 'failing_step'`
-        );
-      }
+      await claimTask(CONTAINER, RETRY_FLOW, msgId);
 
       // Fail the task (only works on 'started' tasks)
       const failResult = await runSQL(
@@ -576,7 +543,7 @@ async function runTests(): Promise<void> {
       );
       assert(failResult.success, `Failed to fail task: ${failResult.stderr}`);
 
-      // Check task attempts (should be >= 1 from our manual start or start_tasks)
+      // start_tasks counted the attempt
       const attempts = await runSQL(
         CONTAINER,
         DATABASE,

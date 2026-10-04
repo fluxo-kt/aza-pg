@@ -35,8 +35,8 @@
     "tsc": "tsc"
   },
   "devDependencies": {
-    "@pgflow/client": "0.14.1",
-    "@pgflow/dsl": "0.14.1",
+    "@pgflow/client": "0.17.2",
+    "@pgflow/dsl": "0.17.2",
     "@types/bun": "^1.4.2",
     "arktype": "^2.2.7",
     "bun-git-hooks": "^0.3.3",

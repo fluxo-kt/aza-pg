@@ -839,7 +839,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
-      tag: "pgflow@0.14.1",
+      tag: "pgflow@0.17.2",
     },
     runtime: {
       sharedPreload: false,
@@ -855,6 +855,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     dependencies: ["pgmq", "pg_net", "pg_cron", "supabase_vault"],
     notes: [
       "SQL-only schema - no compiled components",
+      "v0.17: pgflow_telemetry schema (daily usage report via pg_cron); aza-pg leaves it unscheduled, operators opt in with pgflow_telemetry.enable()",
+      "v0.16: workers compile/verify their flow definition before polling; migration-based flow compilation removed",
+      "v0.15: @pgflow/edge-worker published to npm with Node/Bun runtime support",
       "v0.14.1: Conditional step execution with skipped-state propagation",
       "v0.13.3: PGFLOW_AUTH_SECRET support, maxPgConnections fix (edge worker features)",
       "v0.13.2: Auto-requeue stalled tasks (crash resilience), requeued_count tracking",

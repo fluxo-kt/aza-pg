@@ -26,7 +26,7 @@ runs:
           echo "❌ ERROR: Could not parse bun version from .tool-versions"
           exit 1
         fi
-        echo "version=${BUN_VERSION}" >> $GITHUB_OUTPUT
+        echo "version=${BUN_VERSION}" >> "$GITHUB_OUTPUT"
         echo "📦 Detected Bun version: ${BUN_VERSION}"
 
     - name: Set up Bun and dependencies

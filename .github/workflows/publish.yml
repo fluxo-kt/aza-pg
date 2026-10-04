@@ -77,7 +77,7 @@ jobs:
         id: config
         run: |
           set -euo pipefail
-          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> $GITHUB_OUTPUT
+          echo "testing_image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Bun and dependencies
         id: bun-version
@@ -121,9 +121,6 @@ jobs:
           echo "This is non-critical - workflow will continue"
           echo "Orphaned tags may require manual cleanup"
 
-      - name: Verify Dockerfile generation is current
-        run: bun scripts/verify-generated.ts
-
       - name: Validate manifest and full checks
         run: bun run validate:all
 
@@ -135,17 +132,19 @@ jobs:
         run: |
           set -euo pipefail
           eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
-          echo "total=${CATALOG_TOTAL}" >> $GITHUB_OUTPUT
-          echo "enabled=${CATALOG_ENABLED}" >> $GITHUB_OUTPUT
-          echo "disabled=${CATALOG_DISABLED}" >> $GITHUB_OUTPUT
-          echo "extensions=${CATALOG_EXTENSIONS}" >> $GITHUB_OUTPUT
-          echo "tools=${CATALOG_TOOLS}" >> $GITHUB_OUTPUT
-          echo "builtins=${CATALOG_BUILTINS}" >> $GITHUB_OUTPUT
-          echo "modules=${CATALOG_MODULES}" >> $GITHUB_OUTPUT
-          echo "enabled_extensions=${CATALOG_ENABLED_EXTENSIONS}" >> $GITHUB_OUTPUT
-          echo "enabled_tools=${CATALOG_ENABLED_TOOLS}" >> $GITHUB_OUTPUT
-          echo "enabled_builtins=${CATALOG_ENABLED_BUILTINS}" >> $GITHUB_OUTPUT
-          echo "enabled_modules=${CATALOG_ENABLED_MODULES}" >> $GITHUB_OUTPUT
+          {
+            echo "total=${CATALOG_TOTAL}"
+            echo "enabled=${CATALOG_ENABLED}"
+            echo "disabled=${CATALOG_DISABLED}"
+            echo "extensions=${CATALOG_EXTENSIONS}"
+            echo "tools=${CATALOG_TOOLS}"
+            echo "builtins=${CATALOG_BUILTINS}"
+            echo "modules=${CATALOG_MODULES}"
+            echo "enabled_extensions=${CATALOG_ENABLED_EXTENSIONS}"
+            echo "enabled_tools=${CATALOG_ENABLED_TOOLS}"
+            echo "enabled_builtins=${CATALOG_ENABLED_BUILTINS}"
+            echo "enabled_modules=${CATALOG_ENABLED_MODULES}"
+          } >> "$GITHUB_OUTPUT"
           echo "Catalog: ${CATALOG_ENABLED} enabled (${CATALOG_ENABLED_EXTENSIONS} ext, ${CATALOG_ENABLED_BUILTINS} builtin, ${CATALOG_ENABLED_TOOLS} tools), ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
 
       - name: Extract PostgreSQL version from base image
@@ -172,8 +171,10 @@ jobs:
           BUILD_TS_RFC3339=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
           # Output both formats
-          echo "value=${BUILD_TS}" >> $GITHUB_OUTPUT
-          echo "timestamp=${BUILD_TS_RFC3339}" >> $GITHUB_OUTPUT
+          {
+            echo "value=${BUILD_TS}"
+            echo "timestamp=${BUILD_TS_RFC3339}"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Build timestamp (human): ${BUILD_TS}"
           echo "Build timestamp (RFC 3339): ${BUILD_TS_RFC3339}"
@@ -383,9 +384,9 @@ jobs:
           echo "=== Pre-merge Validation ==="
 
           # Verify we have exactly 2 digest files (amd64 + arm64)
-          DIGEST_COUNT=$(ls -1 ${{ runner.temp }}/digests | wc -l)
+          DIGEST_COUNT=$(find "${{ runner.temp }}/digests" -mindepth 1 -maxdepth 1 | wc -l)
           echo "Digest files found: ${DIGEST_COUNT}"
-          ls -1 ${{ runner.temp }}/digests
+          ls -1 "${{ runner.temp }}/digests"
 
           if [ "${DIGEST_COUNT}" -ne 2 ]; then
             echo "❌ ERROR: Expected 2 digest files (amd64 + arm64), found ${DIGEST_COUNT}"
@@ -547,10 +548,12 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Smoke Tests :fire:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Smoke Tests :fire:"
+            echo ""
+            echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}\`"
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test-extensions:
     name: Extension Tests
@@ -626,16 +629,18 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Extension Tests :jigsaw:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension functional validation" >> $GITHUB_STEP_SUMMARY
-          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
-          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Extension Tests :jigsaw:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- Core extension loading"
+            echo "- Extension functional validation"
+            echo "- Disabled extensions verification"
+            echo "- Hook-based extensions"
+            echo "- Extension combinations"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test-features:
     name: Feature Tests
@@ -734,15 +739,17 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Feature Tests :gear:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgflow schema installation and workflows" >> $GITHUB_STEP_SUMMARY
-          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
-          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Feature Tests :gear:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- Auto-config (workload types, storage types, resource detection)"
+            echo "- pgflow schema installation and workflows"
+            echo "- PgBouncer health check"
+            echo "- Negative scenarios (error handling)"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test-security:
     name: Security Tests
@@ -790,15 +797,17 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Security Tests :shield:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
-          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
-          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
-          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Security Tests :shield:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- User permissions and role security"
+            echo "- Authentication mechanisms"
+            echo "- Network security settings"
+            echo "- File system permissions"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   regression-tests:
     name: Regression Tests (Blocking Gate)
@@ -868,42 +877,50 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "# Production Test Gate :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Upstream Stage | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Prepare Build Metadata | \`${{ needs.prep.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Create Multi-Platform Manifest | \`${{ needs.merge.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Smoke Tests | \`${{ needs.test-smoke.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Extension Tests | \`${{ needs.test-extensions.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Feature Tests | \`${{ needs.test-features.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Tests | \`${{ needs.test-security.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Regression Tests | \`${{ needs.regression-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# Production Test Gate :rocket:"
+            echo ""
+            echo "## Test Results"
+            echo ""
+            echo "| Upstream Stage | Status |"
+            echo "|----------------|--------|"
+            echo "| Prepare Build Metadata | \`${{ needs.prep.result }}\` |"
+            echo "| Create Multi-Platform Manifest | \`${{ needs.merge.result }}\` |"
+            echo ""
+            echo "| Test Suite | Status |"
+            echo "|------------|--------|"
+            echo "| Smoke Tests | \`${{ needs.test-smoke.result }}\` |"
+            echo "| Extension Tests | \`${{ needs.test-extensions.result }}\` |"
+            echo "| Feature Tests | \`${{ needs.test-features.result }}\` |"
+            echo "| Security Tests | \`${{ needs.test-security.result }}\` |"
+            echo "| Regression Tests | \`${{ needs.regression-tests.result }}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.prep.result }}" != "success" ] || [ "${{ needs.merge.result }}" != "success" ]; then
-            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Build pipeline did not complete (prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}). No tests ran — release blocked." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ❌ Test Gate: FAILED"
+              echo ""
+              echo "Build pipeline did not complete (prep=${{ needs.prep.result }}, merge=${{ needs.merge.result }}). No tests ran — release blocked."
+            } >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.test-smoke.result }}" = "success" ] && \
              [ "${{ needs.test-extensions.result }}" = "success" ] && \
              [ "${{ needs.test-features.result }}" = "success" ] && \
              [ "${{ needs.test-security.result }}" = "success" ] && \
              [ "${{ needs.regression-tests.result }}" = "success" ]; then
-            echo "## ✅ Test Gate: PASSED" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "All comprehensive tests passed. Image approved for production release." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ✅ Test Gate: PASSED"
+              echo ""
+              echo "All comprehensive tests passed. Image approved for production release."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## ❌ Test Gate: FAILED" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "One or more test suites failed. Production release blocked." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Action Required:** Review test failures above and fix issues before retrying release." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ❌ Test Gate: FAILED"
+              echo ""
+              echo "One or more test suites failed. Production release blocked."
+              echo ""
+              echo "**Action Required:** Review test failures above and fix issues before retrying release."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   scan:
@@ -1211,7 +1228,7 @@ jobs:
 
       - name: Generate release summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
           # PostgreSQL Single-Node Image Published :rocket:
 
           ## Image Details
@@ -1424,7 +1441,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --tag "${{ needs.prep.outputs.image_tag }}" | tail -n 1)
 
-          echo "package_version_id=${VERSION_ID}" >> $GITHUB_OUTPUT
+          echo "package_version_id=${VERSION_ID}" >> "$GITHUB_OUTPUT"
           echo "✅ Found package version ID: ${VERSION_ID}"
 
       - name: Use metrics from promotion
@@ -1432,11 +1449,13 @@ jobs:
         run: |
           set -euo pipefail
           # Metrics were extracted during promotion in release job
-          echo "compressed_size=${{ needs.release.outputs.compressed_size }}" >> $GITHUB_OUTPUT
-          echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}" >> $GITHUB_OUTPUT
-          echo "layer_count=${{ needs.release.outputs.layer_count }}" >> $GITHUB_OUTPUT
-          echo "base_image_name=${{ needs.release.outputs.base_image_name }}" >> $GITHUB_OUTPUT
-          echo "base_image_digest=${{ needs.release.outputs.base_image_digest }}" >> $GITHUB_OUTPUT
+          {
+            echo "compressed_size=${{ needs.release.outputs.compressed_size }}"
+            echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}"
+            echo "layer_count=${{ needs.release.outputs.layer_count }}"
+            echo "base_image_name=${{ needs.release.outputs.base_image_name }}"
+            echo "base_image_digest=${{ needs.release.outputs.base_image_digest }}"
+          } >> "$GITHUB_OUTPUT"
 
           echo "✅ Using metrics from release job:"
           echo "   Compressed: ${{ needs.release.outputs.compressed_size }}"
@@ -1686,21 +1705,29 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### 🧹 Cleanup Status" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### 🧹 Cleanup Status"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ steps.cleanup-step.outcome }}" = "success" ]; then
-            echo "✅ **Testing images cleaned up successfully**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "All testing images (including orphaned manifests) were deleted." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "✅ **Testing images cleaned up successfully**"
+              echo ""
+              echo "All testing images (including orphaned manifests) were deleted."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ **Cleanup encountered issues**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- **Repository**: \`ghcr.io/${{ needs.prep.outputs.testing_image_name }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Action**: Daily scheduled cleanup will remove remaining versions" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "This does not affect the release. All images are published to production." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "⚠️ **Cleanup encountered issues**"
+              echo ""
+              echo "- **Repository**: \`ghcr.io/${{ needs.prep.outputs.testing_image_name }}\`"
+              echo "- **Action**: Daily scheduled cleanup will remove remaining versions"
+              echo ""
+              echo "This does not affect the release. All images are published to production."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Workflow Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "- **Workflow Run:** ${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"

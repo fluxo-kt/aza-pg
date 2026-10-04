@@ -132,15 +132,6 @@ jobs:
       - name: Run full validation
         run: bun run validate:all
 
-      - name: Check documentation consistency
-        run: bun scripts/check-docs-consistency.ts
-
-      - name: Run smoke tests
-        run: bun scripts/test-smoke.ts
-
-      - name: Verify manifest sync
-        run: bun scripts/verify-generated.ts
-
   build:
     name: Build PostgreSQL Image (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
@@ -195,8 +186,10 @@ jobs:
           set -euo pipefail
           CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
           CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}-${{ matrix.artifact }}"
-          echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
-          echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
+          {
+            echo "key=${CACHE_KEY}"
+            echo "content_hash=${CONTENT_HASH}"
+          } >> "$GITHUB_OUTPUT"
           echo "Generated cache key: ${CACHE_KEY}"
 
       - name: Build and push by digest (multi-platform)
@@ -345,16 +338,18 @@ jobs:
       - name: Output manifest digest
         run: |
           set -euo pipefail
-          echo "### Multi-Platform Manifest Created :package:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo "- \`dev-${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:**" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/amd64 (native build on ubuntu-latest)" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/arm64 (native build on ubuntu-24.04-arm)" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Multi-Platform Manifest Created :package:"
+            echo ""
+            echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`"
+            echo "**Tags:**"
+            echo "- \`dev-${{ github.ref_name }}\`"
+            echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`"
+            echo ""
+            echo "**Platforms:**"
+            echo "- linux/amd64 (native build on ubuntu-latest)"
+            echo "- linux/arm64 (native build on ubuntu-24.04-arm)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   scan-image:
     name: Scan Image for Vulnerabilities
@@ -471,19 +466,23 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Security Scan Results :shield:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Security Scan Results :shield:"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
             DIGEST="${{ needs.merge.outputs.image_digest }}"
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST:0:12}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST:0:12}\`" >> "$GITHUB_STEP_SUMMARY"
           else
             TAG="dev-${{ github.ref_name }}"
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}\` (local build)" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}\` (local build)" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Severity Filter:** CRITICAL, HIGH" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Scan completed. Check Security tab for details (if pushed)." >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "**Severity Filter:** CRITICAL, HIGH"
+            echo ""
+            echo "Scan completed. Check Security tab for details (if pushed)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Test PostgreSQL Stack
@@ -515,13 +514,7 @@ jobs:
             aza-pg-testing:test
 
           echo "⏳ Waiting for PostgreSQL to start..."
-          for i in {1..30}; do
-            if docker exec pg-test pg_isready -U postgres > /dev/null 2>&1; then
-              echo "✅ PostgreSQL ready"
-              break
-            fi
-            sleep 2
-          done
+          bun scripts/ci/wait-for-postgres.ts pg-test
 
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION vector;"
           docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_trgm;"
@@ -562,12 +555,7 @@ jobs:
             --memory=2g \
             aza-pg-testing:test
 
-          for i in {1..30}; do
-            if docker exec pg-test-2gb pg_isready -U postgres > /dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
+          bun scripts/ci/wait-for-postgres.ts pg-test-2gb
 
           echo "Checking auto-config logs for 2GB..."
           docker logs pg-test-2gb 2>&1 | grep -i "detected ram" || true
@@ -585,12 +573,7 @@ jobs:
             --memory=4g \
             aza-pg-testing:test
 
-          for i in {1..30}; do
-            if docker exec pg-test-4gb pg_isready -U postgres > /dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
+          bun scripts/ci/wait-for-postgres.ts pg-test-4gb
 
           echo "Checking auto-config logs for 4GB..."
           docker logs pg-test-4gb 2>&1 | grep -i "detected ram" || true
@@ -615,13 +598,7 @@ jobs:
             aza-pg-testing:test
 
           echo "⏳ Waiting for PostgreSQL to start..."
-          for i in {1..30}; do
-            if docker exec pg-ext-test pg_isready -U postgres > /dev/null 2>&1; then
-              echo "✅ PostgreSQL ready"
-              break
-            fi
-            sleep 2
-          done
+          bun scripts/ci/wait-for-postgres.ts pg-ext-test
 
           echo "🧪 Running comprehensive extension tests..."
           cd scripts/test

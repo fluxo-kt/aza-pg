@@ -9,7 +9,8 @@
  *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, hadolint, yaml, secret scan)
  *   bun scripts/validate.ts --fix                 # Auto-fix: prettier --write, oxlint --fix, SQL formatting
  *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
- *   bun scripts/validate.ts --parallel            # Run checks in parallel (faster but less readable errors)
+ *   bun scripts/validate.ts --parallel            # Run checks concurrently, output buffered per check (default in fast mode)
+ *   bun scripts/validate.ts --sequential          # Run checks one by one with live output (default with --all/--fix)
  *   bun scripts/validate.ts --runtime             # Include runtime verification (requires --image=<tag>)
  *   bun scripts/validate.ts --filesystem          # Include filesystem verification (requires --image=<tag>)
  *   bun scripts/validate.ts --image=<tag>         # Docker image tag for runtime/filesystem verification
@@ -27,8 +28,6 @@ import { summarizeResults } from "./validate-summary";
 
 export const HADOLINT_IMAGE =
   "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
-const ACTIONLINT_IMAGE =
-  "rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36";
 
 /**
  * Validation check configuration
@@ -44,6 +43,9 @@ export type ValidationCheck = {
   // static grep guards. They cost milliseconds and need no Docker, so gating them behind --all/CI
   // would let a leak land via `bun run validate` (the documented pre-commit gate) and only fail later.
   fast?: boolean;
+  // Rewrites tracked files while it runs. Concurrent runs execute it alone first: a reader racing
+  // the rewrite (prettier, tsc) can see a truncated file and fail on bytes that were never committed.
+  writesTree?: boolean;
 };
 
 /**
@@ -58,6 +60,7 @@ type ValidationResult = {
   name: string;
   stdout?: string;
   stderr?: string;
+  durationMs?: number;
 };
 
 /**
@@ -69,6 +72,15 @@ type ValidationResult = {
 export async function runCheck(
   check: ValidationCheck,
   bufferOutput: boolean = false
+): Promise<ValidationResult> {
+  const started = performance.now();
+  const result = await runCheckUntimed(check, bufferOutput);
+  return { ...result, durationMs: performance.now() - started };
+}
+
+async function runCheckUntimed(
+  check: ValidationCheck,
+  bufferOutput: boolean
 ): Promise<ValidationResult> {
   if (!bufferOutput) {
     info(`Running: ${check.description}`);
@@ -198,7 +210,7 @@ async function runChecksSequential(checks: ValidationCheck[]): Promise<Validatio
  */
 async function validate(
   mode: "fast" | "all",
-  parallel: boolean = false,
+  parallel?: boolean,
   stagedOnly: boolean = false,
   includeRuntime: boolean = false,
   includeFilesystem: boolean = false,
@@ -208,7 +220,8 @@ async function validate(
   const startTime = Date.now();
 
   const modeLabel = fixMode ? "FIX" : mode === "fast" ? "FAST" : "FULL";
-  const parallelLabel = parallel ? " (PARALLEL)" : "";
+  const concurrent = parallel ?? (mode === "fast" && !fixMode);
+  const parallelLabel = concurrent ? " (PARALLEL)" : "";
   const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
   const runtimeLabel = includeRuntime ? " + RUNTIME" : "";
   const filesystemLabel = includeFilesystem ? " + FILESYSTEM" : "";
@@ -232,7 +245,12 @@ async function validate(
     },
     {
       name: "PGDG Version Validation",
-      command: ["bun", "scripts/extensions/validate-pgdg-versions.ts"],
+      // Fast mode reuses a passing result while the PGDG pins are unchanged (sha256 cache under
+      // node_modules/.cache/aza-pg); --all always asks PGDG, so upstream revision drift still fails CI.
+      command:
+        mode === "all"
+          ? ["bun", "scripts/validate/pgdg-versions-cached.ts", "--no-cache"]
+          : ["bun", "scripts/validate/pgdg-versions-cached.ts"],
       // Scoped to PGDG: it is preinstalled in the base image, so madison is cheap, and the
       // exact-match-latest rule uniquely catches pgdg packaging-revision drift that git-tag
       // check-updates misses. Percona/Timescale versions are exact-pinned in the Dockerfile and
@@ -248,6 +266,7 @@ async function validate(
       command: ["bun", "scripts/verify-generated.ts"],
       description: "Fail when `bun run generate` would change any generated file",
       required: true,
+      writesTree: true,
     },
     {
       name: "PostgreSQL Config Validation",
@@ -260,6 +279,12 @@ async function validate(
       name: "Local Action Metadata",
       command: ["bun", "scripts/ci/validate-local-actions.ts"],
       description: "Validate local GitHub Action metadata and local action references",
+      required: true,
+    },
+    {
+      name: "Script References",
+      command: ["bun", "scripts/ci/check-script-references.ts"],
+      description: "package.json script targets and documented `bun run <script>` names exist",
       required: true,
     },
     {
@@ -380,12 +405,6 @@ async function validate(
       envOverride: "ALLOW_MISSING_DOCKER",
     },
     {
-      name: "Smoke Tests",
-      command: ["bun", "scripts/test-smoke.ts"],
-      description: "Quick smoke tests (YAML lint, script refs, generated data)",
-      required: false,
-    },
-    {
       name: "ShellCheck",
       command: Bun.env.CI
         ? [
@@ -432,12 +451,10 @@ async function validate(
     },
     {
       name: "Workflow Expressions",
-      command: [
-        "sh",
-        "-c",
-        `docker run --rm -v "$(pwd):/work" -w /work ${ACTIONLINT_IMAGE} -shellcheck= -pyflakes= .github/workflows/*.yml`,
-      ],
-      description: "GitHub Actions workflow syntax and expression validation",
+      // One definition (pinned image, shellcheck on) shared with the CI lint-workflows job.
+      command: ["bun", "scripts/ci/lint-workflows.ts"],
+      description:
+        "GitHub Actions workflow syntax, expressions and run: shell (actionlint + shellcheck)",
       required: true,
       requiresDocker: true,
       envOverride: "ALLOW_MISSING_ACTIONLINT",
@@ -559,8 +576,15 @@ async function validate(
         // classes they catch are blocked at the pre-commit gate, not just in --all/CI.
         [...coreChecks, ...extendedChecks.filter((c) => c.fast), ...dockerVerificationChecks];
 
-  // Run all checks (parallel or sequential)
-  const results = parallel ? await runChecksParallel(checks) : await runChecksSequential(checks);
+  // The fast lane runs concurrently by default: its checks are independent, and one by one they sum to
+  // more than its time budget. --all stays sequential because its CI-mode checks write result files
+  // into the tree that prettier would read; --fix stays sequential because every fixer writes.
+  const results = concurrent
+    ? [
+        ...(await runChecksSequential(checks.filter((c) => c.writesTree))),
+        ...(await runChecksParallel(checks.filter((c) => !c.writesTree))),
+      ]
+    : await runChecksSequential(checks);
 
   // Summary
   const duration = Date.now() - startTime;
@@ -580,6 +604,11 @@ async function validate(
   console.log(`Failed: ${failedCount}`);
   console.log(`Critical failures: ${criticalFailures}`);
   console.log(`Duration: ${(duration / 1000).toFixed(2)}s`);
+  // Per-check wall time, slowest first: the fast lane has a time budget, and the total alone does
+  // not say which check broke it.
+  for (const result of [...results].sort((a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0))) {
+    console.log(`  ${((result.durationMs ?? 0) / 1000).toFixed(2).padStart(6)}s  ${result.name}`);
+  }
   console.log("");
 
   // Determine if we should exit with error
@@ -606,7 +635,11 @@ if (import.meta.main) {
   const args = Bun.argv.slice(2);
   const argsSet = new Set(args);
   const mode = argsSet.has("--all") ? "all" : "fast";
-  const parallel = argsSet.has("--parallel");
+  const parallel = argsSet.has("--parallel")
+    ? true
+    : argsSet.has("--sequential")
+      ? false
+      : undefined;
   const stagedOnly = argsSet.has("--staged");
   const includeRuntime = argsSet.has("--runtime");
   const includeFilesystem = argsSet.has("--filesystem");

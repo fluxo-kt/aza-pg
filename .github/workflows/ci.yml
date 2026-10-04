@@ -75,12 +75,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Validate workflow syntax and expressions (workflows only)
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD:/work" -w /work rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36 \
-            -shellcheck= -pyflakes= \
-            .github/workflows/*.yml
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      # Same check `bun run validate:all` runs (Workflow Expressions), so the pin cannot drift.
+      - name: Lint workflows (actionlint + shellcheck)
+        run: bun scripts/ci/lint-workflows.ts
 
   # ==========================================================================
   # Job 2: Validate (fast checks + unit tests)
@@ -108,9 +108,6 @@ jobs:
       - name: Validate pinned base image digest is resolvable
         run: bun scripts/validate-base-image-sha.ts --check --require-latest-minor
 
-      - name: Verify generated files are up to date
-        run: bun scripts/verify-generated.ts
-
       - name: Repository health check
         run: bun scripts/ci/repository-health-check.ts
 
@@ -118,18 +115,20 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Validation Summary :white_check_mark:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Full validation (lint, formatting, type-checking, docs links, shell/yaml/docker checks)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Base image digest resolvability check" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Unit tests (auto-config, utils)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Manifest validation" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Generated files sync (Dockerfile, configs, docs)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Repository health check" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Validation Summary :white_check_mark:"
+            echo ""
+            echo "**Branch:** \`${{ github.ref_name }}\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo ""
+            echo "**Checks performed:**"
+            echo "- ✅ Full validation (lint, formatting, type-checking, docs links, shell/yaml/docker checks)"
+            echo "- ✅ Base image digest resolvability check"
+            echo "- ✅ Unit tests (auto-config, utils)"
+            echo "- ✅ Manifest validation"
+            echo "- ✅ Generated files sync (Dockerfile, configs, docs)"
+            echo "- ✅ Repository health check"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 2: Build (Docker image, export as artifact)
@@ -227,19 +226,21 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Build Summary :package:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`aza-pg-ci:test\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Build Summary :package:"
+            echo ""
+            echo "**Image:** \`aza-pg-ci:test\`"
+            echo "**Platform:** linux/amd64"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Get image size
           IMAGE_SIZE=$(docker images aza-pg-ci:test --format "{{.Size}}")
-          echo "**Image Size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Size:** $IMAGE_SIZE" >> "$GITHUB_STEP_SUMMARY"
 
           # Get artifact size
-          ARTIFACT_SIZE=$(ls -lh /tmp/aza-pg-ci-image.tar.gz | awk '{print $5}')
-          echo "**Artifact Size:** $ARTIFACT_SIZE (compressed)" >> $GITHUB_STEP_SUMMARY
+          ARTIFACT_SIZE=$(du -h /tmp/aza-pg-ci-image.tar.gz | cut -f1)
+          echo "**Artifact Size:** $ARTIFACT_SIZE (compressed)" >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 3: Test Extensions (parallel extension tests)
@@ -309,14 +310,16 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Extension Tests Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Core extension loading" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension smoke tests (functional validation)" >> $GITHUB_STEP_SUMMARY
-          echo "- Disabled extensions verification" >> $GITHUB_STEP_SUMMARY
-          echo "- Hook-based extensions" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension combinations" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Extension Tests Summary :jigsaw:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- Core extension loading"
+            echo "- Extension smoke tests (functional validation)"
+            echo "- Disabled extensions verification"
+            echo "- Hook-based extensions"
+            echo "- Extension combinations"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 4: Test Stacks (single stack deployment)
@@ -361,12 +364,14 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Stack Tests Summary :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Stacks tested:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Single stack (PostgreSQL + PgBouncer + monitoring)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Note: Primary and replica stacks tested in build-postgres-image.yml_" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Stack Tests Summary :rocket:"
+            echo ""
+            echo "**Stacks tested:**"
+            echo "- Single stack (PostgreSQL + PgBouncer + monitoring)"
+            echo ""
+            echo "_Note: Primary and replica stacks tested in build-postgres-image.yml_"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 5: Test Security (security hardening)
@@ -405,13 +410,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Security Tests Summary :shield:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- User permissions and role security" >> $GITHUB_STEP_SUMMARY
-          echo "- Authentication mechanisms" >> $GITHUB_STEP_SUMMARY
-          echo "- Network security settings" >> $GITHUB_STEP_SUMMARY
-          echo "- File system permissions" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Security Tests Summary :shield:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- User permissions and role security"
+            echo "- Authentication mechanisms"
+            echo "- Network security settings"
+            echo "- File system permissions"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 6: Test Features (auto-config, pgflow, pgbouncer, negative tests)
@@ -503,13 +510,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Feature Tests Summary :gear:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests run:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Auto-config (workload types, storage types, resource detection)" >> $GITHUB_STEP_SUMMARY
-          echo "- pgflow schema installation and workflows" >> $GITHUB_STEP_SUMMARY
-          echo "- PgBouncer health check" >> $GITHUB_STEP_SUMMARY
-          echo "- Negative scenarios (error handling)" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Feature Tests Summary :gear:"
+            echo ""
+            echo "**Tests run:**"
+            echo "- Auto-config (workload types, storage types, resource detection)"
+            echo "- pgflow schema installation and workflows"
+            echo "- PgBouncer health check"
+            echo "- Negative scenarios (error handling)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 7: Regression Tests (fast - Tier 1 only)
@@ -550,13 +559,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Regression Tests (Fast) Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Tier:** Tier 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests:** 1 self-contained test (boolean - creates own fixtures)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Full regression suite (30 tests) runs on release branch_" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Regression Tests (Fast) Summary :test_tube:"
+            echo ""
+            echo "**Test Tier:** Tier 1 (Core PostgreSQL)"
+            echo "**Mode:** Production (enabled extensions only)"
+            echo "**Tests:** 1 self-contained test (boolean - creates own fixtures)"
+            echo ""
+            echo "_Full regression suite (30 tests) runs on release branch_"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 8: CI Complete (final gate)
@@ -617,23 +628,25 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "# CI Pipeline Complete :tada:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Job Status" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || (needs.validate.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || (needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || (needs.test-extensions.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || (needs.test-stacks.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || (needs.test-security.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || (needs.test-features.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || (needs.regression-tests-fast.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# CI Pipeline Complete :tada:"
+            echo ""
+            echo "## Job Status"
+            echo ""
+            echo "| Job | Status |"
+            echo "|-----|--------|"
+            echo "| Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || (needs.validate.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Build | ${{ needs.build.result == 'success' && '✅ Passed' || (needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Test Extensions | ${{ needs.test-extensions.result == 'success' && '✅ Passed' || (needs.test-extensions.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Test Stacks | ${{ needs.test-stacks.result == 'success' && '✅ Passed' || (needs.test-stacks.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Test Security | ${{ needs.test-security.result == 'success' && '✅ Passed' || (needs.test-security.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Test Features | ${{ needs.test-features.result == 'success' && '✅ Passed' || (needs.test-features.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo "| Regression Tests (Fast) | ${{ needs.regression-tests-fast.result == 'success' && '✅ Passed' || (needs.regression-tests-fast.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |"
+            echo ""
+            echo "**Branch:** \`${{ github.ref_name }}\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Overall status - fail only on actual failures, not skipped jobs
           if [ "${{ needs.validate.result }}" = "failure" ] || \
@@ -643,11 +656,15 @@ jobs:
              [ "${{ needs.test-security.result }}" = "failure" ] || \
              [ "${{ needs.test-features.result }}" = "failure" ] || \
              [ "${{ needs.regression-tests-fast.result }}" = "failure" ]; then
-            echo "## ❌ Pipeline Failed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "One or more jobs failed. Check the job logs above for details." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ❌ Pipeline Failed"
+              echo ""
+              echo "One or more jobs failed. Check the job logs above for details."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The CI pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ✅ All Tests Passed"
+              echo ""
+              echo "The CI pipeline completed successfully."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

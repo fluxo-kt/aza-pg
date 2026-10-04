@@ -129,13 +129,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Tier 1 Summary :test_tube:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Tier:** 1 (Core PostgreSQL)" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production (fast)" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests:** 12 official PostgreSQL regression tests (boolean, int2/4/8, float4/8, text, varchar, numeric, json, strings, numerology)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Tier 1 Summary :test_tube:"
+            echo ""
+            echo "**Test Tier:** 1 (Core PostgreSQL)"
+            echo "**Mode:** Production (fast)"
+            echo "**Tests:** 12 official PostgreSQL regression tests (boolean, int2/4/8, float4/8, text, varchar, numeric, json, strings, numerology)"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 2: Run Tier 2 regression tests
@@ -187,13 +189,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Tier 2 Summary :jigsaw:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Tier:** 2 (Extension-specific)" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production" >> $GITHUB_STEP_SUMMARY
-          echo "**Extensions:** 10-13 extensions with regression tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Tier 2 Summary :jigsaw:"
+            echo ""
+            echo "**Test Tier:** 2 (Extension-specific)"
+            echo "**Mode:** Production"
+            echo "**Extensions:** 10-13 extensions with regression tests"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 3: Run Tier 3 regression tests
@@ -245,13 +249,15 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Tier 3 Summary :arrows_counterclockwise:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Tier:** 3 (Extension interactions)" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production" >> $GITHUB_STEP_SUMMARY
-          echo "**Tests:** 4-14 cross-extension interaction tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Tier 3 Summary :arrows_counterclockwise:"
+            echo ""
+            echo "**Test Tier:** 3 (Extension interactions)"
+            echo "**Mode:** Production"
+            echo "**Tests:** 4-14 cross-extension interaction tests"
+            echo ""
+            echo "**Status:** ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 4: Regression tests complete
@@ -290,44 +296,50 @@ jobs:
           fi
 
           if [ $FAILED -eq 1 ]; then
-            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "passed=false" >> "$GITHUB_OUTPUT"
             echo "❌ One or more regression test tiers failed"
             exit 1
           fi
 
-          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "passed=true" >> "$GITHUB_OUTPUT"
           echo "✅ All regression tests passed"
 
       - name: Generate final summary
         if: always()
         run: |
           set -euo pipefail
-          echo "# Regression Tests Complete :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Tier | Description | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Tier 1 | Core PostgreSQL (12 fast tests) | ${{ needs.tier-1.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tier 2 | Extension-specific (10-13 extensions) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tier 3 | Extension interactions (4-14 tests) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ inputs.image_ref }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Mode:** Production (enabled extensions only)" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# Regression Tests Complete :rocket:"
+            echo ""
+            echo "## Test Results"
+            echo ""
+            echo "| Tier | Description | Status |"
+            echo "|------|-------------|--------|"
+            echo "| Tier 1 | Core PostgreSQL (12 fast tests) | ${{ needs.tier-1.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Tier 2 | Extension-specific (10-13 extensions) | ${{ needs.tier-2.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo "| Tier 3 | Extension interactions (4-14 tests) | ${{ needs.tier-3.result == 'success' && '✅ Passed' || '❌ Failed' }} |"
+            echo ""
+            echo "**Image:** \`${{ inputs.image_ref }}\`"
+            echo "**Mode:** Production (enabled extensions only)"
+            echo "**Branch:** \`${{ github.ref_name }}\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.tier-1.result }}" = "success" ] && \
              [ "${{ needs.tier-2.result }}" = "success" ] && \
              [ "${{ needs.tier-3.result }}" = "success" ]; then
-            echo "## ✅ All Regression Tests Passed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Release validation complete. Image is ready for production deployment." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ✅ All Regression Tests Passed"
+              echo ""
+              echo "Release validation complete. Image is ready for production deployment."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## ❌ Regression Tests Failed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "One or more test tiers failed. Review test logs and regression diffs before deploying." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Action Required:** Fix regressions or verify expected behavior changes." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## ❌ Regression Tests Failed"
+              echo ""
+              echo "One or more test tiers failed. Review test logs and regression diffs before deploying."
+              echo ""
+              echo "**Action Required:** Fix regressions or verify expected behavior changes."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

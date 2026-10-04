@@ -180,7 +180,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Compose**: `env_file:` loads for container only — use `environment:` for inter-service vars
 
-**Replication**: pg_monitor role required for slot verification; symmetric CPU/memory limits
+**Replication**: a standby may be smaller than its primary — the entrypoint raises the five `pg_control` limits (max_connections, …) to the primary's; the replica stack clones before the image entrypoint (`stacks/replica/scripts/replica-entrypoint.sh`), never from `docker-entrypoint-initdb.d`
 
 **PgBouncer**: auth_user must exist in BOTH userlist.txt AND .pgpass; connection params in DSN only
 

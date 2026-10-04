@@ -633,4 +633,30 @@ for setting in "${AUTO_SETTINGS[@]}"; do
     fi
 done
 
-exec /usr/local/bin/docker-entrypoint.sh postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}"
+# A server recovering WAL (standby.signal: a replica; recovery.signal: a backup restore) refuses to start with
+# "insufficient parameter settings" when any of these five is below the value the primary ran with: they size
+# shared-memory arrays that replayed WAL must fit into. pg_control records the primary's values. Auto-tuning sizes
+# max_connections and max_worker_processes from this container's RAM and CPUs, so a replica smaller than its primary
+# never started. Each one below the primary's is raised to it, as -c after every operator argument because nothing
+# lower can work; `postgres -C` with the same arguments gives the value the server would otherwise use.
+RAISE_ARGS=()
+if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
+    controldata=$(as_postgres pg_controldata -D "$DATA_DIR")
+    for pair in max_connections:max_connections max_worker_processes:max_worker_processes \
+        max_wal_senders:max_wal_senders max_prepared_transactions:max_prepared_xacts \
+        max_locks_per_transaction:max_locks_per_xact; do
+        name="${pair%%:*}"
+        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$controldata")
+        current=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" -C "$name")
+        if ! [[ "$primary" =~ ^[0-9]+$ && "$current" =~ ^[0-9]+$ ]]; then
+            echo "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare ${name} with the primary's (pg_controldata: '${primary}', postgres -C: '${current}'); the line format of pg_controldata -D ${DATA_DIR} may have changed" >&2
+            exit 1
+        fi
+        if [ "$current" -lt "$primary" ]; then
+            echo "[POSTGRES] [AUTO-CONFIG] ${name}: raised from ${current} to the primary's ${primary} (recovery cannot start below it)"
+            RAISE_ARGS+=(-c "${name}=${primary}")
+        fi
+    done
+fi
+
+exec /usr/local/bin/docker-entrypoint.sh postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" "${RAISE_ARGS[@]}"

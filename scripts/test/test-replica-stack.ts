@@ -23,10 +23,26 @@ const POSTGRES_PASSWORD = `pg_${suffix}`;
 const PG_REPLICATION_PASSWORD = `repl_${suffix}`;
 const SLOT = "replica_slot_1"; // both stacks' compose default; neither stage overrides it
 const ROWS = 100;
-// A standby refuses to start when max_connections or max_worker_processes is below the primary's, and auto-config
-// derives both from the container's RAM and CPUs, so both stacks get the same limits — the documented rule for
-// replicas (the shipped compose defaults differ: primary 2048m/2 CPUs, replica 512m/0.5).
-const LIMITS = { POSTGRES_MEMORY_LIMIT: "2048m", POSTGRES_CPU_LIMIT: "2" };
+// Both stacks run their shipped memory and CPU limits (primary 2048m/2 CPUs, replica 512m/0.5): auto-tuning gives the
+// replica lower limits than the primary's, which the image must raise or the standby never starts.
+const LIMIT_SETTINGS = [
+  "max_connections",
+  "max_locks_per_transaction",
+  "max_prepared_transactions",
+  "max_wal_senders",
+  "max_worker_processes",
+];
+const limits = async (container: string) =>
+  new Map(
+    (
+      await psql(
+        container,
+        `SELECT string_agg(name || '=' || setting, ',') FROM pg_settings WHERE name IN ('${LIMIT_SETTINGS.join("','")}')`
+      )
+    )
+      .split(",")
+      .map((pair) => pair.split("=") as [string, string])
+  );
 
 const failures: string[] = [];
 async function step(name: string, body: () => Promise<void>): Promise<void> {
@@ -84,7 +100,6 @@ try {
     POSTGRES_PASSWORD,
     PG_REPLICATION_PASSWORD,
     PGBOUNCER_AUTH_PASS: `pgb_${suffix}`,
-    ...LIMITS,
   });
   stages.push(primary);
   const primaryDb = `${primary.project}-postgres-primary`;
@@ -99,13 +114,55 @@ try {
     PG_REPLICATION_PASSWORD,
     PRIMARY_HOST: primaryDb,
     POSTGRES_NETWORK_NAME: primary.env.POSTGRES_NETWORK_NAME ?? "",
-    ...LIMITS,
   });
   stages.push(replica);
   const replicaDb = `${replica.project}-postgres-replica`;
   // Returns once the replica is healthy (its exporter depends on it). waitForPostgres cannot be used here: it waits
   // for "ready to accept connections", and a standby logs "ready to accept read-only connections".
   await composeUp(replica);
+
+  await step(
+    "replica starts first time on its smaller defaults, raised to the primary's limits",
+    async () => {
+      const restarts = (await $`docker inspect -f {{.RestartCount}} ${replicaDb}`.quiet())
+        .text()
+        .trim();
+      if (restarts !== "0") throw new Error(`replica restarted ${restarts} time(s)`);
+      const [onPrimary, onReplica] = await Promise.all([limits(primaryDb), limits(replicaDb)]);
+      for (const name of LIMIT_SETTINGS) {
+        if (!(Number(onReplica.get(name)) >= Number(onPrimary.get(name)))) {
+          throw new Error(
+            `${name}: replica ${onReplica.get(name)}, primary ${onPrimary.get(name)}`
+          );
+        }
+      }
+      // Without a raise this step proves nothing: the shipped defaults must keep the replica smaller than the primary.
+      const logs = await $`docker logs ${replicaDb}`.quiet().nothrow();
+      if (!`${logs.stdout}${logs.stderr}`.includes("max_connections: raised from")) {
+        throw new Error(
+          "no max_connections raise logged; the replica's defaults no longer exercise it"
+        );
+      }
+    }
+  );
+
+  await step("replica runs the stack's own config and the primary's pgsodium key", async () => {
+    const feedback = await psql(
+      replicaDb,
+      "SELECT setting || '@' || sourcefile FROM pg_settings WHERE name = 'hot_standby_feedback'"
+    );
+    if (feedback !== "on@/etc/postgresql/postgresql.conf") {
+      throw new Error(
+        `hot_standby_feedback = ${feedback}, want on from the replica stack's config`
+      );
+    }
+    const derive = "SELECT encode(pgsodium.derive_key(1), 'hex')";
+    const [keyPrimary, keyReplica] = await Promise.all([
+      psql(primaryDb, derive),
+      psql(replicaDb, derive),
+    ]);
+    if (keyPrimary !== keyReplica) throw new Error("replica derives a different pgsodium key");
+  });
 
   await step(`replica streams through the initdb-created slot ${SLOT}`, async () => {
     await until(

@@ -11,8 +11,8 @@
  *   bun scripts/extensions/check-updates.ts [--format=json|table]
  *
  * Exit codes:
- *   0 - No updates available (or all disabled)
- *   1 - Updates available
+ *   0 - No ENABLED entry has an update (disabled entries can still report updateAvailable: true)
+ *   1 - An enabled entry has an update (the normal "work to do" answer, not a failure)
  *   2 - Error occurred
  */
 

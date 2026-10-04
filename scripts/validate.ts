@@ -9,8 +9,8 @@
  *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, hadolint, yaml, secret scan)
  *   bun scripts/validate.ts --fix                 # Auto-fix: prettier --write, oxlint --fix, SQL formatting
  *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
- *   bun scripts/validate.ts --parallel            # Run checks concurrently, output buffered per check (default in fast mode)
- *   bun scripts/validate.ts --sequential          # Run checks one by one with live output (default with --all/--fix)
+ *   bun scripts/validate.ts --parallel            # Run checks concurrently, output buffered per check (default except --fix)
+ *   bun scripts/validate.ts --sequential          # Run checks one by one with live output (default with --fix)
  *   bun scripts/validate.ts --runtime             # Include runtime verification (requires --image=<tag>)
  *   bun scripts/validate.ts --filesystem          # Include filesystem verification (requires --image=<tag>)
  *   bun scripts/validate.ts --image=<tag>         # Docker image tag for runtime/filesystem verification
@@ -217,7 +217,7 @@ async function validate(
   const startTime = Date.now();
 
   const modeLabel = fixMode ? "FIX" : mode === "fast" ? "FAST" : "FULL";
-  const concurrent = parallel ?? (mode === "fast" && !fixMode);
+  const concurrent = parallel ?? !fixMode;
   const parallelLabel = concurrent ? " (PARALLEL)" : "";
   const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
   const runtimeLabel = includeRuntime ? " + RUNTIME" : "";
@@ -415,36 +415,24 @@ async function validate(
     },
     {
       name: "ShellCheck",
-      command: Bun.env.CI
-        ? [
-            "sh",
-            "-c",
-            // CI mode: JSON output for SARIF upload. Use jq to check for empty array ([] = no errors)
-            // because shellcheck outputs [] even with no errors, which is 2 bytes, not 0
-            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck --format=json > shellcheck-results.json || true; cat shellcheck-results.json; jq -e \'length == 0\' shellcheck-results.json > /dev/null',
-          ]
-        : [
-            "sh",
-            "-c",
-            'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck',
-          ],
+      // One command in CI and locally: no workflow uploads a shellcheck result file, and plain findings read better in a CI log.
+      command: [
+        "sh",
+        "-c",
+        'git ls-files \'*.sh\' | grep -v -E "^(node_modules/|\\.git/|\\.archived/)" | while IFS= read -r file; do [ -f "$file" ] && printf "%s\\n" "$file"; done | xargs -r shellcheck',
+      ],
       description: "Shell script linting",
       required: true,
       envOverride: "ALLOW_MISSING_SHELLCHECK",
     },
     {
       name: "Hadolint",
-      command: Bun.env.CI
-        ? [
-            "sh",
-            "-c",
-            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml --format sarif /work/docker/postgres/Dockerfile > hadolint-results.sarif 2>&1 || true; cat hadolint-results.sarif; test -s hadolint-results.sarif && ! grep -q '"level":"error"' hadolint-results.sarif`,
-          ]
-        : [
-            "sh",
-            "-c",
-            `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
-          ],
+      // One command in CI and locally (CI once failed only on error-level findings, so it passed what the local gate rejects).
+      command: [
+        "sh",
+        "-c",
+        `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
+      ],
       description: "Dockerfile linting",
       required: true,
       requiresDocker: true,
@@ -585,10 +573,10 @@ async function validate(
         // classes they catch are blocked at the pre-commit gate, not just in --all/CI.
         [...coreChecks, ...extendedChecks.filter((c) => c.fast), ...dockerVerificationChecks];
 
-  // The fast lane runs concurrently by default: its checks are independent, and one by one they sum to
-  // more than its time budget. --all stays sequential because its CI-mode checks write result files
-  // into the tree that prettier would read; --fix stays sequential because every fixer writes.
-  // No fast-lane check writes the tree (verify-generated regenerates in a temporary copy), so none races a reader.
+  // Checks run concurrently by default: they are independent, and one by one they sum to more than the time
+  // budget (--all is dominated by two network lookups that overlap everything else). No check writes the tree
+  // (verify-generated regenerates in a temporary copy), so none races Prettier reading it. --fix stays sequential
+  // because every fixer writes. A new check that writes into the tree must go after Prettier or outside the tree.
   const results = concurrent ? await runChecksParallel(checks) : await runChecksSequential(checks);
 
   // Summary

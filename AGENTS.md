@@ -91,6 +91,7 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 - **Container teardown**: remove containers with `docker rm -f -v` — the `-v` drops PG18's anonymous `/var/lib/postgresql` PGDATA volume (named volumes always survive); omitting it orphans one per teardown → silent multi-GB bloat. Enforced by `Docker Volume Leak Guard` in `validate:all`; reclaim accumulated artifacts with `bun run cleanup` (marker-scoped via `app.aza_pg_custom` + OCI title, safe on shared hosts)
 - **Auto-config override**: `-c` flags override postgresql.conf at runtime
 - **`deployments/` hand-copies the stacks and no suite boots it**: a fix to `stacks/*/compose.yml`, the entrypoint's env contract or a documented command applies there too — `rg` the setting across `stacks/ deployments/ docs/` in the same change. `Image Runtime Contract` in `validate` checks the copies; proof rules in `deployments/AGENTS.md`
+- **`/dev/shm` differs by host**: dockerd's default is 64 MB (CI runners, Linux VPSes), but a Docker Desktop daemon may hand out GBs, so a local pass proves nothing for anything using PostgreSQL dynamic shared memory (parallel index builds, parallel hash joins). Reproduce with `--shm-size=64m`; a parallel pgvector HNSW build with auto-config's maintenance_work_mem fails at 64 MB
 
 ## Extension System
 

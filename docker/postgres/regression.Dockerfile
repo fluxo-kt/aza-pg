@@ -87,13 +87,12 @@ RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
-    mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/timescaledb && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    install -D -m 0755 /usr/bin/pgbackrest /opt/ext-out/usr/bin/pgbackrest && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
@@ -217,7 +216,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
+    test -x /usr/bin/pgbackrest && \
+    ! ldd /usr/bin/pgbackrest | grep "not found" && \
+    install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

@@ -81,13 +81,12 @@ RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension && \
     mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib && \
-    mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb && \
     rsync -a /usr/lib/postgresql/{{PG_MAJOR}}/lib/ /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/ && \
     rsync -a /usr/share/postgresql/{{PG_MAJOR}}/extension/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/extension/ && \
     rsync -a /usr/share/postgresql/{{PG_MAJOR}}/contrib/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/contrib/ && \
-    rsync -a /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+{{SOURCE_TOOL_BINARIES_COPY}}
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/{{PG_MAJOR}}/timescaledb ]; then \
       rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
@@ -187,7 +186,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig{{SOURCE_TOOLS_RUNTIME_SETUP}}
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

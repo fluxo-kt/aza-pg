@@ -60,6 +60,8 @@ interface ManifestEntry {
   /** Timescale repository package version (e.g., 2.24.0~debian13-1801) */
   timescaleVersion?: string;
   soFileName?: string;
+  binaryPath?: string;
+  postgresOwnedDirs?: string[];
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -416,14 +418,61 @@ ${installCommands} && \\
     { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
+/** Paths are interpolated into RUN lines, so only plain absolute paths pass. */
+function safeAbsolutePath(path: string | undefined, context: string): string {
+  if (!path || !/^(\/[a-zA-Z0-9_.+-]+)+$/.test(path) || path.split("/").includes("..")) {
+    throw new Error(
+      `${context}: "${path ?? ""}" is not a plain absolute path. Use letters, digits and [_.+-] between slashes, e.g. "/usr/bin/pgbackrest".`
+    );
+  }
+  return path;
+}
+
 /**
- * PGDG tool binary verification mapping
- * Maps tool name to expected binary path after PGDG installation
+ * Enabled tools built from source that install an executable. The builder copies exactly each
+ * binaryPath into the final image (a whole-directory copy of /usr/local/bin once shipped bun and the
+ * build scripts), and the final stage fails the build when the binary misses a shared library.
  */
-const PGDG_TOOL_BINARIES: Record<string, string> = {
-  pgbackrest: "/usr/bin/pgbackrest",
-  pgbadger: "/usr/bin/pgbadger",
-};
+function sourceTools(manifest: Manifest): ManifestEntry[] {
+  return manifest.entries.filter(
+    (e) =>
+      e.kind === "tool" &&
+      (e.install_via ?? "source") === "source" &&
+      (e.enabled ?? true) &&
+      e.binaryPath !== undefined
+  );
+}
+
+/** Builder-stage lines (each ending in "&& \\") copying every source tool binary into /opt/ext-out. */
+function sourceToolBinariesCopy(manifest: Manifest): string {
+  return sourceTools(manifest)
+    .map((e) => {
+      const bin = safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`);
+      return `    install -D -m 0755 ${bin} /opt/ext-out${bin} && \\\n`;
+    })
+    .join("");
+}
+
+/**
+ * Final-stage steps appended to the ldconfig RUN, each starting with " && \\": no missing shared
+ * library per source tool binary (ldd prints "not found"; the image has only the base image's
+ * libraries plus extensions.runtime-packages.txt), and the directories the tool writes by default,
+ * postgres-owned so a named volume mounted there starts writable by postgres.
+ */
+function sourceToolsRuntimeSetup(manifest: Manifest): string {
+  return sourceTools(manifest)
+    .map((e) => {
+      const bin = safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`);
+      const dirs = (e.postgresOwnedDirs ?? []).map((d) =>
+        safeAbsolutePath(d, `tool "${e.name}" postgresOwnedDirs`)
+      );
+      const steps = [`test -x ${bin}`, `! ldd ${bin} | grep "not found"`];
+      if (dirs.length > 0)
+        steps.push(`install -d -o postgres -g postgres -m 0750 ${dirs.join(" ")}`);
+      return steps.map((s) => ` && \\\n    ${s}`).join("");
+    })
+    .join("");
+}
 
 /**
  * Generate PGDG tool installation script
@@ -449,13 +498,10 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
       }
       validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
 
-      const binary = PGDG_TOOL_BINARIES[entry.name];
-      if (!binary) {
-        throw new Error(
-          `Missing binary path in PGDG_TOOL_BINARIES for tool: ${entry.name}\n` +
-            `Add it to the PGDG_TOOL_BINARIES object in generate-dockerfile.ts`
-        );
-      }
+      const binary = safeAbsolutePath(
+        entry.binaryPath,
+        `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${entry.name})`
+      );
 
       enabledPgdgTools.push({
         name: entry.name,
@@ -605,6 +651,12 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
   dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
+  dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
+    sourceToolBinariesCopy(manifest)
+  );
+  dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
+    sourceToolsRuntimeSetup(manifest)
+  );
 
   // Add generation header
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
@@ -653,6 +705,12 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
     pgdgPackagesInstallRegression
   );
   dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
+  dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
+    sourceToolBinariesCopy(manifest)
+  );
+  dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
+    sourceToolsRuntimeSetup(manifest)
+  );
 
   // Add generation header
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT

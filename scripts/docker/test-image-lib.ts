@@ -260,7 +260,8 @@ export function testPostgresConfiguration(container: string): Promise<TestResult
 /**
  * Every enabled tool declares its installed file on its manifest entry (binaryPath for an executable,
  * soFileName for a server library under `pg_config --pkglibdir`), and that file exists. An enabled tool
- * declaring neither fails, so a new tool cannot ship unchecked.
+ * declaring neither fails, so a new tool cannot ship unchecked. Its postgresOwnedDirs are postgres:0750,
+ * and nothing build-only (bun, the *.ts build scripts) reached /usr/local/bin.
  */
 export function testToolsPresent(container: string): Promise<TestResult> {
   return check("Tool files present", async () => {
@@ -277,19 +278,48 @@ export function testToolsPresent(container: string): Promise<TestResult> {
       if (!(await execCommand(["test", "-f", path], container)).ok) {
         problems.push(`${tool.name}: ${path} missing`);
       }
+      for (const dir of tool.postgresOwnedDirs ?? []) {
+        const mode = (await execCommand(["stat", "-c", "%U:%a", dir], container)).output.trim();
+        if (mode !== "postgres:750")
+          problems.push(`${tool.name}: ${dir} is "${mode}", want postgres:750`);
+      }
+    }
+    const buildOnly = await execCommand(
+      ["sh", "-c", "command -v bun; ls /usr/local/bin/*.ts 2>/dev/null; true"],
+      container
+    );
+    if (buildOnly.output.trim() !== "") {
+      problems.push(`build-only files shipped: ${buildOnly.output.trim()}`);
     }
     expect(problems.length === 0, problems.join("\n"));
     return `${tools.length} tools`;
   });
 }
 
-/** Runs the binary, which loads its shared libraries — a broken dependency fails here. */
+/**
+ * Runs the binary, which loads its shared libraries — a broken dependency fails here. The version must be
+ * the manifest's tag, and libssh2 (sftp repositories) and libzstd must be linked: both are "auto" build
+ * options upstream, so a missing -dev package drops them without an error. The built-in help lists every
+ * repository type whatever was compiled, so only the linked libraries show what was.
+ */
 export function testPgBackRestFunctional(container: string): Promise<TestResult> {
   return check("pgBackRest runs", async () => {
+    const entry = enabledEntries().find((e) => e.name === "pgbackrest");
+    const tag =
+      entry?.source.type === "git" && "tag" in entry.source ? entry.source.tag : undefined;
+    const want = `pgBackRest ${tag?.replace(/^release\//, "")}`;
     const result = await execCommand(["pgbackrest", "version"], container, "postgres");
     expect(
-      result.ok && result.output.includes("pgBackRest"),
-      `pgbackrest version: ${result.output}`
+      result.ok && result.output.trim() === want,
+      `pgbackrest version: "${result.output.trim()}", want "${want}"`
+    );
+    const ldd = await execCommand(["ldd", entry?.binaryPath ?? "/usr/bin/pgbackrest"], container);
+    const unlinked = ["libssh2.so.1", "libzstd.so.1"].filter(
+      (lib) => !ldd.output.includes(`${lib} =>`)
+    );
+    expect(
+      ldd.ok && unlinked.length === 0,
+      `pgbackrest lacks ${unlinked.join(", ")} (sftp repositories, zstd):\n${ldd.output}`
     );
   });
 }

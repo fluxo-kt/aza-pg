@@ -511,35 +511,49 @@
     {
       "name": "pgbackrest",
       "kind": "tool",
-      "install_via": "pgdg",
-      "pgdgVersion": "2.59.2-1.pgdg13+1",
+      "install_via": "source",
       "binaryPath": "/usr/bin/pgbackrest",
+      "postgresOwnedDirs": [
+        "/var/lib/pgbackrest",
+        "/var/log/pgbackrest",
+        "/var/spool/pgbackrest"
+      ],
       "category": "operations",
       "description": "Parallel, incremental backup and restore CLI.",
       "source": {
         "type": "git",
         "repository": "https://github.com/pgbackrest/pgbackrest.git",
-        "tag": "release/2.59.2",
-        "commit": "d5138e2e3b92fe806505bc8b9c69f36bd70cea18"
+        "tag": "release/2.59.3",
+        "commit": "46cdca625a73403cad4774d97354a1fac1e91e51"
       },
       "build": {
-        "type": "meson"
+        "type": "meson",
+        "mesonOptions": [
+          "--prefix=/usr",
+          "-Dlibssh2=enabled",
+          "-Dlibzstd=enabled",
+          "-Dlibsystemd=disabled"
+        ]
       },
       "aptPackages": [
         "meson",
         "ninja-build",
+        "pkg-config",
+        "libpq-dev",
         "libssl-dev",
         "liblz4-dev",
         "libzstd-dev",
         "libbz2-dev",
-        "libyaml-dev"
+        "libyaml-dev",
+        "libxml2-dev",
+        "libssh2-1-dev",
+        "zlib1g-dev"
       ],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
-          "PGDG: pgbackrest",
+          "CLI tool built from source. NOT a PostgreSQL extension.",
           "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root."
         ]
       },

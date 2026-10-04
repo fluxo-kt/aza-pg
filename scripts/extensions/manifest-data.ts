@@ -79,7 +79,8 @@ export interface BuildSpec {
   features?: string[];
   noDefaultFeatures?: boolean;
   /**
-   * When type === "meson", pass-through setup options.
+   * When type === "meson", pass-through setup options. They follow the build's own --prefix=/usr/local,
+   * and meson keeps the last --prefix given, so an entry can install elsewhere with "--prefix=/usr".
    */
   mesonOptions?: string[];
   /**
@@ -179,6 +180,12 @@ export interface ManifestEntry {
    * every enabled tool to declare one of the two and checks that file exists in the image.
    */
   binaryPath?: string;
+  /**
+   * Directories a source-built tool writes by default (logs, repository, spool). The final image creates
+   * them postgres-owned, mode 0750, as the distribution package would, so a named volume mounted on one
+   * starts writable by postgres instead of root-owned.
+   */
+  postgresOwnedDirs?: string[];
   /**
    * Timescale repository package name for timescale-installable extensions.
    * Required when install_via === "timescale".
@@ -1132,32 +1139,49 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgbackrest",
     kind: "tool",
-    install_via: "pgdg",
-    pgdgVersion: "2.59.2-1.pgdg13+1",
+    // Built from source: 2.59.3 fixes the encryption sub-key issue and PGDG still ships 2.59.2.
+    // Installed to /usr/bin (--prefix=/usr) and with the PGDG package's directories, so paths
+    // operators configured against the package keep working.
+    install_via: "source",
     binaryPath: "/usr/bin/pgbackrest",
+    postgresOwnedDirs: ["/var/lib/pgbackrest", "/var/log/pgbackrest", "/var/spool/pgbackrest"],
     category: "operations",
     description: "Parallel, incremental backup and restore CLI.",
     source: {
       type: "git",
       repository: "https://github.com/pgbackrest/pgbackrest.git",
-      tag: "release/2.59.2",
+      tag: "release/2.59.3",
     },
-    build: { type: "meson" },
+    build: {
+      type: "meson",
+      // libssh2 (SFTP repositories) and libzstd are "auto" upstream: enabled makes a missing -dev
+      // package fail the build instead of silently dropping the feature. No systemd in a container.
+      mesonOptions: [
+        "--prefix=/usr",
+        "-Dlibssh2=enabled",
+        "-Dlibzstd=enabled",
+        "-Dlibsystemd=disabled",
+      ],
+    },
     aptPackages: [
       "meson",
       "ninja-build",
+      "pkg-config",
+      "libpq-dev",
       "libssl-dev",
       "liblz4-dev",
       "libzstd-dev",
       "libbz2-dev",
       "libyaml-dev",
+      "libxml2-dev",
+      "libssh2-1-dev",
+      "zlib1g-dev",
     ],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
-        "PGDG: pgbackrest",
+        "CLI tool built from source. NOT a PostgreSQL extension.",
         "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root.",
       ],
     },

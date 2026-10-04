@@ -135,6 +135,29 @@ describe("Generated Dockerfile", () => {
     expect(missing).toEqual([]);
   });
 
+  test("builders ship each source tool's binaryPath, checked by ldd, and never a whole bin directory", () => {
+    // A whole-directory copy of the builder's /usr/local/bin once shipped bun and the build scripts.
+    for (const file of [dockerfile, regression]) {
+      expect(file.match(/^.*rsync[^\n]*\/bin\/ .*$/gm) ?? []).toEqual([]);
+      const tools = MANIFEST_ENTRIES.filter(
+        (e) =>
+          e.kind === "tool" &&
+          (e.install_via ?? "source") === "source" &&
+          (e.enabled ?? true) &&
+          e.binaryPath
+      );
+      expect(tools.length).toBeGreaterThan(0);
+      const unshipped = tools
+        .map((e) => e.binaryPath as string)
+        .filter(
+          (bin) =>
+            !file.includes(`install -D -m 0755 ${bin} /opt/ext-out${bin}`) ||
+            !file.includes(`! ldd ${bin} | grep "not found"`)
+        );
+      expect(unshipped).toEqual([]);
+    }
+  });
+
   test("cache mounts use sharing=locked", () => {
     const unlocked = dockerfile
       .split("\n")

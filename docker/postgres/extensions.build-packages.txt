@@ -17,9 +17,11 @@ liblz4-dev
 libmecab-dev
 libmsgpack-dev
 libnuma-dev
+libpq-dev
 libproj-dev
 libprotobuf-c-dev
 libreadline-dev
+libssh2-1-dev
 libssl-dev
 libtext-csv-xs-perl
 libtool
@@ -33,3 +35,4 @@ ninja-build
 perl
 pkg-config
 protobuf-c-compiler
+zlib1g-dev

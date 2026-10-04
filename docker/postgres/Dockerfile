@@ -105,13 +105,12 @@ RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
-    mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/timescaledb && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    rsync -a --exclude='gosu' /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
+    install -D -m 0755 /usr/bin/pgbackrest /opt/ext-out/usr/bin/pgbackrest && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
@@ -293,12 +292,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.59.2-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.59.2-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
+    echo "Installing PGDG tools: pgbadger=13.2-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbadger=13.2-1.pgdg13+1 && \
     # Verify tool binaries exist and are executable
-    test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
-    echo "All 2 PGDG tool(s) verified" && \
+    echo "All 1 PGDG tool(s) verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -309,7 +307,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations.
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
+    test -x /usr/bin/pgbackrest && \
+    ! ldd /usr/bin/pgbackrest | grep "not found" && \
+    install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
 # APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed

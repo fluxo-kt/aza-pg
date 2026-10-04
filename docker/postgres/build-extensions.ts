@@ -495,6 +495,7 @@ async function buildMeson(dir: string, build: BuildSpec): Promise<void> {
   // Meson's default buildtype is "debug" (-O0 -g), and pgroonga's meson.build takes only
   // pg_config's cppflags/cflags_sl, so without this PostgreSQL's -O2 never reaches it.
   // "release" (-O3, no debug info) matches buildCmake's CMAKE_BUILD_TYPE=Release.
+  // Entry options come last on purpose: meson keeps the last --prefix, so an entry can override it.
   await $`meson setup ${buildDir} ${dir} --prefix=/usr/local --buildtype=release ${options}`;
   await $`ninja -C ${buildDir} -j${NPROC}`;
   await $`ninja -C ${buildDir} install`;

@@ -297,7 +297,7 @@ bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres
 
 ```bash
 # Deploy old version
-docker pull ghcr.io/fluxo-kt/aza-pg:pg18
+docker pull ghcr.io/fluxo-kt/aza-pg:18
 
 # Create new data directory
 docker volume create postgres-data-rollback

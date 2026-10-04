@@ -11,7 +11,7 @@
  *
  * Usage:
  *   bun scripts/docker/verify-runtime.ts <image-tag>
- *   bun scripts/docker/verify-runtime.ts ghcr.io/fluxo-kt/aza-pg:pg18
+ *   bun scripts/docker/verify-runtime.ts ghcr.io/fluxo-kt/aza-pg:18
  *
  * Options:
  *   --no-cleanup   - Keep container running after verification
@@ -591,7 +591,7 @@ async function main(): Promise<void> {
   // Validate arguments
   if (!imageTag) {
     error("Usage: bun scripts/docker/verify-runtime.ts <image-tag>");
-    error("Example: bun scripts/docker/verify-runtime.ts ghcr.io/fluxo-kt/aza-pg:pg18");
+    error("Example: bun scripts/docker/verify-runtime.ts ghcr.io/fluxo-kt/aza-pg:18");
     process.exit(1);
   }
 

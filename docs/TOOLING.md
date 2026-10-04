@@ -114,8 +114,8 @@ minimumReleaseAge = 86400  # 1 day delay
 **Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
 **Usage**:
 
-- `bun run lint:sql` - Auto-fix formatting + run all linting (ONE command does both)
-- `bun run format:sql` - Auto-fix formatting only (if needed separately)
+- `bun run validate` - checks SQL formatting and runs both linters with the other fast checks
+- `bun run validate:fix` - rewrites SQL formatting (with the other auto-fixers)
 
 **Decision Rationale**:
 

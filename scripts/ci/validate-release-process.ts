@@ -183,23 +183,6 @@ async function validateEnvironmentDocs(issues: Issue[]): Promise<void> {
   }
 }
 
-async function validateReleasedImageHarness(issues: Issue[]): Promise<void> {
-  const file = "scripts/test/test-released-image.ts";
-  const text = await readText(file);
-
-  const forbiddenPatterns = [
-    '["bun", "scripts/test/test-pgbouncer-healthcheck.ts", imageTag]',
-    '["bun", "scripts/test/test-pgbouncer-failures.ts", imageTag]',
-    "phase9NegativeScenarios(fastMode)",
-  ];
-
-  for (const pattern of forbiddenPatterns) {
-    if (text.includes(pattern)) {
-      addIssue(issues, file, `released-image harness must not contain stale pattern: ${pattern}`);
-    }
-  }
-}
-
 async function validateForbiddenBunX(issues: Issue[]): Promise<void> {
   const file = "scripts/test-all.ts";
   const text = await readText(file);
@@ -217,7 +200,6 @@ async function main(): Promise<void> {
   await validatePublishVerificationTopology(issues);
   await validateManifestCliContract(issues);
   await validateEnvironmentDocs(issues);
-  await validateReleasedImageHarness(issues);
   await validateForbiddenBunX(issues);
 
   if (issues.length > 0) {

@@ -6,7 +6,9 @@
  * drifted — some suites ran nowhere, workflows called deleted files. `scripts/validate/check-suite-registry.ts`
  * fails `validate` when a `scripts/**\/test-*.ts` suite is missing from SUITES or a workflow names an unknown group.
  *
- * Every suite gets the image as POSTGRES_IMAGE, runs in its own process, and is reported when it finishes. Suites
+ * Every suite gets the image as POSTGRES_IMAGE, runs in its own process group, and is reported when it finishes.
+ * Then every container, volume and network carrying its scope is removed (TEST_SCOPE_ENV in utils/docker.ts): a suite
+ * killed at its timeout never runs its own teardown, and one that passed but left anything behind fails. Suites
  * run in parallel up to the CPU count: each one isolates its containers, volumes, networks and ports, so order and
  * neighbours must not matter (--shuffle proves it). Any failed suite makes the run exit 1.
  *
@@ -18,7 +20,7 @@
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { ensureImageAvailable } from "./utils/docker";
+import { ensureImageAvailable, sweepTestScope, TEST_SCOPE_ENV } from "./utils/docker";
 import { DEFAULT_TEST_IMAGE } from "./test/image-resolver";
 
 export const GROUPS = [
@@ -136,7 +138,7 @@ function parseArgs(argv: string[]): { groups: Group[]; image: string; seed: numb
   return { groups: groups as Group[], image, seed };
 }
 
-async function runSuite(suite: Suite, image: string): Promise<Outcome> {
+async function runSuite(suite: Suite, image: string, scope: string): Promise<Outcome> {
   const started = performance.now();
   // A file written for bun's test runner registers nothing when run as a script, so how it runs follows its imports.
   const usesTestRunner = (await Bun.file(join(ROOT, suite.path)).text()).includes(
@@ -145,29 +147,65 @@ async function runSuite(suite: Suite, image: string): Promise<Outcome> {
   const command = usesTestRunner
     ? ["bun", "test", `./${suite.path}`, "--timeout", String(SUITE_TIMEOUT_MS)]
     : ["bun", suite.path, ...(suite.args ?? [])];
+  // detached: the suite leads its own process group, so one kill also stops the docker/compose clients it started;
+  // killing only the suite left `docker compose up` running, creating containers after the suite's teardown.
   const proc = Bun.spawn(command, {
     cwd: ROOT,
-    env: { ...Bun.env, POSTGRES_IMAGE: image },
+    env: { ...Bun.env, POSTGRES_IMAGE: image, [TEST_SCOPE_ENV]: scope },
     stdout: "pipe",
     stderr: "pipe",
+    detached: true,
   });
-  const timer = setTimeout(() => proc.kill("SIGTERM"), SUITE_TIMEOUT_MS);
+  live.add(proc.pid);
+  const timer = setTimeout(() => killGroup(proc.pid), SUITE_TIMEOUT_MS);
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
   clearTimeout(timer);
+  // A killed suite never ran its teardown; one that passed and still left something behind has a cleanup defect.
+  const leftovers = await sweepTestScope(scope);
+  live.delete(proc.pid);
   const ms = Math.round(performance.now() - started);
-  const passed = code === 0;
+  const passed = code === 0 && leftovers.length === 0;
   const name = [suite.path, ...(suite.args ?? [])].join(" ");
   const verdict = passed
     ? "✅ PASS"
     : `❌ FAIL (exit ${code}${ms >= SUITE_TIMEOUT_MS ? ", killed at timeout" : ""})`;
+  const leftNote =
+    leftovers.length === 0
+      ? ""
+      : `\n${code === 0 ? "❌ Passed but left" : "Removed what it left"}: ${leftovers.join(", ")}\n`;
   console.log(
-    `\n━━━━ ${verdict} ${name} [${suite.group}] ${(ms / 1000).toFixed(1)}s ━━━━\n${out}${err}`
+    `\n━━━━ ${verdict} ${name} [${suite.group}] ${(ms / 1000).toFixed(1)}s ━━━━\n${out}${err}${leftNote}`
   );
   return { suite, passed, ms };
+}
+
+/** Process-group leaders of the suites still running. */
+const live = new Set<number>();
+let interrupted = false;
+
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // The group already exited.
+  }
+}
+
+/**
+ * Suites run in their own process groups, so the terminal's Ctrl-C no longer reaches them. Killing them here is
+ * enough: each runSuite then sweeps its own scope, and the workers start nothing new.
+ */
+function stopAllOnSignal(): void {
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      interrupted = true;
+      for (const pid of live) killGroup(pid);
+    });
+  }
 }
 
 async function main(): Promise<void> {
@@ -185,11 +223,13 @@ async function main(): Promise<void> {
 
   const started = performance.now();
   const outcomes: Outcome[] = [];
-  const pending = [...queue];
+  // Scope tokens are unique on this host while this run lives: this process's pid plus the suite's position.
+  const pending = queue.map((suite, i) => ({ suite, scope: `t${process.pid}x${i}` }));
+  stopAllOnSignal();
   await Promise.all(
     Array.from({ length: workers }, async () => {
-      for (let suite = pending.shift(); suite; suite = pending.shift()) {
-        outcomes.push(await runSuite(suite, image));
+      for (let next = pending.shift(); next && !interrupted; next = pending.shift()) {
+        outcomes.push(await runSuite(next.suite, image, next.scope));
       }
     })
   );
@@ -204,7 +244,7 @@ async function main(): Promise<void> {
     `Passed: ${outcomes.length - failed.length}  Failed: ${failed.length}  Wall: ${((performance.now() - started) / 1000).toFixed(1)}s` +
       (seed !== null ? `  Seed: ${seed}` : "")
   );
-  process.exit(failed.length === 0 && outcomes.length > 0 ? 0 : 1);
+  process.exit(interrupted ? 130 : failed.length === 0 && outcomes.length > 0 ? 0 : 1);
 }
 
 if (import.meta.main) {

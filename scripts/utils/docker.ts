@@ -357,23 +357,55 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 }
 
 /**
- * Generate unique container name for test isolation
- * Format: {prefix}-{timestamp}-{pid}
- * @param prefix - Prefix for the container name (default: "aza-pg-test")
- * @returns Unique container name
+ * test-all sets this per suite to a token of [a-z0-9] only (Docker's `name` filter is a regex). Every name below
+ * carries it between dashes, so sweepTestScope can find whatever a suite left behind — a suite killed at its
+ * timeout never runs its own teardown. Child processes inherit it, so suites that run other suites are covered.
  */
+export const TEST_SCOPE_ENV = "AZA_PG_TEST_SCOPE";
+
+/** `{prefix}-[{scope}-]{timestamp}-{pid}`: unique per process and call, and findable by its test-all scope. */
+function scopedName(prefix: string): string {
+  const scope = Bun.env[TEST_SCOPE_ENV];
+  return `${prefix}-${scope ? `${scope}-` : ""}${Date.now()}-${process.pid}`;
+}
+
+/** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {
-  return `${prefix}-${Date.now()}-${process.pid}`;
+  return scopedName(prefix);
+}
+
+/** Unique Docker Compose project name for test isolation; compose derives container, volume and network names from it. */
+export function generateUniqueProjectName(prefix: string = "aza-pg-test"): string {
+  return scopedName(prefix);
 }
 
 /**
- * Generate unique project name for Docker Compose test isolation
- * Format: {prefix}-{timestamp}-{pid}
- * @param prefix - Prefix for the project name (default: "aza-pg-test")
- * @returns Unique project name
+ * Removes every container, volume and network whose name carries `scope` (see TEST_SCOPE_ENV) and returns their names.
+ * Containers go first: a volume or network still attached to one cannot be removed.
  */
-export function generateUniqueProjectName(prefix: string = "aza-pg-test"): string {
-  return `${prefix}-${Date.now()}-${process.pid}`;
+export async function sweepTestScope(scope: string): Promise<string[]> {
+  const filter = `name=-${scope}-`;
+  // `docker ps` names its field Names; volume and network ls name it Name.
+  const list = async (cmd: string[], field = "Name") => {
+    const proc = spawn(["docker", ...cmd, "--filter", filter, "--format", `{{.${field}}}`], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return out.split("\n").filter(Boolean);
+  };
+  const remove = async (cmd: string[], names: string[]) => {
+    if (names.length > 0)
+      await spawn(["docker", ...cmd, ...names], { stdout: "ignore", stderr: "ignore" }).exited;
+  };
+  const [containers, volumes, networks] = await Promise.all([
+    list(["ps", "-a"], "Names"),
+    list(["volume", "ls"]),
+    list(["network", "ls"]),
+  ]);
+  await remove(["rm", "-f", "-v"], containers);
+  await Promise.all([remove(["volume", "rm", "-f"], volumes), remove(["network", "rm"], networks)]);
+  return [...containers, ...volumes, ...networks];
 }
 
 /**

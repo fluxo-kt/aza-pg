@@ -26,6 +26,7 @@ import {
   dockerCleanup,
   dockerRun,
   dockerRunLive,
+  generateUniqueContainerName,
   waitForPostgres,
 } from "../utils/docker";
 import { error, info, section, success, testSummary, warning } from "../utils/logger";
@@ -33,7 +34,7 @@ import type { TestResult } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-const CONTAINER_NAME = "aza-pg-verify-runtime";
+const CONTAINER_NAME = generateUniqueContainerName("aza-pg-verify-runtime");
 
 // Parse command line arguments
 const args = Bun.argv.slice(2);
@@ -74,9 +75,6 @@ async function readManifest(): Promise<Manifest> {
 async function startContainer(image: string): Promise<boolean> {
   info(`Starting container: ${CONTAINER_NAME}`);
   info(`Image: ${image}`);
-
-  // Clean up any existing container
-  await dockerCleanup(CONTAINER_NAME);
 
   // Start container
   const exitCode = await dockerRunLive([

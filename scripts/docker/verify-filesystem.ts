@@ -17,13 +17,19 @@
 
 import { join } from "node:path";
 import { getErrorMessage } from "../utils/errors";
-import { checkDockerDaemon, dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker";
+import {
+  checkDockerDaemon,
+  dockerCleanup,
+  dockerRun,
+  dockerRunLive,
+  generateUniqueContainerName,
+} from "../utils/docker";
 import { error, info, section, success, testSummary, warning } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-const CONTAINER_NAME = "aza-pg-verify-filesystem";
+const CONTAINER_NAME = generateUniqueContainerName("aza-pg-verify-filesystem");
 
 // Parse command line arguments
 const args = Bun.argv.slice(2);
@@ -60,9 +66,6 @@ async function readManifest(): Promise<Manifest> {
 async function startContainer(image: string): Promise<boolean> {
   info(`Starting container: ${CONTAINER_NAME}`);
   info(`Image: ${image}`);
-
-  // Clean up any existing container
-  await dockerCleanup(CONTAINER_NAME);
 
   // Start container (no need to run postgres, just need filesystem access)
   const exitCode = await dockerRunLive([

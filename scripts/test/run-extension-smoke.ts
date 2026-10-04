@@ -9,7 +9,7 @@
 
 import { $ } from "bun";
 import { join } from "node:path";
-import { dockerCleanup, waitForPostgres } from "../utils/docker";
+import { dockerCleanup, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 
 // Get script directory
 const scriptDir = import.meta.dir;
@@ -158,7 +158,7 @@ function topologicalSort(extensions: ManifestEntry[]): string[] {
  */
 async function main(): Promise<void> {
   const image = Bun.argv[2] ?? Bun.env.POSTGRES_IMAGE ?? "aza-pg-ci:test";
-  const containerName = `aza-pg-ext-smoke-${process.pid}`;
+  const containerName = generateUniqueContainerName("aza-pg-ext-smoke");
   const postgresPassword = Bun.env.POSTGRES_PASSWORD ?? "postgres";
 
   // Cleanup function

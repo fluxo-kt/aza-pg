@@ -25,10 +25,7 @@ const IMAGE = resolveImageTag();
 const RUN_ID = generateUniqueProjectName("aza-pg-autoconfig");
 const AUTO_CONFIG_FILE = "/var/run/postgresql/aza-auto-config.conf";
 const BASE_CONFIG = "/etc/postgresql/postgresql-base.conf";
-const REPO_ENTRYPOINT = join(
-  import.meta.dir,
-  "../../docker/postgres/docker-auto-config-entrypoint.sh"
-);
+const IMAGE_ENTRYPOINT = "/usr/local/bin/docker-auto-config-entrypoint.sh";
 const DRY_RUN_CONCURRENCY = 8;
 
 interface CaseResult {
@@ -481,7 +478,7 @@ function checkRow(row: Row, result: { code: number; stdout: string; stderr: stri
   return failures;
 }
 
-async function dryRun(row: Row, entrypoint: string, stub: string): Promise<void> {
+async function dryRun(row: Row, stub: string): Promise<void> {
   const name = `${RUN_ID}-dry-${ROWS.indexOf(row)}`;
   containers.add(name);
   try {
@@ -499,8 +496,6 @@ async function dryRun(row: Row, entrypoint: string, stub: string): Promise<void>
       "none",
       ...row.docker,
       ...env,
-      "-v",
-      `${entrypoint}:/usr/local/bin/docker-auto-config-entrypoint.sh:ro`,
       "-v",
       `${stub}:/usr/local/bin/docker-entrypoint.sh:ro`,
       IMAGE,
@@ -560,7 +555,6 @@ async function assertGeneratedSettingsApplied(
 async function realBoot(
   suffix: string,
   dockerArgs: string[],
-  entrypoint: string,
   check: (container: string) => Promise<void>
 ): Promise<void> {
   const name = `${RUN_ID}-${suffix}`;
@@ -575,8 +569,6 @@ async function realBoot(
       "-e",
       `POSTGRES_PASSWORD=autoconfig-${process.pid}`,
       ...dockerArgs,
-      "-v",
-      `${entrypoint}:/usr/local/bin/docker-auto-config-entrypoint.sh:ro`,
       IMAGE,
     ]);
     if (started.code !== 0) throw new Error(`docker run failed: ${started.stderr}`);
@@ -597,19 +589,27 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void removeAll().then(() => process.exit(130)));
   try {
-    // The image still ships the entrypoint from before 9670b58; mounting the repo's generated copy tests the code that
-    // will ship. Drop this mount (use the image's own file) once the image is rebuilt.
-    const entrypoint = join(dir, "docker-auto-config-entrypoint.sh");
-    await Bun.write(entrypoint, Bun.file(REPO_ENTRYPOINT));
-    await chmod(entrypoint, 0o755);
     const stub = join(dir, "docker-entrypoint.sh");
     await Bun.write(stub, STUB);
     await chmod(stub, 0o755);
-    const defaultPreload = (await Bun.file(REPO_ENTRYPOINT).text()).match(
+    // Read from the image, not the repo: the suite judges what ships, and a stale image must fail rather than pass on
+    // the repo's newer copy.
+    const shipped = await run([
+      "docker",
+      "run",
+      "--rm",
+      "--entrypoint",
+      "cat",
+      IMAGE,
+      IMAGE_ENTRYPOINT,
+    ]);
+    const defaultPreload = shipped.stdout.match(
       /^readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="([^"]+)"$/m
     )?.[1];
     if (!defaultPreload)
-      throw new Error(`DEFAULT_SHARED_PRELOAD_LIBRARIES not found in ${REPO_ENTRYPOINT}`);
+      throw new Error(
+        `DEFAULT_SHARED_PRELOAD_LIBRARIES not found in ${IMAGE}:${IMAGE_ENTRYPOINT} (exit ${shipped.code}): ${shipped.stderr}`
+      );
 
     const boots = Promise.all([
       test("real boot 512 MB / 1 CPU: every tuned value in effect, operator preload and ALTER SYSTEM win", () =>
@@ -621,7 +621,6 @@ async function main(): Promise<void> {
             "-e",
             `POSTGRES_SHARED_PRELOAD_LIBRARIES=${defaultPreload},set_user`,
           ],
-          entrypoint,
           async (container) => {
             await assertGeneratedSettingsApplied(container);
             // Base settings reach a plain container, and the operator's file still beats them: initdb writes
@@ -662,7 +661,6 @@ async function main(): Promise<void> {
         realBoot(
           "dw",
           [...cpus(14), "-e", "POSTGRES_MEMORY=65536", "-e", "POSTGRES_WORKLOAD_TYPE=dw"],
-          entrypoint,
           (container) => assertGeneratedSettingsApplied(container)
         )),
     ]);
@@ -672,7 +670,7 @@ async function main(): Promise<void> {
       Array.from({ length: DRY_RUN_CONCURRENCY }, async () => {
         for (let row = queue.shift(); row; row = queue.shift()) {
           const current = row;
-          await test(`dry run: ${current.name}`, () => dryRun(current, entrypoint, stub));
+          await test(`dry run: ${current.name}`, () => dryRun(current, stub));
         }
       })
     );

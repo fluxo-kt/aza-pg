@@ -5,6 +5,8 @@
  * A container that keeps running on bad input is the failure: it either serves with a configuration the operator
  * did not ask for or fails later and further from the cause. Every case therefore asserts a non-zero exit AND the
  * message naming the input; exit is observed with `docker wait`, never assumed after a delay.
+ * Each case owns its container, so the cases run concurrently: run serially, the suite took the sum of four container
+ * lifecycles, and under CPU contention the last full-initdb case ran past its 90 s hang bound.
  * PgBouncer's entrypoint validation lives in test-pgbouncer-failures.ts.
  *
  * Usage: bun test ./scripts/test/test-negative-scenarios.ts
@@ -38,34 +40,50 @@ async function runToExit(
   return { code, logs: r.stdout.toString() + r.stderr.toString() };
 }
 
-test("RAM below the 512 MB minimum stops the container", async () => {
-  const { code, logs } = await runToExit("ram-low", { POSTGRES_MEMORY: "128" });
-  expect(code).toBe(1);
-  expect(logs).toContain("[POSTGRES] FATAL: Detected 128MB RAM - minimum 512MB REQUIRED");
-}, 30_000);
+test.concurrent(
+  "RAM below the 512 MB minimum stops the container",
+  async () => {
+    const { code, logs } = await runToExit("ram-low", { POSTGRES_MEMORY: "128" });
+    expect(code).toBe(1);
+    expect(logs).toContain("[POSTGRES] FATAL: Detected 128MB RAM - minimum 512MB REQUIRED");
+  },
+  30_000
+);
 
-test("non-numeric POSTGRES_MEMORY stops the container", async () => {
-  const { code, logs } = await runToExit("ram-invalid", { POSTGRES_MEMORY: "2g" });
-  expect(code).toBe(1);
-  expect(logs).toContain("[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB");
-}, 30_000);
+test.concurrent(
+  "non-numeric POSTGRES_MEMORY stops the container",
+  async () => {
+    const { code, logs } = await runToExit("ram-invalid", { POSTGRES_MEMORY: "2g" });
+    expect(code).toBe(1);
+    expect(logs).toContain("[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB");
+  },
+  30_000
+);
 
 // The two cases below get through initdb, so the final server is what must refuse the input.
-test("unloadable POSTGRES_SHARED_PRELOAD_LIBRARIES entry stops the server", async () => {
-  const { code, logs } = await runToExit("preload-invalid", {
-    POSTGRES_MEMORY: "1024",
-    POSTGRES_SHARED_PRELOAD_LIBRARIES: "no_such_library",
-  });
-  expect(code).not.toBe(0);
-  expect(logs).toMatch(/FATAL: +could not access file "no_such_library"/);
-}, 90_000);
+test.concurrent(
+  "unloadable POSTGRES_SHARED_PRELOAD_LIBRARIES entry stops the server",
+  async () => {
+    const { code, logs } = await runToExit("preload-invalid", {
+      POSTGRES_MEMORY: "1024",
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: "no_such_library",
+    });
+    expect(code).not.toBe(0);
+    expect(logs).toMatch(/FATAL: +could not access file "no_such_library"/);
+  },
+  90_000
+);
 
-test("invalid POSTGRES_BIND_IP stops the server instead of listening elsewhere", async () => {
-  const { code, logs } = await runToExit("bind-ip-invalid", {
-    POSTGRES_MEMORY: "1024",
-    POSTGRES_BIND_IP: "999.999.999.999",
-  });
-  expect(code).not.toBe(0);
-  expect(logs).toMatch(/could not translate host name "999\.999\.999\.999"/);
-  expect(logs).toMatch(/FATAL: +could not create any TCP\/IP sockets/);
-}, 90_000);
+test.concurrent(
+  "invalid POSTGRES_BIND_IP stops the server instead of listening elsewhere",
+  async () => {
+    const { code, logs } = await runToExit("bind-ip-invalid", {
+      POSTGRES_MEMORY: "1024",
+      POSTGRES_BIND_IP: "999.999.999.999",
+    });
+    expect(code).not.toBe(0);
+    expect(logs).toMatch(/could not translate host name "999\.999\.999\.999"/);
+    expect(logs).toMatch(/FATAL: +could not create any TCP\/IP sockets/);
+  },
+  90_000
+);

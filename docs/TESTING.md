@@ -1041,6 +1041,7 @@ Suites run in parallel up to the CPU count, each in its own process with its own
 - **Docker-free unit test:** `scripts/**/<name>.test.ts`; `bun run validate` finds it by glob.
 - **Docker suite:** `scripts/**/test-<name>.ts` plus one `{ path, group }` line in `SUITES`. `validate` fails while a `test-*.ts` file is neither in `SUITES` nor imported or run by a suite that is (`scripts/validate/check-suite-registry.ts`), and when a workflow starts a suite file itself. A file that imports `bun:test` is run with `bun test` automatically.
 - **Image:** read it with `resolveImageTag()` from `scripts/test/image-resolver.ts` (argument, `--image=`, then `POSTGRES_IMAGE`); `test-all.ts` passes `POSTGRES_IMAGE`.
+- **Docker names:** name every container, volume, network and compose project with `generateUniqueContainerName`/`generateUniqueProjectName` from `scripts/utils/docker.ts`, or a string built from one. They carry the suite's test-all scope, so test-all removes whatever a killed suite left and fails a passing suite that left anything; a hand-built name escapes both and collides across concurrent runs.
 
 ## References
 

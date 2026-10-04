@@ -16,7 +16,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { $ } from "bun";
 import type { ManifestEntry } from "../extensions/manifest-data";
-import { generateUniqueContainerName, waitForPostgresStable } from "../utils/docker";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 
 const TEST_CONTAINER = `aza-pg-security-test-${Date.now()}`;
 const TEST_PASSWORD = "secureTestPass123!";
@@ -85,11 +85,9 @@ async function startContainer() {
     throw new Error("Failed to start test container - image may not be built");
   }
 
-  const ready = await waitForPostgresStable({
+  const ready = await waitForPostgres({
     container: TEST_CONTAINER,
     timeout: 120,
-    requiredSuccesses: 3,
-    checkInterval: 1000,
   });
   if (!ready) {
     throw new Error("Database did not become stable in time (120s timeout)");
@@ -117,11 +115,9 @@ async function readListenAddressForBindIp(bindIp: string): Promise<string> {
       .nothrow();
     expect(result.exitCode).toBe(0);
 
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: containerName,
       timeout: 90,
-      requiredSuccesses: 3,
-      checkInterval: 1000,
     });
     expect(ready).toBe(true);
 

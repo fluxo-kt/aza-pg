@@ -177,13 +177,86 @@ export interface WaitForPostgresOptions {
   container?: string;
 }
 
+async function dockerText(args: string[]): Promise<{ code: number; text: string }> {
+  const proc = spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, text: out + err };
+}
+
 /**
- * Wait for PostgreSQL to be ready
- * If container is provided, runs pg_isready inside container (for Docker tests)
+ * Wait until the container's FINAL PostgreSQL server accepts queries; throws on timeout or if the container stops.
+ *
+ * Why not pg_isready: on a fresh data directory the official entrypoint first runs a temporary server for the init
+ * scripts, and pg_isready succeeds against it moments before it is shut down for the real start — so tests began
+ * against a server about to vanish. Readiness is therefore read from the logs of the CURRENT container start
+ * (`docker logs --since StartedAt`, so restarts are handled): after "init process complete" (fresh data) or
+ * "Skipping initialization" (existing data), the next "ready to accept connections" is the final server; a
+ * `SELECT 1` then confirms it. Fixed sleeps only pace the polling; they never decide readiness.
+ */
+async function waitForContainerPostgres(
+  container: string,
+  user: string,
+  timeoutSeconds: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  const startedAt = (
+    await dockerText(["inspect", "-f", "{{.State.StartedAt}}", container])
+  ).text.trim();
+  let logs = "";
+  while (Date.now() < deadline) {
+    logs = (await dockerText(["logs", "--since", startedAt, container])).text;
+    const marker = Math.max(
+      logs.lastIndexOf("PostgreSQL init process complete"),
+      logs.lastIndexOf("Skipping initialization")
+    );
+    if (marker >= 0 && logs.indexOf("ready to accept connections", marker) >= 0) {
+      const probe = await dockerText([
+        "exec",
+        container,
+        "psql",
+        "-X",
+        "-U",
+        user,
+        "-tAc",
+        "SELECT 1",
+      ]);
+      if (probe.code === 0 && probe.text.trim() === "1") {
+        success(`PostgreSQL in ${container} is ready`);
+        return;
+      }
+    }
+    const running = (
+      await dockerText(["inspect", "-f", "{{.State.Running}}", container])
+    ).text.trim();
+    if (running !== "true") {
+      throw new Error(
+        `Container ${container} stopped before PostgreSQL was ready. Last log lines:\n${lastLines(logs, 40)}`
+      );
+    }
+    await Bun.sleep(250);
+  }
+  throw new Error(
+    `PostgreSQL in ${container} not ready after ${timeoutSeconds}s. Last log lines:\n${lastLines(logs, 40)}`
+  );
+}
+
+function lastLines(text: string, count: number): string {
+  return text.trimEnd().split("\n").slice(-count).join("\n");
+}
+
+/**
+ * Wait for PostgreSQL to be ready.
+ * With `container`: waits for the container's final server (see waitForContainerPostgres) and THROWS on failure,
+ * so a caller can never proceed against a server that is not there; it returns true only for callers' convenience.
+ * Without `container`: polls pg_isready on host:port and returns false on timeout (host tools decide what to do).
  *
  * @param options - Configuration options
- * @returns true if PostgreSQL becomes ready, false if timeout reached
- * @throws Error if invalid parameters provided
+ * @returns true if PostgreSQL becomes ready; false only in host mode on timeout
+ * @throws Error on invalid parameters, and in container mode on timeout or a stopped container
  */
 export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<boolean> {
   const host = options.host ?? "localhost";
@@ -195,6 +268,11 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
   // Validate timeout is a positive integer
   if (!Number.isInteger(timeout) || timeout < 0) {
     throw new Error(`Invalid timeout value: ${timeout} (must be a positive integer)`);
+  }
+
+  if (container && container.trim() !== "") {
+    await waitForContainerPostgres(container, user, timeout);
+    return true;
   }
 
   // Validate port is a number
@@ -214,24 +292,13 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      let proc;
-      if (container && container.trim() !== "") {
-        // Check from inside container
-        proc = spawn(["docker", "exec", container, "pg_isready", "-U", user], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-      } else {
-        // Check from host
-        proc = spawn(["pg_isready", "-h", host, "-p", String(port), "-U", user], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-      }
-
+      const proc = spawn(["pg_isready", "-h", host, "-p", String(port), "-U", user], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
       const exitCode = await proc.exited;
       if (exitCode === 0) {
-        success(`PostgreSQL is ready${container ? "" : ` at ${host}:${port}`}`);
+        success(`PostgreSQL is ready at ${host}:${port}`);
         return true;
       }
     } catch {
@@ -242,84 +309,6 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
   }
 
   error(`PostgreSQL not ready after ${timeout} seconds`);
-  return false;
-}
-
-/**
- * Options for waiting for PostgreSQL to be stable
- */
-export interface WaitForPostgresStableOptions extends WaitForPostgresOptions {
-  /** Number of consecutive successful queries required (default: 3) */
-  requiredSuccesses?: number;
-  /** Interval between stability checks in milliseconds (default: 2000) */
-  checkInterval?: number;
-}
-
-/**
- * Wait for PostgreSQL to be stable after initialization
- *
- * IMPORTANT: pg_isready returns true during initdb phase, but PostgreSQL restarts after
- * initdb completes. This causes a race condition where tests try to connect during shutdown.
- *
- * This function requires multiple consecutive successful SQL queries to verify stability,
- * avoiding the initdb restart race condition.
- *
- * @param options - Configuration options
- * @returns true if PostgreSQL is stable, false if timeout reached
- * @throws Error if container is not provided (required for stability check)
- */
-export async function waitForPostgresStable(
-  options: WaitForPostgresStableOptions = {}
-): Promise<boolean> {
-  const { container, timeout = 60, requiredSuccesses = 3, checkInterval = 2000 } = options;
-
-  if (!container || container.trim() === "") {
-    throw new Error(
-      "waitForPostgresStable: container name is required (cannot check stability without docker exec)"
-    );
-  }
-
-  // First, wait for basic readiness
-  const isReady = await waitForPostgres(options);
-  if (!isReady) {
-    return false;
-  }
-
-  // Now wait for stability (consecutive successful queries)
-  info(`Waiting for PostgreSQL stability (${requiredSuccesses} consecutive successful queries)...`);
-
-  const startTime = Date.now();
-  const timeoutMs = timeout * 1000;
-  let consecutiveSuccesses = 0;
-
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const proc = spawn(
-        ["docker", "exec", container, "psql", "-U", "postgres", "-c", "SELECT 1", "-t"],
-        {
-          stdout: "ignore",
-          stderr: "ignore",
-        }
-      );
-      const exitCode = await proc.exited;
-
-      if (exitCode === 0) {
-        consecutiveSuccesses++;
-        if (consecutiveSuccesses >= requiredSuccesses) {
-          success(`PostgreSQL is stable (${requiredSuccesses} consecutive queries succeeded)`);
-          return true;
-        }
-      } else {
-        consecutiveSuccesses = 0; // Reset on failure
-      }
-    } catch {
-      consecutiveSuccesses = 0; // Reset on error
-    }
-
-    await Bun.sleep(checkInterval);
-  }
-
-  error(`PostgreSQL not stable after ${timeout} seconds`);
   return false;
 }
 

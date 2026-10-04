@@ -25,7 +25,7 @@ import {
   cleanupContainer,
   ensureImageAvailable,
   generateUniqueContainerName,
-  waitForPostgresStable,
+  waitForPostgres,
 } from "../utils/docker";
 import { error, info, section, success, testSummary, warning } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
@@ -216,10 +216,9 @@ async function testSetupContainer(config: TestConfig): Promise<TestResult> {
       ${config.imageTag}`.quiet();
 
     info("Waiting for PostgreSQL to be stable...");
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: config.containerName,
       timeout: TIMEOUTS.startup,
-      requiredSuccesses: 3,
     });
 
     if (!ready) {

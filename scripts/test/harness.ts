@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
+import { waitForPostgres } from "../utils/docker";
+import { DEFAULT_TEST_IMAGE } from "./image-resolver";
 
 /**
  * Unified Test Harness for aza-pg tests
@@ -11,7 +13,7 @@ export class TestHarness {
   private containers: string[] = [];
 
   constructor() {
-    this.image = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
+    this.image = Bun.env.POSTGRES_IMAGE || DEFAULT_TEST_IMAGE;
     if (Bun.env.EXPECTED_POSTGRES_IMAGE && Bun.env.EXPECTED_POSTGRES_IMAGE !== this.image) {
       throw new Error(
         `POSTGRES_IMAGE mismatch: expected ${Bun.env.EXPECTED_POSTGRES_IMAGE}, got ${this.image}`
@@ -45,23 +47,7 @@ export class TestHarness {
   }
 
   async waitForReady(containerName: string, timeout = 90): Promise<void> {
-    const start = Date.now();
-    while ((Date.now() - start) / 1000 < timeout) {
-      try {
-        const result = await $`docker exec ${containerName} pg_isready -U postgres`
-          .quiet()
-          .nothrow();
-        if (result.exitCode === 0) {
-          // Wait additional 5s for extensions to initialize
-          await Bun.sleep(5000);
-          return;
-        }
-      } catch {
-        // Ignore errors
-      }
-      await Bun.sleep(2000);
-    }
-    throw new Error(`Container ${containerName} not ready after ${timeout}s`);
+    await waitForPostgres({ container: containerName, timeout });
   }
 
   async cleanup(containerName: string): Promise<void> {

@@ -11,7 +11,12 @@
 
 import { join } from "node:path";
 import { getErrorMessage } from "../utils/errors";
-import { dockerCleanup, dockerRun, dockerRunLive } from "../utils/docker";
+import {
+  dockerCleanup,
+  dockerRun,
+  dockerRunLive,
+  waitForPostgres as waitForPostgresReady,
+} from "../utils/docker";
 import type { TestResult } from "../utils/logger";
 
 // ============================================================================
@@ -96,66 +101,12 @@ export async function startContainer(image: string, containerName: string): Prom
   return exitCode === 0;
 }
 
-/**
- * Wait for PostgreSQL to be ready and stable.
- *
- * IMPORTANT: pg_isready returns true during initdb, but PostgreSQL restarts after
- * initdb completes. A single poll creates a race condition where tests connect during
- * the shutdown/restart window. We require N consecutive successful SQL queries to
- * confirm the server is stable before declaring it ready.
- */
+/** Wait for the container's final PostgreSQL server; the single readiness rule lives in scripts/utils/docker.ts. */
 export async function waitForPostgres(
   containerName: string,
   timeoutSeconds: number = 90
 ): Promise<boolean> {
-  const startTime = Date.now();
-  const timeoutMs = timeoutSeconds * 1000;
-  const requiredSuccesses = 3;
-
-  // Phase 1: Wait for basic pg_isready
-  while (Date.now() - startTime < timeoutMs) {
-    const result = await dockerRun(["exec", containerName, "pg_isready", "-U", "postgres"]);
-    if (result.success) break;
-    await Bun.sleep(2000);
-  }
-
-  if (Date.now() - startTime >= timeoutMs) return false;
-
-  // Allow initdb restart to complete before stability polling
-  await Bun.sleep(3000);
-
-  // Phase 2: Require N consecutive successful queries to confirm stability
-  while (Date.now() - startTime < timeoutMs) {
-    let consecutiveSuccesses = 0;
-
-    for (let i = 0; i < requiredSuccesses; i++) {
-      const result = await dockerRun([
-        "exec",
-        containerName,
-        "psql",
-        "-U",
-        "postgres",
-        "-c",
-        "SELECT 1",
-        "-t",
-      ]);
-
-      if (result.success) {
-        consecutiveSuccesses++;
-      } else {
-        consecutiveSuccesses = 0;
-        break;
-      }
-
-      if (i < requiredSuccesses - 1) await Bun.sleep(1000);
-    }
-
-    if (consecutiveSuccesses >= requiredSuccesses) return true;
-
-    await Bun.sleep(2000);
-  }
-
-  return false;
+  return waitForPostgresReady({ container: containerName, timeout: timeoutSeconds });
 }
 
 /**

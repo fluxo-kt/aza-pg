@@ -10,6 +10,7 @@ import {
   parseContainerName,
   validateImageTag,
   resolveImageWithSource,
+  DEFAULT_TEST_IMAGE,
 } from "./image-resolver";
 
 describe("resolveImageTag", () => {
@@ -61,7 +62,7 @@ describe("resolveImageTag", () => {
       argv: ["bun", "script.ts"],
       envKey: "NONEXISTENT_VAR",
     });
-    expect(result).toBe("ghcr.io/fluxo-kt/aza-pg:pg18");
+    expect(result).toBe(DEFAULT_TEST_IMAGE);
   });
 
   test("uses custom default", () => {
@@ -169,7 +170,7 @@ describe("resolveImageWithSource", () => {
       argv: ["bun", "script.ts"],
       envKey: "NONEXISTENT_VAR",
     });
-    expect(result.image).toBe("ghcr.io/fluxo-kt/aza-pg:pg18");
+    expect(result.image).toBe(DEFAULT_TEST_IMAGE);
     expect(result.source).toBe("Default fallback");
   });
 });

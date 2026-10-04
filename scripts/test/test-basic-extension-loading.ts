@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { waitForPostgresStable } from "../utils/docker";
+import { waitForPostgres } from "../utils/docker";
 import { error, info, success } from "../utils/logger";
 import { resolveImageTag } from "./image-resolver";
 
@@ -38,11 +38,9 @@ async function main(): Promise<void> {
   await $`docker run -d --name ${containerName} -e POSTGRES_PASSWORD=test ${imageTag}`.quiet();
 
   try {
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: containerName,
       timeout: 120,
-      requiredSuccesses: 3,
-      checkInterval: 1000,
     });
     if (!ready) {
       throw new Error("PostgreSQL did not become stable");

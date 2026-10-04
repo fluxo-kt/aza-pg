@@ -20,7 +20,7 @@ import {
   checkDockerDaemon,
   dockerCleanup,
   ensureImageAvailable,
-  waitForPostgresStable,
+  waitForPostgres,
 } from "../utils/docker";
 import { error } from "../utils/logger";
 
@@ -127,8 +127,8 @@ async function runCase(
     await $`docker ${args}`.quiet();
 
     // Wait for PostgreSQL to be stable (handles initdb restart race condition)
-    // NOTE: waitForPostgresStable includes basic readiness check + stability verification
-    const isStable = await waitForPostgresStable({ container, timeout: 60 });
+    // NOTE: waitForPostgres includes basic readiness check + stability verification
+    const isStable = await waitForPostgres({ container, timeout: 60 });
     if (!isStable) {
       console.log(`❌ FAILED: PostgreSQL not ready or not stable after init`);
       const logs = await $`docker logs ${container}`.text();

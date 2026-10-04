@@ -22,7 +22,7 @@ import {
   ensureImageAvailable,
   generateUniqueContainerName,
   generateUniqueProjectName,
-  waitForPostgresStable,
+  waitForPostgres,
 } from "../utils/docker";
 import { error, info, section, success, testSummary, warning } from "../utils/logger";
 import type { TestResult } from "../utils/logger";
@@ -104,10 +104,9 @@ async function testCreateTestData(config: TestConfig): Promise<TestResult> {
       ${config.imageTag}`.quiet();
 
     info("Waiting for PostgreSQL to be stable...");
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: config.containerName,
       timeout: TIMEOUTS.startup,
-      requiredSuccesses: 3,
     });
 
     if (!ready) {
@@ -169,10 +168,9 @@ async function testDockerRestart(config: TestConfig): Promise<TestResult> {
     await $`docker restart ${config.containerName}`;
 
     info("Waiting for PostgreSQL to be stable after restart...");
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: config.containerName,
       timeout: TIMEOUTS.startup,
-      requiredSuccesses: 3,
     });
 
     if (!ready) {
@@ -296,10 +294,9 @@ POSTGRES_DATA_VOLUME=${config.volumeName}
 
     info("Waiting for PostgreSQL to be stable in compose stack...");
     const containerName = `${config.projectName}-postgres-single`;
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: containerName,
       timeout: TIMEOUTS.startup,
-      requiredSuccesses: 3,
     });
 
     if (!ready) {
@@ -401,10 +398,9 @@ async function testFullStackRecreation(config: TestConfig): Promise<TestResult> 
 
     info("Waiting for PostgreSQL to be stable after recreation...");
     const containerName = `${config.projectName}-postgres-single`;
-    const ready = await waitForPostgresStable({
+    const ready = await waitForPostgres({
       container: containerName,
       timeout: TIMEOUTS.startup,
-      requiredSuccesses: 3,
     });
 
     if (!ready) {

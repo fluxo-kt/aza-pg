@@ -15,7 +15,7 @@
 import { describe, test, expect, afterAll } from "bun:test";
 import { $ } from "bun";
 import { resolve } from "node:path";
-import { generateUniqueContainerName, waitForPostgresStable } from "../utils/docker";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 
 const TEST_IMAGE = Bun.env.POSTGRES_IMAGE || "ghcr.io/fluxo-kt/aza-pg:pg18";
 const REPO_ROOT = resolve(import.meta.dir, "../..");
@@ -38,11 +38,9 @@ function getUniqueContainerName(prefix: string = "aza-pg-negative-test"): string
 }
 
 async function expectStablePostgres(containerName: string): Promise<void> {
-  const ready = await waitForPostgresStable({
+  const ready = await waitForPostgres({
     container: containerName,
     timeout: 90,
-    requiredSuccesses: 3,
-    checkInterval: 1000,
   });
   expect(ready).toBe(true);
 }

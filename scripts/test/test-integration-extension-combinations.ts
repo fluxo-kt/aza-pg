@@ -27,7 +27,7 @@ import {
   validateNoTools,
 } from "./manifest-test-utils";
 import { resolveImageTag } from "./image-resolver";
-import { waitForPostgresStable } from "../utils/docker";
+import { waitForPostgres } from "../utils/docker";
 
 // Path to the pgsodium_getkey script fixture for volume mounting
 const PGSODIUM_GETKEY_FIXTURE = path.join(
@@ -174,11 +174,9 @@ async function startContainer() {
     throw new Error(`Failed to start test container from image ${testImage}`);
   }
 
-  const isStable = await waitForPostgresStable({
+  const isStable = await waitForPostgres({
     container: TEST_CONTAINER,
     timeout: 120,
-    requiredSuccesses: 3,
-    checkInterval: 1000,
   });
 
   if (isStable) {

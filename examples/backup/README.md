@@ -48,7 +48,7 @@ log-level-console=info
 log-level-file=debug
 
 [main]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 pg1-port=5432
 pg1-socket-path=/var/run/postgresql
 
@@ -211,7 +211,7 @@ docker compose logs postgres | grep archive
 docker compose exec postgres ls -la /wal_archive
 
 # Test archive command manually
-docker compose exec postgres sh -c 'cp /var/lib/postgresql/data/pg_wal/000000010000000000000001 /wal_archive/test'
+docker compose exec postgres sh -c 'cp /var/lib/postgresql/18/docker/pg_wal/000000010000000000000001 /wal_archive/test'
 ```
 
 ### pgBackRest Errors

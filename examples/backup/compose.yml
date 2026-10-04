@@ -13,7 +13,9 @@
 
 services:
   pgbackrest:
-    image: pgbackrest/pgbackrest:2.53.1
+    # The aza-pg image ships pgBackRest (docker/postgres/Dockerfile); the same image as the database keeps the
+    # pgBackRest and PostgreSQL versions matched. Its entrypoint runs any command other than `postgres` as given.
+    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:18}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbackrest
     restart: unless-stopped
 
@@ -29,7 +31,7 @@ services:
       - pgbackrest_repo:/backup/repo
 
       # PostgreSQL data directory (for restore operations)
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql # PostgreSQL 18 layout: PGDATA is /var/lib/postgresql/18/docker
 
       # WAL archive directory (shared with postgres container)
       - wal_archive:/wal_archive

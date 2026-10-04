@@ -113,7 +113,7 @@ Automatic on `release` branch:
 
 `publish.yml` is part of the release contract: current releases are automatic after the build, test, scan, manifest, signature, SBOM, attestation, GitHub Release, and public-artifact gates pass. Do not add a GitHub Environment approval gate without explicitly approving that release-contract change. If that change is approved, use [GITHUB_ENVIRONMENT_SETUP.md](GITHUB_ENVIRONMENT_SETUP.md).
 
-Because `workflow_run` uses workflow definitions from the default branch, release-process edits must be present on both `release` and `main` before relying on them for production publishing.
+Because `workflow_run` uses workflow definitions from the default branch, release-process edits must be present on `dev` (the default branch) before relying on them for production publishing.
 
 **Version Format:** `MM.mm-TS-TYPE`
 

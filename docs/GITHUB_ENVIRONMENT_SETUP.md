@@ -30,7 +30,7 @@ release:
 
 Place the gate before production tag promotion. Keep all build, test, scan, and manifest gates blocking.
 
-Because `workflow_run` uses workflow definitions from the default branch, push the workflow change to both `release` and `main` before depending on it for production.
+Because `workflow_run` uses workflow definitions from the default branch, the workflow change must be on `dev` (the default branch) before depending on it for production.
 
 ## Reviewer Criteria
 

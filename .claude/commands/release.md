@@ -583,7 +583,7 @@ After every execution, reflect and update this command:
 ### Accumulated Lessons
 
 - **CHANGELOG dating is MANUAL and lagged by one release — `v18.4-202605172147` was orphaned by the old (wrong) rule 7.** The previous rule 7 claimed "CI/release tagging does the `[Unreleased]` rename." FALSE: `generate-release-notes.ts` only *reads* `[Unreleased]` for GH notes; nothing commits a repo rename. The dating happens in each release's squash commit, dating its *predecessor* (proven by `99f3e44`, which dated `[v18.3-202603040417]`). The 2026-05-17 v18.4 release skipped it, so v18.4's shipped content piled up undated in `[Unreleased]`, conflated with later work. Fix: rule 7 rewritten with the real procedure (prev tag = `git tag --points-at "$ANCHOR^2"`; split `[Unreleased]` by the `anchor..dev` manifest diff), enforced by the **Phase 5.5 guard** that ABORTS if `## [<prev-tag>]` is missing. Cross-validate dated sections against `gh release view <tag> --json body`.
-- **`workflow_run` always executes from `main` (default branch), not the triggering branch.** GitHub security restriction — prevents privilege escalation from untrusted branches. Consequence: every change to `publish.yml` on `release` is **invisible to CI** until `main` is fast-forwarded. Always push to BOTH `release` and `main` after a release commit. The Phase 6 next-steps output now makes this explicit and mandatory.
+- **`workflow_run` always executes from the default branch, not the triggering branch** — that is `dev` (GitHub security restriction, prevents privilege escalation from untrusted branches). Consequence: the `publish.yml` that runs is `dev`'s; a `publish.yml` change committed only on `release` (hotfix path) is **invisible to CI** until it is also on `dev`. Pushing `release:main` keeps `main` as the release mirror; it no longer affects which workflow runs.
 
 - **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
 - **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
@@ -611,7 +611,7 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo ""
 echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
-echo "  2. Push both branches (MANDATORY — workflow_run runs from main, not $CURRENT_BRANCH):"
+echo "  2. Push both branches (main mirrors release; workflow_run runs dev's definitions — a publish.yml fix must be on dev):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
 echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
 ```
@@ -747,7 +747,7 @@ The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
 ## Appendix B: main/release Branch Sync
 
-**This is MANDATORY, not optional.** GitHub's `workflow_run` triggered workflows always execute from the **default branch** (`main`), regardless of which branch triggered the upstream CI. If `main` lags behind `release`, the publish workflow runs the OLD `publish.yml` — all fixes on `release` are silently bypassed.
+GitHub's `workflow_run` triggered workflows always execute from the **default branch** (`dev`), regardless of which branch triggered the upstream CI. So the publish workflow runs `dev`'s `publish.yml`: a fix made only on `release` is silently bypassed until it is on `dev`. `main` mirrors `release`:
 
 Push to both branches simultaneously — no branch switch needed:
 

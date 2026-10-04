@@ -250,6 +250,13 @@ async function validate(
       required: true,
     },
     {
+      name: "PostgreSQL Config Validation",
+      command: ["bun", "scripts/config-generator/validate-configs.ts"],
+      description:
+        "Shipped postgresql.conf files: valid GUC names, no setting the entrypoint auto-tunes",
+      required: true,
+    },
+    {
       name: "Local Action Metadata",
       command: ["bun", "scripts/ci/validate-local-actions.ts"],
       description: "Validate local GitHub Action metadata and local action references",

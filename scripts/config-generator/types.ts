@@ -2,10 +2,8 @@ export type StackType = "primary" | "replica" | "single";
 
 export interface PostgreSQLSettings {
   // Connection Settings
-  listenAddresses: string;
   port: number;
   maxConnections?: number; // Overridden by auto-config
-  maxWorkerProcesses?: number; // Min 8 for background workers (TimescaleDB, pg_cron, etc.)
   sharedPreloadLibraries: string[];
   idleSessionTimeout?: string;
 
@@ -60,17 +58,11 @@ export interface PostgreSQLSettings {
   autovacuumFreezeMaxAge?: number;
 
   // Checkpoints
-  checkpointCompletionTarget: number;
 
   // Query Planner (SSD optimizations)
-  randomPageCost?: number;
-  effectiveIoConcurrency?: number;
 
   // WAL Settings
-  walLevel: "minimal" | "replica" | "logical";
   walCompression: "off" | "lz4" | "pglz";
-  maxWalSize?: string;
-  minWalSize?: string;
   maxWalSenders?: number;
   walKeepSize?: string;
   archiveMode?: "on" | "off";
@@ -89,7 +81,6 @@ export interface PostgreSQLSettings {
   walReceiverStatusInterval?: string;
 
   // pg_cron
-  cronDatabaseName?: string;
   cronLogRun?: "on" | "off";
   cronLogStatement?: "on" | "off";
 

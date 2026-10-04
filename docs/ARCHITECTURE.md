@@ -58,8 +58,8 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 │  │     ├─ work_mem                     │                            │
 │  │     └─ max_connections (80/120/200) │                            │
 │  │                                     │                            │
-│  │  4. Inject -c flags                 │                            │
-│  │     └─ Override postgresql.conf     │                            │
+│  │  4. Write aza-auto-config.conf      │                            │
+│  │     └─ Above postgresql.conf only   │                            │
 │  └─────────────────────────────────────┘                            │
 │                  │                                                  │
 │                  ▼                                                  │
@@ -258,35 +258,17 @@ _Performance Impact:_
 
 ## Configuration Hierarchy
 
-```
-┌────────────────────────────────────────────────────────────┐
-│  1. Runtime -c Flags (HIGHEST PRIORITY)                    │
-│     └─ From auto-config entrypoint                         │
-│        (shared_buffers, max_connections, etc.)             │
-└────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│  2. Stack-Specific postgresql.conf                         │
-│     └─ stacks/*/configs/postgresql-*.conf                  │
-│        (replication, pg_cron, hot_standby)                 │
-└────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│  3. Shared Base Configuration                              │
-│     └─ docker/postgres/configs/postgresql-base.conf        │
-│        (I/O, logging, extensions, autovacuum)              │
-└────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│  4. PostgreSQL Defaults                                    │
-│     └─ Built-in defaults from postgres binary              │
-└────────────────────────────────────────────────────────────┘
-```
+Highest wins:
 
-**Key Principle:** Runtime flags override everything. Auto-config is always enabled and cannot be disabled.
+1. Operator `-c name=value` on the command line (compose `command:`).
+2. `ALTER SYSTEM` (`postgresql.auto.conf` in the data directory; reloadable settings apply on `SELECT pg_reload_conf()`).
+3. Auto-tuned values, written at every start to `/var/run/postgresql/aza-auto-config.conf`, which first includes the config file below.
+4. The config file: a stack's `postgresql-*.conf` (which includes `postgresql-base.conf`), or the data directory's `postgresql.conf`.
+5. PostgreSQL built-in defaults.
+
+Config files rank below auto-tuning because initdb writes `max_connections`, `shared_buffers`, `max_wal_size`, `min_wal_size` and `listen_addresses = '*'` into every data directory's `postgresql.conf`; letting the file win would switch auto-tuning off for every database. The shipped config files therefore never set a tuned setting.
+
+Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] <setting>:` line per tuned setting that a `-c` or `ALTER SYSTEM` value overrides, or whose config-file value is ignored. `SELECT name, setting, sourcefile FROM pg_settings` shows where each value came from. Auto-tuning itself is always on.
 
 ## Security Model
 

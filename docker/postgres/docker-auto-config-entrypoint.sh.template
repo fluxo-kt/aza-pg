@@ -520,18 +520,16 @@ esac
 # Logical decoding output plugins that slots may use. Since PostgreSQL 18.6 (CVE-2026-6471) any
 # plugin missing from output_plugin_libraries is refused, superusers included, and the built-in
 # default lists only pgoutput and test_decoding — the shipped wal2json would stop working for CDC.
-# Passed as -c (like every auto-config setting), so it outranks postgresql.conf and ALTER SYSTEM;
-# operators change it here. Keep pgoutput in any override: built-in logical replication needs it.
+# Keep pgoutput in any override (here, -c or ALTER SYSTEM): built-in logical replication needs it.
 OUTPUT_PLUGIN_LIBRARIES=${POSTGRES_OUTPUT_PLUGIN_LIBRARIES:-pgoutput,test_decoding,wal2json}
 
-# Passed as -c, so it outranks postgresql.conf and ALTER SYSTEM like every auto-config setting.
 EXTENSION_CONTROL_PATH=$(cpu_gated_extension_control_path /proc/cpuinfo "$(uname -m)" <<< "$CPU_GATED_EXTENSIONS")
 
 # Override listen_addresses based on POSTGRES_BIND_IP
 # Default: 127.0.0.1 (localhost only, secure)
 # Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
 LISTEN_ADDR="${POSTGRES_BIND_IP:-127.0.0.1}"
-# Always set listen_addresses explicitly to prevent PostgreSQL's default of '*'
+# Always set listen_addresses explicitly: initdb writes listen_addresses='*' into postgresql.conf
 if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDR}"
 else
@@ -540,50 +538,129 @@ fi
 
 echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
 
-set -- "$@" \
-    -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \
-    -c "effective_cache_size=${EFFECTIVE_CACHE_MB}MB" \
-    -c "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB" \
-    -c "work_mem=${WORK_MEM_MB}MB" \
-    -c "max_connections=${MAX_CONNECTIONS}" \
-    -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
-    -c "wal_level=${WAL_LEVEL}" \
-    -c "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}" \
-    -c "extension_control_path=${EXTENSION_CONTROL_PATH}" \
-    -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
-    -c "cron.database_name=${POSTGRES_DB:-postgres}" \
-    -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \
-    -c "wal_buffers=${WAL_BUFFERS_MB}MB" \
-    -c "min_wal_size=${MIN_WAL_SIZE_MB}MB" \
-    -c "max_wal_size=${MAX_WAL_SIZE_MB}MB" \
-    -c "random_page_cost=${RANDOM_PAGE_COST}" \
-    -c "default_statistics_target=${DEFAULT_STATISTICS_TARGET}" \
-    -c "io_workers=${IO_WORKERS}" \
-    -c "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
-
-# Conditional parameters
+AUTO_SETTINGS=(
+    "shared_buffers=${SHARED_BUFFERS_MB}MB"
+    "effective_cache_size=${EFFECTIVE_CACHE_MB}MB"
+    "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB"
+    "work_mem=${WORK_MEM_MB}MB"
+    "max_connections=${MAX_CONNECTIONS}"
+    "max_worker_processes=${MAX_WORKER_PROCESSES}"
+    "wal_level=${WAL_LEVEL}"
+    "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}"
+    "extension_control_path=${EXTENSION_CONTROL_PATH}"
+    "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
+    "cron.database_name=${POSTGRES_DB:-postgres}"
+    "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}"
+    "wal_buffers=${WAL_BUFFERS_MB}MB"
+    "min_wal_size=${MIN_WAL_SIZE_MB}MB"
+    "max_wal_size=${MAX_WAL_SIZE_MB}MB"
+    "random_page_cost=${RANDOM_PAGE_COST}"
+    "default_statistics_target=${DEFAULT_STATISTICS_TARGET}"
+    "io_workers=${IO_WORKERS}"
+    "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
+    "listen_addresses=${LISTEN_ADDR}"
+)
 if [ -n "$MAX_PARALLEL_WORKERS" ]; then
-    set -- "$@" \
-        -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
-        -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
-        -c "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
+    AUTO_SETTINGS+=(
+        "max_parallel_workers=${MAX_PARALLEL_WORKERS}"
+        "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
+        "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
+    )
 fi
-
 if [ -n "$EFFECTIVE_IO_CONCURRENCY" ]; then
-    set -- "$@" -c "effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}"
+    AUTO_SETTINGS+=("effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}")
 fi
-
 # wal_level=minimal requires max_wal_senders=0 (no replication)
 if [ "$WAL_LEVEL" = "minimal" ]; then
-    set -- "$@" -c "max_wal_senders=0"
+    AUTO_SETTINGS+=("max_wal_senders=0")
 fi
-
-# Always apply listen_addresses explicitly (prevents PostgreSQL default of '*')
-set -- "$@" -c "listen_addresses=${LISTEN_ADDR}"
-
 # pgsodium getkey_script (only if enabled - explicitly set to avoid path detection issues)
 if [ "${PGSODIUM_ENABLED}" = "true" ]; then
-    set -- "$@" -c "pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}"
+    AUTO_SETTINGS+=("pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}")
 fi
 
-exec /usr/local/bin/docker-entrypoint.sh "$@"
+# Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
+# postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
+# generated config file that first includes the operator's config file and then sets them: they beat postgresql.conf
+# — where initdb writes max_connections, shared_buffers, max_wal_size, min_wal_size and listen_addresses='*' into every
+# data directory, so letting it win would switch auto-tuning off — while ALTER SYSTEM and the operator's own -c win.
+# data_directory and hba_file defaults derive from -D/PGDATA, not from config_file, so they stay where they were.
+shift # "postgres"
+DATA_DIR="${PGDATA:-}"
+OPERATOR_CONFIG=""
+declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
+OPERATOR_ARGS=()
+while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+        -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
+        -c*) pair="${arg#-c}" ;;
+        --*=*) pair="${arg#--}" ;;
+        -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
+        *) OPERATOR_ARGS+=("$arg"); continue ;;
+    esac
+    # PostgreSQL accepts --config-file and -c config_file alike, and matches names case-insensitively.
+    name="${pair%%=*}"
+    name="${name//-/_}"
+    name="${name,,}"
+    if [ "$name" = "config_file" ]; then
+        OPERATOR_CONFIG="${pair#*=}"
+        continue
+    fi
+    OPERATOR_SET[$name]="${pair#*=}"
+    OPERATOR_ARGS+=(-c "$pair")
+done
+OPERATOR_CONFIG="${OPERATOR_CONFIG:-${DATA_DIR}/postgresql.conf}"
+
+# A config-file string literal doubles single quotes and treats backslash as an escape character.
+conf_quote() {
+    local q="'" text="${1//\\/\\\\}"
+    printf "'%s'" "${text//$q/$q$q}"
+}
+
+# /var/run/postgresql is PostgreSQL's socket directory, writable even on read-only root filesystems.
+AUTO_CONFIG_DIR=/var/run/postgresql
+[ -w "$AUTO_CONFIG_DIR" ] || AUTO_CONFIG_DIR="${TMPDIR:-/tmp}"
+AUTO_CONFIG_FILE="${AUTO_CONFIG_DIR}/aza-auto-config.conf"
+{
+    echo "# Written at every start by docker-auto-config-entrypoint.sh; edits here are lost."
+    echo "# Override a value with ALTER SYSTEM or -c name=value; postgresql.conf values below are replaced."
+    echo "include $(conf_quote "$OPERATOR_CONFIG")"
+    for setting in "${AUTO_SETTINGS[@]}"; do
+        echo "${setting%%=*} = $(conf_quote "${setting#*=}")"
+    done
+} > "$AUTO_CONFIG_FILE"
+chmod 0644 "$AUTO_CONFIG_FILE"
+
+# One log line per tuned setting that does not take the tuned value, so no operator value is silently overridden
+# or silently ignored. postgresql.conf values are compared through `postgres -C`, which prints PostgreSQL's base
+# units (8kB pages, kB) and needs an initialised data directory, so the check skips the very first start. A file
+# value equal to the built-in default is indistinguishable from initdb's own lines (max_connections = 100, …), and one
+# equal to the tuned value changes nothing; neither is reported.
+as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
+ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
+for setting in "${AUTO_SETTINGS[@]}"; do
+    name="${setting%%=*}"
+    tuned="${setting#*=}"
+    if [ -n "${OPERATOR_SET[$name]+set}" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: -c ${OPERATOR_SET[$name]} overrides auto-tuned ${tuned}"
+        continue
+    fi
+    # postgresql.auto.conf is written by PostgreSQL itself, one "name = 'value'" line per setting.
+    altered=$(awk -F ' = ' -v n="$name" '$1 == n { v = $2 } END { print v }' "$ALTER_SYSTEM_FILE" 2>/dev/null || true)
+    if [ -n "$altered" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: ALTER SYSTEM ${altered} overrides auto-tuned ${tuned}"
+        continue
+    fi
+    [ -f "${DATA_DIR}/PG_VERSION" ] || continue
+    in_file=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${OPERATOR_CONFIG}" -C "$name" 2>/dev/null) || continue
+    builtin=$(as_postgres postgres -D "$DATA_DIR" -c config_file=/dev/null -C "$name" 2>/dev/null) || continue
+    [ "$in_file" != "$builtin" ] || continue
+    applied=$(as_postgres postgres -D "$DATA_DIR" -c config_file=/dev/null -c "${name}=${tuned}" -C "$name" 2>/dev/null) || applied="$tuned"
+    if [ "$in_file" != "$applied" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: ${in_file} from ${OPERATOR_CONFIG} is ignored, auto-tuned ${applied} applies (base units; override with ALTER SYSTEM or -c)"
+    fi
+done
+
+exec /usr/local/bin/docker-entrypoint.sh postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}"

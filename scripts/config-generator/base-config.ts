@@ -11,28 +11,6 @@ import type { BaseConfig } from "./types";
  */
 const IO_COMBINE_LIMIT = 128;
 
-/**
- * Effective I/O concurrency for SSD optimization.
- * Represents the number of concurrent disk I/O operations PostgreSQL should assume
- * the storage system can handle efficiently.
- * Default: 200 (optimized for modern NVMe SSDs with high IOPS capacity)
- */
-const EFFECTIVE_IO_CONCURRENCY = 200;
-
-/**
- * Random page cost for SSD optimization.
- * Ratio of random page access cost to sequential page access cost.
- * Default: 1.1 (near-sequential performance on SSDs, vs 4.0 default for HDDs)
- */
-const RANDOM_PAGE_COST = 1.1;
-
-/**
- * Checkpoint completion target.
- * Fraction of checkpoint interval to complete checkpoint writes.
- * Default: 0.9 (spread checkpoint I/O over 90% of interval to reduce I/O spikes)
- */
-const CHECKPOINT_COMPLETION_TARGET = 0.9;
-
 // ============================================================================
 // Logging Constants
 // ============================================================================
@@ -166,20 +144,13 @@ const MAX_STANDBY_STREAMING_DELAY_SEC = "300s";
 
 export const BASE_CONFIG: BaseConfig = {
   common: {
-    // Connection Settings
-    // Default to localhost for security - override in stack configs if network access needed
-    listenAddresses: "127.0.0.1",
     port: 5432,
-    // NOTE: shared_preload_libraries is intentionally omitted here.
-    // It is set at runtime by docker-auto-config-entrypoint.sh via -c flag,
-    // which allows dynamic configuration based on deployment needs.
-    // Default preload list: pg_stat_statements,auto_explain,pg_cron,pgaudit
-    // Override via: POSTGRES_SHARED_PRELOAD_LIBRARIES env var
+    // shared_preload_libraries is auto-tuned by docker-auto-config-entrypoint.sh (POSTGRES_SHARED_PRELOAD_LIBRARIES),
+    // which outranks this file; validate-configs rejects any auto-tuned setting here.
     sharedPreloadLibraries: [],
     idleSessionTimeout: "0",
     // Min 8 workers for background processes (TimescaleDB, pg_cron, logical replication, etc.)
     // This ensures the init phase has enough workers; auto-config may increase at runtime
-    maxWorkerProcesses: 8,
 
     // PostgreSQL 18 Async I/O
     ioMethod: "worker",
@@ -230,23 +201,16 @@ export const BASE_CONFIG: BaseConfig = {
     autovacuumFreezeMaxAge: AUTOVACUUM_FREEZE_MAX_AGE,
 
     // Checkpoints
-    checkpointCompletionTarget: CHECKPOINT_COMPLETION_TARGET,
 
     // Query Planner (SSD optimizations)
-    randomPageCost: RANDOM_PAGE_COST,
-    effectiveIoConcurrency: EFFECTIVE_IO_CONCURRENCY,
 
     // WAL
-    walLevel: "logical",
     walCompression: "lz4",
-    maxWalSize: "2GB",
-    minWalSize: "1GB",
   },
 
   stacks: {
     primary: {
       // WAL
-      walLevel: "logical",
 
       // Replication
       maxWalSenders: MAX_WAL_SENDERS_PRIMARY,
@@ -262,7 +226,6 @@ export const BASE_CONFIG: BaseConfig = {
       archiveCommand: "",
 
       // pg_cron
-      cronDatabaseName: "postgres",
       cronLogRun: "on",
       cronLogStatement: "on",
 
@@ -275,7 +238,6 @@ export const BASE_CONFIG: BaseConfig = {
 
     replica: {
       // WAL
-      walLevel: "replica",
 
       // Hot Standby
       hotStandby: "on",
@@ -292,7 +254,6 @@ export const BASE_CONFIG: BaseConfig = {
       logReplicationCommands: "on",
 
       // pg_cron (disabled on read-only replica)
-      cronDatabaseName: "",
 
       // pgAudit (disabled on replica)
       pgAuditLog: "none",
@@ -303,7 +264,6 @@ export const BASE_CONFIG: BaseConfig = {
 
     single: {
       // Simplified WAL for non-replicated setup
-      walLevel: "minimal",
       maxWalSenders: 0,
 
       // pgAudit (disabled)

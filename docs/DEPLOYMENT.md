@@ -857,8 +857,8 @@ psql -U postgres -c "SELECT pg_reload_conf();"
 **12.3 On Primary: Enable WAL archiving**
 
 ```bash
+# wal_level is already 'logical' (a superset of 'replica'); lowering it breaks wal2json and pgflow realtime.
 psql -U postgres <<EOF
-ALTER SYSTEM SET wal_level = 'replica';
 ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
 ALTER SYSTEM SET hot_standby = 'on';

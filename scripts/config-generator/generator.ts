@@ -26,10 +26,17 @@ const SHARED_CATEGORY_FIELDS = {
     "autovacuumAnalyzeScaleFactor",
     "autovacuumFreezeMaxAge",
   ] as const,
-  checkpoints: ["checkpointCompletionTarget"] as const,
 };
 
 const REPO_ROOT = join(import.meta.dir, "../..");
+
+// The entrypoint's tuned values outrank this file (docs/ARCHITECTURE.md "Configuration Hierarchy"), so a tuned setting
+// written here would never apply and would be logged as ignored on every start; validate-configs rejects one.
+const AUTO_TUNED_NOTE = [
+  "# Auto-tuned settings (memory, connections, workers, WAL sizes, wal_level, listen_addresses,",
+  "# shared_preload_libraries, ...) are not set here: the entrypoint's values outrank this file.",
+  "# Override one with ALTER SYSTEM or -c name=value.",
+].join("\n");
 
 function mergeSettings(
   common: PostgreSQLSettings,
@@ -58,7 +65,7 @@ function generatePostgresqlConf(
   lines.push("");
 
   const categories = {
-    connection: ["listenAddresses", "port", "sharedPreloadLibraries", "idleSessionTimeout"],
+    connection: ["port", "sharedPreloadLibraries", "idleSessionTimeout"],
     io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
       "logDestination",
@@ -91,17 +98,7 @@ function generatePostgresqlConf(
       "autoExplainLogTiming",
     ],
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
-    checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
-    wal: [
-      "walLevel",
-      "walCompression",
-      "maxWalSize",
-      "minWalSize",
-      "maxWalSenders",
-      "walKeepSize",
-      "archiveMode",
-      "archiveCommand",
-    ],
+    wal: ["walCompression", "maxWalSenders", "walKeepSize", "archiveMode", "archiveCommand"],
     replication: [
       "synchronousCommit",
       "synchronousStandbyNames",
@@ -115,7 +112,7 @@ function generatePostgresqlConf(
       "walReceiverStatusInterval",
       "logReplicationCommands",
     ],
-    pg_cron: ["cronDatabaseName", "cronLogRun", "cronLogStatement"],
+    pg_cron: ["cronLogRun", "cronLogStatement"],
     pgaudit: ["pgAuditLog", "pgAuditLogStatementOnce", "pgAuditLogLevel", "pgAuditLogRelation"],
   };
 
@@ -170,12 +167,8 @@ function generatePostgresqlConf(
     lines.push("");
   }
 
-  lines.push("# Runtime auto-configuration");
-  lines.push("# The following settings are overridden at container startup:");
-  lines.push("# - Memory: shared_buffers, effective_cache_size, maintenance_work_mem, work_mem");
-  lines.push("# - Connections: max_connections, max_worker_processes, max_parallel_workers");
-  lines.push(`# - Extensions: shared_preload_libraries (default: ${defaultPreloads})`);
-  lines.push("# Auto-config is always enabled and cannot be disabled.");
+  lines.push(AUTO_TUNED_NOTE);
+  lines.push(`# Default shared_preload_libraries: ${defaultPreloads}`);
 
   return lines.join("\n");
 }
@@ -190,11 +183,12 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
   lines.push("#");
   lines.push("# DO NOT EDIT MANUALLY - Changes will be overwritten");
   lines.push("# Edit scripts/config-generator/base-config.ts and regenerate");
+  lines.push("#");
+  lines.push(AUTO_TUNED_NOTE);
   lines.push("");
 
   const categories = {
-    connection: ["listenAddresses", "sharedPreloadLibraries"],
-    workers: ["maxWorkerProcesses"],
+    connection: ["sharedPreloadLibraries"],
     io: [...SHARED_CATEGORY_FIELDS.io],
     logging: [
       "logDestination",
@@ -226,9 +220,7 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
       "autoExplainLogNestedStatements",
     ],
     autovacuum: [...SHARED_CATEGORY_FIELDS.autovacuum],
-    checkpoints: [...SHARED_CATEGORY_FIELDS.checkpoints],
-    query_planner: ["randomPageCost", "effectiveIoConcurrency"],
-    wal: ["walLevel", "walCompression", "maxWalSize", "minWalSize"],
+    wal: ["walCompression"],
     timescaledb: ["timescaledbTelemetryLevel"],
   };
 
@@ -245,26 +237,7 @@ function generateBaseConf(settings: PostgreSQLSettings): string {
       }
     }
 
-    // Always emit the CONNECTION section, even if empty, to add the shared_preload_libraries comment
-    if (catName === "connection") {
-      lines.push("# CONNECTION");
-      if (categoryLines.length > 0) {
-        lines.push(...categoryLines);
-      } else {
-        // No settings to emit, but still add listen_addresses if present
-        const listenValue = settings.listenAddresses;
-        if (listenValue !== undefined) {
-          lines.push(formatSetting("listenAddresses", listenValue));
-        }
-      }
-      // Add comment about sharedPreloadLibraries being runtime-controlled
-      lines.push("# NOTE: shared_preload_libraries is intentionally OMITTED.");
-      lines.push("# It's controlled at runtime by docker-auto-config-entrypoint.sh via -c flag.");
-      lines.push(
-        "# Command-line -c flags override config file settings, so we must not set it here."
-      );
-      lines.push("");
-    } else if (categoryLines.length > 0) {
+    if (categoryLines.length > 0) {
       lines.push(`# ${catName.replace(/_/g, " ").toUpperCase()}`);
       lines.push(...categoryLines);
       lines.push("");

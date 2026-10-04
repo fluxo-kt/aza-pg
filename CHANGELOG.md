@@ -68,6 +68,14 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **Compose stacks: `POSTGRES_DATA_VOLUME`, `POSTGRES_BACKUP_VOLUME`, `MONITORING_NETWORK` now work with any value**: services referred to the volume or network by the variable's value, so any non-default name made `docker compose up` fail with "refers to undefined volume". Services now use fixed keys and the variables only name the Docker objects; existing deployments using the defaults are unaffected.
 - **pgvectorscale on x86-64 CPUs without AVX2 or FMA**: upstream's amd64 binary executes those instructions unconditionally, so creating or loading the extension killed the server process (SIGILL) and forced crash recovery, including during first-start initialisation. vectorscale is now built from source and uses AVX2/FMA only when the CPU has them, so it works on every amd64 CPU.
 
+### Removed
+
+- **Build tools in the image**: earlier images shipped the Bun runtime (`/usr/local/bin/bun`) and the extension build script in `/usr/local/bin`, unused at runtime. Both are gone; `/usr/local/bin` holds only the image's own scripts and tools (`gosu`, `pg_repack`, `pgflow-upgrade`, the entrypoints). A script that ran `bun` inside the container needs its own image.
+
+### Development
+
+- Test suites run against the shipped image in parallel from one registry, in CI and locally; CI reuses an unchanged image instead of rebuilding it.
+
 ## [v18.4-202606031012] - 2026-06-03
 
 ### Security

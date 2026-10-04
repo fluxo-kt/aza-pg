@@ -693,6 +693,8 @@ export function testPgPlanFilter(container: string): Promise<TestResult> {
 /**
  * Runs the pg_repack client against the server extension: a client/extension version mismatch or a
  * broken client fails, and a successful repack rewrites the table (new relfilenode) keeping every row.
+ * It runs with the image defaults: the shipped wrapper turns safeupdate off for pg_repack alone, so a bare
+ * DELETE in an ordinary session must still be rejected.
  */
 export function testPgRepack(container: string): Promise<TestResult> {
   return check("pg_repack - repacks a table online", async () => {
@@ -716,6 +718,11 @@ export function testPgRepack(container: string): Promise<TestResult> {
     const [filenode, rows] = after.split(" ");
     expect(filenode !== before, "table was not rewritten (relfilenode unchanged)");
     expect(rows === "500", `expected 500 rows after repack, got ${rows}`);
+    const bare = await psql(container, "DELETE FROM test_repack");
+    expect(
+      !bare.ok && bare.err.includes("DELETE requires a WHERE clause"),
+      `bare DELETE was not rejected by safeupdate: ${bare.err || bare.out}`
+    );
   });
 }
 

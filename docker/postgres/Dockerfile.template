@@ -321,11 +321,15 @@ COPY tests/fixtures/pgflow/upgrade/ /opt/pgflow/upgrade/
 COPY docker/postgres/pgflow/structure-hash.sql docker/postgres/pgflow/legacy-structure.tsv /opt/pgflow/
 COPY docker/postgres/pgflow/pgflow-upgrade.sh /usr/local/bin/pgflow-upgrade
 
+# pg_repack with safeupdate off for its own sessions (see the script header)
+COPY docker/postgres/pg_repack-wrapper.sh /usr/local/bin/pg_repack
+
 # Consolidate all chmod operations into single RUN (better layer caching)
 RUN set -euo pipefail && \
     chmod +x /usr/local/bin/healthcheck.sh && \
     chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
     chmod +x /usr/local/bin/pgflow-upgrade && \
+    chmod +x /usr/local/bin/pg_repack && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Copy runtime metadata files LATE (frequently change with any manifest update)

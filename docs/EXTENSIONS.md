@@ -197,7 +197,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
 - **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is auto-created but requires pgsodium preload for encryption.
-- **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest` (built from source); configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis.
+- **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest` (built from source); configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis. `pg_repack` inside the container works as shipped; from another machine run it as `PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...`, because the preloaded safeupdate rejects pg_repack's own `DELETE` without `WHERE`.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
 
 ## HTTP Extensions Comparison: pg_net vs pgsql-http

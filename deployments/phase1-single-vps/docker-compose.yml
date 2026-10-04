@@ -39,7 +39,7 @@ services:
 
   # PgBouncer - Connection Pooling
   pgbouncer:
-    image: pgbouncer/pgbouncer:1.24.1
+    image: pgbouncer/pgbouncer:1.25.2-20260920@sha256:89f145c1f003340e9b38a37a8734013ec43d931abb9bd7ea739640f2348d4a67
     container_name: pgbouncer
     restart: unless-stopped
     environment:
@@ -140,7 +140,7 @@ services:
 
   # Prometheus - Metrics Collection
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -168,7 +168,7 @@ services:
 
   # Grafana - Visualization
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
     container_name: grafana
     restart: unless-stopped
     environment:

@@ -1,1338 +1,677 @@
 #!/usr/bin/env bun
 /**
- * Test script: Validate auto-config RAM/CPU detection and scaling
- * Usage: bun run scripts/test/test-auto-config.ts [image-tag]
+ * Auto-config in the shipped image: what the entrypoint hands PostgreSQL for given container limits, and whether
+ * PostgreSQL accepts it.
  *
- * Examples:
- *   bun run scripts/test/test-auto-config.ts                    # Use default tag 'ghcr.io/fluxo-kt/aza-pg:pg18'
- *   bun run scripts/test/test-auto-config.ts my-custom:tag      # Use custom tag
+ * Dry-run table: each row starts the image with real `--memory`/CPU limits (so detection reads the container's own
+ * cgroup files) but with /usr/local/bin/docker-entrypoint.sh replaced by a stub that prints its argv and the generated
+ * config file, then exits. Rows assert exact `name = 'value'` lines of that file, the startup log line, and the exit
+ * code. CPU counts use --cpu-quota rather than --cpus, because Docker refuses --cpus above the host's CPU count but
+ * accepts any quota — so the 14-core rows also run on hosts with fewer CPUs.
+ *
+ * Real boots: two containers start PostgreSQL for real (512 MB / 1 CPU, and the largest dw tier); every generated
+ * setting must be in effect from the generated file, so a value PostgreSQL rejects fails the boot and the suite.
+ *
+ * Usage: bun scripts/test/test-auto-config.ts [image]   (also --image=TAG or POSTGRES_IMAGE; default: the local build)
  */
 
-import { $ } from "bun";
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  ensureImageAvailable,
-  waitForPostgres,
-} from "../utils/docker";
-import { error, warning } from "../utils/logger";
-import { getSharedPreloadLibraries } from "./lib/test-mode";
-import { TestHarness } from "./harness";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { resolveImageTag } from "./image-resolver";
 
-/**
- * Assert that logs contain a pattern with a success message
- */
-function assertLogContains(logs: string, pattern: string, message: string): void {
-  const regex = new RegExp(pattern);
-  if (regex.test(logs)) {
-    console.log(`✅ ${message}`);
-  } else {
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   Pattern '${pattern}' not found in logs:`);
-    console.log(logs);
-    throw new Error(`Assertion failed: ${message}`);
-  }
+const IMAGE = resolveImageTag();
+const RUN_ID = generateUniqueProjectName("aza-pg-autoconfig");
+const AUTO_CONFIG_FILE = "/var/run/postgresql/aza-auto-config.conf";
+const REPO_ENTRYPOINT = join(
+  import.meta.dir,
+  "../../docker/postgres/docker-auto-config-entrypoint.sh"
+);
+const DRY_RUN_CONCURRENCY = 8;
+
+interface CaseResult {
+  name: string;
+  passed: boolean;
+  ms: number;
+  error?: string;
 }
+const results: CaseResult[] = [];
+const containers = new Set<string>();
 
-/**
- * Assert PostgreSQL configuration setting matches expected pattern
- */
-async function assertPgConfig(
-  container: string,
-  setting: string,
-  expected: string,
-  message: string
-): Promise<void> {
-  let actual: string;
+async function test(name: string, fn: () => Promise<void>): Promise<void> {
+  const start = performance.now();
   try {
-    const result =
-      await $`docker exec ${container} psql -U postgres -t -c "SHOW ${setting};"`.text();
-    actual = result.trim();
-  } catch {
-    warning(`${message} (PostgreSQL not ready yet)`);
-    return;
-  }
-
-  const regex = new RegExp(expected);
-  if (regex.test(actual)) {
-    console.log(`✅ ${message} (actual: ${actual})`);
-  } else {
-    console.log(`❌ FAILED: ${message}`);
-    console.log(`   Expected: ${expected}`);
-    console.log(`   Actual: ${actual}`);
-    throw new Error(`Config assertion failed: ${message}`);
-  }
-}
-
-/**
- * Test case callback signature
- */
-type TestCallback = (logs: string, container: string) => Promise<void>;
-
-/**
- * Run a test case with a Docker container
- */
-async function runCase(
-  name: string,
-  callback: TestCallback,
-  dockerArgs: string[],
-  imageTag: string
-): Promise<void> {
-  console.log(name);
-  console.log("=".repeat(name.length));
-
-  const harness = new TestHarness();
-  const testSuffix = `autoconfig-${Math.floor(Math.random() * 100000)}`;
-  let container = "";
-  let containerStarted = false;
-
-  try {
-    // Parse docker args into env variables and other args
-    const env: Record<string, string> = {};
-    const otherArgs: string[] = [];
-
-    for (let i = 0; i < dockerArgs.length; i++) {
-      const currentArg = dockerArgs[i];
-      if (!currentArg) continue;
-
-      if (currentArg === "-e" && i + 1 < dockerArgs.length) {
-        const envPair = dockerArgs[i + 1];
-        if (envPair) {
-          const [key, ...valueParts] = envPair.split("=");
-          if (key) {
-            env[key] = valueParts.join("=");
-          }
-        }
-        i++; // Skip next arg as it's the value
-      } else if (currentArg === "-m" || currentArg === "--memory") {
-        const nextArg = dockerArgs[i + 1];
-        if (nextArg) {
-          otherArgs.push(currentArg, nextArg);
-        }
-        i++;
-      } else if (currentArg === "--cpus") {
-        const nextArg = dockerArgs[i + 1];
-        if (nextArg) {
-          otherArgs.push(currentArg, nextArg);
-        }
-        i++;
-      } else if (currentArg.startsWith("--memory=") || currentArg.startsWith("--cpus=")) {
-        otherArgs.push(currentArg);
-      }
-    }
-
-    // Start container manually with other args
-    container = harness.getContainerName(testSuffix);
-    const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-
-    try {
-      await $`docker run -d --name ${container} ${otherArgs} ${envArgs} ${imageTag}`.quiet();
-      containerStarted = true;
-    } catch {
-      error(`Failed to start container for '${name}'`);
-      throw new Error(`Container start failed for: ${name}`);
-    }
-
-    // Wait for PostgreSQL to be ready
-    try {
-      await waitForPostgres({
-        host: "localhost",
-        port: 5432,
-        user: "postgres",
-        timeout: 60,
-        container,
-      });
-    } catch (err) {
-      error("PostgreSQL failed to start in time");
-      const logs = await $`docker logs ${container}`.text();
-      console.log("Container logs:");
-      console.log(logs);
-      throw err;
-    }
-
-    // Get container logs
-    const logs = await $`docker logs ${container}`.text();
-    console.log("Auto-config logs:");
-    const autoConfigLogs = logs
-      .split("\n")
-      .filter((line) => line.includes("[POSTGRES]"))
-      .join("\n");
-    console.log(autoConfigLogs || "(no auto-config logs found)");
-    console.log();
-
-    // Assert [AUTO-CONFIG] token exists in logs
-    if (!logs.includes("[AUTO-CONFIG]")) {
-      error("[AUTO-CONFIG] token not found in logs");
-      console.log("   Expected auto-config logs with [AUTO-CONFIG] prefix");
-      throw new Error("[AUTO-CONFIG] token not found");
-    }
-    console.log("✅ [AUTO-CONFIG] token found in logs");
-
-    // Run test callback
-    await callback(logs, container);
-    console.log();
-  } finally {
-    // Always cleanup container, even if tests fail
-    if (containerStarted) {
-      await dockerCleanup(container);
-    }
-  }
-}
-
-/**
- * Test 1: Manual override without memory limit
- */
-async function caseManualOverride(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1536MB \\(manual\\)", "Manual override respected (1536MB)");
-  assertLogContains(
-    logs,
-    "shared_buffers=384MB",
-    "shared_buffers scaled to 25% for manual override"
-  );
-  assertLogContains(
-    logs,
-    "max_connections=60",
-    "Connections scaled to 60 (mixed 120 × 50% for <2GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(container, "shared_buffers", "384MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "60", "Config injection: max_connections");
-}
-
-/**
- * Test 2: 2GB memory limit (cgroup detection)
- */
-async function caseCgroup2g(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 204[0-9]MB \\(cgroup-v2\\)", "Detected 2GB via cgroup");
-  assertLogContains(logs, "shared_buffers=512MB", "shared_buffers tuned for 2GB");
-  assertLogContains(
-    logs,
-    "max_connections=84",
-    "Connections scaled to 84 (mixed 120 × 70% for 2-4GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(container, "shared_buffers", "512MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "84", "Config injection: max_connections");
-}
-
-/**
- * Test 3: 512MB memory limit (minimum supported)
- */
-async function caseLowMem(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 512MB \\(cgroup-v2\\)", "Detected 512MB limit");
-  assertLogContains(logs, "shared_buffers=128MB", "Minimum shared_buffers honored");
-  assertLogContains(
-    logs,
-    "max_connections=60",
-    "Connections scaled to 60 (mixed 120 × 50% for <2GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(container, "shared_buffers", "128MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "60", "Config injection: max_connections");
-}
-
-/**
- * Test 4: Manual high-memory override (64GB)
- */
-async function caseHighMemManual(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 65536MB \\(manual\\)", "Manual override supports 64GB");
-  assertLogContains(logs, "shared_buffers=9830MB", "Large-node shared_buffers respects 15% rule");
-  assertLogContains(
-    logs,
-    "max_connections=120",
-    "Connections at 120 (mixed workload, no scaling for >=8GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(container, "shared_buffers", "9830MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "120", "Config injection: max_connections");
-}
-
-/**
- * Test 5: CPU detection with limits
- */
-async function caseCpuDetection(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "CPU: 2 cores", "CPU detection picked up 2 cores");
-
-  // Verify actual config (worker processes not shown in log, only in config)
-  await assertPgConfig(
-    container,
-    "max_worker_processes",
-    "8",
-    "Config injection: max_worker_processes (min 8)"
-  );
-  await assertPgConfig(
-    container,
-    "max_parallel_workers",
-    "2",
-    "Config injection: max_parallel_workers"
-  );
-}
-
-/**
- * Test 7: Custom shared_preload_libraries override
- */
-async function caseCustomSharedPreload(_logs: string, container: string): Promise<void> {
-  const expectedLibraries = [...getSharedPreloadLibraries("production").split(","), "set_user"];
-
-  let actual: string;
-  try {
-    const result =
-      await $`docker exec ${container} psql -U postgres -t -c "SHOW shared_preload_libraries;"`.text();
-    actual = result.trim();
-  } catch {
-    error("Could not query shared_preload_libraries");
-    throw new Error("Failed to query shared_preload_libraries");
-  }
-
-  const actualLibraries = actual
-    .split(",")
-    .map((library) => library.trim())
-    .filter(Boolean);
-  const expectedSet = new Set(expectedLibraries);
-  const actualSet = new Set(actualLibraries);
-  const missingLibraries = expectedLibraries.filter((library) => !actualSet.has(library));
-  const unexpectedLibraries = actualLibraries.filter((library) => !expectedSet.has(library));
-
-  if (missingLibraries.length === 0 && unexpectedLibraries.length === 0) {
-    console.log(`✅ Custom shared_preload_libraries honored (actual: ${actual})`);
-  } else {
-    console.log("❌ FAILED: Override not respected");
-    console.log(`   Expected exactly: ${expectedLibraries.join(",")}`);
-    console.log(`   Actual: ${actual}`);
-    console.log(`   Missing: ${missingLibraries.join(",") || "<none>"}`);
-    console.log(`   Unexpected: ${unexpectedLibraries.join(",") || "<none>"}`);
-    throw new Error("Custom shared_preload_libraries override failed");
-  }
-}
-
-/**
- * Test 8: 4GB memory tier (medium production)
- */
-async function case4gbTier(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  assertLogContains(logs, "shared_buffers=1024MB", "shared_buffers tuned to 25% for 4GB");
-  assertLogContains(
-    logs,
-    "max_connections=102",
-    "Connections scaled to 102 (mixed 120 × 85% for 4-8GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "1024MB|1GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "max_connections", "102", "Config injection: max_connections");
-  await assertPgConfig(container, "work_mem", "[3-4]MB", "Config injection: work_mem ~3MB");
-}
-
-/**
- * Test 9: 8GB memory tier (large production)
- */
-async function case8gbTier(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(logs, "shared_buffers=2048MB", "shared_buffers tuned to 25% for 8GB");
-  assertLogContains(
-    logs,
-    "max_connections=120",
-    "Connections at 120 (mixed workload, no scaling for >=8GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "2048MB|2GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "max_connections", "120", "Config injection: max_connections");
-  await assertPgConfig(container, "work_mem", "[89]MB|1[0-2]MB", "Config injection: work_mem ~9MB");
-}
-
-/**
- * Test 10: 16GB memory tier (high-load)
- */
-async function case16gbTier(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1638[0-9]MB \\(cgroup-v2\\)", "Detected 16GB via cgroup");
-  assertLogContains(logs, "shared_buffers=3276MB", "shared_buffers tuned to 20% for 16GB");
-  assertLogContains(
-    logs,
-    "max_connections=120",
-    "Connections at 120 (mixed workload, no scaling for >=8GB)"
-  );
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "327[0-9]MB|3.*GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "max_connections", "120", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "work_mem",
-    "1[6-9]MB|2[0-4]MB",
-    "Config injection: work_mem ~20MB"
-  );
-}
-
-/**
- * Test 11: 1GB RAM, 1 vCPU
- */
-async function case1gb1cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 102[0-9]MB \\(cgroup-v2\\)", "Detected 1GB via cgroup");
-  assertLogContains(logs, "CPU: 1 cores", "CPU detection picked up 1 core");
-  assertLogContains(logs, "shared_buffers=256MB", "shared_buffers tuned to 25% for 1GB");
-  assertLogContains(logs, "max_connections=60", "Connections throttled to 60 (mixed 120×50%)");
-
-  // Verify actual config (worker processes not shown in log)
-  await assertPgConfig(container, "shared_buffers", "256MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "60", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "max_worker_processes",
-    "8",
-    "Config injection: max_worker_processes (min 8)"
-  );
-}
-
-/**
- * Test 12: 3GB RAM, 2 vCPU
- */
-async function case3gb2cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 307[0-9]MB \\(cgroup-v2\\)", "Detected 3GB via cgroup");
-  assertLogContains(logs, "CPU: 2 cores", "CPU detection picked up 2 cores");
-  assertLogContains(logs, "shared_buffers=768MB", "shared_buffers tuned to 25% for 3GB");
-  assertLogContains(logs, "max_connections=84", "Connections set to 84 (120×70%)");
-
-  // Verify actual config
-  await assertPgConfig(container, "shared_buffers", "768MB", "Config injection: shared_buffers");
-  await assertPgConfig(container, "max_connections", "84", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "work_mem",
-    "[2-3]MB",
-    "Config injection: work_mem with overhead"
-  );
-}
-
-/**
- * Test 13: 6GB RAM, 4 vCPU (parallel workers threshold)
- */
-async function case6gb4cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 614[0-9]MB \\(cgroup-v2\\)", "Detected 6GB via cgroup");
-  assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 4 cores");
-  assertLogContains(logs, "shared_buffers=1536MB", "shared_buffers tuned to 25% for 6GB");
-  assertLogContains(logs, "max_connections=102", "Connections set to 102 (120×85%)");
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "1536MB|1.5GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "max_connections", "102", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "max_parallel_workers",
-    "[4-9]",
-    "Config injection: max_parallel_workers"
-  );
-}
-
-/**
- * Test 14: 12GB RAM, 4 vCPU (I/O workers threshold)
- */
-async function case12gb4cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1228[0-9]MB \\(cgroup-v2\\)", "Detected 12GB via cgroup");
-  assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 4 cores");
-  assertLogContains(logs, "shared_buffers=2457MB", "shared_buffers tuned to 20% for 12GB");
-  assertLogContains(logs, "io_workers=1", "I/O workers set to 1 (4 cores / 4)");
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "245[0-9]MB|2.4GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "io_workers", "1", "Config injection: io_workers");
-}
-
-/**
- * Test 15: 24GB RAM, 12 vCPU
- */
-async function case24gb4cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 2457[0-9]MB \\(cgroup-v2\\)", "Detected 24GB via cgroup");
-  assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 12 cores");
-  assertLogContains(logs, "shared_buffers=4915MB", "shared_buffers tuned to 20% for 24GB");
-  assertLogContains(logs, "io_workers=1", "I/O workers set to 1 (4 cores / 4)");
-
-  // Verify actual config (worker processes not shown in log)
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "491[0-9]MB|4.*GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "io_workers", "1", "Config injection: io_workers");
-  await assertPgConfig(
-    container,
-    "max_worker_processes",
-    "8",
-    "Config injection: max_worker_processes (min 8)"
-  );
-}
-
-/**
- * Test 16: 32GB RAM, 14 vCPU, DW workload (adjusted for Docker CPU limit)
- */
-async function case32gb16cpuDw(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 32768MB \\(manual\\)", "Manual override supports 32GB");
-  assertLogContains(logs, "CPU: 14 cores", "CPU detection picked up 14 cores");
-  assertLogContains(logs, "max_connections=100", "Connections capped at 100 (DW workload)");
-  assertLogContains(
-    logs,
-    "work_mem=[3-9][0-9]MB",
-    "work_mem scaled for DW workload (~32-256MB range)"
-  );
-  assertLogContains(logs, "maintenance_work_mem=2048MB", "maintenance_work_mem capped at 2048MB");
-  assertLogContains(
-    logs,
-    "default_statistics_target=500",
-    "default_statistics_target set to 500 for DW"
-  );
-  assertLogContains(logs, "min_wal_size=4096MB", "min_wal_size set to 4096MB for DW");
-  assertLogContains(logs, "max_wal_size=16384MB", "max_wal_size set to 16384MB for DW");
-
-  // Verify actual config
-  await assertPgConfig(container, "max_connections", "100", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "default_statistics_target",
-    "500",
-    "Config injection: default_statistics_target"
-  );
-  await assertPgConfig(container, "min_wal_size", "4096MB|4GB", "Config injection: min_wal_size");
-  await assertPgConfig(container, "max_wal_size", "16384MB|16GB", "Config injection: max_wal_size");
-}
-
-/**
- * Test 17: 128GB RAM, 32 vCPU
- */
-async function case128gb32cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 131072MB \\(manual\\)", "Manual override supports 128GB");
-  assertLogContains(logs, "CPU: 14 cores", "CPU detection picked up 14 cores");
-  assertLogContains(logs, "shared_buffers=19660MB", "shared_buffers tuned to 15% for 128GB");
-  assertLogContains(logs, "io_workers=3", "I/O workers set to 3 (14 cores / 4)");
-
-  // Verify actual config (worker processes not shown in log)
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "1966[0-9]MB|19.*GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(
-    container,
-    "max_worker_processes",
-    "1[5-9]|2[01]",
-    "Config injection: max_worker_processes"
-  );
-  await assertPgConfig(container, "io_workers", "3", "Config injection: io_workers");
-}
-
-/**
- * Test 18: 192GB RAM, 48 vCPU
- */
-async function case192gb48cpu(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 196608MB \\(manual\\)", "Manual override supports 192GB");
-  assertLogContains(logs, "CPU: 14 cores", "CPU detection picked up 14 cores");
-  assertLogContains(logs, "shared_buffers=29491MB", "shared_buffers tuned to 15% for 192GB");
-  assertLogContains(logs, "io_workers=3", "I/O workers set to 3 (14 cores / 4)");
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "2949[0-9]MB|29.*GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(
-    container,
-    "max_worker_processes",
-    "1[5-9]|2[01]",
-    "Config injection: max_worker_processes (14 cores + 50%)"
-  );
-}
-
-/**
- * Test 19: Web workload, 8GB RAM
- */
-async function caseWebWorkload(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(
-    logs,
-    "max_connections=200",
-    "Connections at 200 (web workload, no scaling for >=8GB)"
-  );
-  assertLogContains(
-    logs,
-    "default_statistics_target=100",
-    "default_statistics_target set to 100 for web"
-  );
-  assertLogContains(logs, "min_wal_size=1024MB", "min_wal_size set to 1024MB for web");
-  assertLogContains(logs, "max_wal_size=4096MB", "max_wal_size set to 4096MB for web");
-
-  // Verify actual config
-  await assertPgConfig(container, "max_connections", "200", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "default_statistics_target",
-    "100",
-    "Config injection: default_statistics_target"
-  );
-  await assertPgConfig(container, "min_wal_size", "1024MB|1GB", "Config injection: min_wal_size");
-  await assertPgConfig(container, "max_wal_size", "4096MB|4GB", "Config injection: max_wal_size");
-}
-
-/**
- * Test 20: OLTP workload, 8GB RAM
- */
-async function caseOltpWorkload(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(
-    logs,
-    "max_connections=300",
-    "Connections at 300 (OLTP workload, no scaling for >=8GB)"
-  );
-  assertLogContains(logs, "min_wal_size=2048MB", "min_wal_size set to 2048MB for OLTP");
-  assertLogContains(logs, "max_wal_size=8192MB", "max_wal_size set to 8192MB for OLTP");
-
-  // Verify actual config
-  await assertPgConfig(container, "max_connections", "300", "Config injection: max_connections");
-  await assertPgConfig(container, "min_wal_size", "2048MB|2GB", "Config injection: min_wal_size");
-  await assertPgConfig(container, "max_wal_size", "8192MB|8GB", "Config injection: max_wal_size");
-}
-
-/**
- * Test 21: DW workload, 16GB RAM
- */
-async function caseDwWorkload(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1638[0-9]MB \\(cgroup-v2\\)", "Detected 16GB via cgroup");
-  assertLogContains(logs, "max_connections=100", "Connections capped at 100 for DW workload");
-  assertLogContains(
-    logs,
-    "default_statistics_target=500",
-    "default_statistics_target set to 500 for DW"
-  );
-  assertLogContains(logs, "min_wal_size=4096MB", "min_wal_size set to 4096MB for DW");
-
-  // Verify actual config
-  await assertPgConfig(container, "max_connections", "100", "Config injection: max_connections");
-  await assertPgConfig(
-    container,
-    "default_statistics_target",
-    "500",
-    "Config injection: default_statistics_target"
-  );
-  await assertPgConfig(container, "min_wal_size", "4096MB|4GB", "Config injection: min_wal_size");
-}
-
-/**
- * Test 22: Mixed workload (default), 8GB RAM
- */
-async function caseMixedWorkload(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(
-    logs,
-    "max_connections=120",
-    "Connections at 120 (mixed workload, no scaling for >=8GB)"
-  );
-  assertLogContains(logs, "min_wal_size=1024MB", "min_wal_size set to 1024MB for mixed");
-  assertLogContains(logs, "max_wal_size=4096MB", "max_wal_size set to 4096MB for mixed");
-
-  // Verify actual config
-  await assertPgConfig(container, "max_connections", "120", "Config injection: max_connections");
-  await assertPgConfig(container, "min_wal_size", "1024MB|1GB", "Config injection: min_wal_size");
-  await assertPgConfig(container, "max_wal_size", "4096MB|4GB", "Config injection: max_wal_size");
-}
-
-/**
- * Test 23: HDD storage
- */
-async function caseHddStorage(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(logs, "random_page_cost=4.0", "random_page_cost set to 4.0 for HDD");
-
-  // Verify actual config (maintenance_io_concurrency set via -c flag, not logged)
-  await assertPgConfig(container, "random_page_cost", "4", "Config injection: random_page_cost");
-  await assertPgConfig(
-    container,
-    "maintenance_io_concurrency",
-    "10",
-    "Config injection: maintenance_io_concurrency"
-  );
-}
-
-/**
- * Test 24: SSD storage (default)
- */
-async function caseSsdStorage(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(logs, "random_page_cost=1.1", "random_page_cost set to 1.1 for SSD");
-
-  // Verify actual config (maintenance_io_concurrency set via -c flag, not logged)
-  await assertPgConfig(container, "random_page_cost", "1.1", "Config injection: random_page_cost");
-  await assertPgConfig(
-    container,
-    "maintenance_io_concurrency",
-    "20",
-    "Config injection: maintenance_io_concurrency"
-  );
-}
-
-/**
- * Test 25: SAN storage (Hetzner Volumes)
- */
-async function caseSanStorage(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(logs, "random_page_cost=1.1", "random_page_cost set to 1.1 for SAN");
-
-  // Verify actual config (maintenance_io_concurrency set via -c flag, not logged)
-  await assertPgConfig(container, "random_page_cost", "1.1", "Config injection: random_page_cost");
-  await assertPgConfig(
-    container,
-    "maintenance_io_concurrency",
-    "20",
-    "Config injection: maintenance_io_concurrency"
-  );
-}
-
-/**
- * Test 26: 16-core I/O workers
- */
-async function case16coreIoWorkers(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1638[0-9]MB \\(cgroup-v2\\)", "Detected 16GB via cgroup");
-  assertLogContains(logs, "CPU: 14 cores", "CPU detection picked up 14 cores");
-  assertLogContains(logs, "io_workers=3", "I/O workers set to 3 (14 cores / 4)");
-
-  // Verify actual config
-  await assertPgConfig(container, "io_workers", "3", "Config injection: io_workers");
-  await assertPgConfig(
-    container,
-    "max_parallel_maintenance_workers",
-    "[34]",
-    "Config injection: max_parallel_maintenance_workers"
-  );
-}
-
-/**
- * Test 27: 4-core threshold
- */
-async function case4coreThreshold(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  assertLogContains(logs, "CPU: 4 cores", "CPU detection picked up 4 cores");
-
-  // Verify actual config (parallel workers not shown in log)
-  await assertPgConfig(
-    container,
-    "max_parallel_workers",
-    "4",
-    "Config injection: max_parallel_workers"
-  );
-  await assertPgConfig(
-    container,
-    "max_parallel_workers_per_gather",
-    "2",
-    "Config injection: max_parallel_workers_per_gather"
-  );
-  await assertPgConfig(
-    container,
-    "max_parallel_maintenance_workers",
-    "2",
-    "Config injection: max_parallel_maintenance_workers"
-  );
-}
-
-/**
- * Test 28: <4 cores (no parallel workers)
- */
-async function caseLowCoreNoParallel(logs: string, _container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 204[0-9]MB \\(cgroup-v2\\)", "Detected 2GB via cgroup");
-  assertLogContains(logs, "CPU: 2 cores", "CPU detection picked up 2 cores");
-
-  // Verify that max_parallel_workers is NOT in logs (should not be set for <4 cores)
-  if (!logs.includes("max_parallel_workers=")) {
-    console.log("✅ max_parallel_workers not set for <4 cores (expected)");
-  } else {
-    console.log("❌ FAILED: max_parallel_workers should not be set for <4 cores");
-    throw new Error("max_parallel_workers should not be set for <4 cores");
-  }
-}
-
-/**
- * Test 29: checkpoint_completion_target
- */
-async function caseCheckpointTarget(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  assertLogContains(
-    logs,
-    "checkpoint_completion_target=0.9",
-    "checkpoint_completion_target set to 0.9"
-  );
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "checkpoint_completion_target",
-    "0.9",
-    "Config injection: checkpoint_completion_target"
-  );
-}
-
-/**
- * Test 30: wal_buffers
- */
-async function caseWalBuffers(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 819[0-9]MB \\(cgroup-v2\\)", "Detected 8GB via cgroup");
-  assertLogContains(logs, "shared_buffers=2048MB", "shared_buffers set to 2048MB");
-  assertLogContains(logs, "wal_buffers=16MB", "wal_buffers capped at 16MB");
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "shared_buffers",
-    "2048MB|2GB",
-    "Config injection: shared_buffers"
-  );
-  await assertPgConfig(container, "wal_buffers", "16MB", "Config injection: wal_buffers");
-}
-
-/**
- * Test 31: default_statistics_target (DW)
- */
-async function caseStatisticsTargetDw(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 1638[0-9]MB \\(cgroup-v2\\)", "Detected 16GB via cgroup");
-  assertLogContains(
-    logs,
-    "default_statistics_target=500",
-    "default_statistics_target set to 500 for DW"
-  );
-
-  // Verify actual config
-  await assertPgConfig(
-    container,
-    "default_statistics_target",
-    "500",
-    "Config injection: default_statistics_target"
-  );
-}
-
-/**
- * Test 32: effective_cache_size realistic
- */
-async function caseEffectiveCacheSize(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  assertLogContains(
-    logs,
-    "effective_cache_size=",
-    "effective_cache_size calculated with OS overhead"
-  );
-
-  // Verify actual config (should be around 75% of RAM after OS overhead)
-  await assertPgConfig(
-    container,
-    "effective_cache_size",
-    "[2-3][0-9]{3}MB|[2-3]GB",
-    "Config injection: effective_cache_size"
-  );
-}
-
-/**
- * Test 33: Invalid workload type
- */
-async function caseInvalidWorkload(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  // Verify fallback to 'mixed' workload (WARNING is printed to stderr and may not be captured reliably)
-  assertLogContains(logs, "Workload: mixed", "Fell back to 'mixed' workload after invalid value");
-
-  // Verify fallback to mixed workload (max_connections=102 for 4GB mixed: 120×85%)
-  await assertPgConfig(
-    container,
-    "max_connections",
-    "102",
-    "Fallback to mixed workload: max_connections"
-  );
-}
-
-/**
- * Test 34: Invalid storage type
- */
-async function caseInvalidStorage(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 409[0-9]MB \\(cgroup-v2\\)", "Detected 4GB via cgroup");
-  // Verify fallback to 'ssd' storage (WARNING is printed to stderr and may not be captured reliably)
-  assertLogContains(logs, "Storage: ssd", "Fell back to 'ssd' storage after invalid value");
-
-  // Verify fallback to SSD storage (random_page_cost=1.1)
-  await assertPgConfig(
-    container,
-    "random_page_cost",
-    "1.1",
-    "Fallback to SSD storage: random_page_cost"
-  );
-}
-
-/**
- * Test 35: All env vars combined
- */
-async function caseAllEnvVars(logs: string, container: string): Promise<void> {
-  assertLogContains(logs, "RAM: 32768MB \\(manual\\)", "Manual override supports 32GB");
-  assertLogContains(logs, "max_connections=100", "Connections capped at 100 for DW workload");
-  assertLogContains(logs, "random_page_cost=1.1", "random_page_cost set to 1.1 for SAN");
-  assertLogContains(
-    logs,
-    "default_statistics_target=500",
-    "default_statistics_target set to 500 for DW"
-  );
-
-  // Verify all settings applied correctly (maintenance_io_concurrency set via -c flag, not logged)
-  await assertPgConfig(container, "max_connections", "100", "Config injection: max_connections");
-  await assertPgConfig(container, "random_page_cost", "1.1", "Config injection: random_page_cost");
-  await assertPgConfig(
-    container,
-    "maintenance_io_concurrency",
-    "20",
-    "Config injection: maintenance_io_concurrency"
-  );
-  await assertPgConfig(
-    container,
-    "default_statistics_target",
-    "500",
-    "Config injection: default_statistics_target"
-  );
-}
-
-/**
- * Main test execution
- */
-async function main(): Promise<void> {
-  // Check prerequisites
-  try {
-    await checkCommand("docker");
-  } catch {
-    error("Docker not found");
-    console.log("   Install Docker: https://docs.docker.com/get-docker/");
-    process.exit(1);
-  }
-
-  try {
-    await checkDockerDaemon();
-  } catch {
-    error("Docker daemon not running");
-    console.log("   Start Docker: open -a Docker (macOS) or sudo systemctl start docker (Linux)");
-    process.exit(1);
-  }
-
-  const harness = new TestHarness();
-  const imageTag = Bun.argv[2] || harness.getImage();
-
-  // Generate random test password at runtime
-  const testPassword =
-    Bun.env.TEST_POSTGRES_PASSWORD || `test_postgres_${Date.now()}_${process.pid}`;
-
-  // Ensure image is available (will auto-pull from registry if needed)
-  try {
-    await ensureImageAvailable(imageTag);
+    await fn();
+    const ms = Math.round(performance.now() - start);
+    results.push({ name, passed: true, ms });
+    console.log(`✅ ${name} (${ms}ms)`);
   } catch (err) {
-    error(
-      `Failed to ensure image availability: ${err instanceof Error ? err.message : String(err)}`
-    );
-    process.exit(1);
+    const ms = Math.round(performance.now() - start);
+    const message = err instanceof Error ? err.message : String(err);
+    results.push({ name, passed: false, ms, error: message });
+    console.log(`❌ ${name} (${ms}ms)\n   ${message.replaceAll("\n", "\n   ")}`);
   }
-
-  console.log("========================================");
-  console.log("Auto-Config Detection & Scaling Test");
-  console.log("========================================");
-  console.log(`Image tag: ${imageTag}`);
-  console.log();
-
-  // Test 1: Manual override without memory limit
-  await runCase(
-    "Test 1: Manual override without memory limit",
-    caseManualOverride,
-    ["-e", `POSTGRES_PASSWORD=${testPassword}`, "-e", "POSTGRES_MEMORY=1536"],
-    imageTag
-  );
-
-  // Test 2: 2GB memory limit (cgroup detection)
-  await runCase(
-    "Test 2: 2GB memory limit (cgroup detection)",
-    caseCgroup2g,
-    ["--memory=2g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 3: 512MB memory limit (minimum supported)
-  await runCase(
-    "Test 3: 512MB memory limit (minimum supported)",
-    caseLowMem,
-    ["--memory=512m", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 4: Manual high-memory override (64GB)
-  await runCase(
-    "Test 4: Manual high-memory override (64GB)",
-    caseHighMemManual,
-    ["-e", `POSTGRES_PASSWORD=${testPassword}`, "-e", "POSTGRES_MEMORY=65536"],
-    imageTag
-  );
-
-  // Test 5: CPU detection with limits
-  await runCase(
-    "Test 5: CPU detection with limits",
-    caseCpuDetection,
-    ["--cpus=2", "--memory=2g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 6: Below minimum memory - should fail
-  console.log("Test 6: Below minimum memory (256MB - should fail)");
-  console.log("====================================================");
-  const harnessTest6 = new TestHarness();
-  const containerBelowMin = harnessTest6.getContainerName("below-min");
-  try {
-    await $`docker run -d --name ${containerBelowMin} --memory=256m -e POSTGRES_PASSWORD=${testPassword} ${imageTag}`.quiet();
-
-    // Poll with timeout instead of fixed sleep
-    try {
-      await waitForPostgres({
-        host: "localhost",
-        port: 5432,
-        user: "postgres",
-        timeout: 15,
-        container: containerBelowMin,
-      });
-
-      // Container actually started (unexpected - should fail for < 512MB)
-      const logs = await $`docker logs ${containerBelowMin}`.text();
-      if (/FATAL.*512MB|minimum 512MB/.test(logs)) {
-        console.log("✅ Container rejected 256MB deployment (below 512MB minimum)");
-        await dockerCleanup(containerBelowMin);
-      } else {
-        error("Container should reject < 512MB but didn't");
-        console.log(logs);
-        await dockerCleanup(containerBelowMin);
-        throw new Error("Container should reject < 512MB");
-      }
-    } catch {
-      // PostgreSQL failed to start (expected for < 512MB)
-      const logs = await $`docker logs ${containerBelowMin}`.text();
-      console.log("✅ Container failed to start with 256MB (expected) - FATAL error in logs:");
-      const fatalLines = logs.split("\n").filter((line) => line.includes("FATAL"));
-      console.log(fatalLines.join("\n") || "(no FATAL found)");
-      await dockerCleanup(containerBelowMin);
-    }
-  } catch {
-    console.log("✅ Container failed to start with 256MB (expected)");
-  }
-  console.log();
-
-  // Test 7: Custom shared_preload_libraries override
-  await runCase(
-    "Test 7: Custom shared_preload_libraries override",
-    caseCustomSharedPreload,
-    [
-      "--memory=1g",
-      "-e",
-      `POSTGRES_PASSWORD=${testPassword}`,
-      "-e",
-      `POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries("production")},set_user`,
-    ],
-    imageTag
-  );
-
-  // Test 8: 4GB memory tier (medium production)
-  await runCase(
-    "Test 8: 4GB memory tier (medium production)",
-    case4gbTier,
-    ["--memory=4g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 9: 8GB memory tier (large production)
-  await runCase(
-    "Test 9: 8GB memory tier (large production)",
-    case8gbTier,
-    ["--memory=8g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 10: 16GB memory tier (high-load)
-  await runCase(
-    "Test 10: 16GB memory tier (high-load)",
-    case16gbTier,
-    ["--memory=16g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 11: 1GB RAM, 1 vCPU
-  await runCase(
-    "\n📌 Test 11: 1GB RAM, 1 vCPU",
-    case1gb1cpu,
-    ["-m", "1g", "--cpus=1", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 12: 3GB RAM, 2 vCPU
-  await runCase(
-    "\n📌 Test 12: 3GB RAM, 2 vCPU",
-    case3gb2cpu,
-    ["-m", "3g", "--cpus=2", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 13: 6GB RAM, 4 vCPU (parallel workers threshold)
-  await runCase(
-    "\n📌 Test 13: 6GB RAM, 4 vCPU (parallel workers threshold)",
-    case6gb4cpu,
-    ["-m", "6g", "--cpus=4", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 14: 12GB RAM, 4 vCPU (I/O workers threshold)
-  await runCase(
-    "\n📌 Test 14: 12GB RAM, 4 vCPU (I/O workers threshold)",
-    case12gb4cpu,
-    ["-m", "12g", "--cpus=4", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 15: 24GB RAM, 12 vCPU
-  await runCase(
-    "\n📌 Test 15: 24GB RAM, 4 vCPU",
-    case24gb4cpu,
-    ["-m", "24g", "--cpus=4", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 16: 32GB RAM, 14 vCPU, DW workload
-  // Skipped in CI environment (GitHub Actions runners have limited resources)
-  if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
-    await runCase(
-      "\n📌 Test 16: 32GB RAM, 14 vCPU, DW workload",
-      case32gb16cpuDw,
-      [
-        "-e",
-        "POSTGRES_MEMORY=32768",
-        "-e",
-        "POSTGRES_WORKLOAD_TYPE=dw",
-        "--cpus=14",
-        "-e",
-        `POSTGRES_PASSWORD=${testPassword}`,
-      ],
-      imageTag
-    );
-  } else {
-    console.log(
-      "\n⏭️  SKIPPED: Test 16 (32GB RAM, 14 vCPU, DW workload) - requires CI environment with sufficient resources"
-    );
-  }
-
-  // Test 17 & 18: Extreme memory tests (128GB & 192GB)
-  // Skipped in CI environment (GitHub Actions runners have limited resources)
-  if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
-    // Test 17: 128GB RAM, 14 vCPU
-    await runCase(
-      "\n📌 Test 17: 128GB RAM, 14 vCPU",
-      case128gb32cpu,
-      ["-e", "POSTGRES_MEMORY=131072", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-      imageTag
-    );
-
-    // Test 18: 192GB RAM, 14 vCPU
-    await runCase(
-      "\n📌 Test 18: 192GB RAM, 14 vCPU",
-      case192gb48cpu,
-      ["-e", "POSTGRES_MEMORY=196608", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-      imageTag
-    );
-  } else {
-    console.log(
-      "\n⏭️  SKIPPED: Tests 17-18 (128GB & 192GB RAM, 14 vCPU) - requires CI environment with sufficient resources"
-    );
-  }
-
-  // Test 19: Web workload, 8GB RAM
-  await runCase(
-    "\n📌 Test 19: Web workload, 8GB RAM",
-    caseWebWorkload,
-    ["-m", "8g", "-e", "POSTGRES_WORKLOAD_TYPE=web", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 20: OLTP workload, 8GB RAM
-  await runCase(
-    "\n📌 Test 20: OLTP workload, 8GB RAM",
-    caseOltpWorkload,
-    ["-m", "8g", "-e", "POSTGRES_WORKLOAD_TYPE=oltp", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 21: DW workload, 16GB RAM
-  await runCase(
-    "\n📌 Test 21: DW workload, 16GB RAM",
-    caseDwWorkload,
-    ["-m", "16g", "-e", "POSTGRES_WORKLOAD_TYPE=dw", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 22: Mixed workload (default), 8GB RAM
-  await runCase(
-    "\n📌 Test 22: Mixed workload (default), 8GB RAM",
-    caseMixedWorkload,
-    ["-m", "8g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 23: HDD storage
-  await runCase(
-    "\n📌 Test 23: HDD storage",
-    caseHddStorage,
-    ["-m", "8g", "-e", "POSTGRES_STORAGE_TYPE=hdd", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 24: SSD storage (default)
-  await runCase(
-    "\n📌 Test 24: SSD storage (default)",
-    caseSsdStorage,
-    ["-m", "8g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 25: SAN storage (Hetzner Volumes)
-  await runCase(
-    "\n📌 Test 25: SAN storage (Hetzner Volumes)",
-    caseSanStorage,
-    ["-m", "8g", "-e", "POSTGRES_STORAGE_TYPE=san", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 26: 14-core I/O workers
-  // Skipped in CI environment (requires 14 vCPU allocation)
-  if (!Bun.env.CI && !Bun.env.GITHUB_ACTIONS) {
-    await runCase(
-      "\n📌 Test 26: 14-core I/O workers",
-      case16coreIoWorkers,
-      ["-m", "16g", "--cpus=14", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-      imageTag
-    );
-  } else {
-    console.log(
-      "\n⏭️  SKIPPED: Test 26 (14-core I/O workers) - requires CI environment with sufficient resources"
-    );
-  }
-
-  // Test 27: 4-core threshold
-  await runCase(
-    "\n📌 Test 27: 4-core threshold",
-    case4coreThreshold,
-    ["-m", "4g", "--cpus=4", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 28: <4 cores (no parallel workers)
-  await runCase(
-    "\n📌 Test 28: <4 cores (no parallel workers)",
-    caseLowCoreNoParallel,
-    ["-m", "2g", "--cpus=2", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 29: checkpoint_completion_target
-  await runCase(
-    "\n📌 Test 29: checkpoint_completion_target",
-    caseCheckpointTarget,
-    ["-m", "4g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 30: wal_buffers
-  await runCase(
-    "\n📌 Test 30: wal_buffers",
-    caseWalBuffers,
-    ["-m", "8g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 31: default_statistics_target (DW)
-  await runCase(
-    "\n📌 Test 31: default_statistics_target (DW)",
-    caseStatisticsTargetDw,
-    ["-m", "16g", "-e", "POSTGRES_WORKLOAD_TYPE=dw", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 32: effective_cache_size realistic
-  await runCase(
-    "\n📌 Test 32: effective_cache_size realistic",
-    caseEffectiveCacheSize,
-    ["-m", "4g", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 33: Invalid workload type
-  await runCase(
-    "\n📌 Test 33: Invalid workload type",
-    caseInvalidWorkload,
-    ["-m", "4g", "-e", "POSTGRES_WORKLOAD_TYPE=invalid", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 34: Invalid storage type
-  await runCase(
-    "\n📌 Test 34: Invalid storage type",
-    caseInvalidStorage,
-    ["-m", "4g", "-e", "POSTGRES_STORAGE_TYPE=invalid", "-e", `POSTGRES_PASSWORD=${testPassword}`],
-    imageTag
-  );
-
-  // Test 35: All env vars combined
-  await runCase(
-    "\n📌 Test 35: All env vars combined",
-    caseAllEnvVars,
-    [
-      "-e",
-      "POSTGRES_MEMORY=32768",
-      "-e",
-      "POSTGRES_WORKLOAD_TYPE=dw",
-      "-e",
-      "POSTGRES_STORAGE_TYPE=san",
-      "-e",
-      `POSTGRES_PASSWORD=${testPassword}`,
-    ],
-    imageTag
-  );
-
-  console.log("========================================");
-  console.log("✅ All auto-config tests passed!");
-  console.log("✅ Total: 35 tests (34 success cases + 1 failure case)");
-  console.log("========================================");
 }
 
-// Run main function and handle errors
-main().catch((err) => {
-  error(err.message || "Test execution failed");
-  process.exit(1);
-});
+async function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, stdout, stderr };
+}
+
+const cpus = (count: number) => ["--cpu-period=100000", `--cpu-quota=${count * 100000}`];
+
+/** Parses `name = 'value'` lines of the generated config file (no value here contains a quote). */
+function parseConf(text: string): Map<string, string> {
+  const settings = new Map<string, string>();
+  for (const line of text.split("\n")) {
+    const match = line.match(/^([a-z_.]+) = '(.*)'$/);
+    if (match) settings.set(match[1]!, match[2]!);
+  }
+  return settings;
+}
+
+interface Row {
+  name: string;
+  docker: string[];
+  env?: Record<string, string>;
+  args?: string[];
+  exit?: number;
+  /** Exact prefix of the summary log line, up to the arrow. */
+  detected?: string;
+  /** Exact lines expected anywhere in stdout / stderr. */
+  stdoutLines?: string[];
+  stderrLines?: string[];
+  settings?: Record<string, string>;
+  argv?: string[];
+  include?: string;
+}
+
+// Expected values come from the entrypoint's formulas worked by hand (see the inline arithmetic), not from its output.
+const ROWS: Row[] = [
+  {
+    name: "POSTGRES_MEMORY=1536 overrides detection",
+    docker: [],
+    env: { POSTGRES_MEMORY: "1536" },
+    // 1536×25% = 384; mixed 120×50% (<2 GB) = 60; cache floor 2×384 = 768; work_mem pool floor 256/240 = 1
+    settings: {
+      shared_buffers: "384MB",
+      max_connections: "60",
+      effective_cache_size: "768MB",
+      work_mem: "1MB",
+      maintenance_work_mem: "96MB",
+    },
+  },
+  {
+    name: "2 GB / 2 CPU cgroup",
+    docker: ["--memory=2g", ...cpus(2)],
+    detected: "RAM: 2048MB (cgroup-v2), CPU: 2 cores (cgroup-v2), Workload: mixed, Storage: ssd",
+    // 120×70% = 84; <4 cores: workers 2+1 → floor 8, gather 1, maintenance 1
+    settings: {
+      shared_buffers: "512MB",
+      max_connections: "84",
+      effective_cache_size: "1024MB",
+      work_mem: "1MB",
+      max_worker_processes: "8",
+      max_parallel_workers: "2",
+      max_parallel_workers_per_gather: "1",
+      max_parallel_maintenance_workers: "1",
+      io_workers: "1",
+    },
+  },
+  {
+    name: "512 MB cgroup is the accepted minimum",
+    docker: ["--memory=512m"],
+    detected: "RAM: 512MB (cgroup-v2)",
+    // cache: 512−128−512 < 0 → floor 2×128 = 256; wal_buffers 128×3% = 3
+    settings: {
+      shared_buffers: "128MB",
+      max_connections: "60",
+      effective_cache_size: "256MB",
+      work_mem: "1MB",
+      maintenance_work_mem: "32MB",
+      wal_buffers: "3MB",
+    },
+  },
+  {
+    name: "256 MB cgroup is refused before PostgreSQL starts",
+    docker: ["--memory=256m"],
+    exit: 1,
+    stdoutLines: ["[POSTGRES] FATAL: Detected 256MB RAM - minimum 512MB REQUIRED"],
+  },
+  {
+    name: "POSTGRES_MEMORY=65536 (15% shared_buffers tier)",
+    docker: [],
+    env: { POSTGRES_MEMORY: "65536" },
+    // 65536×15% = 9830; pool 65536−9830−1200−512 = 53994 / 480 = 112 (mixed cap 256)
+    settings: {
+      shared_buffers: "9830MB",
+      max_connections: "120",
+      work_mem: "112MB",
+      effective_cache_size: "29819MB",
+      maintenance_work_mem: "2048MB",
+    },
+  },
+  {
+    name: "4 GB cgroup",
+    docker: ["--memory=4g"],
+    detected: "RAM: 4096MB (cgroup-v2)",
+    // 120×85% = 102; pool 4096−1024−1020−512 = 1540 / 408 = 3; cache floor 2×1024
+    settings: {
+      shared_buffers: "1024MB",
+      max_connections: "102",
+      work_mem: "3MB",
+      effective_cache_size: "2048MB",
+      checkpoint_completion_target: "0.9",
+    },
+  },
+  {
+    name: "8 GB cgroup, default workload and storage",
+    docker: ["--memory=8g"],
+    detected: "RAM: 8192MB (cgroup-v2)",
+    // pool 8192−2048−1200−512 = 4432 / 480 = 9; wal_buffers 2048×3% = 61 → cap 16
+    settings: {
+      shared_buffers: "2048MB",
+      max_connections: "120",
+      work_mem: "9MB",
+      effective_cache_size: "4096MB",
+      wal_buffers: "16MB",
+      min_wal_size: "1024MB",
+      max_wal_size: "4096MB",
+      default_statistics_target: "100",
+      random_page_cost: "1.1",
+      maintenance_io_concurrency: "20",
+      effective_io_concurrency: "200",
+    },
+  },
+  {
+    name: "16 GB cgroup (20% shared_buffers tier)",
+    docker: ["--memory=16g"],
+    // 16384×20% = 3276; pool 16384−3276−1200−512 = 11396 / 480 = 23; cache (16384−3276−3276)×70% = 6882
+    settings: {
+      shared_buffers: "3276MB",
+      max_connections: "120",
+      work_mem: "23MB",
+      effective_cache_size: "6882MB",
+    },
+  },
+  {
+    name: "1 GB / 1 CPU",
+    docker: ["--memory=1g", ...cpus(1)],
+    detected: "RAM: 1024MB (cgroup-v2), CPU: 1 cores (cgroup-v2)",
+    settings: {
+      shared_buffers: "256MB",
+      max_connections: "60",
+      max_worker_processes: "8",
+      max_parallel_workers: "1",
+      max_parallel_workers_per_gather: "1",
+      max_parallel_maintenance_workers: "1",
+      io_workers: "1",
+    },
+  },
+  {
+    name: "3 GB / 2 CPU",
+    docker: ["--memory=3g", ...cpus(2)],
+    // pool 3072−768−840−512 = 952 / 336 = 2
+    settings: { shared_buffers: "768MB", max_connections: "84", work_mem: "2MB" },
+  },
+  {
+    name: "6 GB / 4 CPU (parallel workers threshold)",
+    docker: ["--memory=6g", ...cpus(4)],
+    settings: {
+      shared_buffers: "1536MB",
+      max_connections: "102",
+      max_worker_processes: "8",
+      max_parallel_workers: "4",
+      max_parallel_workers_per_gather: "2",
+      max_parallel_maintenance_workers: "2",
+    },
+  },
+  {
+    name: "12 GB / 4 CPU",
+    docker: ["--memory=12g", ...cpus(4)],
+    settings: { shared_buffers: "2457MB", io_workers: "1" },
+  },
+  {
+    name: "24 GB / 4 CPU",
+    docker: ["--memory=24g", ...cpus(4)],
+    settings: { shared_buffers: "4915MB", io_workers: "1", max_worker_processes: "8" },
+  },
+  {
+    name: "POSTGRES_MEMORY=32768, dw, 14 CPU",
+    docker: cpus(14),
+    env: { POSTGRES_MEMORY: "32768", POSTGRES_WORKLOAD_TYPE: "dw" },
+    detected: "RAM: 32768MB (manual), CPU: 14 cores (cgroup-v2), Workload: dw, Storage: ssd",
+    // pool 32768−6553−1000−512 = 24703 / 400 = 61 (dw cap 256); 32768/8 → cap 2048; workers 14+7 = 21
+    settings: {
+      max_connections: "100",
+      work_mem: "61MB",
+      maintenance_work_mem: "2048MB",
+      default_statistics_target: "500",
+      min_wal_size: "4096MB",
+      max_wal_size: "16384MB",
+      max_worker_processes: "21",
+      max_parallel_workers: "14",
+      max_parallel_workers_per_gather: "7",
+      max_parallel_maintenance_workers: "4",
+      io_workers: "3",
+    },
+  },
+  {
+    name: "POSTGRES_MEMORY=131072, 14 CPU",
+    docker: cpus(14),
+    env: { POSTGRES_MEMORY: "131072" },
+    settings: { shared_buffers: "19660MB", io_workers: "3", max_worker_processes: "21" },
+  },
+  {
+    name: "POSTGRES_MEMORY=196608, 14 CPU",
+    docker: cpus(14),
+    env: { POSTGRES_MEMORY: "196608" },
+    settings: { shared_buffers: "29491MB", max_worker_processes: "21" },
+  },
+  {
+    name: "8 GB web",
+    docker: ["--memory=8g"],
+    env: { POSTGRES_WORKLOAD_TYPE: "web" },
+    // pool 8192−2048−2000−512 = 3632 / 800 = 4 (web cap 32)
+    settings: {
+      max_connections: "200",
+      work_mem: "4MB",
+      default_statistics_target: "100",
+      min_wal_size: "1024MB",
+      max_wal_size: "4096MB",
+    },
+  },
+  {
+    name: "8 GB oltp",
+    docker: ["--memory=8g"],
+    env: { POSTGRES_WORKLOAD_TYPE: "oltp" },
+    settings: { max_connections: "300", min_wal_size: "2048MB", max_wal_size: "8192MB" },
+  },
+  {
+    name: "16 GB dw",
+    docker: ["--memory=16g"],
+    env: { POSTGRES_WORKLOAD_TYPE: "dw" },
+    settings: {
+      max_connections: "100",
+      default_statistics_target: "500",
+      min_wal_size: "4096MB",
+      maintenance_work_mem: "2048MB",
+    },
+  },
+  {
+    name: "8 GB hdd",
+    docker: ["--memory=8g"],
+    env: { POSTGRES_STORAGE_TYPE: "hdd" },
+    settings: {
+      random_page_cost: "4.0",
+      maintenance_io_concurrency: "10",
+      effective_io_concurrency: "2",
+    },
+  },
+  {
+    name: "8 GB san",
+    docker: ["--memory=8g"],
+    env: { POSTGRES_STORAGE_TYPE: "san" },
+    settings: {
+      random_page_cost: "1.1",
+      maintenance_io_concurrency: "20",
+      effective_io_concurrency: "300",
+    },
+  },
+  {
+    name: "16 GB / 14 CPU",
+    docker: ["--memory=16g", ...cpus(14)],
+    settings: { io_workers: "3", max_parallel_maintenance_workers: "4" },
+  },
+  {
+    name: "4 GB / 4 CPU",
+    docker: ["--memory=4g", ...cpus(4)],
+    settings: {
+      max_parallel_workers: "4",
+      max_parallel_workers_per_gather: "2",
+      max_parallel_maintenance_workers: "2",
+    },
+  },
+  {
+    name: "invalid POSTGRES_WORKLOAD_TYPE falls back to mixed and says so",
+    docker: ["--memory=4g"],
+    env: { POSTGRES_WORKLOAD_TYPE: "invalid" },
+    exit: 0,
+    detected: "RAM: 4096MB (cgroup-v2)",
+    stderrLines: [
+      "[POSTGRES] WARNING: Invalid POSTGRES_WORKLOAD_TYPE='invalid' - defaulting to 'mixed'",
+    ],
+    settings: { max_connections: "102", min_wal_size: "1024MB" },
+  },
+  {
+    name: "invalid POSTGRES_STORAGE_TYPE falls back to ssd and says so",
+    docker: ["--memory=4g"],
+    env: { POSTGRES_STORAGE_TYPE: "invalid" },
+    exit: 0,
+    stderrLines: [
+      "[POSTGRES] WARNING: Invalid POSTGRES_STORAGE_TYPE='invalid' - defaulting to 'ssd'",
+    ],
+    settings: { random_page_cost: "1.1", maintenance_io_concurrency: "20" },
+  },
+  {
+    name: "POSTGRES_MEMORY=32768, dw, san",
+    docker: [],
+    env: {
+      POSTGRES_MEMORY: "32768",
+      POSTGRES_WORKLOAD_TYPE: "dw",
+      POSTGRES_STORAGE_TYPE: "san",
+    },
+    settings: {
+      max_connections: "100",
+      random_page_cost: "1.1",
+      maintenance_io_concurrency: "20",
+      effective_io_concurrency: "300",
+      default_statistics_target: "500",
+    },
+  },
+  {
+    name: "1.5 GB cgroup",
+    docker: ["--memory=1536m"],
+    detected: "RAM: 1536MB (cgroup-v2)",
+    settings: { shared_buffers: "384MB", max_connections: "60" },
+  },
+  {
+    name: "512 MB + hdd + web",
+    docker: ["--memory=512m"],
+    env: { POSTGRES_STORAGE_TYPE: "hdd", POSTGRES_WORKLOAD_TYPE: "web" },
+    // web 200×50% = 100
+    settings: { shared_buffers: "128MB", random_page_cost: "4.0", max_connections: "100" },
+  },
+  {
+    name: "6 GB + oltp + san + 4 CPU",
+    docker: ["--memory=6g", ...cpus(4)],
+    env: { POSTGRES_WORKLOAD_TYPE: "oltp", POSTGRES_STORAGE_TYPE: "san" },
+    // oltp 300×85% = 255
+    settings: {
+      shared_buffers: "1536MB",
+      max_connections: "255",
+      random_page_cost: "1.1",
+      max_parallel_workers: "4",
+    },
+  },
+  // Art's ruling: a value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
+  {
+    name: "operator -c max_connections=7 follows the generated config_file and is logged",
+    docker: ["--memory=2g"],
+    args: ["postgres", "-c", "max_connections=7"],
+    argv: ["postgres", "-c", `config_file=${AUTO_CONFIG_FILE}`, "-c", "max_connections=7"],
+    stdoutLines: ["[POSTGRES] [AUTO-CONFIG] max_connections: -c 7 overrides auto-tuned 84"],
+    include: "/var/lib/postgresql/18/docker/postgresql.conf",
+  },
+  {
+    name: "operator --config-file is included, not passed as a second config_file",
+    docker: ["--memory=2g"],
+    args: ["postgres", "--config-file=/x.conf"],
+    argv: ["postgres", "-c", `config_file=${AUTO_CONFIG_FILE}`],
+    include: "/x.conf",
+  },
+];
+
+/** Stub for the official entrypoint: prints its argv, then the config file it was told to use. */
+const STUB = [
+  "#!/bin/sh",
+  'for a in "$@"; do printf \'ARGV %s\\n\' "$a"; done',
+  'for a in "$@"; do',
+  '  case "$a" in config_file=*) echo "CONFIG ${a#config_file=}"; cat "${a#config_file=}" ;; esac',
+  "done",
+  "",
+].join("\n");
+
+function checkRow(row: Row, result: { code: number; stdout: string; stderr: string }): string[] {
+  const failures: string[] = [];
+  const expectedExit = row.exit ?? 0;
+  if (result.code !== expectedExit) failures.push(`exit ${result.code}, expected ${expectedExit}`);
+  const stdoutLines = result.stdout.split("\n");
+  const stderrLines = result.stderr.split("\n");
+  for (const line of row.stdoutLines ?? []) {
+    if (!stdoutLines.includes(line)) failures.push(`stdout lacks line: ${line}`);
+  }
+  for (const line of row.stderrLines ?? []) {
+    if (!stderrLines.includes(line)) failures.push(`stderr lacks line: ${line}`);
+  }
+  if (row.detected) {
+    const prefix = `[POSTGRES] [AUTO-CONFIG] ${row.detected}`;
+    if (
+      !stdoutLines.some(
+        (line) => line.startsWith(prefix) && /^[,→ ]/.test(line.slice(prefix.length))
+      )
+    ) {
+      failures.push(`no summary line starting: ${prefix}`);
+    }
+  }
+  if (expectedExit !== 0) return failures;
+
+  const argv = stdoutLines.filter((l) => l.startsWith("ARGV ")).map((l) => l.slice(5));
+  if (argv[0] !== "postgres" || argv[1] !== "-c" || argv[2] !== `config_file=${AUTO_CONFIG_FILE}`) {
+    failures.push(
+      `stub argv does not start with the generated config_file: ${JSON.stringify(argv)}`
+    );
+  }
+  if (row.argv && JSON.stringify(argv) !== JSON.stringify(row.argv)) {
+    failures.push(`argv ${JSON.stringify(argv)}, expected ${JSON.stringify(row.argv)}`);
+  }
+  const confStart = stdoutLines.indexOf(`CONFIG ${AUTO_CONFIG_FILE}`);
+  if (confStart < 0) return [...failures, "stub printed no config file"];
+  const confLines = stdoutLines.slice(confStart + 1);
+  const include = confLines.find((l) => !l.startsWith("#"));
+  if (row.include && include !== `include '${row.include}'`) {
+    failures.push(
+      `first setting line ${JSON.stringify(include)}, expected include '${row.include}'`
+    );
+  }
+  const conf = parseConf(confLines.join("\n"));
+  for (const [name, value] of Object.entries(row.settings ?? {})) {
+    if (conf.get(name) !== value) {
+      failures.push(`${name} = ${JSON.stringify(conf.get(name))}, expected '${value}'`);
+    }
+  }
+  return failures;
+}
+
+async function dryRun(row: Row, entrypoint: string, stub: string): Promise<void> {
+  const name = `${RUN_ID}-dry-${ROWS.indexOf(row)}`;
+  containers.add(name);
+  try {
+    const env = Object.entries(row.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const result = await run([
+      "docker",
+      "run",
+      "--rm",
+      "--name",
+      name,
+      // tmpfs over the image's PGDATA volume: no anonymous volume to create and copy into, nothing left behind
+      "--tmpfs",
+      "/var/lib/postgresql",
+      "--network",
+      "none",
+      ...row.docker,
+      ...env,
+      "-v",
+      `${entrypoint}:/usr/local/bin/docker-auto-config-entrypoint.sh:ro`,
+      "-v",
+      `${stub}:/usr/local/bin/docker-entrypoint.sh:ro`,
+      IMAGE,
+      ...(row.args ?? []),
+    ]);
+    const failures = checkRow(row, result);
+    if (failures.length > 0) {
+      throw new Error(
+        `${failures.join("\n")}\n--- stdout ---\n${result.stdout}--- stderr ---\n${result.stderr}`
+      );
+    }
+  } finally {
+    await run(["docker", "rm", "-f", "-v", name]);
+    containers.delete(name);
+  }
+}
+
+async function psql(container: string, sql: string): Promise<string> {
+  const result = await run([
+    "docker",
+    "exec",
+    container,
+    "psql",
+    "-X",
+    "-U",
+    "postgres",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-tAc",
+    sql,
+  ]);
+  if (result.code !== 0) throw new Error(`psql failed (${result.code}): ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+/** Every setting in the generated file must be in effect from that file: PostgreSQL accepted and applied it. */
+async function assertGeneratedSettingsApplied(
+  container: string,
+  except: string[] = []
+): Promise<void> {
+  const file = await run(["docker", "exec", container, "cat", AUTO_CONFIG_FILE]);
+  if (file.code !== 0) throw new Error(`cannot read ${AUTO_CONFIG_FILE}: ${file.stderr}`);
+  const names = [...parseConf(file.stdout).keys()].filter((n) => !except.includes(n));
+  if (names.length === 0)
+    throw new Error(`no settings parsed from ${AUTO_CONFIG_FILE}:\n${file.stdout}`);
+  const list = names.map((n) => `'${n}'`).join(",");
+  const rows = await psql(
+    container,
+    `SELECT n || '|' || coalesce(s.sourcefile, '<' || coalesce(s.source, 'missing') || '>')
+       FROM unnest(ARRAY[${list}]) AS n LEFT JOIN pg_settings s ON s.name = n ORDER BY n`
+  );
+  const wrong = rows.split("\n").filter((line) => !line.endsWith(`|${AUTO_CONFIG_FILE}`));
+  if (wrong.length > 0)
+    throw new Error(`settings not in effect from ${AUTO_CONFIG_FILE}:\n${wrong.join("\n")}`);
+}
+
+async function realBoot(
+  suffix: string,
+  dockerArgs: string[],
+  entrypoint: string,
+  check: (container: string) => Promise<void>
+): Promise<void> {
+  const name = `${RUN_ID}-${suffix}`;
+  containers.add(name);
+  try {
+    const started = await run([
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      name,
+      "-e",
+      `POSTGRES_PASSWORD=autoconfig-${process.pid}`,
+      ...dockerArgs,
+      "-v",
+      `${entrypoint}:/usr/local/bin/docker-auto-config-entrypoint.sh:ro`,
+      IMAGE,
+    ]);
+    if (started.code !== 0) throw new Error(`docker run failed: ${started.stderr}`);
+    await waitForPostgres({ container: name, timeout: 90 });
+    await check(name);
+  } finally {
+    await run(["docker", "rm", "-f", "-v", name]);
+    containers.delete(name);
+  }
+}
+
+async function main(): Promise<void> {
+  console.log(`Auto-config suite against ${IMAGE}`);
+  const dir = await mkdtemp(join(tmpdir(), "aza-autoconfig-"));
+  const removeAll = async () => {
+    await Promise.all([...containers].map((c) => run(["docker", "rm", "-f", "-v", c])));
+    await rm(dir, { recursive: true, force: true });
+  };
+  process.on("SIGINT", () => void removeAll().then(() => process.exit(130)));
+  try {
+    // The image still ships the entrypoint from before 9670b58; mounting the repo's generated copy tests the code that
+    // will ship. Drop this mount (use the image's own file) once the image is rebuilt.
+    const entrypoint = join(dir, "docker-auto-config-entrypoint.sh");
+    await Bun.write(entrypoint, Bun.file(REPO_ENTRYPOINT));
+    await chmod(entrypoint, 0o755);
+    const stub = join(dir, "docker-entrypoint.sh");
+    await Bun.write(stub, STUB);
+    await chmod(stub, 0o755);
+    const defaultPreload = (await Bun.file(REPO_ENTRYPOINT).text()).match(
+      /^readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="([^"]+)"$/m
+    )?.[1];
+    if (!defaultPreload)
+      throw new Error(`DEFAULT_SHARED_PRELOAD_LIBRARIES not found in ${REPO_ENTRYPOINT}`);
+
+    const boots = Promise.all([
+      test("real boot 512 MB / 1 CPU: every tuned value in effect, operator preload and ALTER SYSTEM win", () =>
+        realBoot(
+          "min",
+          [
+            "--memory=512m",
+            ...cpus(1),
+            "-e",
+            `POSTGRES_SHARED_PRELOAD_LIBRARIES=${defaultPreload},set_user`,
+          ],
+          entrypoint,
+          async (container) => {
+            await assertGeneratedSettingsApplied(container);
+            const preload = await psql(container, "SHOW shared_preload_libraries");
+            if (preload !== `${defaultPreload},set_user`) {
+              throw new Error(
+                `shared_preload_libraries = ${preload}, expected ${defaultPreload},set_user`
+              );
+            }
+            await psql(container, "ALTER SYSTEM SET work_mem = '77MB'");
+            await psql(container, "SELECT pg_reload_conf()");
+            // Reload is asynchronous: poll until the postmaster has re-read the files.
+            const deadline = Date.now() + 10_000;
+            let workMem = "";
+            while (Date.now() < deadline) {
+              workMem = await psql(container, "SHOW work_mem");
+              if (workMem === "77MB") break;
+              await Bun.sleep(100);
+            }
+            if (workMem !== "77MB")
+              throw new Error(`SHOW work_mem = ${workMem} after ALTER SYSTEM, expected 77MB`);
+            await assertGeneratedSettingsApplied(container, ["work_mem"]);
+          }
+        )),
+      test("real boot largest tier (65536 MB, dw, 14 CPU): PostgreSQL accepts every tuned value", () =>
+        realBoot(
+          "dw",
+          [...cpus(14), "-e", "POSTGRES_MEMORY=65536", "-e", "POSTGRES_WORKLOAD_TYPE=dw"],
+          entrypoint,
+          (container) => assertGeneratedSettingsApplied(container)
+        )),
+    ]);
+
+    const queue = [...ROWS];
+    await Promise.all(
+      Array.from({ length: DRY_RUN_CONCURRENCY }, async () => {
+        for (let row = queue.shift(); row; row = queue.shift()) {
+          const current = row;
+          await test(`dry run: ${current.name}`, () => dryRun(current, entrypoint, stub));
+        }
+      })
+    );
+    await boots;
+  } finally {
+    await removeAll();
+  }
+
+  const failed = results.filter((r) => !r.passed);
+  console.log(`\n${results.length - failed.length}/${results.length} passed`);
+  if (failed.length > 0) {
+    for (const f of failed) console.log(`❌ ${f.name}`);
+    process.exit(1);
+  }
+}
+
+await main();

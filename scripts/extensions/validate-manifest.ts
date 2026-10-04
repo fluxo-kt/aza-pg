@@ -15,7 +15,6 @@ interface ManifestCounts {
   pgdg: number;
   percona: number;
   timescale: number;
-  githubRelease: number;
   compiled: number;
   enabled: number;
   disabled: number;
@@ -47,10 +46,7 @@ interface ManifestEntry {
   name: string;
   displayName?: string;
   kind: "extension" | "builtin" | "tool";
-  install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
-  githubRepo?: string;
-  githubReleaseTag?: string;
-  githubAssetPattern?: string;
+  install_via?: "pgdg" | "percona" | "timescale" | "source";
   soFileName?: string;
   source?: SourceSpec;
   runtime?: RuntimeSpec;
@@ -109,16 +105,14 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
   const percona = manifest.entries.filter((e) => e.install_via === "percona").length;
   const timescale = manifest.entries.filter((e) => e.install_via === "timescale").length;
-  const githubRelease = manifest.entries.filter((e) => e.install_via === "github-release").length;
 
-  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale, not github-release)
+  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale)
   const compiled = manifest.entries.filter(
     (e) =>
       e.kind !== "builtin" &&
       e.install_via !== "pgdg" &&
       e.install_via !== "percona" &&
-      e.install_via !== "timescale" &&
-      e.install_via !== "github-release"
+      e.install_via !== "timescale"
   ).length;
 
   const enabled = manifest.entries.filter((e) => e.enabled !== false).length;
@@ -130,15 +124,14 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   console.log(`  PGDG: ${pgdg}`);
   console.log(`  Percona: ${percona}`);
   console.log(`  Timescale: ${timescale}`);
-  console.log(`  GitHub Release: ${githubRelease}`);
   console.log(`  Compiled: ${compiled}`);
   console.log(`  Enabled: ${enabled}`);
   console.log(`  Disabled: ${disabled}`);
 
   // Sanity check: counts should sum correctly
-  if (builtin + pgdg + percona + timescale + githubRelease + compiled !== total) {
+  if (builtin + pgdg + percona + timescale + compiled !== total) {
     error(
-      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + githubRelease(${githubRelease}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + githubRelease + compiled}, but total = ${total}`
+      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + compiled}, but total = ${total}`
     );
   }
 
@@ -148,7 +141,7 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
     );
   }
 
-  return { total, builtin, pgdg, percona, timescale, githubRelease, compiled, enabled, disabled };
+  return { total, builtin, pgdg, percona, timescale, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -327,92 +320,6 @@ function validateDependencies(manifest: Manifest): void {
   }
 }
 
-// 7. GitHub release entry validation
-function validateGithubReleaseEntries(manifest: Manifest): void {
-  console.log(); // Empty line for spacing
-  logger.info("[GITHUB RELEASE VALIDATION]");
-
-  const githubReleaseEntries = manifest.entries.filter(
-    (e) => e.install_via === "github-release" && e.enabled !== false
-  );
-
-  if (githubReleaseEntries.length === 0) {
-    console.log("  No enabled GitHub release entries to validate");
-    return;
-  }
-
-  for (const entry of githubReleaseEntries) {
-    // Check required fields
-    if (!entry.githubRepo) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubRepo' field`);
-    }
-    if (!entry.githubReleaseTag) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubReleaseTag' field`);
-    }
-    if (!entry.githubAssetPattern) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubAssetPattern' field`);
-    }
-    if (!entry.soFileName) {
-      error(`GitHub release entry '${entry.name}' is missing required 'soFileName' field`);
-    }
-
-    // Validate githubRepo format (owner/repo)
-    if (entry.githubRepo && !/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(entry.githubRepo)) {
-      error(
-        `GitHub release entry '${entry.name}' has invalid githubRepo format: '${entry.githubRepo}'. Expected: owner/repo`
-      );
-    }
-
-    // Validate soFileName format
-    if (entry.soFileName && !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      error(
-        `GitHub release entry '${entry.name}' has invalid soFileName: '${entry.soFileName}'. Expected: name.so or name-version.so`
-      );
-    }
-
-    // Validate asset pattern has required placeholders
-    if (entry.githubAssetPattern) {
-      const hasVersion =
-        entry.githubAssetPattern.includes("{version}") ||
-        entry.githubAssetPattern.includes(entry.githubReleaseTag || "");
-      const hasArch = entry.githubAssetPattern.includes("{arch}");
-
-      if (!hasArch) {
-        warn(
-          `GitHub release entry '${entry.name}' asset pattern may not support multi-arch (missing {arch} placeholder)`
-        );
-      }
-      if (!hasVersion) {
-        warn(
-          `GitHub release entry '${entry.name}' asset pattern may not include version information`
-        );
-      }
-    }
-
-    // Validate consistency between githubReleaseTag and source.tag
-    if (entry.githubReleaseTag && entry.source?.type === "git" && "tag" in entry.source) {
-      const githubTag = entry.githubReleaseTag;
-      const sourceTag = entry.source.tag;
-
-      // Extract semantic versions (strip 'v' prefix if present)
-      const normalizeVersion = (v: string): string => v.replace(/^v/, "");
-      const normalizedGithubTag = normalizeVersion(githubTag);
-      const normalizedSourceTag = normalizeVersion(sourceTag);
-
-      if (normalizedGithubTag !== normalizedSourceTag) {
-        error(
-          `GitHub release entry '${entry.name}' has inconsistent version tags:\n` +
-            `  githubReleaseTag: '${githubTag}' (normalized: '${normalizedGithubTag}')\n` +
-            `  source.tag:       '${sourceTag}' (normalized: '${normalizedSourceTag}')\n` +
-            `  These should reference the same version to ensure correct asset downloads.`
-        );
-      }
-    }
-  }
-
-  console.log(`  Validated ${githubReleaseEntries.length} GitHub release entries`);
-}
-
 // Main validation
 async function main(): Promise<void> {
   logger.separator();
@@ -428,7 +335,6 @@ async function main(): Promise<void> {
     await validateSharedPreloadLibraries(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
-    validateGithubReleaseEntries(manifest);
 
     // Store counts for success message
     const manifestCounts = counts;
@@ -456,7 +362,7 @@ async function main(): Promise<void> {
       logger.success(
         `Manifest validation passed (${manifestCounts.total} extensions: ` +
           `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.percona} Percona + ` +
-          `${manifestCounts.timescale} Timescale + ${manifestCounts.githubRelease} GitHub + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.timescale} Timescale + ${manifestCounts.compiled} compiled, ` +
           `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);

@@ -107,17 +107,13 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - aptPackages: System packages required for building
  * - sourceLibraries: SOURCE_LIBRARIES keys the module links against (built first, shipped once)
  * - notes: General notes about the extension
- * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build, "github-release" for GitHub binaries)
- * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
- * - githubReleaseTag: GitHub release tag for downloading assets (required when install_via="github-release")
- * - githubAssetPattern: Asset filename pattern with {version}, {pgMajor}, {arch} placeholders (required when install_via="github-release")
- * - x86CpuFlags: x86 CPU flags the binary needs; hosts lacking one get the extension hidden (scripts/extensions/cpu-gate.ts)
+ * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build)
  * - pgdgPackage: PGDG apt name suffix, postgresql-<major>-<pgdgPackage> (required when install_via="pgdg" for extensions)
  * - perconaVersion: Version string for Percona packages (required when install_via="percona")
  * - perconaPackage: Package name for Percona packages (required when install_via="percona")
  * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
  * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
- * - soFileName: Shared object filename for verification (required when install_via="percona", "timescale", or "github-release")
+ * - soFileName: Shared object filename. Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
  * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
@@ -135,14 +131,10 @@ export const ManifestEntrySchema = type({
   "aptPackages?": "string[]",
   "sourceLibraries?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'percona'|'timescale'|'source'|'github-release'",
-  "githubRepo?": "string",
-  "githubReleaseTag?": "string",
-  "githubAssetPattern?": "string",
+  "install_via?": "'pgdg'|'percona'|'timescale'|'source'",
   "perconaVersion?": "string",
   "perconaPackage?": "string",
   "pgdgPackage?": "string",
-  "x86CpuFlags?": "string[]",
   "timescaleVersion?": "string",
   "timescalePackage?": "string",
   "soFileName?": "string",

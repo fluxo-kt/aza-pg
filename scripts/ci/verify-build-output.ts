@@ -100,9 +100,8 @@ async function getCatalogStats(): Promise<CatalogStats> {
 }
 
 async function verifyExtensionCount(image: string, expectedMin: number): Promise<number> {
-  // Counts CPU-gated extensions too: they ship in the image, outside the default directory.
   const result =
-    await $`docker run --rm ${image} sh -c 'ls -1 /usr/share/postgresql/*/extension/*.control /usr/share/postgresql/*/cpu-gated/*/extension/*.control 2>/dev/null'`
+    await $`docker run --rm ${image} sh -c 'ls -1 /usr/share/postgresql/*/extension/*.control 2>/dev/null'`
       .nothrow()
       .text();
 

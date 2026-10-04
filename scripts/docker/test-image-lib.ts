@@ -194,8 +194,7 @@ export function testPreloadedExtensions(container: string): Promise<TestResult> 
 
 /**
  * The initdb scripts create a baseline set of extensions. The expected set is read from the generated
- * 01-extensions.sql (plus pg_cron, which 01b-pg_cron.sh creates), never copied here. An extension the
- * SQL gates on pg_available_extensions (CPU-gated vectorscale) may be absent only when the image hid it.
+ * 01-extensions.sql (plus pg_cron, which 01b-pg_cron.sh creates), never copied here.
  */
 export function testPrecreatedExtensions(container: string): Promise<TestResult> {
   return check("Initdb-created extensions exist", async () => {
@@ -205,18 +204,11 @@ export function testPrecreatedExtensions(container: string): Promise<TestResult>
     const expected = [...arrayLiteral.matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
     expect(expected.length > 0, "v_expected_exts array in 01-extensions.sql is empty");
     expected.push("pg_cron");
-    const gated = new Set(
-      [...initSql.matchAll(/pg_available_extensions WHERE name = '([^']+)'/g)].map(
-        (m) => m[1] as string
-      )
-    );
     const list = expected.map((name) => `'${name}'`).join(",");
     const missing = await sqlOk(
       container,
       `SELECT e FROM unnest(ARRAY[${list}]::text[]) e
        WHERE e NOT IN (SELECT extname FROM pg_extension)
-         AND (e <> ALL(ARRAY[${[...gated].map((g) => `'${g}'`).join(",") || "''"}]::text[])
-              OR e IN (SELECT name FROM pg_available_extensions))
        ORDER BY e`
     );
     expect(missing === "", `not in pg_extension: ${missing.split("\n").join(", ")}`);

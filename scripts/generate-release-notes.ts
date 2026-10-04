@@ -83,7 +83,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "github-release" | "source";
+  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "source";
 }
 
 // Category merge map: source → target
@@ -269,14 +269,13 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
-// Pre-compiled packages (pgdg, percona, timescale, github-release) all use 📦️
+// Pre-compiled packages (pgdg, percona, timescale) all use 📦️
 // Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
   pgdg: "📦️",
   percona: "📦️",
   timescale: "📦️",
-  "github-release": "📦️",
   source: "🏗️",
 };
 

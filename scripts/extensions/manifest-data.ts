@@ -137,7 +137,7 @@ export interface ManifestEntry {
   /** Keys of SOURCE_LIBRARIES this module links against; they are built before it. */
   sourceLibraries?: SourceLibraryName[];
   notes?: string[];
-  install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
+  install_via?: "pgdg" | "percona" | "timescale" | "source";
   /**
    * Full PGDG Debian package version string for apt-installable extensions.
    * Only applicable when install_via === "pgdg".
@@ -154,12 +154,6 @@ export interface ManifestEntry {
    */
   pgdgPackage?: string;
   /**
-   * x86 CPU flags (as /proc/cpuinfo names them) the shipped binary executes without checking for them
-   * first. On an x86-64 host lacking any of them the image hides the extension instead of letting
-   * CREATE EXTENSION crash the server; see scripts/extensions/cpu-gate.ts.
-   */
-  x86CpuFlags?: string[];
-  /**
    * Full Percona Debian package version string for Percona-installable extensions.
    * Only applicable when install_via === "percona".
    * Example: "2.3.1-1.noble" for percona-pg-stat-monitor18=2.3.1-1.noble
@@ -175,8 +169,8 @@ export interface ManifestEntry {
   perconaPackage?: string;
   /**
    * Shared object filename for .so file verification.
-   * Required when install_via === "percona", "timescale", or "github-release".
-   * Example: "pg_stat_monitor.so", "timescaledb.so", or "vectorscale-0.9.0.so"
+   * Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
+   * Example: "pg_stat_monitor.so" or "timescaledb.so"
    */
   soFileName?: string;
   /**
@@ -197,24 +191,6 @@ export interface ManifestEntry {
    * Example: "2.24.0~debian13-1801"
    */
   timescaleVersion?: string;
-  /**
-   * GitHub repository in owner/repo format for github-release installations.
-   * Required when install_via === "github-release".
-   * Example: "timescale/pgvectorscale"
-   */
-  githubRepo?: string;
-  /**
-   * GitHub release tag for downloading assets.
-   * Required when install_via === "github-release".
-   * Example: "0.9.0"
-   */
-  githubReleaseTag?: string;
-  /**
-   * Asset filename pattern with placeholders: {version}, {pgMajor}, {arch}.
-   * Required when install_via === "github-release".
-   * Example: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip"
-   */
-  githubAssetPattern?: string;
   enabled?: boolean;
   /**
    * Enable this extension in regression test mode even if disabled in production.
@@ -1096,12 +1072,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "vectorscale",
     displayName: "pgvectorscale",
     kind: "extension",
-    install_via: "github-release",
-    githubRepo: "timescale/pgvectorscale",
-    githubReleaseTag: "0.9.1",
-    githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
     soFileName: "vectorscale-0.9.1.so",
-    x86CpuFlags: ["avx2", "fma"],
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
     source: {
@@ -1109,13 +1080,23 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/timescale/pgvectorscale.git",
       tag: "0.9.1",
     },
+    // Built from source, not timescale's release binary: that binary is compiled with AVX2/FMA on for
+    // every function and kills the server (SIGILL) on x86-64 CPUs without them. The patch removes the
+    // global target-feature flags and selects AVX2+FMA kernels at runtime; refresh it on every bump.
+    // Features pinned (= upstream's defaults at 0.9.1) so an upstream default change cannot alter the build.
+    build: {
+      type: "cargo-pgrx",
+      subdir: "pgvectorscale",
+      features: ["pg18", "build_parallel"],
+      noDefaultFeatures: true,
+      patches: ["vectorscale-runtime-dispatch.patch"],
+    },
     dependencies: ["vector"],
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
       notes: [
-        "Installed from GitHub release binaries",
-        "amd64 binary needs AVX2 and FMA; on hosts without them the extension is hidden (CREATE EXTENSION reports it unavailable) instead of crashing the server.",
+        "Built from source with runtime CPU dispatch: AVX2/FMA only when the CPU has them",
         "Supports both amd64 and arm64 architectures",
         "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
         "Alt: PGDG has no package (Rust pgrx extension)",

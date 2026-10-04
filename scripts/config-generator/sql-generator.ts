@@ -5,7 +5,6 @@
 
 import { createHash } from "crypto";
 import { format } from "sql-formatter";
-import { requiredX86Flags } from "../extensions/cpu-gate";
 import { MANIFEST_METADATA, type ManifestEntry } from "../extensions/manifest-data";
 import { resolveExtensionDependencies } from "../test/manifest-test-utils";
 
@@ -88,7 +87,6 @@ export async function generateExtensionsInitScript(
   );
   lines.push("    v_created_exts TEXT[] := ARRAY[]::TEXT[];");
   lines.push("    v_failed_exts TEXT[] := ARRAY[]::TEXT[];");
-  lines.push("    v_skipped_exts TEXT[] := ARRAY[]::TEXT[];");
   lines.push("    v_error_msg TEXT;");
   lines.push("BEGIN");
   lines.push("    -- Record initialization start");
@@ -105,37 +103,19 @@ export async function generateExtensionsInitScript(
     for (const entry of extensionsToCreate) {
       const displayName = entry.displayName ?? entry.name;
       const category = entry.category ?? "misc";
-      const cpuFlags = requiredX86Flags(entry);
-      // A CPU-gated extension is expected only where the entrypoint put it on extension_control_path,
-      // so its absence from pg_available_extensions is this host's CPU, not a broken image.
-      const indent = cpuFlags.length > 0 ? "    " : "";
       lines.push("");
       lines.push(`    -- ${displayName} (${category})`);
-      if (cpuFlags.length > 0) {
-        lines.push(
-          `    IF NOT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = '${entry.name}') THEN`
-        );
-        lines.push(`        v_expected_exts := array_remove(v_expected_exts, '${entry.name}');`);
-        lines.push(`        v_skipped_exts := array_append(v_skipped_exts, '${entry.name}');`);
-        lines.push(
-          `        RAISE WARNING 'Skipped extension ${entry.name}: this CPU lacks ${cpuFlags.join(", ")}';`
-        );
-        lines.push("    ELSE");
-      }
-      lines.push(`${indent}    BEGIN`);
-      lines.push(`${indent}        CREATE EXTENSION IF NOT EXISTS "${entry.name}";`);
+      lines.push("    BEGIN");
+      lines.push(`        CREATE EXTENSION IF NOT EXISTS "${entry.name}";`);
+      lines.push(`        v_created_exts := array_append(v_created_exts, '${entry.name}');`);
+      lines.push(`        RAISE NOTICE 'Created extension: ${entry.name}';`);
+      lines.push("    EXCEPTION WHEN OTHERS THEN");
+      lines.push(`        v_failed_exts := array_append(v_failed_exts, '${entry.name}');`);
+      lines.push("        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;");
       lines.push(
-        `${indent}        v_created_exts := array_append(v_created_exts, '${entry.name}');`
+        `        RAISE WARNING 'Failed to create extension ${entry.name}: %', v_error_msg;`
       );
-      lines.push(`${indent}        RAISE NOTICE 'Created extension: ${entry.name}';`);
-      lines.push(`${indent}    EXCEPTION WHEN OTHERS THEN`);
-      lines.push(`${indent}        v_failed_exts := array_append(v_failed_exts, '${entry.name}');`);
-      lines.push(`${indent}        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;`);
-      lines.push(
-        `${indent}        RAISE WARNING 'Failed to create extension ${entry.name}: %', v_error_msg;`
-      );
-      lines.push(`${indent}    END;`);
-      if (cpuFlags.length > 0) lines.push("    END IF;");
+      lines.push("    END;");
     }
     lines.push("");
 
@@ -143,7 +123,6 @@ export async function generateExtensionsInitScript(
     lines.push("    -- Update initialization status based on results");
     lines.push("    UPDATE pg_aza_status");
     lines.push("    SET");
-    lines.push("        expected_extensions = v_expected_exts,");
     lines.push("        created_extensions = v_created_exts,");
     lines.push("        failed_extensions = v_failed_exts,");
     lines.push("        status = CASE");
@@ -154,10 +133,7 @@ export async function generateExtensionsInitScript(
     lines.push("        notes = CASE");
     lines.push("            WHEN array_length(v_failed_exts, 1) IS NULL THEN");
     lines.push(
-      "                'All ' || cardinality(v_created_exts)::TEXT || ' baseline extensions created successfully (pg_cron handled separately by 01b-pg_cron.sh)'"
-    );
-    lines.push(
-      "                || CASE WHEN cardinality(v_skipped_exts) > 0 THEN '; skipped for this CPU: ' || array_to_string(v_skipped_exts, ', ') ELSE '' END"
+      `                'All ${extensionsToCreate.length} baseline extensions created successfully (pg_cron handled separately by 01b-pg_cron.sh)'`
     );
     lines.push("            ELSE");
     lines.push(
@@ -172,7 +148,7 @@ export async function generateExtensionsInitScript(
     lines.push("    -- NOTE: pg_cron is handled by 01b-pg_cron.sh to target POSTGRES_DB");
     lines.push("    IF array_length(v_failed_exts, 1) IS NULL THEN");
     lines.push(
-      "        RAISE NOTICE 'Baseline extensions enabled (%). pg_cron will be created by 01b-pg_cron.sh in POSTGRES_DB. Additional extensions are available but disabled by default.', array_to_string(v_created_exts, ', ');"
+      `        RAISE NOTICE 'Baseline extensions enabled (${extensionNames.join(", ")}). pg_cron will be created by 01b-pg_cron.sh in POSTGRES_DB. Additional extensions are available but disabled by default.';`
     );
     lines.push("    ELSE");
     lines.push(

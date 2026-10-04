@@ -543,29 +543,11 @@ Update BOTH `source.tag` AND `timescaleVersion`:
 - Example: `2.24.0~debian13-1801` (1801 = PostgreSQL 18.1)
 - Check available versions: Requires container with Timescale repo configured
 
-### GitHub Release Extensions
+### Patched Source Extensions (`build.patches`)
 
-**Identify**: `command grep 'install_via: "github-release"' scripts/extensions/manifest-data.ts`
+**Identify**: `command grep -n "patches: \[" scripts/extensions/manifest-data.ts`
 
-Update BOTH `source.tag` AND `githubReleaseTag` (must match):
-
-```typescript
-{
-  name: "extension_name",
-  source: { type: "git", tag: "X.Y.Z" },          // ← Update tag
-  githubReleaseTag: "X.Y.Z",                      // ← Must match!
-}
-```
-
-**VERIFY**: GitHub release has assets for BOTH amd64 and arm64.
-
-```bash
-# List release assets
-gh release view TAG --repo OWNER/REPO --json assets --jq '.assets[].name'
-
-# Verify both architectures present (amd64/x86_64 AND arm64/aarch64)
-# If missing: wait for upstream, build from source, or disable
-```
+A bump can stop the build with `Patch <file> no longer applies`: refresh the diff in `docker/postgres/patches/` against the new tag (vectorscale: docs/VERSION-MANAGEMENT.md Procedure 5, including the non-AVX2 CPU proof).
 
 ### Source-Built Extensions
 

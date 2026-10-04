@@ -30,7 +30,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
-      unzip \
       postgresql-server-dev-{{PG_MAJOR}} \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
@@ -59,6 +58,7 @@ RUN set -euo pipefail && \
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
 COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/patches/ /opt/patches/
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 
@@ -188,10 +188,6 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig
-
-# Pre-compiled extensions from GitHub releases (for packages not available in apt)
-# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
-{{GITHUB_RELEASE_PACKAGES_INSTALL}}
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

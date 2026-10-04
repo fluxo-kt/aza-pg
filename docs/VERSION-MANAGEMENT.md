@@ -200,8 +200,7 @@ git commit -m "deps(pgvector): update to 0.8.1"
 Non-PGDG extensions are built from source. This includes:
 
 - Tools: pgbackrest, pgbadger, wal2json
-- Cargo-pgrx: wrappers, pg_jsonschema, timescaledb_toolkit
-- GitHub Release: vectorscale
+- Cargo-pgrx: wrappers, pg_jsonschema, timescaledb_toolkit, vectorscale
 - Others: pgroonga, pgsodium, pgmq, etc.
 
 #### Step 1: Find Latest Git Tag
@@ -264,7 +263,7 @@ git commit -m "deps(pgbackrest): update to 2.58.0"
 
 Cargo-pgrx extensions use Rust and require special handling:
 
-- wrappers, pg_jsonschema, timescaledb_toolkit
+- wrappers, pg_jsonschema, timescaledb_toolkit, vectorscale (also see Procedure 5)
 
 **Key consideration:** pgrx framework version must align with PostgreSQL version.
 
@@ -350,77 +349,14 @@ git commit -m "deps(wrappers): update to stable tag v0.5.6"
 
 ---
 
-### Procedure 5: Update GitHub Release Extension
+### Procedure 5: Update vectorscale (patched cargo-pgrx)
 
-**Example:** Update pgvectorscale from 0.9.0 to 0.10.0
+vectorscale is built from source because upstream's release binary is compiled with AVX2/FMA on for every function and kills the server (SIGILL) on x86-64 CPUs without them. `docker/postgres/patches/vectorscale-runtime-dispatch.patch` makes it pick AVX2+FMA kernels at runtime instead.
 
-GitHub release extensions use pre-built binaries from GitHub releases:
-
-- vectorscale (pgvectorscale)
-
-**Key consideration:** PG18 assets must be available for both amd64 and arm64.
-
-#### Step 1: Check for New Releases
-
-```bash
-# Visit: https://github.com/timescale/pgvectorscale/releases
-# Or use git:
-git ls-remote --tags https://github.com/timescale/pgvectorscale.git | grep -v '\^{}' | sort -V | tail -5
-```
-
-#### Step 2: Verify PG18 Assets Exist
-
-**CRITICAL:** Confirm assets exist for both architectures:
-
-- `pgvectorscale-0.10.0-pg18-amd64.zip`
-- `pgvectorscale-0.10.0-pg18-arm64.zip`
-
-If assets don't exist, stay on current version.
-
-#### Step 3: Update manifest-data.ts (BOTH Fields!)
-
-```typescript
-{
-  name: "vectorscale",
-  install_via: "github-release",
-  githubRepo: "timescale/pgvectorscale",
-  githubReleaseTag: "0.10.0",  // ← Update this
-  githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
-  soFileName: "vectorscale-0.10.0.so",
-  source: {
-    type: "git",
-    repository: "https://github.com/timescale/pgvectorscale.git",
-    tag: "0.10.0",  // ← MUST match githubReleaseTag!
-  },
-}
-```
-
-#### Step 4: Regenerate and Validate
-
-```bash
-bun run generate
-bun run validate:all
-```
-
-#### Step 5: Build and Test
-
-```bash
-bun run build
-
-cd stacks/single && docker compose down -v && docker compose up -d
-docker compose exec postgres psql -U postgres -c "
-  CREATE EXTENSION vector;
-  CREATE EXTENSION vectorscale;
-  SELECT * FROM pg_extension WHERE extname = 'vectorscale';
-"
-```
-
-#### Step 6: Commit Changes
-
-```bash
-git add scripts/extensions/manifest-data.ts docker/postgres/extensions.*.manifest.json
-git commit -m "deps(vectorscale): update to 0.10.0"
-```
+1. Follow Procedure 4 for the tag bump, and set `soFileName` to `vectorscale-<new version>.so`.
+2. Check upstream's default features in `pgvectorscale/Cargo.toml` at the new tag; the manifest pins them (`noDefaultFeatures` + `features`) so an upstream default change cannot silently alter the build.
+3. If the build stops with `Patch vectorscale-runtime-dispatch.patch no longer applies`, regenerate it: clone the new tag, `git apply --3way` the old patch, resolve, and write `git diff` back to the patch file. `git apply` is all-or-nothing, so a stale patch can never ship half-applied.
+4. Prove the dispatch on an amd64 CPU without AVX2 (e.g. QEMU `-cpu Nehalem`): `CREATE EXTENSION vectorscale` and a DiskANN index query must succeed there.
 
 ---
 

@@ -95,7 +95,7 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Install methods** (`install_via`): `pgdg` (apt) | `percona` (apt) | `github-release` (pre-built binaries) | `source` (build from git)
+**Install methods** (`install_via`): `pgdg` (apt) | `percona` (apt) | `timescale` (apt) | `source` (build from git; `build.patches` applies diffs from `docker/postgres/patches/`)
 
 **Counts**: See `docs/.generated/docs-data.json` for live module/preload/tool counts
 
@@ -190,7 +190,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+. Local/CI blocking gates fail on fixable CRITICAL/HIGH findings (`--ignore-unfixed`) and skip only `usr/local/bin/gosu` because su-exec shadows the base-layer binary. Avoid static CVE ignores; they hide future fixable regressions.
 
-**Final Image Install Helpers**: `curl`, `unzip`, GnuPG CLI stack, `lsb-release`, and `percona-release` are install-only. Purge them after all apt repositories and release assets are installed; Debian 13 apt still verifies repos through `sqv`.
+**Final Image Install Helpers**: `curl`, GnuPG CLI stack, `lsb-release`, and `percona-release` are install-only. Purge them after all apt repositories are installed; Debian 13 apt still verifies repos through `sqv`.
 
 **PGroonga Build System**: PGroonga 4.0.6+ uses Meson, not PGXS Makefile. Manifest must use `build.type: "meson"`, include `meson` in `aptPackages`, and pass `mesonOptions: ["-Dtest=false"]` for production builds; upstream Meson test setup requires Ruby.
 

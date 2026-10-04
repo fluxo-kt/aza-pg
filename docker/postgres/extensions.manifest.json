@@ -1092,15 +1092,7 @@
       "name": "vectorscale",
       "displayName": "pgvectorscale",
       "kind": "extension",
-      "install_via": "github-release",
-      "githubRepo": "timescale/pgvectorscale",
-      "githubReleaseTag": "0.9.1",
-      "githubAssetPattern": "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
       "soFileName": "vectorscale-0.9.1.so",
-      "x86CpuFlags": [
-        "avx2",
-        "fma"
-      ],
       "category": "ai",
       "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
       "source": {
@@ -1109,6 +1101,18 @@
         "tag": "0.9.1",
         "commit": "9d9851ce9966f01cdbbdc80e510d4938e3cd26bf"
       },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "pgvectorscale",
+        "features": [
+          "pg18",
+          "build_parallel"
+        ],
+        "noDefaultFeatures": true,
+        "patches": [
+          "vectorscale-runtime-dispatch.patch"
+        ]
+      },
       "dependencies": [
         "vector"
       ],
@@ -1116,8 +1120,7 @@
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "Installed from GitHub release binaries",
-          "amd64 binary needs AVX2 and FMA; on hosts without them the extension is hidden (CREATE EXTENSION reports it unavailable) instead of crashing the server.",
+          "Built from source with runtime CPU dispatch: AVX2/FMA only when the CPU has them",
           "Supports both amd64 and arm64 architectures",
           "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
           "Alt: PGDG has no package (Rust pgrx extension)"

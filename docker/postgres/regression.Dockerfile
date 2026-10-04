@@ -36,7 +36,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
-      unzip \
       postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
@@ -65,6 +64,7 @@ RUN set -euo pipefail && \
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
 COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/patches/ /opt/patches/
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 
@@ -218,45 +218,6 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
-
-# Pre-compiled extensions from GitHub releases (for packages not available in apt)
-# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
-# GitHub release binary installation
-# Provides pre-built extensions not available via apt for Debian Trixie
-# Architecture detected at build time (supports amd64, arm64)
-# hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip && \
-    # Install vectorscale from GitHub release (.deb package inside zip)
-    ARCH=$(dpkg --print-architecture) && \
-    ASSET="pgvectorscale-0.9.1-pg18-${ARCH}.zip" && \
-    echo "Downloading vectorscale v0.9.1 for $ARCH..." && \
-    rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
-    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.1/$ASSET" -o /tmp/vectorscale.zip.tmp && \
-    test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
-    unzip -tq /tmp/vectorscale.zip.tmp && \
-    mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
-    unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
-    # Install the .deb package (skip debug symbols package)
-    DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
-    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in vectorscale zip"; exit 1; } && \
-    echo "Installing $DEB_FILE..." && \
-    dpkg -i "$DEB_FILE" && \
-    mkdir -p /usr/share/postgresql/18/cpu-gated/vectorscale/extension && \
-    mv /usr/share/postgresql/18/extension/vectorscale.control /usr/share/postgresql/18/extension/vectorscale--*.sql /usr/share/postgresql/18/cpu-gated/vectorscale/extension/ && \
-    rm -rf /tmp/vectorscale* && \
-    echo "✓ Installed vectorscale v0.9.1" && \
-    # Verify .so files exist
-    echo "Verifying GitHub release .so files..." && \
-    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.1.so && \
-    echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files (best-effort; the braces keep || true off the install chain)
-    { find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; } && \
-    # Clean apt lists (Dockle DKL-DI-0005)
-    rm -rf /var/lib/apt/lists/*
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003

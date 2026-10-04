@@ -4,7 +4,6 @@
  * and ensure version-specific validation
  */
 
-import { requiredX86Flags } from "../extensions/cpu-gate";
 import type { ManifestEntry } from "../extensions/manifest-data";
 
 /**
@@ -27,9 +26,6 @@ export function generateHealthcheckScript(
   const lines: string[] = [];
   const extensionNames = extensionsToEnable.map((e) => e.name);
   const expectedCount = extensionNames.length;
-  const cpuGatedNames = extensionsToEnable
-    .filter((e) => requiredX86Flags(e).length > 0)
-    .map((e) => e.name);
 
   lines.push("#!/bin/bash");
   lines.push("# Enhanced PostgreSQL healthcheck with functional validation");
@@ -47,8 +43,6 @@ export function generateHealthcheckScript(
   lines.push("# Expected extensions for this aza-pg version (from manifest)");
   lines.push(`EXPECTED_EXTENSIONS=(${extensionNames.map((n) => `"${n}"`).join(" ")})`);
   lines.push(`EXPECTED_COUNT=${expectedCount}`);
-  lines.push("# Expected only where this host's CPU can run them (entrypoint CPU gate)");
-  lines.push(`CPU_GATED_EXTENSIONS=(${cpuGatedNames.map((n) => `"${n}"`).join(" ")})`);
   lines.push(`EXPECTED_PRELOAD="${preloadLibraries}"`);
   lines.push("");
 
@@ -77,15 +71,6 @@ export function generateHealthcheckScript(
   lines.push("    if ! psql -U postgres -d postgres -tAc \\");
   lines.push("        \"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')\" \\");
   lines.push('        2>/dev/null | grep -q "^t$"; then');
-  lines.push(
-    '        if [[ " ${CPU_GATED_EXTENSIONS[*]} " == *" $ext "* ]] && ! psql -U postgres -d postgres -tAc \\'
-  );
-  lines.push(
-    "            \"SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = '$ext')\" \\"
-  );
-  lines.push('            2>/dev/null | grep -q "^t$"; then');
-  lines.push("            continue");
-  lines.push("        fi");
   lines.push('        MISSING_EXTENSIONS+=("$ext")');
   lines.push("    fi");
   lines.push("done");

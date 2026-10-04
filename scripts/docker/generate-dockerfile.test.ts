@@ -61,11 +61,12 @@ function topLevel(script: string): string {
 
 describe("Generated Dockerfile", () => {
   let dockerfile: string;
+  let regression: string;
   let bothRuns: string[];
 
   beforeAll(async () => {
     dockerfile = await Bun.file(DOCKERFILE_PATH).text();
-    const regression = await Bun.file(REGRESSION_DOCKERFILE_PATH).text();
+    regression = await Bun.file(REGRESSION_DOCKERFILE_PATH).text();
     bothRuns = [...runInstructions(dockerfile), ...runInstructions(regression)];
   });
 
@@ -108,9 +109,9 @@ describe("Generated Dockerfile", () => {
     expect(topLevel("a && { find . -exec strip {} \\; || true; }")).toBe("a && ");
   });
 
-  test("every enabled apt or release module entry has its module file checked at build time", () => {
+  test("every enabled apt module entry has its module file checked at build time", () => {
     const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0];
-    const viaPackage = new Set(["pgdg", "percona", "timescale", "github-release"]);
+    const viaPackage = new Set(["pgdg", "percona", "timescale"]);
     const unchecked = MANIFEST_ENTRIES.filter(
       (e) => e.kind === "extension" && viaPackage.has(e.install_via ?? "") && (e.enabled ?? true)
     )
@@ -119,6 +120,19 @@ describe("Generated Dockerfile", () => {
       )
       .map((e) => `${e.name} (${e.install_via}, soFileName ${e.soFileName ?? "missing"})`);
     expect(unchecked).toEqual([]);
+  });
+
+  test("every build.patches file exists and both builders copy it to where build-extensions.ts reads it", async () => {
+    // build-extensions.ts applies build.patches from /opt/patches; without the COPY, git apply fails on a missing file.
+    const copy = "COPY docker/postgres/patches/ /opt/patches/";
+    expect([dockerfile.includes(copy), regression.includes(copy)]).toEqual([true, true]);
+    const patches = MANIFEST_ENTRIES.flatMap((e) => e.build?.patches ?? []);
+    const missing: string[] = [];
+    for (const patch of patches) {
+      if (!(await Bun.file(join(import.meta.dir, "../../docker/postgres/patches", patch)).exists()))
+        missing.push(patch);
+    }
+    expect(missing).toEqual([]);
   });
 
   test("cache mounts use sharing=locked", () => {

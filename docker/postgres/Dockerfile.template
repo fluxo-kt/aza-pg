@@ -29,7 +29,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
-      unzip \
       postgresql-server-dev-{{PG_MAJOR}} \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
@@ -77,6 +76,7 @@ RUN set -euo pipefail && \
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
 COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/patches/ /opt/patches/
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 
@@ -261,10 +261,6 @@ RUN set -euo pipefail && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Pre-compiled extensions from GitHub releases (for packages not available in apt)
-# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
-{{GITHUB_RELEASE_PACKAGES_INSTALL}}
-
 # Remove package-manager helpers needed only while installing repositories and release assets.
 # Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
 RUN set -euo pipefail && \
@@ -280,8 +276,7 @@ RUN set -euo pipefail && \
       gpgsm \
       gpgv \
       lsb-release \
-      percona-release \
-      unzip && \
+      percona-release && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

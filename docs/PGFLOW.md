@@ -327,14 +327,8 @@ SELECT realtime.send(
 
 ### Automated Tests
 
-Run comprehensive test suite:
-
 ```bash
-# Test pgflow installation and security patches
-bun run scripts/test/test-pgflow-security.ts
-
-# Test new database functionality
-bun run scripts/test/test-pgflow-new-database.ts
+bun scripts/test/test-pgflow.ts   # pgflow in the built image (aza-pg:pg18 by default)
 ```
 
 ## Troubleshooting

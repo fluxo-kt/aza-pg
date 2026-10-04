@@ -813,134 +813,15 @@ const allChecks: Check[] = [
     timeout: 300000, // 5 minutes
   },
   {
-    name: "pgflow Schema Tests",
+    name: "pgflow",
     category: "functional",
-    command: [
-      "sh",
-      "-c",
-      [
-        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
-        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
-        "bun scripts/test/test-pgflow-schema.ts --container=$CONTAINER",
-        "RESULT=$?",
-        "docker rm -f -v $CONTAINER >/dev/null",
-        "exit $RESULT",
-      ].join("; "),
-    ],
-    description: "pgflow schema verification (table/function/type counts)",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 180000, // 3 minutes
-  },
-  {
-    name: "pgflow Functional Tests",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      [
-        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
-        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
-        "bun scripts/test/test-pgflow-functional.ts --container=$CONTAINER",
-        "RESULT=$?",
-        "docker rm -f -v $CONTAINER >/dev/null",
-        "exit $RESULT",
-      ].join("; "),
-    ],
-    description: "Comprehensive pgflow workflow orchestration functional tests",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 300000, // 5 minutes
-  },
-  {
-    name: "pgflow Multi-Project Isolation",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      [
-        // Uses image's built-in DEFAULT_SHARED_PRELOAD_LIBRARIES (includes pg_net, pgsodium for pgflow)
-        "CONTAINER=$(docker run -d -e POSTGRES_PASSWORD=test --memory=2g ${POSTGRES_IMAGE:-aza-pg:pg18})",
-        // Wait for PostgreSQL stability (pg_isready returns true during initdb, need multiple successful queries)
-        "for i in {1..60}; do docker exec $CONTAINER pg_isready -U postgres >/dev/null 2>&1 && break || sleep 2; done",
-        "sleep 3; for i in {1..40}; do S=0; for j in 1 2 3 4 5; do docker exec $CONTAINER psql -U postgres -c 'SELECT 1' -t >/dev/null 2>&1 && S=$((S+1)) || break; sleep 1; done; [ $S -ge 5 ] && break; sleep 2; done",
-        "bun scripts/test/test-pgflow-multiproject.ts --container=$CONTAINER",
-        "RESULT=$?",
-        "docker rm -f -v $CONTAINER >/dev/null",
-        "exit $RESULT",
-      ].join("; "),
-    ],
-    description: "Test pgflow per-database isolation for multi-project deployments",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 180000, // 3 minutes
-  },
-  {
-    name: "pgflow Security Patches",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      "bun scripts/test/test-pgflow-security.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
-    ],
-    description: "Verify pgflow security patches (SET search_path on SECURITY DEFINER functions)",
+    command: ["sh", "-c", "bun scripts/test/test-pgflow.ts ${POSTGRES_IMAGE:-aza-pg:pg18}"],
+    description:
+      "pgflow in the shipped image: initdb install, security patches, telemetry off, lifecycle, realtime.send() inheritance/degradation, install without vault and pg_cron",
     critical: true,
     requiresDocker: true,
     requiresBuild: true,
-    timeout: 180000, // 3 minutes
-  },
-  {
-    name: "pgflow New Database Install",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      "bun scripts/test/test-pgflow-new-database.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
-    ],
-    description: "Verify pgflow can be installed in new databases that inherit realtime.send()",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 180000, // 3 minutes
-  },
-  {
-    name: "pgflow Without supabase_vault",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      "bun scripts/test/test-pgflow-without-vault.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
-    ],
-    description:
-      "Verify pgflow works when supabase_vault extension is not available (optional dependency)",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 180000, // 3 minutes
-  },
-  {
-    name: "realtime.send() Graceful Degradation",
-    category: "functional",
-    command: [
-      "sh",
-      "-c",
-      "bun scripts/test/test-realtime-send-degradation.ts ${POSTGRES_IMAGE:-aza-pg:pg18}",
-    ],
-    description:
-      "Verify realtime.send() degrades gracefully when optional extensions (pgmq, pg_net) are missing",
-    critical: false,
-    requiresDocker: true,
-    requiresBuild: true,
-    timeout: 180000, // 3 minutes
+    timeout: 120000,
   },
   {
     name: "pgq Functional Tests",

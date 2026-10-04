@@ -79,11 +79,11 @@ To update to a newer pgflow version:
 
 ## Supabase Realtime Compatibility
 
-pgflow integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the `install.ts` helper automatically creates a **pg_notify-based replacement** that uses PostgreSQL's native LISTEN/NOTIFY mechanism.
+pgflow integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the image provides a **pg_notify-based replacement** (init script `04a-pgflow-realtime-stub.sh`, installed in `template1` and `POSTGRES_DB`), so every database created later inherits it; `install.ts` ships no copy and refuses a database without it.
 
 ### How It Works
 
-Before installing the pgflow schema, the helper creates:
+The image's replacement:
 
 ```sql
 -- Function signature matches Supabase Realtime

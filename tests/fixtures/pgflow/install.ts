@@ -1,25 +1,12 @@
 /**
  * pgflow Schema Installation Helper
  *
- * Provides utilities for installing the pgflow schema into PostgreSQL databases.
- * Used for testing pgflow functionality without bundling it in the Docker image.
+ * Installs the repository's pgflow schema fixture into a database of a running aza-pg container.
  *
- * NOTE: pgflow integrates with Supabase Realtime. For non-Supabase deployments,
- * this helper creates a multi-layer replacement for `realtime.send()` that provides:
- *
- * 1. **pg_notify** (immediate): Fire-and-forget notifications via LISTEN/NOTIFY
- *    - Best for: Same-database listeners, low-latency requirements
- *    - Clients subscribe using: LISTEN pgflow_events; or LISTEN <topic>;
- *
- * 2. **pgmq** (reliable): At-least-once delivery via message queue
- *    - Best for: Backend workers needing guaranteed delivery with retries
- *    - Enable: SET realtime.pgmq_enabled = 'true'; (auto-creates queue if needed)
- *    - Poll: SELECT * FROM pgmq.read('pgflow_events', 30, 10);
- *
- * 3. **pg_net** (external webhooks): Async HTTP POST to external services
- *    - Best for: External service integration, webhooks
- *    - Enable: SET realtime.webhook_url = 'https://api.example.com/webhook';
- *    - Requires: pg_net extension with shared_preload_libraries
+ * pgflow broadcasts events through realtime.send(). The image creates its own implementation in template1 and in
+ * POSTGRES_DB at initdb (docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh), so every database created later
+ * inherits it. This helper deliberately ships no copy of that function: a test copy would make every pgflow run
+ * exercise the copy instead of the function the image ships. A target database without realtime.send() is refused.
  */
 
 import { join, dirname } from "node:path";
@@ -27,180 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FILE = join(__dirname, "schema.sql");
-
-/**
- * SQL to create a multi-layer replacement for Supabase Realtime.
- * pgflow calls realtime.send() for event broadcasting.
- *
- * This implementation provides three delivery mechanisms:
- *
- * 1. pg_notify (always): Immediate, at-most-once delivery via LISTEN/NOTIFY
- *    - LISTEN pgflow_events; or LISTEN <topic>;
- *
- * 2. pgmq (optional): Reliable, at-least-once delivery via message queue
- *    - Enable: SET realtime.pgmq_enabled = 'true';
- *    - Poll: SELECT * FROM pgmq.read('pgflow_events', 30, 10);
- *
- * 3. pg_net (optional): Async HTTP webhooks to external services
- *    - Enable: SET realtime.webhook_url = 'https://...';
- *
- * Events are delivered as JSON with structure:
- *   { "payload": {...}, "event": "step:completed", "topic": "...", "timestamp": ... }
- */
-const REALTIME_STUB_SQL = `
--- Create realtime schema if not exists (multi-layer for non-Supabase deployments)
-CREATE SCHEMA IF NOT EXISTS realtime;
-
--- Configuration settings for delivery mechanisms
--- These can be set per-session or globally via ALTER SYSTEM
-DO $$
-BEGIN
-  -- pgmq_enabled: 'true' to enable reliable queue delivery (default: false)
-  PERFORM set_config('realtime.pgmq_enabled', 'false', false);
-  -- webhook_url: URL for pg_net HTTP webhook delivery (default: empty = disabled)
-  PERFORM set_config('realtime.webhook_url', '', false);
-EXCEPTION WHEN OTHERS THEN
-  -- Ignore if settings already exist
-  NULL;
-END $$;
-
--- Helper function to ensure pgmq queue exists (idempotent)
-CREATE OR REPLACE FUNCTION realtime._ensure_pgmq_queue(queue_name text)
-RETURNS void
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  -- Check if pgmq extension is available
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgmq') THEN
-    -- Create queue if it doesn't exist (pgmq.create returns 1 if created, 0 if exists)
-    BEGIN
-      PERFORM pgmq.create(queue_name);
-    EXCEPTION WHEN duplicate_object THEN
-      -- Queue already exists, ignore
-      NULL;
-    END;
-  END IF;
-END;
-$$;
-
--- Helper function to check if pg_net is available
-CREATE OR REPLACE FUNCTION realtime._pg_net_available()
-RETURNS boolean
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  RETURN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net');
-END;
-$$;
-
--- Multi-layer send function that matches Supabase Realtime signature
--- Provides pg_notify (immediate) + pgmq (reliable) + pg_net (webhooks)
-CREATE OR REPLACE FUNCTION realtime.send(
-  payload jsonb,
-  event text,
-  topic text,
-  private boolean DEFAULT false
-) RETURNS void
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  message_json jsonb;
-  pgmq_enabled boolean;
-  webhook_url text;
-BEGIN
-  -- Build the event message
-  message_json := jsonb_build_object(
-    'payload', payload,
-    'event', event,
-    'topic', topic,
-    'timestamp', extract(epoch from now()),
-    'private', private
-  );
-
-  ------------------------------------------------------------------
-  -- Layer 1: pg_notify (always enabled) - immediate, at-most-once
-  ------------------------------------------------------------------
-  -- Broadcast to topic-specific channel
-  PERFORM pg_notify(
-    topic,
-    message_json::text
-  );
-
-  -- Also broadcast to global pgflow_events channel for centralized monitoring
-  PERFORM pg_notify(
-    'pgflow_events',
-    message_json::text
-  );
-
-  ------------------------------------------------------------------
-  -- Layer 2: pgmq (optional) - reliable, at-least-once
-  ------------------------------------------------------------------
-  pgmq_enabled := COALESCE(current_setting('realtime.pgmq_enabled', true), 'false') = 'true';
-
-  IF pgmq_enabled AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgmq') THEN
-    -- Ensure queue exists
-    PERFORM realtime._ensure_pgmq_queue('pgflow_events');
-
-    -- Send message to queue for reliable delivery
-    PERFORM pgmq.send('pgflow_events', message_json);
-  END IF;
-
-  ------------------------------------------------------------------
-  -- Layer 3: pg_net (optional) - async HTTP webhooks
-  ------------------------------------------------------------------
-  webhook_url := COALESCE(current_setting('realtime.webhook_url', true), '');
-
-  IF webhook_url != '' AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
-    -- Send async HTTP POST to webhook URL
-    PERFORM net.http_post(
-      url := webhook_url,
-      body := message_json,
-      headers := '{"Content-Type": "application/json"}'::jsonb
-    );
-  END IF;
-END;
-$$;
-
-COMMENT ON FUNCTION realtime.send IS 'Multi-layer event broadcaster for pgflow: pg_notify (immediate) + pgmq (reliable) + pg_net (webhooks)';
-COMMENT ON FUNCTION realtime._ensure_pgmq_queue IS 'Helper to idempotently create pgmq queue';
-COMMENT ON FUNCTION realtime._pg_net_available IS 'Check if pg_net extension is available';
-`;
-
-/**
- * Install only the realtime stub (idempotent).
- * Use this to ensure realtime.send() exists even when pgflow schema is already installed.
- */
-export async function installRealtimeStub(
-  container: string,
-  database: string = "postgres",
-  user: string = "postgres"
-): Promise<{ success: boolean; stderr: string }> {
-  const proc = Bun.spawn(
-    [
-      "docker",
-      "exec",
-      "-i",
-      "-u",
-      user,
-      container,
-      "psql",
-      "-d",
-      database,
-      "-v",
-      "ON_ERROR_STOP=1",
-    ],
-    { stdin: "pipe", stdout: "ignore", stderr: "pipe" }
-  );
-  proc.stdin.write(REALTIME_STUB_SQL);
-  proc.stdin.end();
-
-  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-
-  return {
-    success: exitCode === 0,
-    stderr: stderr.trim(),
-  };
-}
 
 export interface InstallResult {
   success: boolean;
@@ -242,7 +55,7 @@ async function checkExtension(
 
 /**
  * Install pgflow schema into a PostgreSQL database via Docker container.
- * Automatically creates a pg_notify-based realtime.send() for non-Supabase deployments.
+ * The database must already have the image's realtime.send() (see the module comment).
  */
 export async function installPgflowSchema(
   container: string,
@@ -262,35 +75,18 @@ export async function installPgflowSchema(
       };
     }
 
-    // Step 1: Install realtime stub (required for pgflow)
-    const stubProc = Bun.spawn(
-      [
-        "docker",
-        "exec",
-        "-i",
-        "-u",
-        user,
-        container,
-        "psql",
-        "-d",
-        database,
-        "-v",
-        "ON_ERROR_STOP=1",
-      ],
-      { stdin: "pipe", stdout: "ignore", stderr: "pipe" }
+    // Step 1: pgflow calls realtime.send(); the image provides it (inherited from template1), this helper does not.
+    const realtime = await runSQL(
+      container,
+      database,
+      "SELECT to_regprocedure('realtime.send(jsonb,text,text,boolean)') IS NOT NULL",
+      user
     );
-    stubProc.stdin.write(REALTIME_STUB_SQL);
-    stubProc.stdin.end();
-
-    const [stubStderr, stubExitCode] = await Promise.all([
-      new Response(stubProc.stderr).text(),
-      stubProc.exited,
-    ]);
-    if (stubExitCode !== 0) {
+    if (!realtime.success || realtime.stdout !== "t") {
       return {
         success: false,
         stdout: "",
-        stderr: `Failed to install realtime stub: ${stubStderr.trim()}`,
+        stderr: `realtime.send() is missing in database '${database}': create it from template1 of an aza-pg image (${realtime.stderr})`,
       };
     }
 
@@ -484,7 +280,9 @@ export async function dropDatabase(
 }
 
 /**
- * Run arbitrary SQL in a database
+ * Run SQL (one or more statements, one session) in a database.
+ * ON_ERROR_STOP makes psql exit non-zero on the first SQL error; without it psql exits 0 after a failed statement and
+ * `success` could never report bad SQL. -q drops command tags (SET, CREATE ...) so stdout holds only query rows.
  */
 export async function runSQL(
   container: string,
@@ -493,7 +291,23 @@ export async function runSQL(
   user: string = "postgres"
 ): Promise<{ success: boolean; stdout: string; stderr: string }> {
   const proc = Bun.spawn(
-    ["docker", "exec", "-i", "-u", user, container, "psql", "-d", database, "-t", "-A"],
+    [
+      "docker",
+      "exec",
+      "-i",
+      "-u",
+      user,
+      container,
+      "psql",
+      "-X",
+      "-q",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-d",
+      database,
+      "-t",
+      "-A",
+    ],
     { stdin: "pipe", stdout: "pipe", stderr: "pipe" }
   );
 

@@ -40,11 +40,13 @@ Check:
 
    ```bash
    bun scripts/extensions/check-updates.ts --format=json > /tmp/aza-updates.json
-   echo "exit=$?"   # 0 = nothing to update, 1 = updates available (NOT a failure), 2 = the check itself failed
+   echo "exit=$?"   # 0 = no ENABLED entry has an update, 1 = one does (NOT a failure), 2 = the check itself failed
    ```
    stdout carries only the report (progress goes to stderr), so the JSON file parses as-is. Exit 1 is the
    normal "work to do" answer: in a Bun script use `.nothrow()` and branch on 1 vs 2, never treat non-zero
-   as broken. SOURCE_LIBRARIES (e.g. libsodium) are checked too; their rows follow the same rules.
+   as broken. Exit 0 can still carry `updateAvailable: true` rows for disabled entries (Phase 5.5 decides
+   those), so read the JSON, not just the code. SOURCE_LIBRARIES (e.g. libsodium) are checked too; their
+   rows follow the same rules.
    Mandatory interpretation:
    - Treat `sourceType: "git-ref"` rows exactly like tagged updates: compare `current` vs `latest`
    - If any git-ref row has `latest: null`, stop and fix connectivity/parsing before proceeding

@@ -39,8 +39,12 @@ Check:
 1. **Git-based extensions**:
 
    ```bash
-   bun scripts/extensions/check-updates.ts
+   bun scripts/extensions/check-updates.ts --format=json > /tmp/aza-updates.json
+   echo "exit=$?"   # 0 = nothing to update, 1 = updates available (NOT a failure), 2 = the check itself failed
    ```
+   stdout carries only the report (progress goes to stderr), so the JSON file parses as-is. Exit 1 is the
+   normal "work to do" answer: in a Bun script use `.nothrow()` and branch on 1 vs 2, never treat non-zero
+   as broken. SOURCE_LIBRARIES (e.g. libsodium) are checked too; their rows follow the same rules.
    Mandatory interpretation:
    - Treat `sourceType: "git-ref"` rows exactly like tagged updates: compare `current` vs `latest`
    - If any git-ref row has `latest: null`, stop and fix connectivity/parsing before proceeding
@@ -63,11 +67,10 @@ Check:
    bun outdated  # Check what's outdated
    ```
 
-3. **Base image** (if upgrading PostgreSQL version):
+3. **Base image** (every round — see Phase 3):
 
    ```bash
-   docker pull postgres:18.X-trixie
-   docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}'
+   bun scripts/validate-base-image-sha.ts --require-latest-minor
    ```
 
 4. **PGDG apt versions** (automated validation):
@@ -78,25 +81,17 @@ Check:
 
    **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
-5. **Compose stack images** — ALL external images across ALL stacks (not in manifest!):
+5. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
+   Enumerate repo-wide, not just `stacks/`: `deployments/` runs its own images (some, e.g. Prometheus and
+   Grafana, appear nowhere else), and docs quote image references too:
 
    ```bash
-   # Enumerate ALL external images in ALL compose stacks (run this — don't assume you know them all)
-   command grep -rh ":-" stacks/*/compose.yml stacks/*/.env.example 2>/dev/null \
-     | command grep -E "image|IMAGE" | sort -u | command grep -v "^\s*#"
+   # [[:space:]], not \s: git grep -E is POSIX ERE, and on macOS a \s pattern silently matches nothing
+   git grep -nE '^[[:space:]]*image:|_IMAGE[:=-]' -- stacks deployments '*.env.example' docs
    ```
 
-   Then for each discovered image, check the latest version:
-   - Docker Hub images: use a small Bun script or registry API query; do not hardcode the current list as complete
-   - GitHub-backed images: `gh release list --repo ORG/REPO --limit 5`
-
-   **Current compose images** (update this list when adding new services):
-
-   | Image | GitHub Repo | Stacks |
-   |-------|-------------|--------|
-   | `edoburu/pgbouncer` | `edoburu/docker-pgbouncer` | primary only |
-   | `prometheuscommunity/pgbouncer-exporter` | `prometheus-community/pgbouncer_exporter` | primary only |
-   | `prometheuscommunity/postgres-exporter` | `prometheus-community/postgres_exporter` | **all three** |
+   For each repository found, check the latest release (`gh release list --repo ORG/REPO --limit 5`) and
+   that every default still resolves (`docker buildx imagetools inspect <ref>`). Update procedure: Phase 5.6.
 
 ## Pre-Flight: Additional Checks (MANDATORY)
 
@@ -241,6 +236,15 @@ If a new stable runtime is available, update `.tool-versions` manually:
 Note: `@types/bun` may lag the runtime release. That is expected.
 Keep `.tool-versions` and `@types/bun` approximately in sync but they need not be identical.
 
+**TypeScript major bumps**: TypeScript 7+ is the native (Go) compiler, shipped as per-platform
+`@typescript/typescript-<os>-<arch>` packages; `import "typescript"` now yields only the version (the
+old compiler API is gone; a different one sits under `typescript/unstable/*`). Before accepting
+a major bump: `rg -n "from ['\"]typescript['\"]"` must find no programmatic users (this repo only
+runs the `tsc` CLI); `bun.lock` must list the `linux-x64` and `linux-arm64` packages (CI runners);
+compare `tsc --noEmit --listFilesOnly` file sets between old and new (same project files); and plant
+a type error in a scratch `scripts/*.ts` file to prove the new `tsc` exits 1 on it. A fast green
+proves nothing until the plant fails.
+
 ## Phase 2.5: GitHub Actions Pins
 
 GitHub Actions use SHA-pinned `uses:` references for security. Run `actions-up` to bump all SHAs
@@ -367,6 +371,18 @@ command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/
 For security scanners, prefer the same pinned container used by local tooling (for example,
 `scripts/security-scan.ts`) so CI diagnostics and local scans use the same scanner family.
 
+Tool images run by scripts (hadolint, actionlint, yamllint, trivy) are invisible to `actions-up` and
+`bun outdated`, so bump them here. List them:
+
+```bash
+rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github   # digest pins
+rg -n 'aquasec/trivy:' scripts .github                                             # trivy is tag-pinned in several places
+```
+
+For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
+replace the reference everywhere it appears, and run the check that uses it (`bun run validate:all`
+runs hadolint, actionlint and yamllint).
+
 **Validate after actions-up**:
 ```bash
 bun run validate:all  # catches yamllint, hadolint, workflow syntax issues
@@ -378,30 +394,46 @@ PG minor releases include security patches (CVEs). ALWAYS check for a newer base
 not upgrading PG major version. Minor releases can fix critical CVEs (e.g., CVSS 8.8).
 
 **⚠️ Stale digest even at an unchanged PG minor**: the `postgres:18.X-trixie` tag is periodically
-re-pushed with Debian security rebuilds, so a pinned `baseImageSha` can go stale (digest no longer
-exists on Docker Hub) while `pgVersion` is still correct. ALWAYS run
-`bun scripts/validate-base-image-sha.ts --require-latest-minor` in pre-flight — it fails both when the
-pinned digest is gone AND when a newer minor exists. If it fails, repin `baseImageSha` to the current
-`docker inspect ... RepoDigests` digest (this is a security refresh; no `pgVersion` change needed and
-no separate CHANGELOG line if the existing PG-minor entry already covers it).
+re-pushed with Debian security rebuilds, so the tag moves to a new digest while `pgVersion` is still
+correct; the old digest stays pullable, so nothing fails until a check compares them. ALWAYS run
+`bun scripts/validate-base-image-sha.ts --require-latest-minor` in pre-flight — it fails when the tag
+has moved past the pin AND when a newer minor exists. If it fails, repin `baseImageSha` to the tag's
+current index digest (a security refresh; no `pgVersion` change needed and no separate CHANGELOG line
+if the existing PG-minor entry already covers it).
 
 ```bash
-# Check if a newer PG minor version is available (even staying on same major)
-docker run --rm postgres:18-trixie postgres --version  # check latest minor
+# Index digest of the tag, read from the registry without downloading layers.
+# Pin THIS digest (the multi-platform index), never a per-platform one from docker inspect/pull.
+docker buildx imagetools inspect postgres:18.X-trixie --format '{{json .Manifest.Digest}}'
 
-# Get latest base image SHA
-docker pull postgres:18.X-trixie
-SHA=$(docker inspect postgres:18.X-trixie --format '{{index .RepoDigests 0}}' | sed 's/.*@//')
-# ↑ strip "docker.io/library/postgres@" prefix — manifest needs just "sha256:XXXXX"
-
-# Update manifest-data.ts (search for MANIFEST_METADATA)
-# Change TWO fields:
-# - pgVersion: "18.X"
-# - baseImageSha: "sha256:..."
-
-# Verify format (baseImageSha is just the sha256:... digest, no image name prefix)
-command grep 'baseImageSha:' scripts/extensions/manifest-data.ts
+# Update MANIFEST_METADATA in manifest-data.ts: pgVersion "18.X", baseImageSha "sha256:..."
+# (just the digest, no image name prefix), then: bun run generate
 ```
+
+**⚠️ New security settings in PG minors**: a minor release can add a setting whose default refuses
+something the image ships. PostgreSQL 18.6 added `output_plugin_libraries`, refusing (superusers
+included) any logical-decoding plugin not listed, which would have broken the shipped wal2json. On every
+minor bump, read the release notes' new settings and their defaults. When adding or renaming a logical
+decoding plugin, add it to the `POSTGRES_OUTPUT_PLUGIN_LIBRARIES` default in
+`docker/postgres/docker-auto-config-entrypoint.sh.template` and `docs/ENVIRONMENT-VARIABLES.md`.
+
+**Probing amd64 from an arm64 host**: run the amd64 variant by its platform digest so the local
+arm64 copy of the same tag is neither used nor replaced:
+
+```bash
+D=$(docker buildx imagetools inspect postgres:18.X-trixie --format '{{json .Manifest}}' \
+  | bun -e 'const j = JSON.parse(await Bun.stdin.text()); console.log(j.manifests.find((m) => m.platform?.os === "linux" && m.platform?.architecture === "amd64").digest)')
+docker run --rm --platform linux/amd64 "postgres@$D" postgres --version
+```
+
+Rosetta (Docker Desktop/OrbStack on Apple silicon) runs amd64 images but cannot choose a CPU model,
+and its `/proc/cpuinfo` lists no `avx`/`avx2` flags, so a Rosetta run says nothing about a specific x86
+CPU. To prove a binary runs on an older or newer CPU, use QEMU user mode with `-cpu Nehalem` / `-cpu
+Haswell` (vectorscale procedure: docs/VERSION-MANAGEMENT.md Procedure 5). QEMU user mode cannot run
+`initdb` or a full server (they start `postgres` child processes, which leave QEMU without binfmt
+registration), so: export the amd64 image's filesystem, `initdb` under Rosetta, then in an arm64
+`debian:trixie-slim` container with `qemu-user` run `qemu-x86_64 -cpu Nehalem -L <rootfs>
+<rootfs>/usr/lib/postgresql/<major>/bin/postgres --single -D <pgdata> postgres` and feed it SQL on stdin.
 
 **⚠️ TimescaleDB coupling**: timescaleVersion suffix encodes PG minor version (e.g., `-1803` for
 PG 18.3, `-1804` for PG 18.4). When bumping PG minor version, ALWAYS update timescaleVersion in the
@@ -481,8 +513,9 @@ suspects — verify and migrate.
 - Add `pgdgPackage` (the apt name suffix — `apt-cache search --names-only '^postgresql-18-'`)
 - **VERIFY THE PACKAGE before trusting the migration**: `apt-get install` it in a throwaway container, then
   `dpkg -L postgresql-18-EXTNAME | grep '\.so$'` to confirm it ships the expected libs — ESPECIALLY any
-  preload worker (e.g. pg_partman ships `pg_partman_bgw.so` at `/usr/lib/postgresql/18/lib/`). If the
-  ext is a shared_preload, ADD that `.so` to `generate-dockerfile.ts` `soFileMap` so the build asserts it.
+  preload worker (e.g. pg_partman ships `pg_partman_bgw.so` at `/usr/lib/postgresql/18/lib/`). Set the
+  entry's `soFileName` to the module's `.so`: the generated Dockerfile asserts it exists, and `generate`
+  fails for an enabled PGDG module entry without one.
   Also `grep default_version EXTNAME.control` — if the PGDG extversion equals the old source extversion,
   the regression `expected/basic.out` needs NO change (confirm, don't assume).
 - **PGDG may lag upstream**: the apt package can sit a release behind the latest git tag (e.g. plpgsql_check
@@ -563,6 +596,25 @@ Update ONLY `source.tag`:
 
 **These extensions are built from source** during Docker image build using PGXS, cargo-pgrx, cmake, autotools, or other build systems.
 
+**Commit lock**: `docker/postgres/extensions.manifest.json` is the lock file for tags, as `bun.lock` is
+for `package.json`. `bun run generate` resolves a tag to its commit only when the entry's repository or
+tag changes, and the build clones that commit. So a tag that upstream moved after you pinned it changes
+nothing until you edit the tag; to pick up a re-pushed tag, delete that entry's `commit` line from the
+generated manifest and regenerate. Review the `commit` diff of every tag you bump (annotated tags:
+`git ls-remote URL 'refs/tags/TAG^{}'` gives the commit).
+
+**Portable, optimised builds** (`docker/postgres/build-extensions.ts`): a PGXS build stops when its
+`make -n` plan contains `-march/-mtune/-mcpu=native` (ties the binary to the build host's CPU: SIGILL on
+older hosts, invisible to every test on the runner) or compiles with `-O0` as the last `-O`. A bump that
+trips either names the Makefile variable to clear: native flags in `PORTABLE_PGXS`, `-O0` with
+`build.makeOptions` on the manifest entry. Never bypass the check.
+
+**Source libraries** (`SOURCE_LIBRARIES` in `manifest-data.ts`, e.g. libsodium): built once into
+`/usr/local` and linked by every extension that lists them in `sourceLibraries`; their security updates
+are ours, not Debian's. To bump: download the release tarball, verify it with the command in the
+entry's `notes` (minisign with the upstream public key), then set `asset`, `sha256` (of the verified
+tarball) and `source.tag` together. Never take a sha256 from anywhere but the verified file.
+
 ### Builtin Extensions
 
 **Identify**: `command grep 'kind: "builtin"' scripts/extensions/manifest-data.ts`
@@ -578,38 +630,30 @@ These only need updates when PostgreSQL version changes.
 - Review init scripts: `command grep -r "EXTENSION_NAME" docker/postgres/docker-entrypoint-initdb.d/`
 - Verify patches still apply with new version or if upstream fixed them
 
-### 5.1: pgflow (6+ Files to Update)
+### 5.1: pgflow
 
-**Most complex** — requires coordinated updates across multiple files:
+The version is written once: the pgflow entry's tag (`pgflow@X.Y.Z`) in `manifest-data.ts`;
+`scripts/pgflow/version.ts` derives it for the fixture, init script, docs and tests.
 
 ```bash
-# Step 1: Generate new schema (discovers all upstream SQL files; do not hardcode file counts)
-bun scripts/pgflow/generate-schema.ts NEW_VERSION --update-install
-# ⚠️ This updates manifest-data.ts and install.ts, but NOT Dockerfile.template!
-
-# Step 2: Update Dockerfile.template manually (script doesn't do this)
-# Change: COPY tests/fixtures/pgflow/schema-vOLD.sql → schema-vNEW.sql
-
-# Step 3: Update package dependencies in package.json with explicit versions
-bun add --dev @pgflow/client@NEW_VERSION @pgflow/dsl@NEW_VERSION
-
-# Step 4: Update 05-pgflow-init.sh (search for version in header comment and success message)
-
-# Step 5: Review and update ALL patches and compatibility layers
-# Check ALL pgflow patches for compatibility with new version:
-#   - docker/postgres/pgflow/security-patches.sql (SET search_path protection)
-#   - docker/postgres/docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh (Supabase compatibility)
-# Verify patches still apply or if upstream fixed them
-# Check if new version introduces breaking changes requiring new patches
-
-# Step 6: Delete old generated schema fixture after confirming the new fixture is referenced
-git rm tests/fixtures/pgflow/schema-vOLD_VERSION.sql
-
-# Step 7: Regenerate and test
+# 1. Edit the pgflow tag in manifest-data.ts, then regenerate the schema fixture and upgrade bundle
+#    (tests/fixtures/pgflow/schema.sql + upgrade/: migrations, versions.tsv, aza-overrides.sql)
+bun scripts/pgflow/generate-schema.ts
+# 2. Client pins must equal the tag (scripts/pgflow/version.test.ts checks them in validate)
+bun add --dev @pgflow/client@X.Y.Z @pgflow/dsl@X.Y.Z
+# 3. Regenerate, then prove fresh installs AND upgrades of existing databases
 bun run generate
-bun test scripts/pgflow/schema-fixture.test.ts
-bun run test:pgflow
+bun test scripts/pgflow/
+bun scripts/test-all.ts --group features   # includes test-pgflow*.ts and test-pgflow-upgrade.ts
 ```
+
+Review the local layers against the new upstream: `docker/postgres/pgflow/security-patches.sql` and the
+functions the generator overrides (aza-overrides). The generator stops when an expected upstream text
+is missing (`replaceRequired`); fix the replacement, never loosen it. `test-pgflow-upgrade.ts` upgrades a
+database created by the last release in its `LEGACY` list with `pgflow-upgrade` and requires it to equal
+a fresh install: if it fails, the new migrations or overrides break existing databases. A release whose schema changes
+needs a CHANGELOG entry telling operators to run `docker exec <container> pgflow-upgrade` (stop pgflow
+workers first; upgrade the database before deploying the new `@pgflow/client`).
 
 ### 5.2: git-ref Extensions (HEAD Drift Verification REQUIRED)
 
@@ -677,44 +721,33 @@ Extensions still in test suites should stay current. Permanently broken extensio
 
 ### 5.6: Compose Stack Images (Outside Manifest)
 
-**Not in manifest-data.ts!** Three external images are hardcoded across compose stacks. Check ALL three, and update in ALL stacks (primary, replica, single) that contain them:
+**Not in manifest-data.ts.** A companion image (pgbouncer, the exporters) has ONE pin: the
+`${VAR:-repo:tag@sha256:…}` default in `stacks/*/compose.yml`. `bun run validate` ("Companion Image
+Pins", `scripts/validate/companion-image-pins.ts`) requires every other mention of that repository —
+`.env.example` files, `docs/`, `scripts/test/`, `deployments/`, this file — to carry the same
+`tag@digest`, and lists each drifted `file:line`. So: edit the compose defaults, run validate, fix
+what it lists.
 
-| Image | Stacks | Repo |
-|-------|--------|------|
-| `edoburu/pgbouncer` | primary only | `edoburu/docker-pgbouncer` |
-| `prometheuscommunity/pgbouncer-exporter` | primary only | `prometheus-community/pgbouncer_exporter` |
-| `prometheuscommunity/postgres-exporter` | **ALL three** | `prometheus-community/postgres_exporter` |
-
-**Also update companion `.env.example` files** — each stack has one with the same image tag (no digest). Easily missed; 3 files for postgres_exporter.
+Images that appear only outside `stacks/` (e.g. `deployments/` Prometheus/Grafana, or a different
+pgbouncer repository there) have no compose pin, so the check cannot see them: update and pin them by
+hand, each with `tag@digest`.
 
 ```bash
-# Check for latest releases
-gh release list --repo edoburu/docker-pgbouncer --limit 5
-gh release list --repo prometheus-community/pgbouncer_exporter --limit 5
-gh release list --repo prometheus-community/postgres_exporter --limit 5
-
-# Scan all compose stacks for current versions
-command grep -rn "pgbouncer\|postgres-exporter" stacks/*/compose.yml | command grep "image\|exporter"
+# Index digest for a new tag (no layers downloaded)
+docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}}'
 ```
 
-**Get SHA256 digest** (works without Docker daemon):
-```bash
-TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ORG/REPO:pull" \
-  | bun -e 'const input = await Bun.stdin.text(); console.log(JSON.parse(input).token)')
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
-  -I "https://registry-1.docker.io/v2/ORG/REPO/manifests/TAG" | command grep docker-content-digest
-```
-
-**Update checklist per image**:
-1. Update `image:` line in each affected `stacks/*/compose.yml`
-2. Update `EXPORTER_IMAGE=` line in each affected `stacks/*/.env.example`
-3. Update test files if they assert version strings
-4. Add CHANGELOG entry (compose changes are image-consumer-visible)
-5. **Pre-pull after update** — run `docker pull NEW_IMAGE@SHA` immediately after updating so the image is in the local cache before `test:all` runs. New compose image versions are NOT cached locally and the first test run will need to pull them. Pre-pulling verifies the SHA is correct and prevents timing-dependent test failures:
-   ```bash
-   docker pull prometheuscommunity/postgres-exporter:vX.Y.Z@sha256:DIGEST
-   ```
+**Per image**:
+1. Read the release notes from the current tag to the new one for removed or renamed flags, env vars
+   and metrics. postgres-exporter 0.20 is the pattern: `PG_EXPORTER_DISABLE_SETTINGS_METRICS` was
+   removed (the exporter ignores unknown env vars, so a dead setting stays silent) and
+   `pg_replication_slot_*` metrics became `pg_replication_slots_*`. Confirm each env var the stacks set
+   against the new binary's own flag list (`docker run --rm IMAGE --help`), with a definitely-invalid flag
+   as control. Rename users of changed metrics (dashboards and queries in `deployments/`).
+2. Update the compose defaults; run `bun run validate` until the pin check is clean.
+3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
+4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
+   `pg_up 1` / `pgbouncer_up 1`.
 
 ## Phase 6: Add Tests for New Functionality
 
@@ -750,15 +783,14 @@ frequently wrong (extension may use different function names than expected).
 - **New feature added** → Add test if relevant to our use case
 - **Breaking change** → Update existing tests to match new behavior
 
-### Test File Locations
+### Where Tests Live
 
-```text
-scripts/test/
-  ├── test-all-extensions-functional.ts  # Extension loading tests
-  ├── test-pgflow-*.ts                   # pgflow-specific tests
-  ├── test-auto-config.ts                # Auto-config tests
-  └── test-*.ts                          # Various functional tests
-```
+Docker suites are `scripts/**/test-*.ts` files listed in `SUITES` in `scripts/test-all.ts`, each with a
+group (`extensions`, `security`, `stacks`, `features`, `regression`, `nightly`); CI runs each group as
+one job. A new suite must be added to `SUITES` (`bun run validate` fails naming any unregistered one).
+Extension behaviour belongs in the suite of group `extensions` that already owns the extension: `rg`
+the extension name in `scripts/` first. Run one group with
+`bun scripts/test-all.ts --group <group> [--image <ref>]`.
 
 ## Phase 7: Regenerate & Validate
 
@@ -769,20 +801,18 @@ bun run generate
 # Fast validation: static checks + unit tests; runs without Docker
 bun run validate
 
-# MANDATORY full validation: + shellcheck, hadolint, yamllint; still no Docker
+# MANDATORY full validation: + shellcheck, hadolint (pinned Docker image), yamllint
 bun run validate:all
 ```
 
-**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) without requiring Docker. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
+**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) without building the image. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
 ```bash
-# Build image
-bun run build
-
-# Full test suite: rebuild + all tests
+# Build, validate:all, then every registered suite against the new image (exit 1 on any failure)
 bun run test:all
+# Already built? Only the suites: bun run test
 ```
 
 **IMPORTANT**: This is an intermediate check — NOT the final gate. Phases 9–11 add more commits
@@ -858,8 +888,7 @@ git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stac
 # 2. Verify no stale version strings in tests
 command grep -rn -E 'includes\(|startsWith\(' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"
 
-# 3. Verify ALL compose stacks updated (not just primary)
-command grep -rh "pgbouncer\|postgres-exporter" stacks/*/compose.yml stacks/*/.env.example | sort -u
+# 3. Companion image pins propagated: covered by validate ("Companion Image Pins"), step 5
 
 # 4. Verify no branch-pinned reusable workflow refs remain
 command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
@@ -938,13 +967,12 @@ what would they find?" Find it yourself first.
 - `feat(extensions): upgrade pgvector to 0.9.0 with new HNSW params`
 - `fix(postgres): update TimescaleDB to 2.24.0, fixes recompression perf`
 
-**Always include**:
-
-```text
-Co-Authored-By: Codex <codex@openai.com>
-```
+**Always include** your own co-author trailer from AGENTS.md "Git Workflow" (e.g.
+`Co-Authored-By: Claude <noreply@anthropic.com>`).
 
 **Commit granularity**: One logical change per commit (e.g., one extension update, or all Bun deps).
+Commit with `git commit --only -m "…" -- <every file of the change>`: a bare `git commit` takes the
+whole index, including renames and files another agent staged.
 
 **Commit ordering**: If PGDG validation is currently failing (stale version strings for disabled
 extensions), fix PGDG versions in the FIRST commit to restore clean validation for subsequent
@@ -972,14 +1000,6 @@ After every update round, perform a mandatory self-reflection before closing out
 8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
     `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
     Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
-8b. **Were ALL compose stack images updated across ALL stacks?** `postgres_exporter` lives in
-    primary, replica, AND single stacks plus three `.env.example` files. Updating only the primary
-    stack is a silent partial update. See Phase 5.6 table for which images are in which stacks.
-8c. **Were updated compose images pre-pulled?** New image versions are NOT in the local Docker
-    cache. The `test:all` single-stack test pulls them during the test run. If the credential
-    helper lookup fails (e.g., env stripping in test subprocess), the test fails. Running
-    `docker pull NEW_IMAGE@SHA` immediately after updating ensures the image is cached before
-    `test:all` runs. See Phase 5.6 checklist item 5.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. If you pin a version that's been removed,
    `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern
@@ -1032,7 +1052,8 @@ unless every item below has either been updated or has an evidence-backed no-op/
 - Percona pinned package versions
 - Timescale main and loader package versions
 - Source-to-PGDG migration opportunities
-- Compose stack images across every stack and `.env.example`
+- Companion images: compose pins (validate-enforced) and `deployments/`-only images
+- Tool images run by scripts (Phase 2.5)
 - Bun runtime in `.tool-versions`
 - Bun package dependencies and `bun.lock`
 - GitHub Actions SHA pins, reusable workflow refs, and stale prose comments

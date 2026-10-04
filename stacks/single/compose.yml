@@ -22,7 +22,7 @@ services:
       - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
 
     volumes:
-      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 

@@ -51,6 +51,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Fixed
 
+- **Compose stacks: `POSTGRES_DATA_VOLUME`, `POSTGRES_BACKUP_VOLUME`, `MONITORING_NETWORK` now work with any value**: services referred to the volume or network by the variable's value, so any non-default name made `docker compose up` fail with "refers to undefined volume". Services now use fixed keys and the variables only name the Docker objects; existing deployments using the defaults are unaffected.
 - **pgvectorscale on x86-64 CPUs without AVX2 or FMA**: the amd64 build executes those instructions, so creating or loading the extension killed the server process (SIGILL) and forced crash recovery, including during first-start initialisation. On such hosts the entrypoint now hides the extension and logs which instructions are missing: first start skips it, the healthcheck no longer expects it, and `CREATE EXTENSION vectorscale` reports it unavailable. Databases that already use vectorscale still need a CPU with AVX2 and FMA. The image now passes `extension_control_path` on the command line, which overrides any value set in `postgresql.conf`.
 
 ## [v18.4-202606031012] - 2026-06-03

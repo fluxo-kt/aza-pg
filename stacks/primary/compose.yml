@@ -16,8 +16,8 @@ services:
       POSTGRES_WAL_LEVEL: ${POSTGRES_WAL_LEVEL:-logical} # logical for CDC and replication
 
     volumes:
-      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
-      - ${POSTGRES_BACKUP_VOLUME:-postgres_backup}:/backup
+      - postgres_data:/var/lib/postgresql
+      - postgres_backup:/backup
       - ./configs/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - ./configs/initdb/03-pgbouncer-auth.sh:/docker-entrypoint-initdb.d/03-pgbouncer-auth.sh:ro
@@ -108,7 +108,7 @@ services:
 
     networks:
       - postgres_net
-      - ${MONITORING_NETWORK:-monitoring}
+      - monitoring
 
     ports:
       - "${POSTGRES_EXPORTER_BIND_IP:-127.0.0.1}:${POSTGRES_EXPORTER_PORT:-9187}:9187"
@@ -146,7 +146,7 @@ services:
 
     networks:
       - postgres_net
-      - ${MONITORING_NETWORK:-monitoring}
+      - monitoring
 
     ports:
       - "${PGBOUNCER_EXPORTER_BIND_IP:-127.0.0.1}:${PGBOUNCER_EXPORTER_PORT:-9127}:9127"
@@ -170,6 +170,8 @@ networks:
     driver: bridge
     attachable: true
   monitoring:
+    # Services use the key; the variable names the Docker network, so any value works.
+    name: ${MONITORING_NETWORK:-monitoring}
     external: true
 
 volumes:

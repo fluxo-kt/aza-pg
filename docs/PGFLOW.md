@@ -36,11 +36,11 @@ definition changed, the worker refuses to start instead of deleting the flow and
 pgflow is automatically installed during container initialization:
 
 ```bash
-docker run -e POSTGRES_PASSWORD=secret ghcr.io/fluxo-kt/aza-pg:pg18
+docker run -e POSTGRES_PASSWORD=secret ghcr.io/fluxo-kt/aza-pg:18
 # pgflow schema + patches loaded automatically
 ```
 
-**Note**: `:pg18` is a convenience tag pointing to the latest PostgreSQL 18 build. For production, use specific timestamped tags (e.g., `18.1-202501142330-single-node`) for reproducible builds.
+**Note**: `:18` is a convenience tag pointing to the latest PostgreSQL 18 build. For production, use specific timestamped tags (e.g., `18.4-202606031012-single-node`) for reproducible builds.
 
 ### New Databases
 
@@ -61,6 +61,20 @@ Test that it works:
 ```sql
 SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 ```
+
+### Upgrading Existing Databases
+
+pgflow is installed only when a database is created, so a database keeps its pgflow version when you move to a newer image. Upgrade it yourself, after stopping your pgflow workers and before deploying `@pgflow/client` / `@pgflow/dsl` of the new version:
+
+```bash
+docker exec <container> pgflow-upgrade            # every database with a pgflow schema
+docker exec <container> pgflow-upgrade my_app     # or only the ones you name
+```
+
+- The current version is read from the schema comment (`pgflow X.Y.Z`), or recognised from the schema's structure for databases created by older images; `--from X.Y.Z` is needed only when the command says it cannot tell.
+- Each database is upgraded in one transaction with upstream's migrations plus aza-pg's patches, ending identical to a fresh install; on any error it rolls back and reports it. A second run prints "up to date".
+- Databases created by images that shipped pgflow 0.13.x are refused unchanged: those images installed an incomplete schema that no upstream migration path fits.
+- pgflow telemetry stays off: the upgrade never schedules upstream's daily usage report. To opt in, run `SELECT pgflow_telemetry.enable();` (and `SELECT pgflow_telemetry.disable();` to stop).
 
 ## Usage
 

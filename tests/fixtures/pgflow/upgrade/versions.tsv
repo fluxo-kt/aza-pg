@@ -1,0 +1,12 @@
+# pgflow release<TAB>its last upstream migration; the last line is the version this image installs
+0.13.1	20260103145141_pgflow_step_output_storage.sql
+0.13.2	20260120205547_pgflow_requeue_stalled_tasks.sql
+0.13.3	20260124113408_pgflow_auth_secret_support.sql
+0.14.0	20260214181656_pgflow_step_conditions.sql
+0.14.1	20260214181656_pgflow_step_conditions.sql
+0.14.2	20260214181656_pgflow_step_conditions.sql
+0.15.0	20260607175525_pgflow_worker_start_mode.sql
+0.15.1	20260904095427_pgflow_task_lifecycle_hardening.sql
+0.16.0	20260907082520_pgflow_remove_legacy_flow_compilation.sql
+0.17.1	20260920093533_pgflow_telemetry.sql
+0.17.2	20261001194538_pgflow_telemetry_endpoint_fix.sql

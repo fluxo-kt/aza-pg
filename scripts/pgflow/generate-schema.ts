@@ -10,6 +10,7 @@
  *   bun scripts/pgflow/generate-schema.ts [--dry-run] [--verbose]
  */
 
+import { mkdir, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format as formatSql } from "sql-formatter";
@@ -18,9 +19,13 @@ import { PGFLOW_TAG, PGFLOW_VERSION } from "./version";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "../..");
 const FIXTURES_DIR = join(ROOT_DIR, "tests/fixtures/pgflow");
+const UPGRADE_DIR = join(FIXTURES_DIR, "upgrade");
+// The first pgflow release an aza-pg image shipped; pgflow-upgrade can start from it or any later release.
+const OLDEST_SHIPPED = "0.13.1";
 const SQL_FORMATTER_CONFIG = join(ROOT_DIR, ".sql-formatter.json");
-const SCHEMA_DIRECTORY_API =
-  "https://api.github.com/repos/pgflow-dev/pgflow/contents/pkgs/core/schemas";
+// Upstream ships the same pgflow twice: declarative schema files (fresh installs) and incremental migrations (upgrades).
+const SCHEMAS_DIR = "pkgs/core/schemas";
+const MIGRATIONS_DIR = "pkgs/core/supabase/migrations";
 
 interface GitHubContentItem {
   name: string;
@@ -99,9 +104,8 @@ function parseArgs(): Options {
   };
 }
 
-function getSchemaUrl(tag: string, filename: string): string {
-  const encodedTag = encodeURIComponent(tag);
-  return `https://raw.githubusercontent.com/pgflow-dev/pgflow/${encodedTag}/pkgs/core/schemas/${filename}`;
+function upstreamFileUrl(tag: string, dir: string, filename: string): string {
+  return `https://raw.githubusercontent.com/pgflow-dev/pgflow/${encodeURIComponent(tag)}/${dir}/${filename}`;
 }
 
 const CLEANUP_ENSURE_WORKERS_LOGS_COMPAT_SQL = `-- Cleanup Ensure Workers Logs
@@ -252,6 +256,56 @@ function localSchemaContent(filename: string, upstreamContent: string): string {
   return upstreamContent;
 }
 
+// Upstream's telemetry migration schedules a daily usage report to telemetry.pgflow.dev at install time. Art's
+// ruling: aza-pg never sends pgflow telemetry unless the operator enables it (pgflow_telemetry.enable()). The
+// declarative schema used for fresh installs never schedules it, so the upgrade path drops the statement too; it
+// would also fail in any pgflow database without pg_cron.
+const TELEMETRY_SCHEDULE_SQL = `insert into pgflow_telemetry.job_registry (jobname, jobid)
+select 'pgflow_telemetry_report', cron.schedule(
+  'pgflow_telemetry_report',
+  '17 3 * * *',
+  $cron$begin; set local statement_timeout = '5 s'; select pgflow_telemetry.report(); commit;$cron$
+);`;
+
+// The 0.13.2 migration schedules the stalled-task job through upstream's setup function, which fails in a pgflow
+// database without pg_cron. aza-overrides.sql (patched 0063) re-creates that function in its pg_cron-safe form and
+// makes the same call after the migrations, exactly as a fresh install does, so the migration's own call is dropped.
+const REQUEUE_SETUP_CALL_SQL =
+  "-- Automatically set up the cron job\nSELECT pgflow.setup_requeue_stalled_tasks_cron();";
+
+function localMigrationContent(filename: string, content: string): string {
+  if (filename.endsWith("_pgflow_requeue_stalled_tasks.sql")) {
+    return replaceRequired(
+      filename,
+      content,
+      REQUEUE_SETUP_CALL_SQL,
+      "-- aza-pg: scheduled by aza-overrides.sql after the migrations (pg_cron-safe setup function)"
+    );
+  }
+  if (!filename.endsWith("_pgflow_telemetry.sql")) {
+    return content;
+  }
+  return replaceRequired(
+    filename,
+    content,
+    TELEMETRY_SCHEDULE_SQL,
+    "-- aza-pg: telemetry stays unscheduled until the operator runs SELECT pgflow_telemetry.enable();"
+  );
+}
+
+// Schema files that pgflow-upgrade re-applies after the migrations, because aza-pg's version of their functions
+// differs from what the migrations create: every file the generator patches, plus 0030_utilities.sql, whose
+// is_local() images up to pgflow 0.14.1 replaced with an always-true version (the migrations never redefine it).
+const RESTORED_UPSTREAM_FILES = ["0030_utilities.sql"];
+
+function overrideFiles(schemas: ReadonlyMap<string, string>): string[] {
+  return [...schemas.keys()].filter(
+    (f) =>
+      RESTORED_UPSTREAM_FILES.includes(f) ||
+      localSchemaContent(f, schemas.get(f) ?? "") !== schemas.get(f)
+  );
+}
+
 function stripTrailingWhitespace(content: string): string {
   return content
     .split("\n")
@@ -259,8 +313,8 @@ function stripTrailingWhitespace(content: string): string {
     .join("\n");
 }
 
-async function fetchSchemaFilenames(tag: string): Promise<string[]> {
-  const url = `${SCHEMA_DIRECTORY_API}?ref=${encodeURIComponent(tag)}`;
+async function listUpstreamSql(tag: string, dir: string): Promise<string[]> {
+  const url = `https://api.github.com/repos/pgflow-dev/pgflow/contents/${dir}?ref=${encodeURIComponent(tag)}`;
   const token = await getGitHubToken();
   const response = await fetch(url, {
     headers: {
@@ -274,7 +328,7 @@ async function fetchSchemaFilenames(tag: string): Promise<string[]> {
       ? ""
       : " Set GITHUB_TOKEN/GH_TOKEN or authenticate gh to avoid API limits.";
     throw new Error(
-      `Failed to list pgflow schema directory: ${response.status} ${response.statusText}.${authHint}`
+      `Failed to list ${dir} at ${tag}: ${response.status} ${response.statusText}.${authHint}`
     );
   }
 
@@ -289,8 +343,13 @@ async function fetchSchemaFilenames(tag: string): Promise<string[]> {
     .sort((a, b) => a.localeCompare(b));
 }
 
-async function fetchSchemaFile(tag: string, filename: string, verbose: boolean): Promise<string> {
-  const url = getSchemaUrl(tag, filename);
+async function fetchUpstreamFile(
+  tag: string,
+  dir: string,
+  filename: string,
+  verbose: boolean
+): Promise<string> {
+  const url = upstreamFileUrl(tag, dir, filename);
 
   if (verbose) {
     console.log(`  Fetching: ${filename}`);
@@ -314,22 +373,18 @@ async function fetchSchemaFile(tag: string, filename: string, verbose: boolean):
   return content;
 }
 
-async function fetchAllSchemas(
+async function fetchAll(
   tag: string,
-  schemaFiles: readonly string[],
+  dir: string,
+  files: readonly string[],
   verbose: boolean
 ): Promise<Map<string, string>> {
-  const schemas = new Map<string, string>();
-
-  console.log(`Fetching ${schemaFiles.length} schema files from ${tag}...`);
-
-  for (const filename of schemaFiles) {
-    const content = await fetchSchemaFile(tag, filename, verbose);
-    schemas.set(filename, content);
-  }
-
-  console.log(`✅ Fetched all ${schemas.size} files`);
-  return schemas;
+  console.log(`Fetching ${files.length} files from ${tag}/${dir}...`);
+  return new Map(
+    await Promise.all(
+      files.map(async (f) => [f, await fetchUpstreamFile(tag, dir, f, verbose)] as const)
+    )
+  );
 }
 
 function generateCombinedSchema(
@@ -370,6 +425,103 @@ COMMENT ON SCHEMA pgflow IS 'pgflow ${version}';
   return sections.join("\n");
 }
 
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+async function listPgflowReleases(): Promise<string[]> {
+  const proc = Bun.spawn(
+    [
+      "git",
+      "ls-remote",
+      "--tags",
+      "https://github.com/pgflow-dev/pgflow.git",
+      "refs/tags/pgflow@*",
+    ],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) throw new Error(`git ls-remote pgflow tags failed: ${stderr}`);
+  return [
+    ...new Set(
+      stdout
+        .split("\n")
+        .map((line) => line.split("refs/tags/pgflow@")[1]?.replace("^{}", ""))
+        .filter((v): v is string => v !== undefined && /^\d+\.\d+\.\d+$/.test(v))
+    ),
+  ].sort(compareVersions);
+}
+
+/**
+ * Writes what /usr/local/bin/pgflow-upgrade needs to bring a database created by an older image to this version:
+ * upstream's incremental migrations, the last migration of every release since OLDEST_SHIPPED (the starting point
+ * for each), and aza-overrides.sql (aza-pg's versions of functions the migrations would otherwise leave different
+ * from a fresh install).
+ */
+async function writeUpgradeFixtures(
+  options: Options,
+  schemas: ReadonlyMap<string, string>,
+  sqlConfig: Record<string, unknown>
+): Promise<void> {
+  const migrationFiles = await listUpstreamSql(options.tag, MIGRATIONS_DIR);
+  const migrations = await fetchAll(options.tag, MIGRATIONS_DIR, migrationFiles, options.verbose);
+
+  const releases = (await listPgflowReleases()).filter(
+    (v) => compareVersions(v, OLDEST_SHIPPED) >= 0 && compareVersions(v, options.version) <= 0
+  );
+  const lastMigrations = await Promise.all(
+    releases.map(async (v) => {
+      const last = (await listUpstreamSql(`pgflow@${v}`, MIGRATIONS_DIR)).at(-1);
+      if (!last) throw new Error(`pgflow@${v} has no migrations`);
+      return `${v}\t${last}`;
+    })
+  );
+  if (!releases.includes(options.version)) {
+    throw new Error(`pgflow@${options.version} is not among upstream release tags`);
+  }
+
+  const overrides = overrideFiles(schemas)
+    .map((f) => `-- Source: ${f}\n${localSchemaContent(f, schemas.get(f) ?? "").trim()}\n`)
+    .join("\n");
+
+  await rm(UPGRADE_DIR, { recursive: true, force: true });
+  await mkdir(join(UPGRADE_DIR, "migrations"), { recursive: true });
+  await Promise.all([
+    ...migrationFiles.map((f) =>
+      Bun.write(
+        join(UPGRADE_DIR, "migrations", f),
+        localMigrationContent(f, migrations.get(f) ?? "")
+      )
+    ),
+    Bun.write(
+      join(UPGRADE_DIR, "versions.tsv"),
+      `# pgflow release<TAB>its last upstream migration; the last line is the version this image installs\n${lastMigrations.join("\n")}\n`
+    ),
+    Bun.write(
+      join(UPGRADE_DIR, "aza-overrides.sql"),
+      stripTrailingWhitespace(
+        formatSql(
+          `-- Generated by: bun scripts/pgflow/generate-schema.ts (do not edit)\n${overrides}`,
+          sqlConfig
+        )
+      )
+    ),
+  ]);
+  console.log(
+    `✅ Upgrade fixtures: ${migrationFiles.length} migrations, ${releases.length} releases in ${UPGRADE_DIR}`
+  );
+}
+
 async function main(): Promise<void> {
   const options = parseArgs();
 
@@ -382,10 +534,8 @@ async function main(): Promise<void> {
   console.log("");
 
   // Discover the upstream file set instead of carrying a fragile local copy.
-  const schemaFiles = await fetchSchemaFilenames(options.tag);
-
-  // Fetch all schema files
-  const schemas = await fetchAllSchemas(options.tag, schemaFiles, options.verbose);
+  const schemaFiles = await listUpstreamSql(options.tag, SCHEMAS_DIR);
+  const schemas = await fetchAll(options.tag, SCHEMAS_DIR, schemaFiles, options.verbose);
 
   // Generate combined schema
   const combinedSchema = generateCombinedSchema(options.version, schemaFiles, schemas);
@@ -453,17 +603,10 @@ async function main(): Promise<void> {
     console.log("Dry run - would write:");
     console.log(`  ${outputPath}`);
   } else {
-    // Write raw schema first
-    await Bun.write(outputPath, combinedSchema);
-    console.log(`\n✅ Written: ${outputPath}`);
-
-    // Format the schema file with sql-formatter for consistency
-    console.log("📝 Formatting schema with sql-formatter...");
     const sqlConfig = await loadSqlFormatterConfig();
-    const rawContent = await Bun.file(outputPath).text();
-    const formattedContent = formatSql(rawContent, sqlConfig);
-    await Bun.write(outputPath, stripTrailingWhitespace(formattedContent));
-    console.log("✅ Schema formatted");
+    await Bun.write(outputPath, stripTrailingWhitespace(formatSql(combinedSchema, sqlConfig)));
+    console.log(`\n✅ Written (formatted): ${outputPath}`);
+    await writeUpgradeFixtures(options, schemas, sqlConfig);
   }
 
   console.log("");

@@ -1,0 +1,11 @@
+# pgflow-upgrade reads this to recognise databases created before images wrote the "pgflow X.Y.Z" schema comment.
+# Columns: structure-hash.sql output<TAB>pgflow release to upgrade from, or "-" for a structure this command recognises
+# but cannot upgrade. Measured on the cron database of each released
+# image that shipped pgflow before the comment existed (ghcr.io/fluxo-kt/aza-pg:<tag>-single-node); re-check with
+# `bun scripts/test/test-pgflow-upgrade.ts --write-legacy-hashes`. This set never grows: every newer install records
+# its version in the schema comment. Images that shipped pgflow 0.13.x installed an incomplete upstream schema (no
+# pgflow.worker_functions, yet later columns present): no point in the migration history matches it, and replaying
+# from any of them fails or ends different from a fresh install, so those databases are refused unchanged.
+b34ab2f447936759e30ee6464a15b9cd	-
+8e16d284f9d521f16951a7f4248d0e8d	-
+545cc5bc86dc248e8b10dcdd5be0bade	0.14.1

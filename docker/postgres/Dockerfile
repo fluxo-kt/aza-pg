@@ -452,11 +452,16 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 RUN set -euo pipefail && mkdir -p /opt/pgflow
 COPY tests/fixtures/pgflow/schema.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
+# Upgrade path for databases created by older images (run by the operator: pgflow-upgrade --help)
+COPY tests/fixtures/pgflow/upgrade/ /opt/pgflow/upgrade/
+COPY docker/postgres/pgflow/structure-hash.sql docker/postgres/pgflow/legacy-structure.tsv /opt/pgflow/
+COPY docker/postgres/pgflow/pgflow-upgrade.sh /usr/local/bin/pgflow-upgrade
 
 # Consolidate all chmod operations into single RUN (better layer caching)
 RUN set -euo pipefail && \
     chmod +x /usr/local/bin/healthcheck.sh && \
     chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
+    chmod +x /usr/local/bin/pgflow-upgrade && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Copy runtime metadata files LATE (frequently change with any manifest update)

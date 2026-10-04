@@ -155,16 +155,15 @@ bun scripts/docker/validate-published-image-artifacts.ts  # Validate published i
 **Regression Testing:**
 
 ```bash
-# Run all regression tests (production mode)
-bun test:regression:all
+# Run all regression tests
+bun scripts/test/run-all-regression-tests.ts
 
 # Run specific tier
-bun test:regression:core        # Tier 1: PostgreSQL core (30 tests)
-bun test:regression:extensions  # Tier 2: Extension tests (13 extensions)
-bun test:regression:interactions # Tier 3: Interaction tests (14 scenarios)
+bun scripts/test/run-all-regression-tests.ts --tier=2  # Tier 2: Extension tests
+bun scripts/test/run-all-regression-tests.ts --tier=3 # Tier 3: Interaction tests
 
 # Run in regression mode (all extensions including disabled ones)
-TEST_MODE=regression bun test:regression:all
+bun scripts/test/run-all-regression-tests.ts --mode=regression
 
 # Build regression image (includes pgTAP + all extensions)
 bun scripts/build.ts --regression
@@ -172,10 +171,8 @@ bun scripts/build.ts --regression
 
 **Test Tiers:**
 
-- **Tier 1**: Core PostgreSQL regression (30 official tests, ~3-5 min)
-- **Tier 2**: Extension-specific regression (13 extensions, ~5-8 min)
-- **Tier 3**: Extension interactions (14 scenarios, ~2-4 min)
-- **Tier 4**: pgTAP unit tests (82 SQL tests, ~5-10 min)
+- **Tier 2**: each extension's SQL against its expected output
+- **Tier 3**: extension interactions
 
 See [docs/REGRESSION-TESTING.md](docs/REGRESSION-TESTING.md) for comprehensive regression testing documentation.
 

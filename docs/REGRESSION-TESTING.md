@@ -21,16 +21,15 @@ The regression testing system provides multi-tier validation to ensure correctne
 ## Quick Start
 
 ```bash
-# Run all regression tests (production mode)
-bun test:regression:all
+# Run all regression tests
+bun scripts/test/run-all-regression-tests.ts
 
 # Run specific tier
-bun test:regression:core        # Tier 1: PostgreSQL core
-bun test:regression:extensions  # Tier 2: Extension tests
-bun test:regression:interactions # Tier 3: Interaction tests
+bun scripts/test/run-all-regression-tests.ts --tier=2  # Tier 2: Extension tests
+bun scripts/test/run-all-regression-tests.ts --tier=3 # Tier 3: Interaction tests
 
 # Run in regression mode (all extensions)
-TEST_MODE=regression bun test:regression:all
+bun scripts/test/run-all-regression-tests.ts --mode=regression
 
 # Use master runner for advanced options
 bun scripts/test/run-all-regression-tests.ts --help
@@ -58,10 +57,10 @@ Tests exact release image behavior with enabled extensions only.
 
 ```bash
 # Default mode
-bun test:regression:all
+bun scripts/test/run-all-regression-tests.ts
 
 # Explicit
-TEST_MODE=production bun test:regression:all
+bun scripts/test/run-all-regression-tests.ts --mode=production
 bun scripts/test/run-all-regression-tests.ts --mode=production
 ```
 
@@ -85,7 +84,7 @@ Tests all extensions including disabled ones for comprehensive coverage.
 **Activation:**
 
 ```bash
-TEST_MODE=regression bun test:regression:all
+bun scripts/test/run-all-regression-tests.ts --mode=regression
 bun scripts/test/run-all-regression-tests.ts --mode=regression
 
 # Build regression image
@@ -94,45 +93,7 @@ bun scripts/build.ts --regression
 
 ## Test Tiers
 
-### Tier 1: Core PostgreSQL Regression
-
-Official PostgreSQL regression tests from postgres/postgres repository.
-
-**Coverage:** 30 critical tests
-
-- Data types: boolean, int2, int4, int8, float4, float8, numeric, text, varchar
-- Operations: select, insert, update, delete, join, union, subselect
-- Features: constraints, triggers, indexes, transactions, aggregates, copy, prepare
-- Advanced: json, jsonb, arrays, strings, btree_index
-
-**Runner:** `scripts/test/test-postgres-core-regression.ts`
-
-**Usage:**
-
-```bash
-# Run all 30 tests
-bun test:regression:core
-
-# Run specific tests
-bun scripts/test/test-postgres-core-regression.ts --tests=boolean,int2,int4
-
-# Fast mode (4 tests only)
-bun scripts/test/test-postgres-core-regression.ts --fast
-
-# Generate diffs for failures
-bun scripts/test/test-postgres-core-regression.ts --generate-diffs
-```
-
-**Test Lifecycle:**
-
-1. Auto-fetch missing tests from GitHub (cached locally)
-2. Start temporary PostgreSQL container
-3. Execute tests via psql
-4. Normalize output (platform variations)
-5. Compare against expected output
-6. Generate regression.diffs for failures
-
-**Test Location:** `tests/regression/core/pg-official/`
+PostgreSQL's own regression suite is not run: the image copies PGDG's server binary unchanged, so no image defect could fail it.
 
 ### Tier 2: Extension Regression
 
@@ -149,7 +110,7 @@ Extension-specific functionality tests.
 
 ```bash
 # Run all extension tests
-bun test:regression:extensions
+bun scripts/test/run-all-regression-tests.ts --tier=2
 
 # Run specific extensions
 bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb
@@ -196,7 +157,7 @@ Tests combinations of extensions and edge cases.
 
 ```bash
 # Run all interaction tests
-bun test:regression:interactions
+bun scripts/test/run-all-regression-tests.ts --tier=3
 
 # Verbose mode
 bun scripts/test/test-extension-interactions.ts --verbose
@@ -217,46 +178,9 @@ await client.query(`
 await client.query(`SELECT create_hypertable('ts_vectors', 'time')`);
 ```
 
-### Tier 4: pgTAP Unit Tests
+### pgTAP
 
-SQL-based unit tests using pgTAP framework.
-
-**Coverage:** 82 tests across 5 files
-
-- `01_extensions_availability.sql` (15 tests): Extension availability
-- `02_schema_and_objects.sql` (20 tests): Schema, tables, functions, triggers
-- `03_vector_extension.sql` (12 tests): pgvector functionality
-- `04_timescaledb_extension.sql` (15 tests): TimescaleDB time-series
-- `05_security_and_permissions.sql` (20 tests): Roles, RLS, permissions
-
-**Location:** `tests/regression/pgtap/`
-
-**Usage:**
-
-```bash
-# Using psql
-psql -U postgres -d test_db -f tests/regression/pgtap/01_extensions_availability.sql
-
-# Using pg_prove (TAP harness)
-pg_prove -U postgres -d test_db tests/regression/pgtap/*.sql
-
-# In Docker container
-docker exec pg-regression psql -U postgres -f /tests/regression/pgtap/01_extensions_availability.sql
-```
-
-**Test Structure:**
-
-```sql
-BEGIN;
-SELECT plan(15);
-
-SELECT has_extension('vector', 'pgvector should be available');
-SELECT has_table('public', 'test_table', 'table should exist');
-SELECT is(2 + 2, 4, 'arithmetic should work');
-
-SELECT * FROM finish();
-ROLLBACK;
-```
+The regression image (`regression.Dockerfile`) installs pgTAP for ad-hoc SQL tests; the repository ships no pgTAP test files.
 
 ## Master Test Runner
 
@@ -455,11 +379,7 @@ bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb --
 
 ```bash
 # Verbose mode
-bun scripts/test/test-postgres-core-regression.ts --verbose
-
-# Generate diffs
-bun scripts/test/test-postgres-core-regression.ts --generate-diffs
-cat tests/regression/core/regression.diffs
+bun scripts/test/run-all-regression-tests.ts --verbose
 ```
 
 ### Test Locally
@@ -525,19 +445,6 @@ docker stop pg-test && docker rm -v pg-test
 - [TAP Protocol](https://testanything.org/)
 - [Testing Best Practices](https://wiki.postgresql.org/wiki/Testing)
 
-## Package.json Scripts
-
-```json
-{
-  "test:regression:core": "bun scripts/test/test-postgres-core-regression.ts",
-  "test:regression:extensions": "bun scripts/test/test-extension-regression.ts",
-  "test:regression:interactions": "bun scripts/test/test-extension-interactions.ts",
-  "test:regression:all": "bun scripts/test/run-all-regression-tests.ts",
-  "test:regression:production": "TEST_MODE=production bun test:regression:all",
-  "test:regression:comprehensive": "TEST_MODE=regression bun test:regression:all"
-}
-```
-
 ## Architecture Decisions
 
 ### Separate Dockerfile for Regression
@@ -562,13 +469,6 @@ docker stop pg-test && docker rm -v pg-test
 - Easy mode switching (environment variable)
 - Comprehensive coverage without separate test suites
 
-### Four-Tier Test Structure
+### Two Test Tiers
 
-**Decision:** Tier 1 (PostgreSQL core), Tier 2 (Extensions), Tier 3 (Interactions), Tier 4 (pgTAP).
-
-**Rationale:**
-
-- Incremental validation (fast feedback → comprehensive coverage)
-- Clear separation of concerns
-- Flexible CI/CD strategies (fast PR → full release → nightly)
-- Easy to add new tests within appropriate tier
+**Decision:** Tier 2 (each extension's SQL against its expected output) and Tier 3 (extension interactions); no Tier 1, because the image copies PGDG's server binary unchanged, so no image defect could fail PostgreSQL's own suite.

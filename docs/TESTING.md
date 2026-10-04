@@ -279,70 +279,16 @@ This pattern adds 2 minutes to test writing but saves hours of debugging.
 Quick reference:
 
 ```bash
-bun test:regression:all          # All tiers (production mode)
-bun test:regression:core         # Tier 1: PostgreSQL core (30 tests)
-bun test:regression:extensions   # Tier 2: Extension tests (13 extensions)
-TEST_MODE=regression bun test:regression:all  # Regression mode (all extensions)
+bun scripts/test/run-all-regression-tests.ts          # All tiers
+bun scripts/test/run-all-regression-tests.ts --tier=2   # Tier 2: Extension tests
+bun scripts/test/run-all-regression-tests.ts --mode=regression  # Regression mode (all extensions)
 ```
 
 ---
 
 ## Regression Test Suites
 
-### PostgreSQL Official Regression Tests (Tier 1)
-
-Core PostgreSQL regression tests fetched from the official postgres/postgres repository.
-
-**Structure:**
-
-```
-tests/regression/core/pg-official/
-├── sql/          # SQL test files (fetched from src/test/regress/sql/)
-├── expected/     # Expected output files (fetched from src/test/regress/expected/)
-└── README.md     # Documentation
-```
-
-**Fetching Tests:**
-
-Tests are fetched on-demand and cached locally. To fetch tests:
-
-```bash
-# Fetch all default tests (~30 core tests)
-bun scripts/ci/fetch-pg-regression-tests.ts
-
-# Fetch specific tests
-bun scripts/ci/fetch-pg-regression-tests.ts --tests=boolean,int2,int4
-
-# Force re-download (ignore cache)
-bun scripts/ci/fetch-pg-regression-tests.ts --force
-```
-
-**Source:**
-
-- Repository: `postgres/postgres`
-- Branch: `REL_18_STABLE`
-- Path: `src/test/regress/`
-
-**Cache Policy:**
-
-Test files are **not committed** to the repository (see `.gitignore`).
-
-They are:
-
-- Fetched automatically when running tests (if missing)
-- Cached locally for faster subsequent runs
-- Safe to delete (will be re-fetched as needed)
-
-**Default Test Set:**
-
-The default set includes ~30 critical PostgreSQL regression tests covering:
-
-- **Data types**: boolean, int2, int4, int8, float4, float8, numeric, text, varchar
-- **Core operations**: select, insert, update, delete, join, union, subselect
-- **Essential features**: constraints, triggers, create_index, create_table, transactions, aggregates, copy, prepare
-- **Advanced features**: json, jsonb, arrays, strings, numerology, btree_index
-
-See `scripts/ci/fetch-pg-regression-tests.ts` for the complete list.
+PostgreSQL's own regression suite is not run: the image copies PGDG's server binary unchanged, so no image defect could fail it.
 
 ### Extension Regression Tests (Tier 2)
 
@@ -452,8 +398,7 @@ bun scripts/test/test-extension-regression.ts --container=my-postgres-container
 
 **Related Documentation:**
 
-- **Tier 1 Tests**: `tests/regression/core/` - PostgreSQL core regression tests
-- **Functional Tests**: `scripts/test/test-all-extensions-functional.ts` - 117+ extension tests
+- **Extension behaviour**: `scripts/docker/test-image-lib.ts`, run by `scripts/docker/test-image.ts`
 - **Regression Runner**: `scripts/test/lib/regression-runner.ts` - Shared test infrastructure
 
 ### Expected Output Generation Status
@@ -1060,8 +1005,8 @@ All enabled extensions have functional tests with 100% coverage across three dim
 
 **Test Suite:**
 
-- `scripts/test/test-all-extensions-functional.ts` - Comprehensive smoke tests for all enabled extensions
-- `scripts/test/test-auto-config.ts` - Auto-config detection across 4 memory scenarios
+- `scripts/docker/test-image.ts` - extension behaviour for every enabled extension (checks in `test-image-lib.ts`)
+- `scripts/test/test-auto-config.ts` - auto-config dry-run table on the real image plus two real boots
 - `scripts/test/test-pgbouncer-healthcheck.ts` - PgBouncer auth flow validation
 
 ### Test Coverage Matrix
@@ -1150,8 +1095,8 @@ See `scripts/test/test-pgbouncer-healthcheck.ts` for end-to-end stack testing.
 
 **PgBouncer Test Coverage:**
 
-- Happy path (8 tests): .pgpass file management, authentication via localhost/hostname, SHOW POOLS, healthcheck
-- Failure scenarios (6 tests): wrong password, missing .pgpass, invalid listen address, PostgreSQL down, max connections, wrong permissions
+- Happy path: .pgpass file management, authentication via localhost/hostname, SHOW POOLS, healthcheck
+- Failure scenarios: wrong password, missing .pgpass, invalid listen address, PostgreSQL down, max connections, wrong permissions
 
 **Stack Deployment Test Coverage:**
 
@@ -1505,7 +1450,7 @@ test-complete:
 
 - **ci.yml**: Fast tests only (4 Tier 1 tests, linting, validation)
 - **publish.yml**: Comprehensive test gate (smoke, extensions, features, security, regression)
-- **regression-tests.yml**: Tier 1-3 regression tests (production mode)
+- **regression-tests.yml**: Tier 1-3 regression tests
 
 #### Test Environments
 
@@ -1541,8 +1486,8 @@ scripts/docker/
 
 ## References
 
-- **Extension tests:** `scripts/test/test-all-extensions-functional.ts`
-- **Auto-config tests:** `scripts/test/test-auto-config.ts` (10 memory tier scenarios)
+- **Extension tests:** `scripts/docker/test-image-lib.ts` (run by `scripts/docker/test-image.ts`)
+- **Auto-config tests:** `scripts/test/test-auto-config.ts`
 - **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.ts` (happy path)
 - **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.ts` (6 failure scenarios)
 - **Hook extension tests:** `scripts/test/test-hook-extensions.ts`
@@ -1551,9 +1496,6 @@ scripts/docker/
 - **Image test harness:** `scripts/docker/test-image.ts` (comprehensive image validation)
 - **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Auto-config entrypoint:** `docker/postgres/docker-auto-config-entrypoint.sh`
-- **Commit 89de009**: Test restoration with session isolation fixes (4 tests restored, 1 added)
-- **Commit 11c4d56**: pgsodium TCE security fix (enabled shared_preload_libraries)
-- **Session Isolation**: See `scripts/test/test-all-extensions-functional.ts` lines 450-520 for examples
 - **Init Order**: `docker/postgres/docker-entrypoint-initdb.d/` for extension creation sequence
 - **Hook Extensions**: See `AGENTS.md` "Hook-Based Extensions & Tools" section for manifest patterns
 

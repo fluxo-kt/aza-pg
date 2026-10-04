@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const SCHEMA_PATH = "tests/fixtures/pgflow/schema-v0.14.1.sql";
+const SCHEMA_PATH = "tests/fixtures/pgflow/schema.sql";
 
 async function readSchema(): Promise<string> {
   return await Bun.file(SCHEMA_PATH).text();

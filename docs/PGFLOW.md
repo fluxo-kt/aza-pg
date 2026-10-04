@@ -1,4 +1,4 @@
-# pgflow v0.14.1 - Supabase Compatibility Layer
+# pgflow - Supabase Compatibility Layer
 
 This document describes how pgflow (Supabase's workflow orchestration extension) is integrated into aza-pg custom PostgreSQL builds.
 
@@ -401,12 +401,7 @@ GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_ro
 
 ## Version Compatibility
 
-| aza-pg Version  | pgflow Version | PostgreSQL | Notes                  |
-| --------------- | -------------- | ---------- | ---------------------- |
-| 18.1-202501xx\* | 0.13.1         | 18.1       | Initial integration    |
-| Unreleased      | 0.14.1         | 18.3       | Conditional step logic |
-
-\* _Version format note: `xx` represents a timestamp suffix automatically generated during build (e.g., `202501121430` for Jan 12, 2:30 PM). Use the full version tag from your image._
+The pgflow version an image ships is listed in `CHANGELOG.md` per release and in `/etc/postgresql/version-info.txt` inside the image; it comes from the `pgflow` tag in `scripts/extensions/manifest-data.ts`. Use `@pgflow/client` and `@pgflow/dsl` of the same version.
 
 ## Performance Considerations
 

@@ -4,7 +4,7 @@ This directory contains the pgflow SQL schema for testing purposes.
 
 ## Contents
 
-- `schema-v0.14.1.sql` - Complete pgflow release schema
+- `schema.sql` - Complete pgflow release schema (generated; do not edit)
 - `install.ts` - TypeScript helper for installing schema into containers
 
 ## Usage
@@ -61,7 +61,8 @@ if (result.success) {
 ## Schema Source
 
 The schema is combined from the release-tagged SQL files in the pgflow repository:
-https://github.com/pgflow-dev/pgflow/tree/pgflow@0.14.1/pkgs/core/schemas/
+`https://github.com/pgflow-dev/pgflow/tree/<pgflow tag>/pkgs/core/schemas/`, at the `pgflow` tag in
+`scripts/extensions/manifest-data.ts`.
 
 The generator discovers upstream `*.sql` files from the release tag and concatenates them in
 lexicographic order.
@@ -71,14 +72,10 @@ lexicographic order.
 To update to a newer pgflow version:
 
 1. Check latest release: https://github.com/pgflow-dev/pgflow/releases
-2. Run `bun scripts/pgflow/generate-schema.ts <version> --update-install`
-3. Review the generated schema and delete the old schema fixture
-4. Run pgflow tests before committing
-5. Update this README if the fixture workflow changes
-
-```bash
-bun scripts/pgflow/generate-schema.ts 0.14.1 --update-install
-```
+2. Set the `pgflow` tag in `scripts/extensions/manifest-data.ts` and the `@pgflow/client` / `@pgflow/dsl`
+   versions in `package.json` (validate fails while they differ), then `bun run generate && bun install`
+3. Run `bun scripts/pgflow/generate-schema.ts`; it fails loudly if a local schema patch no longer matches upstream
+4. Review the generated schema and run the pgflow tests before committing
 
 ## Supabase Realtime Compatibility
 

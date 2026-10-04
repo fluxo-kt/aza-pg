@@ -1,10 +1,10 @@
-# pgflow v0.14.1 - Quick Reference
+# pgflow - Quick Reference
 
 > **📖 Complete Documentation**: See **[docs/PGFLOW.md](../../docs/PGFLOW.md)** for the full guide
 
 ## Status in aza-pg
 
-**pgflow v0.14.1 is bundled** and automatically installed in:
+**pgflow is bundled** (version: see `docs/PGFLOW.md` → Version Compatibility) and automatically installed in:
 
 - Initial database (`POSTGRES_DB`) via initdb.
 
@@ -39,7 +39,7 @@ See:
 
 Located in `tests/fixtures/pgflow/`:
 
-- `schema-v0.14.1.sql` - pgflow schema
+- `schema.sql` - pgflow schema
 - `README.md` - Schema usage notes
 
 ## Compatibility Layer

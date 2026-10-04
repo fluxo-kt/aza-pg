@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * pgflow v0.14.1 Schema-Level SQL Tests
+ * pgflow Schema-Level SQL Tests
  *
  * Tests SQL-side pgflow schema changes that can be verified from PostgreSQL.
  * Does NOT test TypeScript edge-worker features (PGFLOW_AUTH_SECRET, maxPgConnections)
@@ -13,7 +13,7 @@
  * - T3.4: workers table structure (7 columns)
  * - T3.5: Function signatures (start_tasks, set_vt_batch, step_task_record)
  * - T3.6: cascade_complete_taskless_steps (empty map flow auto-completion)
- * - T3.7: v0.14.1 conditional step skip/fail propagation
+ * - T3.7: conditional step skip/fail propagation (added in pgflow 0.14)
  *
  * Usage:
  *   # Start new container from image

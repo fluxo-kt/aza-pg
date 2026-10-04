@@ -88,10 +88,8 @@ Use for developer testing and pre-release validation:
 # Trigger manually via GitHub Actions UI or:
 gh workflow run build-postgres-image.yml
 
-# With custom extension versions:
-gh workflow run build-postgres-image.yml -r main \
-  -f pg_version=18 \
-  -f pgvector_version=0.8.1
+# Versions come from scripts/extensions/manifest-data.ts; the only input is push_image:
+gh workflow run build-postgres-image.yml -r main -f push_image=true
 ```
 
 **When to use:**

@@ -56,16 +56,11 @@
 # ---------------
 # GitHub UI:
 #   Actions tab → "Build PostgreSQL Image" → "Run workflow"
-#   Choose branch and optional version inputs
+#   Choose branch and whether to push
 #
 # GitHub CLI:
 #   gh workflow run build-postgres-image.yml -r main
-#   gh workflow run build-postgres-image.yml -r main \
-#     -f pg_version=18 \
-#     -f pgvector_version=0.8.1 \
-#     -f pg_cron_version=1.6.7 \
-#     -f pgaudit_version=18.0 \
-#     -f push_image=true
+#   gh workflow run build-postgres-image.yml -r main -f push_image=true
 #
 # OUTPUTS:
 # --------
@@ -145,9 +140,6 @@ jobs:
 
       - name: Verify manifest sync
         run: bun scripts/verify-generated.ts
-
-      - name: Validate workflow defaults
-        run: bun scripts/ci/validate-workflow-defaults.ts
 
   build:
     name: Build PostgreSQL Image (${{ matrix.platform }})

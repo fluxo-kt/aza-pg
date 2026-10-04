@@ -929,26 +929,6 @@ git ls-remote https://github.com/owner/repo.git refs/tags/v1.2.3
 
 ---
 
-### Issue 5: Workflow Defaults Out of Sync
-
-**Symptom:** Build workflow uses different versions than local builds
-
-**Cause:** Workflow input defaults hardcoded separately from extension-defaults.ts
-
-**Fix:** Use programmatic extraction:
-
-```yaml
-# In .github/workflows/build-postgres-image.yml
-- name: Extract defaults
-  run: |
-    DEFAULTS=$(bun scripts/extension-defaults.ts json)
-    echo "PG_VERSION=$(echo $DEFAULTS | jq -r .pgVersion)" >> $GITHUB_ENV
-```
-
-Or keep workflow defaults in sync manually (documented in comments).
-
----
-
 ## Maintenance Checklist
 
 ### Monthly

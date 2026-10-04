@@ -49,6 +49,7 @@ interface ManifestEntry {
   kind: "extension" | "builtin" | "tool";
   install_via?: "pgdg" | "percona" | "timescale" | "source";
   soFileName?: string;
+  binaryPath?: string;
   source?: SourceSpec;
   runtime?: RuntimeSpec;
   dependencies?: string[];
@@ -296,6 +297,21 @@ async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   for (const entry of toolExtensions) {
     if (!entry.runtime) {
       warn(`Tool '${entry.name}' (kind="tool") is missing 'runtime' object`);
+    }
+    // The image checks find a tool by the file it ships; a tool naming neither is never checked at all.
+    if (entry.enabled !== false && !entry.binaryPath && !entry.soFileName) {
+      error(
+        `Tool '${entry.name}' names neither binaryPath (the executable it installs, e.g. /usr/bin/pgbadger) nor soFileName (the library it installs); set the one it ships in scripts/extensions/manifest-data.ts`
+      );
+    }
+  }
+
+  // A disabled entry is read by whoever wants it back: the reason is the only record of why it is off.
+  for (const entry of manifest.entries) {
+    if (entry.enabled === false && !entry.disabledReason?.trim()) {
+      error(
+        `Entry '${entry.name}' is disabled without disabledReason; add one in scripts/extensions/manifest-data.ts saying why it is off and what would let it back on`
+      );
     }
   }
 }

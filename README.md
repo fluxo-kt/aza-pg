@@ -74,7 +74,7 @@ See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.
 
 ## Quick Start
 
-**Security:** Default binding 127.0.0.1 (localhost). TLS disabled. Set `POSTGRES_BIND_IP=0.0.0.0` for network access. See [Production](#security) for hardening.
+**Security:** Default binding 127.0.0.1 (localhost). TLS disabled. Set `POSTGRES_BIND_IP=0.0.0.0` for network access (in the compose stacks it only chooses the host address the port is published on; companions always reach PostgreSQL over the stack network). See [Production](#security) for hardening.
 
 ### Setup
 

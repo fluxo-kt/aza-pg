@@ -7,6 +7,11 @@ services:
     restart: unless-stopped
 
     environment:
+      # The image uses POSTGRES_BIND_IP as PostgreSQL's listen_addresses. In a stack PostgreSQL must listen on the
+      # container's Docker networks, or pgbouncer, the exporters and replicas cannot connect (pg_hba.conf admits only
+      # those networks, with passwords). This entry overrides the .env value inside the container only; the host port
+      # mapping still reads POSTGRES_BIND_IP from .env, so host exposure stays what the operator chose.
+      POSTGRES_BIND_IP: "0.0.0.0"
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}

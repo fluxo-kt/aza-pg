@@ -547,7 +547,7 @@ The default configuration binds to localhost only:
 
 **Enabling Network Access:**
 
-To allow network connections, set `POSTGRES_BIND_IP=0.0.0.0` in `.env` and ensure firewall rules are configured.
+In the compose stacks PostgreSQL always listens on the stack's Docker networks, where pgbouncer, the exporters and replicas connect; `POSTGRES_BIND_IP` in `.env` only chooses the host address its port is published on. To accept connections from other hosts, set `POSTGRES_BIND_IP=0.0.0.0` (publishes on every host interface) and configure firewall rules. Running the image alone (`docker run`), `POSTGRES_BIND_IP` is PostgreSQL's listen address.
 
 **Production Hardening:**
 

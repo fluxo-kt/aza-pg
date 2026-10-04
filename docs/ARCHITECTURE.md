@@ -254,7 +254,7 @@ _Performance Impact:_
 ```
 
 **Default Binding:** 127.0.0.1 (localhost only)
-**Network Access:** Change `POSTGRES_BIND_IP=0.0.0.0` (requires firewall)
+**Network Access:** In the stacks PostgreSQL listens on the stack's Docker networks; `POSTGRES_BIND_IP=0.0.0.0` publishes its host port on every interface (requires firewall). For a lone `docker run`, `POSTGRES_BIND_IP` is PostgreSQL's listen address.
 
 ## Configuration Hierarchy
 

@@ -20,13 +20,13 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## PostgreSQL Connection
 
-| Variable            | Default        | Description                                          |
-| ------------------- | -------------- | ---------------------------------------------------- |
-| `POSTGRES_USER`     | `postgres`     | Database superuser                                   |
-| `POSTGRES_PASSWORD` | **(required)** | Superuser password (16+ chars recommended)           |
-| `POSTGRES_DB`       | `postgres`     | Initial database name                                |
-| `POSTGRES_BIND_IP`  | `127.0.0.1`    | Bind address: `127.0.0.1`, `0.0.0.0`, or specific IP |
-| `POSTGRES_PORT`     | Stack-specific | `5432` (primary/single), `5433` (replica)            |
+| Variable            | Default        | Description                                                                                                                                                                                     |
+| ------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`     | `postgres`     | Database superuser                                                                                                                                                                              |
+| `POSTGRES_PASSWORD` | **(required)** | Superuser password (16+ chars recommended)                                                                                                                                                      |
+| `POSTGRES_DB`       | `postgres`     | Initial database name                                                                                                                                                                           |
+| `POSTGRES_BIND_IP`  | `127.0.0.1`    | Stacks: host address the port is published on (PostgreSQL itself listens on the stack's Docker networks). Lone container: PostgreSQL's listen address. `127.0.0.1`, `0.0.0.0`, or a specific IP |
+| `POSTGRES_PORT`     | Stack-specific | `5432` (primary/single), `5433` (replica)                                                                                                                                                       |
 
 ## Replication
 

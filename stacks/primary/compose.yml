@@ -48,6 +48,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
+      # Probe every second until first healthy: services waiting on service_healthy start when PostgreSQL is ready, not at the next 10s tick (Docker Engine 25+).
+      start_interval: 1s
 
   pgbouncer:
     image: >-
@@ -91,6 +93,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+      # pgbouncer_exporter waits for this healthcheck; probe every second until first healthy instead of waiting 30s.
+      start_interval: 1s
 
   postgres_exporter:
     image: >-

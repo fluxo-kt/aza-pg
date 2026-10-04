@@ -57,6 +57,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
+      # Probe every second until first healthy: services waiting on service_healthy start when PostgreSQL is ready, not at the next 10s tick (Docker Engine 25+).
+      start_interval: 1s
 
   postgres_exporter:
     image: >-

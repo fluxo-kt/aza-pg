@@ -265,8 +265,8 @@ RUN set -euo pipefail && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Set regression preload libraries environment variable
-# This includes ALL optional preload modules for maximum test coverage (10 total)
-ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_partman_bgw,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,set_user,timescaledb"
+# This includes ALL optional preload modules for maximum test coverage
+ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_partman_bgw,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,set_user,supabase_vault,timescaledb"
 
 # Copy runtime metadata files with testMode marker
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json

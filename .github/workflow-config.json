@@ -10,7 +10,7 @@
   "counts": {
     "total": 40,
     "enabled": 37,
-    "preloaded": 13,
+    "preloaded": 14,
     "autoCreated": 11
   },
   "featuredExtensions": ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"]

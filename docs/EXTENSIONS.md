@@ -41,6 +41,7 @@ aza-pg classifies bundled functionality into four buckets:
   - pgaudit (extension)
   - pgsodium (extension)
   - safeupdate (tool)
+  - supabase_vault (extension)
   - timescaledb (extension)
 
 ## Extension Matrix
@@ -48,7 +49,7 @@ aza-pg classifies bundled functionality into four buckets:
 The tables below are generated from `extensions.manifest.json`. Columns indicate default enablement and whether `shared_preload_libraries` is required.
 
 - Default `shared_preload_libraries` (from manifest) is:
-  `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb`
+  `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb`
   (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 
 <!-- extensions-table:start -->
@@ -150,7 +151,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | [`pgaudit`](https://github.com/pgaudit/pgaudit)                      | [18.0](https://github.com/pgaudit/pgaudit/releases/tag/18.0)          | Yes                | Yes            | [Docs](https://www.pgaudit.org)                         | Detailed auditing for DDL/DML activity with class-level granularity. |
 | [`pgsodium`](https://github.com/michelp/pgsodium)                    | [v3.1.11](https://github.com/michelp/pgsodium/releases/tag/v3.1.11)   | Yes                | Yes            | [Docs](https://michelp.github.io/pgsodium)              | Modern cryptography and envelope encryption with libsodium.          |
 | [`set_user (pgaudit_set_user)`](https://github.com/pgaudit/set_user) | [REL4_2_0](https://github.com/pgaudit/set_user/releases/tag/REL4_2_0) | No                 | Yes            | [Docs](https://github.com/pgaudit/set_user#readme)      | Audited SET ROLE helper complementing pgaudit.                       |
-| [`supabase_vault (vault)`](https://github.com/supabase/vault)        | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1)       | Yes                | No             | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials.         |
+| [`supabase_vault (vault)`](https://github.com/supabase/vault)        | [v0.3.1](https://github.com/supabase/vault/releases/tag/v0.3.1)       | Yes                | Yes            | [Docs](https://supabase.com/docs/guides/database/vault) | Supabase secret store for encrypted application credentials.         |
 
 ### timeseries
 
@@ -186,7 +187,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - Baseline auto-created extensions during cluster bootstrap:
   - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pgmq`, `plpgsql`, `timescaledb`, `vector`, `vectorscale`
   - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
-- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb` (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb` (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 - Optional extensions can be preloaded: `supautils`, `pg_partman_bgw` (background worker), `set_user`, `plan_filter` (pg_plan_filter's library name).
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
@@ -310,17 +311,9 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
 - **`disabledReason`** (optional): Explanation for why extension is disabled. Shown in build logs.
 - **`runtime.defaultEnable`** (runtime): Separate field controlling whether `CREATE EXTENSION` runs automatically in `01-extensions.sql`. Default: `false`.
 
-### Core Extension Protection
+### Disabling a Default Preload
 
-The following extensions **cannot be disabled** because they are required by the system or are preloaded by default:
-
-- `auto_explain` (preloaded for query diagnostics)
-- `pg_cron` (preloaded for job scheduling)
-- `pg_stat_monitor` (preloaded for advanced query telemetry)
-- `pg_stat_statements` (preloaded for query monitoring)
-- `pgaudit` (preloaded for audit logging)
-
-The manifest validation will fail if you attempt to disable these extensions.
+Disabling an entry that is preloaded by default also drops it from the default `shared_preload_libraries` when `bun run generate` runs (the pre-commit hook does it too); `validate-manifest.ts` only checks that the generated default matches the manifest. Databases that already created the extension can no longer load it.
 
 ### Example: Creating a Minimal AI Image
 
@@ -550,30 +543,7 @@ bun run build  # Validation runs before Docker build
 
 ### Output Format
 
-```
-=== MANIFEST VALIDATION ===
-
-[COUNT VALIDATION]
-  Total extensions: 38 (expected: 38)
-  Builtin: 6 (expected: 6)
-  PGDG: 14 (expected: 14)
-  Compiled: 18 (expected: 18)
-
-[DEFAULT ENABLE VALIDATION]
-  Baseline extensions in 01-extensions.sql: pg_stat_statements, pg_trgm, pgaudit, pg_cron, vector
-  Default preload libraries: pg_stat_statements, auto_explain, pg_cron, pgaudit
-
-[PGDG CONSISTENCY VALIDATION]
-  PGDG packages in Dockerfile: cron, pgaudit, pgvector, ...
-
-[RUNTIME SPEC VALIDATION]
-
-[DEPENDENCY VALIDATION]
-
-=== VALIDATION RESULTS ===
-
-✅ Manifest validation passed
-```
+The output has one section per check — `[MANIFEST COUNTS]`, `[DEFAULT ENABLE VALIDATION]`, `[SHARED PRELOAD LIBRARIES VALIDATION]`, `[RUNTIME SPEC VALIDATION]`, `[DEPENDENCY VALIDATION]` — followed by `VALIDATION RESULTS` listing errors and warnings. Run `bun scripts/extensions/validate-manifest.ts` to see the current values.
 
 ### Common Error Examples
 

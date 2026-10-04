@@ -322,7 +322,7 @@
       "sourceLibraries": ["libsodium"],
       "dependencies": ["pgsodium"],
       "runtime": {
-        "sharedPreload": false,
+        "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
           "NOT in PGDG (Supabase-specific).",

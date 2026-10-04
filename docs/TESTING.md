@@ -882,14 +882,14 @@ await runSQL(`
 **Fix**: Load hook extensions at appropriate scope:
 
 ```bash
-# pg_plan_filter requires shared_preload_libraries
-POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,plan_filter"
+# pg_plan_filter requires shared_preload_libraries. The variable replaces the default list, so keep it whole.
+POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,plan_filter"
 
 # pg_safeupdate uses session_preload_libraries
 psql -c "SET session_preload_libraries = 'pg_safeupdate'; UPDATE table SET col = 1;"
 
 # supautils requires shared_preload_libraries for GUC parameters
-POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain,pg_cron,pgaudit,supautils"
+POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,supautils"
 ```
 
 **Note**: Hook-based extensions don't use CREATE EXTENSION - they load via preload libraries.
@@ -937,7 +937,7 @@ sudo pacman -S docker-credential-helpers
 **Image Default** (auto-generated from manifest):
 
 ```
-auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb
+auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb
 ```
 
 **Fix**: Don't override unless testing override behavior:

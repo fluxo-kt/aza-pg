@@ -60,6 +60,7 @@
       "pg_stat_statements",
       "pgaudit",
       "pgsodium",
+      "supabase_vault",
       "timescaledb"
     ]
   },

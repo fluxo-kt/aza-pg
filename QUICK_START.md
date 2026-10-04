@@ -370,7 +370,7 @@ docker exec postgres psql -U postgres -c \
 ### Preloaded Extensions (Shared Libraries)
 
 - auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements
-- pgaudit, pgsodium, safeupdate, timescaledb
+- pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb
 
 ### Available Extensions (40 total)
 

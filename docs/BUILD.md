@@ -476,7 +476,7 @@ To disable an extension (e.g., reduce image size):
 2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
 3. Rebuild: `bun run build`
 
-**Restrictions:** Core preloaded extensions (auto_explain, pg_cron, pg_stat_statements, pgaudit) cannot be disabled.
+**Default preloads:** Disabling an entry that is preloaded by default also drops it from the default `shared_preload_libraries` when `bun run generate` runs (the pre-commit hook does it too); `validate-manifest.ts` only checks that the generated default matches the manifest. Databases that already created the extension can no longer load it.
 
 See [EXTENSIONS.md](EXTENSIONS.md) for complete details.
 

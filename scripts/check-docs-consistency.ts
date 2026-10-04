@@ -13,10 +13,24 @@
 import { join } from "node:path";
 import { info, success, error, warning, section } from "./utils/logger";
 import { Glob } from "bun";
+import { getDefaultSharedPreloadLibraries } from "./config-generator/manifest-loader";
+import { MANIFEST_ENTRIES } from "./extensions/manifest-data";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
 const DOCS_DATA_PATH = join(PROJECT_ROOT, "docs/.generated/docs-data.json");
-const DOC_PATHS = ["AGENTS.md", "README.md", "docs/**/*.md"];
+const DOC_PATHS = [
+  "*.md",
+  "docs/**/*.md",
+  "stacks/**/*.conf",
+  ".env.example",
+  "stacks/*/.env.example",
+];
+// Records of the past keep the values they recorded: release notes and dated validation reports.
+const SKIPPED_DOCS = new Set([
+  "CHANGELOG.md",
+  "RELEASE-VALIDATION.md",
+  "docs/REGRESSION-TEST-VALIDATION.md",
+]);
 
 interface DocsData {
   catalog: {
@@ -61,26 +75,64 @@ function checkExtensionCounts(_content: string, _data: DocsData, _file: string):
 }
 
 /**
- * Check if preload libraries list matches manifest
+ * A written-out preload list must include every library the image preloads by default. Docs and config
+ * comments copy the default so operators can extend it in POSTGRES_SHARED_PRELOAD_LIBRARIES, which
+ * replaces the default rather than adding to it: a stale copy that misses a library makes an operator
+ * drop it, and the extension needing it breaks (an override example once dropped timescaledb).
+ * A list is a run of preloadable library names separated only by commas, spaces, quotes, bullets or one
+ * short parenthetical ("auto_explain (module), pg_cron"); runs cross line breaks because lists wrap,
+ * while prose between names ends the run. A run naming at least four default libraries, in a paragraph
+ * that (or whose three preceding lines) speaks of preloading, must name all of them; optional extras
+ * (supautils, ...) are fine. The default comes from the same function that writes the entrypoint.
  */
-function checkPreloadLibraries(content: string, _data: DocsData, file: string): string[] {
-  const errors: string[] = [];
+const PRELOADABLE = new Set(
+  MANIFEST_ENTRIES.filter((e) => e.runtime?.sharedPreload === true && e.enabled !== false).map(
+    (e) => e.runtime?.preloadLibraryName ?? e.name
+  )
+);
+const DEFAULT_PRELOAD = getDefaultSharedPreloadLibraries({ entries: MANIFEST_ENTRIES }).split(",");
+const PRELOAD_CONTEXT = /preload/i;
+const LIST_GAP = /^[\s,`'"*-]*(\([^()\n]{0,40}\))?[\s,`'"*-]*$/;
 
-  // Look for preload mentions (common patterns)
-  const preloadPatterns = [
-    /shared_preload_libraries[^:]*:\s*([^\n]+)/gi,
-    /preloaded[^:]*:\s*([^\n]+)/gi,
-    /4 preloaded/gi,
-  ];
-
-  for (const pattern of preloadPatterns) {
-    const matches = [...content.matchAll(pattern)];
-    if (matches.length > 0) {
-      // Just flag that we found preload mentions - manual review needed
-      info(`${file}: Found preload library mentions - manual verification recommended`);
+function preloadRuns(block: string): Array<{ names: Set<string>; offset: number }> {
+  const runs: Array<{ names: Set<string>; offset: number }> = [];
+  let current: { names: Set<string>; offset: number } | undefined;
+  let end = 0;
+  for (const m of block.matchAll(/[a-z_][a-z0-9_]*/g)) {
+    if (!PRELOADABLE.has(m[0])) continue;
+    if (current && LIST_GAP.test(block.slice(end, m.index))) {
+      current.names.add(m[0]);
+    } else {
+      current = { names: new Set([m[0]]), offset: m.index };
+      runs.push(current);
     }
+    end = m.index + m[0].length;
   }
+  return runs;
+}
 
+function checkPreloadLibraries(content: string, _data: DocsData, _file: string): string[] {
+  const lines = content.split("\n");
+  const errors: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= lines.length; i++) {
+    if (i < lines.length && lines[i]!.trim() !== "") continue;
+    const block = lines.slice(start, i).join("\n");
+    if (PRELOAD_CONTEXT.test(lines.slice(Math.max(0, start - 3), i).join("\n"))) {
+      for (const run of preloadRuns(block)) {
+        const missing = DEFAULT_PRELOAD.filter((lib) => !run.names.has(lib));
+        if (DEFAULT_PRELOAD.length - missing.length >= 4 && missing.length > 0) {
+          const line = start + 1 + (block.slice(0, run.offset).match(/\n/g)?.length ?? 0);
+          errors.push(
+            `line ${line}: preload list lacks ${missing.join(", ")}. The default is ` +
+              `${DEFAULT_PRELOAD.join(",")} (manifest runtime.sharedPreload + defaultEnable); copy it ` +
+              `whole and append any optional library.`
+          );
+        }
+      }
+    }
+    start = i + 1;
+  }
   return errors;
 }
 
@@ -168,7 +220,8 @@ async function main() {
   const docFiles: string[] = [];
   for (const pattern of DOC_PATHS) {
     const glob = new Glob(pattern);
-    for await (const file of glob.scan({ cwd: PROJECT_ROOT })) {
+    for await (const file of glob.scan({ cwd: PROJECT_ROOT, dot: true })) {
+      if (SKIPPED_DOCS.has(file)) continue;
       const fullPath = join(PROJECT_ROOT, file);
       if (!fullPath.includes("node_modules") && !fullPath.includes(".archived")) {
         docFiles.push(fullPath);

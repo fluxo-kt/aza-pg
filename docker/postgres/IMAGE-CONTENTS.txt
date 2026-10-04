@@ -60,7 +60,7 @@ TOOLS (command-line utilities)
 PRELOADED MODULES (shared_preload_libraries default)
 ═══════════════════════════════════════════════════════════════
 
-  auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb
+  auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb
 
   Configure via POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable.
 

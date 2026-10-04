@@ -12,7 +12,7 @@ services:
       POSTGRES_WORKLOAD_TYPE: ${POSTGRES_WORKLOAD_TYPE:-web}
       POSTGRES_STORAGE_TYPE: ${POSTGRES_STORAGE_TYPE:-ssd}
       # Enable shared_preload_libraries (already configured in aza-pg)
-      # Default: auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb
+      # Default: auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Optional: mount custom postgresql.conf overrides

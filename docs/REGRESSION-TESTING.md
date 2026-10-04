@@ -45,7 +45,7 @@ Tests exact release image behavior with enabled extensions only.
 **Configuration:**
 
 - Extensions: Enabled extensions from manifest (runtime.defaultEnable=true)
-- Preload libraries: 9 default (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb)
+- Preload libraries: 9 default (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb)
 - Image: `aza-pg:pg18` (production Dockerfile)
 
 **Use cases:**

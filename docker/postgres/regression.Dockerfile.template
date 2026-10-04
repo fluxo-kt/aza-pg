@@ -232,7 +232,7 @@ RUN set -euo pipefail && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Set regression preload libraries environment variable
-# This includes ALL optional preload modules for maximum test coverage (10 total)
+# This includes ALL optional preload modules for maximum test coverage
 ENV POSTGRES_SHARED_PRELOAD_LIBRARIES="{{REGRESSION_PRELOAD_LIBRARIES}}"
 
 # Copy runtime metadata files with testMode marker

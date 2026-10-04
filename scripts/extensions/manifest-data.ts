@@ -743,7 +743,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     sourceLibraries: ["libsodium"],
     dependencies: ["pgsodium"],
     runtime: {
-      sharedPreload: false,
+      // Preloaded by default: vault 0.3 loads its encryption key from pgsodium at preload time, and
+      // without the preload vault.create_secret fails.
+      sharedPreload: true,
       defaultEnable: true,
       notes: [
         "NOT in PGDG (Supabase-specific).",

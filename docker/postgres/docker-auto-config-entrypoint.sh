@@ -391,6 +391,8 @@ calculate_io_workers() {
 # line hides the extension (it cannot be proven safe); non-x86 machines skip the check, because
 # x86CpuFlags only describes the amd64 binary.
 cpu_gated_extension_control_path() {
+    # $system is PostgreSQL's token for its built-in extension directory, not a shell variable
+    # shellcheck disable=SC2016
     local cpuinfo=$1 machine=$2 cpu_flags="" control_path='$system' name flags dir flag missing
     if [ "$machine" = "x86_64" ]; then
         cpu_flags=" $(grep -m1 '^flags' "$cpuinfo" | cut -d: -f2) " || cpu_flags=""

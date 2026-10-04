@@ -105,12 +105,17 @@ export function formatValue(value: PostgreSQLValue): string {
     return String(value);
   }
 
-  if (Array.isArray(value)) {
-    return `'${value.join(",")}'`;
-  }
+  return quoteConfString(Array.isArray(value) ? value.join(",") : value);
+}
 
-  // String values get quoted
-  return `'${value}'`;
+/**
+ * Quote a string the way postgresql.conf reads it back: the parser turns `''` into `'` and treats `\`
+ * as an escape (`\n`, octal, otherwise the next character itself, so `\\` gives `\`). An unescaped
+ * quote ends the value early and fails the whole file; an unescaped backslash vanishes or turns into a
+ * control character (PostgreSQL 18.6 reads 'C:\path' as C:path).
+ */
+function quoteConfString(text: string): string {
+  return `'${text.replaceAll("\\", "\\\\").replaceAll("'", "''")}'`;
 }
 
 /**

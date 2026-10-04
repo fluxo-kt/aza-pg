@@ -308,7 +308,7 @@ bun scripts/tools/promote-replica.ts -c my-replica -y
 bun scripts/tools/promote-replica.ts -n -y
 
 # Custom data directory
-bun scripts/tools/promote-replica.ts -c postgres-replica -d /var/lib/postgresql/data
+bun scripts/tools/promote-replica.ts -c postgres-replica -d /var/lib/postgresql/18/docker
 ```
 
 #### Options
@@ -316,7 +316,7 @@ bun scripts/tools/promote-replica.ts -c postgres-replica -d /var/lib/postgresql/
 | Flag                   | Description               | Default                                          |
 | ---------------------- | ------------------------- | ------------------------------------------------ |
 | `-c, --container NAME` | Container name            | `postgres-replica` or `$POSTGRES_CONTAINER_NAME` |
-| `-d, --data-dir PATH`  | Data directory path       | `/var/lib/postgresql/data`                       |
+| `-d, --data-dir PATH`  | Data directory path       | container's `$PGDATA`                            |
 | `-n, --no-backup`      | Skip pre-promotion backup | `false` (backup enabled)                         |
 | `-y, --yes`            | Skip confirmation prompt  | `false` (requires confirmation)                  |
 | `-h, --help`           | Show help                 | -                                                |
@@ -483,10 +483,10 @@ Promotion command succeeded but verification failed:
 docker logs <container> | tail -50
 
 # Manually verify standby.signal
-docker exec <container> ls -la /var/lib/postgresql/data/standby.signal
+docker exec <container> sh -c 'ls -la "$PGDATA/standby.signal"'
 
 # If file exists, remove it
-docker exec <container> rm -f /var/lib/postgresql/data/standby.signal
+docker exec <container> sh -c 'rm -f "$PGDATA/standby.signal"'
 docker restart <container>
 ```
 

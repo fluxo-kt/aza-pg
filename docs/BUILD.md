@@ -785,7 +785,7 @@ Promotes PostgreSQL replica to primary role.
 **Options:**
 
 - `--container NAME` - Container name (default: postgres-replica)
-- `--data-dir PATH` - Data directory (default: /var/lib/postgresql/data)
+- `--data-dir PATH` - Data directory (default: the container's `$PGDATA`)
 - `--no-backup` - Skip backup before promotion
 - `--yes` - Skip confirmation prompt
 - `--help` - Show help message

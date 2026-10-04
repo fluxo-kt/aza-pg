@@ -16,7 +16,7 @@ Add to your `postgresql.conf` (or use auto-config overrides):
 
 ```ini
 # WAL Archiving for PITR
-wal_level = replica                              # Already set for replication
+# wal_level: keep the image's 'logical' (a superset of replica); lowering it stops a server that has logical slots
 archive_mode = on                                 # Enable archiving
 archive_command = 'test ! -f /wal_archive/%f && cp %p /wal_archive/%f'  # Simple copy
 archive_timeout = 300                             # Force WAL switch every 5 minutes
@@ -54,7 +54,7 @@ log-level-console=info
 log-level-file=debug
 
 [main]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 pg1-port=5432
 pg1-socket-path=/var/run/postgresql
 
@@ -217,7 +217,7 @@ docker compose logs postgres | grep archive
 docker compose exec postgres ls -la /wal_archive
 
 # Test archive command manually
-docker compose exec postgres sh -c 'cp /var/lib/postgresql/data/pg_wal/000000010000000000000001 /wal_archive/test'
+docker compose exec postgres sh -c 'cp "$PGDATA"/pg_wal/000000010000000000000001 /wal_archive/test'
 ```
 
 ### pgBackRest Errors

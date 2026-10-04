@@ -62,7 +62,6 @@ required_vars=(
     "POSTGRES_PASSWORD"
     "MONITORING_PASSWORD"
     "GRAFANA_ADMIN_PASSWORD"
-    "GITHUB_USERNAME"
 )
 
 for var in "${required_vars[@]}"; do

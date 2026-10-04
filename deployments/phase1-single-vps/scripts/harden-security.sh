@@ -28,7 +28,7 @@ log_info "1. Hardening PostgreSQL..."
 
 # 1.1: Restrict pg_hba.conf
 log_info "Configuring pg_hba.conf for minimal access..."
-docker exec postgres bash -c 'cat > /var/lib/postgresql/data/pg_hba.conf << "EOF"
+docker exec postgres bash -c 'cat > "$PGDATA/pg_hba.conf" << "EOF"
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 
 # Local connections (Unix socket)

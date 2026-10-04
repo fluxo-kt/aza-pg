@@ -28,7 +28,7 @@ log-level-file=detail
 log-path=/var/log/pgbackrest
 
 [main]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 pg1-port=5432
 pg1-socket-path=/var/run/postgresql
 

@@ -134,26 +134,12 @@ docker volume rm aza-pg-stack-replica_postgres_data || true
 # Create volume
 docker volume create aza-pg-stack-replica_postgres_data
 
-# Run pg_basebackup into the image's PGDATA (the volume holds /var/lib/postgresql)
+# Copy the primary into the image's PGDATA; -R also writes standby.signal and primary_conninfo
 docker run --rm \
     -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
-    -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
+    -e PGHOST=10.0.0.2 -e PGUSER=replicator -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
     ghcr.io/fluxo-kt/aza-pg:18 \
-    bash -c 'pg_basebackup -h 10.0.0.2 -D "$PGDATA" -U replicator -v -P'
-
-# Create standby.signal
-docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
-    ghcr.io/fluxo-kt/aza-pg:18 \
-    bash -c 'touch "$PGDATA/standby.signal"'
-
-# Configure primary_conninfo
-docker run --rm -i \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
-    ghcr.io/fluxo-kt/aza-pg:18 \
-    bash -c 'cat >> "$PGDATA/postgresql.auto.conf"' <<'EOF'
-primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'
-EOF
+    bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 ```
 
 ### 5. Start Replica

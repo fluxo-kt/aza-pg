@@ -214,7 +214,9 @@ docker network inspect aza-pg-network
 
 ---
 
-### Step 4: Build aza-pg Docker Image
+### Step 4 (Optional): Build Your Own aza-pg Image
+
+Skip this step to run the published `ghcr.io/fluxo-kt/aza-pg:18` (the compose default). Build your own only to change the image, then point `POSTGRES_IMAGE` at your pushed tag.
 
 **4.1 Clone repository locally (on your machine)**
 
@@ -242,13 +244,12 @@ docker images | grep aza-pg
 # Login to GHCR
 echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
-# Tag image
-docker tag aza-pg:latest ghcr.io/USERNAME/aza-pg:18.1-$(date +%Y%m%d%H%M%S)
-docker tag aza-pg:latest ghcr.io/USERNAME/aza-pg:18.1-latest
+# Tag and push (bun run build produces aza-pg:pg18)
+TAG=ghcr.io/USERNAME/aza-pg:18-$(date +%Y%m%d%H%M%S)
+docker tag aza-pg:pg18 "$TAG"
+docker push "$TAG"
 
-# Push
-docker push ghcr.io/USERNAME/aza-pg:18.1-$(date +%Y%m%d%H%M%S)
-docker push ghcr.io/USERNAME/aza-pg:18.1-latest
+# Then set POSTGRES_IMAGE=$TAG in the stack's .env
 ```
 
 ---
@@ -288,7 +289,7 @@ Add these variables:
 POSTGRES_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
 POSTGRES_DB=main
 POSTGRES_USER=postgres
-POSTGRES_MEMORY=5GB
+POSTGRES_MEMORY=5120   # MB, integer only
 POSTGRES_WORKLOAD_TYPE=web
 POSTGRES_STORAGE_TYPE=ssd
 
@@ -848,27 +849,21 @@ EOF
 **12.2 On Primary: Configure pg_hba.conf**
 
 ```bash
-bash -c "echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> "$PGDATA/pg_hba.conf"
 
 # Reload PostgreSQL
 psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
-**12.3 On Primary: Enable WAL archiving**
+**12.3 On Primary: Keep WAL for the replica**
 
 ```bash
-# wal_level is already 'logical' (a superset of 'replica'); lowering it breaks wal2json and pgflow realtime.
+# The image already ships wal_level=logical (a superset of replica), max_wal_senders=10 and hot_standby=on.
+# Never lower wal_level: with a logical slot present PostgreSQL refuses to start.
 psql -U postgres <<EOF
-ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 EOF
-```
-
-Then restart the postgres service in Coolify UI or via:
-
-```bash
-docker restart postgres
 ```
 
 **12.4 On Replica: Create base backup**
@@ -882,32 +877,15 @@ In Coolify UI on replica:
 Then execute via Coolify terminal or SSH:
 
 ```bash
-# Run pg_basebackup
+# Copy the primary into the image's PGDATA; -R also writes standby.signal and primary_conninfo
 docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  --network aza-pg-network \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  pg_basebackup -h 10.0.0.2 -D /var/lib/postgresql/data -U replicator -v -P -W
-# Enter replication password when prompted
+  -v aza-pg-stack_postgres_data:/var/lib/postgresql \
+  -e PGHOST=10.0.0.2 -e PGUSER=replicator -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
+  ghcr.io/fluxo-kt/aza-pg:18 \
+  bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 ```
 
-**12.5 On Replica: Create standby.signal**
-
-```bash
-# Create standby configuration
-docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  bash -c "touch /var/lib/postgresql/data/standby.signal"
-
-# Configure primary connection
-docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  bash -c "echo \"primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
-```
-
-**12.6 On Replica: Start PostgreSQL**
+**12.5 On Replica: Start PostgreSQL**
 
 In Coolify UI: Start postgres service
 
@@ -921,7 +899,7 @@ psql -U postgres -c "SELECT pg_is_in_recovery();"
 psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
 ```
 
-**12.7 On Primary: Verify replica connected**
+**12.6 On Primary: Verify replica connected**
 
 ```bash
 psql -U postgres -c "SELECT * FROM pg_stat_replication;"
@@ -1067,7 +1045,7 @@ ping 10.0.0.100
 # Should respond from Replica
 
 # Promote to Primary (execute in postgres container)
-pg_ctl promote -D /var/lib/postgresql/data
+pg_ctl promote   # reads the container's $PGDATA
 
 # Wait 10 seconds, verify promotion
 psql -U postgres -c "SELECT pg_is_in_recovery();"
@@ -1083,8 +1061,8 @@ On old Primary (now to become Replica):
 
 1. In Coolify UI: Stop and delete postgres service
 2. Delete postgres_data volume
-3. Repeat Step 12.4-12.6 but with:
-   - primary_conninfo pointing to new Primary (10.0.0.3)
+3. Repeat Step 12.4-12.5 but with:
+   - PGHOST pointing to new Primary (10.0.0.3)
    - Keepalived priority set to 90
 
 ---
@@ -1404,8 +1382,7 @@ chown 999:999 server.key server.crt  # PostgreSQL user inside container
    ```yaml
    postgres:
      volumes:
-       - ./ssl/server.crt:/var/lib/postgresql/data/server.crt:ro
-       - ./ssl/server.key:/var/lib/postgresql/data/server.key:ro
+       - ./ssl:/etc/postgresql/ssl:ro
    ```
 
 **Enable SSL in PostgreSQL:**
@@ -1413,8 +1390,8 @@ chown 999:999 server.key server.crt  # PostgreSQL user inside container
 ```bash
 psql -U postgres <<EOF
 ALTER SYSTEM SET ssl = 'on';
-ALTER SYSTEM SET ssl_cert_file = 'server.crt';
-ALTER SYSTEM SET ssl_key_file = 'server.key';
+ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/ssl/server.crt';
+ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/ssl/server.key';
 EOF
 ```
 
@@ -1431,7 +1408,7 @@ postgresql://postgres:PASSWORD@pgbouncer:6432/main?sslmode=require
 ### Restrict pg_hba.conf
 
 ```bash
-bash -c 'cat > /var/lib/postgresql/data/pg_hba.conf << EOF
+bash -c 'cat > "$PGDATA/pg_hba.conf" << EOF
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 local   all             postgres                                peer
 host    all             all             127.0.0.1/32            scram-sha-256

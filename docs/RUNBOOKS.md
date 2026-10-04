@@ -221,7 +221,7 @@ docker exec postgres psql -U postgres -c \
     "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
 
 # 6. Promote replica to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
+docker exec postgres pg_ctl promote
 
 # 7. Wait 10-30 seconds, verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
@@ -256,7 +256,7 @@ EOF
 - Check replica postgres Service → Status indicator (should show running)
 - Go to replica postgres Service → Terminal tab
 - Run replication status checks: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
-- Promote replica: `pg_ctl promote -D /var/lib/postgresql/data`
+- Promote replica: `pg_ctl promote`
 - Verify promotion and test write capability via Terminal tab
 - Monitor via Grafana (accessible through Coolify Domains)
 - Document incident in your preferred logging system
@@ -289,7 +289,7 @@ systemctl reload keepalived
 ping 10.0.0.100  # Should be REPLICA IP
 
 # 5. On REPLICA: Promote to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
+docker exec postgres pg_ctl promote
 
 # 6. Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
@@ -313,7 +313,7 @@ docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 - Check replication lag: `psql -U postgres -c "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes FROM pg_stat_replication;"`
 - Keepalived configuration requires host-level access (SSH to VPS)
 - Switch to replica Service → Terminal tab
-- Promote: `pg_ctl promote -D /var/lib/postgresql/data`
+- Promote: `pg_ctl promote`
 - Verify: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 
 **Expected Downtime:** 30-60 seconds (VIP migration + promotion)
@@ -339,31 +339,17 @@ docker volume create aza-pg-stack_postgres_data
 # 5. Take base backup from new primary
 NEW_PRIMARY_IP="10.0.0.3"  # Update to new primary's private IP
 
+# -R also writes standby.signal and primary_conninfo into the image's PGDATA
 docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    --network aza-pg-network \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    pg_basebackup -h $NEW_PRIMARY_IP -D /var/lib/postgresql/data \
-    -U replicator -v -P -W
+    -v aza-pg-stack_postgres_data:/var/lib/postgresql \
+    -e PGHOST="$NEW_PRIMARY_IP" -e PGUSER=replicator -e PGPASSWORD='REPL_PASSWORD' \
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 
-# Enter replication password when prompted
-
-# 6. Create standby.signal
-docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "touch /var/lib/postgresql/data/standby.signal"
-
-# 7. Configure primary connection
-docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "echo \"primary_conninfo = 'host=$NEW_PRIMARY_IP port=5432 user=replicator password=REPL_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
-
-# 8. Start services
+# 6. Start services
 docker compose up -d postgres
 
-# 9. Verify replication
+# 7. Verify replication
 docker exec postgres psql -U postgres -c \
     "SELECT pg_is_in_recovery();"
 # Should be 't' (true - in recovery/standby)
@@ -372,7 +358,7 @@ docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_wal_receiver;"
 # Should show connection to new primary
 
-# 10. On NEW PRIMARY: Verify replica connected
+# 8. On NEW PRIMARY: Verify replica connected
 ssh root@NEW_PRIMARY_VPS_IP
 docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_replication;"
@@ -573,7 +559,7 @@ docker exec postgres psql -U postgres -c \
 
 # 4. Update pg_hba.conf to block IP
 docker exec postgres bash -c \
-    "echo 'host all all SUSPICIOUS_IP/32 reject' >> /var/lib/postgresql/data/pg_hba.conf"
+    'echo "host all all SUSPICIOUS_IP/32 reject" >> "$PGDATA/pg_hba.conf"'
 
 docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
 
@@ -598,7 +584,7 @@ docker exec postgres psql -U postgres -c \
 - Check connections: `psql -U postgres` then run the pg_stat_activity query
 - View failed auth: Go to Service → Logs tab → search for "FATAL.\*authentication failed"
 - Kill connections via Terminal: `psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_addr = 'SUSPICIOUS_IP';"`
-- Update pg_hba.conf via Terminal: `echo 'host all all SUSPICIOUS_IP/32 reject' >> /var/lib/postgresql/data/pg_hba.conf`
+- Update pg_hba.conf via Terminal: `echo 'host all all SUSPICIOUS_IP/32 reject' >> "$PGDATA/pg_hba.conf"`
 - Reload config: `psql -U postgres -c "SELECT pg_reload_conf();"`
 - Rotate password via Terminal
 - Update .env: Go to Service → Environment Variables → update POSTGRES_PASSWORD
@@ -673,7 +659,7 @@ docker run --rm -v aza-pg-stack_postgres_data:/data ubuntu ls -la /data
 - Go to postgres Service → Logs tab → review last 100 lines
 - Check Service → Status indicator for error state
 - Force restart: Go to Service → click Restart button
-- Check data directory: Go to Service → Terminal tab → `ls -la /var/lib/postgresql/data`
+- Check data directory: Go to Service → Terminal tab → `ls -la "$PGDATA"`
 - Port conflicts: Check via host SSH or Coolify's port mapping settings
 
 ### High CPU Usage
@@ -893,30 +879,27 @@ reboot
 ### PostgreSQL Minor Version Upgrade
 
 ```bash
-# Example: 18.1 → 18.2
+# A minor upgrade keeps the same data directory; no pg_upgrade.
 
 # 1. Backup
 pgbackrest --stanza=main --type=full backup
 
-# 2. Pull new image
-docker pull ghcr.io/USERNAME/aza-pg:18.2-latest
+# 2. Pull the new image (if you pin a tag or digest, update POSTGRES_IMAGE in .env first)
+docker compose pull postgres
 
-# 3. Update docker-compose.yml
-sed -i 's/:18.1-latest/:18.2-latest/g' docker-compose.yml
+# 3. Restart
+docker compose up -d postgres
 
-# 4. Restart
-docker compose up -d
-
-# 5. Verify version
+# 4. Verify version
 docker exec postgres psql -U postgres -c "SELECT version();"
 
-# 6. Monitor for 24h
+# 5. Monitor for 24h
 ```
 
 **Coolify Method:**
 
 - Backup: Go to postgres Service → Terminal tab → `pgbackrest --stanza=main --type=full backup`
-- Update image: Go to Service → Configuration → change Image field to `ghcr.io/USERNAME/aza-pg:18.2-latest`
+- Update image: Go to Service → Configuration → keep `ghcr.io/fluxo-kt/aza-pg:18`, or set the new tag or digest if you pin one
 - Restart: Click Restart button (Coolify will pull new image)
 - Verify: Go to Terminal tab → `psql -U postgres -c "SELECT version();"`
 - Monitor: Check Logs tab and Status indicator over 24h

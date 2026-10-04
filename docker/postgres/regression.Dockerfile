@@ -230,10 +230,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y --no-install-recommends curl unzip && \
     # Install vectorscale from GitHub release (.deb package inside zip)
     ARCH=$(dpkg --print-architecture) && \
-    ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
-    echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
+    ASSET="pgvectorscale-0.9.1-pg18-${ARCH}.zip" && \
+    echo "Downloading vectorscale v0.9.1 for $ARCH..." && \
     rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
-    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip.tmp && \
+    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.1/$ASSET" -o /tmp/vectorscale.zip.tmp && \
     test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
     unzip -tq /tmp/vectorscale.zip.tmp && \
     mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
@@ -244,10 +244,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Installing $DEB_FILE..." && \
     dpkg -i "$DEB_FILE" && \
     rm -rf /tmp/vectorscale* && \
-    echo "✓ Installed vectorscale v0.9.0" && \
+    echo "✓ Installed vectorscale v0.9.1" && \
     # Verify .so files exist
     echo "Verifying GitHub release .so files..." && \
-    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.0.so && \
+    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.1.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
     # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
     find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \

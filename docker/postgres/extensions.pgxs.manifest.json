@@ -41,7 +41,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG. Pigsty has v1.2.1 only (no PG18 packages)",
+          "NOT in PGDG.",
           "Using v1.3 from master (unreleased, no git tag)",
           "Source build required"
         ]
@@ -57,8 +57,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/pg_net.git",
-        "tag": "v0.20.3",
-        "commit": "0ab4bae33a306316f9056fc9c87ba3f977fc6b7e"
+        "tag": "v0.20.5",
+        "commit": "a8299b11182ea5c974f5e89ae83e70e9e44e9e8f"
       },
       "build": {
         "type": "pgxs"
@@ -111,8 +111,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/eradman/pg-safeupdate.git",
-        "tag": "1.5",
-        "commit": "fbea44215425dc1092f5c98c28471eba90d0c1eb"
+        "tag": "1.7",
+        "commit": "37dbc9c4acf5e2504adf2b218e9c6b41751022f3"
       },
       "build": {
         "type": "pgxs"
@@ -123,7 +123,7 @@
         "preloadInComprehensiveTest": true,
         "preloadLibraryName": "safeupdate",
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v1.5 (same version)",
+          "NOT in PGDG.",
           "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
         ]
       },
@@ -138,8 +138,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.11.1",
-        "commit": "885251cf4dcb4853d7fa253f56e382d84d5f0821"
+        "tag": "v1.13.0",
+        "commit": "32c075bb6dbed66a303d1a792393c93e36c09a97"
       },
       "build": {
         "type": "pgxs",
@@ -148,12 +148,7 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true,
-        "notes": [
-          "NOT in PGDG. Alt: Pigsty v1.5.1 (several versions behind)",
-          "Source build for latest v1.11.1 with PG18 support",
-          "v1.11.1: read_grouped_head() plus SQL-only install/upgrade parity fixes",
-          "v1.11.0: AMQP-style topic routing (bind_topic/send_topic, * and # wildcards)"
-        ]
+        "notes": ["NOT in PGDG."]
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
       "docsUrl": "https://github.com/pgmq/pgmq#readme"
@@ -170,8 +165,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgq/pgq.git",
-        "tag": "v3.5.1",
-        "commit": "d23425f10e39f8e9cca178f1a94d9162e473fd45"
+        "tag": "v3.5.2",
+        "commit": "be3d2cee3fc7279d9e1480b19cfddb8a62c1450d"
       },
       "build": {
         "type": "pgxs"
@@ -180,7 +175,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v3.5.1 (same version)",
+          "PGDG ships postgresql-18-pgq3 but trails the upstream tag; switch to install_via pgdg (pgdgPackage \"pgq3\") once it matches.",
           "Pure PLpgSQL extension with no external dependencies",
           "Installs into pg_catalog schema (non-relocatable)"
         ]
@@ -196,8 +191,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.6",
-        "commit": "dacbeaeb088160812ca0cf6afc779f2db1ded896"
+        "tag": "4.0.9",
+        "commit": "aaa0b6627ceb39f96079589cf4341557ca077dec"
       },
       "build": {
         "type": "meson",
@@ -219,8 +214,7 @@
       },
       "notes": [
         "NOT available in PGDG for PostgreSQL 18",
-        "v4.0.6: Fix pg_tokenize failure cleanup and initialize fuzzy search distance ratio",
-        "v4.0.6 switched from PGXS Makefile to Meson.",
+        "Builds with Meson (PGXS Makefile was dropped upstream in 4.0.6).",
         "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
         "Source build required for PG18"
       ],
@@ -247,7 +241,7 @@
         "defaultEnable": true,
         "defaultPreload": true,
         "notes": [
-          "NOT in PGDG. Alt: Pigsty v3.1.9 (same version)",
+          "NOT in PGDG.",
           "Preloaded by default for pgflow and supabase_vault support",
           "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
           "Full Transparent Column Encryption (TCE) requires pgsodium_getkey script",
@@ -277,7 +271,7 @@
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG (Supabase-specific). Alt: Pigsty v0.3.1 (same version)",
+          "NOT in PGDG (Supabase-specific).",
           "Source build required",
           "Required for pgflow workflow orchestration"
         ]
@@ -295,8 +289,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.2.2",
-        "commit": "64792e14681bba81c9adccdcfd598715cd052eb5"
+        "tag": "v3.4.4",
+        "commit": "42d491cd2519d763918527760151f9e6bd5c9f23"
       },
       "build": {
         "type": "pgxs"
@@ -305,10 +299,7 @@
         "sharedPreload": true,
         "preloadOnly": true,
         "defaultEnable": false,
-        "notes": [
-          "v3.2.2: Permission hint improvements plus ALTER ROLE and executor hook crash fixes",
-          "Creates supabase-managed roles which expect pg_cron and pg_net to be present."
-        ]
+        "notes": ["Creates supabase-managed roles which expect pg_cron and pg_net to be present."]
       },
       "sourceUrl": "https://github.com/supabase/supautils",
       "docsUrl": "https://github.com/supabase/supautils#readme"

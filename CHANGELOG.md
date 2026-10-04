@@ -12,12 +12,13 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Breaking
 
-- **TimescaleDB 2.27.1 → 2.30.2**: Adaptive chunking is removed (`set_adaptive_chunking()` and the `chunk_target_size`/`chunk_sizing_func` arguments of `create_hypertable()`); the granular continuous-aggregate refresh options are renamed to `timescaledb.cagg_granular_refresh_*`.
+- **TimescaleDB 2.27.1 → 2.30.2**: Adaptive chunking is removed (`set_adaptive_chunking()` and the `chunk_target_size`/`chunk_sizing_func` arguments of `create_hypertable()`); the granular continuous-aggregate refresh options are renamed to `timescaledb.cagg_granular_refresh_*`. The extension upgrade drops sparse bloom-filter indexes on compressed `smallint` columns that the new version cannot use (upstream 2.28.2).
 - **timescaledb_toolkit 1.22.0 → 1.26.0**: `gauge_agg` and its accessors moved from `toolkit_experimental` to the public schema; `time_weight`'s combine/serialize/deserialize functions are removed, so `time_weight` no longer aggregates in parallel. The extension is now `trusted`, so any role with `CREATE` on a database can install it.
 - **pg_partman 5.4.3 → 5.5.0**: `pg_partman_bgw.role` now defaults to `partman_maintainer`; a background worker relying on the old default (`postgres`) fails until that role exists or the setting names a role (upstream advises a non-superuser one). A target retention schema must now be owned by the child table's owner.
 - **plpgsql_check 2.9.0 → 2.10.11**: Upstream ships no 2.9 → 2.10 upgrade script, so on data volumes created by an older image every call errors until `DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;`. Adds `plpgsql_make_pragma()` and a `pragmas` argument to `plpgsql_check_function()`.
 - **pgBackRest 2.58.0 → 2.59.2**: Only `restore` may run as root; run other commands as `postgres` (`docker exec -u postgres …`) or set `allow-root`.
 - **pg_stat_monitor 2.3.2 → 2.4.0**: The `pgsm_overflow_target` setting is removed and `pgsm_track_application_names` is deprecated (always on); `application_name` shows `NULL` instead of `'unknown'`.
+- **pgvectorscale 0.9.0 → 0.9.1**: DiskANN indexes need a `vector(N)` column; an existing index built on a column without a dimension now errors on scan, insert and vacuum and must be dropped and recreated (`REINDEX` cannot repair it). Run `ALTER EXTENSION vectorscale UPDATE` in existing databases.
 
 ### Security
 
@@ -27,12 +28,19 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgsql-http 1.7.0 → 1.7.2**: The `http.curlopt_*` settings for CA file, credentials, client certificate/key and TLS verification become superuser-only, and a buffer overrun in header parsing is fixed.
 - **hll 2.20 → 2.21**: Hardens input validation of serialized hll values.
 - **pgvector 0.8.2 → 0.8.7**: Fixes [CVE-2026-103484](https://github.com/pgvector/pgvector/issues/1036) (a role that can build an IVFFlat index can write out of bounds, leading to arbitrary code execution), plus possible HNSW index corruption during vacuum and IVFFlat memory use above `maintenance_work_mem`. PGDG does not ship 0.8.7 yet, so the image now builds pgvector from source.
+- **supautils 3.2.2 → 3.4.4**: Fixes four critical privilege escalations to superuser ([GHSA-5pqj-rc76-r669](https://github.com/supabase/supautils/security/advisories/GHSA-5pqj-rc76-r669), [GHSA-v9vh-54vv-7vfg](https://github.com/supabase/supautils/security/advisories/GHSA-v9vh-54vv-7vfg), [GHSA-vxh6-6m4g-c39q](https://github.com/supabase/supautils/security/advisories/GHSA-vxh6-6m4g-c39q), [GHSA-xj9m-rx42-rfc7](https://github.com/supabase/supautils/security/advisories/GHSA-xj9m-rx42-rfc7)); the library is no longer compiled with test-only code enabled. Affects only deployments that preload `supautils`.
+- **pgvectorscale 0.9.0 → 0.9.1**: Hardens DiskANN against type confusion and malformed vectors that could crash the backend, leak memory or write out of bounds.
 
 ### Changed
 
 - **Logical decoding plugins** (PostgreSQL 18.6, CVE-2026-6471): slots may only use plugins listed in `output_plugin_libraries`, superusers included. The image sets it to `pgoutput,test_decoding,wal2json` so wal2json CDC keeps working; change it with the new `POSTGRES_OUTPUT_PLUGIN_LIBRARIES` variable (it is passed as `-c`, so `postgresql.conf` and `ALTER SYSTEM` cannot override it). Outside this image, write `ALTER SYSTEM SET output_plugin_libraries = pgoutput, test_decoding, wal2json` as an unquoted list: one quoted string becomes a single plugin name that matches nothing.
 - **pg_cron 1.6.7 → 1.6.8**: Fixes a shutdown hang with synchronous replication and a launcher shared-memory leak; job owner checks are now case-sensitive; adds `cron.match_dom_and_dow`.
 - **hypopg 1.4.2 → 1.4.3**, **pg_repack** and **set_user** (PGDG packaging rebuilds), **wal2json** (Percona packaging rebuild): bug-fix and rebuild updates.
+- **pg_safeupdate 1.5 → 1.7**: When disabled it now still calls the next query-analysis hook, so extensions loaded after it (such as `pg_stat_statements`) keep working; it no longer blocks `pg_upgrade`.
+- **pg_net 0.20.3 → 0.20.5**: Fixes a worker crash loop when a `net` schema exists without the extension. Upstream did not bump the extension version, so `\dx` still shows 0.20.4.
+- **wrappers 0.6.1 → 0.6.3**: Adds a MongoDB wrapper; `mysql_fdw` no longer leaks MySQL error details and supports `varchar`/`bpchar` text columns; Iceberg REST catalog HTTP timeouts are configurable.
+- **PGroonga 4.0.6 → 4.0.9**: Adds `pgroonga_physical_table_names()` and an index option that raises the lexicon key-size limit from 4 GiB to 1 TiB.
+- **pgmq 1.11.1 → 1.13.0**: Fixes partitioned queues that silently overran their pre-created partitions and could not recover.
 
 ## [v18.4-202606031012] - 2026-06-03
 

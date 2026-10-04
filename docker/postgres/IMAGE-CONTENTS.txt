@@ -16,15 +16,15 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_cron                      v1.6.8         operations
   pg_hashids                   builtin        utilities
   pg_jsonschema                v0.3.4         validation
-  pg_net                       v0.20.3        integration
+  pg_net                       v0.20.5        integration
   pg_partman                   v5.5.0         maintenance
   pg_repack                    v1.5.3         maintenance
   pg_stat_monitor              v2.4.0         observability
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
-  pgmq                         v1.11.1        queueing
-  pgroonga                     v4.0.6         search
+  pgmq                         v1.13.0        queueing
+  pgroonga                     v4.0.9         search
   pgsodium                     v3.1.9         security
   plpgsql                      builtin        language
   plpgsql_check                v2.10.11       quality
@@ -34,8 +34,8 @@ EXTENSIONS (CREATE EXTENSION available)
   timescaledb                  v2.30.2        timeseries
   timescaledb_toolkit          v1.26.0        timeseries
   vector                       v0.8.7         ai
-  vectorscale                  v0.9.0         ai
-  wrappers                     v0.6.1         integration
+  vectorscale                  v0.9.1         ai
+  wrappers                     v0.6.3         integration
 
 Total: 29 extensions
 
@@ -44,13 +44,13 @@ NON-CREATE-EXTENSION ENTRIES (preload or init managed)
 ═══════════════════════════════════════════════════════════════
 
   pgflow                       v0.14.1        workflow
-  supautils                    v3.2.2         safety
+  supautils                    v3.4.4         safety
 
 ═══════════════════════════════════════════════════════════════
 TOOLS (command-line utilities)
 ═══════════════════════════════════════════════════════════════
 
-  pg_safeupdate                v1.5
+  pg_safeupdate                v1.7
   pgbackrest                   v2.59.2
   pgbadger                     v13.2
   wal2json                     vwal2json_2_6

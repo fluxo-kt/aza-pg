@@ -21,7 +21,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+          "NOT in PGDG (Rust pgrx extension).",
           "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
           "Source build required for latest features"
         ]
@@ -38,8 +38,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.1",
-        "commit": "adfb7a311baa6cef077a53b5a6055aa4f8d9a6e4"
+        "tag": "v0.6.3",
+        "commit": "44dc1996d859a718be7517212218188ad657858b"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -54,9 +54,7 @@
         "defaultEnable": false
       },
       "notes": [
-        "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-        "v0.6.1: FDW parameter rescan, aggregate pushdown for enabled FDWs, dependency fixes.",
-        "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest."
+        "NOT available in PGDG. build-extensions.ts installs the cargo-pgrx version pinned in its Cargo.toml."
       ],
       "sourceUrl": "https://github.com/supabase/wrappers",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"

@@ -539,7 +539,7 @@ volumes:
 
 The default configuration binds to localhost only:
 
-- `listen_addresses = '127.0.0.1'` in base config (localhost only, secure by default)
+- `listen_addresses` comes from `POSTGRES_BIND_IP`, default `127.0.0.1` (localhost only); the entrypoint sets it at every start, so initdb's `listen_addresses = '*'` never applies
 - The default `pg_hba.conf` allows connections from all RFC1918 private IP ranges when network access is enabled:
   - `10.0.0.0/8` (Class A private)
   - `172.16.0.0/12` (Class B private)

@@ -10,7 +10,7 @@
  * - Verifies PostgreSQL configuration
  *
  * Usage:
- *   bun scripts/docker/verify-runtime.ts <image-tag>
+ *   bun scripts/docker/verify-runtime.ts <image-tag>   (or POSTGRES_IMAGE)
  *   bun scripts/docker/verify-runtime.ts ghcr.io/fluxo-kt/aza-pg:18
  *
  * Options:
@@ -39,7 +39,8 @@ const CONTAINER_NAME = "aza-pg-verify-runtime";
 
 // Parse command line arguments
 const args = Bun.argv.slice(2);
-const imageTag = args.find((arg) => !arg.startsWith("--"));
+// POSTGRES_IMAGE: how scripts/test-all.ts hands every suite its image.
+const imageTag = args.find((arg) => !arg.startsWith("--")) ?? Bun.env.POSTGRES_IMAGE;
 const noCleanup = args.includes("--no-cleanup");
 const timeoutArg = args.find((arg) => arg.startsWith("--timeout="));
 const timeout = timeoutArg ? parseInt(timeoutArg.split("=")[1]!, 10) : 60;

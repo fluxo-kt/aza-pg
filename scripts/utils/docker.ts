@@ -156,8 +156,7 @@ export async function ensureImageAvailable(imageTag: string): Promise<void> {
 
   // Local image that doesn't exist
   error(`Docker image not found: ${imageTag}`);
-  console.log("   Build image first: bun scripts/build.ts");
-  console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
+  console.log("   Build it first: bun run build");
   throw new Error(`Image not available: ${imageTag}`);
 }
 

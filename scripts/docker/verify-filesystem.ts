@@ -8,7 +8,7 @@
  * - Verifies extension control files and SQL files
  *
  * Usage:
- *   bun scripts/docker/verify-filesystem.ts <image-tag>
+ *   bun scripts/docker/verify-filesystem.ts <image-tag>   (or POSTGRES_IMAGE)
  *   bun scripts/docker/verify-filesystem.ts ghcr.io/fluxo-kt/aza-pg:18
  *
  * Options:
@@ -27,7 +27,8 @@ const CONTAINER_NAME = "aza-pg-verify-filesystem";
 
 // Parse command line arguments
 const args = Bun.argv.slice(2);
-const imageTag = args.find((arg) => !arg.startsWith("--"));
+// POSTGRES_IMAGE: how scripts/test-all.ts hands every suite its image.
+const imageTag = args.find((arg) => !arg.startsWith("--")) ?? Bun.env.POSTGRES_IMAGE;
 const noCleanup = args.includes("--no-cleanup");
 
 interface ManifestEntry {

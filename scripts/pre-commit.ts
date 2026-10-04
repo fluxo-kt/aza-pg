@@ -8,7 +8,9 @@
  * 3. Auto-format code (prettier --write)
  * 4. Auto-format SQL files (sql-formatter)
  * 5. Auto-stage all fixes
- * 6. Only fail if there are REAL errors that can't be auto-fixed
+ * 6. Only fail if there are REAL errors that can't be auto-fixed — or if a file it would restage has unstaged
+ *    changes, which restaging would commit unseen
+
  *
  * Philosophy: Hooks should HELP, not BLOCK development
  */
@@ -34,6 +36,18 @@ async function stageFiles(files: string[]): Promise<void> {
 }
 
 /**
+ * Files whose working copy differs from what is staged. The fixers rewrite working copies and `git add` them back,
+ * which stages the WHOLE working copy: a partially staged file, or another person's unfinished edit sitting in it,
+ * would land in this commit unseen. Under `git commit --only -- <paths>` git hands the hook a temporary index
+ * holding exactly those paths' working copies, so the paths named there never show up here.
+ */
+async function withUnstagedChanges(files: string[]): Promise<string[]> {
+  if (files.length === 0) return [];
+  const out = await $`git diff --name-only -- ${files}`.text();
+  return out.trim().split("\n").filter(Boolean);
+}
+
+/**
  * Main pre-commit logic
  */
 async function preCommit(): Promise<void> {
@@ -46,9 +60,25 @@ async function preCommit(): Promise<void> {
   }
 
   const filesToRestage: string[] = [];
+  const manifestStaged = stagedFiles.includes("scripts/extensions/manifest-data.ts");
+
+  // Checked before any fixer writes: afterwards every fixed file differs from its staged copy.
+  const unstaged = await withUnstagedChanges(
+    manifestStaged ? [...stagedFiles, ...GENERATED_FILES] : stagedFiles
+  );
+  if (unstaged.length > 0) {
+    throw new Error(
+      `these files have changes that are not staged, and this hook's auto-fix would commit them too:\n` +
+        unstaged.map((f) => `  ${f}`).join("\n") +
+        `\nCommit finished files whole with: git commit --only -m "<message>" -- <files>` +
+        (manifestStaged
+          ? `\nA generated file listed here means its manifest change and the \`bun run generate\` output must be committed together.`
+          : "")
+    );
+  }
 
   // 1. Check if manifest-data.ts changed → auto-regenerate everything
-  if (stagedFiles.includes("scripts/extensions/manifest-data.ts")) {
+  if (manifestStaged) {
     info("📦 Manifest changed - auto-regenerating all artifacts...");
     try {
       await $`bun run generate`.quiet();
@@ -111,7 +141,7 @@ async function preCommit(): Promise<void> {
   if (sqlFiles.length > 0) {
     info("🗄️  Auto-formatting SQL files...");
     try {
-      await $`bun scripts/format-sql.ts --write`.quiet();
+      await $`bun scripts/format-sql.ts --write ${sqlFiles}`.quiet();
       success("✅ Auto-formatted SQL files");
       filesToRestage.push(...sqlFiles);
     } catch (err) {

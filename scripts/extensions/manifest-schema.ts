@@ -108,6 +108,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
  * - githubReleaseTag: GitHub release tag for downloading assets (required when install_via="github-release")
  * - githubAssetPattern: Asset filename pattern with {version}, {pgMajor}, {arch} placeholders (required when install_via="github-release")
+ * - x86CpuFlags: x86 CPU flags the binary needs; hosts lacking one get the extension hidden (scripts/extensions/cpu-gate.ts)
  * - pgdgPackage: PGDG apt name suffix, postgresql-<major>-<pgdgPackage> (required when install_via="pgdg" for extensions)
  * - perconaVersion: Version string for Percona packages (required when install_via="percona")
  * - perconaPackage: Package name for Percona packages (required when install_via="percona")
@@ -136,6 +137,7 @@ export const ManifestEntrySchema = type({
   "perconaVersion?": "string",
   "perconaPackage?": "string",
   "pgdgPackage?": "string",
+  "x86CpuFlags?": "string[]",
   "timescaleVersion?": "string",
   "timescalePackage?": "string",
   "soFileName?": "string",

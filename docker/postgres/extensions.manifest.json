@@ -1074,6 +1074,10 @@
       "githubReleaseTag": "0.9.1",
       "githubAssetPattern": "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
       "soFileName": "vectorscale-0.9.1.so",
+      "x86CpuFlags": [
+        "avx2",
+        "fma"
+      ],
       "category": "ai",
       "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
       "source": {
@@ -1090,6 +1094,7 @@
         "defaultEnable": true,
         "notes": [
           "Installed from GitHub release binaries",
+          "amd64 binary needs AVX2 and FMA; on hosts without them the extension is hidden (CREATE EXTENSION reports it unavailable) instead of crashing the server.",
           "Supports both amd64 and arm64 architectures",
           "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
           "Alt: PGDG has no package (Rust pgrx extension)"

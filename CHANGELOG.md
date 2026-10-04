@@ -43,6 +43,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgmq 1.11.1 → 1.13.0**: Fixes partitioned queues that silently overran their pre-created partitions and could not recover.
 - **Build optimisation**: PGroonga is now compiled with optimisation (`-O3`; it was built unoptimised at `-O0`), and the Rust extensions (`wrappers`, `pg_jsonschema`) use their upstream release profile (opt-level 3, fat LTO) instead of size-tuned settings.
 
+### Fixed
+
+- **pgvectorscale on x86-64 CPUs without AVX2 or FMA**: the amd64 build executes those instructions, so creating or loading the extension killed the server process (SIGILL) and forced crash recovery, including during first-start initialisation. On such hosts the entrypoint now hides the extension and logs which instructions are missing: first start skips it, the healthcheck no longer expects it, and `CREATE EXTENSION vectorscale` reports it unavailable. Databases that already use vectorscale still need a CPU with AVX2 and FMA. The image now passes `extension_control_path` on the command line, which overrides any value set in `postgresql.conf`.
+
 ## [v18.4-202606031012] - 2026-06-03
 
 ### Security

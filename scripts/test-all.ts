@@ -578,7 +578,7 @@ const allChecks: Check[] = [
     command: [
       "sh",
       "-c",
-      'docker run --rm -e POSTGRES_PASSWORD=test ${POSTGRES_IMAGE:-aza-pg:pg18} sh -c "ls -1 /usr/share/postgresql/18/extension/*.control | wc -l | grep -qE \\"(6[0-9]|7[0-9]|[89][0-9])\\""',
+      'docker run --rm -e POSTGRES_PASSWORD=test ${POSTGRES_IMAGE:-aza-pg:pg18} sh -c "ls -1 /usr/share/postgresql/*/extension/*.control /usr/share/postgresql/*/cpu-gated/*/extension/*.control | wc -l | grep -qE \\"^ *([6-9][0-9]|[1-9][0-9]{2,})$\\""',
     ],
     description: "Verify extension count in image (60+ extensions)",
     critical: false,

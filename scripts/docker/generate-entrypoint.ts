@@ -8,12 +8,15 @@
  * Placeholders:
  * - {{DEFAULT_SHARED_PRELOAD_LIBRARIES}} - Comma-separated list of extensions
  *   where runtime.sharedPreload == true AND runtime.defaultEnable == true AND enabled != false
+ * - {{CPU_GATED_EXTENSIONS}} - name|flags|share directory per enabled entry with x86CpuFlags
  *
  * Usage:
  *   bun scripts/docker/generate-entrypoint.ts
  */
 
 import { join } from "node:path";
+import { cpuGatedShareDir, requiredX86Flags } from "../extensions/cpu-gate";
+import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
@@ -34,6 +37,7 @@ export interface ManifestEntry {
   name: string;
   enabled?: boolean;
   runtime?: RuntimeSpec;
+  x86CpuFlags?: string[];
 }
 
 export interface Manifest {
@@ -81,6 +85,20 @@ export function generateDefaultSharedPreloadLibraries(manifest: Manifest): strin
 }
 
 /**
+ * Lines for CPU_GATED_EXTENSIONS: name|space-separated flags|share directory, one per enabled entry
+ * with x86CpuFlags.
+ */
+export function generateCpuGatedExtensions(manifest: Manifest, pgMajor: string): string {
+  return manifest.entries
+    .filter((entry) => entry.enabled !== false && requiredX86Flags(entry).length > 0)
+    .map(
+      (entry) =>
+        `${entry.name}|${requiredX86Flags(entry).join(" ")}|${cpuGatedShareDir(pgMajor, entry.name)}`
+    )
+    .join("\n");
+}
+
+/**
  * Generate entrypoint from template
  */
 async function generateEntrypoint(): Promise<void> {
@@ -108,6 +126,11 @@ async function generateEntrypoint(): Promise<void> {
   // Replace placeholder
   info("Replacing placeholders...");
   entrypoint = entrypoint.replace("{{DEFAULT_SHARED_PRELOAD_LIBRARIES}}", defaultPreloadLibs);
+  const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0] ?? "";
+  entrypoint = entrypoint.replace(
+    "{{CPU_GATED_EXTENSIONS}}",
+    generateCpuGatedExtensions(manifest, pgMajor)
+  );
 
   // Add generation header
   const header = `#!/bin/bash

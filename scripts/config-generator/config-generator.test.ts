@@ -148,9 +148,14 @@ describe("Healthcheck Generator", () => {
     expect(result).toContain("set -euo pipefail");
     expect(result).toContain("exit 0");
 
-    // Should not contain syntax errors
-    expect(result).not.toContain("[[");
-    expect(result).not.toContain("]]");
+    // bash -n parses without executing, so it catches syntax errors and nothing else
+    const parse = Bun.spawnSync(["bash", "-n"], {
+      stdin: new TextEncoder().encode(result),
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    expect(parse.stderr.toString()).toBe("");
+    expect(parse.exitCode).toBe(0);
   });
 
   test("generateHealthcheckScript includes EXPECTED_EXTENSIONS array", () => {
@@ -345,17 +350,10 @@ describe("Integration Tests", () => {
     }
   });
 
-  test("Extension count matches between SQL and healthcheck", async () => {
-    const sqlScript = await generateExtensionsInitScript(mockExtensions);
+  test("Healthcheck expects every precreated extension", () => {
+    // The SQL side counts at runtime (a CPU-gated extension may be skipped), so only the healthcheck
+    // carries a build-time count.
     const healthcheckScript = generateHealthcheckScript(mockExtensions, mockPreloadLibraries);
-
-    // SQL script should mention the count
-    const sqlCountMatch = sqlScript.match(/All (\d+) baseline extensions/);
-    if (sqlCountMatch) {
-      expect(sqlCountMatch[1]).toBe(String(mockExtensions.length));
-    }
-
-    // Healthcheck should have exact count
     expect(healthcheckScript).toContain(`EXPECTED_COUNT=${mockExtensions.length}`);
   });
 

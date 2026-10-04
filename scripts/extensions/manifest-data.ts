@@ -109,6 +109,12 @@ export interface ManifestEntry {
    */
   pgdgPackage?: string;
   /**
+   * x86 CPU flags (as /proc/cpuinfo names them) the shipped binary executes without checking for them
+   * first. On an x86-64 host lacking any of them the image hides the extension instead of letting
+   * CREATE EXTENSION crash the server; see scripts/extensions/cpu-gate.ts.
+   */
+  x86CpuFlags?: string[];
+  /**
    * Full Percona Debian package version string for Percona-installable extensions.
    * Only applicable when install_via === "percona".
    * Example: "2.3.1-1.noble" for percona-pg-stat-monitor18=2.3.1-1.noble
@@ -1027,6 +1033,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     githubReleaseTag: "0.9.1",
     githubAssetPattern: "pgvectorscale-{version}-pg{pgMajor}-{arch}.zip",
     soFileName: "vectorscale-0.9.1.so",
+    x86CpuFlags: ["avx2", "fma"],
     category: "ai",
     description: "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
     source: {
@@ -1040,6 +1047,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       notes: [
         "Installed from GitHub release binaries",
+        "amd64 binary needs AVX2 and FMA; on hosts without them the extension is hidden (CREATE EXTENSION reports it unavailable) instead of crashing the server.",
         "Supports both amd64 and arm64 architectures",
         "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
         "Alt: PGDG has no package (Rust pgrx extension)",

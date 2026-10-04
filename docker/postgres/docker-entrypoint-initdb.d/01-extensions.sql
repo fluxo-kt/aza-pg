@@ -30,6 +30,7 @@ DECLARE
     v_expected_exts TEXT[] := ARRAY['pg_net', 'pg_stat_monitor', 'pg_stat_statements', 'pg_trgm', 'pgaudit', 'pgmq', 'pgsodium', 'plpgsql', 'supabase_vault', 'timescaledb', 'vector', 'vectorscale'];
     v_created_exts TEXT[] := ARRAY[]::TEXT[];
     v_failed_exts TEXT[] := ARRAY[]::TEXT[];
+    v_skipped_exts TEXT[] := ARRAY[]::TEXT[];
     v_error_msg TEXT;
 BEGIN
     -- Record initialization start
@@ -162,19 +163,26 @@ BEGIN
     END;
 
     -- pgvectorscale (ai)
-    BEGIN
-        CREATE EXTENSION IF NOT EXISTS "vectorscale";
-        v_created_exts := array_append(v_created_exts, 'vectorscale');
-        RAISE NOTICE 'Created extension: vectorscale';
-    EXCEPTION WHEN OTHERS THEN
-        v_failed_exts := array_append(v_failed_exts, 'vectorscale');
-        GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
-        RAISE WARNING 'Failed to create extension vectorscale: %', v_error_msg;
-    END;
+    IF NOT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vectorscale') THEN
+        v_expected_exts := array_remove(v_expected_exts, 'vectorscale');
+        v_skipped_exts := array_append(v_skipped_exts, 'vectorscale');
+        RAISE WARNING 'Skipped extension vectorscale: this CPU lacks avx2, fma';
+    ELSE
+        BEGIN
+            CREATE EXTENSION IF NOT EXISTS "vectorscale";
+            v_created_exts := array_append(v_created_exts, 'vectorscale');
+            RAISE NOTICE 'Created extension: vectorscale';
+        EXCEPTION WHEN OTHERS THEN
+            v_failed_exts := array_append(v_failed_exts, 'vectorscale');
+            GET STACKED DIAGNOSTICS v_error_msg = MESSAGE_TEXT;
+            RAISE WARNING 'Failed to create extension vectorscale: %', v_error_msg;
+        END;
+    END IF;
 
     -- Update initialization status based on results
     UPDATE pg_aza_status
     SET
+        expected_extensions = v_expected_exts,
         created_extensions = v_created_exts,
         failed_extensions = v_failed_exts,
         status = CASE
@@ -184,7 +192,8 @@ BEGIN
         END,
         notes = CASE
             WHEN array_length(v_failed_exts, 1) IS NULL THEN
-                'All 12 baseline extensions created successfully (pg_cron handled separately by 01b-pg_cron.sh)'
+                'All ' || cardinality(v_created_exts)::TEXT || ' baseline extensions created successfully (pg_cron handled separately by 01b-pg_cron.sh)'
+                || CASE WHEN cardinality(v_skipped_exts) > 0 THEN '; skipped for this CPU: ' || array_to_string(v_skipped_exts, ', ') ELSE '' END
             ELSE
                 'Initialization completed with ' || array_length(v_failed_exts, 1)::TEXT || ' failure(s)'
         END
@@ -193,7 +202,7 @@ BEGIN
     -- Log final status and fail if any enabled extensions are missing
     -- NOTE: pg_cron is handled by 01b-pg_cron.sh to target POSTGRES_DB
     IF array_length(v_failed_exts, 1) IS NULL THEN
-        RAISE NOTICE 'Baseline extensions enabled (pg_net, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, pgsodium, plpgsql, supabase_vault, timescaledb, vector, vectorscale). pg_cron will be created by 01b-pg_cron.sh in POSTGRES_DB. Additional extensions are available but disabled by default.';
+        RAISE NOTICE 'Baseline extensions enabled (%). pg_cron will be created by 01b-pg_cron.sh in POSTGRES_DB. Additional extensions are available but disabled by default.', array_to_string(v_created_exts, ', ');
     ELSE
         RAISE EXCEPTION 'Extension initialization FAILED. Required extensions not available: %. Successfully created: %', v_failed_exts, v_created_exts
             USING HINT = 'Check that all required extensions are compiled into the Docker image. See docker/postgres/extensions.manifest.json for enabled extensions.';

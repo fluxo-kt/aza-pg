@@ -242,6 +242,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in vectorscale zip"; exit 1; } && \
     echo "Installing $DEB_FILE..." && \
     dpkg -i "$DEB_FILE" && \
+    mkdir -p /usr/share/postgresql/18/cpu-gated/vectorscale/extension && \
+    mv /usr/share/postgresql/18/extension/vectorscale.control /usr/share/postgresql/18/extension/vectorscale--*.sql /usr/share/postgresql/18/cpu-gated/vectorscale/extension/ && \
     rm -rf /tmp/vectorscale* && \
     echo "✓ Installed vectorscale v0.9.1" && \
     # Verify .so files exist

@@ -12,6 +12,8 @@ set -euo pipefail
 # Expected extensions for this aza-pg version (from manifest)
 EXPECTED_EXTENSIONS=("pg_cron" "pg_net" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "pgsodium" "plpgsql" "supabase_vault" "timescaledb" "vector" "vectorscale")
 EXPECTED_COUNT=13
+# Expected only where this host's CPU can run them (entrypoint CPU gate)
+CPU_GATED_EXTENSIONS=("vectorscale")
 EXPECTED_PRELOAD="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb"
 
 # Tier 1: Connection Test
@@ -34,6 +36,11 @@ for ext in "${EXPECTED_EXTENSIONS[@]}"; do
     if ! psql -U postgres -d postgres -tAc \
         "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')" \
         2>/dev/null | grep -q "^t$"; then
+        if [[ " ${CPU_GATED_EXTENSIONS[*]} " == *" $ext "* ]] && ! psql -U postgres -d postgres -tAc \
+            "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = '$ext')" \
+            2>/dev/null | grep -q "^t$"; then
+            continue
+        fi
         MISSING_EXTENSIONS+=("$ext")
     fi
 done

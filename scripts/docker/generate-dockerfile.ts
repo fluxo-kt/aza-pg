@@ -24,6 +24,7 @@
 
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
+import { cpuGatedShareDir, requiredX86Flags } from "../extensions/cpu-gate";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
 import { error, info, section, success } from "../utils/logger";
 
@@ -66,6 +67,7 @@ interface ManifestEntry {
   githubReleaseTag?: string;
   /** Asset filename pattern with {version}, {pgMajor}, {arch} placeholders */
   githubAssetPattern?: string;
+  x86CpuFlags?: string[];
   enabled?: boolean;
   enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
@@ -621,7 +623,7 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
     DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\
     test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in ${entry.name} zip"; exit 1; } && \\
     echo "Installing $DEB_FILE..." && \\
-    dpkg -i "$DEB_FILE" && \\
+    dpkg -i "$DEB_FILE" && \\${cpuGateRelocation(entry, pgMajor)}
     rm -rf /tmp/${entry.name}* && \\
     echo "✓ Installed ${entry.name} v${entry.githubReleaseTag}"`;
     })
@@ -650,6 +652,19 @@ ${installCommands} && \\
     find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; \\
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*`;
+}
+
+/**
+ * Shell lines moving an x86CpuFlags extension's control and SQL files out of the default extension
+ * directory into its cpu-gated share directory (scripts/extensions/cpu-gate.ts explains why). Empty for
+ * every other entry.
+ */
+function cpuGateRelocation(entry: ManifestEntry, pgMajor: string): string {
+  if (requiredX86Flags(entry).length === 0) return "";
+  const gated = `${cpuGatedShareDir(pgMajor, entry.name)}/extension`;
+  return `
+    mkdir -p ${gated} && \\
+    mv /usr/share/postgresql/${pgMajor}/extension/${entry.name}.control /usr/share/postgresql/${pgMajor}/extension/${entry.name}--*.sql ${gated}/ && \\`;
 }
 
 /**

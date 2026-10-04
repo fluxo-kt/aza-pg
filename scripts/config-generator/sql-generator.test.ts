@@ -255,7 +255,8 @@ describe("generateExtensionsInitScript - Success Messages", () => {
 
     const sql = await generateExtensionsInitScript(extensions);
 
-    expect(sql).toContain("Baseline extensions enabled (ext1, ext2)");
+    expect(sql).toContain("Baseline extensions enabled (%).");
+    expect(sql).toContain("array_to_string(v_created_exts, ', ')");
   });
 
   test("Success message mentions additional extensions", async () => {

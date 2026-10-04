@@ -22,6 +22,11 @@ readonly DEFAULT_RAM_MB=1024
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
 readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb"
 
+# Extensions whose amd64 binary executes instructions not every x86-64 CPU has, one per line as
+# name|required /proc/cpuinfo flags|share directory holding its control and SQL files. Generated from
+# the manifest's x86CpuFlags; scripts/extensions/cpu-gate.ts explains the gate.
+readonly CPU_GATED_EXTENSIONS="vectorscale|avx2 fma|/usr/share/postgresql/18/cpu-gated/vectorscale"
+
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
 readonly WORK_MEM_CAP_MB=32
@@ -380,6 +385,34 @@ calculate_io_workers() {
     echo "$value"
 }
 
+# Prints extension_control_path: $system plus the share directory of every CPU-gated extension this
+# host can run. Args: <cpuinfo file> <machine from uname -m>; CPU_GATED_EXTENSIONS lines on stdin.
+# Flags are matched as whole words, so avx512f never satisfies avx2. A missing or unreadable flags
+# line hides the extension (it cannot be proven safe); non-x86 machines skip the check, because
+# x86CpuFlags only describes the amd64 binary.
+cpu_gated_extension_control_path() {
+    local cpuinfo=$1 machine=$2 cpu_flags="" control_path='$system' name flags dir flag missing
+    if [ "$machine" = "x86_64" ]; then
+        cpu_flags=" $(grep -m1 '^flags' "$cpuinfo" | cut -d: -f2) " || cpu_flags=""
+    fi
+    # "|| [ -n ... ]" keeps a final line that lacks its newline
+    while IFS='|' read -r name flags dir || [ -n "$name" ]; do
+        [ -n "$name" ] || continue
+        missing=""
+        if [ "$machine" = "x86_64" ]; then
+            for flag in $flags; do
+                case "$cpu_flags" in *" $flag "*) ;; *) missing="$missing $flag" ;; esac
+            done
+        fi
+        if [ -n "$missing" ]; then
+            echo "[POSTGRES] [AUTO-CONFIG] ${name} unavailable: this CPU lacks${missing}" >&2
+        else
+            control_path="${control_path}:${dir}"
+        fi
+    done
+    echo "$control_path"
+}
+
 SHARED_BUFFERS_MB=$(calculate_shared_buffers)
 EFFECTIVE_CACHE_MB=$(calculate_effective_cache)
 MAINTENANCE_WORK_MEM_MB=$(calculate_maintenance_work_mem)
@@ -495,6 +528,9 @@ esac
 # operators change it here. Keep pgoutput in any override: built-in logical replication needs it.
 OUTPUT_PLUGIN_LIBRARIES=${POSTGRES_OUTPUT_PLUGIN_LIBRARIES:-pgoutput,test_decoding,wal2json}
 
+# Passed as -c, so it outranks postgresql.conf and ALTER SYSTEM like every auto-config setting.
+EXTENSION_CONTROL_PATH=$(cpu_gated_extension_control_path /proc/cpuinfo "$(uname -m)" <<< "$CPU_GATED_EXTENSIONS")
+
 # Override listen_addresses based on POSTGRES_BIND_IP
 # Default: 127.0.0.1 (localhost only, secure)
 # Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
@@ -517,6 +553,7 @@ set -- "$@" \
     -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
     -c "wal_level=${WAL_LEVEL}" \
     -c "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}" \
+    -c "extension_control_path=${EXTENSION_CONTROL_PATH}" \
     -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
     -c "cron.database_name=${POSTGRES_DB:-postgres}" \
     -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \

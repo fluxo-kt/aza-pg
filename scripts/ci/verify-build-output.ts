@@ -18,7 +18,6 @@
  */
 
 // Empty export makes this file a module (enables top-level await)
-export {};
 
 import { $ } from "bun";
 
@@ -101,9 +100,11 @@ async function getCatalogStats(): Promise<CatalogStats> {
 }
 
 async function verifyExtensionCount(image: string, expectedMin: number): Promise<number> {
-  // Check extension count in the image
+  // Counts CPU-gated extensions too: they ship in the image, outside the default directory.
   const result =
-    await $`docker run --rm ${image} sh -c 'ls -1 /usr/share/postgresql/18/extension/*.control 2>/dev/null'`.text();
+    await $`docker run --rm ${image} sh -c 'ls -1 /usr/share/postgresql/*/extension/*.control /usr/share/postgresql/*/cpu-gated/*/extension/*.control 2>/dev/null'`
+      .nothrow()
+      .text();
 
   const extensionCount = result.trim().split("\n").filter(Boolean).length;
 

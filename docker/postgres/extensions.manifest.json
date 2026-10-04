@@ -61,6 +61,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "hll",
+      "soFileName": "hll.so",
       "pgdgVersion": "2.21-1.pgdg13+2",
       "category": "analytics",
       "description": "HyperLogLog probabilistic counting data type.",
@@ -89,6 +90,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "http",
+      "soFileName": "http.so",
       "pgdgVersion": "1.7.2-2.pgdg13+2",
       "category": "integration",
       "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
@@ -120,6 +122,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "hypopg",
+      "soFileName": "hypopg.so",
       "pgdgVersion": "1.4.3-1.pgdg13+2",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
@@ -175,6 +178,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "cron",
+      "soFileName": "pg_cron.so",
       "pgdgVersion": "1.6.8-1.pgdg13+2",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
@@ -299,6 +303,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "partman",
+      "soFileName": "pg_partman_bgw.so",
       "pgdgVersion": "5.5.0-1.pgdg13+1",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
@@ -332,6 +337,7 @@
         "tag": "v1.0.0",
         "commit": "c1afc73dacae8688456bdeef72ed6a3030c500ba"
       },
+      "soFileName": "plan_filter.so",
       "build": {
         "type": "pgxs"
       },
@@ -352,6 +358,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "repack",
+      "soFileName": "pg_repack.so",
       "pgdgVersion": "1.5.3-1.pgdg13+2",
       "category": "maintenance",
       "description": "Online table/index reorganization without long locks.",
@@ -390,6 +397,7 @@
         "tag": "1.7",
         "commit": "37dbc9c4acf5e2504adf2b218e9c6b41751022f3"
       },
+      "soFileName": "safeupdate.so",
       "build": {
         "type": "pgxs"
       },
@@ -476,6 +484,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "pgaudit",
+      "soFileName": "pgaudit.so",
       "pgdgVersion": "18.0-3.pgdg13+1",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
@@ -504,6 +513,7 @@
       "kind": "tool",
       "install_via": "pgdg",
       "pgdgVersion": "2.59.2-1.pgdg13+1",
+      "binaryPath": "/usr/bin/pgbackrest",
       "category": "operations",
       "description": "Parallel, incremental backup and restore CLI.",
       "source": {
@@ -541,6 +551,7 @@
       "kind": "tool",
       "install_via": "pgdg",
       "pgdgVersion": "13.2-1.pgdg13+1",
+      "binaryPath": "/usr/bin/pgbadger",
       "category": "observability",
       "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
       "source": {
@@ -806,6 +817,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "plpgsql-check",
+      "soFileName": "plpgsql_check.so",
       "pgdgVersion": "2.10.11-1.pgdg13+1",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
@@ -878,6 +890,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "rum",
+      "soFileName": "rum.so",
       "pgdgVersion": "1.3.15-1.pgdg13+1",
       "category": "search",
       "description": "RUM GiST access method for ranked full-text search.",
@@ -906,6 +919,7 @@
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "set-user",
+      "soFileName": "set_user.so",
       "pgdgVersion": "4.2.0-1.pgdg13+2",
       "category": "security",
       "description": "Audited SET ROLE helper complementing pgaudit.",

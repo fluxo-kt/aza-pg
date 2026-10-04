@@ -92,8 +92,8 @@ export interface BuildSpec {
    */
   script?: string;
   /**
-   * Optional sed command patterns to apply before building.
-   * Each string is a sed expression (e.g., 's/old/new/').
+   * Unified-diff file names in docker/postgres/patches/, applied with `git apply` to the fresh clone before
+   * building; one that no longer applies fails the build (refresh it on every upstream bump).
    */
   patches?: string[];
 }
@@ -180,6 +180,12 @@ export interface ManifestEntry {
    */
   soFileName?: string;
   /**
+   * Absolute path of the executable a CLI tool (kind "tool") installs, e.g. "/usr/bin/pgbackrest".
+   * A tool that ships a server library instead names it in soFileName. The image test requires
+   * every enabled tool to declare one of the two and checks that file exists in the image.
+   */
+  binaryPath?: string;
+  /**
    * Timescale repository package name for timescale-installable extensions.
    * Required when install_via === "timescale".
    * Example: "timescaledb-2-postgresql-18"
@@ -261,6 +267,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "cron",
+    soFileName: "pg_cron.so",
     pgdgVersion: "1.6.8-1.pgdg13+2",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
@@ -288,6 +295,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "pgaudit",
+    soFileName: "pgaudit.so",
     pgdgVersion: "18.0-3.pgdg13+1",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
@@ -395,6 +403,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "hypopg",
+    soFileName: "hypopg.so",
     pgdgVersion: "1.4.3-1.pgdg13+2",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
@@ -437,6 +446,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "plpgsql-check",
+    soFileName: "plpgsql_check.so",
     pgdgVersion: "2.10.11-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
@@ -466,6 +476,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/eradman/pg-safeupdate.git",
       tag: "1.7",
     },
+    soFileName: "safeupdate.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
@@ -508,6 +519,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "http",
+    soFileName: "http.so",
     pgdgVersion: "1.7.2-2.pgdg13+2",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
@@ -615,6 +627,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "rum",
+    soFileName: "rum.so",
     pgdgVersion: "1.3.15-1.pgdg13+1",
     category: "search",
     description: "RUM GiST access method for ranked full-text search.",
@@ -903,6 +916,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "repack",
+    soFileName: "pg_repack.so",
     pgdgVersion: "1.5.3-1.pgdg13+2",
     category: "maintenance",
     description: "Online table/index reorganization without long locks.",
@@ -957,6 +971,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgexperts/pg_plan_filter.git",
       tag: "v1.0.0",
     },
+    soFileName: "plan_filter.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
@@ -1055,6 +1070,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "partman",
+    soFileName: "pg_partman_bgw.so",
     pgdgVersion: "5.5.0-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
@@ -1114,6 +1130,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "hll",
+    soFileName: "hll.so",
     pgdgVersion: "2.21-1.pgdg13+2",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
@@ -1136,6 +1153,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "tool",
     install_via: "pgdg",
     pgdgVersion: "2.59.2-1.pgdg13+1",
+    binaryPath: "/usr/bin/pgbackrest",
     category: "operations",
     description: "Parallel, incremental backup and restore CLI.",
     source: {
@@ -1172,6 +1190,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     // A real package in PGDG; percona-pgbadger only Provides the name, so the pin resolves to PGDG
     // even with the Percona repo enabled.
     pgdgVersion: "13.2-1.pgdg13+1",
+    binaryPath: "/usr/bin/pgbadger",
     category: "observability",
     description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
     source: {
@@ -1199,6 +1218,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "set-user",
+    soFileName: "set_user.so",
     pgdgVersion: "4.2.0-1.pgdg13+2",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",

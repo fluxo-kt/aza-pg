@@ -15,7 +15,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
-RUN rm -f /etc/apt/apt.conf.d/docker-clean; \
+RUN set -euo pipefail && \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # Copy build package list first (stable, needed for apt-get)
@@ -98,7 +99,7 @@ RUN set -euo pipefail && \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
     fi && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    { find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true; } && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
@@ -188,26 +189,26 @@ RUN set -euo pipefail && \
     apt-get update && \
     # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
     echo "Installing PGDG packages (regression mode): 12 packages" && \
-    (apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 && echo "✓ Installed: postgresql-18-hll=2.21-1.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-hll=2.21-1.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-http=1.7.2-2.pgdg13+2 && echo "✓ Installed: postgresql-18-http=1.7.2-2.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-http=1.7.2-2.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-hypopg=1.4.3-1.pgdg13+2 && echo "✓ Installed: postgresql-18-hypopg=1.4.3-1.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-hypopg=1.4.3-1.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-cron=1.6.8-1.pgdg13+2 && echo "✓ Installed: postgresql-18-cron=1.6.8-1.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-cron=1.6.8-1.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-partman=5.5.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.5.0-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-partman=5.5.0-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+2 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+2" && \
-    (apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-3.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-3.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-3.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.1-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.1-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.1-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-rum=1.3.15-1.pgdg13+1 && echo "✓ Installed: postgresql-18-rum=1.3.15-1.pgdg13+1") || echo "⚠ Skipped (not available): postgresql-18-rum=1.3.15-1.pgdg13+1" && \
-    (apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+2 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+2") || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+2" && \
+    { apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 && echo "✓ Installed: postgresql-18-hll=2.21-1.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-hll=2.21-1.pgdg13+2"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-http=1.7.2-2.pgdg13+2 && echo "✓ Installed: postgresql-18-http=1.7.2-2.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-http=1.7.2-2.pgdg13+2"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-hypopg=1.4.3-1.pgdg13+2 && echo "✓ Installed: postgresql-18-hypopg=1.4.3-1.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-hypopg=1.4.3-1.pgdg13+2"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-cron=1.6.8-1.pgdg13+2 && echo "✓ Installed: postgresql-18-cron=1.6.8-1.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-cron=1.6.8-1.pgdg13+2"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-partman=5.5.0-1.pgdg13+1 && echo "✓ Installed: postgresql-18-partman=5.5.0-1.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-partman=5.5.0-1.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+2 && echo "✓ Installed: postgresql-18-repack=1.5.3-1.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-repack=1.5.3-1.pgdg13+2"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-pgaudit=18.0-3.pgdg13+1 && echo "✓ Installed: postgresql-18-pgaudit=18.0-3.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-pgaudit=18.0-3.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-pgrouting=4.0.1-1.pgdg13+1 && echo "✓ Installed: postgresql-18-pgrouting=4.0.1-1.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-pgrouting=4.0.1-1.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 && echo "✓ Installed: postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1 && echo "✓ Installed: postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-postgis-3=3.6.4+dfsg-2.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-rum=1.3.15-1.pgdg13+1 && echo "✓ Installed: postgresql-18-rum=1.3.15-1.pgdg13+1" || echo "⚠ Skipped (not available): postgresql-18-rum=1.3.15-1.pgdg13+1"; } && \
+    { apt-get install -y --no-install-recommends postgresql-18-set-user=4.2.0-1.pgdg13+2 && echo "✓ Installed: postgresql-18-set-user=4.2.0-1.pgdg13+2" || echo "⚠ Skipped (not available): postgresql-18-set-user=4.2.0-1.pgdg13+2"; } && \
     # Report what was installed
-    dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log || true && \
+    { dpkg -l | grep "^ii.*postgresql-18-" || true; } | tee /tmp/installed-pgdg-exts.log && \
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Copy ALL compiled extensions (including regression-only ones)
 COPY --from=builder-pgxs /opt/ext-out/ /
@@ -216,7 +217,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig
 
 # Pre-compiled extensions from GitHub releases (for packages not available in apt)
 # IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
@@ -252,8 +253,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying GitHub release .so files..." && \
     test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.1.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
+    # Strip debug symbols from newly installed .so files (best-effort; the braces keep || true off the install chain)
+    { find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; } && \
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*
 
@@ -283,7 +284,7 @@ RUN set -euo pipefail && \
     chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
 
 # Create backup directory with proper ownership
-RUN mkdir -p /backup && chown postgres:postgres /backup
+RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
 
 # Copy base PostgreSQL config
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/

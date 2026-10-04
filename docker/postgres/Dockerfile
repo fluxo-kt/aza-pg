@@ -117,7 +117,7 @@ RUN set -euo pipefail && \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
     fi && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    { find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true; } && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
@@ -215,15 +215,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     # Install enabled PGDG packages (pre-calculated in TS)
     echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2" && \
     apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.11-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 && \
-    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
-    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-    echo "Expected 10 enabled PGDG packages from manifest" && \
-    test "$INSTALLED_COUNT" -ge 10 || (echo "ERROR: Installed count mismatch (expected >= 10, got $INSTALLED_COUNT)" && exit 1) && \
-    rm -f /tmp/installed-pgdg-exts.log && \
-    # Verify critical .so files exist (prevents silent installation failures)
-    echo "Verifying PGDG .so files exist..." && \
+    # Each entry's module file must exist (prevents silent installation failures)
     test -f /usr/lib/postgresql/18/lib/hll.so && \
     test -f /usr/lib/postgresql/18/lib/http.so && \
     test -f /usr/lib/postgresql/18/lib/hypopg.so && \
@@ -231,13 +223,14 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/pg_partman_bgw.so && \
     test -f /usr/lib/postgresql/18/lib/pg_repack.so && \
     test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
+    test -f /usr/lib/postgresql/18/lib/plpgsql_check.so && \
     test -f /usr/lib/postgresql/18/lib/rum.so && \
     test -f /usr/lib/postgresql/18/lib/set_user.so && \
-    echo "All 9 PGDG .so files verified" && \
+    echo "All 10 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/extensions.manifest.json; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -f /tmp/extensions.manifest.json && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
 # Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
@@ -262,12 +255,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying Percona .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/pg_stat_monitor.so && \
     test -f /usr/lib/postgresql/18/lib/wal2json.so && \
-    echo "All 2 Percona .so files verified" && \
+    echo "All 2 Percona module files verified" && \
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
 # Provides TimescaleDB with full TSL license (not available in PGDG)
@@ -290,10 +283,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying Timescale .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/timescaledb.so && \
     test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.26.0.so && \
-    echo "All 2 Timescale .so files verified" && \
+    echo "All 2 Timescale module files verified" && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -390,8 +383,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "Verifying GitHub release .so files..." && \
     test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.1.so && \
     echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
+    # Strip debug symbols from newly installed .so files (best-effort; the braces keep || true off the install chain)
+    { find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; } && \
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*
 

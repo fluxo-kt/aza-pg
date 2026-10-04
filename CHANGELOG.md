@@ -10,6 +10,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.4-202606031012] - 2026-06-03
+
 ### Security
 
 - **TimescaleDB 2.27.1**: Fixes an information leak where the `job_errors` view exposed failed-job details to non-owners, adds hypertable ownership checks before recompression, and fixes an information leak in `policy_reorder_remove`.

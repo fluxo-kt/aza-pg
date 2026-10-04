@@ -82,7 +82,13 @@ async function main(): Promise<number> {
   const owned = options.container === null;
   try {
     if (owned) {
-      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres -e TEST_MODE=${mode} -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries(mode)} ${resolveImageTag()}`.quiet();
+      // Production mode runs the image's own default preload: passing the manifest's list would hide an image whose
+      // default differs from it. Regression mode adds the optional preloads its suites need.
+      const preloadEnv =
+        mode === "production"
+          ? []
+          : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries(mode)}`];
+      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres -e TEST_MODE=${mode} ${preloadEnv} ${resolveImageTag()}`.quiet();
       await waitForPostgres({ container, timeout: 120 });
     }
     const results: TestResult[] = [];

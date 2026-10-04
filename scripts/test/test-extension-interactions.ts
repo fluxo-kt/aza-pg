@@ -45,8 +45,14 @@ try {
       : MANIFEST_ENTRIES.filter((e) => e.runtime?.sharedPreload === true && e.enabled !== false)
           .map((e) => e.runtime?.preloadLibraryName ?? e.name)
           .join(",");
-  console.log(`Mode ${mode}: shared_preload_libraries=${preload}`);
-  await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${resolveImageTag()}`.quiet();
+  console.log(
+    `Mode ${mode}: shared_preload_libraries=${mode === "production" ? "(image default)" : preload}`
+  );
+  // Production mode runs the image's own default preload: passing the manifest's list would hide an image whose
+  // default differs from it. Regression mode adds the optional preloads, which are what it tests.
+  const preloadEnv =
+    mode === "production" ? [] : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload}`];
+  await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
   await waitForPostgres({ container, timeout: 120 });
 
   await psql(`CREATE TABLE ${marker} (id int)`);

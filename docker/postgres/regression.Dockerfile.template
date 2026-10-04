@@ -9,7 +9,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
-RUN rm -f /etc/apt/apt.conf.d/docker-clean; \
+RUN set -euo pipefail && \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # Copy build package list first (stable, needed for apt-get)
@@ -92,7 +93,7 @@ RUN set -euo pipefail && \
       rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
     fi && \
     find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    { find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true; } && \
     rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
@@ -186,7 +187,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig
 
 # Pre-compiled extensions from GitHub releases (for packages not available in apt)
 # IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
@@ -218,7 +219,7 @@ RUN set -euo pipefail && \
     chmod +x /usr/share/postgresql/{{PG_MAJOR}}/extension/pgsodium_getkey
 
 # Create backup directory with proper ownership
-RUN mkdir -p /backup && chown postgres:postgres /backup
+RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
 
 # Copy base PostgreSQL config
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/

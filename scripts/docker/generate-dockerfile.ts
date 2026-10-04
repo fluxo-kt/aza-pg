@@ -108,6 +108,29 @@ function validatePackageName(packageName: string, context: string): void {
 }
 
 /**
+ * A `test -f` per entry for the module file it installs, so a package that ships nothing, or renames its
+ * library, fails the build instead of the operator's first CREATE EXTENSION. The file name comes from the
+ * entry's soFileName and is interpolated into the shell command, hence the strict pattern.
+ */
+function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string): string[] {
+  return entries.map((entry) => {
+    if (!entry.soFileName) {
+      throw new Error(
+        `${source} entry "${entry.name}" has no soFileName. Add the module file it installs ` +
+          `(listed by: ls $(pg_config --pkglibdir)), e.g. soFileName: "${entry.name}.so".`
+      );
+    }
+    if (!/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `${source} entry "${entry.name}" has invalid soFileName "${entry.soFileName}": ` +
+          `use a bare file name of letters, digits, dots, underscores or hyphens ending in .so.`
+      );
+    }
+    return `test -f /usr/lib/postgresql/${pgMajor}/lib/${entry.soFileName}`;
+  });
+}
+
+/**
  * Read and parse manifest
  */
 async function readManifest(): Promise<Manifest> {
@@ -156,40 +179,13 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
   }
 
   const packagesList = enabledPgdgPackages.join(" ");
-  const expectedCount = enabledPgdgPackages.length;
-
-  // Build list of expected .so files for verification
-  // Map PGDG package names to their .so file names
-  const soFileMap: Record<string, string> = {
-    cron: "pg_cron.so",
-    pgvector: "vector.so",
-    pgaudit: "pgaudit.so",
-    repack: "pg_repack.so",
-    hll: "hll.so",
-    http: "http.so",
-    hypopg: "hypopg.so",
-    rum: "rum.so",
-    "set-user": "set_user.so",
-    partman: "pg_partman_bgw.so",
-  };
-
-  // Get expected .so files for enabled packages
-  const expectedSoFiles = enabledPgdgPackages
-    .map((pkg) => {
-      const match = pkg.match(/postgresql-\d+-([^=]+)/);
-      if (match?.[1] && soFileMap[match[1]]) {
-        return soFileMap[match[1]];
-      }
-      return null;
-    })
-    .filter((f): f is string => f !== null);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(
+    manifest.entries.filter(
+      (e) => e.kind === "extension" && e.install_via === "pgdg" && (e.enabled ?? true)
+    ),
+    "PGDG",
+    pgMajor
+  );
 
   return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
@@ -199,20 +195,13 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     # Install enabled PGDG packages (pre-calculated in TS)
     echo "Installing PGDG packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
-    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log && \\
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
-    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
-    echo "Expected ${expectedCount} enabled PGDG packages from manifest" && \\
-    test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
-    rm -f /tmp/installed-pgdg-exts.log && \\
-    # Verify critical .so files exist (prevents silent installation failures)
-    echo "Verifying PGDG .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} PGDG .so files verified" && \\
+    # Each entry's module file must exist (prevents silent installation failures)
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} PGDG module files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
-    rm -f /tmp/extensions.manifest.json; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    rm -f /tmp/extensions.manifest.json && \\
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
 /**
@@ -253,38 +242,12 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
     }
     validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
 
-    // soFileName is REQUIRED for .so verification (single source of truth in manifest)
-    if (!entry.soFileName) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required soFileName field.\n` +
-          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
-      );
-    }
-    // Validate soFileName format (must end with .so and be a safe filename)
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `Percona entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be alphanumeric with underscores/hyphens and end with .so`
-      );
-    }
-
     packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
   }
 
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
-
-  // Get expected .so files for verification (from manifest - single source of truth)
-  const expectedSoFiles = enabledPerconaEntries
-    .map((entry) => entry.soFileName)
-    .filter((f): f is string => f !== undefined);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(enabledPerconaEntries, "Percona", pgMajor);
 
   return `# Percona repository setup and package installation
 # Provides: pg_stat_monitor and wal2json from Percona ppg-${pgMajor}
@@ -305,12 +268,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Installed ${expectedCount} Percona package(s)" && \\
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Percona .so files verified" && \\
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} Percona module files verified" && \\
     # Cleanup Percona release package
     rm -f /tmp/percona-release.deb && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/*; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    rm -rf /var/lib/apt/lists/* && \\
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
 /**
@@ -351,20 +315,6 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     }
     validatePackageName(entry.timescaleVersion, `Timescale version (${entry.name})`);
 
-    // soFileName is REQUIRED for .so verification
-    if (!entry.soFileName) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required soFileName field.\n` +
-          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
-      );
-    }
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `Timescale entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be a filename with alphanumerics, dots, underscores, or hyphens and end with .so`
-      );
-    }
-
     packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
 
     // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
@@ -383,18 +333,7 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
 
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
-
-  // Get expected .so files for verification
-  const expectedSoFiles = enabledTimescaleEntries
-    .map((entry) => entry.soFileName)
-    .filter((f): f is string => f !== undefined);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(enabledTimescaleEntries, "Timescale", pgMajor);
 
   return `# Timescale repository setup and package installation
 # Provides: TimescaleDB with full TSL license (not available in PGDG)
@@ -413,10 +352,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Installed ${expectedCount} Timescale package(s)" && \\
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Timescale .so files verified" && \\
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} Timescale module files verified" && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/*; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    rm -rf /var/lib/apt/lists/* && \\
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
 /**
@@ -464,7 +404,7 @@ function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: stri
   const installCommands = allPgdgPackages
     .map(
       (pkg) =>
-        `    (apt-get install -y --no-install-recommends ${pkg} && echo "✓ Installed: ${pkg}") || echo "⚠ Skipped (not available): ${pkg}"`
+        `    { apt-get install -y --no-install-recommends ${pkg} && echo "✓ Installed: ${pkg}" || echo "⚠ Skipped (not available): ${pkg}"; }`
     )
     .join(" && \\\n");
 
@@ -475,13 +415,13 @@ function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: stri
     echo "Installing PGDG packages (regression mode): ${allPgdgPackages.length} packages" && \\
 ${installCommands} && \\
     # Report what was installed
-    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log || true && \\
+    { dpkg -l | grep "^ii.*postgresql-${pgMajor}-" || true; } | tee /tmp/installed-pgdg-exts.log && \\
     INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \\
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
 /**
@@ -584,15 +524,6 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
         `GitHub release entry "${entry.name}" missing required githubAssetPattern field.`
       );
     }
-    if (!entry.soFileName) {
-      throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
-    }
-    // Validate soFileName format
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
-      );
-    }
   }
 
   // Build installation commands for each extension
@@ -630,10 +561,9 @@ function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): stri
     })
     .join(" && \\\n");
 
-  // .so verification
-  const soVerification = enabledEntries
-    .map((e) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${e.soFileName}`)
-    .join(" && \\\n    ");
+  const soVerification = soFileChecks(enabledEntries, "GitHub release", pgMajor).join(
+    " && \\\n    "
+  );
 
   return `# GitHub release binary installation
 # Provides pre-built extensions not available via apt for Debian Trixie
@@ -649,8 +579,8 @@ ${installCommands} && \\
     echo "Verifying GitHub release .so files..." && \\
     ${soVerification} && \\
     echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
-    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; \\
+    # Strip debug symbols from newly installed .so files (best-effort; the braces keep || true off the install chain)
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; } && \\
     # Clean apt lists (Dockle DKL-DI-0005)
     rm -rf /var/lib/apt/lists/*`;
 }

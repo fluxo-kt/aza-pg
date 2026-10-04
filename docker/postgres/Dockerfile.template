@@ -111,7 +111,7 @@ RUN set -euo pipefail && \
       rsync -a /usr/share/postgresql/{{PG_MAJOR}}/timescaledb/ /opt/ext-out/usr/share/postgresql/{{PG_MAJOR}}/timescaledb/; \
     fi && \
     find /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    { find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true; } && \
     rm -rf /opt/ext-out/usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && \
     find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 

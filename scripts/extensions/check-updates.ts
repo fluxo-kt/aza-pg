@@ -395,7 +395,10 @@ async function checkGitHubRelease(
   }
 }
 
-async function checkExtensionUpdates(entry: ManifestEntry): Promise<UpdateInfo | null> {
+// Takes only what it reads, so source libraries are checked without posing as manifest entries.
+async function checkExtensionUpdates(
+  entry: Pick<ManifestEntry, "name" | "source" | "enabled">
+): Promise<UpdateInfo | null> {
   const { name, source, enabled = true } = entry;
 
   // Skip built-in extensions
@@ -609,12 +612,9 @@ async function main() {
   for (const [name, library] of Object.entries(SOURCE_LIBRARIES)) {
     const update = await checkExtensionUpdates({
       name,
-      kind: "tool",
-      category: "library",
-      description: `Source-built library (${library.soname})`,
       source: library.source,
       enabled: MANIFEST_ENTRIES.some(
-        (e) => e.enabled !== false && (e.sourceLibraries ?? []).includes(name)
+        (e) => e.enabled !== false && (e.sourceLibraries ?? []).some((lib) => lib === name)
       ),
     });
     if (update) {

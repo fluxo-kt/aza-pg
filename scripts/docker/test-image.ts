@@ -194,7 +194,7 @@ async function main(): Promise<void> {
       results.push(await testVersionInfoFilesPresent(c));
       results.push(await testEnabledPgdgExtensionsPresent(manifest, c));
       results.push(await testDisabledPgdgExtensionsNotPresent(manifest, c));
-      results.push(await testSharedLibrariesResolve(manifest, c));
+      results.push(await testSharedLibrariesResolve(c));
 
       console.log("");
 

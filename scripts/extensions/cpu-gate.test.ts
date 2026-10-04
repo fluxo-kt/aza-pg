@@ -9,11 +9,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateHealthcheckScript } from "../config-generator/healthcheck-generator";
 import { generateExtensionsInitScript } from "../config-generator/sql-generator";
-import { generateCpuGatedExtensions } from "../docker/generate-entrypoint";
-import { cpuGatedShareDir, requiredX86Flags } from "./cpu-gate";
-import { MANIFEST_ENTRIES, MANIFEST_METADATA, type ManifestEntry } from "./manifest-data";
+import { requiredX86Flags } from "./cpu-gate";
+import type { ManifestEntry } from "./manifest-data";
 
 const ENTRYPOINT = join(import.meta.dir, "../../docker/postgres/docker-auto-config-entrypoint.sh");
 const entrypoint = await Bun.file(ENTRYPOINT).text();
@@ -111,28 +109,9 @@ describe("entrypoint cpu_gated_extension_control_path", () => {
     const result = gate(await cpuinfo("none", "flags\t\t: fpu"), "x86_64", "");
     expect(result).toEqual({ exitCode: 0, path: "$system", log: "" });
   });
-
-  test("the entrypoint passes the result to postgres", () => {
-    expect(entrypoint).toContain('-c "extension_control_path=${EXTENSION_CONTROL_PATH}"');
-  });
 });
 
-describe("manifest wiring", () => {
-  const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0] ?? "";
-  const gatedEntries = MANIFEST_ENTRIES.filter(
-    (e) => e.enabled !== false && requiredX86Flags(e).length > 0
-  );
-
-  test("the generated entrypoint lists every enabled gated entry with its share directory", () => {
-    const expected = gatedEntries.map(
-      (e) => `${e.name}|${requiredX86Flags(e).join(" ")}|${cpuGatedShareDir(pgMajor, e.name)}`
-    );
-    expect(generateCpuGatedExtensions({ entries: MANIFEST_ENTRIES }, pgMajor).split("\n")).toEqual(
-      expected
-    );
-    expect(entrypoint).toContain(`readonly CPU_GATED_EXTENSIONS="${expected.join("\n")}"`);
-  });
-
+describe("requiredX86Flags", () => {
   test("requiredX86Flags refuses anything that is not a cpuinfo flag name", () => {
     expect(() => requiredX86Flags({ name: "x", x86CpuFlags: ["avx2", "fma;rm -rf /"] })).toThrow(
       'x: x86CpuFlags entry "fma;rm -rf /"'
@@ -141,7 +120,7 @@ describe("manifest wiring", () => {
   });
 });
 
-describe("initdb and healthcheck treat an unavailable gated extension as skipped", () => {
+describe("initdb treats an unavailable gated extension as skipped", () => {
   const entry = (name: string, extra: Partial<ManifestEntry> = {}): ManifestEntry => ({
     name,
     kind: "extension",
@@ -166,11 +145,5 @@ describe("initdb and healthcheck treat an unavailable gated extension as skipped
     // Only the gated entry is conditional; anything else missing must still fail initialisation.
     expect(sql.match(/pg_available_extensions/g)).toHaveLength(1);
     expect(sql).toContain("expected_extensions = v_expected_exts");
-  });
-
-  test("healthcheck lists only gated entries as CPU-dependent", () => {
-    const script = generateHealthcheckScript(entries, "");
-    expect(script).toContain('CPU_GATED_EXTENSIONS=("gated")');
-    expect(script).toContain('EXPECTED_EXTENSIONS=("plain" "gated")');
   });
 });

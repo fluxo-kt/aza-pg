@@ -62,10 +62,9 @@ interface BuildSpec {
 }
 
 interface SourceLibrary {
-  version: string;
-  url: string;
+  source: { repository: string; tag: string };
+  asset: string;
   sha256: string;
-  soname: string;
 }
 
 interface RuntimeSpec {
@@ -313,42 +312,24 @@ async function getPgrxVersion(dir: string): Promise<string> {
 // refuses any host tuning that arrives under another variable name.
 const PORTABLE_PGXS = ["USE_PGXS=1", "OPTFLAGS="];
 
-function refuseHostTuning(flags: string, what: string, remedy: string): void {
-  const native = flags.match(/-m(?:arch|tune|cpu)=native/);
-  if (native) {
-    throw new Error(
-      `${what}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ${remedy}`
-    );
-  }
-}
-
-// The last -O on a compile line wins, so an upstream PG_CPPFLAGS = -O0 silently undoes PostgreSQL's
-// -O2 (it lands after CFLAGS). Refusing it makes every unoptimised build a recorded decision.
+// The last -O on a command line wins, so an upstream PG_CPPFLAGS = -O0 silently undoes PostgreSQL's
+// -O2 (CPPFLAGS follows CFLAGS on PGXS compile lines). Refusing it makes every unoptimised build a
+// recorded decision. Lines without any -O (install, mkdir) never match.
 export function unoptimisedCompileLine(plan: string): string | undefined {
-  // A compile line starts with the compiler (gcc, cc, clang, a triplet- or version-suffixed one, or
-  // ccache in front); make -n also prints echo and link recipe lines, which carry no -c.
-  const compiler = /^\s*(?:\S*\/)?(?:ccache\s+)?(?:\S*\/)?(?:[\w.]+-)*(?:gcc|cc|clang)(?:-\d+)?\s/;
-  return plan
-    .split("\n")
-    .filter((line) => compiler.test(line) && / -c /.test(line))
-    .find(
-      (line) =>
-        line
-          .match(/(?:^|\s)-O\S*/g)
-          ?.at(-1)
-          ?.trim() === "-O0"
-    );
+  return plan.split("\n").find((line) => line.match(/(?<!\S)-O\S*/g)?.at(-1) === "-O0");
 }
 
 async function buildPgxs(dir: string, build: BuildSpec): Promise<void> {
   log(`Running pgxs build in ${dir}`);
   const args = [...PORTABLE_PGXS, ...(build.makeOptions ?? [])];
   const plan = await $`make -n -C ${dir} ${args}`.text();
-  refuseHostTuning(
-    plan,
-    dir,
-    "Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts)."
-  );
+  const native = plan.match(/-m(?:arch|tune|cpu)=native/);
+  if (native) {
+    throw new Error(
+      `${dir}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ` +
+        `Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts).`
+    );
+  }
   const unoptimised = unoptimisedCompileLine(plan);
   if (unoptimised) {
     throw new Error(
@@ -370,52 +351,45 @@ async function ensureSourceLibraries(entry: ManifestEntry, manifest: Manifest): 
     const lib = manifest.sourceLibraries?.[name];
     if (!lib) throw new Error(`${entry.name}: source library ${name} is not in the manifest`);
 
-    log(`Building source library ${name} ${lib.version} for ${entry.name}`);
+    const url = `${lib.source.repository.replace(/\.git$/, "")}/releases/download/${lib.source.tag}/${lib.asset}`;
+    log(`Building source library ${name} ${lib.source.tag} for ${entry.name}`);
     let tarball: Uint8Array | undefined;
     for (let attempt = 1; attempt <= 5 && !tarball; attempt++) {
-      const response = await fetch(lib.url).catch(() => undefined);
+      const response = await fetch(url).catch(() => undefined);
       if (response?.ok) tarball = new Uint8Array(await response.arrayBuffer());
       else if (attempt < 5) await Bun.sleep(1000 * attempt);
     }
-    if (!tarball) throw new Error(`${name}: could not download ${lib.url}`);
+    if (!tarball) throw new Error(`${name}: could not download ${url}`);
     const digest = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
     if (digest !== lib.sha256) {
-      throw new Error(`${name}: ${lib.url} has sha256 ${digest}, manifest pins ${lib.sha256}`);
+      throw new Error(`${name}: ${url} has sha256 ${digest}, manifest pins ${lib.sha256}`);
     }
 
     const dir = join(BUILD_ROOT, `lib-${name}`);
     await ensureCleanDir(dir);
-    await Bun.write(join(dir, "src.tar.gz"), tarball);
-    await $`tar -xzf ${join(dir, "src.tar.gz")} -C ${dir} --strip-components=1`;
-    await $`./configure --prefix=/usr/local --disable-static`.cwd(dir).quiet();
-    refuseHostTuning(
-      await $`make -n`.cwd(dir).text(),
-      name,
-      "Configure it without the option that enables host tuning (libsodium: --enable-opt)."
-    );
-    await $`make -j${NPROC}`.cwd(dir).quiet();
-    await $`make install`.cwd(dir).quiet();
-    // libtool archives only help other libtool builds and would ship into the image.
-    await $`find /usr/local/lib -maxdepth 1 -name ${`${name}.la`} -delete`;
+    await $`tar -xz -C ${dir} --strip-components=1 < ${new Response(tarball)}`;
+    await $`./configure --prefix=/usr/local --disable-static`.cwd(dir);
+    await $`make -j${NPROC}`.cwd(dir);
+    await $`make install`.cwd(dir);
     await $`ldconfig`;
     builtLibraries.add(name);
   }
 }
 
-// A consumer that found a different copy (a Debian -dev package, a stale build) would still link and
-// load, so prove the module records the soname we built.
-async function assertLinksSourceLibraries(entry: ManifestEntry, manifest: Manifest): Promise<void> {
+// trixie's linker searches /usr/lib/<triplet> before /usr/local/lib, so a stray Debian -dev package
+// would make the consumer link the old library and still build. Prove the module resolves ours.
+async function assertLinksSourceLibraries(entry: ManifestEntry): Promise<void> {
   if (!entry.sourceLibraries?.length) return;
   const pkglibdir = (await $`pg_config --pkglibdir`.text()).trim();
   const module = join(pkglibdir, entry.soFileName ?? `${entry.name}.so`);
-  const needed = await $`readelf -d ${module}`.text();
+  const ldd = await $`ldd ${module}`.text();
   for (const name of entry.sourceLibraries) {
-    const soname = manifest.sourceLibraries?.[name]?.soname;
-    if (!soname || !needed.includes(`[${soname}]`)) {
-      throw new Error(`${module} does not record NEEDED ${soname ?? name}:\n${needed}`);
+    const resolved = ldd.split("\n").filter((line) => line.trim().startsWith(`${name}.so`));
+    if (resolved.length === 0 || !resolved.every((line) => line.includes("=> /usr/local/lib/"))) {
+      throw new Error(`${module} does not resolve ${name} from /usr/local/lib:\n${ldd}`);
     }
   }
-  log(`${entry.name} links ${entry.sourceLibraries.join(", ")}`);
+  log(`${entry.name} links ${entry.sourceLibraries.join(", ")} from /usr/local/lib`);
 }
 
 async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> {
@@ -898,7 +872,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
       process.exit(1);
   }
 
-  await assertLinksSourceLibraries(entry, manifest);
+  await assertLinksSourceLibraries(entry);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

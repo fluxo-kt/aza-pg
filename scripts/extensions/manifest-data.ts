@@ -22,15 +22,13 @@ export const MANIFEST_METADATA = {
 
 /** A C library compiled from a release tarball because Debian trixie's package is too old. */
 export interface SourceLibrary {
-  version: string;
-  /** Release tarball; the build refuses it unless its SHA-256 equals `sha256`. */
-  url: string;
-  /** SHA-256 of the tarball, recorded after verifying the upstream signature (see `notes`). */
-  sha256: string;
-  /** Shared-object name every consumer must record as NEEDED; the build checks it. */
-  soname: string;
-  /** Where check-updates.ts looks for newer releases; `tag` is the current release's tag. */
+  /** GitHub repository and release tag; check-updates.ts compares `tag` with upstream's latest. */
   source: { type: "git"; repository: string; tag: string };
+  /** Tarball attached to that release. The build downloads <repository>/releases/download/<tag>/<asset>,
+   * so a tag/asset mismatch fails as a 404 and a stale sha256 as a checksum error, never silently. */
+  asset: string;
+  /** SHA-256 of the asset, recorded after verifying the upstream signature (see `notes`). */
+  sha256: string;
   notes?: string[];
 }
 
@@ -40,12 +38,10 @@ export interface SourceLibrary {
  * links: two versions loaded into one backend would cross-bind symbols, because PostgreSQL loads
  * modules with RTLD_GLOBAL. Security updates for these are ours, not Debian's.
  */
-export const SOURCE_LIBRARIES: Record<string, SourceLibrary> = {
+export const SOURCE_LIBRARIES = {
   libsodium: {
-    version: "1.0.22",
-    url: "https://github.com/jedisct1/libsodium/releases/download/1.0.22-RELEASE/libsodium-1.0.22.tar.gz",
+    asset: "libsodium-1.0.22.tar.gz",
     sha256: "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
-    soname: "libsodium.so.26",
     source: {
       type: "git",
       repository: "https://github.com/jedisct1/libsodium.git",
@@ -57,7 +53,10 @@ export const SOURCE_LIBRARIES: Record<string, SourceLibrary> = {
       "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast.",
     ],
   },
-};
+} satisfies Record<string, SourceLibrary>;
+
+/** Library keys; ManifestEntry.sourceLibraries accepts only these, so a typo fails type checking. */
+export type SourceLibraryName = keyof typeof SOURCE_LIBRARIES;
 
 export type SourceSpec =
   | { type: "builtin" }
@@ -136,7 +135,7 @@ export interface ManifestEntry {
   provides?: string[];
   aptPackages?: string[];
   /** Keys of SOURCE_LIBRARIES this module links against; they are built before it. */
-  sourceLibraries?: string[];
+  sourceLibraries?: SourceLibraryName[];
   notes?: string[];
   install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
   /**

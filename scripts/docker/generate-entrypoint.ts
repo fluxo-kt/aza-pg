@@ -88,7 +88,7 @@ export function generateDefaultSharedPreloadLibraries(manifest: Manifest): strin
  * Lines for CPU_GATED_EXTENSIONS: name|space-separated flags|share directory, one per enabled entry
  * with x86CpuFlags.
  */
-export function generateCpuGatedExtensions(manifest: Manifest, pgMajor: string): string {
+function generateCpuGatedExtensions(manifest: Manifest, pgMajor: string): string {
   return manifest.entries
     .filter((entry) => entry.enabled !== false && requiredX86Flags(entry).length > 0)
     .map(

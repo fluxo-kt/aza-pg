@@ -30,8 +30,6 @@ export interface ManifestEntry {
   kind: "extension" | "tool" | "builtin";
   install_via?: string;
   enabled?: boolean;
-  soFileName?: string;
-  sourceLibraries?: string[];
   runtime?: {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
@@ -43,7 +41,6 @@ export interface ManifestEntry {
 export interface Manifest {
   generatedAt: string;
   entries: ManifestEntry[];
-  sourceLibraries?: Record<string, { soname: string }>;
 }
 
 export type { TestResult };
@@ -448,16 +445,12 @@ export async function testEnabledPgdgExtensionsPresent(
 }
 
 /**
- * Test: every shared object in the module directory and /usr/local/lib resolves all its libraries,
- * and each extension that links a source-built library resolves the copy in /usr/local/lib.
- *
+ * Test: every shared object in the module directory and /usr/local/lib resolves all its libraries.
  * A module whose library is missing still installs and lists in pg_available_extensions; it fails only
- * when a backend loads it, which for most extensions no other check does.
+ * when a backend loads it, which for most extensions no other check does. Libraries built from source
+ * (SOURCE_LIBRARIES) have no Debian package behind them, so this is what catches one left unshipped.
  */
-export async function testSharedLibrariesResolve(
-  manifest: Manifest,
-  containerName: string
-): Promise<TestResult> {
+export async function testSharedLibrariesResolve(containerName: string): Promise<TestResult> {
   const startTime = Date.now();
   const name = "Shared libraries resolve";
   try {
@@ -481,33 +474,7 @@ export async function testSharedLibrariesResolve(
         error: unresolved.length > 0 ? unresolved.join("\n") : `scan failed: ${scan.output}`,
       };
     }
-
-    const pkglibdir = (
-      await execCommand(["pg_config", "--pkglibdir"], containerName)
-    ).output.trim();
-    const wrongCopy: string[] = [];
-    const consumers = manifest.entries.filter(
-      (e) => e.enabled !== false && (e.sourceLibraries ?? []).length > 0
-    );
-    for (const entry of consumers) {
-      const module = `${pkglibdir}/${entry.soFileName ?? `${entry.name}.so`}`;
-      const ldd = await execCommand(["ldd", module], containerName);
-      for (const lib of entry.sourceLibraries ?? []) {
-        const soname = manifest.sourceLibraries?.[lib]?.soname ?? lib;
-        if (!ldd.output.includes(`${soname} => /usr/local/lib/`)) {
-          wrongCopy.push(`${entry.name}: ${soname} not resolved from /usr/local/lib`);
-        }
-      }
-    }
-    if (wrongCopy.length > 0) {
-      return { name, passed: false, duration: Date.now() - startTime, error: wrongCopy.join("\n") };
-    }
-
-    return {
-      name: `${name} (${scanned} objects, ${consumers.length} source-library consumers)`,
-      passed: true,
-      duration: Date.now() - startTime,
-    };
+    return { name: `${name} (${scanned} objects)`, passed: true, duration: Date.now() - startTime };
   } catch (err) {
     return { name, passed: false, duration: Date.now() - startTime, error: getErrorMessage(err) };
   }

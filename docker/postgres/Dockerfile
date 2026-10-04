@@ -119,7 +119,7 @@ RUN set -euo pipefail && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
     find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
-    find /opt/ext-out -name '*.a' -delete
+    find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
@@ -146,7 +146,7 @@ RUN set -euo pipefail && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
-    find /opt/ext-out -name '*.a' -delete
+    find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
 # Stage for version info generation using standalone TypeScript script
 # This ensures consistency between local testing and Docker builds

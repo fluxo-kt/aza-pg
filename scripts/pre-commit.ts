@@ -20,11 +20,20 @@ import { GENERATED_FILES } from "./generated-files";
 import { error, info, success, warning } from "./utils/logger";
 
 /**
- * Get list of staged files
+ * Staged regular files. Symlinks (mode 120000, e.g. this repo's `CLAUDE.md -> AGENTS.md`) are skipped: every fixer
+ * below acts on the target, staged on its own when it changed, and Prettier exits 2 on an explicitly named symlink.
  */
 async function getStagedFiles(): Promise<string[]> {
-  const result = await $`git diff --cached --name-only --diff-filter=ACM`.text();
-  return result.trim().split("\n").filter(Boolean);
+  // --raw lines: ":<old mode> <new mode> <old sha> <new sha> <status>\t<path>"
+  const result = await $`git diff --cached --raw --diff-filter=ACM`.text();
+  return result
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [meta = "", path = ""] = line.split("\t");
+      return meta.split(" ")[1] === "120000" ? [] : [path];
+    });
 }
 
 /**

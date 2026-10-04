@@ -590,147 +590,21 @@ async function validateDependencies(
 // Patch Application
 // ────────────────────────────────────────────────────────────────────────────
 
-/**
- * Convert sed substitution pattern to JavaScript regex and replacement
- * Handles common sed patterns: s/pattern/replacement/flags
- */
-function parseSedPattern(sedPattern: string): { pattern: RegExp; replacement: string } | null {
-  // Match sed substitution format: s/pattern/replacement/flags
-  const match = sedPattern.match(/^s\/(.+?)\/(.+?)\/?([gimsu]*)$/);
-  if (!match) {
-    return null;
-  }
-
-  const [, pattern, replacement, flags] = match;
-  if (pattern === undefined || replacement === undefined) {
-    return null;
-  }
-
-  // Convert sed regex to JavaScript regex
-  let jsPattern = pattern
-    // Convert POSIX character classes to JS equivalents (must handle [[:class:]] syntax)
-    .replace(/\[\[:space:\]\]/g, "\\s")
-    .replace(/\[\[:alnum:\]\]/g, "[A-Za-z0-9]")
-    .replace(/\[\[:alpha:\]\]/g, "[A-Za-z]")
-    .replace(/\[\[:digit:\]\]/g, "\\d")
-    // Convert sed quantifiers {n,m} to JS
-    .replace(/\\{(\d+),?(\d*)\\}/g, "{$1,$2}")
-    // Handle start of line anchor
-    .replace(/^\^/, "^\\s*") // Allow optional leading whitespace
-    // Unescape dots
-    .replace(/\\\./g, ".");
-
-  // For multiline matching, add 'm' flag if pattern has ^ or $
-  const jsFlags = (flags || "") + (pattern.includes("^") || pattern.includes("$") ? "m" : "");
-
-  try {
-    const regex = new RegExp(jsPattern, jsFlags);
-    return { pattern: regex, replacement };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Apply a sed-style patch to file content using Bun native operations
- */
-async function applySedPatch(filePath: string, sedPattern: string): Promise<boolean> {
-  const parsed = parseSedPattern(sedPattern);
-  if (!parsed) {
-    log(`    Warning: Could not parse sed pattern: ${sedPattern}`);
-    return false;
-  }
-
-  const { pattern, replacement } = parsed;
-
-  // Read file content
-  const originalContent = await Bun.file(filePath).text();
-
-  // Apply substitution
-  const modifiedContent = originalContent.replace(pattern, replacement);
-
-  // Check if any changes were made
-  if (originalContent === modifiedContent) {
-    return false;
-  }
-
-  // Write modified content back
-  await Bun.write(filePath, modifiedContent);
-  return true;
-}
+// build.patches names unified diffs in docker/postgres/patches/, which the Dockerfile copies to PATCH_DIR. git apply is
+// all-or-nothing and fails on any hunk that no longer matches, so an upstream bump that moves patched code stops the
+// build naming the patch, instead of silently shipping the unpatched extension.
+const PATCH_DIR = "/opt/patches";
 
 async function applyPatches(entry: ManifestEntry, dest: string, name: string): Promise<void> {
-  const patches = entry.build?.patches || [];
-  if (patches.length === 0) {
-    return;
-  }
-
-  log(`Applying ${patches.length} patch(es) for ${name}`);
-
-  // Track modification timestamps for each file before patching
-  const modificationTimes = new Map<string, number>();
-
-  // Use for...of with entries() for proper type safety
-  for (const [i, patch] of patches.entries()) {
-    log(`  Patch ${i + 1}: ${patch}`);
-
-    // Find all files to patch based on extension type
-    let targetFiles: string[] = [];
-
-    if (patch.includes("Cargo.toml") || entry.build?.type === "cargo-pgrx") {
-      // For Cargo projects, find all Cargo.toml files
-      const result = await $`find ${dest} -name "Cargo.toml" -type f`.text();
-      targetFiles = result.trim().split("\n").filter(Boolean);
-    } else if (patch.includes(".c")) {
-      // For C projects, find specific C files mentioned in patch or all .c files
-      if (patch.includes("log_skipped_evtrigs")) {
-        // Anchor to specific file for supautils patch (src/supautils.c:72)
-        const result = await $`find ${dest} -name "supautils.c" -type f`.text();
-        targetFiles = result.trim().split("\n").filter(Boolean);
-      } else {
-        const result = await $`find ${dest} -name "*.c" -type f`.text();
-        targetFiles = result.trim().split("\n").filter(Boolean);
-      }
-    } else {
-      // Default: apply to all files in dest
-      targetFiles = [dest];
+  for (const patch of entry.build?.patches ?? []) {
+    const result = await $`git -C ${dest} apply ${join(PATCH_DIR, patch)}`.nothrow().quiet();
+    if (result.exitCode !== 0) {
+      log(
+        `Patch ${patch} no longer applies to ${name}; refresh it against the new source:\n${result.stderr}`
+      );
+      process.exit(1);
     }
-
-    // Apply patch to each target file using Bun native operations
-    for (const targetFile of targetFiles) {
-      if (await Bun.file(targetFile).exists()) {
-        // Record pre-patch modification time
-        const stat = await Bun.file(targetFile).stat();
-        modificationTimes.set(targetFile, stat.mtime.getTime());
-
-        const patched = await applySedPatch(targetFile, patch);
-        if (!patched) {
-          log(`    Warning: patch did not match in ${targetFile}`);
-        }
-      }
-    }
-  }
-
-  // Log patched files by comparing modification times
-  log("Patched files:");
-  const patchedFiles: string[] = [];
-
-  for (const [filePath, oldMtime] of modificationTimes) {
-    if (await Bun.file(filePath).exists()) {
-      const stat = await Bun.file(filePath).stat();
-      if (stat.mtime.getTime() > oldMtime) {
-        const relativePath = filePath.replace(dest + "/", "");
-        patchedFiles.push(relativePath);
-      }
-    }
-  }
-
-  if (patchedFiles.length > 0) {
-    for (const pf of patchedFiles) {
-      log(`  - ${pf}`);
-    }
-  } else {
-    log("  (no files modified - patches may not have matched)");
+    log(`Applied ${patch} to ${name}`);
   }
 }
 

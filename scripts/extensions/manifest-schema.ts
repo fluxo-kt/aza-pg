@@ -48,7 +48,7 @@ export const BuildKindSchema = type(
  * - mesonOptions: Optional Meson setup options (for meson builds)
  * - makeOptions: Optional make command-line assignments (for pgxs builds)
  * - script: Optional script identifier for custom build logic
- * - patches: Optional sed expressions to apply before building
+ * - patches: Optional unified-diff file names in docker/postgres/patches/, applied with git apply before building
  */
 export const BuildSpecSchema = type({
   type: BuildKindSchema,
@@ -118,6 +118,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
  * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
  * - soFileName: Shared object filename for verification (required when install_via="percona", "timescale", or "github-release")
+ * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -145,6 +146,7 @@ export const ManifestEntrySchema = type({
   "timescaleVersion?": "string",
   "timescalePackage?": "string",
   "soFileName?": "string",
+  "binaryPath?": "string",
   "enabled?": "boolean",
 });
 
@@ -237,8 +239,8 @@ export function validateSourceSpec(data: unknown): ValidatedSourceSpec {
  * @example
  * ```typescript
  * const build = validateBuildSpec({
- *   type: "pgxs",
- *   patches: ["s/old/new/"]
+ *   type: "cargo-pgrx",
+ *   patches: ["vectorscale-runtime-dispatch.patch"]
  * });
  * ```
  */

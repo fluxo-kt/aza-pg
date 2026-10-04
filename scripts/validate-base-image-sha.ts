@@ -107,12 +107,19 @@ async function extractDockerfileInfo(): Promise<BaseImageInfo> {
 }
 
 /**
- * Verify SHA exists using docker manifest inspect
+ * Verify the pinned digest is still served by the registry.
+ *
+ * Inspects `repo@digest` with the tag stripped on purpose: `docker manifest inspect repo:tag@digest`
+ * resolves the TAG and then demands it equal the digest, so it fails with "manifest verification
+ * failed" whenever Docker Hub re-pushes the tag, even though the pinned digest still exists and
+ * `FROM repo:tag@digest` (which pulls by digest) still builds. A moved tag is staleness, reported
+ * separately by compareShas().
  */
 async function verifyShaExists(image: string, sha: string): Promise<ShaValidationResult> {
-  info(`Verifying SHA exists: ${image}@${sha}`);
+  const repository = image.split(":")[0];
+  const fullImage = `${repository}@${sha}`;
+  info(`Verifying digest exists: ${fullImage}`);
 
-  const fullImage = `${image}@${sha}`;
   const result = await dockerRun(["manifest", "inspect", fullImage]);
 
   if (!result.success) {
@@ -136,62 +143,30 @@ async function verifyShaExists(image: string, sha: string): Promise<ShaValidatio
 async function getLatestSha(image: string): Promise<string | null> {
   info(`Fetching latest SHA for: ${image}`);
 
-  // First, try to get the digest directly using docker pull (dry-run)
-  // This is more reliable than parsing manifest JSON
-  const pullResult = await dockerRun(["pull", image]);
-
-  if (pullResult.success) {
-    // Extract digest from pull output (e.g., "Digest: sha256:...")
-    const digestMatch = pullResult.output.match(/Digest:\s+(sha256:[a-f0-9]{64})/);
-    if (digestMatch && digestMatch[1]) {
-      return digestMatch[1];
-    }
-  }
-
-  // Fallback: Try docker inspect on local image
-  const inspectResult = await dockerRun([
-    "image",
+  // Reads the tag's index digest from the registry without downloading layers (a `docker pull`
+  // here fetched the whole image on every run). This is the same multi-arch index digest that
+  // `docker pull` prints and that MANIFEST_METADATA.baseImageSha pins.
+  const result = await dockerRun([
+    "buildx",
+    "imagetools",
     "inspect",
     image,
     "--format",
-    "{{.RepoDigests}}",
+    "{{json .Manifest}}",
   ]);
-  if (inspectResult.success) {
-    // Parse output like: [docker.io/library/postgres@sha256:... postgres@sha256:...]
-    // We want the first one that matches the expected format
-    const digestMatch = inspectResult.output.match(/postgres@(sha256:[a-f0-9]{64})/);
-    if (digestMatch && digestMatch[1]) {
-      return digestMatch[1];
-    }
-  }
-
-  // Last resort: Try manifest inspect
-  const manifestResult = await dockerRun(["manifest", "inspect", image]);
-  if (manifestResult.success) {
+  if (result.success) {
     try {
-      const manifest = JSON.parse(manifestResult.output);
-
-      // Handle manifest list (multi-arch)
-      if (
-        manifest.schemaVersion === 2 &&
-        manifest.mediaType === "application/vnd.docker.distribution.manifest.list.v2+json"
-      ) {
-        // Get the linux/amd64 entry
-        const amd64Manifest = manifest.manifests?.find(
-          (m: { platform?: { architecture?: string; os?: string } }) =>
-            m.platform?.architecture === "amd64" && m.platform?.os === "linux"
-        );
-
-        if (amd64Manifest?.digest) {
-          return amd64Manifest.digest;
-        }
-      }
+      const parsed: unknown = JSON.parse(result.output);
+      const digest = isRecord(parsed) ? getString(parsed, "digest") : null;
+      if (digest && /^sha256:[a-f0-9]{64}$/.test(digest)) return digest;
+      warning(`Unexpected ${image} index metadata: no sha256 digest`);
     } catch (err) {
-      warning(`Failed to parse manifest JSON: ${getErrorMessage(err)}`);
+      warning(`Failed to parse ${image} index metadata: ${getErrorMessage(err)}`);
     }
+  } else {
+    warning(`Could not inspect ${image}: ${result.output}`);
   }
 
-  warning("Could not determine latest SHA using any method");
   return null;
 }
 
@@ -300,8 +275,7 @@ function compareShas(currentSha: string, latestSha: string | null, image: string
       `The base image may have been updated. Update MANIFEST_METADATA.baseImageSha and regenerate.`
     );
     warning(`To update, run:`);
-    warning(`  docker pull ${image}`);
-    warning(`  docker inspect ${image} --format '{{.RepoDigests}}'`);
+    warning(`  docker buildx imagetools inspect ${image} --format '{{json .Manifest.Digest}}'`);
     warning(``);
     return false;
   }
@@ -375,13 +349,14 @@ async function validate(options: ValidationOptions): Promise<void> {
       return;
     }
 
-    error("SHA validation FAILED: The hardcoded SHA does not exist");
-    error("This likely means the SHA is invalid or the image was removed from Docker Hub");
+    error("SHA validation FAILED: the pinned digest could not be fetched from Docker Hub");
+    error("Either the digest was removed or the lookup itself failed (see the output above)");
     error("");
     error("Action required:");
-    error(`  1. Pull the latest image: docker pull ${imageInfo.image}`);
-    error(`  2. Inspect to get SHA: docker inspect ${imageInfo.image} --format '{{.RepoDigests}}'`);
-    error("  3. Update MANIFEST_METADATA.baseImageSha and run: bun run generate");
+    error(
+      `  1. Read the current digest: docker buildx imagetools inspect ${imageInfo.image} --format '{{json .Manifest.Digest}}'`
+    );
+    error("  2. Update MANIFEST_METADATA.baseImageSha and run: bun run generate");
     throw new Error("Invalid base image SHA");
   }
 

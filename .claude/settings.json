@@ -1,5 +1,17 @@
 {
   "permissions": {
-    "deny": ["Bash(bunx:*)", "Bash(bun x:*)"]
+    "deny": ["Bash(bunx:*)", "Bash(bun x:*)"],
+    "ask": [
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git worktree:*)",
+      "Bash(git merge:*)",
+      "Bash(git pull:*)",
+      "Bash(git rebase:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git update-ref:*)",
+      "EnterWorktree"
+    ]
   }
 }

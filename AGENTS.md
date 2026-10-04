@@ -161,6 +161,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - **NEVER use --no-verify or bypass hooks/checks**: Fix the actual root issue instead
 - **If SSH fail, ask user start SSH agent** — NEVER touch git config! NEVER skip commit signing!
 - Commit granularly, after every finished/verified phase or work part
+- **Commit only on the checked-out branch; never create, switch, merge, rebase or delete branches or worktrees unless Art asks for that exact operation** (Art's ruling). Work parked on a side branch or worktree is invisible to Art and needs a later merge that is itself a branch operation. A long test reading the working tree is no exception: wait, or edit only files it does not read. Branches: `dev` = daily work (usually checked out), `main` = default branch, `release` = triggers `publish.yml`; name one only after `git rev-parse --abbrev-ref HEAD`. `.claude/settings.json` makes Claude ask Art before each such command
 - Should NEVER lose anything, be super careful with git reset/revert/rebase!
 - Verify what do you commit
 

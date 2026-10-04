@@ -477,7 +477,7 @@ The following optimizations have been identified for potential implementation ba
 **Build Time Reduction:**
 
 - **Quick wins identified:** Remove LLVM bitcode directory (36MB, 0% runtime impact), strip debug symbols from `.so` files (10-20MB savings), cleanup static libraries and build headers (1-2MB)
-- **timescaledb_toolkit case study:** Successfully reduced from 186MB to 13MB (93% reduction) through aggressive Rust optimization flags (CARGO_PROFILE_RELEASE_OPT_LEVEL=s, LTO=thin, strip=symbols)
+- **cargo-pgrx builds:** symbols are stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`); otherwise each crate keeps its upstream release profile (opt-level 3, fat LTO). A global `opt-level=s`/thin-LTO override once shrank timescaledb_toolkit (186MB → 13MB together with stripping) and was dropped once toolkit moved to the Timescale apt repo.
 - **Applicable techniques:** Similar bitcode/symbol stripping can be applied to other large extensions (pg_jsonschema: 4.4MB, pgroonga: 2.1MB)
 
 **Potential Image Variant Strategy (Future Consideration):**

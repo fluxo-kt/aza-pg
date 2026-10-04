@@ -41,6 +41,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **wrappers 0.6.1 → 0.6.3**: Adds a MongoDB wrapper; `mysql_fdw` no longer leaks MySQL error details and supports `varchar`/`bpchar` text columns; Iceberg REST catalog HTTP timeouts are configurable.
 - **PGroonga 4.0.6 → 4.0.9**: Adds `pgroonga_physical_table_names()` and an index option that raises the lexicon key-size limit from 4 GiB to 1 TiB.
 - **pgmq 1.11.1 → 1.13.0**: Fixes partitioned queues that silently overran their pre-created partitions and could not recover.
+- **Build optimisation**: PGroonga is now compiled with optimisation (`-O3`; it was built unoptimised at `-O0`), and the Rust extensions (`wrappers`, `pg_jsonschema`) use their upstream release profile (opt-level 3, fat LTO) instead of size-tuned settings.
 
 ## [v18.4-202606031012] - 2026-06-03
 

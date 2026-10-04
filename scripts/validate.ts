@@ -290,6 +290,13 @@ async function validate(
       required: true,
     },
     {
+      name: "Suite Registry",
+      command: ["bun", "scripts/validate/check-suite-registry.ts"],
+      description:
+        "Every Docker suite is in scripts/test-all.ts SUITES; workflows run suites only by group",
+      required: true,
+    },
+    {
       name: "Release Process Contracts",
       command: ["bun", "scripts/ci/validate-release-process.ts"],
       description: "Validate release command, publish workflow, and release harness contracts",

@@ -26,6 +26,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pg_partman 5.5.0**: Fixes SQL-injection/privilege-escalation CVE-2026-61781 (critical), CVE-2026-61817 to CVE-2026-61821, and CVE-2026-61822.
 - **pgsql-http 1.7.0 → 1.7.2**: The `http.curlopt_*` settings for CA file, credentials, client certificate/key and TLS verification become superuser-only, and a buffer overrun in header parsing is fixed.
 - **hll 2.20 → 2.21**: Hardens input validation of serialized hll values.
+- **pgvector 0.8.2 → 0.8.7**: Fixes [CVE-2026-103484](https://github.com/pgvector/pgvector/issues/1036) (a role that can build an IVFFlat index can write out of bounds, leading to arbitrary code execution), plus possible HNSW index corruption during vacuum and IVFFlat memory use above `maintenance_work_mem`. PGDG does not ship 0.8.7 yet, so the image now builds pgvector from source.
 
 ### Changed
 

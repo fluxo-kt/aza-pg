@@ -930,8 +930,6 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
   every changed extension version AND verify categorisation (PGDG vs source-built) is still
   correct. A migrated extension (source→PGDG or vice-versa) MUST move between table sections.
   The PGDG count in the overview table must be updated if any extension changes install method.
-- `docs/ARCHITECTURE.md`: ASCII diagram at "Build Time / Runtime" section contains pgvector
-  and pg_cron version strings — update if those change.
 - **Check for orphaned test files**: When migrating an extension's install method, search for
   dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
   wrong install path descriptions). Delete or migrate their valuable tests.

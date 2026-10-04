@@ -312,6 +312,34 @@
       },
       "sourceUrl": "https://github.com/supabase/supautils",
       "docsUrl": "https://github.com/supabase/supautils#readme"
+    },
+    {
+      "name": "vector",
+      "displayName": "pgvector",
+      "kind": "extension",
+      "category": "ai",
+      "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/pgvector/pgvector.git",
+        "tag": "v0.8.7",
+        "commit": "f37c13f68b57d2c3472b2214fbcff699d6d34876"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true,
+        "excludeFromAutoTests": false,
+        "notes": [
+          "Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG's postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage \"pgvector\") once PGDG ships >= 0.8.7.",
+          "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",
+          "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search"
+        ]
+      },
+      "sourceUrl": "https://github.com/pgvector/pgvector",
+      "docsUrl": "https://github.com/pgvector/pgvector#readme"
     }
   ]
 }

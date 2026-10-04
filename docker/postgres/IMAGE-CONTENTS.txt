@@ -33,7 +33,7 @@ EXTENSIONS (CREATE EXTENSION available)
   supabase_vault               v0.3.1         security
   timescaledb                  v2.30.2        timeseries
   timescaledb_toolkit          v1.26.0        timeseries
-  vector                       v0.8.2         ai
+  vector                       v0.8.7         ai
   vectorscale                  v0.9.0         ai
   wrappers                     v0.6.1         integration
 

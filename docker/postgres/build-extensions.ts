@@ -295,10 +295,25 @@ async function getPgrxVersion(dir: string): Promise<string> {
 // Build System Implementations
 // ────────────────────────────────────────────────────────────────────────────
 
+// The image must run on every CPU of its architecture, not only on the build runner's. A binary
+// tuned with -march=native passes every test on the runner and dies with SIGILL on an older host,
+// so no test can catch it. pgvector's Makefile defaults OPTFLAGS to -march=native; PGXS itself
+// never reads OPTFLAGS, so clearing it touches only Makefiles that define it. The dry run then
+// refuses any host tuning that arrives under another variable name.
+const PORTABLE_PGXS = ["USE_PGXS=1", "OPTFLAGS="];
+
 async function buildPgxs(dir: string): Promise<void> {
   log(`Running pgxs build in ${dir}`);
-  await $`make -C ${dir} USE_PGXS=1 -j${NPROC}`;
-  await $`make -C ${dir} USE_PGXS=1 install`;
+  const plan = await $`make -n -C ${dir} ${PORTABLE_PGXS}`.text();
+  const native = plan.match(/-m(?:arch|tune|cpu)=native/);
+  if (native) {
+    throw new Error(
+      `${dir}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ` +
+        `Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts).`
+    );
+  }
+  await $`make -C ${dir} ${PORTABLE_PGXS} -j${NPROC}`;
+  await $`make -C ${dir} ${PORTABLE_PGXS} install`;
 }
 
 async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> {

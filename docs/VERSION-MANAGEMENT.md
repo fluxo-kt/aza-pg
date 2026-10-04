@@ -671,7 +671,7 @@ docker run --rm postgres:18-trixie bash -c "
 # Search for: Package: postgresql-18-<extension>
 ```
 
-**Package name format:** `postgresql-18-<extension>`
+**Package name format:** `postgresql-18-<pgdgPackage>` — the suffix is set per entry because it often differs from the extension name
 
 Examples:
 

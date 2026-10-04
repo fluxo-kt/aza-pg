@@ -186,11 +186,11 @@ SELECT * FROM pg_stat_replication;
 Edit `scripts/extensions/manifest-data.ts`:
 
 ```typescript
-// For PGDG extensions (like pgvector), update the pgdgVersion in the extension entry:
+// For PGDG extensions (like pg_cron), update the pgdgVersion in the extension entry:
 {
-  name: 'vector',  // Note: extension name, displayName is 'pgvector'
-  pgdgVersion: '0.8.2-2.pgdg13+1',  // Changed from 0.8.1-2.pgdg13+1
-  source: { tag: 'v0.8.2' },  // Also update source tag to match
+  name: 'pg_cron',
+  pgdgVersion: '1.6.8-1.pgdg13+2',  // Changed from 1.6.7-2.pgdg13+1
+  source: { tag: 'v1.6.8' },  // Also update source tag to match
   // ... other properties
 },
 

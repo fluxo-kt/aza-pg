@@ -58,7 +58,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                                   | Version                                                                | Enabled by Default | Shared Preload | Documentation                                             | Notes                                                                  |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.2](https://github.com/pgvector/pgvector/releases/tag/v0.8.2)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
+| [`vector (pgvector)`](https://github.com/pgvector/pgvector)                 | [v0.8.7](https://github.com/pgvector/pgvector/releases/tag/v0.8.7)     | Yes                | No             | [Docs](https://github.com/pgvector/pgvector#readme)       | Vector similarity search with IVF/HNSW indexes and distance operators. |
 | [`vectorscale (pgvectorscale)`](https://github.com/timescale/pgvectorscale) | [0.9.0](https://github.com/timescale/pgvectorscale/releases/tag/0.9.0) | Yes                | No             | [Docs](https://github.com/timescale/pgvectorscale#readme) | DiskANN-inspired ANN index and quantization for pgvector embeddings.   |
 
 ### analytics

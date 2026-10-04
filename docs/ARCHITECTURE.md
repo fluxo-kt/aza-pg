@@ -328,15 +328,15 @@ _Performance Impact:_
 ```
 Build Time                Runtime                  Usage
 ─────────────────────────────────────────────────────────────
-pgvector 0.8.2            CREATE EXTENSION         Vector
+pgvector                  CREATE EXTENSION         Vector
 (compiled .so) ────────► vector; ──────────────► similarity
                                                    search
 
-pg_cron 1.6.7             CREATE EXTENSION         Job
+pg_cron                   CREATE EXTENSION         Job
 (compiled .so) ────────► pg_cron; ─────────────► scheduling
                           (in postgresql.conf)
 
-pgAudit 18.0              shared_preload_libraries Audit
+pgAudit                   shared_preload_libraries Audit
 (compiled .so) ────────► pgaudit; ─────────────► logging
                           (in postgresql.conf)
 

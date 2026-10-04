@@ -184,15 +184,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "vector",
     displayName: "pgvector",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "pgvector",
-    pgdgVersion: "0.8.2-1.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
       type: "git",
       repository: "https://github.com/pgvector/pgvector.git",
-      tag: "v0.8.2",
+      tag: "v0.8.7",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -200,8 +197,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       excludeFromAutoTests: false,
       notes: [
-        "PGDG: postgresql-18-pgvector (v0.8.2-1.pgdg13+1)",
-        "v0.8.2: Fixed buffer overflow in parallel HNSW builds, fixed Index Searches in EXPLAIN for PG18",
+        'Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG\'s postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage "pgvector") once PGDG ships >= 0.8.7.',
+        "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",
         "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search",
       ],
     },

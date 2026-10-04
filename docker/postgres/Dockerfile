@@ -24,6 +24,7 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 # Install build dependencies
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
+# unzip: the Bun installer (bun.sh/install) unpacks a zip; no repo script needs it.
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -35,6 +36,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
+      unzip \
       postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \

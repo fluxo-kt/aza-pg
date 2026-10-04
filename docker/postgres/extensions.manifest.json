@@ -540,6 +540,7 @@
       "name": "pgbadger",
       "kind": "tool",
       "install_via": "pgdg",
+      "pgdgVersion": "13.2-1.pgdg13+1",
       "category": "observability",
       "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
       "source": {

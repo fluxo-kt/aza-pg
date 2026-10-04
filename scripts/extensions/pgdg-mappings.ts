@@ -102,3 +102,26 @@ export const PGDG_MAPPINGS: readonly PgdgMapping[] = [
 export const PACKAGE_NAME_MAP: Readonly<Record<string, string>> = Object.fromEntries(
   PGDG_MAPPINGS.map((m) => [m.manifestName, m.packageName])
 );
+
+/**
+ * The apt package name an `install_via: "pgdg"` manifest entry installs. The Dockerfile generator
+ * and the PGDG version validator both call this, so the name they check is the name they install.
+ *
+ * Tools ship under their own name (`pgbackrest`), extensions under `postgresql-<major>-<mapped>`.
+ * An extension missing from PGDG_MAPPINGS throws instead of guessing a name: a guessed name that
+ * apt does not know reads as "version mismatch" or, worse, as a valid-looking skip.
+ */
+export function pgdgAptPackageName(
+  entry: { name: string; kind?: "extension" | "tool" | "builtin" },
+  pgMajor: string
+): string {
+  if (entry.kind === "tool") return entry.name;
+  const mapped = PACKAGE_NAME_MAP[entry.name];
+  if (!mapped) {
+    throw new Error(
+      `PGDG entry "${entry.name}" has no PGDG_MAPPINGS row. Add it to scripts/extensions/pgdg-mappings.ts ` +
+        `and to PGDG_MAPPING_NAMES in scripts/ci/validate-manifest-integrity.ts.`
+    );
+  }
+  return `postgresql-${pgMajor}-${mapped}`;
+}

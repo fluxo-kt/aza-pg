@@ -298,13 +298,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
-# hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger && \
+    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \

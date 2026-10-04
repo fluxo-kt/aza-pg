@@ -1137,8 +1137,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "pgbadger",
     kind: "tool",
     install_via: "pgdg",
-    // No pgdgVersion: On Debian Trixie, "pgbadger" is a virtual package provided by percona-pgbadger.
-    // Version pinning doesn't work for virtual packages - apt resolves to percona-pgbadger automatically.
+    // A real package in PGDG; percona-pgbadger only Provides the name, so the pin resolves to PGDG
+    // even with the Percona repo enabled.
+    pgdgVersion: "13.2-1.pgdg13+1",
     category: "observability",
     description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
     source: {

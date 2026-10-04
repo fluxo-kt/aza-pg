@@ -24,7 +24,7 @@
 
 import { join } from "node:path";
 import { extensionDefaults } from "../extension-defaults";
-import { PGDG_MAPPINGS } from "../extensions/pgdg-mappings";
+import { PGDG_MAPPINGS, pgdgAptPackageName } from "../extensions/pgdg-mappings";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
@@ -139,7 +139,7 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
       validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
       validatePackageName(version, `PGDG version (${mapping.manifestName})`);
 
-      enabledPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
+      enabledPgdgPackages.push(`${pgdgAptPackageName(entry, pgMajor)}=${version}`);
     }
   }
 
@@ -506,21 +506,25 @@ const PGDG_TOOL_BINARIES: Record<string, string> = {
  * Generate PGDG tool installation script
  * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
  *
- * Note: Version pinning is optional. Some tools (like pgbadger on Debian Trixie) are virtual
- * packages that resolve to Percona packages, where direct version pinning doesn't work.
- * Omit pgdgVersion in manifest for such virtual packages.
+ * Every tool must be version-pinned: an unpinned name installs whatever apt resolves on build day,
+ * so two builds of one commit can differ. (pgbadger was once left unpinned on the belief that it is
+ * a Percona virtual package; with the Percona repo enabled it resolves to the real PGDG package and
+ * `pgbadger=<version>` installs fine.)
  */
 function generatePgdgToolsInstall(manifest: Manifest): string {
-  const enabledPgdgTools: Array<{ name: string; version: string | undefined; binary: string }> = [];
+  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
 
   for (const entry of manifest.entries) {
     if (entry.kind === "tool" && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
       // Validate tool name for shell safety
       validatePackageName(entry.name, `PGDG tool name (${entry.name})`);
-      // Version is optional - validate only if provided
-      if (entry.pgdgVersion) {
-        validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+      if (!entry.pgdgVersion) {
+        throw new Error(
+          `PGDG tool "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
+            `shown by: apt-cache madison ${entry.name} (run inside postgres:<pgVersion>-trixie)`
+        );
       }
+      validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
 
       const binary = PGDG_TOOL_BINARIES[entry.name];
       if (!binary) {
@@ -542,19 +546,12 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     return `RUN echo "No PGDG tools enabled in manifest"`;
   }
 
-  // Build package list - only pin version if specified (virtual packages don't support version pinning)
-  const packagesList = enabledPgdgTools
-    .map((t) => (t.version ? `${t.name}=${t.version}` : t.name))
-    .join(" ");
+  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
   const binaryVerifications = enabledPgdgTools
     .map((t) => `test -x ${t.binary}`)
     .join(" && \\\n    ");
 
-  // Add hadolint ignore if any packages are unpinned (virtual packages)
-  const hasUnpinned = enabledPgdgTools.some((t) => !t.version);
-  const hadolintIgnore = hasUnpinned ? "# hadolint ignore=DL3008\n" : "";
-
-  return `${hadolintIgnore}RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+  return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
     apt-get update && \\

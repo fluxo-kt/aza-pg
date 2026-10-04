@@ -24,7 +24,6 @@ interface ManifestCounts {
 // File paths - derive PROJECT_ROOT from import.meta.dir
 const PROJECT_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
-const DOCKERFILE_PATH = join(PROJECT_ROOT, "docker/postgres/Dockerfile");
 const INIT_SQL_PATH = join(
   PROJECT_ROOT,
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
@@ -294,69 +293,6 @@ async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void>
   }
 }
 
-// 4. PGDG consistency
-async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
-  console.log(); // Empty line for spacing
-  logger.info("[PGDG CONSISTENCY VALIDATION]");
-
-  const dockerfile = await readFile(DOCKERFILE_PATH);
-  const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
-
-  // Extract PGDG package names from apt-get install commands
-  // Pattern: postgresql-${PG_MAJOR}-<package>=<version>
-  // Example: postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1
-  const packageRegex = /postgresql-\$\{PG_MAJOR\}-([a-z0-9-]+)=[0-9.+a-z-]+/g;
-  const dockerfilePgdgPackages = new Set<string>();
-
-  let match;
-  while ((match = packageRegex.exec(dockerfile)) !== null) {
-    const packageName = match[1];
-    if (packageName) {
-      dockerfilePgdgPackages.add(packageName);
-    }
-  }
-
-  console.log(`  PGDG packages in Dockerfile: ${Array.from(dockerfilePgdgPackages).join(", ")}`);
-
-  // The Dockerfile uses TypeScript-generated package lists with hardcoded versions
-  // Validate that enabled PGDG extensions have corresponding package installations
-  for (const entry of pgdgExtensions) {
-    // Map extension name to Dockerfile package name (e.g., "pg_cron" -> "cron")
-    const packageName = getDockerfilePackageName(entry.name);
-
-    if (!dockerfilePgdgPackages.has(packageName)) {
-      // This is expected for enabled=false entries, so only warn
-      if (entry.enabled !== false) {
-        warn(
-          `Extension '${entry.name}' has install_via="pgdg" but no corresponding package in Dockerfile ` +
-            `(expected: postgresql-\${PG_MAJOR}-${packageName}=...). This may be intentional for dynamic installation.`
-        );
-      }
-    }
-  }
-}
-
-// Map manifest extension name to Dockerfile package name (as used in apt-get install)
-function getDockerfilePackageName(extensionName: string): string {
-  const mapping: Record<string, string> = {
-    vector: "pgvector",
-    pg_cron: "cron",
-    pgaudit: "pgaudit",
-    timescaledb: "timescaledb",
-    postgis: "postgis-3",
-    pg_partman: "partman",
-    pg_repack: "repack",
-    hll: "hll",
-    http: "http",
-    hypopg: "hypopg",
-    pgrouting: "pgrouting",
-    rum: "rum",
-    set_user: "set-user",
-  };
-
-  return mapping[extensionName] || extensionName;
-}
-
 // 5. Runtime spec completeness
 async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
@@ -490,7 +426,6 @@ async function main(): Promise<void> {
     const counts = deriveCounts(manifest);
     await validateDefaultEnable(manifest);
     await validateSharedPreloadLibraries(manifest);
-    await validatePgdgConsistency(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
     validateGithubReleaseEntries(manifest);

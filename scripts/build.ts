@@ -143,13 +143,10 @@ Performance:
 // Validate extensions manifest
 async function validateManifest(): Promise<void> {
   console.log("Validating extensions manifest...");
-  try {
-    const result = await $`bun run scripts/extensions/validate-manifest.ts`.quiet();
-    if (result.exitCode !== 0) {
-      throw new Error("Manifest validation failed");
-    }
-  } catch {
-    console.error("ERROR: Manifest validation failed");
+  // nothrow: Bun's $ throws on a non-zero exit, which would discard the validator's report.
+  const result = await $`bun run scripts/extensions/validate-manifest.ts`.nothrow().quiet();
+  if (result.exitCode !== 0) {
+    console.error(`ERROR: Manifest validation failed\n${result.stdout}${result.stderr}`);
     process.exit(1);
   }
   console.log("");

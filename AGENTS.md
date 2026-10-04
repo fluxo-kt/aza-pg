@@ -60,8 +60,8 @@ stacks/{primary,replica,single}  # Compose deployments
 # Essential Commands (organized by category)
 
 # Validation & Fixing
-bun run validate            # Fast: static checks + unit tests (~3s)
-bun run validate:all        # Full: + shellcheck, hadolint, yamllint (~30s)
+bun run validate            # Fast: static checks + unit tests
+bun run validate:all        # Full: + shellcheck, hadolint, yamllint
 bun run validate:fix        # Auto-fix: prettier, oxlint, SQL formatting
 
 # Aliases (conventional names)
@@ -69,8 +69,8 @@ bun run format              # Alias for validate:fix
 bun run lint                # Alias for validate
 
 # Testing
-bun run test                # Optimized: uses existing build (~30min)
-bun run test:all            # Complete: rebuilds image + all tests (~45min)
+bun run test                # Optimized: uses existing build
+bun run test:all            # Complete: rebuilds image + all tests
 bun run test:unit           # Alias for validate (fast checks + unit tests, no Docker)
 
 # Build/Generation

@@ -485,8 +485,6 @@ suspects — verify and migrate.
   ext is a shared_preload, ADD that `.so` to `generate-dockerfile.ts` `soFileMap` so the build asserts it.
   Also `grep default_version EXTNAME.control` — if the PGDG extversion equals the old source extversion,
   the regression `expected/basic.out` needs NO change (confirm, don't assume).
-- Move the doc row from the source-built table to the PGDG table in `docs/EXTENSION-SOURCES.md` and
-  bump the PGDG count in the Repository Overview
 - **PGDG may lag upstream**: the apt package can sit a release behind the latest git tag (e.g. plpgsql_check
   upstream `v2.9.1` but PGDG only `2.9.0`). For `install_via: "pgdg"` the **`pgdgVersion` is authoritative** —
   set `source.tag` to match the PGDG-available version, not the newest upstream tag.
@@ -908,10 +906,6 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
 
 **Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
 - **`CHANGELOG.md` gate**: If `git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks` is non-empty, `git diff --name-only -- CHANGELOG.md` MUST also be non-empty before Phase 12.
-- `docs/EXTENSION-SOURCES.md`: PGDG/source-built/Percona/Timescale version tables — update
-  every changed extension version AND verify categorisation (PGDG vs source-built) is still
-  correct. A migrated extension (source→PGDG or vice-versa) MUST move between table sections.
-  The PGDG count in the overview table must be updated if any extension changes install method.
 - **Check for orphaned test files**: When migrating an extension's install method, search for
   dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
   wrong install path descriptions). Delete or migrate their valuable tests.

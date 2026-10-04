@@ -25,12 +25,8 @@ const DOC_PATHS = [
   ".env.example",
   "stacks/*/.env.example",
 ];
-// Records of the past keep the values they recorded: release notes and dated validation reports.
-const SKIPPED_DOCS = new Set([
-  "CHANGELOG.md",
-  "RELEASE-VALIDATION.md",
-  "docs/REGRESSION-TEST-VALIDATION.md",
-]);
+// Release notes keep the values each release shipped with.
+const SKIPPED_DOCS = new Set(["CHANGELOG.md"]);
 
 interface DocsData {
   catalog: {

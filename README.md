@@ -179,8 +179,6 @@ bun scripts/build.ts --regression
 
 See [docs/REGRESSION-TESTING.md](docs/REGRESSION-TESTING.md) for comprehensive regression testing documentation.
 
-**Release Validation:** [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md) contains comprehensive validation results for the latest published release image (updated with each release).
-
 See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Operations

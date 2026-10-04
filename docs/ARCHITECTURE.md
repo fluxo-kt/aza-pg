@@ -135,7 +135,7 @@ _Final Stage Layer Order:_
 
 _Builder Stage Optimizations (CI/CD focused):_
 
-- builder-base: manifests copied AFTER expensive tool installation (Rust ~60s, Bun ~30s)
+- builder-base: manifests copied AFTER the Rust and Bun toolchain installs, so a manifest edit does not reinstall them
   - Impact: +20-40% cache hits when manifests change (~20% of builds)
   - Before: manifests → Rust → Bun
   - After: Rust → Bun → manifests

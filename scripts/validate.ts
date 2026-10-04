@@ -43,9 +43,6 @@ export type ValidationCheck = {
   // static grep guards. They cost milliseconds and need no Docker, so gating them behind --all/CI
   // would let a leak land via `bun run validate` (the documented pre-commit gate) and only fail later.
   fast?: boolean;
-  // Rewrites tracked files while it runs. Concurrent runs execute it alone first: a reader racing
-  // the rewrite (prettier, tsc) can see a truncated file and fail on bytes that were never committed.
-  writesTree?: boolean;
 };
 
 /**
@@ -266,7 +263,6 @@ async function validate(
       command: ["bun", "scripts/verify-generated.ts"],
       description: "Fail when `bun run generate` would change any generated file",
       required: true,
-      writesTree: true,
     },
     {
       name: "PostgreSQL Config Validation",
@@ -585,12 +581,8 @@ async function validate(
   // The fast lane runs concurrently by default: its checks are independent, and one by one they sum to
   // more than its time budget. --all stays sequential because its CI-mode checks write result files
   // into the tree that prettier would read; --fix stays sequential because every fixer writes.
-  const results = concurrent
-    ? [
-        ...(await runChecksSequential(checks.filter((c) => c.writesTree))),
-        ...(await runChecksParallel(checks.filter((c) => !c.writesTree))),
-      ]
-    : await runChecksSequential(checks);
+  // No fast-lane check writes the tree (verify-generated regenerates in a temporary copy), so none races a reader.
+  const results = concurrent ? await runChecksParallel(checks) : await runChecksSequential(checks);
 
   // Summary
   const duration = Date.now() - startTime;

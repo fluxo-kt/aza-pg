@@ -19,17 +19,22 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      # No continue-on-error: a broken check must turn this job red. Swallowing the failure left
+      # `count` empty, which the "No updates found" step's `== 0` coerced to true — the job
+      # reported "up to date" every week while updates existed.
       - name: Check for extension updates
         id: check
-        continue-on-error: true
         run: |
           set -euo pipefail
-          bun scripts/extensions/check-updates.ts --format=json > updates.json
-          UPDATE_COUNT=$(cat updates.json | jq '[.[] | select(.updateAvailable and .enabled)] | length')
-          echo "count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
+          # check-updates.ts exits 1 when enabled updates exist, and a crash also exits 1, so the
+          # status cannot be trusted; the result is the JSON array it prints last. `jq -e` fails on
+          # empty or truncated output, which is what a crash leaves behind.
+          bun scripts/extensions/check-updates.ts --format=json > updates.json || true
+          UPDATE_COUNT=$(jq -e 'if type == "array" and length > 0 then [.[] | select(.updateAvailable and .enabled)] | length else error("check-updates produced no result rows") end' updates.json)
+          echo "count=$UPDATE_COUNT" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub issue if updates found
-        if: steps.check.outputs.count > 0
+      - name: Create or refresh the GitHub issue if updates found
+        if: steps.check.outputs.count != '0'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -37,7 +42,8 @@ jobs:
             const updates = JSON.parse(fs.readFileSync('updates.json', 'utf8'));
 
             const withUpdates = updates.filter(u => u.updateAvailable && u.enabled);
-            const commitRefs = updates.filter(u => u.latest === null && u.current.length === 8);
+            // Rows whose upstream lookup failed carry latest === null; they need a manual look.
+            const unchecked = updates.filter(u => u.enabled && u.latest === null);
 
             const updatesList = withUpdates.map(u =>
               `### ${u.name}\n` +
@@ -47,8 +53,8 @@ jobs:
               (u.releaseUrl ? `- [View Release](${u.releaseUrl})\n` : '')
             ).join('\n');
 
-            const commitList = commitRefs.map(u =>
-              `- **${u.name}**: \`${u.current}\` (commit-based, check manually)\n` +
+            const uncheckedList = unchecked.map(u =>
+              `- **${u.name}**: \`${u.current}\` — ${u.notes}\n` +
               `  - Source: ${u.source}`
             ).join('\n');
 
@@ -56,9 +62,9 @@ jobs:
               `## 🔄 Extension Updates Available\n\n` +
               `Found **${withUpdates.length}** extension(s) with newer versions:\n\n` +
               `${updatesList}\n\n` +
-              `## ℹ️ Commit-Based Extensions\n\n` +
-              `These extensions use commit SHAs and should be reviewed manually:\n\n` +
-              `${commitList}\n\n` +
+              (unchecked.length
+                ? `## ⚠️ Could Not Check\n\nThe upstream lookup failed for these; check them manually:\n\n${uncheckedList}\n\n`
+                : '') +
               `---\n\n` +
               `### Update Instructions\n\n` +
               `1. Review each update above for compatibility and breaking changes\n` +
@@ -71,17 +77,37 @@ jobs:
               `*Automated check run: ${new Date().toISOString()}*`;
 
             const date = new Date().toISOString().split('T')[0];
+            const title = `📦 ${withUpdates.length} extension update(s) available - ${date}`;
+            const labels = ['dependencies', 'extensions', 'automated'];
 
-            await github.rest.issues.create({
+            // One open issue tracks the backlog: refresh it instead of opening a duplicate every week.
+            const { data: open } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `📦 ${withUpdates.length} extension update(s) available - ${date}`,
-              body: body,
-              labels: ['dependencies', 'extensions', 'automated']
+              state: 'open',
+              labels: labels.join(','),
+              per_page: 1
             });
+            if (open.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: open[0].number,
+                title,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels
+              });
+            }
 
       - name: No updates found
-        if: steps.check.outputs.count == 0
+        if: steps.check.outputs.count == '0'
         run: |
           set -euo pipefail
           echo "✅ All extensions are up to date!"

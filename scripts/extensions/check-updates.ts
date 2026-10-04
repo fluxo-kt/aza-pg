@@ -588,10 +588,12 @@ function printTable(updates: UpdateInfo[]) {
 async function main() {
   const args = parseArgs();
 
-  console.log(
+  // Progress goes to stderr so stdout carries only the report: with --format=json, stdout must
+  // be a bare JSON array that jq and the weekly workflow can parse.
+  console.error(
     `${colors.blue}ℹ️  Checking ${MANIFEST_ENTRIES.length} extensions for updates...${colors.reset}`
   );
-  console.log("");
+  console.error("");
 
   const results: UpdateInfo[] = [];
 

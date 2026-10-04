@@ -70,12 +70,11 @@ describe("Feature X Tests", () => {
   test("SMOKE: Container starts and PostgreSQL is ready", async () => {
     const start = Date.now();
 
-    container = await harness.startContainer("feature-x-test", {
-      POSTGRES_PASSWORD: "test", // ALWAYS required
-      // Add other required env vars
-    });
+    container = generateUniqueContainerName("aza-pg-feature-x");
+    // POSTGRES_PASSWORD is ALWAYS required; add other required env vars as more -e flags
+    await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=test ${resolveImageTag()}`.quiet();
 
-    await harness.waitForReady(container); // ALWAYS required
+    await waitForPostgres({ container, timeout: 120 }); // ALWAYS required
 
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(120000); // 120s reasonable limit
@@ -85,10 +84,10 @@ describe("Feature X Tests", () => {
 
   // PHASE 2: Extension/Feature Loading (if applicable)
   test("Extension loads successfully", async () => {
-    await harness.runSQL(container, "CREATE EXTENSION IF NOT EXISTS my_ext;");
+    // sql(): the suite's own psql wrapper that throws on error (see scripts/test/test-timescaledb-breaking-changes.ts)
+    await sql("CREATE EXTENSION IF NOT EXISTS my_ext;");
 
-    const version = await harness.runSQL(
-      container,
+    const version = await sql(
       "SELECT extversion FROM pg_extension WHERE extname = 'my_ext';"
     );
 
@@ -114,8 +113,9 @@ describe("Feature X Tests", () => {
 
 Before writing ANY functional tests, your test file MUST include:
 
-- [ ] `POSTGRES_PASSWORD` in startContainer() environment
-- [ ] `await harness.waitForReady(container)` after startContainer()
+- [ ] `POSTGRES_PASSWORD` in the `docker run` environment
+- [ ] `await waitForPostgres({ container, timeout })` after `docker run`
+- [ ] `docker rm -f -v` of every container in a `finally` or `afterAll`, never only on the success path
 - [ ] Smoke test that verifies container starts (Phase 1)
 - [ ] Extension load test if testing an extension (Phase 2)
 - [ ] At least ONE basic functionality test before edge cases (Phase 3)
@@ -125,7 +125,7 @@ Before writing ANY functional tests, your test file MUST include:
 | Pitfall                               | Symptom                                                            | Fix                                                                              |
 | ------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | **No POSTGRES_PASSWORD**              | Container exits immediately: "superuser password not specified"    | Add `POSTGRES_PASSWORD: "test"` to env                                           |
-| **No waitForReady()**                 | "connection refused" or "No such file or directory" for socket     | Add `await harness.waitForReady(container)`                                      |
+| **No waitForPostgres()**              | "connection refused" or "No such file or directory" for socket     | Add `await waitForPostgres({ container, timeout })`                              |
 | **Override preload without defaults** | Extensions fail to load: "must be in shared_preload_libraries"     | Don't set `POSTGRES_SHARED_PRELOAD_LIBRARIES` unless you understand implications |
 | **No smoke test**                     | Spend hours debugging 50 test failures that are all infrastructure | Write smoke test FIRST                                                           |
 | **Parallel test creation**            | Multiple test files fail for same infrastructure reason            | Write ONE test file, validate, THEN parallelize                                  |
@@ -225,37 +225,32 @@ Save this as a template when creating new test files:
  * - [List any preload requirements]
  */
 
-import { TestHarness } from "./harness";
+import { $ } from "bun";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { resolveImageTag } from "./image-resolver";
 
-const harness = new TestHarness();
-let container: string;
+const container = generateUniqueContainerName("aza-pg-my-feature");
 
-// MANDATORY: Smoke test FIRST
-describe("Smoke Tests", () => {
-  test("Container starts successfully", async () => {
-    const start = Date.now();
+async function run(): Promise<void> {
+  await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${resolveImageTag()}`.quiet();
+  await waitForPostgres({ container, timeout: 120 });
+  // Feature checks: throw on the first wrong result.
+}
 
-    container = await harness.startContainer("my-test", {
-      POSTGRES_PASSWORD: "test",
-    });
-
-    await harness.waitForReady(container);
-
-    const elapsed = Date.now() - start;
-    console.log(`✓ Container ready in ${elapsed}ms`);
-    expect(elapsed).toBeLessThan(120000);
-  });
-});
-
-// Feature tests (only after smoke test passes)
-describe("[Feature Name] Functional Tests", () => {
-  // Your tests here
-});
-
-// Cleanup
-afterAll(async () => {
-  await harness.cleanupAll();
-});
+let failure: string | null = null;
+try {
+  await run();
+} catch (err) {
+  failure = err instanceof Error ? err.message : String(err);
+} finally {
+  // Removal runs in finally, never in a process "exit" handler: an exit handler cannot wait for async work.
+  await $`docker rm -f -v ${container}`.quiet().nothrow();
+}
+if (failure) {
+  console.error(`FAIL: my feature: ${failure}`);
+  process.exit(1);
+}
+console.log("PASS: my feature");
 ```
 
 ### Key Takeaway

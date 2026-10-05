@@ -324,38 +324,3 @@ export async function generateRegressionDiffs(
 
   await Bun.write(outputPath, content);
 }
-
-/**
- * Execute multiple regression tests in sequence.
- *
- * @param tests Array of test configurations
- * @param connection Connection configuration
- * @param onProgress Optional progress callback
- * @returns Array of test results
- */
-export async function runRegressionTests(
-  tests: Array<{ testName: string; sqlFile: string; expectedFile: string }>,
-  connection: ConnectionConfig,
-  onProgress?: (testName: string, index: number, total: number) => void
-): Promise<TestResult[]> {
-  const results: TestResult[] = [];
-
-  for (let i = 0; i < tests.length; i++) {
-    const test = tests[i];
-    if (!test) continue;
-
-    if (onProgress) {
-      onProgress(test.testName, i + 1, tests.length);
-    }
-
-    const result = await runRegressionTest(
-      test.testName,
-      test.sqlFile,
-      test.expectedFile,
-      connection
-    );
-    results.push(result);
-  }
-
-  return results;
-}

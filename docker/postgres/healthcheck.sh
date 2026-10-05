@@ -22,10 +22,8 @@ export PGUSER="${PGUSER:-postgres}"
 PGDATABASE="$(env_or_file POSTGRES_DB)"
 export PGDATABASE="${PGDATABASE:-$PGUSER}"
 
-# Expected extensions for this aza-pg version (from manifest)
-EXPECTED_EXTENSIONS=("pg_cron" "pg_net" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "pgsodium" "plpgsql" "supabase_vault" "timescaledb" "vector" "vectorscale")
-EXPECTED_COUNT=13
-EXPECTED_PRELOAD="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb"
+# Extensions this aza-pg version precreates (from manifest), each as name:preload-library (empty: needs none)
+EXPECTED_EXTENSIONS=("pg_cron:pg_cron" "pg_net:pg_net" "pg_stat_monitor:pg_stat_monitor" "pg_stat_statements:pg_stat_statements" "pg_trgm:" "pgaudit:pgaudit" "pgmq:" "pgsodium:pgsodium" "plpgsql:" "supabase_vault:supabase_vault" "timescaledb:timescaledb" "vector:" "vectorscale:")
 
 # Tier 1: Connection Test
 if ! pg_isready --timeout=3 >/dev/null 2>&1; then
@@ -40,16 +38,31 @@ if ! psql -tAc 'SELECT 1' 2>/dev/null | grep -q '^1$'; then
 fi
 
 # Tier 3: Extension State Verification (Ground Truth)
-# Verify all expected extensions actually exist in pg_extension
+# Verify all expected extensions actually exist in pg_extension, in one query
 # This works correctly for: fresh init, restores, replicas, upgrades
-MISSING_EXTENSIONS=()
-for ext in "${EXPECTED_EXTENSIONS[@]}"; do
-    if ! psql -tAc \
-        "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')" \
-        2>/dev/null | grep -q "^t$"; then
-        MISSING_EXTENSIONS+=("$ext")
+# An extension whose preload library is not loaded is skipped: the operator left it out of
+# POSTGRES_SHARED_PRELOAD_LIBRARIES, which is a supported choice, so init could not create it.
+ACTUAL_PRELOAD=$(psql -tAc 'SHOW shared_preload_libraries' 2>/dev/null) || {
+    echo "FAIL: cannot read shared_preload_libraries" >&2
+    exit 1
+}
+CHECKED=()
+for entry in "${EXPECTED_EXTENSIONS[@]}"; do
+    lib="${entry#*:}"
+    if [ -z "$lib" ] || [[ ",${ACTUAL_PRELOAD// /}," == *",$lib,"* ]]; then
+        CHECKED+=("${entry%%:*}")
     fi
 done
+MISSING_EXTENSIONS=()
+if [ ${#CHECKED[@]} -gt 0 ]; then
+    MISSING=$(psql -tAc \
+        "SELECT coalesce(string_agg(e, ' '), '') FROM unnest(string_to_array('${CHECKED[*]}', ' ')) e WHERE NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = e)" \
+        2>/dev/null) || {
+        echo "FAIL: cannot read pg_extension" >&2
+        exit 1
+    }
+    read -ra MISSING_EXTENSIONS <<< "$MISSING"
+fi
 
 if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then
     # Check status table for diagnostic context
@@ -63,7 +76,7 @@ if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then
             2>/dev/null || echo "unknown")
     fi
 
-    echo "FAIL: Missing ${#MISSING_EXTENSIONS[@]}/$EXPECTED_COUNT expected extensions: ${MISSING_EXTENSIONS[*]}" >&2
+    echo "FAIL: Missing ${#MISSING_EXTENSIONS[@]}/${#CHECKED[@]} expected extensions: ${MISSING_EXTENSIONS[*]}" >&2
     [ -n "$STATUS_INFO" ] && echo "Diagnostic: $STATUS_INFO" >&2
     echo "Note: This could indicate incomplete initialization, failed restore, or version mismatch" >&2
     exit 1
@@ -98,24 +111,7 @@ if psql -tAc \
     fi
 fi
 
-# Tier 5: Shared Preload Libraries Verification
-ACTUAL_PRELOAD=$(psql -tAc \
-    "SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'" \
-    2>/dev/null || echo "")
-
-# Verify expected preload libraries are present (generated from manifest)
-# Convert comma-separated EXPECTED_PRELOAD to array and check each
-IFS=',' read -ra PRELOAD_LIBS <<< "$EXPECTED_PRELOAD"
-for lib in "${PRELOAD_LIBS[@]}"; do
-    if ! echo "$ACTUAL_PRELOAD" | grep -q "$lib"; then
-        echo "FAIL: shared_preload_libraries missing expected library: $lib" >&2
-        echo "Expected preload: $EXPECTED_PRELOAD" >&2
-        echo "Actual preload: $ACTUAL_PRELOAD" >&2
-        exit 1
-    fi
-done
-
-# Tier 6: System Catalog Integrity
+# Tier 5: System Catalog Integrity
 CATALOG_TABLES=$(psql -tAc \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'" \
     2>/dev/null || echo "0")
@@ -125,7 +121,7 @@ if [ "$CATALOG_TABLES" -lt 60 ]; then
     exit 1
 fi
 
-# Tier 7: Database Role Verification
+# Tier 6: Database Role Verification
 POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"
 if [ "$POSTGRES_ROLE" != "replica" ]; then
     IN_RECOVERY=$(psql -tAc \

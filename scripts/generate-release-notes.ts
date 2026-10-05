@@ -597,7 +597,9 @@ function generateConfigurationSection(): string[] {
   lines.push("<details>");
   lines.push("<summary><b>Health Check</b></summary>");
   lines.push("");
-  lines.push("7-tier validation via `pg_isready`:");
+  lines.push(
+    "`healthcheck.sh` checks connections and queries, the precreated extensions, initialisation status, and that a primary is not in recovery:"
+  );
   lines.push("- Interval: 10s, Timeout: 5s");
   lines.push("- Start period: 120s, Retries: 3");
   lines.push("");

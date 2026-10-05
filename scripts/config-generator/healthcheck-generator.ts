@@ -5,6 +5,7 @@
  */
 
 import type { ManifestEntry } from "../extensions/manifest-data";
+import { preloadLibraryName } from "./manifest-loader";
 
 /**
  * Generate healthcheck script that verifies initialization state
@@ -16,16 +17,15 @@ import type { ManifestEntry } from "../extensions/manifest-data";
  * 4. Edge-case resilient: Works correctly for restores, replicas, upgrades
  *
  * @param extensionsToEnable - Array of manifest entries for auto-created extensions
- * @param preloadLibraries - Comma-separated list of preloaded libraries
  * @returns Healthcheck shell script content
  */
-export function generateHealthcheckScript(
-  extensionsToEnable: ManifestEntry[],
-  preloadLibraries: string
-): string {
+export function generateHealthcheckScript(extensionsToEnable: ManifestEntry[]): string {
   const lines: string[] = [];
-  const extensionNames = extensionsToEnable.map((e) => e.name);
-  const expectedCount = extensionNames.length;
+  // Each extension with the library it needs preloaded: init cannot create it when the operator's
+  // POSTGRES_SHARED_PRELOAD_LIBRARIES leaves that library out, so the check skips it then.
+  const expected = extensionsToEnable.map(
+    (e) => `${e.name}:${e.runtime?.sharedPreload ? preloadLibraryName(e) : ""}`
+  );
 
   lines.push("#!/bin/bash");
   lines.push("# Enhanced PostgreSQL healthcheck with functional validation");
@@ -61,10 +61,10 @@ export function generateHealthcheckScript(
   lines.push("");
 
   // Version-specific expectations (baked in from manifest)
-  lines.push("# Expected extensions for this aza-pg version (from manifest)");
-  lines.push(`EXPECTED_EXTENSIONS=(${extensionNames.map((n) => `"${n}"`).join(" ")})`);
-  lines.push(`EXPECTED_COUNT=${expectedCount}`);
-  lines.push(`EXPECTED_PRELOAD="${preloadLibraries}"`);
+  lines.push(
+    "# Extensions this aza-pg version precreates (from manifest), each as name:preload-library (empty: needs none)"
+  );
+  lines.push(`EXPECTED_EXTENSIONS=(${expected.map((e) => `"${e}"`).join(" ")})`);
   lines.push("");
 
   // Tier 1: Connection Test
@@ -85,16 +85,37 @@ export function generateHealthcheckScript(
 
   // Tier 3: Extension State Verification (Ground Truth)
   lines.push("# Tier 3: Extension State Verification (Ground Truth)");
-  lines.push("# Verify all expected extensions actually exist in pg_extension");
+  lines.push("# Verify all expected extensions actually exist in pg_extension, in one query");
   lines.push("# This works correctly for: fresh init, restores, replicas, upgrades");
-  lines.push("MISSING_EXTENSIONS=()");
-  lines.push('for ext in "${EXPECTED_EXTENSIONS[@]}"; do');
-  lines.push("    if ! psql -tAc \\");
-  lines.push("        \"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')\" \\");
-  lines.push('        2>/dev/null | grep -q "^t$"; then');
-  lines.push('        MISSING_EXTENSIONS+=("$ext")');
+  lines.push(
+    "# An extension whose preload library is not loaded is skipped: the operator left it out of"
+  );
+  lines.push(
+    "# POSTGRES_SHARED_PRELOAD_LIBRARIES, which is a supported choice, so init could not create it."
+  );
+  lines.push("ACTUAL_PRELOAD=$(psql -tAc 'SHOW shared_preload_libraries' 2>/dev/null) || {");
+  lines.push('    echo "FAIL: cannot read shared_preload_libraries" >&2');
+  lines.push("    exit 1");
+  lines.push("}");
+  lines.push("CHECKED=()");
+  lines.push('for entry in "${EXPECTED_EXTENSIONS[@]}"; do');
+  lines.push('    lib="${entry#*:}"');
+  lines.push('    if [ -z "$lib" ] || [[ ",${ACTUAL_PRELOAD// /}," == *",$lib,"* ]]; then');
+  lines.push('        CHECKED+=("${entry%%:*}")');
   lines.push("    fi");
   lines.push("done");
+  lines.push("MISSING_EXTENSIONS=()");
+  lines.push("if [ ${#CHECKED[@]} -gt 0 ]; then");
+  lines.push("    MISSING=$(psql -tAc \\");
+  lines.push(
+    "        \"SELECT coalesce(string_agg(e, ' '), '') FROM unnest(string_to_array('${CHECKED[*]}', ' ')) e WHERE NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = e)\" \\"
+  );
+  lines.push("        2>/dev/null) || {");
+  lines.push('        echo "FAIL: cannot read pg_extension" >&2');
+  lines.push("        exit 1");
+  lines.push("    }");
+  lines.push('    read -ra MISSING_EXTENSIONS <<< "$MISSING"');
+  lines.push("fi");
   lines.push("");
   lines.push("if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then");
   lines.push("    # Check status table for diagnostic context");
@@ -113,7 +134,7 @@ export function generateHealthcheckScript(
   lines.push("    fi");
   lines.push("");
   lines.push(
-    '    echo "FAIL: Missing ${#MISSING_EXTENSIONS[@]}/$EXPECTED_COUNT expected extensions: ${MISSING_EXTENSIONS[*]}" >&2'
+    '    echo "FAIL: Missing ${#MISSING_EXTENSIONS[@]}/${#CHECKED[@]} expected extensions: ${MISSING_EXTENSIONS[*]}" >&2'
   );
   lines.push('    [ -n "$STATUS_INFO" ] && echo "Diagnostic: $STATUS_INFO" >&2');
   lines.push(
@@ -162,27 +183,8 @@ export function generateHealthcheckScript(
   lines.push("fi");
   lines.push("");
 
-  // Tier 5: Shared Preload Libraries
-  lines.push("# Tier 5: Shared Preload Libraries Verification");
-  lines.push("ACTUAL_PRELOAD=$(psql -tAc \\");
-  lines.push("    \"SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'\" \\");
-  lines.push('    2>/dev/null || echo "")');
-  lines.push("");
-  lines.push("# Verify expected preload libraries are present (generated from manifest)");
-  lines.push("# Convert comma-separated EXPECTED_PRELOAD to array and check each");
-  lines.push("IFS=',' read -ra PRELOAD_LIBS <<< \"$EXPECTED_PRELOAD\"");
-  lines.push('for lib in "${PRELOAD_LIBS[@]}"; do');
-  lines.push('    if ! echo "$ACTUAL_PRELOAD" | grep -q "$lib"; then');
-  lines.push('        echo "FAIL: shared_preload_libraries missing expected library: $lib" >&2');
-  lines.push('        echo "Expected preload: $EXPECTED_PRELOAD" >&2');
-  lines.push('        echo "Actual preload: $ACTUAL_PRELOAD" >&2');
-  lines.push("        exit 1");
-  lines.push("    fi");
-  lines.push("done");
-  lines.push("");
-
-  // Tier 6: System Catalog Integrity
-  lines.push("# Tier 6: System Catalog Integrity");
+  // Tier 5: System Catalog Integrity
+  lines.push("# Tier 5: System Catalog Integrity");
   lines.push("CATALOG_TABLES=$(psql -tAc \\");
   lines.push(
     "    \"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'\" \\"
@@ -197,8 +199,8 @@ export function generateHealthcheckScript(
   lines.push("fi");
   lines.push("");
 
-  // Tier 7: Database Role Verification
-  lines.push("# Tier 7: Database Role Verification");
+  // Tier 6: Database Role Verification
+  lines.push("# Tier 6: Database Role Verification");
   lines.push('POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"');
   lines.push('if [ "$POSTGRES_ROLE" != "replica" ]; then');
   lines.push("    IN_RECOVERY=$(psql -tAc \\");

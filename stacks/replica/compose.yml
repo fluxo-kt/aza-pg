@@ -51,7 +51,7 @@ services:
     networks:
       - postgres_net
 
-    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    # Explicit healthcheck (the image's built-in healthcheck script)
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 10s

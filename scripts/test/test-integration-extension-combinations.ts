@@ -148,6 +148,24 @@ try {
   });
 
   await check(
+    "a POSTGRES_SHARED_PRELOAD_LIBRARIES without default libraries is healthy",
+    async () => {
+      // The healthcheck once demanded every default preload library, so a supported custom list (such as the
+      // previous default, without supabase_vault) kept the container unhealthy for good.
+      const hc = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
+      if (hc.exitCode !== 0) throw new Error(`healthcheck failed: ${hc.stderr.toString().trim()}`);
+      // Skipping must not blind it: an extension that needs no preload and is gone still fails it.
+      await sql(nopre, "DROP EXTENSION pg_trgm");
+      const dropped = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
+      if (dropped.exitCode === 0 || !dropped.stderr.toString().includes("pg_trgm")) {
+        throw new Error(
+          `healthcheck did not report the dropped pg_trgm (exit ${dropped.exitCode})`
+        );
+      }
+    }
+  );
+
+  await check(
     "an operator-mounted getkey owns the key: none written, no published-key warning",
     async () => {
       const [ownKey, opKey, file, source, logs] = await Promise.all([

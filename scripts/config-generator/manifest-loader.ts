@@ -84,9 +84,8 @@ export function preloadLibraryName(entry: PreloadCandidate): string {
 /**
  * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
  * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
- * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES and
- * the healthcheck's EXPECTED_PRELOAD (generator.ts) both read this, so the healthcheck expects exactly
- * what the entrypoint preloads.
+ * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
+ * reads this.
  * @throws Error when an entry's preloadLibraryName is empty (see preloadLibraryName)
  */
 export function getDefaultSharedPreloadLibraries(manifest: {

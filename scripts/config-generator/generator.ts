@@ -362,7 +362,7 @@ async function generateConfigs() {
 
     // Generate healthcheck.sh script (synchronized with init script)
     info("Generating healthcheck script...");
-    const healthcheckScript = generateHealthcheckScript(extensionsToEnable, defaultPreloads);
+    const healthcheckScript = generateHealthcheckScript(extensionsToEnable);
     const healthcheckPath = join(REPO_ROOT, "docker/postgres/healthcheck.sh");
     await writeConfigFile(healthcheckPath, healthcheckScript);
     // Make healthcheck executable

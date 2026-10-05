@@ -42,7 +42,7 @@ services:
     mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-1024m}
     cpus: ${POSTGRES_CPU_LIMIT:-2}
 
-    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    # Explicit healthcheck (the image's built-in healthcheck script)
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 10s

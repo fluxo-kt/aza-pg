@@ -14,6 +14,7 @@
  */
 import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
@@ -60,11 +61,18 @@ try {
   await psql("SET pgaudit.log = 'read'", `SELECT count(*) FROM ${marker}`);
 
   const missing: string[] = [];
-  const logs = await $`docker logs ${container}`.quiet().nothrow();
-  const logText = logs.stdout.toString() + logs.stderr.toString();
-  if (!logText.split("\n").some((l) => l.includes("AUDIT: SESSION") && l.includes(marker))) {
-    missing.push("pgaudit log line");
+  // Docker copies the container's output into its log asynchronously, so one read right after the query can miss
+  // a line the server already wrote; poll until it appears.
+  const audited = (text: string) =>
+    text.split("\n").some((l) => l.includes("AUDIT: SESSION") && l.includes(marker));
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
+  let seen = false;
+  while (!seen && Date.now() < deadline) {
+    const logs = await $`docker logs ${container}`.quiet().nothrow();
+    seen = audited(logs.stdout.toString() + logs.stderr.toString());
+    if (!seen) await Bun.sleep(200);
   }
+  if (!seen) missing.push("pgaudit log line");
   const pgss = await psql(
     `SELECT count(*) FROM pg_stat_statements WHERE query LIKE 'SELECT count(*) FROM ${marker}%'`
   );

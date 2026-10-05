@@ -65,7 +65,6 @@ test.concurrent(
   "unloadable POSTGRES_SHARED_PRELOAD_LIBRARIES entry stops the server",
   async () => {
     const { code, logs } = await runToExit("preload-invalid", {
-      POSTGRES_MEMORY: "1024",
       POSTGRES_SHARED_PRELOAD_LIBRARIES: "no_such_library",
     });
     expect(code).not.toBe(0);
@@ -78,7 +77,6 @@ test.concurrent(
   "invalid POSTGRES_BIND_IP stops the server instead of listening elsewhere",
   async () => {
     const { code, logs } = await runToExit("bind-ip-invalid", {
-      POSTGRES_MEMORY: "1024",
       POSTGRES_BIND_IP: "999.999.999.999",
     });
     expect(code).not.toBe(0);

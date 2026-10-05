@@ -49,13 +49,7 @@ const PGBACKREST_ENV = [
   "-e",
   "PGBACKREST_ARCHIVE_TIMEOUT=15",
 ];
-const SERVER = [
-  "-e",
-  "POSTGRES_PASSWORD=backup-test",
-  "-e",
-  "POSTGRES_MEMORY=1024",
-  ...PGBACKREST_ENV,
-];
+const SERVER = ["-e", "POSTGRES_PASSWORD=backup-test", ...PGBACKREST_ENV];
 
 async function psql(container: string, sql: string): Promise<string> {
   const r = await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -tAc ${sql}`

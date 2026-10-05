@@ -22,7 +22,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'supabase_vault') THEN
     CREATE EXTENSION IF NOT EXISTS supabase_vault;
   END IF;
-  IF current_database() = current_setting('cron.database_name', true) THEN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'cron.database_name' AND setting = current_database()) THEN
     CREATE EXTENSION IF NOT EXISTS pg_cron;
   END IF;
 END

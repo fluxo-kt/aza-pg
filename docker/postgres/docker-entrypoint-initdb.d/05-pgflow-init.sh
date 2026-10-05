@@ -2,12 +2,11 @@
 # pgflow Schema Initialization (version: the pgflow tag in scripts/extensions/manifest-data.ts)
 # Installs the pgflow workflow orchestration schema in POSTGRES_DB
 #
-# Prerequisites:
-# - pg_net and pgsodium must be in shared_preload_libraries
-# - pgmq, pg_net, supabase_vault, and pg_cron extensions must be available
+# Prerequisites: pgmq, pg_net and supabase_vault installed in the image.
 #
-# Note: pg_cron is created by 01b-pg_cron.sh in POSTGRES_DB (cron.database_name)
-# pgflow schema is installed in the same database for pg_cron integration.
+# pg_cron is optional: 01b-pg_cron.sh creates it in POSTGRES_DB (cron.database_name) only when it is preloaded.
+# Without it pgflow still installs and its cron setup functions report "skipped", as in any other database, so a
+# POSTGRES_SHARED_PRELOAD_LIBRARIES that leaves pg_cron out does not stop the container's initialisation.
 
 set -euo pipefail
 
@@ -15,38 +14,26 @@ TARGET_DB="${POSTGRES_DB:-postgres}"
 
 echo "[05-pgflow] Checking pgflow prerequisites in database: $TARGET_DB"
 
-# Check if pg_net is available (requires preload)
+# pg_available_extensions lists what the image installed, preloaded or not
 PG_NET_READY=$(psql --username "$POSTGRES_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" 2>/dev/null | tr -d ' ')
 if [ "$PG_NET_READY" != "1" ]; then
-    echo "[05-pgflow] WARNING: pg_net extension not available. Skipping pgflow initialization."
-    echo "[05-pgflow] Add pg_net to POSTGRES_SHARED_PRELOAD_LIBRARIES to enable pgflow."
+    echo "[05-pgflow] WARNING: pg_net is not installed in this image. Skipping pgflow initialization."
     exit 0
 fi
 
-# Check if supabase_vault is available (requires pgsodium preload)
 VAULT_READY=$(psql --username "$POSTGRES_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'supabase_vault'" 2>/dev/null | tr -d ' ')
 if [ "$VAULT_READY" != "1" ]; then
-    echo "[05-pgflow] WARNING: supabase_vault extension not available. Skipping pgflow initialization."
-    echo "[05-pgflow] Add pgsodium to POSTGRES_SHARED_PRELOAD_LIBRARIES to enable vault."
+    echo "[05-pgflow] WARNING: supabase_vault is not installed in this image. Skipping pgflow initialization."
     exit 0
 fi
 
-# Check if pgmq is available
 PGMQ_READY=$(psql --username "$POSTGRES_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pgmq'" 2>/dev/null | tr -d ' ')
 if [ "$PGMQ_READY" != "1" ]; then
-    echo "[05-pgflow] WARNING: pgmq extension not available. Skipping pgflow initialization."
+    echo "[05-pgflow] WARNING: pgmq is not installed in this image. Skipping pgflow initialization."
     exit 0
 fi
 
 echo "[05-pgflow] All prerequisites available. Installing pgflow schema..."
-
-# NOTE: pg_cron is created by 01b-pg_cron.sh - verify it exists
-PG_CRON_EXISTS=$(psql --username "$POSTGRES_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron'" 2>/dev/null | tr -d ' ')
-if [ "$PG_CRON_EXISTS" != "1" ]; then
-    echo "[05-pgflow] ERROR: pg_cron extension not found in $TARGET_DB"
-    echo "[05-pgflow] pg_cron should be created by 01b-pg_cron.sh before this script runs"
-    exit 1
-fi
 
 # Install pgflow schema
 # The schema file is copied from tests/fixtures/pgflow/ during build

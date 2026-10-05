@@ -241,14 +241,17 @@ function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string
 
 // Upstream creates supabase_vault and pg_cron unconditionally, so the shipped schema.sql failed in any database where
 // either cannot exist: supabase_vault is optional in aza-pg (ensure_workers reads it through aza_vault_secret), and
-// pg_cron can only be created in the database named by cron.database_name (pgflow's cron setup functions report
-// "skipped" elsewhere). Guarding them here lets initdb, new databases (docs/PGFLOW.md) and tests run the file as is.
+// pg_cron can only be created where it is preloaded and only in the database named by cron.database_name (pgflow's
+// cron setup functions report "skipped" elsewhere). Guarding them here lets initdb, new databases (docs/PGFLOW.md),
+// containers whose POSTGRES_SHARED_PRELOAD_LIBRARIES leaves pg_cron out, and tests run the file as is.
+// pg_settings lists cron.database_name only once pg_cron is loaded; without it the setting is a hidden placeholder
+// that SHOW and current_setting() still answer (the entrypoint passes it with -c), so they cannot tell the cases apart.
 const OPTIONAL_EXTENSIONS_SQL = `DO $extensions$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'supabase_vault') THEN
     CREATE EXTENSION IF NOT EXISTS supabase_vault;
   END IF;
-  IF current_database() = current_setting('cron.database_name', true) THEN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'cron.database_name' AND setting = current_database()) THEN
     CREATE EXTENSION IF NOT EXISTS pg_cron;
   END IF;
 END

@@ -77,10 +77,11 @@ try {
     ?.slice("PG_MAJOR=".length);
   if (!pgMajor) throw new Error(`no PG_MAJOR in ${image}`);
   const getkeyPath = `/usr/share/postgresql/${pgMajor}/extension/pgsodium_getkey`;
-  // A first start where nothing calls getkey: neither pgsodium nor supabase_vault is preloaded.
-  const withoutPgsodium = getSharedPreloadLibraries("production")
+  // An operator's own preload list: nothing calls getkey (neither pgsodium nor supabase_vault is preloaded), and
+  // pg_cron is left out, which once stopped initialisation in the pgflow step.
+  const customPreload = getSharedPreloadLibraries("production")
     .split(",")
-    .filter((lib) => lib !== "pgsodium" && lib !== "supabase_vault")
+    .filter((lib) => !["pgsodium", "supabase_vault", "pg_cron"].includes(lib))
     .join(",");
 
   const [a, b, c1, c2, bad, nopre, own] = await Promise.all([
@@ -89,7 +90,7 @@ try {
     start("key-c1", [...mount(operatorKey), ...operator, "-e", "ENABLE_PGSODIUM_INIT=true"]),
     start("key-c2", [...mount(operatorKey), ...operator]),
     start("key-bad", [...mount(badKey), ...operator]),
-    start("key-nopre", ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${withoutPgsodium}`]),
+    start("key-nopre", ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${customPreload}`]),
     start("key-own", [...mount(operatorKey), "-v", `${ownGetkey}:${getkeyPath}:ro`]),
   ]);
   await Promise.all(
@@ -154,6 +155,9 @@ try {
       // previous default, without supabase_vault) kept the container unhealthy for good.
       const hc = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
       if (hc.exitCode !== 0) throw new Error(`healthcheck failed: ${hc.stderr.toString().trim()}`);
+      // pgflow installs without pg_cron (its cron setup reports "skipped") instead of being skipped or failing init.
+      const pgflow = await sql(nopre, "SELECT to_regnamespace('pgflow') IS NOT NULL");
+      if (pgflow !== "t") throw new Error("pgflow schema missing without pg_cron preloaded");
       // Skipping must not blind it: an extension that needs no preload and is gone still fails it.
       await sql(nopre, "DROP EXTENSION pg_trgm");
       const dropped = await $`docker exec ${nopre} /usr/local/bin/healthcheck.sh`.quiet().nothrow();

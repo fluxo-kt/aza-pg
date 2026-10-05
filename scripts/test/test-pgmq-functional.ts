@@ -152,7 +152,7 @@ if (isOwnContainer && imageTag) {
 
   try {
     // Start PostgreSQL container
-    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`;
+    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres ${imageTag}`;
     console.log(`✅ Container started: ${CONTAINER}`);
 
     await waitForPostgres({ container: CONTAINER, timeout: 120 });

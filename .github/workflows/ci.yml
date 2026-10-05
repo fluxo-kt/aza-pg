@@ -57,6 +57,10 @@ concurrency:
 permissions:
   contents: read
 
+# Each timeout-minutes is 4–8x the job's measured run time on ubuntu-latest: it exists to stop a hang early, never to
+# decide that work is done. The build is sized on a full rebuild of the source-built extensions (about 20 min), not on
+# a cache hit: a timeout that kills that rebuild never saves its layer cache, so every later run would start cold and
+# fail the same way. Re-measure (gh run view <id> --json jobs) when a job's duration moves.
 jobs:
   # ==========================================================================
   # Job 1: Lint workflows (fail fast on invalid GitHub Actions expressions)
@@ -65,7 +69,7 @@ jobs:
   lint-workflows:
     name: Lint Workflows
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 1
 
     steps:
       - name: Checkout repository
@@ -85,7 +89,7 @@ jobs:
     name: Validate & Unit Tests
     runs-on: ubuntu-latest
     needs: lint-workflows
-    timeout-minutes: 10
+    timeout-minutes: 3
     # Skip pull_request events from dev branch (push trigger already handles dev)
     if: github.event_name != 'pull_request' || github.head_ref != 'dev'
 
@@ -133,7 +137,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: validate
-    timeout-minutes: 60
+    timeout-minutes: 100
     outputs:
       image-key: ${{ steps.key.outputs.key }}
 
@@ -221,15 +225,15 @@ jobs:
       matrix:
         include:
           - group: extensions
-            timeout: 20
+            timeout: 8
           - group: security
-            timeout: 10
+            timeout: 4
           - group: stacks
-            timeout: 15
+            timeout: 5
           - group: features
-            timeout: 20
+            timeout: 7
           - group: regression
-            timeout: 10
+            timeout: 4
 
     steps:
       - name: Checkout repository

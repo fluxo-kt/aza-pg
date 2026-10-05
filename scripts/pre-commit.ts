@@ -16,6 +16,7 @@
  */
 
 import { $ } from "bun";
+import { basename } from "node:path";
 import { GENERATED_FILES } from "./generated-files";
 import { error, info, success, warning } from "./utils/logger";
 
@@ -42,6 +43,15 @@ async function getStagedFiles(): Promise<string[]> {
 async function stageFiles(files: string[]): Promise<void> {
   if (files.length === 0) return;
   await $`git add ${files}`;
+  // Under `git commit --only -- <paths>` this hook stages into a temporary candidate index (next-index-*.lock): the
+  // fixes reach the commit, but git then writes the real index from the pre-hook bytes, leaving every fixed file
+  // differing from HEAD in the index. git holds the real index's lock for the whole hook and renames it into place
+  // when the commit lands, so staging into that lock too keeps the real index equal to the commit. The path comes
+  // from --git-dir: `git rev-parse --git-path index` answers with $GIT_INDEX_FILE, the candidate, inside a hook.
+  if (basename(Bun.env.GIT_INDEX_FILE ?? "").startsWith("next-index-")) {
+    const gitDir = (await $`git rev-parse --git-dir`.text()).trim();
+    await $`git add ${files}`.env({ ...Bun.env, GIT_INDEX_FILE: `${gitDir}/index.lock` });
+  }
 }
 
 /**

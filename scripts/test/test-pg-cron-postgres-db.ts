@@ -7,7 +7,11 @@
  * A wrong pairing still boots cleanly, so each case schedules a 1-second job and waits for it to
  * write a row: only a job that actually ran proves the scheduler is attached to the right database.
  *
- * Two containers boot in parallel: the default database and a custom POSTGRES_DB.
+ * Each case also runs the image's healthcheck, which must find the extensions in that same database
+ * as that same superuser: a healthcheck looking elsewhere leaves the container unhealthy for good.
+ *
+ * Three containers boot in parallel: the default database, a custom POSTGRES_DB, and a superuser
+ * renamed by POSTGRES_USER (no postgres role exists, and POSTGRES_DB defaults to that user's name).
  *
  * Usage: bun scripts/test/test-pg-cron-postgres-db.ts [image] [--image=TAG]
  */
@@ -30,33 +34,52 @@ const REQUIRED_PGFLOW_TABLES = [
 interface Case {
   container: string;
   database: string;
-  /** Extra docker run args selecting the database. */
+  /** The superuser initdb creates. */
+  user: string;
+  /** Extra docker run args selecting the database and superuser. */
   env: string[];
 }
 const cases: Case[] = [
-  { container: generateUniqueContainerName("aza-pg-cron-default"), database: "postgres", env: [] },
+  {
+    container: generateUniqueContainerName("aza-pg-cron-default"),
+    database: "postgres",
+    user: "postgres",
+    env: [],
+  },
   {
     container: generateUniqueContainerName("aza-pg-cron-custom"),
     database: "my_custom_db",
+    user: "postgres",
     env: ["-e", "POSTGRES_DB=my_custom_db"],
+  },
+  {
+    container: generateUniqueContainerName("aza-pg-cron-user"),
+    database: "admin",
+    user: "admin",
+    env: ["-e", "POSTGRES_USER=admin"],
   },
 ];
 
-async function sql(container: string, database: string, query: string): Promise<string> {
+async function sql({ container, user }: Case, database: string, query: string): Promise<string> {
   const r =
-    await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U postgres -d ${database} -tA -c ${query}`
+    await $`docker exec ${container} psql -X -v ON_ERROR_STOP=1 -U ${user} -d ${database} -tA -c ${query}`
       .quiet()
       .nothrow();
   if (r.exitCode !== 0) throw new Error(`[${database}] ${query}\n${r.stderr.toString().trim()}`);
   return r.stdout.toString().trim();
 }
 
-async function verify({ container, database }: Case): Promise<void> {
-  const setting = await sql(container, database, "SHOW cron.database_name");
+async function verify(c: Case): Promise<void> {
+  const { container, database } = c;
+  const health = await $`docker exec ${container} /usr/local/bin/healthcheck.sh`.quiet().nothrow();
+  if (health.exitCode !== 0)
+    throw new Error(`healthcheck failed: ${health.stderr.toString().trim()}`);
+
+  const setting = await sql(c, database, "SHOW cron.database_name");
   if (setting !== database) throw new Error(`cron.database_name = ${setting}, want ${database}`);
 
   const missing = await sql(
-    container,
+    c,
     database,
     `SELECT coalesce(string_agg(t, ', '), '') FROM unnest(ARRAY['${REQUIRED_PGFLOW_TABLES.join("','")}']) t
        WHERE to_regclass('pgflow.' || t) IS NULL`
@@ -65,26 +88,26 @@ async function verify({ container, database }: Case): Promise<void> {
 
   if (database !== "postgres") {
     const stray = await sql(
-      container,
+      c,
       "postgres",
       "SELECT (SELECT count(*) FROM pg_extension WHERE extname = 'pg_cron') || '/' || (SELECT count(*) FROM pg_namespace WHERE nspname = 'pgflow')"
     );
     if (stray !== "0/0") throw new Error(`pg_cron/pgflow also present in postgres: ${stray}`);
   }
 
-  await sql(container, database, "CREATE TABLE t2b_cron_tick (at timestamptz DEFAULT now())");
+  await sql(c, database, "CREATE TABLE t2b_cron_tick (at timestamptz DEFAULT now())");
   await sql(
-    container,
+    c,
     database,
     "SELECT cron.schedule('t2b_tick', '1 seconds', 'INSERT INTO t2b_cron_tick DEFAULT VALUES')"
   );
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (Number(await sql(container, database, "SELECT count(*) FROM t2b_cron_tick")) > 0) return;
+    if (Number(await sql(c, database, "SELECT count(*) FROM t2b_cron_tick")) > 0) return;
     await Bun.sleep(250);
   }
   const runs = await sql(
-    container,
+    c,
     database,
     "SELECT coalesce(string_agg(status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details"
   );
@@ -98,10 +121,15 @@ try {
       $`docker run -d --name ${c.container} -e POSTGRES_PASSWORD=postgres ${c.env} ${image}`.quiet()
     )
   );
-  await Promise.all(cases.map((c) => waitForPostgres({ container: c.container, timeout: 120 })));
-  const outcomes = await Promise.allSettled(cases.map(verify));
+  // Each case boots and verifies on its own, so one container failing init still lets the others report.
+  const outcomes = await Promise.allSettled(
+    cases.map(async (c) => {
+      await waitForPostgres({ container: c.container, user: c.user, timeout: 120 });
+      await verify(c);
+    })
+  );
   outcomes.forEach((o, i) => {
-    const name = `pg_cron + pgflow follow POSTGRES_DB=${cases[i]?.database}`;
+    const name = `healthy, pg_cron + pgflow follow POSTGRES_DB=${cases[i]?.database} (POSTGRES_USER=${cases[i]?.user})`;
     if (o.status === "fulfilled") {
       console.log(`PASS: ${name}`);
     } else {

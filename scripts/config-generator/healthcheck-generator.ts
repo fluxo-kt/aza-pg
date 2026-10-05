@@ -38,6 +38,18 @@ export function generateHealthcheckScript(
   lines.push("");
   lines.push("set -euo pipefail");
   lines.push("");
+  lines.push(
+    "# Check as the superuser, in the database initdb created and the init scripts filled, with the official entrypoint's"
+  );
+  lines.push(
+    "# defaults: POSTGRES_USER may name a role other than postgres, and POSTGRES_DB defaults to POSTGRES_USER. An operator's"
+  );
+  lines.push(
+    "# own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and shared_preload_libraries is superuser-only."
+  );
+  lines.push('export PGUSER="${POSTGRES_USER:-postgres}"');
+  lines.push('export PGDATABASE="${POSTGRES_DB:-$PGUSER}"');
+  lines.push("");
 
   // Version-specific expectations (baked in from manifest)
   lines.push("# Expected extensions for this aza-pg version (from manifest)");
@@ -48,7 +60,7 @@ export function generateHealthcheckScript(
 
   // Tier 1: Connection Test
   lines.push("# Tier 1: Connection Test");
-  lines.push("if ! pg_isready -U postgres --timeout=3 >/dev/null 2>&1; then");
+  lines.push("if ! pg_isready --timeout=3 >/dev/null 2>&1; then");
   lines.push('    echo "FAIL: PostgreSQL not accepting connections" >&2');
   lines.push("    exit 1");
   lines.push("fi");
@@ -56,7 +68,7 @@ export function generateHealthcheckScript(
 
   // Tier 2: Query Execution
   lines.push("# Tier 2: Query Execution Test");
-  lines.push("if ! psql -U postgres -d postgres -tAc 'SELECT 1' 2>/dev/null | grep -q '^1$'; then");
+  lines.push("if ! psql -tAc 'SELECT 1' 2>/dev/null | grep -q '^1$'; then");
   lines.push('    echo "FAIL: Database query execution failed" >&2');
   lines.push("    exit 1");
   lines.push("fi");
@@ -68,7 +80,7 @@ export function generateHealthcheckScript(
   lines.push("# This works correctly for: fresh init, restores, replicas, upgrades");
   lines.push("MISSING_EXTENSIONS=()");
   lines.push('for ext in "${EXPECTED_EXTENSIONS[@]}"; do');
-  lines.push("    if ! psql -U postgres -d postgres -tAc \\");
+  lines.push("    if ! psql -tAc \\");
   lines.push("        \"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')\" \\");
   lines.push('        2>/dev/null | grep -q "^t$"; then');
   lines.push('        MISSING_EXTENSIONS+=("$ext")');
@@ -78,13 +90,13 @@ export function generateHealthcheckScript(
   lines.push("if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then");
   lines.push("    # Check status table for diagnostic context");
   lines.push('    STATUS_INFO=""');
-  lines.push("    if psql -U postgres -d postgres -tAc \\");
+  lines.push("    if psql -tAc \\");
   lines.push(
     "        \"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'pg_aza_status')\" \\"
   );
   lines.push('        2>/dev/null | grep -q "^t$"; then');
   lines.push("        # Status table exists - get diagnostic info");
-  lines.push("        STATUS_INFO=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("        STATUS_INFO=$(psql -tAc \\");
   lines.push(
     "            \"SELECT 'Init status: ' || status || ', Failed: ' || COALESCE(array_to_string(failed_extensions, ', '), 'none') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1\" \\"
   );
@@ -106,13 +118,13 @@ export function generateHealthcheckScript(
   lines.push("# Tier 4: Initialization Status Check (Diagnostic Context)");
   lines.push("# If status table exists, verify initialization completed successfully");
   lines.push("# This provides rich error context but isn't the primary validation");
-  lines.push("if psql -U postgres -d postgres -tAc \\");
+  lines.push("if psql -tAc \\");
   lines.push(
     "    \"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'pg_aza_status')\" \\"
   );
   lines.push('    2>/dev/null | grep -q "^t$"; then');
   lines.push("");
-  lines.push("    INIT_STATUS=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("    INIT_STATUS=$(psql -tAc \\");
   lines.push('        "SELECT status FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1" \\');
   lines.push('        2>/dev/null || echo "unknown")');
   lines.push("");
@@ -120,7 +132,7 @@ export function generateHealthcheckScript(
   lines.push('        echo "FAIL: Initialization still in progress (not yet complete)" >&2');
   lines.push("        exit 1");
   lines.push('    elif [ "$INIT_STATUS" = "failed" ]; then');
-  lines.push("        FAILED_EXTS=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("        FAILED_EXTS=$(psql -tAc \\");
   lines.push(
     "            \"SELECT array_to_string(failed_extensions, ', ') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1\" \\"
   );
@@ -128,7 +140,7 @@ export function generateHealthcheckScript(
   lines.push('        echo "FAIL: Initialization failed. Failed extensions: $FAILED_EXTS" >&2');
   lines.push("        exit 1");
   lines.push('    elif [ "$INIT_STATUS" = "partial" ]; then');
-  lines.push("        FAILED_EXTS=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("        FAILED_EXTS=$(psql -tAc \\");
   lines.push(
     "            \"SELECT array_to_string(failed_extensions, ', ') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1\" \\"
   );
@@ -143,7 +155,7 @@ export function generateHealthcheckScript(
 
   // Tier 5: Shared Preload Libraries
   lines.push("# Tier 5: Shared Preload Libraries Verification");
-  lines.push("ACTUAL_PRELOAD=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("ACTUAL_PRELOAD=$(psql -tAc \\");
   lines.push("    \"SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'\" \\");
   lines.push('    2>/dev/null || echo "")');
   lines.push("");
@@ -162,7 +174,7 @@ export function generateHealthcheckScript(
 
   // Tier 6: System Catalog Integrity
   lines.push("# Tier 6: System Catalog Integrity");
-  lines.push("CATALOG_TABLES=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("CATALOG_TABLES=$(psql -tAc \\");
   lines.push(
     "    \"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'\" \\"
   );
@@ -180,7 +192,7 @@ export function generateHealthcheckScript(
   lines.push("# Tier 7: Database Role Verification");
   lines.push('POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"');
   lines.push('if [ "$POSTGRES_ROLE" != "replica" ]; then');
-  lines.push("    IN_RECOVERY=$(psql -U postgres -d postgres -tAc \\");
+  lines.push("    IN_RECOVERY=$(psql -tAc \\");
   lines.push('        "SELECT pg_is_in_recovery()" \\');
   lines.push('        2>/dev/null || echo "t")');
   lines.push("");

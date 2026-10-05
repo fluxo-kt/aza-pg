@@ -9,19 +9,25 @@
 
 set -euo pipefail
 
+# Check as the superuser, in the database initdb created and the init scripts filled, with the official entrypoint's
+# defaults: POSTGRES_USER may name a role other than postgres, and POSTGRES_DB defaults to POSTGRES_USER. An operator's
+# own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and shared_preload_libraries is superuser-only.
+export PGUSER="${POSTGRES_USER:-postgres}"
+export PGDATABASE="${POSTGRES_DB:-$PGUSER}"
+
 # Expected extensions for this aza-pg version (from manifest)
 EXPECTED_EXTENSIONS=("pg_cron" "pg_net" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "pgsodium" "plpgsql" "supabase_vault" "timescaledb" "vector" "vectorscale")
 EXPECTED_COUNT=13
 EXPECTED_PRELOAD="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb"
 
 # Tier 1: Connection Test
-if ! pg_isready -U postgres --timeout=3 >/dev/null 2>&1; then
+if ! pg_isready --timeout=3 >/dev/null 2>&1; then
     echo "FAIL: PostgreSQL not accepting connections" >&2
     exit 1
 fi
 
 # Tier 2: Query Execution Test
-if ! psql -U postgres -d postgres -tAc 'SELECT 1' 2>/dev/null | grep -q '^1$'; then
+if ! psql -tAc 'SELECT 1' 2>/dev/null | grep -q '^1$'; then
     echo "FAIL: Database query execution failed" >&2
     exit 1
 fi
@@ -31,7 +37,7 @@ fi
 # This works correctly for: fresh init, restores, replicas, upgrades
 MISSING_EXTENSIONS=()
 for ext in "${EXPECTED_EXTENSIONS[@]}"; do
-    if ! psql -U postgres -d postgres -tAc \
+    if ! psql -tAc \
         "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = '$ext')" \
         2>/dev/null | grep -q "^t$"; then
         MISSING_EXTENSIONS+=("$ext")
@@ -41,11 +47,11 @@ done
 if [ ${#MISSING_EXTENSIONS[@]} -gt 0 ]; then
     # Check status table for diagnostic context
     STATUS_INFO=""
-    if psql -U postgres -d postgres -tAc \
+    if psql -tAc \
         "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'pg_aza_status')" \
         2>/dev/null | grep -q "^t$"; then
         # Status table exists - get diagnostic info
-        STATUS_INFO=$(psql -U postgres -d postgres -tAc \
+        STATUS_INFO=$(psql -tAc \
             "SELECT 'Init status: ' || status || ', Failed: ' || COALESCE(array_to_string(failed_extensions, ', '), 'none') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1" \
             2>/dev/null || echo "unknown")
     fi
@@ -59,11 +65,11 @@ fi
 # Tier 4: Initialization Status Check (Diagnostic Context)
 # If status table exists, verify initialization completed successfully
 # This provides rich error context but isn't the primary validation
-if psql -U postgres -d postgres -tAc \
+if psql -tAc \
     "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'pg_aza_status')" \
     2>/dev/null | grep -q "^t$"; then
 
-    INIT_STATUS=$(psql -U postgres -d postgres -tAc \
+    INIT_STATUS=$(psql -tAc \
         "SELECT status FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1" \
         2>/dev/null || echo "unknown")
 
@@ -71,13 +77,13 @@ if psql -U postgres -d postgres -tAc \
         echo "FAIL: Initialization still in progress (not yet complete)" >&2
         exit 1
     elif [ "$INIT_STATUS" = "failed" ]; then
-        FAILED_EXTS=$(psql -U postgres -d postgres -tAc \
+        FAILED_EXTS=$(psql -tAc \
             "SELECT array_to_string(failed_extensions, ', ') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1" \
             2>/dev/null || echo "unknown")
         echo "FAIL: Initialization failed. Failed extensions: $FAILED_EXTS" >&2
         exit 1
     elif [ "$INIT_STATUS" = "partial" ]; then
-        FAILED_EXTS=$(psql -U postgres -d postgres -tAc \
+        FAILED_EXTS=$(psql -tAc \
             "SELECT array_to_string(failed_extensions, ', ') FROM pg_aza_status ORDER BY init_timestamp DESC LIMIT 1" \
             2>/dev/null || echo "unknown")
         echo "WARNING: Initialization partially failed. Some extensions missing: $FAILED_EXTS" >&2
@@ -86,7 +92,7 @@ if psql -U postgres -d postgres -tAc \
 fi
 
 # Tier 5: Shared Preload Libraries Verification
-ACTUAL_PRELOAD=$(psql -U postgres -d postgres -tAc \
+ACTUAL_PRELOAD=$(psql -tAc \
     "SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'" \
     2>/dev/null || echo "")
 
@@ -103,7 +109,7 @@ for lib in "${PRELOAD_LIBS[@]}"; do
 done
 
 # Tier 6: System Catalog Integrity
-CATALOG_TABLES=$(psql -U postgres -d postgres -tAc \
+CATALOG_TABLES=$(psql -tAc \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'" \
     2>/dev/null || echo "0")
 
@@ -115,7 +121,7 @@ fi
 # Tier 7: Database Role Verification
 POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"
 if [ "$POSTGRES_ROLE" != "replica" ]; then
-    IN_RECOVERY=$(psql -U postgres -d postgres -tAc \
+    IN_RECOVERY=$(psql -tAc \
         "SELECT pg_is_in_recovery()" \
         2>/dev/null || echo "t")
 

@@ -16,7 +16,7 @@ set -euo pipefail
 TARGET_DB="${POSTGRES_DB:-postgres}"
 
 # Only run if pgflow will be installed (check dependencies)
-PG_NET_READY=$(psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" | tr -d ' ')
+PG_NET_READY=$(psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_net'" | tr -d ' ')
 if [ "$PG_NET_READY" != "1" ]; then
     echo "[04a-realtime-stub] Skipping: pg_net not available (pgflow prerequisites not met)"
     exit 0
@@ -85,22 +85,22 @@ $$;
 COMMENT ON FUNCTION realtime.send IS 'pgflow event broadcaster: pg_notify + optional pgmq/pg_net (aza-pg Supabase compatibility stub)';
 
 -- SECURITY: Prevent SSRF attacks via webhook_url manipulation
--- Only trusted roles (postgres, application roles) should execute this function
+-- Only trusted roles should execute this function: superusers bypass privilege checks, every other role needs an
+-- explicit GRANT. (No GRANT to "postgres": it would add nothing, and that role does not exist when POSTGRES_USER
+-- names another superuser.)
 REVOKE EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) FROM PUBLIC;
--- Grant to postgres superuser by default (other roles must be explicitly granted)
-GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO postgres;
 EOSQL
 
 # Install in template1 first so all NEW databases inherit it
 echo "[04a-realtime-stub] Installing realtime.send() in template1 (for new databases)..."
-psql -v ON_ERROR_STOP=1 -U postgres -d template1 <<<"$REALTIME_STUB_SQL"
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d template1 <<<"$REALTIME_STUB_SQL"
 
 # Prevent connections to template1 after setup (required for CREATE DATABASE ... TEMPLATE template1)
 echo "[04a-realtime-stub] Disabling connections to template1 (prevents 'database is being accessed' errors)..."
-psql -v ON_ERROR_STOP=1 -U postgres -c "UPDATE pg_database SET datallowconn = false WHERE datname = 'template1'"
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres -c "UPDATE pg_database SET datallowconn = false WHERE datname = 'template1'"
 
 # Now install in the initial database as well
 echo "[04a-realtime-stub] Installing realtime.send() in initial database ($TARGET_DB)..."
-psql -v ON_ERROR_STOP=1 -U postgres -d "$TARGET_DB" <<<"$REALTIME_STUB_SQL"
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d "$TARGET_DB" <<<"$REALTIME_STUB_SQL"
 
 echo "[04a-realtime-stub] ✅ realtime.send() stub created in template1 (locked) and $TARGET_DB (EXECUTE revoked from PUBLIC for security)"

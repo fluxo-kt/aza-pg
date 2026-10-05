@@ -10,7 +10,7 @@ TARGET_DB="${POSTGRES_DB:-postgres}"
 
 echo "[00-aza-pg-settings] Setting aza-pg custom installation marker..."
 
-psql -U postgres -d "$TARGET_DB" -v ON_ERROR_STOP=1 <<'EOSQL'
+psql --username "$POSTGRES_USER" -d "$TARGET_DB" -v ON_ERROR_STOP=1 <<'EOSQL'
 -- Mark this as an aza-pg custom installation
 -- Using single-quoted heredoc to prevent shell interpretation
 ALTER SYSTEM SET "app.aza_pg_custom" = 'true';

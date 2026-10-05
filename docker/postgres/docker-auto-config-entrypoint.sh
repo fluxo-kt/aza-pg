@@ -490,7 +490,9 @@ AUTO_SETTINGS=(
     "wal_level=${WAL_LEVEL}"
     "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}"
     "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
-    "cron.database_name=${POSTGRES_DB:-postgres}"
+    # pg_cron lives in the database initdb creates: POSTGRES_DB, which the official entrypoint defaults to
+    # POSTGRES_USER after this script has run, so the same default is applied here.
+    "cron.database_name=${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"
     "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}"
     "wal_buffers=${WAL_BUFFERS_MB}MB"
     "min_wal_size=${MIN_WAL_SIZE_MB}MB"

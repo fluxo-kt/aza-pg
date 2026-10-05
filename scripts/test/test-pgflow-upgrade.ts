@@ -222,8 +222,11 @@ async function onReleaseVolume(
 
 const DERIVE_KEY_SQL = "SELECT encode(pgsodium.derive_key(1), 'hex')";
 
-async function upgrade(container: string): Promise<{ code: number; output: string }> {
-  const r = await docker(["exec", container, "pgflow-upgrade"]);
+async function upgrade(
+  container: string,
+  ...args: string[]
+): Promise<{ code: number; output: string }> {
+  const r = await docker(["exec", container, "pgflow-upgrade", ...args]);
   return { code: r.code, output: (r.out + r.err).trim() };
 }
 
@@ -295,6 +298,12 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     const r = await upgrade(container);
     if (r.code !== 0 || !/up to date/.test(r.output))
       throw new Error(`exit ${r.code}:\n${r.output}`);
+    // A --from contradicting the schema comment once overrode it and replayed old migrations.
+    const wrong = await upgrade(container, "--from", release.pgflow);
+    if (wrong.code === 0 || !/nothing changed/.test(wrong.output))
+      throw new Error(
+        `--from ${release.pgflow} on an upgraded database: exit ${wrong.code}:\n${wrong.output}`
+      );
     expectSame(await fingerprint(container), after, "second run changed the database");
   });
 }

@@ -3,7 +3,8 @@
 #
 # Why it exists: the image installs pgflow only when a database is first created (initdb), so a database made by an
 # older image keeps its old pgflow after the container is updated, while @pgflow/client of the new version needs the
-# new schema. Art's ruling: existing databases are never changed automatically; the operator runs this command.
+# new schema. Existing databases are never upgraded automatically: the upgrade locks pgflow's tables and has to be
+# timed with stopping workers and deploying the new client, so the operator runs this command.
 #
 # Usage: docker exec <container> pgflow-upgrade [--from VERSION] [DBNAME...]
 #   DBNAME   databases to upgrade (default: every connectable database that has a pgflow schema)
@@ -16,7 +17,7 @@
 # since this command exists), else the schema's structure matched against legacy-structure.tsv (releases images
 # shipped before the comment). Detection matters because an image never upgrades an existing database: one created
 # under an older image keeps that pgflow, whatever image runs it now, and a wrong starting version would skip
-# migrations without any error. A --from that contradicts the detected structure is refused.
+# migrations without any error. A --from that contradicts the schema comment or the detected structure is refused.
 #
 # Per database, in ONE transaction (any error rolls the whole database back): upstream migrations newer than the
 # starting release, then aza-overrides.sql (aza-pg's versions of the functions the migrations leave different from a
@@ -96,12 +97,13 @@ for db in "${dbs[@]}"; do
     failed=1
     continue
   fi
-  if [ -n "$from" ] && [ -n "$detected" ] && [ "$from" != "$detected" ]; then
-    echo "pgflow-upgrade: $db: --from $from, but its structure is pgflow $detected; nothing changed (drop --from to use the detected version)" >&2
+  known="${recorded:-$detected}"
+  if [ -n "$from" ] && [ -n "$known" ] && [ "$from" != "$known" ]; then
+    echo "pgflow-upgrade: $db: --from $from, but it is pgflow $known; nothing changed (drop --from to use the detected version)" >&2
     failed=1
     continue
   fi
-  start="${from:-${recorded:-$detected}}"
+  start="${from:-$known}"
   if [ -z "$start" ]; then
     echo "pgflow-upgrade: $db: cannot tell its current pgflow version (no 'pgflow X.Y.Z' schema comment and an unknown structure); rerun with --from VERSION, one of: $(known_versions)" >&2
     failed=1
@@ -123,9 +125,11 @@ for db in "${dbs[@]}"; do
     # Migrations create functions that read supabase_vault or pg_cron objects absent from many aza-pg databases;
     # aza-overrides.sql replaces exactly those functions in the same transaction, so body checks are deferred.
     echo "SET LOCAL check_function_bodies = off;"
-    # cat with no file operands would read stdin, so an empty pending list must not reach it.
-    [ "${#pending[@]}" -eq 0 ] || (cd "$DIR/migrations" && cat "${pending[@]}")
-    cat "$DIR/aza-overrides.sql" /opt/pgflow/security-patches.sql
+    # awk 1 ends every line, the last included, with a newline: the files end without one, and a file ending in a
+    # -- comment would otherwise swallow the next file's first statement. With no file operands it would read
+    # stdin, so an empty pending list must not reach it.
+    [ "${#pending[@]}" -eq 0 ] || (cd "$DIR/migrations" && awk 1 "${pending[@]}")
+    awk 1 "$DIR/aza-overrides.sql" /opt/pgflow/security-patches.sql
     echo "COMMENT ON SCHEMA pgflow IS 'pgflow $target';"
   } | "${PSQL[@]}" -1 -q -d "$db" >/dev/null || {
     echo "pgflow-upgrade: $db: upgrade from pgflow $start failed and was rolled back; the error is above" >&2

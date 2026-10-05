@@ -16,7 +16,6 @@
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
  * - {{PGDG_PACKAGES_INSTALL_REGRESSION}} - Regression mode PGDG package installation (all extensions)
- * - {{VERSION_INFO_GENERATION}} - Version info generation script
  *
  * Usage:
  *   bun scripts/docker/generate-dockerfile.ts
@@ -195,7 +194,6 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     echo "All ${soChecks.length} PGDG module files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
-    rm -f /tmp/extensions.manifest.json && \\
     { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
@@ -415,7 +413,7 @@ ${installCommands} && \\
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
     rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \\
+    rm -rf /var/lib/apt/lists/* && \\
     { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
@@ -590,31 +588,6 @@ function extractPgMajor(): string {
 }
 
 /**
- * Generate version info generation instructions
- * Uses a separate builder stage with Bun to generate version files
- * This ensures consistency between local testing and Docker builds
- */
-function generateVersionInfoGeneration(_manifest: Manifest): string {
-  // The version-info files are generated in a separate builder stage (builder-version-info)
-  // This stage is defined in the Dockerfile template and has Bun available
-  // The generated files are then copied to the final stage
-  //
-  // Template must include:
-  // FROM builder-base AS builder-version-info
-  // ARG PG_VERSION
-  // COPY scripts/generate-version-info.ts /tmp/
-  // RUN PG_VER=$(echo ${PG_VERSION} | awk -F'-' '{print $1}') && \
-  //     bun /tmp/generate-version-info.ts txt --pg-version=${PG_VER} > /tmp/version-info.txt && \
-  //     bun /tmp/generate-version-info.ts json --pg-version=${PG_VER} > /tmp/version-info.json
-  //
-  // Then in final stage:
-  // COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/
-  // COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/
-
-  return `# Version info files copied from builder-version-info stage (defined earlier in template)`;
-}
-
-/**
  * Generate production Dockerfile from template
  */
 async function generateProductionDockerfile(manifest: Manifest, pgMajor: string): Promise<void> {
@@ -639,9 +612,6 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating PGDG tools installation script...");
   const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
 
-  info("Generating version info generation script...");
-  const versionInfoGeneration = generateVersionInfoGeneration(manifest);
-
   // Replace placeholders
   info("Replacing placeholders...");
   dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
@@ -651,7 +621,6 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
-  dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
   dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
     sourceToolBinariesCopy(manifest)
   );

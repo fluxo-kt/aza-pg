@@ -189,7 +189,7 @@ async function cloneRepo(repo: string, commit: string, target: string): Promise<
 
   log(`Cloning ${repo} @ ${commit} (shallow)`);
 
-  // Shallow clone optimization: fetch only the specific commit (Phase 4.2)
+  // Shallow clone: fetch only the specific commit
   // Benefits: faster clone, reduced disk usage, smaller attack surface
   await gitWithRetry(["init", target], `git init ${target}`);
   await gitWithRetry(["-C", target, "remote", "add", "origin", repo], `git remote add ${repo}`);
@@ -226,7 +226,7 @@ async function ensureCargoPgrx(version: string): Promise<string> {
 
   if (!(await Bun.file(cargoPgrxBin).exists())) {
     log(`Installing cargo-pgrx ${version}`);
-    // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation (Phase 11.1)
+    // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation
     // RUSTFLAGS optimization should only apply to extension builds, not build tools
     const savedRustflags = process.env.RUSTFLAGS;
     delete process.env.RUSTFLAGS;
@@ -561,7 +561,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // GATE 1: PGDG/PERCONA SKIP CHECK (Phase 4.4 - moved after enabled check)
+  // GATE 1: PGDG/PERCONA SKIP CHECK (after the enabled check)
   // ────────────────────────────────────────────────────────────────────────────
   // Skip PGDG/Percona extensions here because they're installed via apt-get in Dockerfile
   // Note: This happens AFTER enabled check so disabled extensions are tracked

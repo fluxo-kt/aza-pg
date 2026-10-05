@@ -171,8 +171,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
 # Install ALL PGDG packages (including regression-only ones for comprehensive testing)
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
 {{PGDG_PACKAGES_INSTALL_REGRESSION}}
 
 # Copy ALL compiled extensions (including regression-only ones)

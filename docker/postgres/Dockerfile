@@ -61,25 +61,6 @@ RUN set -euo pipefail && \
     ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
     rm /tmp/.tool-versions
 
-# Build su-exec: C-based privilege-drop binary, replaces gosu in final stage.
-# gosu carries Go stdlib CVEs (CVE-2025-68121 CRITICAL + multiple HIGH) with no upstream fix.
-# su-exec is functionally identical (same CLI: user[:group] command) but pure C — no Go stdlib.
-# git/gcc/make/strip are already present from the build-essential install above.
-# SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
-# (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
-RUN set -euo pipefail && \
-    rm -rf /tmp/su-exec-build && \
-    for attempt in 1 2 3 4 5; do \
-        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
-        rm -rf /tmp/su-exec-build; \
-        [ "$attempt" != "5" ] || exit 1; \
-        sleep 2; \
-    done && \
-    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
-    make -C /tmp/su-exec-build && \
-    strip /tmp/su-exec-build/su-exec && \
-    chmod 755 /tmp/su-exec-build/su-exec
-
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
@@ -197,11 +178,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.runtime-packages.txt
 
-# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
-# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
-# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
+# Pre-compiled extensions from PGDG repository: the enabled entries' packages, pinned at generation time
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
@@ -224,7 +201,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     echo "All 10 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/extensions.manifest.json && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
@@ -319,8 +295,7 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig &
 #   5. apt-get purge gosu: no-op for the pinned postgres base image because gosu is a direct
 #      binary download in the base image, not a dpkg-owned file.
 # Fix: compile and install su-exec directly in the final stage, then verify the binary size
-# is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
-# creating an unnecessary intermediate layer with the Go binary.
+# is far below gosu's multi-MB size.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
@@ -336,7 +311,6 @@ RUN set -euo pipefail && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
-    apt-get purge -y gosu && \
     install -o root -g root -m 0755 /tmp/su-exec-build/su-exec /usr/local/bin/gosu && \
     SZ=$(stat -c%s /usr/local/bin/gosu) && \
     echo "su-exec: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
@@ -374,7 +348,7 @@ COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/local/share/aza-pg/pgs
 # Create backup directory with proper ownership
 RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
 
-# OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
+# Copy configs by stability (base config rarely changes, scripts occasionally change) for layer cache hits
 # Base PostgreSQL config (most stable - rarely modified)
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 

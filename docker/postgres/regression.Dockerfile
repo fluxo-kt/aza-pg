@@ -177,8 +177,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* /tmp/extensions.runtime-packages.txt
 
 # Install ALL PGDG packages (including regression-only ones for comprehensive testing)
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
 RUN set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
@@ -202,7 +200,7 @@ RUN set -euo pipefail && \
     echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \
     rm -f /tmp/installed-pgdg-exts.log && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json && \
+    rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Copy ALL compiled extensions (including regression-only ones)

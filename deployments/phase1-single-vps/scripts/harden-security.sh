@@ -31,8 +31,8 @@ log_info "Configuring pg_hba.conf for minimal access..."
 docker exec postgres bash -c 'cat > "$PGDATA/pg_hba.conf" << "EOF"
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 
-# Local connections (Unix socket)
-local   all             postgres                                peer
+# Local connections (Unix socket): OS user postgres, as any role, because POSTGRES_USER may rename the superuser
+local   all             all                                     peer    map=local_postgres
 
 # Local TCP (monitoring, admin)
 host    all             all             127.0.0.1/32            scram-sha-256
@@ -46,73 +46,12 @@ host    all             all             172.20.0.0/16           scram-sha-256
 
 # Deny all others
 host    all             all             0.0.0.0/0               reject
-EOF'
+EOF
+printf "local_postgres\tpostgres\tall\n" > "$PGDATA/pg_ident.conf"'
 
-docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
+# pg_ctl needs no database login, so the reload works whatever POSTGRES_USER names the superuser.
+docker exec postgres pg_ctl reload
 log_info "pg_hba.conf updated and reloaded"
-
-# 1.2: Enforce SSL/TLS (if certificates exist)
-if [ -f "$DEPLOY_DIR/ssl/server.crt" ] && [ -f "$DEPLOY_DIR/ssl/server.key" ]; then
-    log_info "Enabling SSL/TLS..."
-    docker exec postgres psql -U postgres <<EOF
-ALTER SYSTEM SET ssl = 'on';
-ALTER SYSTEM SET ssl_cert_file = 'server.crt';
-ALTER SYSTEM SET ssl_key_file = 'server.key';
-EOF
-    docker restart postgres
-    log_info "SSL enabled (restart required)"
-else
-    log_warn "SSL certificates not found. Generate with: bun run scripts/generate-ssl-certs.ts"
-fi
-
-# 1.3: Disable superuser remote login
-ADMIN_PASS=$(openssl rand -base64 32)
-docker exec postgres psql -U postgres <<EOF
-ALTER USER postgres WITH NOLOGIN;
-CREATE USER admin WITH SUPERUSER CREATEDB CREATEROLE PASSWORD '$ADMIN_PASS';
-GRANT postgres TO admin;
-EOF
-
-# Save admin password securely
-echo "ADMIN_PASSWORD=$ADMIN_PASS" >> "$DEPLOY_DIR/.env.secrets"
-chmod 600 "$DEPLOY_DIR/.env.secrets" 2>/dev/null
-
-log_info "Superuser 'postgres' disabled for remote login. Use 'admin' user instead."
-log_warn "Admin password saved to .env.secrets - STORE IN PASSWORD MANAGER IMMEDIATELY!"
-
-# 1.4: Create application-specific users
-log_info "Creating application users with least privilege..."
-source .env
-
-APP_USER_PASS=$(openssl rand -base64 32)
-READONLY_PASS=$(openssl rand -base64 32)
-
-docker exec postgres psql -U postgres <<EOF
--- Read-write application user
-CREATE USER app_user WITH PASSWORD '$APP_USER_PASS';
-GRANT CONNECT ON DATABASE ${POSTGRES_DB:-main} TO app_user;
-GRANT USAGE ON SCHEMA public TO app_user;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
-
--- Read-only user for reporting
-CREATE USER readonly WITH PASSWORD '$READONLY_PASS';
-GRANT CONNECT ON DATABASE ${POSTGRES_DB:-main} TO readonly;
-GRANT USAGE ON SCHEMA public TO readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
-EOF
-
-# Save application passwords securely
-echo "APP_USER_PASSWORD=$APP_USER_PASS" >> "$DEPLOY_DIR/.env.secrets"
-echo "READONLY_PASSWORD=$READONLY_PASS" >> "$DEPLOY_DIR/.env.secrets"
-
-log_info "Application users created:"
-log_info "  app_user (read-write): [saved to .env.secrets]"
-log_info "  readonly (read-only): [saved to .env.secrets]"
-log_warn "All passwords saved to .env.secrets - STORE IN PASSWORD MANAGER IMMEDIATELY!"
 
 # 2. File Permissions
 log_info "2. Setting file permissions..."
@@ -173,45 +112,8 @@ else
     log_warn "UFW not installed. Install: apt install ufw"
 fi
 
-# 6. Audit Logging
-log_info "6. Enabling audit logging..."
-
-docker exec postgres psql -U postgres <<EOF
--- Enable pgaudit (already loaded via shared_preload_libraries)
-CREATE EXTENSION IF NOT EXISTS pgaudit;
-
--- Configure audit settings
-ALTER SYSTEM SET pgaudit.log = 'ddl, write';
-ALTER SYSTEM SET pgaudit.log_catalog = 'off';
-ALTER SYSTEM SET pgaudit.log_parameter = 'on';
-ALTER SYSTEM SET pgaudit.log_relation = 'on';
-ALTER SYSTEM SET pgaudit.log_statement_once = 'on';
-
-SELECT pg_reload_conf();
-EOF
-
-log_info "pgaudit configured for DDL and write operations"
-
-# 7. Password Policy
-log_info "7. Enforcing password policy..."
-
-docker exec postgres psql -U postgres <<EOF
--- Require strong passwords (via pg_crypto if available)
--- Note: SCRAM-SHA-256 already enforced via pg_hba.conf
-
--- Log failed authentication attempts
-ALTER SYSTEM SET log_connections = 'on';
-ALTER SYSTEM SET log_disconnections = 'on';
-ALTER SYSTEM SET log_duration = 'off';
-ALTER SYSTEM SET log_hostname = 'on';
-
-SELECT pg_reload_conf();
-EOF
-
-log_info "Connection logging enabled"
-
-# 8. Automated Security Updates
-log_info "8. Enabling automatic security updates..."
+# 6. Automated Security Updates
+log_info "6. Enabling automatic security updates..."
 
 if command -v unattended-upgrades &>/dev/null; then
     log_info "unattended-upgrades already installed"
@@ -220,8 +122,8 @@ else
     dpkg-reconfigure -plow unattended-upgrades
 fi
 
-# 9. Fail2Ban (optional)
-log_info "9. Checking Fail2Ban..."
+# 7. Fail2Ban (optional)
+log_info "7. Checking Fail2Ban..."
 
 if command -v fail2ban-client &>/dev/null; then
     log_info "Fail2Ban installed"
@@ -229,8 +131,8 @@ else
     log_warn "Fail2Ban not installed. Recommended: apt install fail2ban"
 fi
 
-# 10. Security Checklist
-log_info "10. Security Checklist"
+# 8. Security Checklist
+log_info "8. Security Checklist"
 
 echo ""
 echo "========================================="
@@ -239,24 +141,13 @@ echo "========================================="
 echo ""
 echo "✓ pg_hba.conf restricted to minimal access"
 echo "✓ File permissions hardened"
-echo "✓ Application users created with least privilege"
-echo "✓ pgaudit enabled for DDL/write operations"
-echo "✓ Connection logging enabled"
 echo ""
 echo "TODO (Manual Steps):"
-echo "  [ ] Generate SSL certificates: bun run scripts/generate-ssl-certs.ts"
+echo "  [ ] Enable TLS (docs/DEPLOYMENT.md, SSL/TLS for PostgreSQL)"
 echo "  [ ] Enable UFW firewall: ufw --force enable"
 echo "  [ ] Install Fail2Ban: apt install fail2ban"
-echo "  [ ] Update application connection strings to use 'app_user'"
+echo "  [ ] Create least-privilege application roles (docs/DEPLOYMENT.md, Application-Specific Database Users)"
 echo "  [ ] Configure backup encryption in Postgresus/pgBackRest"
 echo "  [ ] Set up monitoring alerts for failed auth attempts"
-echo "  [ ] Document admin user password in password manager"
 echo "  [ ] Review and test disaster recovery procedures"
-echo ""
-echo "CRITICAL:"
-echo "  - New admin user password: (shown above)"
-echo "  - app_user password: (shown above)"
-echo "  - readonly password: (shown above)"
-echo ""
-echo "  SAVE THESE IMMEDIATELY IN YOUR PASSWORD MANAGER!"
 echo ""

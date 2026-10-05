@@ -271,11 +271,14 @@ if [ -f "$DEPLOY_DIR/.env" ]; then
 fi
 
 # Test 8.3: File permissions
-USERLIST_PERMS=$(stat -c "%a" "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null || echo "000")
-if [ "$USERLIST_PERMS" = "600" ]; then
-    test_pass "userlist.txt permissions correct (600)"
+# PgBouncer runs as uid 70: at mode 600 it reads the file only if it owns it
+USERLIST_PERMS=$(stat -c "%a %u" "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null || echo "000 -")
+if [ "$USERLIST_PERMS" = "600 70" ]; then
+    test_pass "userlist.txt permissions correct (600, owner uid 70)"
+elif [ "${USERLIST_PERMS#600 }" != "$USERLIST_PERMS" ]; then
+    test_fail "userlist.txt is mode 600 but owned by uid ${USERLIST_PERMS#600 }: PgBouncer (uid 70) cannot read it; chown 70:70"
 else
-    test_warn "userlist.txt permissions: $USERLIST_PERMS (should be 600)"
+    test_warn "userlist.txt mode/owner: $USERLIST_PERMS (should be 600 70)"
 fi
 
 test_section "9. Resource Usage"

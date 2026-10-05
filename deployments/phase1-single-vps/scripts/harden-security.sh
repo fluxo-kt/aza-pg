@@ -57,7 +57,9 @@ log_info "pg_hba.conf updated and reloaded"
 log_info "2. Setting file permissions..."
 
 chmod 600 "$DEPLOY_DIR/.env" 2>/dev/null || log_warn ".env not found"
-chmod 600 "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null || log_warn "userlist.txt not found"
+# PgBouncer runs as uid 70 and must own the file to read it at mode 600
+chown 70:70 "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null && chmod 600 "$DEPLOY_DIR/pgbouncer/userlist.txt" ||
+    log_warn "userlist.txt: chown 70:70 / chmod 600 failed (file missing, or not root)"
 chmod 600 "$DEPLOY_DIR/pgbackrest/pgbackrest.conf" 2>/dev/null || log_warn "pgbackrest.conf not found"
 
 if [ -d "$DEPLOY_DIR/ssl" ]; then

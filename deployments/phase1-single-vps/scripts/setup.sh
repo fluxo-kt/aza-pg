@@ -140,6 +140,11 @@ docker exec postgres psql -U postgres -Atq -c \
     "SELECT '\"' || usename || '\" \"' || passwd || '\"' FROM pg_shadow WHERE usename IN ('postgres', '${MONITORING_USER:-monitoring}');" \
     > "$DEPLOY_DIR/pgbouncer/userlist.txt"
 
+# PgBouncer runs as uid 70: a mode-600 file it does not own cannot be opened, and it then starts with no logins
+if ! chown 70:70 "$DEPLOY_DIR/pgbouncer/userlist.txt"; then
+    log_error "chown 70:70 pgbouncer/userlist.txt failed (needs root); PgBouncer could not read it"
+    exit 1
+fi
 chmod 600 "$DEPLOY_DIR/pgbouncer/userlist.txt"
 log_info "PgBouncer userlist.txt generated"
 

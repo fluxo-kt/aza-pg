@@ -449,7 +449,7 @@ The aza-pg image includes multiple extensions with some disabled by default. You
 
 ### Connection Limits
 
-**PgBouncer:** Max 200 client connections (configurable in `pgbouncer.ini`)
+**PgBouncer:** Max 200 client connections (`PGBOUNCER_MAX_CLIENT_CONN` in `.env`)
 **Postgres:** Auto-calculated based on RAM and work_mem
 
 **Increase:** Edit `.env`:

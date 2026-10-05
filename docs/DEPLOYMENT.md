@@ -325,23 +325,15 @@ openssl rand -base64 32
 
 **5.4 Configure Volumes**
 
-Copy configuration files to Coolify persistent storage:
+The compose file bind-mounts configuration files from paths next to it, and creates its data volumes (`postgres_data`, `prometheus_data`, `grafana_data`) on first deploy:
+
+- `prometheus/prometheus.yml` and `prometheus/postgres_exporter_queries.yaml`
+- `grafana/provisioning/`
+- `pgbouncer/userlist.txt`: generated from PostgreSQL after the first start (see `pgbouncer/userlist.txt.example`); PgBouncer runs as uid 70, so `chown 70:70` it before `chmod 600`
 
 **Method 1: Via Coolify File Manager (Recommended)**
 
-1. In Coolify UI, go to: Storage tab
-2. Create volumes for:
-   - `prometheus_config`
-   - `prometheus_data`
-   - `grafana_data`
-   - `pgbouncer_config`
-   - `pgbackrest_config`
-   - `postgres_data`
-
-3. Use File Manager to upload files:
-   - Upload `prometheus/prometheus.yml` to `prometheus_config` volume
-   - Upload `pgbouncer/pgbouncer.ini` to `pgbouncer_config` volume
-   - Upload `pgbackrest/pgbackrest.conf` to `pgbackrest_config` volume
+In Coolify UI, Storage tab: add each file above at the path the compose file mounts it from.
 
 **Method 2: Via SSH (Bare VPS Alternative)**
 
@@ -354,12 +346,8 @@ mkdir -p /opt/aza-pg-stack
 cd /opt/aza-pg-stack
 
 # Copy files from repository
-# - Copy docker-compose.yml
-# - Copy prometheus/prometheus.yml
-# - Copy pgbouncer/pgbouncer.ini
-# - Copy pgbackrest/pgbackrest.conf
-# - Copy grafana/ directory
-# - Copy scripts/ directory
+# - Copy docker-compose.yml, .env.example (as .env)
+# - Copy prometheus/, grafana/, pgbouncer/ and scripts/ directories
 ```
 
 **5.5 Deploy the Stack**
@@ -388,6 +376,7 @@ docker compose ps
 - postgres (running, port 5432/tcp)
 - pgbouncer (running, port 6432/tcp)
 - postgres-exporter (running, port 9187/tcp)
+- pgbouncer-exporter (running, port 9127/tcp)
 - prometheus (running, port 9090/tcp)
 - grafana (running, port 3000/tcp)
 
@@ -1549,9 +1538,8 @@ All configuration files are in:
 **Key files to copy to Coolify:**
 
 - `docker-compose.yml` - Main stack definition
-- `prometheus/prometheus.yml` - Metrics collection config
-- `pgbouncer/pgbouncer.ini` - Connection pooler config
-- `pgbackrest/pgbackrest.conf` - Backup tool config (if using)
+- `prometheus/` - Metrics collection config and the exporter's queries
+- `pgbouncer/userlist.txt` - Connection pooler logins, generated after the first start
 - `grafana/` - Dashboard configurations
 - `scripts/` - Helper scripts
 

@@ -34,7 +34,7 @@
 #    - push_image=false: Single-platform amd64, local load (no push)
 #    - push_image=true: Multi-platform (amd64 + arm64 native), push to registry
 # 3. Test: every routine suite group of scripts/test-all.ts (push_image=true only)
-# 4. Scan: Trivy security vulnerability scan
+# 4. Scan: Trivy security vulnerability scan (push_image=true only)
 # 5. Output: Full test report, image digest, SHA hashes
 #
 # BUILD METHOD:
@@ -50,7 +50,7 @@
 # When push_image=false:
 #   - Single-platform amd64 build
 #   - No push to registry (local load only)
-#   - Fast iteration for local testing
+#   - Fast iteration for local testing; no tests or scan (later jobs run on other runners and cannot see it)
 #
 # HOW TO TRIGGER:
 # ---------------
@@ -355,7 +355,9 @@ jobs:
     name: Scan Image for Vulnerabilities
     runs-on: ubuntu-latest
     needs: [build, merge]
-    if: always() && needs.build.result == 'success'
+    # Pushed images only: a push_image=false build exists only in its own build job's Docker, which this runner
+    # cannot see (the test jobs follow the same rule).
+    if: always() && needs.build.result == 'success' && github.event.inputs.push_image == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -366,17 +368,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GitHub Container Registry
-        if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/ghcr-login
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Bun and dependencies
-        if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/setup-bun
 
-      - name: Pull built image (pushed)
-        if: github.event.inputs.push_image == 'true'
+      - name: Pull built image
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
@@ -384,27 +383,6 @@ jobs:
             --max-retries 3
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan
           echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
-
-      - name: Use local image (not pushed)
-        if: github.event.inputs.push_image != 'true'
-        run: |
-          set -euo pipefail
-          echo "🔍 Using locally built image for security scan..."
-          # When loaded locally, image name may not include registry prefix
-          # Try with registry prefix first, fallback to finding local tag
-          if docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan 2>/dev/null; then
-            echo "📦 Tagged image with registry prefix for scanning"
-          else
-            # Find the locally built image by tag pattern
-            LOCAL_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1)
-            if [ -n "$LOCAL_IMAGE" ]; then
-              docker tag "$LOCAL_IMAGE" aza-pg-testing:scan
-              echo "📦 Tagged local image $LOCAL_IMAGE for scanning"
-            else
-              echo "❌ Could not find locally built image"
-              exit 1
-            fi
-          fi
 
       - name: Cache Trivy vulnerability database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -470,18 +448,13 @@ jobs:
             echo "### Security Scan Results :shield:"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
-            DIGEST="${{ needs.merge.outputs.image_digest }}"
+          DIGEST="${{ needs.merge.outputs.image_digest }}"
           echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST:0:12}\`" >> "$GITHUB_STEP_SUMMARY"
-          else
-            TAG="dev-${{ github.ref_name }}"
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}\` (local build)" >> "$GITHUB_STEP_SUMMARY"
-          fi
           {
             echo ""
             echo "**Severity Filter:** CRITICAL, HIGH"
             echo ""
-            echo "Scan completed. Check Security tab for details (if pushed)."
+            echo "Scan completed. Check Security tab for details."
           } >> "$GITHUB_STEP_SUMMARY"
 
   test:

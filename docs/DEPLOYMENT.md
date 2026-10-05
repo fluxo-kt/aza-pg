@@ -1561,7 +1561,7 @@ All configuration files are in:
 **Documentation:**
 
 - Project README: [README.md](../README.md)
-- Architecture: [ARCHITECTURE.md](../ARCHITECTURE.md)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 **Monitoring:**
 

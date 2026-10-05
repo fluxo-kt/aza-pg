@@ -34,16 +34,30 @@ const MOUNTS = [
 const created: string[] = [];
 const failures: string[] = [];
 
-/** Run the entrypoint to completion; a rejected input exits before `exec pgbouncer`, so this never blocks. */
+/**
+ * Run the entrypoint to completion. A rejected input exits before `exec pgbouncer`; an input the validation wrongly
+ * accepts starts PgBouncer, which never exits, so the container is removed at the deadline and the case fails.
+ */
 async function runEntrypoint(env: Record<string, string>): Promise<{ code: number; out: string }> {
   const name = generateUniqueContainerName("aza-pg-pgbouncer-entrypoint");
   created.push(name);
   const envArgs = Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+  let timedOut = false;
+  // Bun.spawn, not $: a Bun shell command only starts when awaited, and nothing awaits this one.
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    Bun.spawn(["docker", "rm", "-f", "-v", name], { stdout: "ignore", stderr: "ignore" });
+  }, TIMEOUTS.health * 1000);
   const r =
     await $`docker run --name ${name} ${envArgs} ${MOUNTS} --entrypoint /bin/sh ${PGBOUNCER_IMAGE} /opt/pgbouncer-entrypoint.sh`
       .nothrow()
       .quiet();
-  return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+  clearTimeout(deadline);
+  const out = r.stdout.toString() + r.stderr.toString();
+  return {
+    code: r.exitCode,
+    out: timedOut ? `still running after ${TIMEOUTS.health}s:\n${out}` : out,
+  };
 }
 
 const VALID = { PGBOUNCER_AUTH_PASS: "secret", PGBOUNCER_LISTEN_ADDR: "0.0.0.0" };

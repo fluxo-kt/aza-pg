@@ -174,9 +174,10 @@ async function main(): Promise<void> {
     warning(`Certificates already exist in ${certDir}`);
     const shouldOverwrite = await promptConfirmation("Overwrite existing certificates?");
 
+    // Non-zero: no certificates were generated (an empty or closed stdin also lands here)
     if (!shouldOverwrite) {
       info("Aborted");
-      process.exit(0);
+      process.exit(1);
     }
 
     await removeExistingCerts(certDir);

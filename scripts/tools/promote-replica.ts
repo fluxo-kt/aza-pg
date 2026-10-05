@@ -104,9 +104,10 @@ if (!yes) {
   warning(`About to promote '${container}' to primary. This is one-way.`);
   warning("The old primary MUST already be stopped, or both will accept writes (split-brain).");
   const answer = prompt("Type 'yes' to continue:");
+  // prompt() returns null at EOF. Non-zero, so `promote-replica.ts && <repoint clients>` stops when nothing was promoted.
   if (answer?.trim().toLowerCase() !== "yes") {
     info("Promotion cancelled");
-    process.exit(0);
+    process.exit(1);
   }
 }
 

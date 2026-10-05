@@ -557,9 +557,11 @@ docker logs postgres --since 24h | grep "FATAL.*authentication failed"
 docker exec postgres psql -U postgres -c \
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_addr = 'SUSPICIOUS_IP';"
 
-# 4. Update pg_hba.conf to block IP
+# 4. Block the IP. pg_hba.conf is read top-down and the first matching line wins, so the reject line goes first
+#    (appended, it never applies). Plain container: the file is in PGDATA. Compose stacks: the server reads
+#    stacks/<stack>/configs/pg_hba.conf, mounted read-only — insert the same first line there on the host.
 docker exec postgres bash -c \
-    'echo "host all all SUSPICIOUS_IP/32 reject" >> "$PGDATA/pg_hba.conf"'
+    'sed -i "1i host all all SUSPICIOUS_IP/32 reject" "$PGDATA/pg_hba.conf"'
 
 docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
 
@@ -584,7 +586,7 @@ docker exec postgres psql -U postgres -c \
 - Check connections: `psql -U postgres` then run the pg_stat_activity query
 - View failed auth: Go to Service → Logs tab → search for "FATAL.\*authentication failed"
 - Kill connections via Terminal: `psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_addr = 'SUSPICIOUS_IP';"`
-- Update pg_hba.conf via Terminal: `echo 'host all all SUSPICIOUS_IP/32 reject' >> "$PGDATA/pg_hba.conf"`
+- Update pg_hba.conf via Terminal, as its first line (the first matching line wins): `sed -i '1i host all all SUSPICIOUS_IP/32 reject' "$PGDATA/pg_hba.conf"`
 - Reload config: `psql -U postgres -c "SELECT pg_reload_conf();"`
 - Rotate password via Terminal
 - Update .env: Go to Service → Environment Variables → update POSTGRES_PASSWORD

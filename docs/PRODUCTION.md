@@ -240,20 +240,7 @@ docker exec aza-pg-postgres-primary pg_dump -U postgres postgres | gzip > backup
 
 pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest` (built from source).
 
-For production backup configuration, see `examples/backup/` directory which contains:
-
-- Sample compose configuration for running pgBackRest as a separate service
-- Documentation on stanza creation, backup schedules, and retention policies
-- Point-in-Time Recovery (PITR) restore procedures
-
-Example backup commands:
-
-```bash
-# Manual backup via installed pgbackrest
-docker exec aza-pg-postgres-primary pgbackrest backup --stanza=main --type=full
-```
-
-See `examples/backup/README.md` for comprehensive backup strategy and automation examples.
+Continuous WAL archiving, scheduled backups and point-in-time restore: [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md) (settings in `examples/backup/compose.yml`).
 
 ## Troubleshooting
 

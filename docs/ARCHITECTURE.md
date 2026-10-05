@@ -416,9 +416,9 @@ Primary PostgreSQL
     └─► Incremental Backup (hourly)
 ```
 
-**Location:** `examples/backup/` directory (not included in main stacks)
+**Setup:** `examples/backup/compose.yml` adds pgBackRest's settings to a stack's postgres service, where pgBackRest runs (archive_command runs there, and it reaches PostgreSQL through the local socket); guide: [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md)
 
-**Restore:** `pgbackrest restore` from backup volume
+**Restore:** `pgbackrest restore` from the backup volume
 
 ## Design Philosophy
 

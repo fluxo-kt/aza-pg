@@ -533,6 +533,8 @@ jobs:
         run: bun scripts/test-all.ts --group "${{ matrix.group }}" --image "$TEST_IMAGE"
 
       - name: Capture test diagnostics
+        # Without it the step inherits success() and is skipped after the failed suite it exists for
+        if: failure()
         uses: ./.github/actions/capture-test-diagnostics
         with:
           test-type: ${{ matrix.group }}

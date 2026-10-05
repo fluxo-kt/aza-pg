@@ -6,6 +6,9 @@
  */
 
 import { $ } from "bun";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { cleanPsqlOutput, normalizeRegressionOutput } from "./output-normalizer";
 
 /**
@@ -254,11 +257,9 @@ async function generateDiff(
   actual: string,
   testName: string
 ): Promise<string | null> {
+  // A private directory: a fixed shared path let two runs on one host overwrite each other's files mid-diff
+  const tmpDir = await mkdtemp(join(tmpdir(), "pg-regression-"));
   try {
-    // Write expected and actual to temporary files
-    const tmpDir = "/tmp/pg-regression";
-    await $`mkdir -p ${tmpDir}`.quiet();
-
     const expectedPath = `${tmpDir}/${testName}.expected`;
     const actualPath = `${tmpDir}/${testName}.actual`;
 
@@ -282,6 +283,8 @@ async function generateDiff(
     // diff command not available or other error
     console.warn(`Warning: Could not generate diff for ${testName}: ${error}`);
     return null;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
   }
 }
 

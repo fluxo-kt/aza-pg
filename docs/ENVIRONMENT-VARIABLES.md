@@ -102,8 +102,10 @@ cd stacks/single && cp .env.example .env
 # Edit: POSTGRES_PASSWORD=<strong-password>
 docker compose up -d
 
-# Custom RAM + workload
-POSTGRES_MEMORY=4096 POSTGRES_WORKLOAD_TYPE=oltp docker compose up -d
+# Custom RAM + workload: put them in .env (the stacks pass .env into the container; a variable set on the
+# docker compose command line only fills compose's own ${...} and never reaches PostgreSQL)
+echo 'POSTGRES_MEMORY=4096' >> .env && echo 'POSTGRES_WORKLOAD_TYPE=oltp' >> .env
+docker compose up -d
 ```
 
 ## Security Notes

@@ -1,6 +1,6 @@
 # aza-pg
 
-PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
+PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment stacks. Single Docker image adapts to its memory and CPU limits (512 MB minimum). Docker Compose only.
 
 > **Open Source Notice:** This is MIT licensed open source software provided AS IS with NO WARRANTY, NO SUPPORT, and NO LIABILITY. Docker images are published for convenience but come with NO GUARANTEES of functionality, security, or maintenance. Use at your own risk.
 
@@ -16,7 +16,7 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 
 - PostgreSQL 18 only (no multi-version support)
 - Docker Compose only (no Kubernetes)
-- Auto-config requires cgroup v2 or `POSTGRES_MEMORY` env var
+- Auto-config sizes from `POSTGRES_MEMORY` or the cgroup v2 limit; without either it falls back to the host's RAM and warns
 - Connection limits: 60 (≤2GB), 84 (2-4GB), 102 (4-8GB), 120 (≥8GB) with `mixed` workload default
 - PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
 
@@ -70,7 +70,7 @@ See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.
 
 ## Image Details
 
-~250MB compressed / ~900MB uncompressed (amd64 + arm64). Multi-stage build with parallel compilation. Runtime: ca-certificates, zstd, lz4.
+amd64 + arm64. Multi-stage build: extensions compile in builder stages, and the final image carries only runtime files.
 
 ## Quick Start
 
@@ -110,7 +110,7 @@ Configs in `stacks/{primary,replica,single}`.
 
 ### Auto-Config
 
-Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at startup:
+Detects RAM (`POSTGRES_MEMORY` → cgroup v2 limit → /proc/meminfo) and CPU at startup:
 
 | RAM  | shared_buffers | effective_cache_size | work_mem | max_connections\* |
 | ---- | -------------- | -------------------- | -------- | ----------------- |

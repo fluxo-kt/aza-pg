@@ -155,15 +155,11 @@ bun scripts/docker/validate-published-image-artifacts.ts  # Validate published i
 **Regression Testing:**
 
 ```bash
-# Run all regression tests
-bun scripts/test/run-all-regression-tests.ts
-
-# Run specific tier
-bun scripts/test/run-all-regression-tests.ts --tier=2  # Tier 2: Extension tests
-bun scripts/test/run-all-regression-tests.ts --tier=3 # Tier 3: Interaction tests
+# Run all regression tests (extension SQL vs expected output, extension interactions)
+bun scripts/test-all.ts --group regression
 
 # Run in regression mode (all extensions including disabled ones)
-bun scripts/test/run-all-regression-tests.ts --mode=regression
+bun scripts/test-all.ts --group nightly
 
 # Build regression image (includes pgTAP + all extensions)
 bun scripts/build.ts --regression

@@ -64,10 +64,16 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
   { path: "scripts/test/test-pgflow.ts", group: "features" },
   { path: "scripts/test/test-pgflow-upgrade.ts", group: "features" },
-  // Runs test-extension-regression.ts and test-extension-interactions.ts.
-  { path: "scripts/test/run-all-regression-tests.ts", group: "regression" },
+  // Extension SQL against expected output, and extension interactions; nightly also covers comprehensive-only ones.
+  { path: "scripts/test/test-extension-regression.ts", group: "regression" },
+  { path: "scripts/test/test-extension-interactions.ts", group: "regression" },
   {
-    path: "scripts/test/run-all-regression-tests.ts",
+    path: "scripts/test/test-extension-regression.ts",
+    group: "nightly",
+    args: ["--mode=regression"],
+  },
+  {
+    path: "scripts/test/test-extension-interactions.ts",
     group: "nightly",
     args: ["--mode=regression"],
   },

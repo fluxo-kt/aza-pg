@@ -21,19 +21,18 @@ The regression testing system provides multi-tier validation to ensure correctne
 ## Quick Start
 
 ```bash
-# Run all regression tests
-bun scripts/test/run-all-regression-tests.ts
+# Both suites in parallel, production mode (CI's regression lane)
+bun scripts/test-all.ts --group regression
 
-# Run specific tier
-bun scripts/test/run-all-regression-tests.ts --tier=2  # Tier 2: Extension tests
-bun scripts/test/run-all-regression-tests.ts --tier=3 # Tier 3: Interaction tests
+# One suite
+bun scripts/test/test-extension-regression.ts    # Tier 2: extension SQL vs expected output
+bun scripts/test/test-extension-interactions.ts  # Tier 3: extension interactions
 
-# Run in regression mode (all extensions)
-bun scripts/test/run-all-regression-tests.ts --mode=regression
-
-# Use master runner for advanced options
-bun scripts/test/run-all-regression-tests.ts --help
+# Regression mode (also extensions the release image disables), as the nightly run does
+bun scripts/test-all.ts --group nightly
 ```
+
+Each suite takes `--mode=production|regression`; without it, `TEST_MODE` decides, else production.
 
 ## Test Modes
 
@@ -56,12 +55,7 @@ Tests exact release image behavior with enabled extensions only.
 **Activation:**
 
 ```bash
-# Default mode
-bun scripts/test/run-all-regression-tests.ts
-
-# Explicit
-bun scripts/test/run-all-regression-tests.ts --mode=production
-bun scripts/test/run-all-regression-tests.ts --mode=production
+bun scripts/test-all.ts --group regression
 ```
 
 ### Regression Mode
@@ -84,8 +78,7 @@ Tests all extensions including disabled ones for comprehensive coverage.
 **Activation:**
 
 ```bash
-bun scripts/test/run-all-regression-tests.ts --mode=regression
-bun scripts/test/run-all-regression-tests.ts --mode=regression
+bun scripts/test-all.ts --group nightly
 
 # Build regression image
 bun scripts/build.ts --regression
@@ -110,7 +103,7 @@ Extension-specific functionality tests.
 
 ```bash
 # Run all extension tests
-bun scripts/test/run-all-regression-tests.ts --tier=2
+bun scripts/test/test-extension-regression.ts
 
 # Run specific extensions
 bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb
@@ -156,11 +149,7 @@ Tests combinations of extensions and edge cases.
 **Usage:**
 
 ```bash
-# Run all interaction tests
-bun scripts/test/run-all-regression-tests.ts --tier=3
-
-# Verbose mode
-bun scripts/test/test-extension-interactions.ts --verbose
+bun scripts/test/test-extension-interactions.ts
 ```
 
 **Interaction Test Examples:**
@@ -181,41 +170,6 @@ await client.query(`SELECT create_hypertable('ts_vectors', 'time')`);
 ### pgTAP
 
 The regression image (`regression.Dockerfile`) installs pgTAP for ad-hoc SQL tests; the repository ships no pgTAP test files.
-
-## Master Test Runner
-
-Orchestrates all regression test tiers with flexible execution modes.
-
-**Script:** `scripts/test/run-all-regression-tests.ts`
-
-**Options:**
-
-```bash
---mode=MODE           # Test mode: production or regression (default: production)
---tier=TIER           # Run specific tier only: 1, 2, or 3
---fast                # Skip slow tests (use minimal test sets)
---no-cleanup          # Don't cleanup containers after tests
---generate-expected   # Generate expected outputs for extension tests
---verbose             # Show detailed output
---help                # Show help message
-```
-
-**Examples:**
-
-```bash
-# All tiers, production mode
-bun scripts/test/run-all-regression-tests.ts
-
-# All tiers, regression mode
-bun scripts/test/run-all-regression-tests.ts --mode=regression
-TEST_MODE=regression bun scripts/test/run-all-regression-tests.ts
-
-# Generate expected outputs for Tier 2
-bun scripts/test/run-all-regression-tests.ts --tier=2 --generate-expected
-
-# Verbose output for debugging
-bun scripts/test/run-all-regression-tests.ts --verbose
-```
 
 ## CI/CD Integration
 
@@ -343,7 +297,7 @@ bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb --
 
 ```bash
 # Verbose mode
-bun scripts/test/run-all-regression-tests.ts --verbose
+bun scripts/test/test-extension-regression.ts --verbose
 ```
 
 ### Test Locally

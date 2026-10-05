@@ -273,9 +273,9 @@ This pattern adds 2 minutes to test writing but saves hours of debugging.
 Quick reference:
 
 ```bash
-bun scripts/test/run-all-regression-tests.ts          # All tiers
-bun scripts/test/run-all-regression-tests.ts --tier=2   # Tier 2: Extension tests
-bun scripts/test/run-all-regression-tests.ts --mode=regression  # Regression mode (all extensions)
+bun scripts/test-all.ts --group regression           # Both suites, production mode
+bun scripts/test/test-extension-regression.ts        # Tier 2: extension SQL vs expected output
+bun scripts/test-all.ts --group nightly              # Regression mode (all extensions)
 ```
 
 ---

@@ -284,7 +284,7 @@ The changelog focuses changes affecting the **release Docker image** only!
 ## References
 
 - CHANGELOG.md — Release history (image-affecting changes)
-- ARCHITECTURE.md — System design
+- docs/ARCHITECTURE.md — System design
 - docs/TESTING.md — Test patterns
 - docs/BUILD.md — CI/CD workflows
 - docs/TOOLING.md — Tech decisions

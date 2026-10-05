@@ -11,15 +11,22 @@
  * as that same superuser: a healthcheck looking elsewhere leaves the container unhealthy for good.
  *
  * Three containers boot in parallel: the default database, a custom POSTGRES_DB, and a superuser
- * renamed by POSTGRES_USER (no postgres role exists, and POSTGRES_DB defaults to that user's name).
+ * renamed through POSTGRES_USER_FILE (Docker secrets: no postgres role exists, POSTGRES_DB defaults to
+ * that user's name, and only the file carries it, so the image must read it the way the official
+ * entrypoint does). The plain POSTGRES_USER rename runs in the primary-stack suite.
  *
  * Usage: bun scripts/test/test-pg-cron-postgres-db.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
+import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const image = resolveImageTag();
+const userFile = join(tmpdir(), `${generateUniqueContainerName("aza-pg-cron-user")}.secret`);
+await Bun.write(userFile, "admin\n");
 const REQUIRED_PGFLOW_TABLES = [
   "flows",
   "steps",
@@ -56,7 +63,12 @@ const cases: Case[] = [
     container: generateUniqueContainerName("aza-pg-cron-user"),
     database: "admin",
     user: "admin",
-    env: ["-e", "POSTGRES_USER=admin"],
+    env: [
+      "-v",
+      `${userFile}:/run/secrets/postgres_user:ro`,
+      "-e",
+      "POSTGRES_USER_FILE=/run/secrets/postgres_user",
+    ],
   },
 ];
 
@@ -142,5 +154,6 @@ try {
   console.error(`FAIL: setup: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   await $`docker rm -f -v ${cases.map((c) => c.container)}`.quiet().nothrow();
+  await rm(userFile, { force: true });
 }
 process.exit(failed ? 1 : 0);

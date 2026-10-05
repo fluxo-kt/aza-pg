@@ -39,16 +39,25 @@ export function generateHealthcheckScript(
   lines.push("set -euo pipefail");
   lines.push("");
   lines.push(
-    "# Check as the superuser, in the database initdb created and the init scripts filled, with the official entrypoint's"
+    "# Check as the superuser, in the database initdb created and the init scripts filled, resolved like the official"
   );
   lines.push(
-    "# defaults: POSTGRES_USER may name a role other than postgres, and POSTGRES_DB defaults to POSTGRES_USER. An operator's"
+    "# entrypoint's file_env: each variable, else its *_FILE's content; POSTGRES_USER defaults to postgres, POSTGRES_DB to"
   );
   lines.push(
-    "# own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and shared_preload_libraries is superuser-only."
+    "# the user. An operator's own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and"
   );
-  lines.push('export PGUSER="${POSTGRES_USER:-postgres}"');
-  lines.push('export PGDATABASE="${POSTGRES_DB:-$PGUSER}"');
+  lines.push("# shared_preload_libraries is superuser-only.");
+  lines.push("env_or_file() {");
+  lines.push('    local file_var="${1}_FILE"');
+  lines.push(
+    '    if [ -n "${!1:-}" ]; then printf \'%s\' "${!1}"; elif [ -n "${!file_var:-}" ]; then cat "${!file_var}"; fi'
+  );
+  lines.push("}");
+  lines.push('PGUSER="$(env_or_file POSTGRES_USER)"');
+  lines.push('export PGUSER="${PGUSER:-postgres}"');
+  lines.push('PGDATABASE="$(env_or_file POSTGRES_DB)"');
+  lines.push('export PGDATABASE="${PGDATABASE:-$PGUSER}"');
   lines.push("");
 
   // Version-specific expectations (baked in from manifest)

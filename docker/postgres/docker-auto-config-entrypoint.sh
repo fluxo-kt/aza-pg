@@ -480,6 +480,17 @@ fi
 
 echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
 
+# pg_cron lives in the database initdb creates, which the official entrypoint resolves only after this script has
+# run, with file_env: POSTGRES_DB (or the content of POSTGRES_DB_FILE), else the superuser's name, POSTGRES_USER (or
+# POSTGRES_USER_FILE), else postgres. The same resolution is repeated here.
+env_or_file() {
+    local file_var="${1}_FILE"
+    if [ -n "${!1:-}" ]; then printf '%s' "${!1}"; elif [ -n "${!file_var:-}" ]; then cat "${!file_var}"; fi
+}
+CRON_DATABASE="$(env_or_file POSTGRES_DB)"
+CRON_DATABASE="${CRON_DATABASE:-$(env_or_file POSTGRES_USER)}"
+CRON_DATABASE="${CRON_DATABASE:-postgres}"
+
 AUTO_SETTINGS=(
     "shared_buffers=${SHARED_BUFFERS_MB}MB"
     "effective_cache_size=${EFFECTIVE_CACHE_MB}MB"
@@ -490,9 +501,7 @@ AUTO_SETTINGS=(
     "wal_level=${WAL_LEVEL}"
     "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}"
     "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
-    # pg_cron lives in the database initdb creates: POSTGRES_DB, which the official entrypoint defaults to
-    # POSTGRES_USER after this script has run, so the same default is applied here.
-    "cron.database_name=${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"
+    "cron.database_name=${CRON_DATABASE}"
     "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}"
     "wal_buffers=${WAL_BUFFERS_MB}MB"
     "min_wal_size=${MIN_WAL_SIZE_MB}MB"

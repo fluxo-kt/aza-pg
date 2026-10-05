@@ -9,11 +9,18 @@
 
 set -euo pipefail
 
-# Check as the superuser, in the database initdb created and the init scripts filled, with the official entrypoint's
-# defaults: POSTGRES_USER may name a role other than postgres, and POSTGRES_DB defaults to POSTGRES_USER. An operator's
-# own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and shared_preload_libraries is superuser-only.
-export PGUSER="${POSTGRES_USER:-postgres}"
-export PGDATABASE="${POSTGRES_DB:-$PGUSER}"
+# Check as the superuser, in the database initdb created and the init scripts filled, resolved like the official
+# entrypoint's file_env: each variable, else its *_FILE's content; POSTGRES_USER defaults to postgres, POSTGRES_DB to
+# the user. An operator's own PGUSER/PGDATABASE is overridden: the extensions live only in POSTGRES_DB, and
+# shared_preload_libraries is superuser-only.
+env_or_file() {
+    local file_var="${1}_FILE"
+    if [ -n "${!1:-}" ]; then printf '%s' "${!1}"; elif [ -n "${!file_var:-}" ]; then cat "${!file_var}"; fi
+}
+PGUSER="$(env_or_file POSTGRES_USER)"
+export PGUSER="${PGUSER:-postgres}"
+PGDATABASE="$(env_or_file POSTGRES_DB)"
+export PGDATABASE="${PGDATABASE:-$PGUSER}"
 
 # Expected extensions for this aza-pg version (from manifest)
 EXPECTED_EXTENSIONS=("pg_cron" "pg_net" "pg_stat_monitor" "pg_stat_statements" "pg_trgm" "pgaudit" "pgmq" "pgsodium" "plpgsql" "supabase_vault" "timescaledb" "vector" "vectorscale")

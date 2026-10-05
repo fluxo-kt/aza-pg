@@ -8,7 +8,8 @@
  */
 
 import { preloadLibraryName } from "../config-generator/manifest-loader";
-import { join } from "node:path";
+import { readdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import type { ManifestEntry as SourceManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
@@ -194,7 +195,9 @@ export function testPreloadedExtensions(container: string): Promise<TestResult> 
 
 /**
  * The initdb scripts create a baseline set of extensions. The expected set is read from the generated
- * 01-extensions.sql (plus pg_cron, which 01b-pg_cron.sh creates), never copied here.
+ * 01-extensions.sql (plus pg_cron, which 01b-pg_cron.sh creates), never copied here. The reverse check allows
+ * only that set plus what an initdb script creates by name (04-pg_partman-init.sh's pg_partman), so an
+ * extension created at init without anyone listing it fails.
  */
 export function testPrecreatedExtensions(container: string): Promise<TestResult> {
   return check("Initdb-created extensions exist", async () => {
@@ -212,6 +215,22 @@ export function testPrecreatedExtensions(container: string): Promise<TestResult>
        ORDER BY e`
     );
     expect(missing === "", `not in pg_extension: ${missing.split("\n").join(", ")}`);
+    const initDir = dirname(INITDB_EXTENSIONS_SQL);
+    const allowed = new Set(expected);
+    for (const file of await readdir(initDir)) {
+      const text = await Bun.file(join(initDir, file)).text();
+      for (const m of text.matchAll(/CREATE EXTENSION IF NOT EXISTS "?(\w+)"?/gi))
+        allowed.add(m[1] as string);
+    }
+    const allowedList = [...allowed].map((name) => `'${name}'`).join(",");
+    const unexpected = await sqlOk(
+      container,
+      `SELECT extname FROM pg_extension WHERE extname <> ALL (ARRAY[${allowedList}]::text[]) ORDER BY extname`
+    );
+    expect(
+      unexpected === "",
+      `not created by any initdb script: ${unexpected.split("\n").join(", ")}`
+    );
     return `${expected.length} expected`;
   });
 }

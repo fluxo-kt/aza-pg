@@ -300,72 +300,21 @@ tests/regression/extensions/
 └── README.md
 ```
 
-**Test Coverage:**
+**Which suites run:** every directory whose manifest entry is not `enabled: false` (`selectSuites` in `scripts/test/test-extension-regression.ts`); a directory naming no manifest entry fails the run. `--mode=production` (default) starts the image with its own default preload list, `--mode=regression` (nightly) with every preload library, default and optional.
 
-**Production Mode (Top 10 Extensions):**
-
-1. **vector** (pgvector) - Vector similarity search, distance operators
-2. **timescaledb** - Hypertable creation, time-series data
-3. **pg_cron** - Job scheduling infrastructure
-4. **pgsodium** - Cryptographic functions, encryption
-5. **pgaudit** - Security auditing configuration
-6. **pg_stat_monitor** - Enhanced query metrics
-7. **hypopg** - Hypothetical index creation
-8. **pg_trgm** - Trigram similarity, fuzzy search
-9. **pgmq** - Message queue operations
-10. **timescaledb_toolkit** - Time-series hyperfunctions
-
-**Comprehensive Mode (Additional 3 Extensions):**
-
-11. **postgis** - Spatial data types and operations
-12. **pgrouting** - Graph routing algorithms (Dijkstra)
-13. **pgq** - High-performance queue operations
-
-**Generating Expected Outputs:**
-
-Expected output files must be generated from a known-good build:
+**Generating Expected Outputs:** from a known-good image, then read the result before committing: an error in the output (an extension missing from the image, say) becomes the expectation.
 
 ```bash
-# Build production image
 bun run build
-
-# Generate expected outputs for production extensions
-bun scripts/test/test-extension-regression.ts --mode=production --generate-expected
-
-# Generate expected outputs for comprehensive extensions (requires comprehensive build)
-bun scripts/test/test-extension-regression.ts --mode=comprehensive --generate-expected
+bun scripts/test/test-extension-regression.ts --generate-expected --extensions=vector
 ```
-
-**IMPORTANT**: Expected outputs are deterministic and should be committed to the repository. They serve as the regression baseline for future test runs.
 
 **Running Tests:**
 
-**Production Mode:**
-
 ```bash
-# Test top 10 production extensions
-bun scripts/test/test-extension-regression.ts --mode=production
-```
-
-**Comprehensive Mode:**
-
-```bash
-# Test all extensions (requires comprehensive build with postgis, pgrouting, pgq enabled)
-bun scripts/test/test-extension-regression.ts --mode=comprehensive
-```
-
-**Specific Extensions:**
-
-```bash
-# Test specific extensions only
-bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb,pg_cron
-```
-
-**Using Existing Container:**
-
-```bash
-# Use existing running container
-bun scripts/test/test-extension-regression.ts --container=my-postgres-container
+bun scripts/test/test-extension-regression.ts                              # every enabled directory
+bun scripts/test/test-extension-regression.ts --extensions=vector,pg_cron  # some of them
+bun scripts/test/test-extension-regression.ts --container=my-postgres      # an existing container
 ```
 
 **Test Design Principles:**
@@ -380,8 +329,7 @@ bun scripts/test/test-extension-regression.ts --container=my-postgres-container
 1. Create directory: `tests/regression/extensions/{extension-name}/{sql,expected}/`
 2. Write SQL test: `sql/basic.sql` (see existing tests as templates)
 3. Generate expected output: `--generate-expected` flag
-4. Add extension to `TOP_10_EXTENSIONS` or `COMPREHENSIVE_ONLY_EXTENSIONS` in `test-extension-regression.ts`
-5. Commit SQL + expected output files
+4. Commit SQL + expected output files; the directory runs from then on
 
 **Test Execution Details:**
 
@@ -394,56 +342,6 @@ bun scripts/test/test-extension-regression.ts --container=my-postgres-container
 
 - **Extension behaviour**: `scripts/docker/test-image-lib.ts`, run by `scripts/docker/test-image.ts`
 - **Regression Runner**: `scripts/test/lib/regression-runner.ts` - Shared test infrastructure
-
-### Expected Output Generation Status
-
-This tracks which extension regression tests have generated expected outputs.
-
-**Generation Instructions:**
-
-Expected output files (`.out`) must be generated from a clean, known-good build:
-
-```bash
-# 1. Build production image
-bun run build
-
-# 2. Generate expected outputs for production mode
-bun scripts/test/test-extension-regression.ts --mode=production --generate-expected
-
-# 3. For comprehensive mode (requires PostGIS/pgRouting/PgQ enabled)
-# Edit scripts/extensions/manifest-data.ts to enable postgis, pgrouting, pgq
-# bun run generate && bun run build
-# bun scripts/test/test-extension-regression.ts --mode=comprehensive --generate-expected
-```
-
-**Status:**
-
-**Production Extensions (Top 10):**
-
-- [ ] **vector** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **timescaledb** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pg_cron** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pgsodium** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pgaudit** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pg_stat_monitor** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **hypopg** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pg_trgm** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **pgmq** - `expected/basic.out` - NEEDS GENERATION
-- [ ] **timescaledb_toolkit** - `expected/basic.out` - NEEDS GENERATION
-
-**Comprehensive-Only Extensions:**
-
-- [ ] **postgis** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
-- [ ] **pgrouting** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
-- [ ] **pgq** - `expected/basic.out` - NEEDS GENERATION (requires comprehensive build)
-- [x] **wrappers** - `expected/basic.out` - GENERATED (6 assertions)
-
-**Notes:**
-
-- Expected outputs are deterministic and should remain stable across builds
-- Non-deterministic values (random(), now()) avoided in tests
-- All SQL test files (`sql/basic.sql`) are ready and committed
-- Expected outputs will be generated during next production build validation
 
 ### pgTAP
 
@@ -861,7 +759,7 @@ PostgreSQL builtins that should always work:
 
 ### Integration (1)
 
-- wrappers: Foreign data wrappers (Supabase) - 10 functional tests, 1 regression suite (6 assertions)
+- wrappers: Foreign data wrappers (Supabase)
 
 ### Safety (2)
 

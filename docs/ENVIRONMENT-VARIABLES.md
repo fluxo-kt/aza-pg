@@ -63,14 +63,13 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## Networking
 
-| Variable                    | Default        | Description                                               |
-| --------------------------- | -------------- | --------------------------------------------------------- |
-| `COMPOSE_PROJECT_NAME`      | `aza-pg`       | Project name prefix                                       |
-| `POSTGRES_CONTAINER_NAME`   | Stack-specific | `postgres-primary`, `postgres-replica`, `postgres-single` |
-| `POSTGRES_NETWORK_NAME`     | Stack-specific | Internal network name                                     |
-| `MONITORING_NETWORK`        | `monitoring`   | External monitoring network                               |
-| `POSTGRES_EXPORTER_BIND_IP` | `127.0.0.1`    | Exporter bind address                                     |
-| `POSTGRES_EXPORTER_PORT`    | Stack-specific | `9187` (primary), `9188` (replica), `9189` (single)       |
+| Variable                    | Default                                          | Description                                                                             |
+| --------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `COMPOSE_PROJECT_NAME`      | `aza-pg` (`aza-pg-replica` in the replica stack) | Compose project, also the container-name prefix; stacks on one host need different ones |
+| `POSTGRES_NETWORK_NAME`     | Stack-specific                                   | Internal network name                                                                   |
+| `MONITORING_NETWORK`        | `monitoring`                                     | External monitoring network                                                             |
+| `POSTGRES_EXPORTER_BIND_IP` | `127.0.0.1`                                      | Exporter bind address                                                                   |
+| `POSTGRES_EXPORTER_PORT`    | Stack-specific                                   | `9187` (primary), `9188` (replica), `9189` (single)                                     |
 
 ## Storage
 

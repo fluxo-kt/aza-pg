@@ -106,8 +106,8 @@ services:
 
 networks:
   postgres_net:
-    name: ${POSTGRES_NETWORK_NAME:-postgres-replica-net}
-    external: true # Uses network created by primary stack
+    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+    external: true # the network the primary stack creates (its default name)
   monitoring:
     # Services use the key; the variable names the Docker network, so any value works.
     name: ${MONITORING_NETWORK:-monitoring}

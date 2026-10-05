@@ -95,7 +95,7 @@ bun scripts/tools/backup-postgres.ts production pre_migration_$(date +%Y%m%d).sq
 
 ```bash
 # Backup from container via Docker network
-PGHOST=postgres-primary PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
+PGHOST=aza-pg-postgres-primary PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/backup-postgres.ts postgres container_backup.sql.gz
 ```
 
@@ -198,10 +198,10 @@ bun scripts/tools/restore-postgres.ts old_backup.sql.gz mydb
 
 ```bash
 # 1. Ensure database exists
-docker exec postgres-primary psql -U postgres -c "CREATE DATABASE production;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "CREATE DATABASE production;"
 
 # 2. Restore from backup
-PGHOST=postgres-primary PGPASSWORD=$POSTGRES_PASSWORD \
+PGHOST=aza-pg-postgres-primary PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/restore-postgres.ts disaster_backup.sql.gz production
 ```
 
@@ -219,16 +219,16 @@ PGHOST=staging.db bun scripts/tools/restore-postgres.ts prod_clone.sql.gz stagin
 
 ```bash
 # 1. Create test database
-docker exec postgres-primary psql -U postgres -c "CREATE DATABASE restore_test;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "CREATE DATABASE restore_test;"
 
 # 2. Restore to test database
 bun scripts/tools/restore-postgres.ts backup.sql.gz restore_test
 
 # 3. Verify data
-docker exec postgres-primary psql -U postgres -d restore_test -c "SELECT COUNT(*) FROM users;"
+docker exec aza-pg-postgres-primary psql -U postgres -d restore_test -c "SELECT COUNT(*) FROM users;"
 
 # 4. Clean up
-docker exec postgres-primary psql -U postgres -c "DROP DATABASE restore_test;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "DROP DATABASE restore_test;"
 ```
 
 #### Troubleshooting
@@ -263,7 +263,7 @@ psql -h $PGHOST -U postgres -c "GRANT ALL ON DATABASE mydb TO your_user;"
 
 - Large database (expected for multi-GB dumps)
 - Check network bandwidth for remote restores
-- Monitor with: `docker logs postgres-primary -f`
+- Monitor with: `docker logs aza-pg-postgres-primary -f`
 
 ---
 
@@ -307,12 +307,12 @@ bun scripts/tools/promote-replica.ts -c my-replica -y
 
 #### Options
 
-| Flag                   | Description              | Default                                                    |
-| ---------------------- | ------------------------ | ---------------------------------------------------------- |
-| `-c, --container NAME` | Container name           | `$POSTGRES_CONTAINER_NAME`, else `aza-pg-postgres-replica` |
-| `-d, --data-dir PATH`  | Data directory path      | container's `$PGDATA`                                      |
-| `-y, --yes`            | Skip confirmation prompt | `false` (requires typing `yes`)                            |
-| `-h, --help`           | Show help                | -                                                          |
+| Flag                   | Description              | Default                           |
+| ---------------------- | ------------------------ | --------------------------------- |
+| `-c, --container NAME` | Container name           | `aza-pg-replica-postgres-replica` |
+| `-d, --data-dir PATH`  | Data directory path      | container's `$PGDATA`             |
+| `-y, --yes`            | Skip confirmation prompt | `false` (requires typing `yes`)   |
+| `-h, --help`           | Show help                | -                                 |
 
 `-n, --no-backup` is still accepted and does nothing: the tool takes no backup. Promotion changes no existing data, so take backups with `backup-postgres.ts` or pgBackRest instead.
 
@@ -335,7 +335,7 @@ psql -h old-primary -U postgres -c "ALTER SYSTEM SET default_transaction_read_on
 psql -h old-primary -U postgres -c "SELECT client_addr, state, replay_lag FROM pg_stat_replication;"
 
 # 3. Stop old primary
-docker stop postgres-primary
+docker stop aza-pg-postgres-primary
 
 # 4. Promote replica
 bun scripts/tools/promote-replica.ts
@@ -349,18 +349,18 @@ bun scripts/tools/promote-replica.ts
 
 ```bash
 # 1. Confirm old primary is down
-docker ps | grep postgres-primary  # Should be stopped
+docker ps | grep aza-pg-postgres-primary  # Should be stopped
 
 # 2. Promote replica immediately
-bun scripts/tools/promote-replica.ts -c postgres-replica -y
+bun scripts/tools/promote-replica.ts -c aza-pg-replica-postgres-replica -y
 
 # 3. Update application connection strings
 
 # 4. Verify promotion
-docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should be 'f'
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should be 'f'
 
 # 5. Check replication slots (will be empty)
-docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_slots;"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_slots;"
 ```
 
 **Scenario 3: Cascading replicas (multi-tier replication)**
@@ -369,7 +369,7 @@ docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_s
 # Topology: primary → replica1 → replica2
 
 # 1. Stop primary
-docker stop postgres-primary
+docker stop aza-pg-postgres-primary
 
 # 2. Promote replica1
 bun scripts/tools/promote-replica.ts -c postgres-replica1
@@ -513,7 +513,7 @@ docker compose down
 docker compose up -d
 
 # 5. Verify TLS enabled
-docker exec postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
+docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
 ```
 
 **Scenario 2: Require TLS for all connections**
@@ -608,7 +608,7 @@ docker compose restart postgres
 **4. Verify SSL is enabled:**
 
 ```bash
-docker exec postgres-primary psql -U postgres -c "SHOW ssl;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"
 # Output: on
 
 # Check connection uses SSL
@@ -650,7 +650,7 @@ apk add openssl
 Check logs:
 
 ```bash
-docker logs postgres-primary 2>&1 | grep -i ssl
+docker logs aza-pg-postgres-primary 2>&1 | grep -i ssl
 ```
 
 Common issues:
@@ -666,7 +666,7 @@ Common issues:
 
    ```bash
    # Verify mount path matches postgresql.conf
-   docker exec postgres-primary ls -la /etc/postgresql/certs/
+   docker exec aza-pg-postgres-primary ls -la /etc/postgresql/certs/
    ```
 
 3. **Invalid certificate:**
@@ -916,8 +916,8 @@ Or use pgBackRest (installed in image, see PRODUCTION.md).
 
 ```bash
 # 1. Identify which primary has most recent data
-docker exec postgres-primary psql -U postgres -c "SELECT pg_current_wal_lsn();"
-docker exec postgres-replica psql -U postgres -c "SELECT pg_current_wal_lsn();"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT pg_current_wal_lsn();"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_current_wal_lsn();"
 
 # 2. Stop the primary with older data
 docker stop <older-primary>
@@ -1014,7 +1014,7 @@ chmod 600 server.key
 
 **For PostgreSQL issues:**
 
-- Check PostgreSQL logs: `docker logs postgres-primary`
+- Check PostgreSQL logs: `docker logs aza-pg-postgres-primary`
 - Review PostgreSQL documentation
 - Check system resources: `docker stats`
 

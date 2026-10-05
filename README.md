@@ -183,7 +183,7 @@ See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 bun scripts/tools/backup-postgres.ts mydb backup.sql.gz
 
 # Restore from backup
-bun scripts/tools/restore-postgres.ts mydb backup.sql.gz
+bun scripts/tools/restore-postgres.ts backup.sql.gz mydb
 
 # Promote replica to primary (failover)
 bun scripts/tools/promote-replica.ts -c replica-container

@@ -781,7 +781,7 @@ Promotes PostgreSQL replica to primary role.
 
 **Options:**
 
-- `--container NAME` - Container name (default: `$POSTGRES_CONTAINER_NAME`, else `aza-pg-postgres-replica`)
+- `--container NAME` - Container name (default: `aza-pg-replica-postgres-replica`)
 - `--data-dir PATH` - Data directory (default: the container's `$PGDATA`)
 - `--yes` - Skip confirmation prompt
 - `--help` - Show help message
@@ -892,13 +892,13 @@ PGHOST=staging.db.example.com PGPASSWORD=yyy bun scripts/tools/restore-postgres.
 
 ```bash
 # 1. Stop old primary (critical!)
-docker stop postgres-primary
+docker stop aza-pg-postgres-primary
 
 # 2. Promote replica
-bun scripts/tools/promote-replica.ts --container postgres-replica
+bun scripts/tools/promote-replica.ts --container aza-pg-replica-postgres-replica
 
 # 3. Verify promotion
-docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should return 'f'
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should return 'f'
 
 # 4. Update application connection strings to new primary
 ```

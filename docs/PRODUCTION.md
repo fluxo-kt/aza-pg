@@ -40,7 +40,7 @@ docker compose up -d
 
 ```bash
 docker ps  # All 3-4 services healthy
-docker logs postgres-primary | grep "database system is ready"
+docker logs aza-pg-postgres-primary | grep "database system is ready"
 docker logs pgbouncer-primary | grep "process up"
 ```
 
@@ -75,11 +75,11 @@ To enable synchronous replication:
 
 ```bash
 # On replica:
-docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
 # Should show status='streaming'
 
 # On primary:
-docker exec postgres-primary psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
 # Should show sync_state='async' (or 'sync' if synchronous replication enabled)
 ```
 
@@ -101,7 +101,7 @@ The aza-pg stacks use **two Docker networks**:
 
 1. **`postgres_net`** (stack-specific): Created automatically by Docker Compose
    - Isolates database traffic (PostgreSQL, PgBouncer, exporters)
-   - Each stack creates its own: `postgres-primary-net`, `postgres-replica-net`, `postgres-single-net`
+   - The primary and single stacks create their own (`postgres-primary-net`, `postgres-single-net`); the replica stack joins the primary's to reach it
    - Internal communication only
 
 2. **`monitoring`** (external, shared): Must be created manually before deployment
@@ -233,7 +233,7 @@ scrape_configs:
 bun scripts/tools/backup-postgres.ts postgres backup.sql.gz
 
 # Direct pg_dump:
-docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
+docker exec aza-pg-postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
 ```
 
 ### Automated Backups
@@ -250,10 +250,7 @@ Example backup commands:
 
 ```bash
 # Manual backup via installed pgbackrest
-docker exec postgres-primary pgbackrest backup --stanza=main --type=full
-
-# Or use the provided script
-bun scripts/tools/backup-postgres.ts postgres-primary backup.sql.gz
+docker exec aza-pg-postgres-primary pgbackrest backup --stanza=main --type=full
 ```
 
 See `examples/backup/README.md` for comprehensive backup strategy and automation examples.
@@ -268,7 +265,7 @@ See `examples/backup/README.md` for comprehensive backup strategy and automation
 
 ```bash
 docker logs pgbouncer-primary | grep -i error
-docker exec postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles WHERE rolname = 'pgbouncer_auth';"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles WHERE rolname = 'pgbouncer_auth';"
 ```
 
 **Fix:** Ensure `PGBOUNCER_AUTH_PASS` is set in `.env` and that PgBouncer rendered `/tmp/.pgpass`:
@@ -283,9 +280,9 @@ docker exec pgbouncer-primary ls -l /tmp/.pgpass
 
 **Check:**
 
-1. Primary has replication user: `docker exec postgres-primary psql -U postgres -c "SELECT * FROM pg_roles WHERE rolname = 'replicator';"`
-2. Replication slot exists: `docker exec postgres-primary psql -U postgres -c "SELECT * FROM pg_replication_slots;"`
-3. Network connectivity: `docker exec postgres-replica pg_isready -h <PRIMARY_HOST> -p 5432`
+1. Primary has replication user: `docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT * FROM pg_roles WHERE rolname = 'replicator';"`
+2. Replication slot exists: `docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT * FROM pg_replication_slots;"`
+3. Network connectivity: `docker exec aza-pg-replica-postgres-replica pg_isready -h <PRIMARY_HOST> -p 5432`
 4. Password matches between primary and replica
 
 ### Memory Detection Issues
@@ -295,7 +292,7 @@ docker exec pgbouncer-primary ls -l /tmp/.pgpass
 **Check logs:**
 
 ```bash
-docker logs postgres-primary | grep "\[POSTGRES\] \[AUTO-CONFIG\]"
+docker logs aza-pg-postgres-primary | grep "\[POSTGRES\] \[AUTO-CONFIG\]"
 ```
 
 Look for source markers in the log output: `manual`, `cgroup-v2`, or `meminfo`. If you see `meminfo` with unexpectedly large RAM, Docker is not applying limits.
@@ -315,8 +312,8 @@ Example log output:
 **Check:**
 
 ```bash
-docker exec postgres-primary psql -U postgres -c "\dx"  # List extensions
-docker logs postgres-primary | grep shared_preload_libraries
+docker exec aza-pg-postgres-primary psql -U postgres -c "\dx"  # List extensions
+docker logs aza-pg-postgres-primary | grep shared_preload_libraries
 ```
 
 **Fix:** Verify `shared_preload_libraries` in postgresql.conf and restart:
@@ -431,7 +428,7 @@ docker compose pull
 docker compose up -d --force-recreate
 
 # Verify
-docker exec postgres-primary psql -U postgres -c "SELECT version();"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT version();"
 ```
 
 ### PostgreSQL Major Version

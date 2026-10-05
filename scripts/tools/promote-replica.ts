@@ -6,8 +6,8 @@
  *   bun scripts/tools/promote-replica.ts [-c NAME] [-d PATH] [-y]
  *
  * OPTIONS:
- *   -c, --container NAME    Container (default: $POSTGRES_CONTAINER_NAME, else aza-pg-postgres-replica,
- *                           the replica stack's name under the default compose project)
+ *   -c, --container NAME    Container (default: aza-pg-replica-postgres-replica,
+ *                           the replica stack's name under its .env.example's COMPOSE_PROJECT_NAME)
  *   -d, --data-dir PATH     Data directory (default: the container's $PGDATA)
  *   -y, --yes               Skip the confirmation prompt
  *   -n, --no-backup         Accepted for old scripts; the tool takes no backup (see below)
@@ -35,7 +35,7 @@ USAGE:
   bun scripts/tools/promote-replica.ts [-c NAME] [-d PATH] [-y]
 
 OPTIONS:
-  -c, --container NAME    Container (default: $POSTGRES_CONTAINER_NAME, else aza-pg-postgres-replica)
+  -c, --container NAME    Container (default: aza-pg-replica-postgres-replica)
   -d, --data-dir PATH     Data directory (default: the container's $PGDATA)
   -y, --yes               Skip the confirmation prompt
   -h, --help              Show this help
@@ -49,7 +49,7 @@ function fail(message: string): never {
 }
 
 function parseArgs(args: string[]) {
-  let container = Bun.env.POSTGRES_CONTAINER_NAME || "aza-pg-postgres-replica";
+  let container = "aza-pg-replica-postgres-replica";
   let dataDir = "";
   let yes = false;
   for (let i = 0; i < args.length; i++) {

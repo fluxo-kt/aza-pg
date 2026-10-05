@@ -511,6 +511,15 @@ if [ "$WAL_LEVEL" = "minimal" ]; then
 fi
 # Set explicitly so the path does not depend on how pgsodium resolves its share directory.
 AUTO_SETTINGS+=("pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}")
+# Parallel queries and index builds keep their shared state in dynamic shared memory. PostgreSQL's Linux default,
+# posix, puts it in /dev/shm, which Docker, Kubernetes and CI runners mount at 64 MB: a parallel hash join or a
+# parallel pgvector HNSW build (sized by maintenance_work_mem) then fails with "could not resize shared memory
+# segment … No space left on device". System V segments come from RAM under the container's memory limit, the limit
+# auto-tuning already sizes against; a container's own IPC namespace has the kernel defaults (shmmax and shmall
+# effectively unlimited, 4096 segments). posix stays one -c away for --ipc=host on a host with low SysV limits.
+# Rejected: shm_size in compose (docker run and Kubernetes still fail; any size is a guess); mmap (writes the
+# shared pages to the data volume); serial builds when /dev/shm is small (hash joins still fail).
+AUTO_SETTINGS+=("dynamic_shared_memory_type=sysv")
 
 # Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
 # postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a

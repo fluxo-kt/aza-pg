@@ -251,16 +251,15 @@ function lastLines(text: string, count: number): string {
 }
 
 /**
- * Wait for PostgreSQL to be ready.
- * With `container`: waits for the container's final server (see waitForContainerPostgres) and THROWS on failure,
- * so a caller can never proceed against a server that is not there; it returns true only for callers' convenience.
- * Without `container`: polls pg_isready on host:port and returns false on timeout (host tools decide what to do).
+ * Wait for PostgreSQL to be ready, and THROW when it does not become ready, so a caller can never proceed against a
+ * server that is not there.
+ * With `container`: waits for the container's final server (see waitForContainerPostgres).
+ * Without `container`: polls pg_isready on host:port.
  *
  * @param options - Configuration options
- * @returns true if PostgreSQL becomes ready; false only in host mode on timeout
- * @throws Error on invalid parameters, and in container mode on timeout or a stopped container
+ * @throws Error on invalid parameters, on timeout, and in container mode on a stopped container
  */
-export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<boolean> {
+export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<void> {
   const host = options.host ?? "localhost";
   const port = options.port ?? 5432;
   const user = options.user ?? "postgres";
@@ -274,7 +273,7 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
 
   if (container && container.trim() !== "") {
     await waitForContainerPostgres(container, user, timeout);
-    return true;
+    return;
   }
 
   // Validate port is a number
@@ -301,7 +300,7 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
       const exitCode = await proc.exited;
       if (exitCode === 0) {
         success(`PostgreSQL is ready at ${host}:${port}`);
-        return true;
+        return;
       }
     } catch {
       // Ignore errors, continue waiting
@@ -310,8 +309,7 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
     await Bun.sleep(2000); // Sleep 2 seconds
   }
 
-  error(`PostgreSQL not ready after ${timeout} seconds`);
-  return false;
+  throw new Error(`PostgreSQL at ${host}:${port} not ready after ${timeout} seconds`);
 }
 
 /**

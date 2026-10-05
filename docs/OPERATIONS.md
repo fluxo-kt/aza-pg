@@ -91,11 +91,11 @@ bun scripts/tools/backup-postgres.ts production pre_migration_$(date +%Y%m%d).sq
 0 2 * * * cd /opt/aza-pg && bun scripts/tools/backup-postgres.ts production /backups/daily/backup_$(date +\%Y\%m\%d).sql.gz
 ```
 
-**Scenario 3: Container backup**
+**Scenario 3: Backup from a stack**
 
 ```bash
-# Backup from container via Docker network
-PGHOST=aza-pg-postgres-primary PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
+# The stacks publish PostgreSQL on 127.0.0.1:5432 (POSTGRES_BIND_IP, POSTGRES_PORT)
+PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/backup-postgres.ts postgres container_backup.sql.gz
 ```
 
@@ -170,8 +170,9 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 
 **DESTRUCTIVE OPERATION:**
 
-- Restore **overwrites** the target database
-- Requires user confirmation (press Enter to continue)
+- Restore runs the backup's SQL in the target database and replaces nothing: rows of a table that already exists are added again, so restore into a new server's database
+- psql continues past failed statements and the script shows them; on a new aza-pg server, "already exists" for the objects the image creates at init (pgflow, partman, vault, …) is expected, and any other error means part of the backup is missing
+- Requires user confirmation (press Enter to continue; a closed stdin cancels)
 - **No automatic backup** is created before restore
 - Cannot be undone without a backup
 
@@ -201,7 +202,7 @@ bun scripts/tools/restore-postgres.ts old_backup.sql.gz mydb
 docker exec aza-pg-postgres-primary psql -U postgres -c "CREATE DATABASE production;"
 
 # 2. Restore from backup
-PGHOST=aza-pg-postgres-primary PGPASSWORD=$POSTGRES_PASSWORD \
+PGHOST=127.0.0.1 PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/restore-postgres.ts disaster_backup.sql.gz production
 ```
 

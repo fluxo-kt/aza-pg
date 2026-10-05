@@ -15,6 +15,7 @@ import { $ } from "bun";
 import { checkCommand, waitForPostgres } from "../utils/docker";
 import { info, success, error } from "../utils/logger";
 import { dirname } from "node:path";
+import { stat } from "node:fs/promises";
 
 interface BackupConfig {
   database: string;
@@ -103,10 +104,9 @@ function checkPgPassword(config: BackupConfig): void {
 async function checkOutputDirectory(outputFile: string): Promise<void> {
   const outputDir = dirname(outputFile);
 
-  // Check if directory exists
+  // Bun.file().exists() is false for every directory, so stat it
   try {
-    const stat = await Bun.file(outputDir).exists();
-    if (!stat) {
+    if (!(await stat(outputDir)).isDirectory()) {
       error(`Output directory does not exist: ${outputDir}`);
       process.stdout.write(`   Create directory: mkdir -p ${outputDir}\n`);
       process.exit(1);
@@ -163,10 +163,11 @@ async function performBackup(config: BackupConfig): Promise<void> {
     // Compress output
     const compressed = Bun.gzipSync(new Uint8Array(await result.arrayBuffer()));
     await Bun.write(config.outputFile, compressed);
-  } catch {
+  } catch (err) {
+    // .quiet() captured pg_dump's messages; show them
+    if (err instanceof $.ShellError) process.stderr.write(err.stderr);
     process.stdout.write("\n");
     error("Backup failed");
-    process.stdout.write("   Check pg_dump output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
       `   - Database does not exist: psql -h ${config.pgHost} -U ${config.pgUser} -l\n`
@@ -289,7 +290,8 @@ async function main(): Promise<void> {
       user: config.pgUser,
       timeout: 10,
     });
-  } catch {
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
     process.stdout.write("   Troubleshooting:\n");
     process.stdout.write(
       `   - Verify host/port: pg_isready -h ${config.pgHost} -p ${config.pgPort}\n`

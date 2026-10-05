@@ -159,14 +159,18 @@ function checkPgPassword(config: RestoreConfig): void {
  * Warn about destructive operation and get user confirmation
  */
 async function confirmRestore(database: string): Promise<void> {
-  process.stdout.write(`\n⚠️  WARNING: This will overwrite the database '${database}'\n`);
+  process.stdout.write(
+    `\n⚠️  WARNING: This runs the backup's SQL in database '${database}'. Nothing there is replaced: rows of a table\n` +
+      "that already exists are added again. Restore into a new server's database.\n"
+  );
   process.stdout.write("Press Ctrl+C to cancel, or Enter to continue...\n");
 
-  // Read user input
   for await (const _line of console) {
-    // User pressed Enter, continue
     return;
   }
+  // stdin closed without a line (cron, CI, < /dev/null): nobody confirmed
+  error("No confirmation (stdin closed); nothing restored");
+  process.exit(1);
 }
 
 /**
@@ -175,24 +179,47 @@ async function confirmRestore(database: string): Promise<void> {
 async function performRestore(config: RestoreConfig): Promise<void> {
   info("Restoring backup...");
 
-  try {
-    if (config.backupFile.endsWith(".gz")) {
-      process.stdout.write("Decompressing and restoring...\n");
-      await $`gunzip -c ${config.backupFile} | psql -h ${config.pgHost} -p ${config.pgPort.toString()} -U ${config.pgUser} -d ${config.database} --quiet`.quiet();
-    } else {
-      process.stdout.write("Restoring uncompressed backup...\n");
-      await $`psql -h ${config.pgHost} -p ${config.pgPort.toString()} -U ${config.pgUser} -d ${config.database} -f ${config.backupFile} --quiet`.quiet();
-    }
-  } catch {
+  // psql continues past a failed statement and exits 0. It must: a new aza-pg server's database already holds the
+  // objects initdb creates (pgflow, partman, vault, pg_aza_status, ...), and every dump of one recreates them, so
+  // stopping at the first "already exists" (ON_ERROR_STOP) would make every restore fail. Errors are shown instead.
+  const psqlArgs = [
+    "-h",
+    config.pgHost,
+    "-p",
+    config.pgPort.toString(),
+    "-U",
+    config.pgUser,
+    "-d",
+    config.database,
+  ];
+  let result;
+  if (config.backupFile.endsWith(".gz")) {
+    process.stdout.write("Decompressing and restoring...\n");
+    result = await $`gunzip -c ${config.backupFile} | psql ${psqlArgs} --quiet`.nothrow().quiet();
+  } else {
+    process.stdout.write("Restoring uncompressed backup...\n");
+    result = await $`psql ${psqlArgs} -f ${config.backupFile} --quiet`.nothrow().quiet();
+  }
+  const errors = result.stderr
+    .toString()
+    .split("\n")
+    .filter((line) => line.includes("ERROR:"));
+  if (errors.length > 0) {
+    process.stderr.write(result.stderr);
+    process.stdout.write(
+      `\n${errors.length} statement(s) failed (above). On a new aza-pg server, "already exists" for objects the image\n` +
+        "creates at init is expected; any other error means part of the backup is missing.\n"
+    );
+  }
+  if (result.exitCode !== 0) {
+    if (errors.length === 0) process.stderr.write(result.stderr);
     process.stdout.write("\n");
     error("Restore failed");
-    process.stdout.write("   Check psql output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
       `   - Database '${config.database}' does not exist: createdb -h ${config.pgHost} -U ${config.pgUser} ${config.database}\n`
     );
     process.stdout.write(`   - Insufficient permissions for user ${config.pgUser}\n`);
-    process.stdout.write("   - Conflicting extensions: DROP EXTENSION ... CASCADE\n");
     process.stdout.write("   - Check PostgreSQL logs: docker logs <postgres-container>\n");
     process.exit(1);
   }
@@ -242,7 +269,8 @@ async function main(): Promise<void> {
       user: config.pgUser,
       timeout: 10,
     });
-  } catch {
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
     process.stdout.write("   Troubleshooting:\n");
     process.stdout.write(
       `   - Verify host/port: pg_isready -h ${config.pgHost} -p ${config.pgPort}\n`

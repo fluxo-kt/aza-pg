@@ -101,11 +101,6 @@ export interface BuildSpec {
 
 export interface RuntimeSpec {
   sharedPreload?: boolean;
-  /**
-   * If true, include this extension in the default shared_preload_libraries.
-   * Only applicable when sharedPreload: true.
-   */
-  defaultPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
   excludeFromAutoTests?: boolean; // Exclude from automated test suite
@@ -536,7 +531,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      defaultPreload: true,
       notes: [
         "NOT in PGDG (Supabase-specific). Source build required.",
         "Requires shared_preload_libraries for background worker",
@@ -716,7 +710,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      defaultPreload: true,
       notes: [
         "NOT in PGDG.",
         "Preloaded by default for pgflow and supabase_vault support",

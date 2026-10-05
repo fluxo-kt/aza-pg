@@ -67,7 +67,6 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
-        "defaultPreload": true,
         "notes": [
           "NOT in PGDG (Supabase-specific). Source build required.",
           "Requires shared_preload_libraries for background worker",
@@ -292,7 +291,6 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
-        "defaultPreload": true,
         "notes": [
           "NOT in PGDG.",
           "Preloaded by default for pgflow and supabase_vault support",

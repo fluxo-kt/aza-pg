@@ -318,10 +318,10 @@ bun scripts/tools/promote-replica.ts -c my-replica -y
 
 #### Promotion Process
 
-1. Checks that the container's server is in recovery; refuses a primary or a server it cannot query.
+1. Reads the cluster state with `pg_controldata` (no database login, so a renamed superuser or strict `pg_hba.conf` does not matter); refuses a primary or a container that is not a running standby.
 2. Asks for confirmation (unless `-y`).
-3. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until recovery has ended; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
-4. Confirms `pg_is_in_recovery() = false` and prints the next steps.
+3. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until the server is a primary; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
+4. Prints the next steps.
 
 #### Common Scenarios
 
@@ -424,58 +424,11 @@ docker restart postgres-replica2
 
 #### Troubleshooting
 
-**Error: "Container is not in recovery mode"**
+**"'<container>' is already a primary"**: nothing to promote (an earlier run or another operator already did it).
 
-Container is already a primary:
+**"'<container>' is not a running standby (cluster state: …)"**: `unreadable` means the container is not running or the name is wrong (`docker ps -a`); any other state means the server is not running as a standby (`shut down in recovery`: start it first; `in crash recovery`: wait for it to finish).
 
-```bash
-# Check status
-docker exec <container> psql -U postgres -c "SELECT pg_is_in_recovery();"
-
-# If already promoted, skip promotion
-```
-
-**Error: "Promotion verification failed: Container still in recovery mode"**
-
-Promotion command succeeded but verification failed:
-
-```bash
-# Check PostgreSQL logs
-docker logs <container> | tail -50
-
-# Manually verify standby.signal
-docker exec <container> sh -c 'ls -la "$PGDATA/standby.signal"'
-
-# If file exists, remove it
-docker exec <container> sh -c 'rm -f "$PGDATA/standby.signal"'
-docker restart <container>
-```
-
-**Warning: Backup failed**
-
-Pre-promotion backup failed but script continues:
-
-- Check disk space: `docker exec <container> df -h /backup`
-- Check permissions: `docker exec <container> ls -la /backup`
-- Consider using `-n` flag if backup consistently fails
-- **Manually backup before promotion if critical**
-
-**PostgreSQL failed to start after promotion**
-
-```bash
-# Check logs
-docker logs <container>
-
-# Common issues:
-# 1. Configuration errors in postgresql.conf
-# 2. Port conflict with old primary
-# 3. Insufficient memory/resources
-
-# Rollback (if old primary still exists):
-# 1. Stop promoted container
-# 2. Restore old primary
-# 3. Investigate issue before retrying
-```
+**"pg_ctl promote failed"**: pg_ctl's own message is printed above it. `server did not promote in time` means promotion is still running past pg_ctl's 60 s wait: watch `docker logs <container>`, then run the tool again, which reports "already a primary" once it has finished.
 
 ---
 

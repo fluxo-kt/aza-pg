@@ -776,9 +776,8 @@ Promotes PostgreSQL replica to primary role.
 
 **Features:**
 
-- Refuses unless the container's server is in recovery
-- `pg_ctl promote` on the running server, which waits until recovery has ended (no restart)
-- Confirms `pg_is_in_recovery() = false`
+- Refuses unless the container's server is a running standby (read with `pg_controldata`, no database login)
+- `pg_ctl promote` on the running server, which waits until the server is a primary (no restart)
 
 **Options:**
 

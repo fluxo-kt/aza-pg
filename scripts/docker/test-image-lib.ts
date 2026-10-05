@@ -788,24 +788,32 @@ export function testPgroongaFullText(container: string): Promise<TestResult> {
   });
 }
 
-/** <=> on tsvector is RUM's ranking operator; it does not exist without the extension. */
+/**
+ * <=> on tsvector is RUM's ranking operator; it does not exist without the extension. The three matching rows hold
+ * 'fox' three, two and one times, so the ranked order (2,3,1, which ts_rank agrees with) differs from id and insertion
+ * order, and the plan must take that order from the RUM index.
+ */
 export function testRumRankedSearch(container: string): Promise<TestResult> {
   return check("rum - ranked full-text search", async () => {
     await sqlOk(container, [
       "CREATE EXTENSION IF NOT EXISTS rum",
       "DROP TABLE IF EXISTS test_rum",
       "CREATE TABLE test_rum (id int, content tsvector)",
-      "INSERT INTO test_rum VALUES (1, to_tsvector('english', 'fox')), (2, to_tsvector('english', 'fox fox fox dog'))",
+      "INSERT INTO test_rum VALUES (1, to_tsvector('english', 'fox')), (2, to_tsvector('english', 'fox fox fox dog')), (3, to_tsvector('english', 'fox fox cat')), (4, to_tsvector('english', 'cat'))",
       "CREATE INDEX test_rum_idx ON test_rum USING rum (content rum_tsvector_ops)",
     ]);
+    const query =
+      "SELECT id FROM test_rum WHERE content @@ to_tsquery('english', 'fox') ORDER BY content <=> to_tsquery('english', 'fox')";
     const out = await sqlOk(container, [
       "SET enable_seqscan = off",
-      "SELECT string_agg(id::text, ',') FROM (SELECT id FROM test_rum WHERE content @@ to_tsquery('english', 'fox & dog') ORDER BY content <=> to_tsquery('english', 'fox & dog')) s",
+      `EXPLAIN (COSTS OFF) ${query}`,
+      `SELECT string_agg(id::text, ',') FROM (${query}) s`,
     ]);
     expect(
-      lastLine(out) === "2",
-      `expected only row 2 to match 'fox & dog', got '${lastLine(out)}'`
+      /Index Scan using test_rum_idx/.test(out) && /Order By: \(content <=>/.test(out),
+      `ranking not served by the RUM index:\n${out}`
     );
+    expect(lastLine(out) === "2,3,1", `expected rank order 2,3,1, got '${lastLine(out)}'`);
   });
 }
 

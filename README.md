@@ -190,7 +190,7 @@ bun scripts/tools/backup-postgres.ts mydb backup.sql.gz
 bun scripts/tools/restore-postgres.ts mydb backup.sql.gz
 
 # Promote replica to primary (failover)
-bun scripts/tools/promote-replica.ts replica-container
+bun scripts/tools/promote-replica.ts -c replica-container
 
 # Generate SSL certificates (development)
 bun scripts/tools/generate-ssl-certs.ts

@@ -776,17 +776,14 @@ Promotes PostgreSQL replica to primary role.
 
 **Features:**
 
-- Verifies replica is in recovery mode
-- Optional pre-promotion backup
-- Safe promotion using `pg_ctl promote`
-- Configuration updates (removes `standby.signal`)
-- Post-promotion verification
+- Refuses unless the container's server is in recovery
+- `pg_ctl promote` on the running server, which waits until recovery has ended (no restart)
+- Confirms `pg_is_in_recovery() = false`
 
 **Options:**
 
-- `--container NAME` - Container name (default: postgres-replica)
+- `--container NAME` - Container name (default: `$POSTGRES_CONTAINER_NAME`, else `aza-pg-postgres-replica`)
 - `--data-dir PATH` - Data directory (default: the container's `$PGDATA`)
-- `--no-backup` - Skip backup before promotion
 - `--yes` - Skip confirmation prompt
 - `--help` - Show help message
 
@@ -795,7 +792,6 @@ Promotes PostgreSQL replica to primary role.
 ```bash
 bun scripts/tools/promote-replica.ts                     # Interactive promotion
 bun scripts/tools/promote-replica.ts --container my-replica --yes    # Skip confirmation
-bun scripts/tools/promote-replica.ts --no-backup --yes               # Fast (no backup)
 ```
 
 **Dependencies:** `docker`

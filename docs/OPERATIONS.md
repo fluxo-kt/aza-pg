@@ -298,69 +298,30 @@ Promotes a PostgreSQL replica to primary role during failover scenarios.
 #### Usage
 
 ```bash
-# Promote default replica container (interactive)
+# Promote the replica stack's standby (interactive confirmation)
 bun scripts/tools/promote-replica.ts
 
-# Promote specific container without confirmation (DANGEROUS!)
+# Promote a named container without confirmation
 bun scripts/tools/promote-replica.ts -c my-replica -y
-
-# Promote without backup (faster, riskier)
-bun scripts/tools/promote-replica.ts -n -y
-
-# Custom data directory
-bun scripts/tools/promote-replica.ts -c postgres-replica -d /var/lib/postgresql/18/docker
 ```
 
 #### Options
 
-| Flag                   | Description               | Default                                          |
-| ---------------------- | ------------------------- | ------------------------------------------------ |
-| `-c, --container NAME` | Container name            | `postgres-replica` or `$POSTGRES_CONTAINER_NAME` |
-| `-d, --data-dir PATH`  | Data directory path       | container's `$PGDATA`                            |
-| `-n, --no-backup`      | Skip pre-promotion backup | `false` (backup enabled)                         |
-| `-y, --yes`            | Skip confirmation prompt  | `false` (requires confirmation)                  |
-| `-h, --help`           | Show help                 | -                                                |
+| Flag                   | Description              | Default                                                    |
+| ---------------------- | ------------------------ | ---------------------------------------------------------- |
+| `-c, --container NAME` | Container name           | `$POSTGRES_CONTAINER_NAME`, else `aza-pg-postgres-replica` |
+| `-d, --data-dir PATH`  | Data directory path      | container's `$PGDATA`                                      |
+| `-y, --yes`            | Skip confirmation prompt | `false` (requires typing `yes`)                            |
+| `-h, --help`           | Show help                | -                                                          |
+
+`-n, --no-backup` is still accepted and does nothing: the tool takes no backup. Promotion changes no existing data, so take backups with `backup-postgres.ts` or pgBackRest instead.
 
 #### Promotion Process
 
-The script executes the following steps:
-
-1. **Prerequisite checks:**
-   - Docker is installed and running
-   - Container exists and is running
-
-2. **State verification:**
-   - Confirms container is in recovery mode (`pg_is_in_recovery() = true`)
-   - Fails if already a primary
-
-3. **Pre-promotion backup** (unless `-n` flag):
-   - Creates `pg_basebackup` to `/backup/pre-promotion-backup-TIMESTAMP`
-   - Continues even if backup fails (with warning)
-
-4. **User confirmation** (unless `-y` flag):
-   - Shows warnings about one-way operation
-   - Requires typing "yes" to proceed
-
-5. **Container stop:**
-   - Stops replica container gracefully
-
-6. **Promotion:**
-   - Starts container temporarily
-   - Runs `pg_ctl promote` inside container
-   - Waits for promotion to complete
-
-7. **Verification:**
-   - Confirms `pg_is_in_recovery() = false`
-   - Removes `standby.signal` file
-
-8. **Restart as primary:**
-   - Restarts container in primary mode
-   - Waits for PostgreSQL to accept connections (max 30 seconds)
-
-9. **Post-promotion instructions:**
-   - Shows verification commands
-   - Reminds to update application connections
-   - Warns about split-brain risk
+1. Checks that the container's server is in recovery; refuses a primary or a server it cannot query.
+2. Asks for confirmation (unless `-y`).
+3. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until recovery has ended; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
+4. Confirms `pg_is_in_recovery() = false` and prints the next steps.
 
 #### Common Scenarios
 

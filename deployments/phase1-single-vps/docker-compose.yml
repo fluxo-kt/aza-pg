@@ -43,22 +43,28 @@ services:
 
   # PgBouncer - Connection Pooling
   pgbouncer:
-    image: pgbouncer/pgbouncer:1.25.2-20260920@sha256:89f145c1f003340e9b38a37a8734013ec43d931abb9bd7ea739640f2348d4a67
+    # edoburu's image, as in stacks/: PgBouncer 1.26.0 fixes unauthenticated remote crash/hang bugs (CVE-2026-19888,
+    # CVE-2026-6668), and the official pgbouncer/pgbouncer image publishes nothing newer than 1.25.2.
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     container_name: pgbouncer
     restart: unless-stopped
     environment:
-      DATABASES_HOST: postgres
-      DATABASES_PORT: 5432
-      DATABASES_DBNAME: ${POSTGRES_DB:-main}
-      DATABASES_USER: ${POSTGRES_USER:-postgres}
-      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
-      PGBOUNCER_POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
-      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
-      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
-      PGBOUNCER_AUTH_TYPE: scram-sha-256
-      PGBOUNCER_AUTH_FILE: /etc/pgbouncer/userlist.txt
-      PGBOUNCER_STATS_USERS: ${POSTGRES_USER:-postgres}
-      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-main}
+      # No DB_PASSWORD: with one, the image appends a credential to userlist.txt, which is mounted read-only. Logins
+      # to PostgreSQL reuse each client's SCRAM secret from userlist.txt.
+      DB_USER: ${POSTGRES_USER:-postgres}
+      LISTEN_PORT: 6432
+      POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-2000}
+      AUTH_TYPE: scram-sha-256
+      AUTH_FILE: /etc/pgbouncer/userlist.txt
+      STATS_USERS: ${POSTGRES_USER:-postgres}
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      # For the healthcheck's psql only: PgBouncer authenticates every client with scram-sha-256
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
     volumes:
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     networks:
@@ -83,9 +89,9 @@ services:
           "-p",
           "6432",
           "-U",
-          "postgres",
+          "${POSTGRES_USER:-postgres}",
           "-d",
-          "main",
+          "${POSTGRES_DB:-main}",
           "-c",
           "SELECT 1;",
         ]

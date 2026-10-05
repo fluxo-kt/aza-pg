@@ -430,13 +430,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "pgdg",
     pgdgPackage: "plpgsql-check",
     soFileName: "plpgsql_check.so",
-    pgdgVersion: "2.10.11-1.pgdg13+1",
+    pgdgVersion: "2.10.12-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.10.11",
+      tag: "v2.10.12",
     },
     runtime: {
       sharedPreload: false,

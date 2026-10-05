@@ -120,7 +120,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 | Extension                                                 | Version                                                                  | Enabled by Default | Shared Preload | Documentation                                         | Notes                                                |
 | --------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------ | -------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.10.11](https://github.com/okbob/plpgsql_check/releases/tag/v2.10.11) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check) | [v2.10.12](https://github.com/okbob/plpgsql_check/releases/tag/v2.10.12) | No                 | No             | [Docs](https://github.com/okbob/plpgsql_check#readme) | Static analyzer for PL/pgSQL functions and triggers. |
 
 ### queueing
 

@@ -220,6 +220,9 @@ async function waitForContainerPostgres(
         "-X",
         "-U",
         user,
+        // initdb always creates "postgres"; without -d psql would pick a database named after the user.
+        "-d",
+        "postgres",
         "-tAc",
         "SELECT 1",
       ]);

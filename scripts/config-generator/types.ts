@@ -40,6 +40,7 @@ export interface PostgreSQLSettings {
   pgStatStatementsMax: number;
   pgStatStatementsTrack: string;
   timescaledbTelemetryLevel?: string;
+  cronHost?: string;
 
   // auto_explain
   autoExplainLogMinDuration: string;
@@ -97,6 +98,8 @@ export interface PgHbaRule {
   user: string;
   address?: string;
   method: "trust" | "reject" | "scram-sha-256" | "md5" | "peer";
+  /** pg_ident.conf map a peer rule consults (written next to pg_hba.conf). */
+  map?: string;
   comment?: string;
   stackSpecific?: StackType[];
 }

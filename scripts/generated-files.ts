@@ -33,14 +33,17 @@ export const GENERATED_FILES = [
   // PostgreSQL configs - primary stack
   "stacks/primary/configs/postgresql-primary.conf",
   "stacks/primary/configs/pg_hba.conf",
+  "stacks/primary/configs/pg_ident.conf",
 
   // PostgreSQL configs - replica stack
   "stacks/replica/configs/postgresql-replica.conf",
   "stacks/replica/configs/pg_hba.conf",
+  "stacks/replica/configs/pg_ident.conf",
 
   // PostgreSQL configs - single stack
   "stacks/single/configs/postgresql.conf",
   "stacks/single/configs/pg_hba.conf",
+  "stacks/single/configs/pg_ident.conf",
 
   // Workflow configuration
   ".github/workflow-config.json",

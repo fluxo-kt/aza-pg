@@ -20,12 +20,13 @@
 #
 # Per database, in ONE transaction (any error rolls the whole database back): upstream migrations newer than the
 # starting release, then aza-overrides.sql (aza-pg's versions of the functions the migrations leave different from a
-# fresh install), then security-patches.sql, then the new version comment. pgflow telemetry stays off (Art's ruling):
-# the bundled telemetry migration has its scheduling statement removed.
+# fresh install), then security-patches.sql, then the new version comment. pgflow telemetry stays off, because
+# aza-pg never sends it unless the operator enables it: the bundled telemetry migration has its scheduling statement
+# removed.
 set -euo pipefail
 
-# The shipped stacks allow local connections only as OS user postgres (pg_hba: local all postgres peer), and
-# `docker exec` runs as root, so drop to postgres before connecting. gosu is su-exec in this image.
+# The shipped stacks allow local connections only as OS user postgres (pg_hba peer, mapped by pg_ident to any role),
+# so `docker exec -u root` must drop to postgres before connecting. gosu is su-exec in this image.
 if [ "$(id -u)" = 0 ]; then
   exec gosu postgres "$0" "$@"
 fi

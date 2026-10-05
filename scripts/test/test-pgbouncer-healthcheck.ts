@@ -28,6 +28,10 @@ const POSTGRES_PASSWORD = `pg_${suffix}`;
 const AUTH_PASS = `pgb:auth\\${suffix}`;
 // Non-default, so a template or entrypoint that drops the variable shows PgBouncer's 200 instead.
 const MAX_CLIENT_CONN = "37";
+// Renamed, because the stack's .env offers POSTGRES_USER: init through the stack's pg_hba.conf, the healthcheck that
+// gates `up`, PgBouncer auth and the exporter's login must all follow it. The single and replica suites keep the
+// default name, so both stay covered.
+const SUPERUSER = "aza_admin";
 
 const failures: string[] = [];
 async function step(name: string, body: () => Promise<void>): Promise<void> {
@@ -77,6 +81,7 @@ async function expectMetricUp(port: number, metric: string): Promise<void> {
 const stage = await stageStack("primary", {
   POSTGRES_IMAGE: image,
   POSTGRES_PASSWORD,
+  POSTGRES_USER: SUPERUSER,
   PG_REPLICATION_PASSWORD: `repl_${suffix}`,
   PGBOUNCER_AUTH_PASS: AUTH_PASS,
   PGBOUNCER_MAX_CLIENT_CONN: MAX_CLIENT_CONN,
@@ -94,13 +99,13 @@ try {
     const logs = await stage.compose("logs", "--tail", "40").nothrow().quiet().text();
     throw new Error(`compose up failed: ${up.stderr.toString().trim()}\n${logs}`);
   }
-  await waitForPostgres({ container: postgres, timeout: TIMEOUTS.startup });
+  await waitForPostgres({ container: postgres, user: SUPERUSER, timeout: TIMEOUTS.startup });
 
   const viaPgbouncer = ["-h", "pgbouncer", "-p", "6432", "-d", "postgres"];
 
   await step("app user logs in through PgBouncer auth_query", async () => {
-    // postgres is not in userlist.txt, so PgBouncer must fetch its SCRAM secret with auth_query.
-    const who = await psql(postgres, [...viaPgbouncer, "-U", "postgres"], "SELECT current_user", {
+    // The superuser is not in userlist.txt, so PgBouncer must fetch its SCRAM secret with auth_query.
+    const who = await psql(postgres, [...viaPgbouncer, "-U", SUPERUSER], "SELECT current_user", {
       PGPASSWORD: POSTGRES_PASSWORD,
     });
     // [databases] pins the server login to pgbouncer_auth, so this is the pooled server session.
@@ -108,7 +113,7 @@ try {
   });
 
   await step("wrong password is refused by PgBouncer", async () => {
-    const r = await psql(postgres, [...viaPgbouncer, "-U", "postgres"], "SELECT 1", {
+    const r = await psql(postgres, [...viaPgbouncer, "-U", SUPERUSER], "SELECT 1", {
       PGPASSWORD: `${POSTGRES_PASSWORD}x`,
     }).then(
       () => "accepted",
@@ -146,6 +151,27 @@ try {
       }
     }
   );
+
+  await step("pg_cron runs a job (it connects through the stack's pg_hba.conf)", async () => {
+    const local = ["-U", SUPERUSER, "-d", "postgres"];
+    await psql(postgres, local, "CREATE TABLE cron_tick (at timestamptz DEFAULT now())");
+    await psql(
+      postgres,
+      local,
+      "SELECT cron.schedule('stack_tick', '1 seconds', 'INSERT INTO cron_tick DEFAULT VALUES')"
+    );
+    const deadline = Date.now() + TIMEOUTS.health * 1000;
+    while (Date.now() < deadline) {
+      if (Number(await psql(postgres, local, "SELECT count(*) FROM cron_tick")) > 0) return;
+      await Bun.sleep(250);
+    }
+    const runs = await psql(
+      postgres,
+      local,
+      "SELECT coalesce(string_agg(DISTINCT status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details"
+    );
+    throw new Error(`the job never wrote a row (${runs})`);
+  });
 
   await step("postgres_exporter reports pg_up 1", async () =>
     expectMetricUp(await stage.hostPort("postgres_exporter", 9187), "pg_up")

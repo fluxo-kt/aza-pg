@@ -142,6 +142,9 @@ const MAX_STANDBY_ARCHIVE_DELAY_SEC = "300s";
  */
 const MAX_STANDBY_STREAMING_DELAY_SEC = "300s";
 
+/** pg_ident.conf map of the stacks' local peer rule: OS user postgres may log in as any role. */
+export const LOCAL_PEER_MAP = "local_postgres";
+
 export const BASE_CONFIG: BaseConfig = {
   common: {
     port: 5432,
@@ -184,6 +187,10 @@ export const BASE_CONFIG: BaseConfig = {
     pgStatStatementsMax: PG_STAT_STATEMENTS_MAX,
     pgStatStatementsTrack: "all",
     timescaledbTelemetryLevel: "off",
+    // pg_cron opens a libpq connection per job, to localhost over TCP by default, where the stacks' pg_hba.conf
+    // demands a password pg_cron does not have, so every job failed there. The socket is covered by local rules
+    // (trust in a plain container, peer in the stacks).
+    cronHost: "/var/run/postgresql",
 
     // auto_explain
     autoExplainLogMinDuration: "3s",
@@ -276,11 +283,15 @@ export const BASE_CONFIG: BaseConfig = {
 
   pgHbaRules: [
     {
+      // Only OS user postgres (the image's USER, owner of the data files) may use the socket, as any role: the
+      // superuser is named by POSTGRES_USER, so a rule naming role "postgres" locked init and the healthcheck out of a
+      // renamed superuser. Any role adds nothing to what owning the data files already grants.
       type: "local",
       database: "all",
-      user: "postgres",
+      user: "all",
       method: "peer",
-      comment: "Local postgres user via Unix socket",
+      map: LOCAL_PEER_MAP,
+      comment: "OS user postgres via Unix socket, as any role (pg_ident.conf)",
     },
     {
       type: "host",

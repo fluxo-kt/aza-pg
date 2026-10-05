@@ -73,9 +73,9 @@ export const SUITES: Suite[] = [
   },
 ];
 
-// A suite past this is already over the whole lane's error ceiling (A8: 5 min); killing it keeps CI from hanging.
+// A suite past this is already over the whole lane's 5 min error ceiling; killing it keeps CI from hanging.
 const SUITE_TIMEOUT_MS = 5 * 60_000;
-// A23 target per suite; slower suites are named in the summary.
+// Target per suite; slower suites are named in the summary.
 const SLOW_SUITE_MS = 30_000;
 const ROOT = join(import.meta.dir, "..");
 

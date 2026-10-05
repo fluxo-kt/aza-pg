@@ -33,7 +33,7 @@ const UPGRADE_DIR = "/opt/pgflow/upgrade";
 interface Release {
   ref: string;
   pgflow: string;
-  /** Refused unchanged (A25): 0.13.x images installed an incomplete schema that no migration replay repairs. */
+  /** Refused unchanged: 0.13.x images installed an incomplete schema that no migration replay repairs. */
   refused: boolean;
 }
 // Releases that shipped pgflow before the schema comment existed; digest-pinned and frozen, so this list never grows.

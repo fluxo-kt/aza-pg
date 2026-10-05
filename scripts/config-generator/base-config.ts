@@ -152,8 +152,6 @@ export const BASE_CONFIG: BaseConfig = {
     // which outranks this file; validate-configs rejects any auto-tuned setting here.
     sharedPreloadLibraries: [],
     idleSessionTimeout: "0",
-    // Min 8 workers for background processes (TimescaleDB, pg_cron, logical replication, etc.)
-    // This ensures the init phase has enough workers; auto-config may increase at runtime
 
     // PostgreSQL 18 Async I/O
     ioMethod: "worker",
@@ -207,18 +205,12 @@ export const BASE_CONFIG: BaseConfig = {
     autovacuumAnalyzeScaleFactor: AUTOVACUUM_ANALYZE_SCALE_FACTOR,
     autovacuumFreezeMaxAge: AUTOVACUUM_FREEZE_MAX_AGE,
 
-    // Checkpoints
-
-    // Query Planner (SSD optimizations)
-
     // WAL
     walCompression: "lz4",
   },
 
   stacks: {
     primary: {
-      // WAL
-
       // Replication
       maxWalSenders: MAX_WAL_SENDERS_PRIMARY,
       maxReplicationSlots: MAX_REPLICATION_SLOTS_PRIMARY,
@@ -244,8 +236,6 @@ export const BASE_CONFIG: BaseConfig = {
     },
 
     replica: {
-      // WAL
-
       // Hot Standby
       hotStandby: "on",
       maxStandbyArchiveDelay: MAX_STANDBY_ARCHIVE_DELAY_SEC,
@@ -260,8 +250,6 @@ export const BASE_CONFIG: BaseConfig = {
       // Logging
       logReplicationCommands: "on",
 
-      // pg_cron (disabled on read-only replica)
-
       // pgAudit (disabled on replica)
       pgAuditLog: "none",
 
@@ -270,7 +258,7 @@ export const BASE_CONFIG: BaseConfig = {
     },
 
     single: {
-      // Simplified WAL for non-replicated setup
+      // No replication
       maxWalSenders: 0,
 
       // pgAudit (disabled)

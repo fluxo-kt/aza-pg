@@ -398,7 +398,7 @@ const ROWS: Row[] = [
       max_parallel_workers: "4",
     },
   },
-  // Art's ruling: a value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
+  // A value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
   {
     name: "operator -c max_connections=7 follows the generated config_file and is logged",
     docker: ["--memory=2g"],

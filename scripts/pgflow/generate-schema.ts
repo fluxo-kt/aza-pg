@@ -245,7 +245,8 @@ function patchEnsureWorkersVaultAccess(filename: string, upstreamContent: string
 // cron setup functions report "skipped" elsewhere). Guarding them here lets initdb, new databases (docs/PGFLOW.md),
 // containers whose POSTGRES_SHARED_PRELOAD_LIBRARIES leaves pg_cron out, and tests run the file as is.
 // pg_settings lists cron.database_name only once pg_cron is loaded; without it the setting is a hidden placeholder
-// that SHOW and current_setting() still answer (the entrypoint passes it with -c), so they cannot tell the cases apart.
+// that SHOW and current_setting() still answer (the entrypoint's config file sets it), so they cannot tell the cases
+// apart.
 const OPTIONAL_EXTENSIONS_SQL = `DO $extensions$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'supabase_vault') THEN

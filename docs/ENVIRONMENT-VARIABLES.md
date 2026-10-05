@@ -42,14 +42,15 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## PgBouncer (Primary Stack Only)
 
-| Variable                      | Default        | Description                                                                   |
-| ----------------------------- | -------------- | ----------------------------------------------------------------------------- |
-| `PGBOUNCER_AUTH_PASS`         | **(required)** | Auth user password                                                            |
-| `PGBOUNCER_LISTEN_ADDR`       | `0.0.0.0`      | Listen address                                                                |
-| `PGBOUNCER_PORT`              | `6432`         | Listen port                                                                   |
-| `PGBOUNCER_SERVER_SSLMODE`    | `prefer`       | TLS mode: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
-| `PGBOUNCER_MAX_CLIENT_CONN`   | `200`          | Max client connections                                                        |
-| `PGBOUNCER_DEFAULT_POOL_SIZE` | `25`           | Pool size per database                                                        |
+| Variable                      | Default        | Description                                                                                   |
+| ----------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
+| `PGBOUNCER_AUTH_PASS`         | **(required)** | Auth user password                                                                            |
+| `PGBOUNCER_LISTEN_ADDR`       | `0.0.0.0`      | Listen address inside the container; `127.0.0.1` cuts off the exporter and the published port |
+| `PGBOUNCER_BIND_IP`           | `127.0.0.1`    | Host address the port is published on                                                         |
+| `PGBOUNCER_PORT`              | `6432`         | Host port                                                                                     |
+| `PGBOUNCER_SERVER_SSLMODE`    | `prefer`       | TLS mode: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`                 |
+| `PGBOUNCER_MAX_CLIENT_CONN`   | `200`          | Max client connections                                                                        |
+| `PGBOUNCER_DEFAULT_POOL_SIZE` | `25`           | Pool size per database                                                                        |
 
 ## Container Resources
 

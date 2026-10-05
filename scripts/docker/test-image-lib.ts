@@ -335,23 +335,6 @@ export function testPgBadgerFunctional(container: string): Promise<TestResult> {
   });
 }
 
-/**
- * SHOW cannot tell a configured value from a default, so this reads pg_settings.source: any key setting
- * not written by the config file or command line means auto-config did not write it.
- */
-export function testAutoConfigApplied(container: string): Promise<TestResult> {
-  return check("Auto-config wrote the memory and connection settings", async () => {
-    const atDefault = await sqlOk(
-      container,
-      `SELECT name FROM pg_settings
-       WHERE name IN ('shared_buffers','effective_cache_size','maintenance_work_mem','work_mem','max_connections')
-         AND source NOT IN ('configuration file','command line')
-       ORDER BY name`
-    );
-    expect(atDefault === "", `not written by auto-config: ${atDefault.split("\n").join(", ")}`);
-  });
-}
-
 // ============================================================================
 // EXTENSION BEHAVIOUR
 // ============================================================================

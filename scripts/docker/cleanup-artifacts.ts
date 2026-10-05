@@ -71,6 +71,16 @@ export function parseVolumeProbeMatches(probeOutput: string, batch: string[]): s
   return matched;
 }
 
+/**
+ * True iff Docker generated the volume's name, i.e. no one named it. `dangling=true` also lists NAMED volumes no
+ * container uses — an operator's `postgres_data` after `docker compose down` — and those carry the aza-pg marker
+ * too, so the marker alone would select real databases for deletion. Docker names anonymous volumes with 64 random
+ * hex characters.
+ */
+export function isAnonymousVolume(name: string): boolean {
+  return /^[0-9a-f]{64}$/.test(name);
+}
+
 /** True iff the dedicated aza-pg buildx builder appears in `docker buildx ls` output. */
 export function builderPresentInList(buildxLsOutput: string): boolean {
   return buildxLsOutput.split("\n").some((l) => l.trim().startsWith(AZA_BUILDER));
@@ -99,7 +109,8 @@ async function azaDanglingImages(): Promise<Array<{ id: string; size: number }>>
 }
 
 /**
- * Dangling volumes whose PGDATA carries the aza-pg marker.
+ * Dangling anonymous volumes whose PGDATA carries the aza-pg marker (named volumes are never candidates:
+ * `isAnonymousVolume`).
  *
  * Probes by mounting batches of volumes read-only into a throwaway alpine container and grepping
  * each volume's `postgresql.auto.conf` for the marker. Read-only mounts are safe even if a volume
@@ -108,7 +119,7 @@ async function azaDanglingImages(): Promise<Array<{ id: string; size: number }>>
 async function azaDanglingVolumes(): Promise<string[]> {
   const list = await dockerRun(["volume", "ls", "-f", "dangling=true", "-q"]);
   if (!list.success) return [];
-  const all = ids(list.output);
+  const all = ids(list.output).filter(isAnonymousVolume);
   const matched: string[] = [];
 
   for (let start = 0; start < all.length; start += VOLUME_PROBE_BATCH) {

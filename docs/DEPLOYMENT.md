@@ -268,7 +268,7 @@ In Coolify UI:
 
 **5.2 Configure Docker Compose**
 
-1. In the Docker Compose editor, paste the content from `/opt/apps/art/infra/aza-pg/deployments/phase1-single-vps/docker-compose.yml`
+1. In the Docker Compose editor, paste the content of this repository's `deployments/phase1-single-vps/docker-compose.yml`
 2. Modify the `networks` section to reference the Coolify network:
 
 ```yaml
@@ -1560,9 +1560,8 @@ All configuration files are in:
 
 **Documentation:**
 
-- Project README: `/opt/apps/art/infra/aza-pg/README.md`
-- Architecture: `/opt/apps/art/infra/aza-pg/ARCHITECTURE.md`
-- This guide: `/opt/apps/art/infra/aza-pg/docs/DEPLOYMENT.md`
+- Project README: [README.md](../README.md)
+- Architecture: [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 **Monitoring:**
 

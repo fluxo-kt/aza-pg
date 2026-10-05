@@ -5,7 +5,9 @@
  * Catches: two databases sharing one key (the image once shipped a single published key), a key that
  * changes across restarts (data encrypted before it becomes unreadable), a key file other users can
  * read, PGSODIUM_KEY_FILE being ignored or a key being generated beside it, a malformed operator key
- * file starting a server instead of stopping with its path, ENABLE_PGSODIUM_INIT not creating the
+ * file starting a server instead of stopping with its path, a new database ending up with the published key
+ * (first start without pgsodium preloaded, or PGSODIUM_KEY_FILE removed later), the image writing a key or
+ * warning beside an operator-mounted getkey, ENABLE_PGSODIUM_INIT not creating the
  * root key, and vault failing to encrypt or storing a secret in plaintext under the default preload.
  * pgsodium.derive_key(1) is a function of the root key alone, so equal outputs mean equal keys.
  *
@@ -17,6 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
+import { getSharedPreloadLibraries } from "./lib/test-mode";
 
 const image = resolveImageTag();
 const PLAINTEXT = "sk_test_t2b_1234567890abcdef";
@@ -64,17 +67,38 @@ try {
   await writeFile(badKey, "not-a-key\n", { mode: 0o644 });
   const mount = (file: string) => ["-v", `${file}:/run/secrets/pgsodium.key:ro`];
   const operator = ["-e", "PGSODIUM_KEY_FILE=/run/secrets/pgsodium.key"];
+  // The operator's own getkey (docs/PGSODIUM-SETUP.md): prints the same key as the operator key file.
+  const ownGetkey = path.join(keyDir, "getkey");
+  await writeFile(ownGetkey, "#!/bin/sh\nexec cat /run/secrets/pgsodium.key\n", { mode: 0o755 });
+  const pgMajor = (
+    (await $`docker image inspect -f ${"{{json .Config.Env}}"} ${image}`.quiet().json()) as string[]
+  )
+    .find((e) => e.startsWith("PG_MAJOR="))
+    ?.slice("PG_MAJOR=".length);
+  if (!pgMajor) throw new Error(`no PG_MAJOR in ${image}`);
+  const getkeyPath = `/usr/share/postgresql/${pgMajor}/extension/pgsodium_getkey`;
+  // A first start where nothing calls getkey: neither pgsodium nor supabase_vault is preloaded.
+  const withoutPgsodium = getSharedPreloadLibraries("production")
+    .split(",")
+    .filter((lib) => lib !== "pgsodium" && lib !== "supabase_vault")
+    .join(",");
 
-  const [a, b, c1, c2, bad] = await Promise.all([
+  const [a, b, c1, c2, bad, nopre, own] = await Promise.all([
     start("key-a"),
     start("key-b"),
     start("key-c1", [...mount(operatorKey), ...operator, "-e", "ENABLE_PGSODIUM_INIT=true"]),
     start("key-c2", [...mount(operatorKey), ...operator]),
     start("key-bad", [...mount(badKey), ...operator]),
+    start("key-nopre", ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${withoutPgsodium}`]),
+    start("key-own", [...mount(operatorKey), "-v", `${ownGetkey}:${getkeyPath}:ro`]),
   ]);
   await Promise.all(
-    [a, b, c1, c2].map((container) => waitForPostgres({ container, timeout: 120 }))
+    [a, b, c1, c2, nopre, own].map((container) => waitForPostgres({ container, timeout: 120 }))
   );
+  const pgdataFile = async (container: string, name: string) => {
+    const r = await $`docker exec ${container} sh -c ${`cat "$PGDATA/${name}"`}`.quiet().nothrow();
+    return r.exitCode === 0 ? r.stdout.toString().trim() : null;
+  };
 
   await check("each new database gets its own private key file", async () => {
     const stat = (
@@ -108,6 +132,59 @@ try {
         .quiet();
       if (stray.exitCode === 0)
         throw new Error("a pgsodium_root.key was generated despite PGSODIUM_KEY_FILE");
+    }
+  );
+
+  await check("a first start without pgsodium preloaded still gets its own key", async () => {
+    // Without it the next start took the directory for one made by an older image and wrote the published key.
+    const [key, keyA, source] = await Promise.all([
+      pgdataFile(nopre, "pgsodium_root.key"),
+      pgdataFile(a, "pgsodium_root.key"),
+      pgdataFile(nopre, "pgsodium_key_source"),
+    ]);
+    if (!key || !/^[0-9a-f]{64}$/.test(key)) throw new Error(`key file holds ${key}`);
+    if (key === keyA) throw new Error("same key as another new database");
+    if (source !== "data directory") throw new Error(`key source record is ${source}`);
+  });
+
+  await check(
+    "an operator-mounted getkey owns the key: none written, no published-key warning",
+    async () => {
+      const [ownKey, opKey, file, source, logs] = await Promise.all([
+        derive(own),
+        derive(c1),
+        pgdataFile(own, "pgsodium_root.key"),
+        pgdataFile(own, "pgsodium_key_source"),
+        $`docker logs ${own}`.quiet().nothrow(),
+      ]);
+      if (ownKey !== opKey) throw new Error("the mounted getkey's key is not the one in use");
+      if (file !== null)
+        throw new Error("a pgsodium_root.key was written beside the mounted getkey");
+      if (source !== "pgsodium_getkey") throw new Error(`key source record is ${source}`);
+      if (logs.stderr.toString().includes("older aza-pg images published")) {
+        throw new Error("published-key warning despite the operator's getkey");
+      }
+    }
+  );
+
+  await check(
+    "a directory created with PGSODIUM_KEY_FILE refuses to start without it",
+    async () => {
+      // The same data directory (--volumes-from) without the variable: the published key used to replace it.
+      await $`docker stop ${c2}`.quiet();
+      const unset = await start("key-c2-unset", ["--volumes-from", c2]);
+      const code = await Promise.race([
+        $`docker wait ${unset}`
+          .quiet()
+          .nothrow()
+          .then((r) => r.text().trim()),
+        Bun.sleep(30_000).then(() => "still running after 30s"),
+      ]);
+      const logs = (await $`docker logs ${unset}`.quiet().nothrow()).stderr.toString();
+      if (code !== "1") throw new Error(`exit code ${code}, want 1`);
+      if (!logs.includes("created with PGSODIUM_KEY_FILE")) {
+        throw new Error(`log does not name PGSODIUM_KEY_FILE:\n${logs.slice(-500)}`);
+      }
     }
   );
 
@@ -150,7 +227,8 @@ try {
   failures.push("setup");
   console.error(`FAIL: setup: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
-  await Promise.all(containers.map((c) => $`docker rm -f -v ${c}`.quiet().nothrow()));
+  // Newest first, one command: key-c2-unset borrows key-c2's volume, which goes with key-c2 only once unused.
+  await $`docker rm -f -v ${containers.toReversed()}`.quiet().nothrow();
   await rm(keyDir, { recursive: true, force: true });
 }
 process.exit(failures.length === 0 ? 0 : 1);

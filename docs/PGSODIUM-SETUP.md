@@ -10,7 +10,10 @@ pgsodium derives every key it uses (Vault secrets, `derive_key`, Transparent Col
 | ---------------------------------- | -------------------------------------------------------------------------------------------- |
 | New data directory (default)       | Random, created at the first start in `$PGDATA/pgsodium_root.key` (mode 600, owner postgres) |
 | `PGSODIUM_KEY_FILE` is set         | That file: 64 hex characters, readable by postgres; nothing is created in the data directory |
+| Your own `pgsodium_getkey` mounted | Whatever it prints; the image creates, checks and warns about nothing                        |
 | Data directory from an older image | The key older images published, written to `$PGDATA/pgsodium_root.key`; every start warns    |
+
+A new data directory records which of the first three it was created with (`$PGDATA/pgsodium_key_source`). If that source is gone at a later start — the key file deleted, `PGSODIUM_KEY_FILE` unset, your getkey no longer mounted — the container stops and names it, instead of starting with another key under which existing encrypted data is unreadable.
 
 **What carries the key:** file-level copies of the data directory do — volume backups, `pg_basebackup` (so replicas decrypt what the primary encrypted) and pgBackRest backups. `pg_dump` output does not: restoring a dump into a new container gives it a new key, and values encrypted under the old one cannot be decrypted. Keep a copy of the key file, or supply your own with `PGSODIUM_KEY_FILE`.
 
@@ -274,13 +277,16 @@ SELECT pgsodium.crypto_pwhash_str_verify(
 
 ## Troubleshooting
 
-| Error                                                 | Cause                                    | Solution                                               |
-| ----------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------ |
-| `no server secret key defined`                        | pgsodium or supabase_vault not preloaded | Keep both in `POSTGRES_SHARED_PRELOAD_LIBRARIES`       |
-| `ERROR: PGSODIUM_KEY_FILE=... must be readable ...`   | Wrong path, permissions or content       | Fix the file: 64 hex characters, readable by postgres  |
-| `pgsodium_getkey: ... must hold 64 hex characters`    | Key file corrupted                       | Restore the key file from your backup                  |
-| `crypto_kdf_derive_from_key: context must be 8 bytes` | Wrong context parameter                  | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
-| `pgsodium.key table empty`                            | Init script didn't run                   | Set `ENABLE_PGSODIUM_INIT=true`                        |
+| Error                                                                          | Cause                                    | Solution                                               |
+| ------------------------------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------ |
+| `no server secret key defined`                                                 | pgsodium or supabase_vault not preloaded | Keep both in `POSTGRES_SHARED_PRELOAD_LIBRARIES`       |
+| `ERROR: PGSODIUM_KEY_FILE=... must be readable ...`                            | Wrong path, permissions or content       | Fix the file: 64 hex characters, readable by postgres  |
+| `pgsodium_getkey: ... must hold 64 hex characters`                             | Key file corrupted                       | Restore the key file from your backup                  |
+| `...pgsodium_root.key is missing, but this data directory was created with it` | Key file deleted                         | Restore it from your backup                            |
+| `this data directory was created with PGSODIUM_KEY_FILE, which is not set now` | Variable removed                         | Set it to the same key file                            |
+| `...created with your own pgsodium_getkey, which is not mounted now`           | Mount removed                            | Mount the same script again                            |
+| `crypto_kdf_derive_from_key: context must be 8 bytes`                          | Wrong context parameter                  | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
+| `pgsodium.key table empty`                                                     | Init script didn't run                   | Set `ENABLE_PGSODIUM_INIT=true`                        |
 
 ---
 

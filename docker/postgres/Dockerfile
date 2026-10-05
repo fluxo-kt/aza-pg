@@ -365,8 +365,11 @@ RUN set -euo pipefail && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# pgsodium root key: a random key per data directory, or the operator's PGSODIUM_KEY_FILE (script header).
+# pgsodium root key: a random key per data directory, or the operator's PGSODIUM_KEY_FILE (script header). The second,
+# never-executed copy lets the entrypoint tell an operator-mounted getkey (it owns the key) from the image's own;
+# 0755 because COPY gives the new directory the same mode, and 0644 would make it untraversable.
 COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/share/postgresql/18/extension/pgsodium_getkey
+COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/local/share/aza-pg/pgsodium_getkey
 
 # Create backup directory with proper ownership
 RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup

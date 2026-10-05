@@ -4,9 +4,9 @@
 # without the key would silently disable encryption the database may depend on.
 #
 # The image ships no key. The key is the operator's PGSODIUM_KEY_FILE when set, else pgsodium_root.key in
-# the data directory, which the first start of a new data directory (initdb's temporary server) creates
-# from /dev/urandom: every database gets its own key, and file-level copies (backups, pg_basebackup
-# replicas) carry it. An operator file is never created here: a missing one means a wrong path, and a new
+# the data directory, which this script creates from /dev/urandom at the first start of a new data
+# directory (run by the preload, or by initdb script 00-pgsodium-key.sh when nothing preloads pgsodium):
+# every database gets its own key, and file-level copies (backups, pg_basebackup replicas) carry it. An operator file is never created here: a missing one means a wrong path, and a new
 # random key would make data encrypted under the intended key unreadable. Both inputs are container
 # environment, so a server restarted through `docker exec ... pg_ctl` finds the same key. The entrypoint
 # validates PGSODIUM_KEY_FILE and keeps the old published key for data directories that predate this

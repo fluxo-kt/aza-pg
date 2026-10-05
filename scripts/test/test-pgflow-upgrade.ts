@@ -8,7 +8,7 @@
  * RLS policies, telemetry table row counts, and pgflow's cron.job rows. Grants are normalised through acldefault()
  * because NULL and the default ACL mean the same.
  *
- * Cases: a migration that fails rolls the whole database back (fingerprint byte-identical, files restored); the real
+ * Cases: the release's volume keeps its pgsodium key (the published one) and warns; a migration that fails rolls the whole database back (fingerprint byte-identical, files restored); the real
  * upgrade matches the fresh install; a second run says "up to date".
  *
  * --write-legacy-hashes: for every release that shipped pgflow before the "pgflow X.Y.Z" schema comment, measure the
@@ -199,24 +199,28 @@ function expectSame(actual: string, expected: string, what: string): void {
 
 /**
  * Lets `release` create a database on a new volume, then starts the image under test on that volume.
- * Returns the container name and the structure hash pgflow-upgrade detects the database by.
+ * Returns the container name, the structure hash pgflow-upgrade detects the database by, and the release's pgsodium
+ * key as derive_key(1) (a function of the root key alone).
  */
 async function onReleaseVolume(
   release: Release,
   index: number,
   hashSql: string
-): Promise<{ container: string; hash: string }> {
+): Promise<{ container: string; hash: string; sodiumKey: string }> {
   const volume = `${RUN_ID}-vol-${index}`;
   volumes.add(volume);
   await must(["volume", "create", volume]);
   const old = `${RUN_ID}-old-${index}`;
   await start(old, release.ref, volume);
   const hash = (await psql(old, hashSql)).trim();
+  const sodiumKey = (await psql(old, DERIVE_KEY_SQL)).trim();
   await remove(old);
   const container = `${RUN_ID}-new-${index}`;
   await start(container, IMAGE, volume);
-  return { container, hash };
+  return { container, hash, sodiumKey };
 }
+
+const DERIVE_KEY_SQL = "SELECT encode(pgsodium.derive_key(1), 'hex')";
 
 async function upgrade(container: string): Promise<{ code: number; output: string }> {
   const r = await docker(["exec", container, "pgflow-upgrade"]);
@@ -225,8 +229,18 @@ async function upgrade(container: string): Promise<{ code: number; output: strin
 
 async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
   const release = LEGACY.at(-1)!;
-  const { container } = await onReleaseVolume(release, LEGACY.length - 1, hashSql);
+  const { container, sodiumKey } = await onReleaseVolume(release, LEGACY.length - 1, hashSql);
   const before = await fingerprint(container);
+
+  await test("the release's data volume keeps its pgsodium key and warns about it", async () => {
+    // Releases shipped one published key; a new key would make data they encrypted unreadable.
+    const now = (await psql(container, DERIVE_KEY_SQL)).trim();
+    if (now !== sodiumKey) throw new Error("the pgsodium key changed across the image upgrade");
+    const logs = await docker(["logs", container]);
+    if (!logs.err.includes("older aza-pg images published")) {
+      throw new Error("no published-key warning on a release's data volume");
+    }
+  });
 
   await test("a failing migration rolls the whole database back", async () => {
     const lastMigration = (

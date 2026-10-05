@@ -580,8 +580,21 @@ as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 # Images before per-database keys shipped one fixed key, published in this repository. A data directory they
 # created may hold data encrypted with it, and a new key would make that data unreadable, so it keeps that key
 # as its key file and every start warns until the operator rotates it (docs/PGSODIUM-SETUP.md).
+# An operator who mounts their own pgsodium_getkey owns the key, so none of this applies: the image's script
+# differs from the pristine copy the image keeps beside it.
 readonly PUBLISHED_PGSODIUM_KEY=4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2
-if [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
+pgsodium_key_file=""
+if cmp -s "/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey" /usr/local/share/aza-pg/pgsodium_getkey; then
+    image_getkey=true
+elif [ $? -eq 1 ]; then
+    image_getkey=false
+else # cmp could not read one of them: the image is broken, and guessing either way could pick the wrong key
+    printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare pgsodium_getkey with the image's copy" >&2
+    exit 1
+fi
+if [ "$image_getkey" = false ]; then
+    : # the operator's getkey owns the key: nothing to check, write or warn about
+elif [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
     operator_key=$(as_postgres cat "$PGSODIUM_KEY_FILE" 2>/dev/null | tr -d '[:space:]' || true)
     if ! [[ "$operator_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
         printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: PGSODIUM_KEY_FILE=${PGSODIUM_KEY_FILE} must be readable by postgres and hold 64 hex characters; create one with: head -c 32 /dev/urandom | od -An -v -tx1 | tr -d ' \\n'" >&2
@@ -591,11 +604,25 @@ if [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
 else
     pgsodium_key_file="${PGDATA}/pgsodium_root.key"
     if [ -f "${PGDATA}/PG_VERSION" ] && [ ! -e "$pgsodium_key_file" ]; then
+        # Data directories this image creates record their key's home (initdb script 00-pgsodium-key.sh); with that
+        # record present a missing key is an operator error, and the published key would silently replace it.
+        key_source=$(as_postgres cat "${PGDATA}/pgsodium_key_source" 2>/dev/null || true)
+        if [ "$key_source" = "PGSODIUM_KEY_FILE" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with PGSODIUM_KEY_FILE, which is not set now; set it to the same key file (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        elif [ "$key_source" = "pgsodium_getkey" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with your own pgsodium_getkey, which is not mounted now; mount it again (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        elif [ -n "$key_source" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: ${pgsodium_key_file} is missing, but this data directory was created with it; restore it from a backup: data encrypted under it cannot be read without it (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        fi
         # shellcheck disable=SC2016 # $1/$2 are the inner sh's arguments
         as_postgres sh -c 'umask 077 && printf "%s\n" "$1" > "$2"' sh "$PUBLISHED_PGSODIUM_KEY" "$pgsodium_key_file"
     fi
 fi
-current_key=$(as_postgres cat "$pgsodium_key_file" 2>/dev/null | tr -d '[:space:]' || true)
+current_key=""
+[ -z "$pgsodium_key_file" ] || current_key=$(as_postgres cat "$pgsodium_key_file" 2>/dev/null | tr -d '[:space:]' || true)
 if [ "${current_key,,}" = "$PUBLISHED_PGSODIUM_KEY" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] WARNING: pgsodium uses the key older aza-pg images published (${pgsodium_key_file}); anyone can decrypt data encrypted with it. Rotate it: docs/PGSODIUM-SETUP.md, section \"Rotating the published key\"" >&2
 fi

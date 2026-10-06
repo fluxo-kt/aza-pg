@@ -755,6 +755,7 @@ Promotes PostgreSQL replica to primary role.
 **Features:**
 
 - Refuses unless the container's server is a running standby (read with `pg_controldata`, no database login)
+- Refuses while the standby still streams from a live upstream (`pg_stat_wal_receiver`); `--force` overrides
 - `pg_ctl promote` on the running server, which waits until the server is a primary (no restart)
 
 **Options:**
@@ -762,6 +763,7 @@ Promotes PostgreSQL replica to primary role.
 - `--container NAME` - Container name (default: `aza-pg-replica-postgres-replica`)
 - `--data-dir PATH` - Data directory (default: the container's `$PGDATA`)
 - `--yes` - Skip confirmation prompt
+- `--force` - Promote even while still streaming from a live upstream
 - `--help` - Show help message
 
 **Usage:**

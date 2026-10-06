@@ -211,7 +211,21 @@ try {
   await step(
     "failover: primary stopped, replica promoted keeps the rows and accepts writes",
     async () => {
+      // The tool must refuse while the replica still streams from a live primary (split-brain guard), and leave it a standby.
+      const refused = await $`bun ${PROMOTE_TOOL} -c ${replicaDb} -y`.nothrow().quiet();
+      if (refused.exitCode === 0 || (await psql(replicaDb, "SELECT pg_is_in_recovery()")) !== "t") {
+        throw new Error(
+          `promote-replica.ts promoted a standby streaming from a live primary: ${refused.stdout.toString().trim()}`
+        );
+      }
       await $`docker stop ${primaryDb}`.quiet();
+      // The walreceiver notices the closed connection a moment after the stop returns; wait for that, never sleep.
+      await until(
+        replicaDb,
+        "SELECT count(*) FROM pg_stat_wal_receiver WHERE status = 'streaming'",
+        "0",
+        TIMEOUTS.health
+      );
       // The shipped failover tool, as the operations runbook runs it: this step is its regression test.
       const promote = await $`bun ${PROMOTE_TOOL} -c ${replicaDb} -y`.nothrow().quiet();
       if (promote.exitCode !== 0) {

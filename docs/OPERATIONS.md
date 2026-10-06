@@ -309,21 +309,23 @@ bun scripts/tools/promote-replica.ts -c my-replica -y
 
 #### Options
 
-| Flag                   | Description              | Default                           |
-| ---------------------- | ------------------------ | --------------------------------- |
-| `-c, --container NAME` | Container name           | `aza-pg-replica-postgres-replica` |
-| `-d, --data-dir PATH`  | Data directory path      | container's `$PGDATA`             |
-| `-y, --yes`            | Skip confirmation prompt | `false` (requires typing `yes`)   |
-| `-h, --help`           | Show help                | -                                 |
+| Flag                   | Description                                        | Default                           |
+| ---------------------- | -------------------------------------------------- | --------------------------------- |
+| `-c, --container NAME` | Container name                                     | `aza-pg-replica-postgres-replica` |
+| `-d, --data-dir PATH`  | Data directory path                                | container's `$PGDATA`             |
+| `-y, --yes`            | Skip confirmation prompt                           | `false` (requires typing `yes`)   |
+| `-f, --force`          | Promote while still streaming from a live upstream | `false`                           |
+| `-h, --help`           | Show help                                          | -                                 |
 
 `-n, --no-backup` is still accepted and does nothing: the tool takes no backup. Promotion changes no existing data, so take backups with `backup-postgres.ts` or pgBackRest instead.
 
 #### Promotion Process
 
 1. Reads the cluster state with `pg_controldata` (no database login, so a renamed superuser or strict `pg_hba.conf` does not matter); refuses a primary or a container that is not a running standby.
-2. Asks for confirmation (unless `-y`).
-3. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until the server is a primary; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
-4. Prints the next steps.
+2. Refuses (exit 1) while the standby still streams from its upstream, read from `pg_stat_wal_receiver` as `POSTGRES_USER`: that server is alive, so promoting would leave two primaries. A status it cannot read counts as unsafe. `--force` skips this check. Not streaming does not prove the old primary is down — one cut off by a network split looks the same — so stop it first regardless.
+3. Asks for confirmation (unless `-y`).
+4. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until the server is a primary; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
+5. Prints the next steps.
 
 #### Common Scenarios
 

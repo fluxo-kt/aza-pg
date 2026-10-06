@@ -363,7 +363,7 @@ Tool images run by scripts (hadolint, actionlint, yamllint, trivy) are invisible
 
 ```bash
 rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github   # digest pins
-rg -n 'aquasec/trivy:' scripts .github                                             # trivy is tag-pinned in several places
+bun scripts/extensions/check-updates.ts                                           # reports every repo:tag@sha256 tool image in scripts/ and .github/
 ```
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,

@@ -506,6 +506,9 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> 
   },
   "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
   "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
+  "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
+  "hadolint/hadolint": { repository: "https://github.com/hadolint/hadolint" },
+  "aquasec/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
 };
 
 /**
@@ -515,16 +518,20 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> 
  * or built locally, is skipped: the stacks follow its floating major tag on purpose.
  */
 async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files: string[] }>> {
-  const files = (await Bun.$`git ls-files -- stacks deployments`.quiet().text())
+  // scripts/ and .github/ pin the tool images the checks run (actionlint, hadolint, trivy) as repo:tag@sha256:…
+  // literals (tag for this check, digest for integrity); without them here those pins went stale unseen.
+  const files = (await Bun.$`git ls-files -- stacks deployments scripts .github`.quiet().text())
     .split("\n")
     .filter(Boolean);
   const images = new Map<string, { repo: string; tag: string; files: string[] }>();
   for (const file of files) {
+    const tool = file.startsWith("scripts/") || file.startsWith(".github/");
     for (const line of (await Bun.file(file).text()).split("\n")) {
-      const m =
-        /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
-          line
-        );
+      const m = tool
+        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+):([A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
+        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
+            line
+          );
       if (!m) continue;
       const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
       if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;

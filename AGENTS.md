@@ -167,7 +167,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - Commit granularly, after every finished/verified phase or work part
 - **Commit only on the checked-out branch; never create, switch, merge, rebase or delete branches or worktrees unless Art asks for that exact operation**. Work parked on a side branch or worktree is invisible to Art and needs a later merge that is itself a branch operation. A long test reading the working tree is no exception: wait, or edit only files it does not read. Branches: `dev` = daily work (usually checked out), `dev` = GitHub default branch (scheduled and `workflow_run` workflows run its definitions), `main` = release mirror, `release` = triggers `publish.yml`; name one only after `git rev-parse --abbrev-ref HEAD`. `.claude/settings.json` makes Claude ask Art before each such command
 - Should NEVER lose anything, be super careful with git reset/revert/rebase!
-- **Commit with `git commit --only -m "…" -- <files>`, naming every file of the change (both paths of a rename)**: a plain `git commit`, even right after `git add <files>`, takes the WHOLE index — including whatever `git mv`, `git rm` or an earlier `git add` already staged. Then check `git show --stat HEAD` lists exactly those files.
+- **Commit with `git commit --only -m "…" -- <files>`, naming every file of the change (both paths of a rename)**: a plain `git commit`, even right after `git add <files>`, takes the WHOLE index — including whatever `git mv`, `git rm` or an earlier `git add` already staged. A new file needs `git add -- <file>` first: `--only` rejects a path git does not track yet. Then check `git show --stat HEAD` lists exactly those files.
 
 ## Troubleshooting
 

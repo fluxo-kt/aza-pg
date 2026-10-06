@@ -113,7 +113,8 @@ for ext in "${EXTENSIONS[@]}"; do
 done
 
 # Test 3.5: Create test table
-if docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF &>/dev/null
+# -i: without it psql gets no stdin, runs nothing and exits 0. ON_ERROR_STOP: otherwise a failed statement still exits 0.
+if docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} -v ON_ERROR_STOP=1 <<EOF &>/dev/null
 CREATE TABLE IF NOT EXISTS verify_test (id SERIAL PRIMARY KEY, ts TIMESTAMP DEFAULT NOW(), data TEXT);
 INSERT INTO verify_test (data) VALUES ('test-$(date +%s)');
 SELECT count(*) FROM verify_test;

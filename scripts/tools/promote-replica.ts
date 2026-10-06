@@ -13,8 +13,9 @@
  *   -n, --no-backup         Accepted for old scripts; the tool takes no backup (see below)
  *   -h, --help              Show this help
  *
- * The old primary MUST be stopped first: two primaries accepting writes is split-brain, and nothing here can see the
- * old primary. Promotion is one-way: this server starts a new timeline, and the old primary can only rejoin as a
+ * The old primary MUST be stopped first: two primaries accepting writes is split-brain, and this tool does not check
+ * for one (pg_stat_wal_receiver would show a connected primary, never one cut off by a partition), so -y skips the
+ * only warning. Promotion is one-way: this server starts a new timeline, and the old primary can only rejoin as a
  * replica of it (re-clone, or pg_rewind).
  *
  * How it works: `pg_ctl promote` on the running server. pg_ctl refuses a server that is not a standby, then waits

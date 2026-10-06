@@ -87,9 +87,21 @@ else
     log_info "Network created successfully"
 fi
 
-# Step 5: Generate PgBouncer userlist.txt
-log_info "PgBouncer userlist.txt will be generated after PostgreSQL starts"
-log_warn "You'll need to run: ./scripts/generate-pgbouncer-userlist.sh after first boot"
+# Step 5: Create an empty PgBouncer userlist.txt; step 11 fills it once PostgreSQL holds the password hashes.
+# docker compose bind-mounts it at step 7, and a missing bind source makes Docker create a DIRECTORY there, which
+# step 11 cannot write to ("Is a directory").
+USERLIST="$DEPLOY_DIR/pgbouncer/userlist.txt"
+if [ -d "$USERLIST" ]; then
+    log_warn "Removing the directory an earlier 'docker compose up' created at pgbouncer/userlist.txt"
+    rmdir "$USERLIST" # refuses a non-empty directory, so nothing an operator put there is lost
+fi
+if [ ! -e "$USERLIST" ]; then
+    # Owner and mode match step 11: PgBouncer runs as uid 70, and the file will hold password hashes
+    if ! install -m 600 -o 70 -g 70 /dev/null "$USERLIST"; then
+        log_error "Creating pgbouncer/userlist.txt owned by uid 70 failed (needs root)"
+        exit 1
+    fi
+fi
 
 # Step 6: Pull images
 log_info "Pulling Docker images..."
@@ -119,9 +131,18 @@ echo ""
 
 # Step 9: Create monitoring user
 log_info "Creating monitoring database user..."
-docker exec postgres psql -U postgres <<EOF || log_warn "Monitoring user might already exist"
-CREATE USER ${MONITORING_USER:-monitoring} WITH PASSWORD '${MONITORING_PASSWORD}';
-GRANT pg_monitor TO ${MONITORING_USER:-monitoring};
+# -i: without it docker exec gives psql no stdin, so psql runs nothing and still exits 0.
+# The password reaches psql through the environment (\getenv), never an argv or SQL text: an argv is visible in
+# `ps`, and a quote in the password would break the SQL. Creating then altering keeps re-runs working and applies
+# a changed MONITORING_PASSWORD; ON_ERROR_STOP makes a failure stop setup instead of leaving the exporter locked out.
+MONITORING_USER="${MONITORING_USER:-monitoring}" MONITORING_PASSWORD="$MONITORING_PASSWORD" \
+    docker exec -i -e MONITORING_USER -e MONITORING_PASSWORD postgres psql -U postgres -v ON_ERROR_STOP=1 <<'EOF'
+\getenv mon_user MONITORING_USER
+\getenv mon_pass MONITORING_PASSWORD
+SELECT format('CREATE ROLE %I LOGIN', :'mon_user')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'mon_user') \gexec
+ALTER ROLE :"mon_user" WITH LOGIN PASSWORD :'mon_pass';
+GRANT pg_monitor TO :"mon_user";
 EOF
 
 # Step 10: Verify auto-config

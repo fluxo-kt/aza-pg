@@ -161,7 +161,11 @@ function checkPgPassword(config: RestoreConfig): void {
 async function confirmRestore(database: string): Promise<void> {
   process.stdout.write(
     `\n⚠️  WARNING: This runs the backup's SQL in database '${database}'. Nothing there is replaced: rows of a table\n` +
-      "that already exists are added again. Restore into a new server's database.\n"
+      "that already exists are added again. Restore into a new server's database.\n" +
+      // pg_dump leaves out the pgsodium root key, and the entrypoint refuses to switch an existing data directory to
+      // another key: a server created without the original key cannot decrypt them, and must be recreated with it.
+      "Vault secrets and pgsodium-encrypted values in the backup decrypt only if this server was created with\n" +
+      "PGSODIUM_KEY_FILE pointing at a copy of the original server's pgsodium root key; see docs/PGSODIUM-SETUP.md.\n"
   );
   process.stdout.write("Press Ctrl+C to cancel, or Enter to continue...\n");
 
@@ -296,7 +300,7 @@ async function main(): Promise<void> {
 }
 
 // Run main function
-main().catch((error) => {
-  error(error.message);
+main().catch((err) => {
+  error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

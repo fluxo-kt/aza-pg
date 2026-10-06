@@ -15,7 +15,20 @@ import { $ } from "bun";
 import { checkCommand, waitForPostgres } from "../utils/docker";
 import { info, success, error } from "../utils/logger";
 import { dirname } from "node:path";
-import { stat } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
+
+// A new aza-pg data directory gets its own random pgsodium root key, which pg_dump never includes: restoring this file
+// into another server leaves Vault secrets and pgsodium-encrypted values undecryptable unless that server runs on the
+// original key. The entrypoint refuses to switch an existing data directory to another key, so the new server must be
+// created with the copy, and the copy must exist before the old server is gone.
+const PGSODIUM_KEY_NOTE = [
+  "pgsodium root key: this backup does not contain it, and Vault secrets and pgsodium-encrypted values in it decrypt",
+  "only under the original server's key. Keep a private copy with the backup, from an aza-pg container:",
+  "  (umask 077; docker exec -u postgres <container> sh -c 'cat \"$PGDATA/pgsodium_root.key\"' > pgsodium_root.key)",
+  "(or the file that server's PGSODIUM_KEY_FILE names). To restore, create the new server with PGSODIUM_KEY_FILE",
+  "pointing at that copy before its first start; see docs/PGSODIUM-SETUP.md.",
+  "",
+].join("\n");
 
 interface BackupConfig {
   database: string;
@@ -148,9 +161,22 @@ async function checkFileExists(outputFile: string): Promise<void> {
 async function performBackup(config: BackupConfig): Promise<void> {
   info("Creating backup...");
 
+  // The file holds every row, so only its owner may read it. Created here with mode 0600 because Bun.write cannot
+  // set a mode, and pg_dump -f keeps an existing file's mode. "wx" refuses a file that appeared since the existence
+  // check; that happens outside the try below, so its cleanup never deletes a file this run did not create.
   try {
-    // Run pg_dump and pipe to gzip
-    const result = await $`pg_dump \
+    await (await open(config.outputFile, "wx", 0o600)).close();
+  } catch (err) {
+    error(
+      `Cannot create ${config.outputFile}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    process.exit(1);
+  }
+
+  try {
+    // pg_dump compresses (-Z, gzip) and writes the file itself, so the dump never passes through this process's
+    // memory, whatever the database size.
+    await $`pg_dump \
       -h ${config.pgHost} \
       -p ${config.pgPort.toString()} \
       -U ${config.pgUser} \
@@ -158,11 +184,9 @@ async function performBackup(config: BackupConfig): Promise<void> {
       --format=plain \
       --no-owner \
       --no-acl \
+      -Z 6 \
+      -f ${config.outputFile} \
       --verbose`.quiet();
-
-    // Compress output
-    const compressed = Bun.gzipSync(new Uint8Array(await result.arrayBuffer()));
-    await Bun.write(config.outputFile, compressed);
   } catch (err) {
     // .quiet() captured pg_dump's messages; show them
     if (err instanceof $.ShellError) process.stderr.write(err.stderr);
@@ -249,7 +273,7 @@ async function showBackupInfo(config: BackupConfig): Promise<void> {
   process.stdout.write("Backup contains:\n");
   try {
     const preview =
-      await $`zcat ${config.outputFile} | grep -E "^(CREATE TABLE|CREATE INDEX|CREATE EXTENSION)" | head -20`.text();
+      await $`gzip -dc ${config.outputFile} | grep -E "^(CREATE TABLE|CREATE INDEX|CREATE EXTENSION)" | head -20`.text();
     process.stdout.write(preview);
   } catch {
     process.stdout.write("(no tables/indexes/extensions found)\n");
@@ -259,6 +283,8 @@ async function showBackupInfo(config: BackupConfig): Promise<void> {
   process.stdout.write(
     `To restore: gunzip -c ${config.outputFile} | psql -h HOST -U USER -d DATABASE\n`
   );
+  process.stdout.write("\n");
+  process.stdout.write(PGSODIUM_KEY_NOTE);
 }
 
 /**
@@ -310,7 +336,7 @@ async function main(): Promise<void> {
 }
 
 // Run main function
-main().catch((error) => {
-  error(error.message);
+main().catch((err) => {
+  error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

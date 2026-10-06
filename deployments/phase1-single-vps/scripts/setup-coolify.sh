@@ -91,7 +91,7 @@ echo ""
 log_step "Checking PgBouncer configuration..."
 if [ ! -f "$DEPLOY_DIR/pgbouncer/userlist.txt" ]; then
     log_warn "pgbouncer/userlist.txt not found - will be generated after PostgreSQL deployment"
-    log_warn "After deploying PostgreSQL, run: ./scripts/generate-pgbouncer-userlist.sh"
+    log_warn "After deploying PostgreSQL, follow step 3 (GENERATE PGBOUNCER USERLIST) printed below"
 else
     log_info "pgbouncer/userlist.txt exists ✓"
 fi

@@ -17,7 +17,6 @@ as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 
 if [ ! -s "${PGDATA:?PGDATA is unset; it comes from the postgres base image}/PG_VERSION" ]; then
     : "${PRIMARY_HOST:?PRIMARY_HOST is required}"
-    : "${PG_REPLICATION_USER:?PG_REPLICATION_USER is required}"
     : "${PG_REPLICATION_PASSWORD:?PG_REPLICATION_PASSWORD is required}"
     port="${PRIMARY_PORT:-5432}"
     slot="${REPLICATION_SLOT_NAME:-replica_slot_1}"
@@ -36,9 +35,11 @@ if [ ! -s "${PGDATA:?PGDATA is unset; it comes from the postgres base image}/PG_
 
     # -R writes standby.signal and primary_conninfo; -S streams through the slot the primary's initdb created
     # (the image's 02-replication.sh), so the primary keeps the WAL this replica has not received yet.
+    # The role name is fixed: 02-replication.sh creates only "replicator", and the primary's pg_hba.conf admits
+    # replication connections for that role alone.
     echo "[REPLICA] Cloning ${PRIMARY_HOST}:${port} through replication slot ${slot}..."
     PGPASSWORD="$PG_REPLICATION_PASSWORD" as_postgres pg_basebackup \
-        -h "$PRIMARY_HOST" -p "$port" -U "$PG_REPLICATION_USER" -D "$PGDATA" -X stream -R -S "$slot" -c fast
+        -h "$PRIMARY_HOST" -p "$port" -U replicator -D "$PGDATA" -X stream -R -S "$slot" -c fast
     echo "[REPLICA] Clone complete"
 fi
 

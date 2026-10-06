@@ -77,8 +77,8 @@ export function parseVolumeProbeMatches(probeOutput: string, batch: string[]): s
 /**
  * True iff Docker generated the volume's name, i.e. no one named it. `dangling=true` also lists NAMED volumes no
  * container uses — an operator's `postgres_data` after `docker compose down` — and those carry the aza-pg marker
- * too, so the marker alone would select real databases for deletion. Docker names anonymous volumes with 64 random
- * hex characters.
+ * too, and the warning tells the reader to `docker volume rm` every listed volume. Docker names anonymous volumes with
+ * 64 random hex characters.
  */
 export function isAnonymousVolume(name: string): boolean {
   return /^[0-9a-f]{64}$/.test(name);

@@ -36,6 +36,7 @@
 
 import { join } from "node:path";
 import type { ManifestEntry } from "./extensions/manifest-data";
+import { isAutoCreated, isPreloadedByDefault } from "./config-generator/manifest-loader";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -344,8 +345,8 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       displayName: entry.displayName ?? entry.name,
       version: getVersion(entry),
       description: entry.description,
-      isPreloaded: entry.runtime?.sharedPreload === true,
-      isAutoCreated: entry.runtime?.defaultEnable === true,
+      isPreloaded: isPreloadedByDefault(entry),
+      isAutoCreated: isAutoCreated(entry),
       isPreloadOnly: entry.runtime?.preloadOnly === true,
       sourceUrl: entry.sourceUrl,
       docsUrl: entry.docsUrl,
@@ -718,14 +719,16 @@ function generateMarkdown(
 
   // Count special extensions (only from enabled entries)
   const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
-  const preloadedCount = enabledEntries.filter((e) => e.runtime?.sharedPreload).length;
-  const autoCreatedCount = enabledEntries.filter((e) => e.runtime?.defaultEnable).length;
+  const preloadedCount = enabledEntries.filter(isPreloadedByDefault).length;
+  const autoCreatedCount = enabledEntries.filter(isAutoCreated).length;
+  // catalogEnabled counts tools too (pgbackrest, pgbadger…), which are not extensions.
+  const toolCount = enabledEntries.filter((e) => e.kind === "tool").length;
 
   // Header with improved summary
   lines.push(`# aza-pg PostgreSQL ${args.pgVersion}`);
   lines.push("");
   lines.push(
-    `Production-ready PostgreSQL ${args.pgVersion} with **${args.catalogEnabled} extensions** ` +
+    `Production-ready PostgreSQL ${args.pgVersion} with **${args.catalogEnabled - toolCount} extensions and ${toolCount} tools** ` +
       `(${preloadedCount} preloaded, ${autoCreatedCount} auto-created) across ${categoryGroups.length} categories. ` +
       `Auto-tuned for web, OLTP, analytics, and mixed workloads.`
   );
@@ -784,8 +787,8 @@ function generateMarkdown(
   }
 
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
-  lines.push(`- **Extensions**: ${args.catalogEnabled}`);
-  lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
+  lines.push(`- **Extensions**: ${args.catalogEnabled - toolCount}, plus ${toolCount} tools`);
+  lines.push(`- **Preloaded**: ${preloadedCount} (default shared_preload_libraries)`);
   lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
   lines.push(`- **Build**: Single-node optimized`);
 
@@ -806,7 +809,7 @@ function generateMarkdown(
 
   // Get auto-created extension names (sorted alphabetically)
   const autoCreatedNames = manifest.entries
-    .filter((e) => e.runtime?.defaultEnable === true)
+    .filter(isAutoCreated)
     .map((e) => e.name)
     .sort();
 

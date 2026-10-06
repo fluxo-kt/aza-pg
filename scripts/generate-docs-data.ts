@@ -18,6 +18,7 @@
  */
 
 import { join } from "node:path";
+import { isAutoCreated } from "./config-generator/manifest-loader";
 import { info, success, error } from "./utils/logger";
 
 // Derive project root from current file location (scripts/generate-docs-data.ts)
@@ -136,10 +137,8 @@ async function main() {
     .map((e) => e.name)
     .toSorted();
 
-  // Auto-created extensions (from 01-extensions.sql)
-  // Dynamically derived from manifest entries with defaultEnable=true (not preloadOnly)
   const autoCreated = enabledEntries
-    .filter((e) => e.runtime?.defaultEnable && !e.runtime?.preloadOnly)
+    .filter(isAutoCreated)
     .map((e) => e.name)
     .toSorted();
 

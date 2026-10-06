@@ -9,6 +9,7 @@
  */
 
 import path from "path";
+import { isAutoCreated, isPreloadedByDefault } from "../config-generator/manifest-loader";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { success, info } from "../utils/logger";
 
@@ -75,15 +76,8 @@ function deriveConfig(manifest: Manifest): WorkflowConfig {
   const total = entries.length;
   const enabled = entries.filter((e) => e.enabled !== false).length;
 
-  // Preloaded = enabled + sharedPreload
-  const preloaded = entries.filter(
-    (e) => e.enabled !== false && e.runtime?.sharedPreload === true
-  ).length;
-
-  // Auto-created = enabled + defaultEnable + is extension (not tool/module)
-  const autoCreated = entries.filter(
-    (e) => e.enabled !== false && e.runtime?.defaultEnable === true && e.kind === "extension"
-  ).length;
+  const preloaded = entries.filter(isPreloadedByDefault).length;
+  const autoCreated = entries.filter(isAutoCreated).length;
 
   return {
     pgVersion: MANIFEST_METADATA.pgVersion,

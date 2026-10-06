@@ -35,27 +35,39 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
   }
 }
 
-/**
- * Get extensions that should be enabled by default
- * Filters manifest entries for extensions with enabled=true AND runtime.defaultEnable=true
- * Excludes "tool" kind extensions and preload-only extensions (no CREATE EXTENSION support)
- * @param manifest - Parsed manifest object
- * @returns Array of manifest entries for extensions to enable
- */
+/** The entries initdb creates with CREATE EXTENSION in every new database (see isAutoCreated). */
 export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[] {
-  return manifest.entries.filter((entry) => {
-    const enabled = entry.enabled ?? true; // Default to true for backward compatibility
-    const defaultEnable = entry.runtime?.defaultEnable ?? false;
-    const kind = entry.kind;
-    const preloadOnly = entry.runtime?.preloadOnly ?? false;
+  return manifest.entries.filter(isAutoCreated);
+}
 
-    // Only enable if:
-    // 1. Extension is enabled in manifest (not disabled)
-    // 2. Extension has runtime.defaultEnable = true
-    // 3. Extension is not a "tool" (tools don't support CREATE EXTENSION)
-    // 4. Extension is not preload-only (activated via shared_preload_libraries, no .control file)
-    return enabled && defaultEnable && kind !== "tool" && !preloadOnly;
-  });
+/**
+ * Whether initdb runs CREATE EXTENSION for this entry. defaultEnable alone is not enough: it is also set on
+ * preload-only modules (auto_explain) and tools (pg_safeupdate), which have no CREATE EXTENSION. Every
+ * "auto-created" list or count must use this, or it disagrees with what new databases actually contain.
+ */
+export function isAutoCreated(entry: {
+  enabled?: boolean;
+  kind?: string;
+  runtime?: { defaultEnable?: boolean; preloadOnly?: boolean };
+}): boolean {
+  return (
+    entry.enabled !== false &&
+    entry.runtime?.defaultEnable === true &&
+    entry.kind !== "tool" &&
+    entry.runtime?.preloadOnly !== true
+  );
+}
+
+/**
+ * Whether this entry is in the default shared_preload_libraries. sharedPreload alone only means the library
+ * must be preloaded to work; without defaultEnable it is opt-in (supautils, set_user, plan_filter).
+ */
+export function isPreloadedByDefault(entry: PreloadCandidate): boolean {
+  return (
+    entry.runtime?.sharedPreload === true &&
+    entry.runtime.defaultEnable === true &&
+    entry.enabled !== false
+  );
 }
 
 /**
@@ -91,14 +103,5 @@ export function preloadLibraryName(entry: PreloadCandidate): string {
 export function getDefaultSharedPreloadLibraries(manifest: {
   entries: readonly PreloadCandidate[];
 }): string {
-  return manifest.entries
-    .filter(
-      (entry) =>
-        entry.runtime?.sharedPreload === true &&
-        entry.runtime.defaultEnable === true &&
-        entry.enabled !== false
-    )
-    .map(preloadLibraryName)
-    .sort()
-    .join(",");
+  return manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort().join(",");
 }

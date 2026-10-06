@@ -589,21 +589,16 @@ export function testPgPartmanPartitioning(container: string): Promise<TestResult
 export function testPgStatStatements(container: string): Promise<TestResult> {
   return check("pg_stat_statements - records a query", async () => {
     await sqlOk(container, "SELECT pg_stat_statements_reset()");
-    // The marker is a column alias: pg_stat_statements normalises constants to $1, never identifiers.
-    await sqlOk(container, "SELECT 1 AS pgss_marker");
+    // Entries are keyed by a parse-tree hash that ignores aliases, and keep the text of the first query with that hash:
+    // a marker like `SELECT 1 AS x` merges into the healthcheck's `SELECT 1` and loses its text whenever the
+    // healthcheck runs first. A relation is part of the hash and its name stays in the text, so the marker reads a
+    // catalog nothing else in the image queries.
+    await sqlOk(container, "SELECT count(*) FROM pg_catalog.pg_ts_template");
     const calls = await sqlOk(
       container,
-      "SELECT coalesce(sum(calls), 0) FROM pg_stat_statements WHERE query LIKE '%AS pgss_marker%' AND query NOT LIKE '%pg_stat_statements%'"
+      "SELECT coalesce(sum(calls), 0) FROM pg_stat_statements WHERE query LIKE '%pg_ts_template%' AND query NOT LIKE '%pg_stat_statements%'"
     );
-    // This miss is intermittent with no known cause; the counts tell a lost entry (rows) from a lost query text (texts).
-    const counts =
-      Number(calls) >= 1
-        ? ""
-        : await sqlOk(
-            container,
-            "SELECT count(*) || ' rows, ' || count(query) || ' texts' FROM pg_stat_statements"
-          );
-    expect(Number(calls) >= 1, `the marker query was not recorded (calls = ${calls}; ${counts})`);
+    expect(Number(calls) >= 1, `the marker query was not recorded (calls = ${calls})`);
   });
 }
 

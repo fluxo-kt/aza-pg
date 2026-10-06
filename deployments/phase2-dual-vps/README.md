@@ -232,27 +232,27 @@ ip addr show eth0 | grep 10.0.0.100
 
 #### Option B: Dockerized Keepalived (Advanced)
 
-Add to docker-compose.yml on both VPS:
+Load the `ip_vs` kernel module on both VPS (`modprobe ip_vs`), then add to docker-compose.yml on both:
 
 ```yaml
 keepalived:
-  image: osixia/keepalived:2.0.20
+  image: osixia/keepalived:2.3.4@sha256:e6092c753816163d4ca7140e01d1ab5f2c7c131afac90a7d2aef36224887fc00
   container_name: keepalived
   restart: unless-stopped
   network_mode: host
   cap_add:
     - NET_ADMIN
+    - NET_RAW
     - NET_BROADCAST
   environment:
     KEEPALIVED_VIRTUAL_IPS: "10.0.0.100"
+    KEEPALIVED_UNICAST_PEERS: "10.0.0.3" # the OTHER VPS: 10.0.0.3 on primary, 10.0.0.2 on replica
     KEEPALIVED_PRIORITY: "100" # 100 on primary, 90 on replica
     KEEPALIVED_INTERFACE: "eth0"
     KEEPALIVED_PASSWORD: "your_secret_password"
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
-**Note:** Dockerized Keepalived requires `network_mode: host` and `CAP_NET_ADMIN` capability. This works on bare VPS but may have limitations on Coolify depending on configuration.
+`KEEPALIVED_UNICAST_PEERS` is required: without it the image sends VRRP to its sample peers (192.168.1.10/11), the two VPS never hear each other, and both hold the VIP. The image's config sets `nopreempt`, so a node that comes back does not take the VIP back. It moves the VIP only when the other node or its keepalived stops — not when PostgreSQL stops; Option A's `chk_postgres` script covers that.
 
 ### 7. Test Failover
 

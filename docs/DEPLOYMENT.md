@@ -979,14 +979,7 @@ systemctl start keepalived
 
 **Option B: Run Keepalived in Docker (Development/Testing only)**
 
-Create a Docker service in Coolify with:
-
-- Image: `osixia/keepalived:latest`
-- Network mode: `host` (required for VRRP)
-- Privileged mode: enabled
-- Volume: Mount keepalived.conf
-
-**Note:** This option is less reliable and should only be used for testing.
+Use the pinned compose service in `deployments/phase2-dual-vps/README.md` ("Option B: Dockerized Keepalived"). It moves the VIP only when a node or its keepalived stops, not when PostgreSQL stops: the image has no `docker` CLI, so the `chk_postgres` script above cannot run inside it.
 
 **13.2 Test VIP failover**
 

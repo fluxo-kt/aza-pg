@@ -30,11 +30,12 @@ env:
   # it. No-op while .bun-osv.json is empty; enforced for every install site by validate-bun-osv.ts.
   BUN_OSV_SHOW_IGNORED: "0"
 
+# timeout-minutes: 4–8x each job's measured run time, builds sized on a full rebuild; reason in ci.yml above jobs:
 jobs:
   prep:
     name: Prepare Build Metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'release' &&
@@ -255,7 +256,7 @@ jobs:
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     needs: prep
-    timeout-minutes: 60
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -343,7 +344,7 @@ jobs:
     name: Create Multi-Platform Manifest
     runs-on: ubuntu-latest
     needs: [prep, build]
-    timeout-minutes: 15
+    timeout-minutes: 4
     outputs:
       image_digest: ${{ steps.merge.outputs.digest }}
 
@@ -502,15 +503,15 @@ jobs:
       matrix:
         include:
           - group: extensions
-            timeout: 20
+            timeout: 8
           - group: security
-            timeout: 10
+            timeout: 4
           - group: stacks
-            timeout: 15
+            timeout: 5
           - group: features
-            timeout: 20
+            timeout: 7
           - group: regression
-            timeout: 10
+            timeout: 4
 
     steps:
       - name: Checkout repository
@@ -580,7 +581,7 @@ jobs:
     name: Security Scanning
     runs-on: ubuntu-latest
     needs: [prep, merge, test-complete]
-    timeout-minutes: 20
+    timeout-minutes: 8
 
     steps:
       - name: Checkout repository
@@ -1065,7 +1066,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prep, merge, release]
     if: success()
-    timeout-minutes: 10
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository
@@ -1194,7 +1195,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prep, merge, release, create-release]
     if: success()
-    timeout-minutes: 15
+    timeout-minutes: 8
 
     steps:
       - name: Checkout repository
@@ -1296,7 +1297,7 @@ jobs:
     # Run cleanup after all jobs complete — including on test/scan failures.
     # Skipped when prep is skipped (CI cancelled = nothing was built = no testing images to clean up).
     if: always() && needs.prep.result != 'skipped'
-    timeout-minutes: 10
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository

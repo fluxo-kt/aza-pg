@@ -37,6 +37,7 @@ permissions:
 env:
   TEST_MODE: regression
 
+# timeout-minutes: 4–8x each job's measured run time, builds sized on a full rebuild; reason in ci.yml above jobs:
 jobs:
   # ==========================================================================
   # Job 1: Build the regression image (regression.Dockerfile: all extensions, pgTAP)
@@ -44,7 +45,7 @@ jobs:
   build:
     name: Build Regression Image
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 100
 
     steps:
       - name: Checkout repository
@@ -91,7 +92,7 @@ jobs:
     name: Test nightly
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 25
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository

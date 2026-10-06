@@ -27,11 +27,12 @@ permissions:
   contents: read
   packages: read
 
+# timeout-minutes: 4–8x each job's measured run time, builds sized on a full rebuild; reason in ci.yml above jobs:
 jobs:
   test:
     name: Test regression
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 4
 
     steps:
       - name: Checkout repository

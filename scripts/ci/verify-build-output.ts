@@ -17,8 +17,6 @@
  *   Prints verification results and optionally appends to GitHub step summary
  */
 
-// Empty export makes this file a module (enables top-level await)
-
 import { $ } from "bun";
 
 interface VerifyBuildOptions {

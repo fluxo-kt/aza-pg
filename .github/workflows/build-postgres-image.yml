@@ -268,8 +268,15 @@ jobs:
         run: |
           set -euo pipefail
           DIGEST="${{ github.event.inputs.push_image == 'true' && steps.build.outputs.digest || steps.build-local.outputs.digest }}"
+          # One ref docker can run: meta's tags are a two-line list, and a push-by-digest build loads nothing locally,
+          # so a pushed build is pulled by its digest (this run's image; the dev tag is set only by merge).
+          if [ "${{ github.event.inputs.push_image }}" = "true" ]; then
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          else
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
+          fi
           bun scripts/ci/verify-build-output.ts \
-            --image="${{ steps.meta.outputs.tags }}" \
+            --image="${IMAGE}" \
             --platform="${{ matrix.platform }}" \
             --digest="${DIGEST}" \
             --push-image="${{ github.event.inputs.push_image }}" \

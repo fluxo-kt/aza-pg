@@ -355,8 +355,10 @@ jobs:
     # previous run's image, so the scan would judge a stale image.
     if: github.event.inputs.push_image == 'true'
     timeout-minutes: 8
+    # Job permissions replace the workflow's, so the private testing package needs packages: read here.
     permissions:
       contents: read
+      packages: read
       security-events: write
 
     steps:

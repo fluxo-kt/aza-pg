@@ -164,6 +164,10 @@ echo "Commits after anchor: $COMMIT_COUNT"
   { echo "ABORT: No commits on dev after anchor merge. Nothing to release."; exit 1; }
 ```
 
+### 0.8 — Everything the image ships is current
+
+Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: PGDG, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The base-image and `check-updates` gates alone miss companion images, Bun packages and runtime, Actions pins, PGDG revisions and source builds PGDG now packages. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
+
 **Pre-flight PASSED** — display summary:
 
 ```bash

@@ -58,9 +58,9 @@ Check:
    - If GitHub API rate limits (`403`), verify the checker still resolves via tags API / `git ls-remote`
    - **BLIND SPOT**: `check-updates.ts` compares upstream **git tags** only — it does NOT see PGDG
      **packaging-revision** bumps where the upstream tag is unchanged (e.g. pgaudit `18.0-2.pgdg13+1`
-     → `18.0-3.pgdg13+1`, tag stays `18.0`). `bun run validate` (pre-flight item 4,
-     `validate-pgdg-versions.ts`) is the **authoritative** PGDG drift detector — it queries apt-madison
-     directly. ALWAYS run validate in pre-flight and treat any reported version mismatch (including
+     → `18.0-3.pgdg13+1`, tag stays `18.0`). `validate-pgdg-versions.ts` (pre-flight item 4)
+     is the **authoritative** PGDG drift detector — it queries apt-madison
+     directly. ALWAYS run it in pre-flight and treat any reported version mismatch (including
      pure `-N` revision bumps for unchanged upstream versions) as mandatory update work.
 
 2. **Bun dependencies**:
@@ -78,10 +78,11 @@ Check:
 4. **PGDG apt versions** (automated validation):
 
    ```bash
-   bun run validate
+   # Not `bun run validate`: it skips PGDG while the pins are unchanged since its last pass ("PGDG not contacted")
+   bun scripts/extensions/validate-pgdg-versions.ts
    ```
 
-   **CRITICAL**: This includes PGDG version validation that ensures all PGDG versions in manifest match what's available in the repository. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
+   **CRITICAL**: This checks that every PGDG version in the manifest is what the repository serves now. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
 5. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
    Enumerate repo-wide, not just `stacks/`: `deployments/` runs its own images (some, e.g. Prometheus and
@@ -1023,11 +1024,13 @@ that gets better with every use. Commit the skill update as the final commit of 
 ## Phase 12: Final Verification Gate (MANDATORY — The Only Acceptable End State)
 
 Before final verification, prove the full update matrix is closed. Do not claim "update complete"
-unless every item below has either been updated or has an evidence-backed no-op/skip reason:
+unless every item below has either been updated or has an evidence-backed no-op/skip reason. A skip that
+waits on time (a release newer than the minimum release age) records when it ends; after that the item is
+due in this round, not the next:
 
 - PostgreSQL base version and digest
 - Git/tag/git-ref extensions from `check-updates.ts`
-- PGDG package versions from `bun run validate`
+- PGDG package versions from `validate-pgdg-versions.ts` (fast `validate` may not contact PGDG)
 - Percona pinned package versions
 - Timescale main and loader package versions
 - Source-to-PGDG migration opportunities

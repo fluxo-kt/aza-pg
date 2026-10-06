@@ -447,6 +447,7 @@ The following optimizations have been identified for potential implementation ba
 
 - **Quick wins identified:** Remove LLVM bitcode directory (36MB, 0% runtime impact), strip debug symbols from `.so` files (10-20MB savings), cleanup static libraries and build headers (1-2MB)
 - **cargo-pgrx builds:** symbols are stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`); otherwise each crate keeps its upstream release profile (opt-level 3, fat LTO). A global `opt-level=s`/thin-LTO override once shrank timescaledb_toolkit (186MB → 13MB together with stripping) and was dropped once toolkit moved to the Timescale apt repo.
+- **PostgreSQL itself stays PGDG's `-O2` build:** PostgreSQL 18 already picks CRC-32C and popcount CPU instructions at runtime, and a pgbench comparison of PGDG, self-built `-O2` and `-O3 -flto` showed no gain above the ±25 % run-to-run spread. A self-built server would also have to replace files of the `postgresql-18` package that the PGDG and Percona extension packages depend on.
 - **Applicable techniques:** Similar bitcode/symbol stripping can be applied to other large extensions (pg_jsonschema: 4.4MB, pgroonga: 2.1MB)
 
 **Potential Image Variant Strategy (Future Consideration):**

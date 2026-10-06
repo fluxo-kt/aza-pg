@@ -185,7 +185,7 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 1. **prep** - Validation and metadata (version, tags, labels, annotations)
 2. **build** - Matrix builds on native runners (amd64 + arm64 in parallel), pushed by digest
 3. **merge** - Multi-arch manifest from platform digests under the `testing-<sha>` tag
-4. **test** - One job per routine suite group (`bun scripts/test-all.ts --group <g>`), amd64 only; **test-complete** gates on all of them
+4. **test** - One job per routine suite group (`bun scripts/test-all.ts --group <g>`) on amd64, plus `extensions` on arm64 so the arm64 image is started before release; **test-complete** gates on all of them
 5. **scan** - Security scanning (Dockle + Trivy)
 6. **release** - Cosign signing, promotion to production tags, SBOM and provenance attestation
 7. **create-release** - GitHub Release with generated notes

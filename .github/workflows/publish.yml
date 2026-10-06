@@ -459,12 +459,12 @@ jobs:
           REQUIRE_DOCKER: "true"
 
   # ==========================================================================
-  # TEST GATE - every routine suite group of scripts/test-all.ts runs against the multi-arch testing image
+  # TEST GATE - every routine suite group of scripts/test-all.ts runs against the multi-arch testing image (amd64; extensions also on arm64)
   # before it is promoted to production tags. scripts/test-all.ts owns which suites a group holds.
   # ==========================================================================
   test:
-    name: Test ${{ matrix.group }}
-    runs-on: ubuntu-26.04
+    name: Test ${{ matrix.group }}${{ matrix.runner && ' (arm64)' || '' }}
+    runs-on: ${{ matrix.runner || 'ubuntu-26.04' }}
     needs: [prep, merge]
     if: needs.merge.result == 'success'
     timeout-minutes: ${{ matrix.timeout }}
@@ -482,6 +482,11 @@ jobs:
             timeout: 6
           - group: regression
             timeout: 5
+          # The arm64 image is built natively but otherwise never started before release; the extensions
+          # group loads every extension and library, so it catches arm-only build or runtime breakage.
+          - group: extensions
+            timeout: 6
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout repository

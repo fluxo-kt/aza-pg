@@ -385,7 +385,7 @@ function scopedName(prefix: string): string {
  * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
  * re-runs initdb), nor under a `--memory` limit the test depends on (tmpfs pages count against it).
  */
-export const EPHEMERAL_PGDATA = ["--tmpfs", "/var/lib/postgresql"];
+export const EPHEMERAL_PGDATA = ["--tmpfs", "/var/lib/postgresql"] as const;
 
 /** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {

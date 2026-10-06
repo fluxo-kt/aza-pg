@@ -152,9 +152,10 @@ async function azaBuilderExists(): Promise<boolean> {
   return res.success && builderPresentInList(res.output);
 }
 
+// No -f: Docker then refuses an image a container still uses, so an operator's stopped container keeps its image.
 async function removeImages(images: Array<{ id: string }>): Promise<number> {
   let removed = 0;
-  for (const im of images) if ((await dockerRun(["rmi", "-f", im.id])).success) removed++;
+  for (const im of images) if ((await dockerRun(["rmi", im.id])).success) removed++;
   return removed;
 }
 

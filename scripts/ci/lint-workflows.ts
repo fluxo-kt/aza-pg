@@ -16,7 +16,7 @@ import { Glob } from "bun";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const ACTIONLINT_IMAGE =
-  "rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36";
+  "rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667";
 
 const workflows = Array.from(
   new Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: REPO_ROOT })

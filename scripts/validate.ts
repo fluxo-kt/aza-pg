@@ -24,7 +24,7 @@ import { isDockerDaemonRunning } from "./utils/docker";
 import { summarizeResults } from "./validate-summary";
 
 export const HADOLINT_IMAGE =
-  "hadolint/hadolint@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e";
+  "hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d";
 
 /**
  * Validation check configuration

@@ -1,5 +1,5 @@
 {
-  "pgVersion": "18.4",
+  "pgVersion": "18.6",
   "pgMajorVersion": "18",
   "registry": "ghcr.io",
   "organization": "fluxo-kt",
@@ -9,9 +9,8 @@
   "defaultTestingTag": "testing-main",
   "counts": {
     "total": 40,
-    "enabled": 36,
-    "preloaded": 12,
-    "autoCreated": 11
-  },
-  "featuredExtensions": ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"]
+    "enabled": 37,
+    "preloaded": 10,
+    "autoCreated": 13
+  }
 }

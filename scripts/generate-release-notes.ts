@@ -36,6 +36,7 @@
 
 import { join } from "node:path";
 import type { ManifestEntry } from "./extensions/manifest-data";
+import { isAutoCreated, isPreloadedByDefault } from "./config-generator/manifest-loader";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -83,7 +84,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "github-release" | "source";
+  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "source";
 }
 
 // Category merge map: source → target
@@ -269,14 +270,13 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
-// Pre-compiled packages (pgdg, percona, timescale, github-release) all use 📦️
+// Pre-compiled packages (pgdg, percona, timescale) all use 📦️
 // Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
   pgdg: "📦️",
   percona: "📦️",
   timescale: "📦️",
-  "github-release": "📦️",
   source: "🏗️",
 };
 
@@ -345,8 +345,8 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       displayName: entry.displayName ?? entry.name,
       version: getVersion(entry),
       description: entry.description,
-      isPreloaded: entry.runtime?.sharedPreload === true,
-      isAutoCreated: entry.runtime?.defaultEnable === true,
+      isPreloaded: isPreloadedByDefault(entry),
+      isAutoCreated: isAutoCreated(entry),
       isPreloadOnly: entry.runtime?.preloadOnly === true,
       sourceUrl: entry.sourceUrl,
       docsUrl: entry.docsUrl,
@@ -522,9 +522,11 @@ function generateConfigurationSection(): string[] {
   lines.push("|----------|----------|---------|-------------|");
   lines.push("| `POSTGRES_PASSWORD` | ✅ | - | Superuser password |");
   lines.push("| `POSTGRES_USER` | No | `postgres` | Superuser name |");
-  lines.push("| `POSTGRES_DB` | No | `postgres` | Default database |");
+  lines.push("| `POSTGRES_DB` | No | value of `POSTGRES_USER` | Database created at first start |");
   lines.push("| `POSTGRES_MEMORY` | No | auto | RAM (MB) for auto-tuning |");
-  lines.push("| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Bind address |");
+  lines.push(
+    "| `POSTGRES_BIND_IP` | No | `127.0.0.1` | Address PostgreSQL listens on inside the container. The default accepts connections only from inside this container; set `0.0.0.0` to use a published port or connect from other containers |"
+  );
   lines.push(
     "| `POSTGRES_WORKLOAD_TYPE` | No | `mixed` | `web` (200 conn), `oltp` (300 conn), `dw` (100 conn, analytics), `mixed` (120 conn, balanced) |"
   );
@@ -534,7 +536,9 @@ function generateConfigurationSection(): string[] {
   lines.push(
     "| `POSTGRES_SHARED_PRELOAD_LIBRARIES` | No | [see docs](https://github.com/fluxo-kt/aza-pg/blob/main/docs/ENVIRONMENT-VARIABLES.md) | Override default preloaded extensions |"
   );
-  lines.push("| `ENABLE_PGSODIUM_INIT` | No | `false` | Enable pgsodium TCE initialization |");
+  lines.push(
+    "| `ENABLE_PGSODIUM_INIT` | No | `false` | `true` creates pgsodium's `pgsodium_root` server key at first start |"
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");
@@ -547,11 +551,7 @@ function generateConfigurationSection(): string[] {
   lines.push("|------|---------|----------|");
   lines.push("| `/var/lib/postgresql` | Data directory | Yes |");
   lines.push(
-    "| `/backup` | pgBackRest repository (WAL archive + backups for PITR) | Production: Yes, Dev: No |"
-  );
-  lines.push("");
-  lines.push(
-    "**Backup storage**: Required for Point-in-Time Recovery and disaster recovery. pgBackRest stores compressed backups (full/differential/incremental) with 7-day retention by default. Storage needs: ~7-10× database size for full retention cycle. Optional for dev/test environments without recovery requirements."
+    "| `/backup` | pgBackRest repository, if you set one up ([guide](https://github.com/fluxo-kt/aza-pg/blob/main/docs/BACKUP-PGBACKREST.md)) | No |"
   );
   lines.push("");
   lines.push("</details>");
@@ -561,11 +561,9 @@ function generateConfigurationSection(): string[] {
   lines.push("<details>");
   lines.push("<summary><b>Ports & Network</b></summary>");
   lines.push("");
-  lines.push("| Port | Service | Default Bind |");
-  lines.push("|------|---------|--------------|");
-  lines.push("| 5432 | PostgreSQL | 127.0.0.1 |");
-  lines.push("| 6432 | PgBouncer | 127.0.0.1 |");
-  lines.push("| 9187 | Prometheus metrics | 127.0.0.1 |");
+  lines.push(
+    "The image exposes only PostgreSQL on 5432 (see `POSTGRES_BIND_IP`). PgBouncer (6432) and the metrics exporters run as separate containers in the [compose stacks](https://github.com/fluxo-kt/aza-pg/tree/main/stacks), which publish every port on `127.0.0.1` of the host by default."
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");
@@ -574,10 +572,14 @@ function generateConfigurationSection(): string[] {
   lines.push("<details>");
   lines.push("<summary><b>Connection Defaults</b></summary>");
   lines.push("");
-  lines.push("- **User**: `postgres`");
-  lines.push("- **Database**: `postgres`");
-  lines.push("- **Auth**: SCRAM-SHA-256");
-  lines.push("- **Bind**: localhost only (secure by default)");
+  lines.push("- **User**: `postgres` (`POSTGRES_USER`)");
+  lines.push("- **Database**: same as the user (`POSTGRES_DB`)");
+  lines.push(
+    "- **Auth**: SCRAM-SHA-256 password over the network; inside the container the socket and loopback need none (the official image's `pg_hba.conf`)"
+  );
+  lines.push(
+    "- **Listen**: inside the container only until you set `POSTGRES_BIND_IP`, so a stray `-p 5432:5432` cannot expose the database"
+  );
   lines.push("");
   lines.push("</details>");
   lines.push("");
@@ -598,7 +600,9 @@ function generateConfigurationSection(): string[] {
   lines.push("<details>");
   lines.push("<summary><b>Health Check</b></summary>");
   lines.push("");
-  lines.push("7-tier validation via `pg_isready`:");
+  lines.push(
+    "`healthcheck.sh` checks connections and queries, the precreated extensions, initialisation status, and that a primary is not in recovery:"
+  );
   lines.push("- Interval: 10s, Timeout: 5s");
   lines.push("- Start period: 120s, Retries: 3");
   lines.push("");
@@ -656,7 +660,7 @@ function generateConfigurationSection(): string[] {
   );
   lines.push("");
   lines.push(
-    "**Technical details**: Connection limits scale with RAM (<2GB: 50%, 2-4GB: 70%, 4-8GB: 85%, ≥8GB: 100%). DW workload allocates larger WAL buffers (4-16GB) and work_mem (up to 256MB) for complex queries."
+    "**Technical details**: Connection limits scale with RAM (<2GB: 50%, 2-4GB: 70%, 4-8GB: 85%, ≥8GB: 100%). DW workload uses a larger WAL size (min_wal_size 4GB, max_wal_size 16GB) and work_mem (up to 256MB) for complex queries."
   );
   lines.push("");
   lines.push("</details>");
@@ -686,9 +690,9 @@ function generateConfigurationSection(): string[] {
   lines.push("");
 
   // pgsodium TCE callout
-  lines.push("> ⚠️ **pgsodium TCE Setup**");
+  lines.push("> 🔑 **pgsodium & Vault**");
   lines.push(
-    `> For Transparent Column Encryption, set \`ENABLE_PGSODIUM_INIT=true\` and mount \`pgsodium_getkey\` script. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
+    `> Each new data directory gets its own random root key, stored in it; back it up (\`pg_dump\` does not include it), or supply your own with \`PGSODIUM_KEY_FILE\`. [Setup Guide →](https://github.com/${REPO_OWNER}/${REPO_NAME}/blob/main/docs/PGSODIUM-SETUP.md)`
   );
   lines.push("");
 
@@ -717,14 +721,16 @@ function generateMarkdown(
 
   // Count special extensions (only from enabled entries)
   const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
-  const preloadedCount = enabledEntries.filter((e) => e.runtime?.sharedPreload).length;
-  const autoCreatedCount = enabledEntries.filter((e) => e.runtime?.defaultEnable).length;
+  const preloadedCount = enabledEntries.filter(isPreloadedByDefault).length;
+  const autoCreatedCount = enabledEntries.filter(isAutoCreated).length;
+  // catalogEnabled counts tools too (pgbackrest, pgbadger…), which are not extensions.
+  const toolCount = enabledEntries.filter((e) => e.kind === "tool").length;
 
   // Header with improved summary
   lines.push(`# aza-pg PostgreSQL ${args.pgVersion}`);
   lines.push("");
   lines.push(
-    `Production-ready PostgreSQL ${args.pgVersion} with **${args.catalogEnabled} extensions** ` +
+    `Production-ready PostgreSQL ${args.pgVersion} with **${args.catalogEnabled - toolCount} extensions and ${toolCount} tools** ` +
       `(${preloadedCount} preloaded, ${autoCreatedCount} auto-created) across ${categoryGroups.length} categories. ` +
       `Auto-tuned for web, OLTP, analytics, and mixed workloads.`
   );
@@ -783,8 +789,8 @@ function generateMarkdown(
   }
 
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
-  lines.push(`- **Extensions**: ${args.catalogEnabled}`);
-  lines.push(`- **Preloaded**: ${preloadedCount} (shared_preload_libraries)`);
+  lines.push(`- **Extensions**: ${args.catalogEnabled - toolCount}, plus ${toolCount} tools`);
+  lines.push(`- **Preloaded**: ${preloadedCount} (default shared_preload_libraries)`);
   lines.push(`- **Auto-Created**: ${autoCreatedCount} (created by default in new databases)`);
   lines.push(`- **Build**: Single-node optimized`);
 
@@ -805,7 +811,7 @@ function generateMarkdown(
 
   // Get auto-created extension names (sorted alphabetically)
   const autoCreatedNames = manifest.entries
-    .filter((e) => e.runtime?.defaultEnable === true)
+    .filter(isAutoCreated)
     .map((e) => e.name)
     .sort();
 
@@ -827,14 +833,14 @@ function generateMarkdown(
   lines.push("## 🚀 Quick Start");
   lines.push("");
   lines.push("```bash");
-  lines.push("# Pull and run");
-  lines.push(`docker pull ${REGISTRY}:${args.tag}`);
-  lines.push("");
+  // POSTGRES_BIND_IP=0.0.0.0: the image listens inside the container only by default, so without it the
+  // published port refuses every connection. 127.0.0.1 on -p keeps the port off the host's public interfaces.
   lines.push("docker run -d \\");
   lines.push("  --name postgres \\");
-  lines.push("  -e POSTGRES_PASSWORD=secure \\");
-  lines.push("  -e POSTGRES_WORKLOAD_TYPE=web \\");
-  lines.push("  -p 5432:5432 \\");
+  lines.push("  -e POSTGRES_PASSWORD=change-me \\");
+  lines.push("  -e POSTGRES_BIND_IP=0.0.0.0 \\");
+  lines.push("  -p 127.0.0.1:5432:5432 \\");
+  lines.push("  -v pgdata:/var/lib/postgresql \\");
   lines.push(`  ${REGISTRY}:${args.tag}`);
   lines.push("```");
   lines.push("");
@@ -908,7 +914,7 @@ function generateMarkdown(
   lines.push("# View embedded version info");
   lines.push(`docker run --rm ${REGISTRY}:${args.tag} cat /etc/postgresql/version-info.txt`);
   lines.push("");
-  lines.push("# Verify BuildKit SBOM attestations");
+  lines.push("# Verify BuildKit SBOM attestations (run from a clone of this repository)");
   lines.push("bun scripts/release/verify-sbom.ts \\");
   lines.push(`  --image ${REGISTRY}:${args.tag}`);
   lines.push("```");

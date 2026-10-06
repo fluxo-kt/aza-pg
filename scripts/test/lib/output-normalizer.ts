@@ -114,59 +114,6 @@ function normalizeTableFormatting(text: string): string {
 }
 
 /**
- * Check if output difference is acceptable (known platform variation).
- *
- * Some differences are expected and acceptable:
- * - Locale-dependent sorting (collation)
- * - Minor floating-point display differences
- * - Timezone formatting variations
- *
- * @param expected Expected output (from official test)
- * @param actual Actual output (from our test run)
- * @returns true if difference is acceptable, false if it's a real failure
- */
-export function isAcceptableVariation(expected: string, actual: string): boolean {
-  // Normalize both for comparison
-  const normalizedExpected = normalizeRegressionOutput(expected);
-  const normalizedActual = normalizeRegressionOutput(actual);
-
-  // If they match after normalization, it's acceptable
-  if (normalizedExpected === normalizedActual) {
-    return true;
-  }
-
-  // Check for known acceptable variations
-  return (
-    isAcceptableLocaleVariation(normalizedExpected, normalizedActual) ||
-    isAcceptableTimezoneVariation(normalizedExpected, normalizedActual)
-  );
-}
-
-/**
- * Check if difference is due to locale/collation variation.
- *
- * Example: Sorting order may differ based on LC_COLLATE
- */
-function isAcceptableLocaleVariation(_expected: string, _actual: string): boolean {
-  // For now, we don't auto-accept locale variations
-  // This is a placeholder for future enhancement if needed
-  // Most tests don't depend on locale-specific sorting
-  return false;
-}
-
-/**
- * Check if difference is due to timezone formatting variation.
- *
- * Example: "2024-01-01 12:00:00+00" vs "2024-01-01 12:00:00 UTC"
- */
-function isAcceptableTimezoneVariation(_expected: string, _actual: string): boolean {
-  // For now, we don't auto-accept timezone variations
-  // This is a placeholder for future enhancement if needed
-  // Most core tests don't involve timezone-sensitive operations
-  return false;
-}
-
-/**
  * Remove psql-specific output artifacts that shouldn't be in test comparison.
  *
  * This is a more aggressive normalization used for actual test execution,
@@ -204,26 +151,4 @@ export function cleanPsqlOutput(output: string): string {
   cleaned = normalizeRegressionOutput(cleaned);
 
   return cleaned;
-}
-
-/**
- * Extract error message from psql output for diagnostic purposes.
- *
- * @param output psql output containing error
- * @returns Extracted error message or null if no error
- */
-export function extractErrorMessage(output: string): string | null {
-  // Look for ERROR: lines
-  const errorMatch = output.match(/^ERROR:  (.+)$/m);
-  if (errorMatch?.[1]) {
-    return errorMatch[1];
-  }
-
-  // Look for FATAL: lines
-  const fatalMatch = output.match(/^FATAL:  (.+)$/m);
-  if (fatalMatch?.[1]) {
-    return fatalMatch[1];
-  }
-
-  return null;
 }

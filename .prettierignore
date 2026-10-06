@@ -15,7 +15,6 @@ docker/postgres/extensions.manifest.json
 docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
 
 # PostgreSQL regression tests (must match original formatting exactly)
-tests/regression/core/pg-official/
 
 # Archives
 .archived/

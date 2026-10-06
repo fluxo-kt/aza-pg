@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document explains the TimescaleDB Timescale License (TSL) build configuration in aza-pg and why it's enabled.
+This document explains why the aza-pg image ships TimescaleDB with its Timescale License (TSL) features, and how to check them.
 
 ## What is TSL?
 
@@ -30,22 +30,9 @@ TSL only requires a commercial license for:
 
 Reference: [Timescale License](https://github.com/timescale/timescaledb/blob/main/tsl/LICENSE-TIMESCALE)
 
-## Build Configuration
+## How the Image Gets TSL
 
-### CMake Flag: APACHE_ONLY
-
-TimescaleDB uses the `APACHE_ONLY` CMake flag to control TSL inclusion:
-
-- `APACHE_ONLY=ON`: Builds only Apache-licensed core (no compression, no continuous aggregates)
-- `APACHE_ONLY=OFF` (default): Builds full TimescaleDB with TSL features
-
-### Our Configuration
-
-**File**: `docker/postgres/build-extensions.ts` (line 333)
-
-```typescript
-await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
-```
+The image installs TimescaleDB from Timescale's apt repository (`install_via: "timescale"` on the `timescaledb` entry of `scripts/extensions/manifest-data.ts`). The `timescaledb-2-postgresql-18` package is the full build, so it includes the TSL module; nothing is compiled from source.
 
 **Rationale**:
 
@@ -59,18 +46,11 @@ await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERA
 
 ### Testing TSL Features
 
-Use the provided test script to verify TSL features are available:
+`scripts/test/test-timescaledb-tsl.ts` (suite group `extensions`) proves the image ships the TSL module: it compresses chunks, refreshes a continuous aggregate over them and compares its rows with the same aggregate computed directly; any error, including a license error, fails it.
 
 ```bash
-bun scripts/test/verify-timescaledb-tsl.ts
+bun scripts/test/test-timescaledb-tsl.ts [image]
 ```
-
-The script tests:
-
-1. Extension loads successfully
-2. Compression can be enabled on hypertables
-3. Continuous aggregates can be created
-4. License information (if available)
 
 ### Manual Verification
 
@@ -106,51 +86,9 @@ DROP TABLE test_metrics;
 
 If these commands succeed, TSL is properly enabled.
 
-## Build Architecture
+## Apache-Only Image
 
-### Source Code Organization
-
-TimescaleDB repository structure:
-
-```
-timescaledb/
-├── src/              # Apache-licensed core
-│   ├── chunk.c
-│   ├── hypertable.c
-│   └── ...
-└── tsl/              # Timescale-licensed features
-    ├── src/
-    │   ├── compression/
-    │   ├── continuous_aggs/
-    │   └── ...
-    └── LICENSE-TIMESCALE
-```
-
-When `APACHE_ONLY=OFF`, the build system includes the `tsl/` directory, compiling both core and TSL features into a single extension.
-
-### Build Process
-
-1. **Bootstrap phase**: `./bootstrap -DAPACHE_ONLY=OFF` generates CMake configuration
-2. **CMake configuration**: Includes `tsl/CMakeLists.txt` subdirectory
-3. **Compilation**: Builds unified `timescaledb.so` with TSL features
-4. **Installation**: Installs extension with full feature set
-
-## Alternative: Apache-Only Build
-
-If you need to build Apache-only (no TSL):
-
-```typescript
-// In build-extensions.ts:
-await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=ON -DREGRESS_CHECKS=OFF -DGENERATE_DOWNGRADE_SCRIPT=ON`;
-```
-
-**Limitations**:
-
-- No compression (columnar storage)
-- No continuous aggregates
-- No data retention policies
-- No reordering
-- No multi-node (distributed hypertables)
+An image without TSL code needs a TimescaleDB built with `-DAPACHE_ONLY=ON` in place of the package above; it loses compression, continuous aggregates, retention policies and reordering.
 
 ## References
 
@@ -159,10 +97,3 @@ await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=ON -DREGRESS_CHECKS=OFF -DGENERAT
 - [Compression Documentation](https://docs.timescale.com/use-timescale/latest/compression/)
 - [Continuous Aggregates Documentation](https://docs.timescale.com/use-timescale/latest/continuous-aggregates/)
 - [TimescaleDB GitHub Issues on APACHE_ONLY](https://github.com/timescale/timescaledb/issues?q=APACHE_ONLY)
-
-## Change History
-
-- **2025-11-23**: Explicitly set `-DAPACHE_ONLY=OFF` for clarity (was default behavior)
-  - Added inline comments explaining TSL licensing
-  - Created verification script
-  - Documented build configuration rationale

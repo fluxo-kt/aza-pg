@@ -1,67 +1,20 @@
 # pgflow Test Fixtures
 
-This directory contains the pgflow SQL schema for testing purposes.
+This directory holds the pgflow SQL the image ships: the fresh-install schema and the upgrade bundle.
 
 ## Contents
 
-- `schema-v0.14.1.sql` - Complete pgflow release schema
-- `install.ts` - TypeScript helper for installing schema into containers
+- `schema.sql` - Complete pgflow release schema (generated; do not edit)
+- `upgrade/` - upstream migrations, `versions.tsv` and `aza-overrides.sql` for `pgflow-upgrade` (generated; do not edit)
 
-## Usage
-
-### Install Schema in Test Container
-
-```typescript
-import { installPgflowSchema, verifyInstallation } from "./install";
-
-// Install in default postgres database
-const result = await installPgflowSchema("my-container");
-if (result.success) {
-  console.log(
-    `Tables: ${result.tablesCreated}, Functions: ${result.functionsCreated}`
-  );
-}
-
-// Install in specific database
-await installPgflowSchema("my-container", "project_db");
-```
-
-### Verify Installation
-
-```typescript
-import { verifyInstallation, isPgflowInstalled } from "./install";
-
-// Quick check
-const installed = await isPgflowInstalled("my-container", "postgres");
-
-// Detailed verification
-const stats = await verifyInstallation("my-container", "postgres");
-console.log(
-  `Tables: ${stats.tables}, Functions: ${stats.functions}, Types: ${stats.types}`
-);
-```
-
-### Run SQL Queries
-
-```typescript
-import { runSQL } from "./install";
-
-const result = await runSQL(
-  "my-container",
-  "postgres",
-  `
-  SELECT flow_slug FROM pgflow.flows WHERE flow_slug = 'my_workflow'
-`
-);
-if (result.success) {
-  console.log(result.stdout);
-}
-```
+The image copies these files to `/opt/pgflow/`. To install pgflow into another database, use the image's files
+(`schema.sql`, then `security-patches.sql`) as `docs/PGFLOW.md` shows; tests do the same, so they exercise what ships.
 
 ## Schema Source
 
 The schema is combined from the release-tagged SQL files in the pgflow repository:
-https://github.com/pgflow-dev/pgflow/tree/pgflow@0.14.1/pkgs/core/schemas/
+`https://github.com/pgflow-dev/pgflow/tree/<pgflow tag>/pkgs/core/schemas/`, at the `pgflow` tag in
+`scripts/extensions/manifest-data.ts`.
 
 The generator discovers upstream `*.sql` files from the release tag and concatenates them in
 lexicographic order.
@@ -71,22 +24,19 @@ lexicographic order.
 To update to a newer pgflow version:
 
 1. Check latest release: https://github.com/pgflow-dev/pgflow/releases
-2. Run `bun scripts/pgflow/generate-schema.ts <version> --update-install`
-3. Review the generated schema and delete the old schema fixture
-4. Run pgflow tests before committing
-5. Update this README if the fixture workflow changes
-
-```bash
-bun scripts/pgflow/generate-schema.ts 0.14.1 --update-install
-```
+2. Set the `pgflow` tag in `scripts/extensions/manifest-data.ts` and the `@pgflow/client` / `@pgflow/dsl`
+   versions in `package.json` (validate fails while they differ), then `bun run generate && bun install`
+3. Run `bun scripts/pgflow/generate-schema.ts`; it fails loudly if a local schema patch no longer matches upstream
+4. Review the generated schema, rebuild (`bun run build`: the image copies this directory) and run
+   `bun scripts/test-all.ts --group features` (fresh-install and upgrade suites) before committing
 
 ## Supabase Realtime Compatibility
 
-pgflow integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the `install.ts` helper automatically creates a **pg_notify-based replacement** that uses PostgreSQL's native LISTEN/NOTIFY mechanism.
+pgflow integrates with Supabase Realtime via `realtime.send()` for event broadcasting. For non-Supabase deployments, the image provides a **pg_notify-based replacement** (init script `04a-pgflow-realtime-stub.sh`, installed in `template1` and `POSTGRES_DB`), so every database created later inherits it.
 
 ### How It Works
 
-Before installing the pgflow schema, the helper creates:
+The image's replacement:
 
 ```sql
 -- Function signature matches Supabase Realtime

@@ -15,7 +15,7 @@
 #
 # SECURITY:
 # - This file contains password hashes (not plaintext)
-# - Keep file permissions: chmod 600 userlist.txt
+# - Keep it readable by PgBouncer only (it runs as uid 70): chown 70:70 userlist.txt && chmod 600 userlist.txt
 # - DO NOT commit this file to git (add to .gitignore)
 # - Regenerate after password changes
 #

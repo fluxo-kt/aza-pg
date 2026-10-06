@@ -1,65 +1,28 @@
-# pgBackRest Backup Example
-# Provides continuous WAL archiving + full/incremental/differential backups for PITR
+# pgBackRest for a stack's postgres service (primary or single): continuous WAL archiving, full/diff/incr
+# backups and point-in-time restore. Guide and commands: docs/BACKUP-PGBACKREST.md.
 #
-# Usage:
-#   1. Copy this file to your primary stack directory
-#   2. Add pgbackrest service to your compose setup
-#   3. Configure archive_command in postgresql.conf (see README.md)
-#   4. Initialize stanza: docker compose exec pgbackrest pgbackrest stanza-create
-#   5. Run backup: docker compose exec pgbackrest pgbackrest backup --type=full
+# pgBackRest runs inside the postgres container, which ships it: archive_command runs there, and pgBackRest reaches
+# PostgreSQL through the local socket. A separate pgBackRest container would need SSH or TLS between the two.
+# Settings are PGBACKREST_* variables instead of a pgbackrest.conf, so archive_command, `docker compose exec`,
+# `docker compose run` and a host cron's `docker exec` all see the same stanza and paths.
 #
-# Recovery:
-#   docker compose exec pgbackrest pgbackrest restore --target-timeline=latest
-
+# From a stack directory: docker compose -f compose.yml -f ../../examples/backup/compose.yml up -d
 services:
-  pgbackrest:
-    image: pgbackrest/pgbackrest:2.53.1
-    container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-pgbackrest
-    restart: unless-stopped
-
+  postgres:
     environment:
-      PGBACKREST_REPO1_PATH: /backup/repo
-      PGBACKREST_REPO1_RETENTION_FULL: "7" # Keep 7 full backups
-      PGBACKREST_REPO1_RETENTION_DIFF: "4" # Keep 4 differential backups
-      PGBACKREST_LOG_LEVEL_CONSOLE: info
-      PGBACKREST_LOG_LEVEL_FILE: debug
-
+      PGBACKREST_STANZA: main
+      PGBACKREST_REPO1_PATH: /backup/pgbackrest
+      PGBACKREST_PG1_PATH: /var/lib/postgresql/18/docker # the image's PGDATA
+      PGBACKREST_REPO1_RETENTION_FULL: "7"
+      PGBACKREST_REPO1_RETENTION_DIFF: "4"
+      PGBACKREST_COMPRESS_TYPE: lz4
+      PGBACKREST_REPO1_BUNDLE: "y"
+      PGBACKREST_REPO1_BLOCK: "y"
     volumes:
-      # Backup repository (persistent storage)
-      - pgbackrest_repo:/backup/repo
-
-      # PostgreSQL data directory (for restore operations)
-      - postgres_data:/var/lib/postgresql/data
-
-      # WAL archive directory (shared with postgres container)
-      - wal_archive:/wal_archive
-
-      # Configuration
-      - ./pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
-
-    networks:
-      - postgres_net
-
-    # Keep container running for archive_command and scheduled backups
-    command: tail -f /dev/null
-
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-        reservations:
-          memory: 256m
+      # The primary stack already mounts its backup volume here; this adds it to the single stack. A volume on the
+      # same host survives a lost container, not a lost host: add an off-site repository (repo2, e.g. S3) for that.
+      - postgres_backup:/backup
 
 volumes:
-  pgbackrest_repo:
-    name: pgbackrest-repo
-  wal_archive:
-    name: wal-archive
-  postgres_data:
-    external: true
-    name: ${POSTGRES_DATA_VOLUME:-postgres-primary-data}
-
-networks:
-  postgres_net:
-    external: true
-    name: ${POSTGRES_NETWORK_NAME:-postgres-primary-net}
+  postgres_backup:
+    name: ${POSTGRES_BACKUP_VOLUME:-postgres_backup}

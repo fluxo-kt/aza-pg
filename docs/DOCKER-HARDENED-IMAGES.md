@@ -53,7 +53,7 @@ Docker Hardened Images (DHI) offer distroless, near-zero-CVE PostgreSQL containe
 | PG 17     | ✓                    | Debian 13 (trixie), Alpine 3.22 |
 | PG 16     | ✓                    | Debian 13 (trixie), Alpine 3.22 |
 
-**Critical blocker**: aza-pg requires PostgreSQL 18.1 — DHI does not offer PG 18.
+**Critical blocker**: aza-pg ships PostgreSQL 18 — DHI did not offer PG 18 at assessment time.
 
 **Pull command** (for reference): `docker pull dhi.io/postgres:17-debian13`
 
@@ -63,15 +63,15 @@ Docker Hardened Images (DHI) offer distroless, near-zero-CVE PostgreSQL containe
 
 Our current security measures are already robust:
 
-| Measure                   | Implementation                               | Location                             |
-| ------------------------- | -------------------------------------------- | ------------------------------------ |
-| **SHA256 digest pinning** | Immutable base image reference               | `manifest-data.ts:23`                |
-| **SHA validation**        | Script validates digest exists on Docker Hub | `scripts/validate-base-image-sha.ts` |
-| **Cosign image signing**  | Keyless signing via Sigstore                 | `.github/workflows/publish.yml`      |
-| **SBOM generation**       | Build provenance attestations                | `.github/workflows/publish.yml`      |
-| **Non-root runtime**      | Final image runs as `postgres` user          | `Dockerfile:386`                     |
-| **Supply chain delay**    | 1-day delay before installing new packages   | Bun config                           |
-| **Frozen lockfile**       | Reproducible builds                          | `bun install --frozen-lockfile`      |
+| Measure                   | Implementation                               | Location                                       |
+| ------------------------- | -------------------------------------------- | ---------------------------------------------- |
+| **SHA256 digest pinning** | Immutable base image reference               | `baseImageSha` in `manifest-data.ts`           |
+| **SHA validation**        | Script validates digest exists on Docker Hub | `scripts/validate-base-image-sha.ts`           |
+| **Cosign image signing**  | Keyless signing via Sigstore                 | `.github/workflows/publish.yml`                |
+| **SBOM generation**       | BuildKit SBOM + provenance attestation       | `.github/workflows/publish.yml`                |
+| **Non-root runtime**      | Final image runs as `postgres` user          | `USER postgres` in `Dockerfile.template`       |
+| **Supply chain delay**    | 1-day delay before installing new packages   | `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE` in CI |
+| **Frozen lockfile**       | Reproducible builds                          | `bun install --frozen-lockfile`                |
 
 **Conclusion**: We already implement most DHI benefits without distroless constraints.
 
@@ -85,12 +85,12 @@ Our current security measures are already robust:
 
 DHI runtime images are **distroless** — they contain NO shell (bash/sh). This impacts:
 
-| Component                          | Lines   | Challenge                                           |
-| ---------------------------------- | ------- | --------------------------------------------------- |
-| `docker-auto-config-entrypoint.sh` | 514     | Complex bash with associative arrays, 15+ functions |
-| `healthcheck.sh`                   | 129     | PostgreSQL queries via psql                         |
-| Init scripts                       | 4 files | Heredoc SQL execution                               |
-| Upstream PostgreSQL entrypoint     | ~600    | Official image's bash initialization                |
+| Component                          | Challenge                            |
+| ---------------------------------- | ------------------------------------ |
+| `docker-auto-config-entrypoint.sh` | Complex bash with associative arrays |
+| `healthcheck.sh`                   | PostgreSQL queries via psql          |
+| Init scripts                       | Heredoc SQL execution                |
+| Upstream PostgreSQL entrypoint     | Official image's bash initialization |
 
 **Required work**: Rewrite all logic in Go/Rust compiled binaries.
 
@@ -98,14 +98,15 @@ DHI runtime images are **distroless** — they contain NO shell (bash/sh). This 
 
 DHI runtime images have NO apt. Current extension installation:
 
-| Method             | Count | DHI Compatibility            |
-| ------------------ | ----- | ---------------------------- |
-| PGDG apt           | 14    | Needs multi-stage extraction |
-| Percona apt        | 2     | Needs multi-stage extraction |
-| Timescale apt      | 2     | Needs multi-stage extraction |
-| Source compile     | 13    | ✓ Already multi-stage        |
-| GitHub release     | 1     | ✓ Already multi-stage        |
-| PostgreSQL builtin | 7     | ✓ Part of base               |
+| Method (`install_via`) | DHI Compatibility            |
+| ---------------------- | ---------------------------- |
+| PGDG apt               | Needs multi-stage extraction |
+| Percona apt            | Needs multi-stage extraction |
+| Timescale apt          | Needs multi-stage extraction |
+| Source compile         | ✓ Already multi-stage        |
+| PostgreSQL builtin     | ✓ Part of base               |
+
+Per-method counts: `scripts/extensions/manifest-data.ts`; totals: `docs/.generated/docs-data.json`.
 
 **Required work**: Extract `.so` and `.control` files from apt packages in builder stages.
 
@@ -184,7 +185,7 @@ DHI uses `/opt/postgresql/17/bin` vs standard Debian `/usr/lib/postgresql/18/bin
    Use Docker Scout or Trivy to identify actual vulnerabilities:
 
    ```bash
-   docker scout cves postgres:18.1-trixie@sha256:38d5c9d522...
+   docker scout cves postgres:<pgVersion>-trixie@<baseImageSha>  # both from MANIFEST_METADATA
    ```
 
 3. **Address specific CVEs as needed**
@@ -256,8 +257,8 @@ COPY --from=builder /opt/ext-out /usr/lib/postgresql/17/lib
 
 - `scripts/extensions/manifest-data.ts` — Base image SHA definition
 - `docker/postgres/Dockerfile.template` — Multi-stage build structure
-- `docker/postgres/docker-auto-config-entrypoint.sh` — 514 lines of bash
-- `docker/postgres/healthcheck.sh` — 129 lines of bash
+- `docker/postgres/docker-auto-config-entrypoint.sh` — bash
+- `docker/postgres/healthcheck.sh` — bash
 - `.github/workflows/publish.yml` — Cosign signing, attestations
 
 ---

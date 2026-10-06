@@ -1,28 +1,37 @@
 #!/usr/bin/env bun
 /**
- * Pre-commit hook: Auto-fix issues and stage fixes
+ * Pre-commit hook: auto-fix and stage the fixes, then run the fast checks.
  *
- * This hook AUTO-FIXES issues instead of failing:
  * 1. Auto-regenerate if manifest-data.ts changed
  * 2. Auto-fix linting issues (oxlint --fix)
  * 3. Auto-format code (prettier --write)
  * 4. Auto-format SQL files (sql-formatter)
  * 5. Auto-stage all fixes
- * 6. Only fail if there are REAL errors that can't be auto-fixed
+ * 6. Run `bun run validate`; fail the commit if it fails
  *
- * Philosophy: Hooks should HELP, not BLOCK development
+ * It also fails before fixing when a file it would restage has unstaged changes, which restaging would commit unseen.
  */
 
 import { $ } from "bun";
+import { basename } from "node:path";
 import { GENERATED_FILES } from "./generated-files";
 import { error, info, success, warning } from "./utils/logger";
 
 /**
- * Get list of staged files
+ * Staged regular files. Symlinks (mode 120000, e.g. this repo's `CLAUDE.md -> AGENTS.md`) are skipped: every fixer
+ * below acts on the target, staged on its own when it changed, and Prettier exits 2 on an explicitly named symlink.
  */
 async function getStagedFiles(): Promise<string[]> {
-  const result = await $`git diff --cached --name-only --diff-filter=ACM`.text();
-  return result.trim().split("\n").filter(Boolean);
+  // --raw lines: ":<old mode> <new mode> <old sha> <new sha> <status>\t<path>"
+  const result = await $`git diff --cached --raw --diff-filter=ACM`.text();
+  return result
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [meta = "", path = ""] = line.split("\t");
+      return meta.split(" ")[1] === "120000" ? [] : [path];
+    });
 }
 
 /**
@@ -31,6 +40,27 @@ async function getStagedFiles(): Promise<string[]> {
 async function stageFiles(files: string[]): Promise<void> {
   if (files.length === 0) return;
   await $`git add ${files}`;
+  // Under `git commit --only -- <paths>` this hook stages into a temporary candidate index (next-index-*.lock): the
+  // fixes reach the commit, but git then writes the real index from the pre-hook bytes, leaving every fixed file
+  // differing from HEAD in the index. git holds the real index's lock for the whole hook and renames it into place
+  // when the commit lands, so staging into that lock too keeps the real index equal to the commit. The path comes
+  // from --git-dir: `git rev-parse --git-path index` answers with $GIT_INDEX_FILE, the candidate, inside a hook.
+  if (basename(Bun.env.GIT_INDEX_FILE ?? "").startsWith("next-index-")) {
+    const gitDir = (await $`git rev-parse --git-dir`.text()).trim();
+    await $`git add ${files}`.env({ ...Bun.env, GIT_INDEX_FILE: `${gitDir}/index.lock` });
+  }
+}
+
+/**
+ * Files whose working copy differs from what is staged. The fixers rewrite working copies and `git add` them back,
+ * which stages the WHOLE working copy: a partially staged file, or another person's unfinished edit sitting in it,
+ * would land in this commit unseen. Under `git commit --only -- <paths>` git hands the hook a temporary index
+ * holding exactly those paths' working copies, so the paths named there never show up here.
+ */
+async function withUnstagedChanges(files: string[]): Promise<string[]> {
+  if (files.length === 0) return [];
+  const out = await $`git diff --name-only -- ${files}`.text();
+  return out.trim().split("\n").filter(Boolean);
 }
 
 /**
@@ -46,9 +76,25 @@ async function preCommit(): Promise<void> {
   }
 
   const filesToRestage: string[] = [];
+  const manifestStaged = stagedFiles.includes("scripts/extensions/manifest-data.ts");
+
+  // Checked before any fixer writes: afterwards every fixed file differs from its staged copy.
+  const unstaged = await withUnstagedChanges(
+    manifestStaged ? [...stagedFiles, ...GENERATED_FILES] : stagedFiles
+  );
+  if (unstaged.length > 0) {
+    throw new Error(
+      `these files have changes that are not staged, and this hook's auto-fix would commit them too:\n` +
+        unstaged.map((f) => `  ${f}`).join("\n") +
+        `\nCommit finished files whole with: git commit --only -m "<message>" -- <files>` +
+        (manifestStaged
+          ? `\nA generated file listed here means its manifest change and the \`bun run generate\` output must be committed together.`
+          : "")
+    );
+  }
 
   // 1. Check if manifest-data.ts changed → auto-regenerate everything
-  if (stagedFiles.includes("scripts/extensions/manifest-data.ts")) {
+  if (manifestStaged) {
     info("📦 Manifest changed - auto-regenerating all artifacts...");
     try {
       await $`bun run generate`.quiet();
@@ -111,7 +157,7 @@ async function preCommit(): Promise<void> {
   if (sqlFiles.length > 0) {
     info("🗄️  Auto-formatting SQL files...");
     try {
-      await $`bun scripts/format-sql.ts --write`.quiet();
+      await $`bun scripts/format-sql.ts --write ${sqlFiles}`.quiet();
       success("✅ Auto-formatted SQL files");
       filesToRestage.push(...sqlFiles);
     } catch (err) {
@@ -125,12 +171,21 @@ async function preCommit(): Promise<void> {
     info("📝 Auto-staged fixed files");
   }
 
-  // 5. Skip type checking (too slow for pre-commit, let CI handle it)
-  // Type checking is comprehensive and slow - better suited for CI
-  // Developers can run `bun run type-check` manually if needed
-
   success("✅ Pre-commit auto-fixes complete!");
-  info("   💡 CI will run full validation (type-check, shellcheck, etc.)");
+
+  // The fast checks run on every commit so a failure stops here, not in CI after a push. They run after the fixes,
+  // so nothing the hook can fix blocks the commit. They read the working tree, not the commit candidate: another
+  // person's unfinished file can fail them, and a file missing from the commit can pass (CI's validate:all sees it).
+  // shellcheck, hadolint and yamllint stay in validate:all.
+  info("🧪 Running fast checks (bun run validate)...");
+  const validate = Bun.spawn(["bun", "run", "validate"], { stdout: "inherit", stderr: "inherit" });
+  if ((await validate.exited) !== 0) {
+    // Exit directly: a thrown Error makes Bun print this file's source around the throw, burying the check's output.
+    error(
+      "Commit blocked: `bun run validate` failed. Fix the check named above, then commit again."
+    );
+    process.exit(1);
+  }
 }
 
 // Run and exit with appropriate code

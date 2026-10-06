@@ -30,10 +30,10 @@
  *   1 - Critical validation failures
  */
 
-import { $ } from "bun";
 import { resolveImageWithSource } from "../test/image-resolver";
 import { success, error, warning, info, section, separator } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import { isDockerDaemonRunning } from "../utils/docker";
 import { type ImageData, formatSize, inspectImage, getCompressedSize } from "./image-metrics";
 
 interface ValidationResult {
@@ -94,19 +94,6 @@ function formatTimestamp(timestamp: string): string {
     return date.toISOString();
   } catch {
     return timestamp;
-  }
-}
-
-async function checkDockerAvailable(): Promise<void> {
-  try {
-    const result = await $`docker --version`.nothrow();
-    if (result.exitCode !== 0) {
-      error("Docker is not available or not running");
-      process.exit(1);
-    }
-  } catch (err) {
-    error(`Failed to check Docker availability: ${getErrorMessage(err)}`);
-    process.exit(1);
   }
 }
 
@@ -547,8 +534,11 @@ async function main(): Promise<void> {
   info(`Image source: ${source}`);
   console.log();
 
-  // Check Docker availability
-  await checkDockerAvailable();
+  // `docker --version` succeeds without a daemon; only a daemon answer proves the checks below can run.
+  if (!(await isDockerDaemonRunning())) {
+    error("Docker daemon is not running (docker info failed)");
+    process.exit(1);
+  }
 
   // Validate image
   const exitCode = await validateImage(imageTag);

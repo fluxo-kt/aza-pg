@@ -1,548 +1,210 @@
 #!/usr/bin/env bun
 /**
- * Unit Test Suite for Dockerfile Generator
- * Tests dockerfile generation logic without Docker builds
- *
- * Coverage:
- * - PGDG package installation script generation
- * - Placeholder replacement (PG_VERSION, PG_MAJOR, etc.)
- * - Shared preload libraries generation
- * - Version validation
- * - Package name security validation
- * - Manifest filtering (PGXS, Cargo)
- * - Regression mode configuration
+ * Properties of the committed, generated Dockerfile whose loss changes the shipped image or makes its
+ * build unsafe: no unfilled template placeholder, fail-fast RUN chains, a module-file check per
+ * installed entry, a shared-library check after the last package removal, locked cache mounts,
+ * digest-pinned bases, the security upgrade, build-metadata ARGs that leave the RUN cache alone, and no
+ * whole-context COPY. Whether the committed file matches
+ * the template is scripts/verify-generated.ts's job, not this file's.
  *
  * Usage: bun test scripts/docker/generate-dockerfile.test.ts
  */
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { join } from "node:path";
-import { extensionDefaults } from "../extension-defaults";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
 
-// Import types from the generator module (we'll need to make some functions exportable)
-interface ManifestEntry {
-  name: string;
-  install_via?: string;
-  enabled?: boolean;
-  enabledInComprehensiveTest?: boolean;
-  build?: {
-    type: string;
-    subdir?: string;
-    features?: string[];
-    noDefaultFeatures?: boolean;
-    mesonOptions?: string[];
-    script?: string;
-    patches?: string[];
-  };
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-    preloadInComprehensiveTest?: boolean;
-    preloadLibraryName?: string;
-  };
-  source: {
-    tag?: string;
-    ref?: string;
-  };
+const DOCKERFILE_PATH = join(import.meta.dir, "../../docker/postgres/Dockerfile");
+
+/** Each RUN instruction with its continuation lines joined, comment lines dropped. */
+function runInstructions(dockerfile: string): string[] {
+  const runs: string[] = [];
+  let current: string | null = null;
+  for (const line of dockerfile.split("\n")) {
+    if (line.trimStart().startsWith("#")) continue;
+    if (current === null && !/^RUN\s/.test(line)) continue;
+    current = current === null ? line : `${current}\n${line}`;
+    if (!line.endsWith("\\")) {
+      runs.push(current);
+      current = null;
+    }
+  }
+  return runs;
 }
 
-interface Manifest {
-  entries: ManifestEntry[];
+/** A RUN instruction's shell script: mount flags and line continuations removed. */
+function runBody(run: string): string {
+  return run
+    .replace(/^RUN\s+((--mount=\S+)\s*\\?\s*)*/, "")
+    .replace(/\\\n/g, " ")
+    .trim();
 }
 
-const REPO_ROOT = join(import.meta.dir, "../..");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
-const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
+/**
+ * The script with quoted strings, `\;`, find's `{}`, $(…), (…) subshells, { …; } groups and if/for/while blocks removed,
+ * innermost first, leaving only the operators that join its top-level commands. `|| exit 1` and
+ * `|| { …; exit 1; }` go too: they turn a failure into an exit, never into success.
+ */
+function topLevel(script: string): string {
+  let text = script.replace(/'[^']*'|"(?:[^"\\]|\\.)*"|\\;|\{\}/g, "");
+  const nested =
+    /\|\|\s*(?:exit 1\b|\{ [^{}]*; exit 1; \})|\$?\([^()]*\)|\{ [^{}]*; \}|\bif\b(?:(?!\b(?:if|fi)\b)[\s\S])*\bfi\b|\b(?:for|while)\b(?:(?!\b(?:for|while|done)\b)[\s\S])*\bdone\b/g;
+  for (let previous = ""; previous !== text;) {
+    previous = text;
+    text = text.replace(nested, "");
+  }
+  return text;
+}
 
-describe("Extension Defaults Validation", () => {
-  test("PG_VERSION is defined and valid", () => {
-    expect(extensionDefaults.pgVersion).toBeDefined();
-    expect(extensionDefaults.pgVersion).toMatch(/^\d+\.\d+$/);
-  });
+/** The text of the last build stage, from its FROM line on. */
+function finalStage(dockerfile: string): string {
+  return dockerfile.slice(dockerfile.lastIndexOf("\nFROM ") + 1);
+}
 
-  test("PG_MAJOR can be extracted from PG_VERSION", () => {
-    const pgMajor = extensionDefaults.pgVersion.split(".")[0];
-    expect(pgMajor).toBeDefined();
-    expect(Number.parseInt(pgMajor!)).toBeGreaterThan(0);
-    expect(Number.parseInt(pgMajor!)).toBeLessThanOrEqual(20); // Reasonable upper bound
-  });
+const sourceToolBinaries = MANIFEST_ENTRIES.filter(
+  (e) =>
+    e.kind === "tool" &&
+    (e.install_via ?? "source") === "source" &&
+    (e.enabled ?? true) &&
+    e.binaryPath
+).map((e) => e.binaryPath as string);
 
-  test("Base image SHA is valid format", () => {
-    expect(extensionDefaults.baseImageSha).toBeDefined();
-    expect(extensionDefaults.baseImageSha).toMatch(/^sha256:[a-f0-9]{64}$/);
-  });
-
-  test("All PGDG versions are defined", () => {
-    const versions = extensionDefaults.pgdgVersions;
-    expect(versions.pgcron).toBeDefined();
-    expect(versions.pgaudit).toBeDefined();
-    expect(versions.pgvector).toBeDefined();
-    expect(versions.plpgsqlCheck).toBeDefined(); // migrated from source → PGDG
-    expect(versions.partman).toBeDefined(); // migrated from source → PGDG (postgresql-18-partman)
-    // timescaledb: install_via "timescale" (dedicated repo, not PGDG) — no pgdgVersion
-    expect(versions.postgis).toBeDefined();
-    expect(versions.repack).toBeDefined();
-    expect(versions.hll).toBeDefined();
-    expect(versions.http).toBeDefined();
-    expect(versions.hypopg).toBeDefined();
-    expect(versions.pgrouting).toBeDefined();
-    expect(versions.rum).toBeDefined();
-    expect(versions.setUser).toBeDefined();
-  });
-
-  test("PGDG versions follow expected pattern", () => {
-    // Pattern: version-build.pgdgNN+1 (e.g., "1.6.7-2.pgdg13+1")
-    // Some packages like postgis include +dfsg in the version
-    const versionPattern = /^[\d.]+(\+\w+)?(-\d+)?\.pgdg\d+\+\d+$/;
-
-    for (const [_key, version] of Object.entries(extensionDefaults.pgdgVersions)) {
-      expect(version).toMatch(versionPattern);
-    }
-  });
-});
-
-describe("Manifest File Validation", () => {
-  let manifest: Manifest;
+describe("Generated Dockerfile", () => {
+  let dockerfile: string;
+  let runs: string[];
 
   beforeAll(async () => {
-    const manifestFile = Bun.file(MANIFEST_PATH);
-    expect(await manifestFile.exists()).toBe(true);
-    manifest = (await manifestFile.json()) as Manifest;
+    dockerfile = await Bun.file(DOCKERFILE_PATH).text();
+    runs = runInstructions(dockerfile);
   });
 
-  test("Manifest loads successfully", async () => {
-    expect(manifest).toBeDefined();
-    expect(manifest.entries).toBeDefined();
-    expect(Array.isArray(manifest.entries)).toBe(true);
+  test("no template placeholder is left unfilled", () => {
+    expect(dockerfile.match(/\{\{[A-Z0-9_]+\}\}/g) ?? []).toEqual([]);
   });
 
-  test("Manifest contains entries", async () => {
-    expect(manifest.entries.length).toBeGreaterThan(0);
-  });
-
-  test("All PGDG entries have valid names", async () => {
-    const pgdgEntries = manifest.entries.filter((e) => e.install_via === "pgdg");
-
-    for (const entry of pgdgEntries) {
-      expect(entry.name).toBeDefined();
-      expect(entry.name.length).toBeGreaterThan(0);
-      // Should only contain safe characters
-      expect(entry.name).toMatch(/^[a-zA-Z0-9_]+$/);
-    }
-  });
-
-  test("Enabled PGDG extensions have corresponding version definitions", async () => {
-    const enabledPgdg = manifest.entries.filter(
-      (e) => e.install_via === "pgdg" && (e.enabled ?? true) === true
-    );
-
-    // Known PGDG extensions that should have versions
-    // NOTE: timescaledb removed - uses install_via: "source" (compiled from source)
-    const expectedExtensions = [
-      "pg_cron",
-      "pgaudit",
-      "vector",
-      "postgis",
-      "pg_partman",
-      "pg_repack",
-      "hll",
-      "http",
-      "hypopg",
-      "pgrouting",
-      "rum",
-      "set_user",
-    ];
-
-    const enabledNames = enabledPgdg.map((e) => e.name);
-
-    for (const expected of expectedExtensions) {
-      if (enabledNames.includes(expected)) {
-        // If it's in manifest as enabled, it should have a version
-        expect(enabledNames).toContain(expected);
-      }
-    }
-  });
-
-  test("Preload libraries have valid configurations", async () => {
-    const preloadEntries = manifest.entries.filter((e) => e.runtime?.sharedPreload === true);
-
-    for (const entry of preloadEntries) {
-      expect(entry.runtime).toBeDefined();
-      expect(typeof entry.runtime!.sharedPreload).toBe("boolean");
-
-      if (entry.runtime!.preloadLibraryName) {
-        // Library name should be valid
-        expect(entry.runtime!.preloadLibraryName).toMatch(/^[a-zA-Z0-9_]+$/);
-      }
-    }
-  });
-});
-
-describe("Template File Validation", () => {
-  let template: string;
-
-  beforeAll(async () => {
-    const templateFile = Bun.file(TEMPLATE_PATH);
-    expect(await templateFile.exists()).toBe(true);
-    template = await templateFile.text();
-  });
-
-  test("Template contains expected placeholders", async () => {
-    expect(template).toContain("{{PG_VERSION}}");
-    expect(template).toContain("{{PG_MAJOR}}");
-    expect(template).toContain("{{PG_BASE_IMAGE_SHA}}");
-    expect(template).toContain("{{PGDG_PACKAGES_INSTALL}}");
-  });
-
-  test("Template uses proper Dockerfile syntax", async () => {
-    // Should have FROM instruction
-    expect(template).toMatch(/^FROM /m);
-
-    // Should have multi-stage build
-    expect(template).toMatch(/FROM .* AS builder-base/);
-
-    // Should use bash shell with pipefail
-    expect(template).toContain('SHELL ["/bin/bash", "-o", "pipefail", "-c"]');
-  });
-
-  test("Template includes set -euo pipefail in RUN commands", async () => {
-    // Find RUN commands and check they use pipefail
-    const runCommands = template.match(/RUN .*set -euo pipefail/g);
-    expect(runCommands).toBeDefined();
-    expect(runCommands!.length).toBeGreaterThan(0);
-  });
-
-  test("Template has proper cache mount syntax", async () => {
-    // Check for cache mounts with sharing=locked
-    const cacheMounts = template.match(/--mount=type=cache.*sharing=locked/g);
-    expect(cacheMounts).toBeDefined();
-    expect(cacheMounts!.length).toBeGreaterThan(0);
-  });
-});
-
-describe("Generated Dockerfile Validation", () => {
-  let generatedDockerfile: string;
-
-  beforeAll(async () => {
-    const dockerfileFile = Bun.file(OUTPUT_PATH);
-    expect(await dockerfileFile.exists()).toBe(true);
-    generatedDockerfile = await dockerfileFile.text();
-  });
-
-  test("Generated Dockerfile exists and is not empty", async () => {
-    expect(generatedDockerfile).toBeDefined();
-    expect(generatedDockerfile.length).toBeGreaterThan(0);
-  });
-
-  test("Generated Dockerfile has generation header", async () => {
-    expect(generatedDockerfile).toContain("AUTO-GENERATED FILE - DO NOT EDIT");
-    expect(generatedDockerfile).toContain("Generator: scripts/docker/generate-dockerfile.ts");
-    expect(generatedDockerfile).toContain("To regenerate: bun run generate");
-  });
-
-  test("PG_VERSION placeholder is replaced with actual version", async () => {
-    expect(generatedDockerfile).not.toContain("{{PG_VERSION}}");
-    expect(generatedDockerfile).toContain(extensionDefaults.pgVersion);
-  });
-
-  test("PG_MAJOR placeholder is replaced with major version", async () => {
-    const pgMajor = extensionDefaults.pgVersion.split(".")[0];
-    expect(generatedDockerfile).not.toContain("{{PG_MAJOR}}");
-    expect(generatedDockerfile).toContain(`postgresql-${pgMajor}`);
-  });
-
-  test("PG_BASE_IMAGE_SHA placeholder is replaced", async () => {
-    expect(generatedDockerfile).not.toContain("{{PG_BASE_IMAGE_SHA}}");
-    expect(generatedDockerfile).toContain(extensionDefaults.baseImageSha);
-  });
-
-  test("PGDG_PACKAGES_INSTALL placeholder is replaced", async () => {
-    expect(generatedDockerfile).not.toContain("{{PGDG_PACKAGES_INSTALL}}");
-
-    // Should contain actual PGDG package installation
-    expect(generatedDockerfile).toContain("apt-get install");
-  });
-
-  test("Multi-stage build structure is present", async () => {
-    expect(generatedDockerfile).toMatch(/FROM .* AS builder-base/);
-    expect(generatedDockerfile).toMatch(/FROM builder-base AS builder-pgxs/);
-    expect(generatedDockerfile).toMatch(/FROM builder-base AS builder-cargo/);
-  });
-
-  test("HEALTHCHECK instruction is included", async () => {
-    // Final stage should have healthcheck
-    expect(generatedDockerfile).toMatch(/HEALTHCHECK/);
-  });
-
-  test("ARG declarations are present", async () => {
-    expect(generatedDockerfile).toMatch(/ARG BUILD_DATE/);
-    expect(generatedDockerfile).toMatch(/ARG VCS_REF/);
-  });
-
-  test("ENV declarations are present", async () => {
-    expect(generatedDockerfile).toMatch(/ENV DEBIAN_FRONTEND=noninteractive/);
-    expect(generatedDockerfile).toMatch(/ENV PATH=/);
-  });
-
-  test("All RUN commands use set -euo pipefail", async () => {
-    // Find all RUN commands (excluding comments)
-    const runLines = generatedDockerfile
-      .split("\n")
-      .filter((line) => line.trim().startsWith("RUN ") && !line.trim().startsWith("#"));
-
-    // Each RUN should have pipefail (either directly or via script)
-    for (const line of runLines) {
-      const hasSetCommand = line.includes("set -euo pipefail");
-      const isShortCommand = line.length < 100; // Short commands might not need it
-
-      if (!isShortCommand) {
-        expect(hasSetCommand).toBe(true);
-      }
-    }
-  });
-
-  test("Cache mounts use sharing=locked", async () => {
-    // Line-based filter: exclude comment lines (regex match misses leading # outside the capture)
-    const cacheMountLines = generatedDockerfile
-      .split("\n")
-      .filter((line) => line.includes("--mount=type=cache") && !line.trimStart().startsWith("#"));
-
-    for (const line of cacheMountLines) {
-      expect(line).toContain("sharing=locked");
-    }
-  });
-
-  test("PGDG package installation includes version verification", async () => {
-    // Should verify installed package count
-    expect(generatedDockerfile).toMatch(/dpkg -l.*grep.*postgresql-\d+-/);
-    expect(generatedDockerfile).toMatch(/INSTALLED_COUNT/);
-  });
-
-  test("PGDG package installation includes .so file verification", async () => {
-    // Should verify critical .so files exist
-    expect(generatedDockerfile).toMatch(/test -f.*\.so/);
-  });
-
-  test("Binary stripping is included for size optimization", async () => {
-    expect(generatedDockerfile).toMatch(/strip --strip/);
-  });
-});
-
-describe("PGDG Package Name Security Validation", () => {
-  test("Package names contain only safe characters", () => {
-    const safePattern = /^[a-zA-Z0-9\-_=.+:]*$/;
-
-    const testCases = [
-      { name: "postgresql-18-pgvector=0.8.2-1.pgdg13+1", valid: true },
-      { name: "postgresql-18-cron=1.6.7-2.pgdg13+1", valid: true },
-      { name: "postgresql-18-postgis-3=3.5.1+dfsg-1.pgdg13+1", valid: true },
-      { name: "bad-package;rm -rf", valid: false },
-      { name: "package$(malicious)", valid: false },
-      { name: "package`command`", valid: false },
-    ];
-
-    for (const { name, valid } of testCases) {
-      expect(safePattern.test(name)).toBe(valid);
-    }
-  });
-
-  test("Version strings contain only safe characters", () => {
-    const safePattern = /^[a-zA-Z0-9\-_=.+:]*$/;
-
-    for (const [_key, version] of Object.entries(extensionDefaults.pgdgVersions)) {
-      expect(safePattern.test(version)).toBe(true);
-    }
-  });
-});
-
-describe("Manifest Filtering Logic", () => {
-  let manifest: Manifest;
-
-  beforeAll(async () => {
-    const manifestFile = Bun.file(MANIFEST_PATH);
-    manifest = (await manifestFile.json()) as Manifest;
-  });
-
-  test("PGXS manifest includes correct build types", async () => {
-    const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
-    const pgxsEntries = manifest.entries.filter(
-      (entry) => entry.build && pgxsBuildTypes.includes(entry.build.type)
-    );
-
-    expect(pgxsEntries.length).toBeGreaterThan(0);
-
-    for (const entry of pgxsEntries) {
-      expect(pgxsBuildTypes).toContain(entry.build!.type);
-    }
-  });
-
-  test("Cargo manifest includes only cargo-pgrx builds", async () => {
-    const cargoEntries = manifest.entries.filter(
-      (entry) => entry.build && entry.build.type === "cargo-pgrx"
-    );
-
-    for (const entry of cargoEntries) {
-      expect(entry.build!.type).toBe("cargo-pgrx");
-    }
-  });
-
-  test("PGXS and Cargo manifests are mutually exclusive", async () => {
-    const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
-    const pgxsEntries = manifest.entries.filter(
-      (entry) => entry.build && pgxsBuildTypes.includes(entry.build.type)
-    );
-    const cargoEntries = manifest.entries.filter(
-      (entry) => entry.build && entry.build.type === "cargo-pgrx"
-    );
-
-    // No overlap - entries should be in one or the other, not both
-    const pgxsNames = new Set(pgxsEntries.map((e) => e.name));
-    const cargoNames = new Set(cargoEntries.map((e) => e.name));
-
-    for (const name of pgxsNames) {
-      expect(cargoNames.has(name)).toBe(false);
-    }
-  });
-});
-
-describe("Regression Mode Configuration", () => {
-  let manifest: Manifest;
-
-  beforeAll(async () => {
-    const manifestFile = Bun.file(MANIFEST_PATH);
-    manifest = (await manifestFile.json()) as Manifest;
-  });
-
-  test("Regression preload libraries include default + comprehensive test libraries", async () => {
-    const regressionPreload = manifest.entries.filter((entry) => {
-      const runtime = entry.runtime;
-      if (!runtime || !runtime.sharedPreload) return false;
-
-      const isDefaultEnable = runtime.defaultEnable === true;
-      const isRegressionPreload = runtime.preloadInComprehensiveTest === true;
-      const isEnabled = entry.enabled !== false;
-
-      return (isDefaultEnable || isRegressionPreload) && isEnabled;
+  test("every RUN that chains commands starts with set -euo pipefail", () => {
+    // -u and pipefail catch unset variables and failed pipe stages; a single command needs neither.
+    expect(runs.length).toBeGreaterThan(0);
+    const unguarded = runs.filter((run) => {
+      const body = runBody(run);
+      return !body.startsWith("set -euo pipefail") && /&&|\|\||;|\|/.test(body);
     });
-
-    expect(regressionPreload.length).toBeGreaterThan(0);
-
-    // Should include pg_stat_statements (default)
-    const hasStatStatements = regressionPreload.some((e) => e.name === "pg_stat_statements");
-    expect(hasStatStatements).toBe(true);
+    expect(unguarded).toEqual([]);
   });
 
-  test("Preload library names are valid", async () => {
-    const preloadEntries = manifest.entries.filter((e) => e.runtime?.sharedPreload === true);
+  test("every RUN is one && chain, so any failed step fails the layer", () => {
+    // set -e never exits for a command inside an && list, so `a && b; c` and `a && b || true` both exit
+    // 0 when a or b fails and the layer builds without the step. Best-effort steps go in `{ cmd || true; }`
+    // and conditionals in if/for blocks, which keep their ; and || out of the top level.
+    const escaping = runs
+      .map((run) => ({ run, top: topLevel(runBody(run)) }))
+      .filter(({ top }) => /;|\|\|/.test(top))
+      .map(({ run }) => run);
+    expect(escaping).toEqual([]);
+  });
 
-    for (const entry of preloadEntries) {
-      const libName = entry.runtime?.preloadLibraryName || entry.name;
+  test("the top-level reduction keeps exactly the separators that escape the chain", () => {
+    expect(topLevel("a && b; c || true")).toBe("a && b; c || true");
+    expect(topLevel('test -s f || { echo "empty"; exit 1; } && [ x ] || exit 1')).toBe(
+      "test -s f  && [ x ] "
+    );
+    expect(topLevel("a && { c || true; } && if x; then y; fi && for i in 1; do z; done")).toBe(
+      "a &&  &&  && "
+    );
+    expect(topLevel("find . -exec strip {} \\; && echo 'a; b' \"c || d\" && v=$(x || y)")).toBe(
+      "find . -exec strip   && echo   && v="
+    );
+    expect(topLevel("a && { find . -exec strip {} \\; || true; }")).toBe("a && ");
+  });
 
-      // Should only contain alphanumeric and underscore
-      expect(libName).toMatch(/^[a-zA-Z0-9_]+$/);
+  test("every enabled apt module entry has its module file checked at build time", () => {
+    const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0];
+    const viaPackage = new Set(["pgdg", "percona", "timescale"]);
+    const unchecked = MANIFEST_ENTRIES.filter(
+      (e) => e.kind === "extension" && viaPackage.has(e.install_via ?? "") && (e.enabled ?? true)
+    )
+      .filter(
+        (e) => !dockerfile.includes(`test -f /usr/lib/postgresql/${pgMajor}/lib/${e.soFileName}`)
+      )
+      .map((e) => `${e.name} (${e.install_via}, soFileName ${e.soFileName ?? "missing"})`);
+    expect(unchecked).toEqual([]);
+  });
+
+  test("every build.patches file exists and the builder copies it to where build-extensions.ts reads it", async () => {
+    // build-extensions.ts applies build.patches from /opt/patches; without the COPY, git apply fails on a missing file.
+    const copy = "COPY docker/postgres/patches/ /opt/patches/";
+    expect(dockerfile.includes(copy)).toBe(true);
+    const patches = MANIFEST_ENTRIES.flatMap((e) => e.build?.patches ?? []);
+    const missing: string[] = [];
+    for (const patch of patches) {
+      if (!(await Bun.file(join(import.meta.dir, "../../docker/postgres/patches", patch)).exists()))
+        missing.push(patch);
     }
-  });
-});
-
-describe("Dockerfile Syntax Validation", () => {
-  let dockerfile: string;
-
-  beforeAll(async () => {
-    const dockerfileFile = Bun.file(OUTPUT_PATH);
-    dockerfile = await dockerfileFile.text();
+    expect(missing).toEqual([]);
   });
 
-  test("No trailing whitespace on continuation lines", async () => {
-    const lines = dockerfile.split("\n");
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line?.endsWith("\\")) {
-        // Line ending with backslash should not have trailing spaces before it
-        expect(line.trimEnd().endsWith("\\")).toBe(true);
-      }
-    }
+  test("builders ship each source tool's binaryPath and never a whole bin directory", () => {
+    // A whole-directory copy of the builder's /usr/local/bin once shipped bun and the build scripts.
+    expect(dockerfile.match(/^.*rsync[^\n]*\/bin\/ .*$/gm) ?? []).toEqual([]);
+    const unshipped = sourceToolBinaries.filter(
+      (bin) => !dockerfile.includes(`install -D -m 0755 ${bin} /opt/ext-out${bin}`)
+    );
+    expect(unshipped).toEqual([]);
   });
 
-  test("FROM instructions use digest pinning", async () => {
-    const fromLines = dockerfile.match(/^FROM .*/gm);
-
-    expect(fromLines).toBeDefined();
-    expect(fromLines!.length).toBeGreaterThan(0);
-
-    // Base images should use SHA digest
-    const baseImage = fromLines!.find((line) => line.includes("postgres:"));
-    expect(baseImage).toBeDefined();
-    expect(baseImage).toMatch(/@sha256:[a-f0-9]{64}/);
+  test("every module, source library and source tool binary is ldd-checked after the last package removal", () => {
+    // apt-get purge --auto-remove drops libraries that only an unrelated package held; objects built from
+    // source declare no package dependency, so a check that runs before the purge certifies a broken image.
+    const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0];
+    const check = runs.findLastIndex((run) => run.includes('ldd "$f"'));
+    const lastRemoval = runs.findLastIndex((run) =>
+      /apt-get (-\S+ )*(purge|remove|autoremove)\b/.test(run)
+    );
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(check).toBeGreaterThan(lastRemoval);
+    const objects = runs[check]!.match(/for f in ([^;]*); do/)?.[1]?.split(/\s+/) ?? [];
+    expect(objects).toEqual(
+      expect.arrayContaining([
+        `/usr/lib/postgresql/${pgMajor}/lib/*.so`,
+        "/usr/local/lib/*.so*",
+        ...sourceToolBinaries,
+      ])
+    );
   });
 
-  test("COPY instructions use specific paths", async () => {
-    const copyLines = dockerfile.match(/^COPY .*/gm);
-
-    expect(copyLines).toBeDefined();
-
-    for (const line of copyLines!) {
-      // Should not copy entire directories without specificity
-      expect(line).not.toMatch(/COPY \. /);
-    }
-  });
-
-  test("Apt packages use --no-install-recommends", async () => {
-    // Line-based filter: the regex match starts after any leading `#`, so install.includes("#")
-    // misses comment lines where # appears before apt-get install on the same line.
-    const aptInstallLines = dockerfile
+  test("cache mounts use sharing=locked", () => {
+    // builder-pgxs and builder-cargo run concurrently and both mount /root/.cache.
+    const unlocked = dockerfile
       .split("\n")
-      .filter((line) => line.includes("apt-get install") && !line.trimStart().startsWith("#"));
-
-    for (const line of aptInstallLines) {
-      expect(line).toContain("--no-install-recommends");
-    }
+      .filter((line) => line.includes("--mount=type=cache") && !line.trimStart().startsWith("#"))
+      .filter((line) => !line.includes("sharing=locked"));
+    expect(unlocked).toEqual([]);
   });
 
-  test("Final image refreshes security updates before runtime package installs", async () => {
-    expect(dockerfile).toContain("apt-get upgrade -y --no-install-recommends");
-  });
-});
-
-describe("Build Optimization Checks", () => {
-  let dockerfile: string;
-
-  beforeAll(async () => {
-    const dockerfileFile = Bun.file(OUTPUT_PATH);
-    dockerfile = await dockerfileFile.text();
+  test("every postgres base image is digest-pinned", () => {
+    const bases = dockerfile.match(/^FROM\s+postgres:.*$/gm) ?? [];
+    expect(bases.length).toBeGreaterThanOrEqual(2); // builder-base and the final stage
+    expect(bases.filter((line) => !/@sha256:[a-f0-9]{64}\b/.test(line))).toEqual([]);
   });
 
-  test("Rust installation is before manifests for cache efficiency", async () => {
-    const rustLine = dockerfile.indexOf("rustup.rs");
-    // Use the COPY of pgxs/cargo manifests which come after tools
-    const manifestLine = dockerfile.indexOf("extensions.pgxs.manifest.json");
-
-    expect(rustLine).toBeGreaterThan(0);
-    expect(manifestLine).toBeGreaterThan(0);
-    expect(rustLine).toBeLessThan(manifestLine);
+  test("final image refreshes security updates before its first package install", () => {
+    // The pinned base digest freezes Debian packages at its build date; only the upgrade brings security fixes.
+    const commands = runInstructions(finalStage(dockerfile)).map(runBody).join("\n");
+    const upgrade = commands.indexOf("apt-get upgrade -y --no-install-recommends");
+    expect(upgrade).toBeGreaterThanOrEqual(0);
+    expect(upgrade).toBeLessThan(commands.indexOf("apt-get install"));
   });
 
-  test("Bun installation is before manifests for cache efficiency", async () => {
-    const bunLine = dockerfile.indexOf("bun.sh/install");
-    // Use the COPY of pgxs/cargo manifests which come after tools
-    const manifestLine = dockerfile.indexOf("extensions.pgxs.manifest.json");
-
-    expect(bunLine).toBeGreaterThan(0);
-    expect(manifestLine).toBeGreaterThan(0);
-    expect(bunLine).toBeLessThan(manifestLine);
+  test("build-metadata ARGs come after the final stage's last RUN", () => {
+    // Every RUN after an ARG gets it in its environment and cache key; a per-build BUILD_DATE would
+    // re-run each of those RUNs on every build.
+    const stage = finalStage(dockerfile);
+    const firstArg = stage.search(/^ARG\s/m);
+    expect(firstArg).toBeGreaterThanOrEqual(0);
+    expect(runInstructions(stage.slice(firstArg))).toEqual([]);
   });
 
-  test("Build dependencies are cleaned up", async () => {
-    expect(dockerfile).toMatch(/apt-get clean/);
-    expect(dockerfile).toMatch(/rm -rf.*\/var\/lib\/apt\/lists/);
-  });
-
-  test("Bitcode files are removed for size", async () => {
-    expect(dockerfile).toMatch(/rm -rf.*bitcode/);
-  });
-
-  test("Static libraries are deleted", async () => {
-    expect(dockerfile).toMatch(/find.*\.a.*-delete/);
+  test("no COPY of the whole build context", () => {
+    expect(dockerfile.match(/^COPY (--\S+\s+)*\.\s/gm) ?? []).toEqual([]);
   });
 });

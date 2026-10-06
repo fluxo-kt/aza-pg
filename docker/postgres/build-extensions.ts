@@ -22,23 +22,6 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 // ────────────────────────────────────────────────────────────────────────────
-// CRITICAL: PGDG EXTENSION BEHAVIOR
-// ────────────────────────────────────────────────────────────────────────────
-// Disabled PGDG extensions (install_via==pgdg AND enabled==false) are NOT built
-// or apt-installed. They are filtered out in the Dockerfile's dynamic package
-// selection (add_if_enabled function).
-//
-// This is expected behavior because:
-// - PGDG extensions are pre-compiled binaries from apt, not source builds
-// - The Dockerfile conditionally installs only enabled PGDG packages
-// - This script never sees disabled PGDG extensions (they're skipped early)
-// - Only compiled extensions (build.type specified) are built regardless of enabled status
-//
-// Result: Disabled PGDG extensions cannot be verified via build/test cycle.
-// They are simply never installed in the image.
-// ────────────────────────────────────────────────────────────────────────────
-
-// ────────────────────────────────────────────────────────────────────────────
 // Type Definitions
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -56,8 +39,15 @@ interface BuildSpec {
   features?: string[];
   noDefaultFeatures?: boolean;
   mesonOptions?: string[];
+  makeOptions?: string[];
   script?: string;
   patches?: string[];
+}
+
+interface SourceLibrary {
+  source: { repository: string; tag: string };
+  asset: string;
+  sha256: string;
 }
 
 interface RuntimeSpec {
@@ -79,6 +69,8 @@ interface ManifestEntry {
   dependencies?: string[];
   provides?: string[];
   aptPackages?: string[];
+  sourceLibraries?: string[];
+  soFileName?: string;
   notes?: string[];
   install_via?: "pgdg" | "percona" | "source";
   perconaVersion?: string;
@@ -90,6 +82,7 @@ interface ManifestEntry {
 interface Manifest {
   generatedAt: string;
   entries: ManifestEntry[];
+  sourceLibraries?: Record<string, SourceLibrary>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -179,7 +172,7 @@ async function cloneRepo(repo: string, commit: string, target: string): Promise<
 
   log(`Cloning ${repo} @ ${commit} (shallow)`);
 
-  // Shallow clone optimization: fetch only the specific commit (Phase 4.2)
+  // Shallow clone: fetch only the specific commit
   // Benefits: faster clone, reduced disk usage, smaller attack surface
   await gitWithRetry(["init", target], `git init ${target}`);
   await gitWithRetry(["-C", target, "remote", "add", "origin", repo], `git remote add ${repo}`);
@@ -216,7 +209,7 @@ async function ensureCargoPgrx(version: string): Promise<string> {
 
   if (!(await Bun.file(cargoPgrxBin).exists())) {
     log(`Installing cargo-pgrx ${version}`);
-    // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation (Phase 11.1)
+    // Temporarily unset RUSTFLAGS to avoid conflicts with cargo-pgrx installation
     // RUSTFLAGS optimization should only apply to extension builds, not build tools
     const savedRustflags = process.env.RUSTFLAGS;
     delete process.env.RUSTFLAGS;
@@ -295,10 +288,91 @@ async function getPgrxVersion(dir: string): Promise<string> {
 // Build System Implementations
 // ────────────────────────────────────────────────────────────────────────────
 
-async function buildPgxs(dir: string): Promise<void> {
+// The image must run on every CPU of its architecture, not only on the build runner's. A binary
+// tuned with -march=native passes every test on the runner and dies with SIGILL on an older host,
+// so no test can catch it. pgvector's Makefile defaults OPTFLAGS to -march=native; PGXS itself
+// never reads OPTFLAGS, so clearing it touches only Makefiles that define it. The dry run then
+// refuses any host tuning that arrives under another variable name.
+const PORTABLE_PGXS = ["USE_PGXS=1", "OPTFLAGS="];
+
+// The last -O on a command line wins, so an upstream PG_CPPFLAGS = -O0 silently undoes PostgreSQL's
+// -O2 (CPPFLAGS follows CFLAGS on PGXS compile lines). Refusing it makes every unoptimised build a
+// recorded decision. Lines without any -O (install, mkdir) never match.
+export function unoptimisedCompileLine(plan: string): string | undefined {
+  return plan.split("\n").find((line) => line.match(/(?<!\S)-O\S*/g)?.at(-1) === "-O0");
+}
+
+async function buildPgxs(dir: string, build: BuildSpec): Promise<void> {
   log(`Running pgxs build in ${dir}`);
-  await $`make -C ${dir} USE_PGXS=1 -j${NPROC}`;
-  await $`make -C ${dir} USE_PGXS=1 install`;
+  const args = [...PORTABLE_PGXS, ...(build.makeOptions ?? [])];
+  const plan = await $`make -n -C ${dir} ${args}`.text();
+  const native = plan.match(/-m(?:arch|tune|cpu)=native/);
+  if (native) {
+    throw new Error(
+      `${dir}: the build would compile with ${native[0]}, tying the image to the build host's CPU. ` +
+        `Find the Makefile variable that adds it and override it in PORTABLE_PGXS (build-extensions.ts).`
+    );
+  }
+  const unoptimised = unoptimisedCompileLine(plan);
+  if (unoptimised) {
+    throw new Error(
+      `${dir}: the build would compile without optimisation (-O0): ${unoptimised.trim()}\n` +
+        `Find the Makefile variable that adds -O0 and clear it with build.makeOptions in manifest-data.ts.`
+    );
+  }
+  await $`make -C ${dir} ${args} -j${NPROC}`;
+  await $`make -C ${dir} ${args} install`;
+}
+
+const builtLibraries = new Set<string>();
+
+// Builds each library the entry links into /usr/local once per run. The tarball is trusted only through
+// its pinned SHA-256; the Dockerfile copies /usr/local/lib into the final image.
+async function ensureSourceLibraries(entry: ManifestEntry, manifest: Manifest): Promise<void> {
+  for (const name of entry.sourceLibraries ?? []) {
+    if (builtLibraries.has(name)) continue;
+    const lib = manifest.sourceLibraries?.[name];
+    if (!lib) throw new Error(`${entry.name}: source library ${name} is not in the manifest`);
+
+    const url = `${lib.source.repository.replace(/\.git$/, "")}/releases/download/${lib.source.tag}/${lib.asset}`;
+    log(`Building source library ${name} ${lib.source.tag} for ${entry.name}`);
+    let tarball: Uint8Array | undefined;
+    for (let attempt = 1; attempt <= 5 && !tarball; attempt++) {
+      const response = await fetch(url).catch(() => undefined);
+      if (response?.ok) tarball = new Uint8Array(await response.arrayBuffer());
+      else if (attempt < 5) await Bun.sleep(1000 * attempt);
+    }
+    if (!tarball) throw new Error(`${name}: could not download ${url}`);
+    const digest = new Bun.CryptoHasher("sha256").update(tarball).digest("hex");
+    if (digest !== lib.sha256) {
+      throw new Error(`${name}: ${url} has sha256 ${digest}, manifest pins ${lib.sha256}`);
+    }
+
+    const dir = join(BUILD_ROOT, `lib-${name}`);
+    await ensureCleanDir(dir);
+    await $`tar -xz -C ${dir} --strip-components=1 < ${new Response(tarball)}`;
+    await $`./configure --prefix=/usr/local --disable-static`.cwd(dir);
+    await $`make -j${NPROC}`.cwd(dir);
+    await $`make install`.cwd(dir);
+    await $`ldconfig`;
+    builtLibraries.add(name);
+  }
+}
+
+// trixie's linker searches /usr/lib/<triplet> before /usr/local/lib, so a stray Debian -dev package
+// would make the consumer link the old library and still build. Prove the module resolves ours.
+async function assertLinksSourceLibraries(entry: ManifestEntry): Promise<void> {
+  if (!entry.sourceLibraries?.length) return;
+  const pkglibdir = (await $`pg_config --pkglibdir`.text()).trim();
+  const module = join(pkglibdir, entry.soFileName ?? `${entry.name}.so`);
+  const ldd = await $`ldd ${module}`.text();
+  for (const name of entry.sourceLibraries) {
+    const resolved = ldd.split("\n").filter((line) => line.trim().startsWith(`${name}.so`));
+    if (resolved.length === 0 || !resolved.every((line) => line.includes("=> /usr/local/lib/"))) {
+      throw new Error(`${module} does not resolve ${name} from /usr/local/lib:\n${ldd}`);
+    }
+  }
+  log(`${entry.name} links ${entry.sourceLibraries.join(", ")} from /usr/local/lib`);
 }
 
 async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> {
@@ -310,11 +384,22 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   const installRoot = await ensureCargoPgrx(version);
   await ensurePgrxInitForVersion(installRoot, version);
 
-  // Remove Cargo.lock to avoid conflicts
-  const lockFile = join(dir, "Cargo.lock");
-  if (await Bun.file(lockFile).exists()) {
-    await $`rm -f ${lockFile}`;
+  // Build with the crate's own Cargo.lock under --locked: without it cargo resolves every dependency afresh, so
+  // one locked commit builds different Rust code from day to day while nothing in this repository changes.
+  // cargo reads the lock at the workspace root, which may sit above `dir`. cargo-pgrx has no --locked flag;
+  // it appends PGRX_BUILD_FLAGS to its `cargo build`. A crate whose upstream ships no lock gets one through a
+  // build.patches file generated at the pinned commit (vectorscale-cargo-lock.patch), so a missing lock is an error.
+  const workspaceManifest = (
+    await $`cargo locate-project --workspace --message-format plain`.cwd(dir).text()
+  ).trim();
+  const lockFile = join(workspaceManifest, "..", "Cargo.lock");
+  if (!(await Bun.file(lockFile).exists())) {
+    log(
+      `${entry.name}: no Cargo.lock at ${lockFile}; generate one at the pinned commit and add it to build.patches`
+    );
+    process.exit(1);
   }
+  const buildFlags = [Bun.env.PGRX_BUILD_FLAGS, "--locked"].filter(Boolean).join(" ");
 
   const features = entry.build?.features || [];
   const noDefaultFeatures = entry.build?.noDefaultFeatures ? "--no-default-features" : "";
@@ -327,7 +412,7 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   // Bun's $ template requires separate arguments for flags, not array spreading
   // Spread Bun.env to preserve HOME, CARGO_HOME, RUSTUP_HOME etc. — bare .env({ PATH })
   // would strip them, breaking cargo's registry and toolchain resolution.
-  const cargoEnv = { ...Bun.env, PATH: pathEnv };
+  const cargoEnv = { ...Bun.env, PATH: pathEnv, PGRX_BUILD_FLAGS: buildFlags };
 
   // Bun's $ template requires separate arguments for flags, not array spreading
   if (features.length > 0 && noDefaultFeatures) {
@@ -401,7 +486,11 @@ async function buildMeson(dir: string, build: BuildSpec): Promise<void> {
   const options = build.mesonOptions ?? [];
   log(`Running Meson build in ${dir}${options.length ? ` (${options.join(" ")})` : ""}`);
 
-  await $`meson setup ${buildDir} ${dir} --prefix=/usr/local ${options}`;
+  // Meson's default buildtype is "debug" (-O0 -g), and pgroonga's meson.build takes only
+  // pg_config's cppflags/cflags_sl, so without this PostgreSQL's -O2 never reaches it.
+  // "release" (-O3, no debug info) matches buildCmake's CMAKE_BUILD_TYPE=Release.
+  // Entry options come last on purpose: meson keeps the last --prefix, so an entry can override it.
+  await $`meson setup ${buildDir} ${dir} --prefix=/usr/local --buildtype=release ${options}`;
   await $`ninja -C ${buildDir} -j${NPROC}`;
   await $`ninja -C ${buildDir} install`;
 }
@@ -420,223 +509,24 @@ async function buildPgbadger(dir: string): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// GATE 1: DEPENDENCY VALIDATION
-// ────────────────────────────────────────────────────────────────────────────
-// Validates that all dependencies for an extension are enabled.
-// Fails fast with clear error message if any dependency is missing or disabled.
-
-async function validateDependencies(
-  entry: ManifestEntry,
-  name: string,
-  manifest: Manifest
-): Promise<void> {
-  const dependencies = entry.dependencies || [];
-  if (dependencies.length === 0) {
-    return;
-  }
-
-  log(`Validating ${dependencies.length} dependencies for ${name}`);
-
-  for (const depName of dependencies) {
-    // Check if dependency exists and is enabled in current manifest
-    const depEntry = manifest.entries.find((e) => e.name === depName);
-
-    if (!depEntry) {
-      // Dependency not in current manifest - check full manifest (cross-build-type dependencies)
-      const fullManifestPath = "/tmp/extensions.manifest.json";
-      if (await Bun.file(fullManifestPath).exists()) {
-        const fullManifest = (await Bun.file(fullManifestPath).json()) as Manifest;
-        const depEntryFull = fullManifest.entries.find((e) => e.name === depName);
-
-        if (depEntryFull) {
-          // Check if dependency is enabled in full manifest
-          const depEnabledInFull = depEntryFull.enabled !== false;
-          if (!depEnabledInFull) {
-            const depReason = depEntryFull.disabledReason || "No reason specified";
-            log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
-            log(`       Dependency disabled reason: ${depReason}`);
-            log(`       Either enable '${depName}' or disable '${name}'`);
-            process.exit(1);
-          }
-
-          // Dependency exists and is enabled - accept regardless of how it's built
-          if (depEntryFull.install_via === "pgdg") {
-            log(`  ✓ Dependency '${depName}' will be installed via PGDG`);
-          } else if (depEntryFull.install_via === "percona") {
-            log(`  ✓ Dependency '${depName}' will be installed via Percona`);
-          } else if (depEntryFull.install_via === "source") {
-            log(`  ✓ Dependency '${depName}' will be built from source (different build phase)`);
-          } else if (depEntryFull.kind === "builtin") {
-            log(`  ✓ Dependency '${depName}' is builtin (included in PostgreSQL)`);
-          } else {
-            log(`  ✓ Dependency '${depName}' will be built from source`);
-          }
-          continue;
-        }
-      }
-
-      log(`ERROR: Extension ${name} requires dependency '${depName}' which is not in manifest`);
-      process.exit(1);
-    }
-
-    const depEnabled = depEntry.enabled !== false;
-    if (!depEnabled) {
-      const depReason = depEntry.disabledReason || "No reason specified";
-      log(`ERROR: Extension ${name} requires dependency '${depName}' which is disabled`);
-      log(`       Dependency disabled reason: ${depReason}`);
-      log(`       Either enable '${depName}' or disable '${name}'`);
-      process.exit(1);
-    }
-
-    log(`  ✓ Dependency '${depName}' is enabled`);
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Patch Application
 // ────────────────────────────────────────────────────────────────────────────
 
-/**
- * Convert sed substitution pattern to JavaScript regex and replacement
- * Handles common sed patterns: s/pattern/replacement/flags
- */
-function parseSedPattern(sedPattern: string): { pattern: RegExp; replacement: string } | null {
-  // Match sed substitution format: s/pattern/replacement/flags
-  const match = sedPattern.match(/^s\/(.+?)\/(.+?)\/?([gimsu]*)$/);
-  if (!match) {
-    return null;
-  }
-
-  const [, pattern, replacement, flags] = match;
-  if (pattern === undefined || replacement === undefined) {
-    return null;
-  }
-
-  // Convert sed regex to JavaScript regex
-  let jsPattern = pattern
-    // Convert POSIX character classes to JS equivalents (must handle [[:class:]] syntax)
-    .replace(/\[\[:space:\]\]/g, "\\s")
-    .replace(/\[\[:alnum:\]\]/g, "[A-Za-z0-9]")
-    .replace(/\[\[:alpha:\]\]/g, "[A-Za-z]")
-    .replace(/\[\[:digit:\]\]/g, "\\d")
-    // Convert sed quantifiers {n,m} to JS
-    .replace(/\\{(\d+),?(\d*)\\}/g, "{$1,$2}")
-    // Handle start of line anchor
-    .replace(/^\^/, "^\\s*") // Allow optional leading whitespace
-    // Unescape dots
-    .replace(/\\\./g, ".");
-
-  // For multiline matching, add 'm' flag if pattern has ^ or $
-  const jsFlags = (flags || "") + (pattern.includes("^") || pattern.includes("$") ? "m" : "");
-
-  try {
-    const regex = new RegExp(jsPattern, jsFlags);
-    return { pattern: regex, replacement };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Apply a sed-style patch to file content using Bun native operations
- */
-async function applySedPatch(filePath: string, sedPattern: string): Promise<boolean> {
-  const parsed = parseSedPattern(sedPattern);
-  if (!parsed) {
-    log(`    Warning: Could not parse sed pattern: ${sedPattern}`);
-    return false;
-  }
-
-  const { pattern, replacement } = parsed;
-
-  // Read file content
-  const originalContent = await Bun.file(filePath).text();
-
-  // Apply substitution
-  const modifiedContent = originalContent.replace(pattern, replacement);
-
-  // Check if any changes were made
-  if (originalContent === modifiedContent) {
-    return false;
-  }
-
-  // Write modified content back
-  await Bun.write(filePath, modifiedContent);
-  return true;
-}
+// build.patches names unified diffs in docker/postgres/patches/, which the Dockerfile copies to PATCH_DIR. git apply is
+// all-or-nothing and fails on any hunk that no longer matches, so an upstream bump that moves patched code stops the
+// build naming the patch, instead of silently shipping the unpatched extension.
+const PATCH_DIR = "/opt/patches";
 
 async function applyPatches(entry: ManifestEntry, dest: string, name: string): Promise<void> {
-  const patches = entry.build?.patches || [];
-  if (patches.length === 0) {
-    return;
-  }
-
-  log(`Applying ${patches.length} patch(es) for ${name}`);
-
-  // Track modification timestamps for each file before patching
-  const modificationTimes = new Map<string, number>();
-
-  // Use for...of with entries() for proper type safety
-  for (const [i, patch] of patches.entries()) {
-    log(`  Patch ${i + 1}: ${patch}`);
-
-    // Find all files to patch based on extension type
-    let targetFiles: string[] = [];
-
-    if (patch.includes("Cargo.toml") || entry.build?.type === "cargo-pgrx") {
-      // For Cargo projects, find all Cargo.toml files
-      const result = await $`find ${dest} -name "Cargo.toml" -type f`.text();
-      targetFiles = result.trim().split("\n").filter(Boolean);
-    } else if (patch.includes(".c")) {
-      // For C projects, find specific C files mentioned in patch or all .c files
-      if (patch.includes("log_skipped_evtrigs")) {
-        // Anchor to specific file for supautils patch (src/supautils.c:72)
-        const result = await $`find ${dest} -name "supautils.c" -type f`.text();
-        targetFiles = result.trim().split("\n").filter(Boolean);
-      } else {
-        const result = await $`find ${dest} -name "*.c" -type f`.text();
-        targetFiles = result.trim().split("\n").filter(Boolean);
-      }
-    } else {
-      // Default: apply to all files in dest
-      targetFiles = [dest];
+  for (const patch of entry.build?.patches ?? []) {
+    const result = await $`git -C ${dest} apply ${join(PATCH_DIR, patch)}`.nothrow().quiet();
+    if (result.exitCode !== 0) {
+      log(
+        `Patch ${patch} no longer applies to ${name}; refresh it against the new source:\n${result.stderr}`
+      );
+      process.exit(1);
     }
-
-    // Apply patch to each target file using Bun native operations
-    for (const targetFile of targetFiles) {
-      if (await Bun.file(targetFile).exists()) {
-        // Record pre-patch modification time
-        const stat = await Bun.file(targetFile).stat();
-        modificationTimes.set(targetFile, stat.mtime.getTime());
-
-        const patched = await applySedPatch(targetFile, patch);
-        if (!patched) {
-          log(`    Warning: patch did not match in ${targetFile}`);
-        }
-      }
-    }
-  }
-
-  // Log patched files by comparing modification times
-  log("Patched files:");
-  const patchedFiles: string[] = [];
-
-  for (const [filePath, oldMtime] of modificationTimes) {
-    if (await Bun.file(filePath).exists()) {
-      const stat = await Bun.file(filePath).stat();
-      if (stat.mtime.getTime() > oldMtime) {
-        const relativePath = filePath.replace(dest + "/", "");
-        patchedFiles.push(relativePath);
-      }
-    }
-  }
-
-  if (patchedFiles.length > 0) {
-    for (const pf of patchedFiles) {
-      log(`  - ${pf}`);
-    }
-  } else {
-    log("  (no files modified - patches may not have matched)");
+    log(`Applied ${patch} to ${name}`);
   }
 }
 
@@ -665,7 +555,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // GATE 1: PGDG/PERCONA SKIP CHECK (Phase 4.4 - moved after enabled check)
+  // GATE 1: PGDG/PERCONA SKIP CHECK (after the enabled check)
   // ────────────────────────────────────────────────────────────────────────────
   // Skip PGDG/Percona extensions here because they're installed via apt-get in Dockerfile
   // Note: This happens AFTER enabled check so disabled extensions are tracked
@@ -683,27 +573,13 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   // Clone repository based on source type
   if (source.type === "git" && source.repository && source.tag) {
-    validateGitUrl(source.repository);
-    // Resolve tag → commit SHA via ls-remote (no temp clone or rm -rf needed).
-    // Request both TAG^{} (peeled commit for annotated tags) and TAG (lightweight tags).
-    const lsOutput = await gitWithRetry(
-      ["ls-remote", source.repository, `refs/tags/${source.tag}^{}`, `refs/tags/${source.tag}`],
-      `resolve tag ${source.tag} for ${source.repository}`
-    );
-    const lines = lsOutput
-      .trim()
-      .split("\n")
-      .filter((l) => l.includes("\t"));
-    // Annotated tags: prefer the peeled ^{} entry (actual commit SHA, not tag-object SHA)
-    const peeledLine = lines.find((l) => l.includes("^{}"));
-    const regularLine = lines.find((l) => !l.includes("^{}"));
-    const commit = (peeledLine ?? regularLine)?.split("\t")[0]?.trim();
-    if (!commit) {
-      log(`Could not resolve tag ${source.tag} for ${source.repository} — check tag exists`);
+    // Clone the commit generate-manifest.ts locked for this tag, never the tag itself: a tag moved
+    // upstream would otherwise change the built code with no diff in this repository.
+    if (!source.commit) {
+      log(`${name}: no locked commit for tag ${source.tag}; run \`bun run generate\` and commit`);
       process.exit(1);
     }
-
-    await cloneRepo(source.repository, commit, dest);
+    await cloneRepo(source.repository, source.commit, dest);
   } else if (source.type === "git-ref" && source.repository && (source.ref || source.commit)) {
     const commit = source.commit || source.ref!;
     await cloneRepo(source.repository, commit, dest);
@@ -720,8 +596,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
   // Determine working directory
   const workdir = build?.subdir ? join(dest, build.subdir) : dest;
 
-  // Validate dependencies before building
-  await validateDependencies(entry, name, manifest);
+  await ensureSourceLibraries(entry, manifest);
 
   // Build extension based on build type
   const buildType = build?.type;
@@ -732,7 +607,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
 
   switch (buildType) {
     case "pgxs":
-      await buildPgxs(workdir);
+      await buildPgxs(workdir, build);
       break;
 
     case "cargo-pgrx":
@@ -776,6 +651,8 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
       log(`Unsupported build type ${buildType} for ${name}`);
       process.exit(1);
   }
+
+  await assertLinksSourceLibraries(entry);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -807,9 +684,11 @@ async function main(): Promise<void> {
   log("Extension build complete");
 }
 
-// Run main function
-main().catch((error) => {
-  log(`FATAL ERROR: ${error.message}`);
-  console.error(error);
-  process.exit(1);
-});
+// Guarded so unit tests can import the pure helpers; Docker runs this file directly.
+if (import.meta.main) {
+  main().catch((error) => {
+    log(`FATAL ERROR: ${error.message}`);
+    console.error(error);
+    process.exit(1);
+  });
+}

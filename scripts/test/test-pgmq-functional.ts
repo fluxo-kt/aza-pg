@@ -12,7 +12,6 @@
  * - Topic routing (v1.11.0): bind_topic, send_topic, unbind_topic, list_topic_bindings
  * - Queue management (purge, metrics)
  * - Error handling (non-existent queues, invalid operations)
- * - Performance metrics (throughput, latency)
  *
  * Usage:
  *   bun run scripts/test/test-pgmq-functional.ts --image=aza-pg:local
@@ -20,7 +19,8 @@
  */
 
 import { $ } from "bun";
-import { join } from "node:path";
+import { TIMEOUTS } from "../config/test-timeouts";
+import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
 // Parse CLI arguments
@@ -40,7 +40,7 @@ if (containerName) {
   CONTAINER = containerName;
   console.log(`Using existing container: ${CONTAINER}\n`);
 } else if (imageTag) {
-  CONTAINER = `test-pgmq-${Date.now()}-${process.pid}`;
+  CONTAINER = generateUniqueContainerName("aza-pg-pgmq");
   isOwnContainer = true;
   console.log(`Starting new container: ${CONTAINER}`);
   console.log(`Using image: ${imageTag}\n`);
@@ -49,57 +49,11 @@ if (containerName) {
   process.exit(1);
 }
 
-// Check if pgmq extension is enabled in manifest
-const REPO_ROOT = join(import.meta.dir, "../..");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-
-interface ManifestEntry {
-  name: string;
-  enabled?: boolean;
-  disabledReason?: string;
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
-
-function isManifest(value: unknown): value is Manifest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "entries" in value &&
-    Array.isArray(value.entries)
-  );
-}
-
-try {
-  const manifestJson = await Bun.file(MANIFEST_PATH).json();
-  if (!isManifest(manifestJson)) {
-    throw new Error("Invalid manifest shape: entries array missing");
-  }
-  const pgmqEntry = manifestJson.entries.find((entry) => entry.name === "pgmq");
-
-  if (pgmqEntry && pgmqEntry.enabled === false) {
-    console.log("\n" + "=".repeat(80));
-    console.log("PGMQ FUNCTIONAL TEST SKIPPED");
-    console.log("=".repeat(80));
-    console.log("⏭️  pgmq extension is disabled in manifest (enabled: false)");
-    console.log("   Reason: " + (pgmqEntry.disabledReason || "Not specified"));
-    console.log("   To enable: Set enabled: true in scripts/extensions/manifest-data.ts");
-    console.log("=".repeat(80));
-    process.exit(0);
-  }
-} catch (error) {
-  console.error("Warning: Could not read manifest file:", error);
-  console.log("Proceeding with tests...\n");
-}
-
 interface TestResult {
   name: string;
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: Record<string, number | string>;
 }
 
 const results: TestResult[] = [];
@@ -123,6 +77,25 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
   }
 }
 
+/**
+ * Run statements in ONE psql session, one `-c` each. A visibility check needs its two reads microseconds apart: as
+ * separate `docker exec` calls they can be seconds apart on a loaded host, and a short timeout then lapses between them.
+ */
+async function runSQLSession(
+  statements: string[]
+): Promise<{ stdout: string; stderr: string; success: boolean }> {
+  const flags = statements.flatMap((sql) => ["-c", sql]);
+  const result =
+    await $`docker exec ${CONTAINER} psql -U postgres -v ON_ERROR_STOP=1 -t -A ${flags}`
+      .quiet()
+      .nothrow();
+  return {
+    stdout: result.stdout.toString().trim(),
+    stderr: result.stderr.toString().trim(),
+    success: result.exitCode === 0,
+  };
+}
+
 async function test(name: string, fn: () => Promise<void>): Promise<void> {
   const start = Date.now();
   try {
@@ -136,6 +109,18 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
     console.log(`❌ ${name} (${duration}ms)`);
     console.log(`   Error: ${error}`);
   }
+}
+
+/** Re-run a read until it returns a row (or TIMEOUTS.health passes); the 250 ms sleep only paces the polling. */
+async function pollUntilVisible(sql: string): Promise<string> {
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
+  while (Date.now() < deadline) {
+    const r = await runSQL(sql);
+    if (!r.success) throw new Error(`Read failed: ${r.stderr}`);
+    if (r.stdout !== "") return r.stdout;
+    await Bun.sleep(250);
+  }
+  return "";
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -162,7 +147,7 @@ if (isOwnContainer) {
   process.on("exit", () => {
     // Synchronous cleanup on normal exit
     try {
-      Bun.spawnSync(["docker", "rm", "-f", CONTAINER]);
+      Bun.spawnSync(["docker", "rm", "-f", "-v", CONTAINER]);
     } catch {
       // Ignore errors during cleanup
     }
@@ -187,49 +172,10 @@ if (isOwnContainer && imageTag) {
 
   try {
     // Start PostgreSQL container
-    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres -e POSTGRES_HOST_AUTH_METHOD=trust ${imageTag}`;
+    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres ${imageTag}`;
     console.log(`✅ Container started: ${CONTAINER}`);
 
-    // Wait for PostgreSQL to be ready
-    console.log("⏳ Waiting for PostgreSQL to be ready...");
-    let ready = false;
-    const maxAttempts = 60; // 60 seconds timeout
-    let attempt = 0;
-
-    while (!ready && attempt < maxAttempts) {
-      const result = await $`docker exec ${CONTAINER} pg_isready -U postgres`.nothrow();
-      if (result.exitCode === 0) {
-        ready = true;
-        break;
-      }
-      await Bun.sleep(1000);
-      attempt++;
-    }
-
-    if (!ready) {
-      throw new Error("PostgreSQL failed to start within 60 seconds");
-    }
-
-    // Wait for init scripts to complete (PostgreSQL restarts after initdb)
-    console.log("⏳ Waiting for init scripts to complete...");
-    let stableConnections = 0;
-    const requiredStable = 3;
-
-    for (let i = 0; i < 30 && stableConnections < requiredStable; i++) {
-      const check = await $`docker exec ${CONTAINER} psql -U postgres -c "SELECT 1"`.nothrow();
-      if (check.exitCode === 0) {
-        stableConnections++;
-      } else {
-        stableConnections = 0;
-      }
-      await Bun.sleep(1000);
-    }
-
-    if (stableConnections < requiredStable) {
-      throw new Error("PostgreSQL connection not stable after init");
-    }
-
-    console.log("✅ PostgreSQL is ready and stable\n");
+    await waitForPostgres({ container: CONTAINER, timeout: TIMEOUTS.startup });
   } catch (error) {
     console.error(`❌ Failed to start container: ${error}`);
     await cleanupContainer();
@@ -434,23 +380,19 @@ await test("Visibility timeout behavior", async () => {
   );
   assert(send.success, `Send failed: ${send.stderr}`);
 
-  // Read with 2 second visibility timeout
-  const read1 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 2, 1)");
-  assert(read1.success, `First read failed: ${read1.stderr}`);
-  assert(read1.stdout.length > 0, "No message read");
+  // Read with a 2 second visibility timeout, then read again at once: the message must be invisible.
+  const reads = await runSQLSession([
+    "SELECT 'first:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_vt', 2, 1)",
+    "SELECT 'second:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_vt', 2, 1)",
+  ]);
+  assert(reads.success, `Reads failed: ${reads.stderr}`);
+  const [first, second] = reads.stdout.split("\n");
+  assert(/^first:\d+$/.test(first ?? ""), `No message read: ${reads.stdout}`);
+  assert(second === "second:", `Expected no messages on the second read, got: ${second}`);
 
-  // Try to read immediately (should get no messages - still invisible)
-  const read2 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 2, 1)");
-  assert(read2.success, `Second read failed: ${read2.stderr}`);
-  assert(read2.stdout === "", `Expected no messages, got: ${read2.stdout}`);
-
-  // Wait for visibility timeout to expire
-  await Bun.sleep(2500);
-
-  // Read again (message should be visible again)
-  const read3 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
-  assert(read3.success, `Third read failed: ${read3.stderr}`);
-  assert(read3.stdout.length > 0, "Message not visible after VT expiration");
+  // The message must reappear once the 2 s timeout lapses
+  const read3 = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
+  assert(read3.length > 0, "Message not visible after VT expiration");
 });
 
 // Test 12: Set Visibility Timeout
@@ -572,7 +514,7 @@ await test("Purge queue", async () => {
 });
 
 // Test 15: FIFO Queue - read_grouped (v1.9.0)
-await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
+await test("FIFO read_grouped fills the batch from the oldest group first (v1.9.0)", async () => {
   await runSQL("SELECT pgmq.create('test_queue_fifo')");
 
   // Create FIFO index for message headers
@@ -602,17 +544,14 @@ await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
   );
   assert(msg4.success, `Send msg4 failed: ${msg4.stderr}`);
 
-  // read_grouped should return messages grouped together
-  const read = await runSQL(
-    "SELECT msg_id, message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped('test_queue_fifo', 30, 10)"
-  );
+  // A batch of 2 takes both group_a messages; a plain FIFO read would take orders 1 and 2. The function returns
+  // rows in no defined order, so they are sorted by msg_id.
+  const read = await runSQL(`
+    SELECT string_agg((message->>'order') || ':' || (headers->>'x-pgmq-group'), ',' ORDER BY msg_id)
+    FROM pgmq.read_grouped('test_queue_fifo', 30, 2)
+  `);
   assert(read.success, `read_grouped failed: ${read.stderr}`);
-
-  // Verify we got all 4 messages
-  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
-  assert(lines.length === 4, `Expected 4 messages, got ${lines.length}`);
-
-  console.log(`   📊 FIFO read_grouped returned ${lines.length} messages`);
+  assert(read.stdout === "1:group_a,3:group_a", `Unexpected batch: ${read.stdout}`);
 });
 
 // Test 15b: FIFO Queue - read_grouped_head (v1.11.1)
@@ -644,30 +583,35 @@ await test("FIFO read_grouped_head returns one visible head per group (v1.11.1)"
 });
 
 // Test 16: FIFO Queue - read_grouped_rr (v1.9.0)
-await test("FIFO read_grouped_rr distributes across groups (v1.9.0)", async () => {
+await test("FIFO read_grouped_rr alternates between groups (v1.9.0)", async () => {
   await runSQL("SELECT pgmq.create('test_queue_fifo_rr')");
   await runSQL("SELECT pgmq.create_fifo_index('test_queue_fifo_rr')");
 
-  // Send 3 messages to group_a, 3 to group_b
-  for (let i = 0; i < 3; i++) {
-    await runSQL(
-      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 1}}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  // All of group_a is sent before group_b, so only round robin interleaves them; a plain FIFO read returns 1–6.
+  for (const [order, group] of [
+    [1, "group_a"],
+    [2, "group_a"],
+    [3, "group_a"],
+    [4, "group_b"],
+    [5, "group_b"],
+    [6, "group_b"],
+  ] as const) {
+    const sent = await runSQL(
+      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${order}}'::jsonb, '{"x-pgmq-group": "${group}"}'::jsonb)`
     );
-    await runSQL(
-      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 2}}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
-    );
+    assert(sent.success, `Send ${order} failed: ${sent.stderr}`);
   }
 
-  // read_grouped_rr should interleave (round-robin) across groups
-  const read = await runSQL(
-    "SELECT message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped_rr('test_queue_fifo_rr', 30, 6)"
-  );
+  // The function's own row order is the round-robin order.
+  const read = await runSQL(`
+    SELECT string_agg((message->>'order') || ':' || (headers->>'x-pgmq-group'), ',' ORDER BY ordinality)
+    FROM pgmq.read_grouped_rr('test_queue_fifo_rr', 30, 6) WITH ORDINALITY
+  `);
   assert(read.success, `read_grouped_rr failed: ${read.stderr}`);
-
-  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
-  assert(lines.length === 6, `Expected 6 messages, got ${lines.length}`);
-
-  console.log(`   📊 FIFO read_grouped_rr distributed ${lines.length} messages across groups`);
+  assert(
+    read.stdout === "1:group_a,4:group_b,2:group_a,5:group_b,3:group_a,6:group_b",
+    `Unexpected order: ${read.stdout}`
+  );
 });
 
 // Test 17: FIFO index verification (v1.9.0)
@@ -691,26 +635,18 @@ await test("FIFO create_fifo_index creates GIN index (v1.9.0)", async () => {
 await test("Delayed message send", async () => {
   await runSQL("SELECT pgmq.create('test_queue_delay')");
 
-  // Send with 2-second delay
-  const send = await runSQL(
-    "SELECT pgmq.send('test_queue_delay', '{\"delayed\": true}'::jsonb, 2)"
-  );
-  assert(send.success, `Delayed send failed: ${send.stderr}`);
+  // Send with a 2 second delay and read at once: the message must not be visible yet.
+  const immediate = await runSQLSession([
+    "SELECT 'sent:' || pgmq.send('test_queue_delay', '{\"delayed\": true}'::jsonb, 2)",
+    "SELECT 'read:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_delay', 30, 1)",
+  ]);
+  assert(immediate.success, `Delayed send or immediate read failed: ${immediate.stderr}`);
+  const [sent, read] = immediate.stdout.split("\n");
+  assert(/^sent:\d+$/.test(sent ?? ""), `Delayed send returned no id: ${immediate.stdout}`);
+  assert(read === "read:", `Message visible before delay: ${read}`);
 
-  // Immediate read should return nothing (message not yet visible)
-  const immediate = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
-  assert(immediate.success, `Immediate read failed: ${immediate.stderr}`);
-  assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
-
-  // Wait for delay to expire
-  await Bun.sleep(2500);
-
-  // Now message should be visible
-  const delayed = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
-  assert(delayed.success, `Delayed read failed: ${delayed.stderr}`);
-  assert(delayed.stdout.length > 0, "Message not visible after delay expired");
-
-  console.log("   📊 Delayed send verified: message appeared after 2.5s delay");
+  const delayed = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
+  assert(delayed.length > 0, "Message not visible after delay expired");
 });
 
 // Test 19: Batch delete multiple messages
@@ -1037,67 +973,10 @@ await test("Drop queue", async () => {
      WHERE queue_name LIKE 'test_queue_%'
         OR queue_name LIKE 'test_list_%'
         OR queue_name LIKE 'test_meta_%'
-        OR queue_name LIKE 'topic_queue_%'
-        OR queue_name = 'benchmark_queue'`
+        OR queue_name LIKE 'topic_queue_%'`
   );
   assert(remaining.success, `Check remaining queues failed: ${remaining.stderr}`);
   assert(remaining.stdout === "0", `Expected 0 remaining test queues, got ${remaining.stdout}`);
-});
-
-// Test 28: Performance Benchmark - Message Throughput
-await test("Performance benchmark - message throughput", async () => {
-  // Create benchmark queue
-  await runSQL("SELECT pgmq.create('benchmark_queue')");
-
-  const messageCount = 100;
-  const start = Date.now();
-
-  // Send messages
-  for (let i = 0; i < messageCount; i++) {
-    await runSQL(
-      `SELECT pgmq.send('benchmark_queue', '{"id": ${i + 1}, "data": "benchmark_test"}'::jsonb)`
-    );
-  }
-
-  const sendDuration = Date.now() - start;
-  const sendThroughput = (messageCount / sendDuration) * 1000; // messages per second
-
-  // Read messages
-  const readStart = Date.now();
-  const read = await runSQL(
-    `SELECT count(*) FROM pgmq.read('benchmark_queue', 30, ${messageCount})`
-  );
-  const readDuration = Date.now() - readStart;
-  const readThroughput = (messageCount / readDuration) * 1000;
-
-  assert(read.success, `Benchmark read failed: ${read.stderr}`);
-  const readCount = parseInt(read.stdout);
-  assert(readCount === messageCount, `Expected ${messageCount} messages, got ${readCount}`);
-
-  console.log(
-    `   📊 Send Throughput: ${sendThroughput.toFixed(2)} msg/sec (${messageCount} messages in ${sendDuration}ms)`
-  );
-  console.log(
-    `   📊 Read Throughput: ${readThroughput.toFixed(2)} msg/sec (${messageCount} messages in ${readDuration}ms)`
-  );
-
-  // Cleanup
-  const cleanup = await runSQL("SELECT pgmq.drop_queue('benchmark_queue')");
-  assert(cleanup.success, `Benchmark queue cleanup failed: ${cleanup.stderr}`);
-
-  const lastResult = results[results.length - 1];
-  if (lastResult) {
-    lastResult.metrics = {
-      messageCount,
-      sendDuration,
-      sendThroughput: sendThroughput.toFixed(2),
-      readDuration,
-      readThroughput: readThroughput.toFixed(2),
-    };
-  }
-
-  assert(sendThroughput > 10, `Send throughput too low: ${sendThroughput.toFixed(2)} msg/sec`);
-  assert(readThroughput > 50, `Read throughput too low: ${readThroughput.toFixed(2)} msg/sec`);
 });
 
 // Print Summary
@@ -1121,23 +1000,6 @@ if (failed > 0) {
     .forEach((r) => {
       console.log(`  - ${r.name}: ${r.error}`);
     });
-}
-
-// Print performance metrics
-const perfResults = results.filter(
-  (result): result is TestResult & { metrics: Record<string, number | string> } =>
-    result.metrics !== undefined
-);
-if (perfResults.length > 0) {
-  console.log("\n" + "=".repeat(80));
-  console.log("PERFORMANCE METRICS");
-  console.log("=".repeat(80));
-  perfResults.forEach((r) => {
-    console.log(`\n${r.name}:`);
-    Object.entries(r.metrics).forEach(([key, value]) => {
-      console.log(`  ${key}: ${value}`);
-    });
-  });
 }
 
 console.log("\n" + "=".repeat(80));

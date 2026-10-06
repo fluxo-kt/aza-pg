@@ -1,6 +1,6 @@
 # aza-pg Operational Runbooks
 
-Detailed procedures for common operational tasks.
+Procedures for the VPS deployments in `deployments/` (phase1 single VPS, phase2 dual VPS), whose containers are named `postgres` and `pgbouncer`. On a `stacks/` deployment substitute the stack's container names (`aza-pg-postgres-primary`, `aza-pg-pgbouncer-primary`, `aza-pg-replica-postgres-replica`, `aza-pg-postgres-single` with the `.env.example` project names) and promote a stack replica with `bun scripts/tools/promote-replica.ts`.
 
 ## Daily Operations
 
@@ -39,9 +39,10 @@ Review output for any failures or warnings.
 - Schedule: 08:00, 14:00, 20:00 UTC (3x/day)
 - Method: Block-level incremental
 - Storage: Separate Hetzner S3 bucket
-- Retention: 3 full + 7 incremental
-- Compression: LZ4
+- Retention: 3 full + 7 differential
+- Compression: gzip (pgBackRest's default; `pgbackrest.conf.example` sets no `compress-type`)
 - Encryption: AES-256-CBC
+- Setup: phase1's `docker-compose.yml` wires no pgBackRest; set it up with [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md) first
 
 **Result:** Max 6-hour data loss (RPO)
 
@@ -86,17 +87,9 @@ docker stop postgres
 docker run --rm -v aza-pg-stack_postgres_data:/data -v /tmp:/backup ubuntu \
     tar czf /backup/postgres-data-backup-$(date +%Y%m%d%H%M%S).tar.gz /data
 
-# 3. List available backups
-pgbackrest --stanza=main info
-
-# 4. Restore latest backup
-pgbackrest --stanza=main restore
-
-# 5. Or restore to specific point-in-time
-pgbackrest --stanza=main --type=time \
-    --target="2025-01-20 14:30:00" restore
-
-# 6. Start PostgreSQL
+# 3-6. pgBackRest runs inside the image, never on the host, and restore needs the server stopped, so it runs in a
+#      one-off container on the same data volume and settings: follow BACKUP-PGBACKREST.md "Restore"
+#      (latest state or --type=time point in time), then start PostgreSQL
 docker start postgres
 
 # 7. Verify recovery
@@ -110,8 +103,7 @@ docker exec postgres psql -U postgres -c "SELECT NOW();"
 **Coolify Method:**
 
 - Go to postgres Service → click Stop button
-- Use Terminal tab to backup data directory and list backups
-- Execute restore commands in Terminal tab
+- Back up the data directory and run the restore from host SSH: a stopped service has no Terminal, and restore needs the server stopped
 - Go to Service → click Start button
 - Verify via Terminal tab: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 
@@ -139,11 +131,12 @@ aws s3 cp backup-*.dump.gz s3://your-bucket/manual-backups/
 **Incremental via pgBackRest:**
 
 ```bash
+# Runs inside the container (set up per BACKUP-PGBACKREST.md)
 # Trigger manual incremental backup
-pgbackrest --stanza=main --type=incr backup
+docker exec postgres pgbackrest --stanza=main backup --type=incr
 
 # Trigger manual full backup (weekly)
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 ```
 
 **Coolify Method:**
@@ -163,7 +156,7 @@ docker exec postgres psql -U postgres -c "CREATE DATABASE restore_test;"
 # Via Postgresus: Select database → Restore to "restore_test"
 
 # 3. Verify data integrity
-docker exec postgres psql -U postgres -d restore_test <<EOF
+docker exec -i postgres psql -U postgres -d restore_test <<EOF
 SELECT
     schemaname,
     tablename,
@@ -205,9 +198,8 @@ docker exec postgres psql -U postgres -c "DROP DATABASE restore_test;"
 ping PRIMARY_VPS_IP
 ssh root@PRIMARY_VPS_IP  # Should fail
 
-# 2. Verify VIP migrated to replica
-ping 10.0.0.100
-# Should respond from REPLICA IP
+# 2. The VIP is down too: only a writable primary holds it, and the replica is still a standby
+ping 10.0.0.100  # no answer until step 6
 
 # 3. SSH to replica
 ssh root@REPLICA_VPS_IP
@@ -221,14 +213,15 @@ docker exec postgres psql -U postgres -c \
     "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
 
 # 6. Promote replica to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
+docker exec postgres pg_ctl promote
 
 # 7. Wait 10-30 seconds, verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Should show 'f' (false - now primary)
+ip addr show eth0 | grep 10.0.0.100  # the VIP moves here within a few seconds
 
 # 8. Test write capability
-docker exec postgres psql -U postgres -c \
+docker exec postgres psql -U postgres -d test_db -c \
     "INSERT INTO health_check (message) VALUES ('Failover at $(date)');"
 
 # 9. Monitor Grafana
@@ -256,7 +249,7 @@ EOF
 - Check replica postgres Service → Status indicator (should show running)
 - Go to replica postgres Service → Terminal tab
 - Run replication status checks: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
-- Promote replica: `pg_ctl promote -D /var/lib/postgresql/data`
+- Promote replica: `pg_ctl promote`
 - Verify promotion and test write capability via Terminal tab
 - Monitor via Grafana (accessible through Coolify Domains)
 - Document incident in your preferred logging system
@@ -277,23 +270,19 @@ docker exec postgres psql -U postgres -c \
     "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes \
      FROM pg_stat_replication;"
 
-# 3. On PRIMARY: Lower Keepalived priority
+# 3. On PRIMARY: stop PostgreSQL; its Keepalived then gives the VIP up, so no client writes to it from here on
 ssh root@PRIMARY_VPS_IP
-nano /etc/keepalived/keepalived.conf
-# Change: priority 100 → priority 80
-systemctl reload keepalived
+docker stop postgres
 
-# VIP should migrate to replica immediately
+# 4. On REPLICA: Promote to primary
+docker exec postgres pg_ctl promote
 
-# 4. Verify VIP migrated
-ping 10.0.0.100  # Should be REPLICA IP
-
-# 5. On REPLICA: Promote to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
-
-# 6. Verify promotion
+# 5. Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Should be 'f' (false)
+
+# 6. Verify the VIP moved (within a few seconds of the promotion)
+ip addr show eth0 | grep 10.0.0.100
 
 # 7. Perform maintenance on old primary
 # - OS updates
@@ -302,18 +291,15 @@ docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 
 # 8. Rebuild old primary as new replica
 # (See "Rebuild Failed Primary" section below)
-
-# 9. Restore Keepalived priority
-# After rebuild, set priority back to 100 on original primary
 ```
 
 **Coolify Method:**
 
 - Go to primary postgres Service → Terminal tab
 - Check replication lag: `psql -U postgres -c "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes FROM pg_stat_replication;"`
-- Keepalived configuration requires host-level access (SSH to VPS)
+- Stop the primary postgres Service
 - Switch to replica Service → Terminal tab
-- Promote: `pg_ctl promote -D /var/lib/postgresql/data`
+- Promote: `pg_ctl promote`
 - Verify: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 
 **Expected Downtime:** 30-60 seconds (VIP migration + promotion)
@@ -339,31 +325,17 @@ docker volume create aza-pg-stack_postgres_data
 # 5. Take base backup from new primary
 NEW_PRIMARY_IP="10.0.0.3"  # Update to new primary's private IP
 
+# -R also writes standby.signal and primary_conninfo into the image's PGDATA
 docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    --network aza-pg-network \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    pg_basebackup -h $NEW_PRIMARY_IP -D /var/lib/postgresql/data \
-    -U replicator -v -P -W
+    -v aza-pg-stack_postgres_data:/var/lib/postgresql \
+    -e PGHOST="$NEW_PRIMARY_IP" -e PGUSER=replicator -e PGPASSWORD='REPL_PASSWORD' \
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 
-# Enter replication password when prompted
-
-# 6. Create standby.signal
-docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "touch /var/lib/postgresql/data/standby.signal"
-
-# 7. Configure primary connection
-docker run --rm \
-    -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "echo \"primary_conninfo = 'host=$NEW_PRIMARY_IP port=5432 user=replicator password=REPL_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
-
-# 8. Start services
+# 6. Start services
 docker compose up -d postgres
 
-# 9. Verify replication
+# 7. Verify replication
 docker exec postgres psql -U postgres -c \
     "SELECT pg_is_in_recovery();"
 # Should be 't' (true - in recovery/standby)
@@ -372,18 +344,13 @@ docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_wal_receiver;"
 # Should show connection to new primary
 
-# 10. On NEW PRIMARY: Verify replica connected
+# 8. On NEW PRIMARY: Verify replica connected
 ssh root@NEW_PRIMARY_VPS_IP
 docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_replication;"
 # Should show replica connected
 
-# 11. Configure Keepalived (BACKUP mode)
-nano /etc/keepalived/keepalived.conf
-# Set: state BACKUP, priority 90
-systemctl restart keepalived
-
-# 12. Start remaining services
+# 9. Start remaining services. Keepalived needs no change: a standby cannot hold the VIP
 docker compose up -d
 ```
 
@@ -395,7 +362,6 @@ docker compose up -d
 - Go to Service → Start button to bring services back up
 - Verify replication via Terminal tab: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 - Check new primary via its Service → Terminal tab: `psql -U postgres -c "SELECT * FROM pg_stat_replication;"`
-- Keepalived configuration requires host-level SSH access
 
 ---
 
@@ -405,7 +371,7 @@ docker compose up -d
 
 ```bash
 # Top 10 slowest queries
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     query,
     calls,
@@ -418,7 +384,7 @@ LIMIT 10;
 EOF
 
 # Queries with high execution count
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     query,
     calls,
@@ -443,7 +409,7 @@ docker logs postgres --since 1h | grep "duration:"
 
 ```bash
 # Explain a specific query
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
 SELECT * FROM your_table WHERE condition;
 EOF
@@ -459,7 +425,7 @@ EOF
 
 ```bash
 # Find sequential scans on large tables
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     schemaname,
     tablename,
@@ -474,12 +440,12 @@ LIMIT 10;
 EOF
 
 # Suggest indexes with hypopg
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 CREATE EXTENSION IF NOT EXISTS hypopg;
 CREATE EXTENSION IF NOT EXISTS index_advisor;
 
--- Analyze queries from pg_stat_statements
--- index_advisor will suggest indexes
+-- Pass one slow query (e.g. from pg_stat_statements); returns CREATE INDEX statements and cost before/after
+SELECT * FROM index_advisor('SELECT * FROM your_table WHERE column = 1');
 EOF
 ```
 
@@ -493,7 +459,7 @@ EOF
 
 ```bash
 # Find bloated tables
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     schemaname,
     tablename,
@@ -522,13 +488,12 @@ docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} -c \
 
 ```bash
 # Check PgBouncer wait queue
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -Atq -c \
-    "SHOW POOLS;" | awk -F'|' '{print $1, $3, $4, $10}'
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 
-# If maxwait > 0 frequently:
+# If cl_waiting or maxwait > 0 frequently:
 # Option 1: Increase pool size
-# Edit .env: PGBOUNCER_DEFAULT_POOL_SIZE=40
-docker restart pgbouncer
+# Edit .env: PGBOUNCER_DEFAULT_POOL_SIZE=40, then recreate the container (a restart keeps the old environment)
+docker compose up -d pgbouncer
 
 # Option 2: Optimize queries to reduce execution time
 
@@ -538,7 +503,7 @@ docker restart pgbouncer
 **Coolify Method:**
 
 - Go to pgbouncer Service → Terminal tab
-- Run: `psql -h localhost -p 6432 -U postgres -Atq -c "SHOW POOLS;" | awk -F'|' '{print $1, $3, $4, $10}'`
+- Run: `psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"`
 - To adjust pool size: Go to Service → Environment Variables → edit PGBOUNCER_DEFAULT_POOL_SIZE
 - Restart: Go to Service → click Restart button
 
@@ -550,7 +515,7 @@ docker restart pgbouncer
 
 ```bash
 # 1. Check active connections
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     pid,
     usename,
@@ -571,9 +536,11 @@ docker logs postgres --since 24h | grep "FATAL.*authentication failed"
 docker exec postgres psql -U postgres -c \
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_addr = 'SUSPICIOUS_IP';"
 
-# 4. Update pg_hba.conf to block IP
+# 4. Block the IP. pg_hba.conf is read top-down and the first matching line wins, so the reject line goes first
+#    (appended, it never applies). Plain container: the file is in PGDATA. Compose stacks: the server reads
+#    stacks/<stack>/configs/pg_hba.conf, mounted read-only — insert the same first line there on the host.
 docker exec postgres bash -c \
-    "echo 'host all all SUSPICIOUS_IP/32 reject' >> /var/lib/postgresql/data/pg_hba.conf"
+    'sed -i "1i host all all SUSPICIOUS_IP/32 reject" "$PGDATA/pg_hba.conf"'
 
 docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
 
@@ -586,8 +553,9 @@ docker exec postgres psql -U postgres -c \
 # Restart PgBouncer after updating userlist.txt
 
 # 6. Review audit logs (pgaudit)
-docker exec postgres psql -U postgres -c \
-    "SELECT * FROM pg_log ORDER BY log_time DESC LIMIT 100;"
+# pgaudit writes to the server log (stderr), not a table; the image leaves pgaudit.log at 'none', so these lines
+# exist only if pgaudit.log was set (stacks/primary sets 'ddl,write,role')
+docker logs postgres --since 24h | grep "AUDIT:"
 
 # 7. Document incident
 ```
@@ -598,7 +566,7 @@ docker exec postgres psql -U postgres -c \
 - Check connections: `psql -U postgres` then run the pg_stat_activity query
 - View failed auth: Go to Service → Logs tab → search for "FATAL.\*authentication failed"
 - Kill connections via Terminal: `psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE client_addr = 'SUSPICIOUS_IP';"`
-- Update pg_hba.conf via Terminal: `echo 'host all all SUSPICIOUS_IP/32 reject' >> /var/lib/postgresql/data/pg_hba.conf`
+- Update pg_hba.conf via Terminal, as its first line (the first matching line wins): `sed -i '1i host all all SUSPICIOUS_IP/32 reject' "$PGDATA/pg_hba.conf"`
 - Reload config: `psql -U postgres -c "SELECT pg_reload_conf();"`
 - Rotate password via Terminal
 - Update .env: Go to Service → Environment Variables → update POSTGRES_PASSWORD
@@ -673,14 +641,14 @@ docker run --rm -v aza-pg-stack_postgres_data:/data ubuntu ls -la /data
 - Go to postgres Service → Logs tab → review last 100 lines
 - Check Service → Status indicator for error state
 - Force restart: Go to Service → click Restart button
-- Check data directory: Go to Service → Terminal tab → `ls -la /var/lib/postgresql/data`
+- Check data directory: Go to Service → Terminal tab → `ls -la "$PGDATA"`
 - Port conflicts: Check via host SSH or Coolify's port mapping settings
 
 ### High CPU Usage
 
 ```bash
 # Identify expensive queries
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     pid,
     now() - query_start AS duration,
@@ -700,7 +668,7 @@ docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_activity WHERE query LIKE '%autovacuum%';"
 
 # Tune autovacuum if needed
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 ALTER SYSTEM SET autovacuum_max_workers = 2;
 ALTER SYSTEM SET autovacuum_naptime = '30s';
 SELECT pg_reload_conf();
@@ -752,7 +720,7 @@ iostat -x 1
 df -h
 
 # Find largest databases
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     datname,
     pg_size_pretty(pg_database_size(datname))
@@ -760,20 +728,24 @@ FROM pg_database
 ORDER BY pg_database_size(datname) DESC;
 EOF
 
-# Clean up old WAL files
+# Find what holds WAL: a failing archive_command or an inactive replication slot keeps every segment
 docker exec postgres psql -U postgres -c \
-    "SELECT pg_switch_wal();"
+    "SELECT failed_count, last_failed_wal, last_failed_time FROM pg_stat_archiver;"
+docker exec postgres psql -U postgres -c \
+    "SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained FROM pg_replication_slots;"
+# Once the cause is fixed, a checkpoint recycles the segments no longer needed (pg_switch_wal frees nothing)
+docker exec postgres psql -U postgres -c "CHECKPOINT;"
 
 # Remove old backups from S3
 
-# Vacuum databases
-docker exec postgres psql -U postgres -c \
-    "VACUUM FULL;"
+# Vacuum databases: plain VACUUM only. VACUUM FULL rewrites each table and needs that much free space first
+docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} -c \
+    "VACUUM;"
 
-# If emergency:
-# Temporarily disable WAL archiving
-docker exec postgres psql -U postgres <<EOF
-ALTER SYSTEM SET archive_mode = off;
+# If emergency: discard WAL instead of archiving it. This breaks point-in-time recovery until the next full
+# backup. archive_mode itself only changes on restart; archive_command applies on reload
+docker exec -i postgres psql -U postgres <<EOF
+ALTER SYSTEM SET archive_command = '/bin/true';
 SELECT pg_reload_conf();
 EOF
 ```
@@ -783,9 +755,9 @@ EOF
 - Check disk space: Requires host-level SSH access or Coolify server monitoring dashboard
 - Go to postgres Service → Terminal tab
 - Find largest databases: `psql -U postgres` then run size query
-- Clean WAL: `psql -U postgres -c "SELECT pg_switch_wal();"`
-- Vacuum: `psql -U postgres -c "VACUUM FULL;"`
-- Disable archiving: Run ALTER SYSTEM commands via Terminal tab
+- Find what holds WAL and run `CHECKPOINT;` once fixed: run the pg_stat_archiver and pg_replication_slots queries above
+- Vacuum: `psql -U postgres -d ${POSTGRES_DB:-main} -c "VACUUM;"` (not VACUUM FULL: it needs free space)
+- Discard WAL in an emergency: run the archive_command ALTER SYSTEM above via Terminal tab
 
 ---
 
@@ -811,7 +783,9 @@ Configure these in Prometheus Alertmanager:
 
 ```yaml
 - alert: ReplicationLagHigh
-  expr: pg_replication_lag_bytes > 104857600 # 100MB
+  # postgres_exporter exports lag in seconds since the last replayed transaction, not bytes; it also grows while
+  # the primary is idle
+  expr: pg_replication_lag_seconds > 300
   for: 5m
   labels:
     severity: critical
@@ -839,7 +813,8 @@ Configure these in Prometheus Alertmanager:
 
 ```yaml
 - alert: ConnectionPoolSaturated
-  expr: pgbouncer_pools_server_active_connections / pgbouncer_pools_server_used_connections > 0.9
+  # Clients wait for a server connection only when the pool is full
+  expr: max by (database) (pgbouncer_pools_client_maxwait_seconds) > 1
   for: 10m
   labels:
     severity: warning
@@ -869,7 +844,7 @@ Configure these in Prometheus Alertmanager:
 # 1. Announce maintenance (24h advance)
 
 # 2. Take backup
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 
 # 3. Update packages
 apt update && apt upgrade -y
@@ -893,30 +868,27 @@ reboot
 ### PostgreSQL Minor Version Upgrade
 
 ```bash
-# Example: 18.1 → 18.2
+# A minor upgrade keeps the same data directory; no pg_upgrade.
 
 # 1. Backup
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 
-# 2. Pull new image
-docker pull ghcr.io/USERNAME/aza-pg:18.2-latest
+# 2. Pull the new image (if you pin a tag or digest, update POSTGRES_IMAGE in .env first)
+docker compose pull postgres
 
-# 3. Update docker-compose.yml
-sed -i 's/:18.1-latest/:18.2-latest/g' docker-compose.yml
+# 3. Restart
+docker compose up -d postgres
 
-# 4. Restart
-docker compose up -d
-
-# 5. Verify version
+# 4. Verify version
 docker exec postgres psql -U postgres -c "SELECT version();"
 
-# 6. Monitor for 24h
+# 5. Monitor for 24h
 ```
 
 **Coolify Method:**
 
 - Backup: Go to postgres Service → Terminal tab → `pgbackrest --stanza=main --type=full backup`
-- Update image: Go to Service → Configuration → change Image field to `ghcr.io/USERNAME/aza-pg:18.2-latest`
+- Update image: Go to Service → Configuration → keep `ghcr.io/fluxo-kt/aza-pg:18`, or set the new tag or digest if you pin one
 - Restart: Click Restart button (Coolify will pull new image)
 - Verify: Go to Terminal tab → `psql -U postgres -c "SELECT version();"`
 - Monitor: Check Logs tab and Status indicator over 24h

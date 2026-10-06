@@ -4,14 +4,16 @@
 # Manifest: docker/postgres/extensions.manifest.json
 # To regenerate: bun run generate
 
-# PostgreSQL 18.4 with comprehensive extension suite
+# PostgreSQL 18.6 with comprehensive extension suite
 
-FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39 AS builder-base
+FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf AS builder-base
+
+# Every stage sets ENV before SHELL: hadolint 2.15.1 treats each RUN after an ENV as /bin/sh again (false SC3040).
+# /root/.cargo/bin is filled by the rust image COPY further down.
+ENV DEBIAN_FRONTEND=noninteractive PATH="/root/.cargo/bin:${PATH}"
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
 RUN set -euo pipefail && \
@@ -35,54 +37,26 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
-      unzip \
       postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
     rm -f /tmp/extensions.build-packages.txt
 
-# Install Rust toolchain (separate layer for better caching, ~60s install time)
-# Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
-RUN set -euo pipefail && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+# Rust and Bun come from their official images pinned by digest (MANIFEST_METADATA rustImageSha/bunImageSha), the
+# same trust anchor as the postgres base image: the rustup and bun.sh install scripts used before ran build-day
+# bytes as root unchecked. The rust image holds the same minimal profile (rustc, cargo, rust-std); copied to rustup's
+# default homes so HOME=/root finds it with no extra environment.
+COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/cargo /root/.cargo
+COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/rustup /root/.rustup
 
-# Add Rust/Cargo to PATH
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install Bun for running TypeScript build scripts (separate layer)
-# Extracts version from project .tool-versions file (single source of truth)
-# Placed BEFORE manifests to maximize cache hits (~30s install)
-COPY .tool-versions /tmp/.tool-versions
-RUN set -euo pipefail && \
-    BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
-    echo "Installing Bun v${BUN_VERSION}" && \
-    curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
-    rm /tmp/.tool-versions
-
-# Build su-exec: C-based privilege-drop binary, replaces gosu in final stage.
-# gosu carries Go stdlib CVEs (CVE-2025-68121 CRITICAL + multiple HIGH) with no upstream fix.
-# su-exec is functionally identical (same CLI: user[:group] command) but pure C — no Go stdlib.
-# git/gcc/make/strip are already present from the build-essential install above.
-# SHA pin: v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
-# (478be7e2 is the annotated tag object; HEAD resolves to the peeled commit)
-RUN set -euo pipefail && \
-    rm -rf /tmp/su-exec-build && \
-    for attempt in 1 2 3 4 5; do \
-        git -c http.version=HTTP/1.1 clone --depth 1 --branch v0.2 https://github.com/ncopa/su-exec.git /tmp/su-exec-build && break; \
-        rm -rf /tmp/su-exec-build; \
-        [ "$attempt" != "5" ] || exit 1; \
-        sleep 2; \
-    done && \
-    [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
-    make -C /tmp/su-exec-build && \
-    strip /tmp/su-exec-build/su-exec && \
-    chmod 755 /tmp/su-exec-build/su-exec
+# Bun runs the TypeScript build script; its version is .tool-versions' (the generator reads it)
+COPY --from=oven/bun:1.4.2-debian@sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73 /usr/local/bin/bun /usr/local/bin/bun
 
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
 # This ordering maximizes cache hits for Rust/Bun layers when manifests update
 COPY docker/postgres/build-extensions.ts /usr/local/bin/build-extensions.ts
+COPY docker/postgres/patches/ /opt/patches/
 COPY docker/postgres/extensions.pgxs.manifest.json /tmp/extensions.pgxs.manifest.json
 COPY docker/postgres/extensions.cargo.manifest.json /tmp/extensions.cargo.manifest.json
 
@@ -95,9 +69,6 @@ FROM builder-base AS builder-pgxs
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Copy full manifest for cross-stage dependency validation
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
 RUN --mount=type=cache,target=/root/.cache,sharing=locked \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
@@ -105,21 +76,19 @@ RUN set -euo pipefail && \
     mkdir -p /opt/ext-out/usr/lib/postgresql/18/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/extension && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/contrib && \
-    mkdir -p /opt/ext-out/usr/local/bin && \
     mkdir -p /opt/ext-out/usr/local/lib && \
     mkdir -p /opt/ext-out/usr/share/postgresql/18/timescaledb && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    rsync -a --exclude='gosu' /usr/local/bin/ /opt/ext-out/usr/local/bin/ && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
     fi && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
-    find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true && \
+    { find /opt/ext-out/usr/local/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug 2>/dev/null || true; } && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
-    find /opt/ext-out -name '*.a' -delete
+    find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
 # Stage for cargo-pgrx builds
 FROM builder-base AS builder-cargo
@@ -127,16 +96,12 @@ FROM builder-base AS builder-cargo
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Copy full manifest for cross-stage dependency validation
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
-# OPT#3+4: Inline Rust optimization flags and add cargo registry cache mount
-# Reduces 3 ENV layers and accelerates dependency downloads
+# Each crate builds with its own [profile.release] (upstream picks opt-level 3 + fat LTO for runtime speed);
+# only symbols are stripped. A global opt-level=s/thin-LTO override existed to shrink timescaledb_toolkit,
+# which now comes from the Timescale apt repo, so it would only slow the extensions still built here.
 RUN --mount=type=cache,target=/root/.cache,sharing=locked \
     --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    CARGO_PROFILE_RELEASE_LTO=thin \
-    CARGO_PROFILE_RELEASE_OPT_LEVEL=s \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
@@ -147,7 +112,7 @@ RUN set -euo pipefail && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     find /opt/ext-out/usr/lib/postgresql/18/lib -name '*.so' -print0 | xargs -0 -P$(nproc) strip --strip-debug && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
-    find /opt/ext-out -name '*.a' -delete
+    find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
 # Stage for version info generation using standalone TypeScript script
 # This ensures consistency between local testing and Docker builds
@@ -162,23 +127,18 @@ COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
 
 # Generate version-info files with hardcoded PostgreSQL version
 RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.4..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.4" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.4" > /tmp/version-info.json && \
+    echo "Generating version info for PostgreSQL 18.6..." && \
+    bun /tmp/generate-version-info.ts txt --pg-version="18.6" > /tmp/version-info.txt && \
+    bun /tmp/generate-version-info.ts json --pg-version="18.6" > /tmp/version-info.json && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.4-trixie@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39
+FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
-# Declared ONLY in final stage to prevent builder stage cache invalidation
-ARG BUILD_DATE
-ARG VCS_REF
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime libraries for compiled extensions (final stage)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
@@ -203,43 +163,34 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/extensions.runtime-packages.txt
 
-# Pre-compiled extensions from PGDG repository (versions hardcoded at generation time)
-# Phase 4.3: Dynamic PGDG package filtering based on manifest enabled flag
-# This RUN command reads extensions.manifest.json and only installs enabled PGDG extensions
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
+# Pre-compiled extensions from PGDG repository: the enabled entries' packages, pinned at generation time
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.20-1.pgdg13+1 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1 postgresql-18-partman=5.4.3-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-repack=1.5.3-1.pgdg13+1 postgresql-18-hll=2.20-1.pgdg13+1 postgresql-18-pgvector=0.8.2-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-hypopg=1.4.2-2.pgdg13+1 postgresql-18-http=1.7.0-3.pgdg13+1 postgresql-18-cron=1.6.7-2.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+1 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.9.0-1.pgdg13+1 postgresql-18-partman=5.4.3-1.pgdg13+1 && \
-    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-18-" | tee /tmp/installed-pgdg-exts.log && \
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \
-    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \
-    echo "Expected 11 enabled PGDG packages from manifest" && \
-    test "$INSTALLED_COUNT" -ge 11 || (echo "ERROR: Installed count mismatch (expected >= 11, got $INSTALLED_COUNT)" && exit 1) && \
-    rm -f /tmp/installed-pgdg-exts.log && \
-    # Verify critical .so files exist (prevents silent installation failures)
-    echo "Verifying PGDG .so files exist..." && \
-    test -f /usr/lib/postgresql/18/lib/pg_repack.so && \
+    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
+    # Each entry's module file must exist (prevents silent installation failures)
     test -f /usr/lib/postgresql/18/lib/hll.so && \
-    test -f /usr/lib/postgresql/18/lib/vector.so && \
-    test -f /usr/lib/postgresql/18/lib/rum.so && \
-    test -f /usr/lib/postgresql/18/lib/hypopg.so && \
     test -f /usr/lib/postgresql/18/lib/http.so && \
+    test -f /usr/lib/postgresql/18/lib/hypopg.so && \
     test -f /usr/lib/postgresql/18/lib/pg_cron.so && \
-    test -f /usr/lib/postgresql/18/lib/set_user.so && \
-    test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
     test -f /usr/lib/postgresql/18/lib/pg_partman_bgw.so && \
-    echo "All 10 PGDG .so files verified" && \
+    test -f /usr/lib/postgresql/18/lib/pg_repack.so && \
+    test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
+    test -f /usr/lib/postgresql/18/lib/plpgsql_check.so && \
+    test -f /usr/lib/postgresql/18/lib/rum.so && \
+    test -f /usr/lib/postgresql/18/lib/set_user.so && \
+    test -f /usr/lib/postgresql/18/lib/vector.so && \
+    echo "All 11 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/extensions.manifest.json; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
+
+# Signing keys of the Percona and Timescale apt repositories (why: generate-dockerfile.ts APT_KEY_DIR)
+COPY docker/postgres/apt-keys/ /usr/share/keyrings/aza-pg/
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
 # Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
@@ -250,26 +201,19 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    echo "Setting up Percona repository for ppg-18..." && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \
-    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \
-    dpkg -i /tmp/percona-release.deb && \
-    percona-release enable ppg-18 release && \
-    apt-get update && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.3.2-1.trixie percona-postgresql-18-wal2json=1:2.6-2.trixie && \
+    echo "deb [signed-by=/usr/share/keyrings/aza-pg/percona.asc] https://repo.percona.com/ppg-18/apt trixie main" > /etc/apt/sources.list.d/percona-ppg-18.list && \
+    apt-get update --error-on=any && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie && \
     echo "Installed 2 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/pg_stat_monitor.so && \
     test -f /usr/lib/postgresql/18/lib/wal2json.so && \
-    echo "All 2 Percona .so files verified" && \
-    # Cleanup Percona release package
-    rm -f /tmp/percona-release.deb && \
+    echo "All 2 Percona module files verified" && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)
 # Provides TimescaleDB with full TSL license (not available in PGDG)
@@ -280,31 +224,27 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    echo "Setting up Timescale repository for PostgreSQL 18..." && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
-    curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
-    apt-get update && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.27.1~debian13-1804 timescaledb-2-loader-postgresql-18=2.27.1~debian13-1804 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.27.1~debian13-1804 timescaledb-2-loader-postgresql-18=2.27.1~debian13-1804 timescaledb-toolkit-postgresql-18=1:1.22.0~debian13 && \
+    echo "deb [signed-by=/usr/share/keyrings/aza-pg/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main" > /etc/apt/sources.list.d/timescale.list && \
+    apt-get update --error-on=any && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/timescaledb.so && \
-    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.22.0.so && \
-    echo "All 2 Timescale .so files verified" && \
+    test -f /usr/lib/postgresql/18/lib/timescaledb_toolkit-1.26.0.so && \
+    echo "All 2 Timescale module files verified" && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*; \
-    find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* && \
+    { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
 # Pre-compiled tools from PGDG repository (standalone binaries, not PostgreSQL-version-specific)
-# hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.58.0-1.pgdg13+1 pgbadger" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.58.0-1.pgdg13+1 pgbadger && \
+    echo "Installing PGDG tools: pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
     # Verify tool binaries exist and are executable
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
@@ -316,8 +256,11 @@ COPY --from=builder-pgxs /opt/ext-out/ /
 COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime)
-# Moved here (right after builder COPYs) to clean up before remaining operations
-RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
+# Moved here (right after builder COPYs) to clean up before remaining operations.
+# ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
+# manifest-data.ts): the dynamic loader finds that directory only through its cache.
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
+    install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
 # APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
@@ -330,8 +273,7 @@ RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode
 #   5. apt-get purge gosu: no-op for the pinned postgres base image because gosu is a direct
 #      binary download in the base image, not a dpkg-owned file.
 # Fix: compile and install su-exec directly in the final stage, then verify the binary size
-# is far below gosu's multi-MB size. Also exclude gosu from builder-pgxs rsync to avoid
-# creating an unnecessary intermediate layer with the Go binary.
+# is far below gosu's multi-MB size.
 # SHA pin: su-exec v0.2 commit = f85e5bde1afef399021fbc2a99c837cf851ceafa
 # hadolint ignore=DL3008
 RUN set -euo pipefail && \
@@ -347,7 +289,6 @@ RUN set -euo pipefail && \
     [ "$(git -C /tmp/su-exec-build rev-parse HEAD)" = "f85e5bde1afef399021fbc2a99c837cf851ceafa" ] && \
     make -C /tmp/su-exec-build && \
     strip /tmp/su-exec-build/su-exec && \
-    apt-get purge -y gosu && \
     install -o root -g root -m 0755 /tmp/su-exec-build/su-exec /usr/local/bin/gosu && \
     SZ=$(stat -c%s /usr/local/bin/gosu) && \
     echo "su-exec: ${SZ} bytes at /usr/local/bin/gosu (su-exec ~14KB, gosu ~7MB)" && \
@@ -357,81 +298,39 @@ RUN set -euo pipefail && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Pre-compiled extensions from GitHub releases (for packages not available in apt)
-# IMPORTANT: Must come AFTER builder COPY commands to avoid being overwritten
-# GitHub release binary installation
-# Provides pre-built extensions not available via apt for Debian Trixie
-# Architecture detected at build time (supports amd64, arm64)
-# hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip && \
-    # Install vectorscale from GitHub release (.deb package inside zip)
-    ARCH=$(dpkg --print-architecture) && \
-    ASSET="pgvectorscale-0.9.0-pg18-${ARCH}.zip" && \
-    echo "Downloading vectorscale v0.9.0 for $ARCH..." && \
-    rm -rf /tmp/vectorscale /tmp/vectorscale.zip /tmp/vectorscale.zip.tmp && \
-    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "https://github.com/timescale/pgvectorscale/releases/download/0.9.0/$ASSET" -o /tmp/vectorscale.zip.tmp && \
-    test -s /tmp/vectorscale.zip.tmp || { echo "ERROR: Empty vectorscale release archive"; exit 1; } && \
-    unzip -tq /tmp/vectorscale.zip.tmp && \
-    mv /tmp/vectorscale.zip.tmp /tmp/vectorscale.zip && \
-    unzip -q /tmp/vectorscale.zip -d /tmp/vectorscale && \
-    # Install the .deb package (skip debug symbols package)
-    DEB_FILE=$(find /tmp/vectorscale -name "*.deb" ! -name "*-dbgsym*" | head -1) && \
-    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in vectorscale zip"; exit 1; } && \
-    echo "Installing $DEB_FILE..." && \
-    dpkg -i "$DEB_FILE" && \
-    rm -rf /tmp/vectorscale* && \
-    echo "✓ Installed vectorscale v0.9.0" && \
-    # Verify .so files exist
-    echo "Verifying GitHub release .so files..." && \
-    test -f /usr/lib/postgresql/18/lib/vectorscale-0.9.0.so && \
-    echo "All 1 GitHub release .so file(s) verified" && \
-    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
-    find /usr/lib/postgresql/18/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \; 2>/dev/null || true; \
-    # Clean apt lists (Dockle DKL-DI-0005)
-    rm -rf /var/lib/apt/lists/*
-
-# Remove package-manager helpers needed only while installing repositories and release assets.
-# Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
+# Remove the GnuPG CLI stack the postgres base image ships; nothing at runtime uses it.
+# Debian 13 apt verifies repositories through sqv, so apt remains usable without it.
 RUN set -euo pipefail && \
     apt-get purge -y --auto-remove \
-      curl \
       dirmngr \
       gnupg \
       gnupg-l10n \
-      gnupg2 \
       gpg \
       gpg-agent \
       gpgconf \
-      gpgsm \
-      gpgv \
-      lsb-release \
-      percona-release \
-      unzip && \
+      gpgsm && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create stub pgsodium_getkey script (required when pgsodium is preloaded)
-# pgsodium v3.1.9 requires this script to exist when loaded via shared_preload_libraries.
-# This stub script returns a test key in hex format (64 hex characters = 32 bytes).
-# Production deployments using Transparent Column Encryption (TCE) should replace this
-# with a proper key management script that fetches the server secret securely from vault/KMS.
-# See: https://github.com/michelp/pgsodium/tree/main/getkey_scripts for examples
+# Every module, source-built library and source tool binary still finds its shared libraries after the
+# --auto-remove purges above, which drop any library no remaining package depends on.
 RUN set -euo pipefail && \
-    echo '#!/bin/sh' > /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# Stub pgsodium_getkey script - returns test key in hex format (DO NOT use in production!)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# Key format: 64 hex characters (32 bytes). Generate: select encode(randombytes_buf(32), '\'hex\'')' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo '# For production TCE, replace with secure key fetch from vault/KMS (output must be hex)' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    echo 'echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"' >> /usr/share/postgresql/18/extension/pgsodium_getkey && \
-    chmod +x /usr/share/postgresql/18/extension/pgsodium_getkey
+    unresolved=0 && \
+    for f in /usr/lib/postgresql/18/lib/*.so /usr/local/lib/*.so*; do \
+      [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \
+    done && \
+    [ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }
+
+# pgsodium root key: a random key per data directory, or the operator's PGSODIUM_KEY_FILE (script header). The second,
+# never-executed copy lets the entrypoint tell an operator-mounted getkey (it owns the key) from the image's own;
+# 0755 because COPY gives the new directory the same mode, and 0644 would make it untraversable.
+COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/share/postgresql/18/extension/pgsodium_getkey
+COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/local/share/aza-pg/pgsodium_getkey
 
 # Create backup directory with proper ownership
 RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
 
-# OPT#6: Copy configs by stability (base config rarely changes, scripts occasionally change)
+# Copy configs by stability (base config rarely changes, scripts occasionally change) for layer cache hits
 # Base PostgreSQL config (most stable - rarely modified)
 COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 
@@ -449,13 +348,22 @@ COPY docker/postgres/docker-entrypoint-initdb.d/ /docker-entrypoint-initdb.d/
 
 # pgflow SQL-only schema (installed via 05-pgflow-init.sh during initdb)
 RUN set -euo pipefail && mkdir -p /opt/pgflow
-COPY tests/fixtures/pgflow/schema-v0.14.1.sql /opt/pgflow/schema.sql
+COPY tests/fixtures/pgflow/schema.sql /opt/pgflow/schema.sql
 COPY docker/postgres/pgflow/security-patches.sql /opt/pgflow/security-patches.sql
+# Upgrade path for databases created by older images (run by the operator: pgflow-upgrade --help)
+COPY tests/fixtures/pgflow/upgrade/ /opt/pgflow/upgrade/
+COPY docker/postgres/pgflow/structure-hash.sql docker/postgres/pgflow/legacy-structure.tsv /opt/pgflow/
+COPY docker/postgres/pgflow/pgflow-upgrade.sh /usr/local/bin/pgflow-upgrade
+
+# pg_repack with safeupdate off for its own sessions (see the script header)
+COPY docker/postgres/pg_repack-wrapper.sh /usr/local/bin/pg_repack
 
 # Consolidate all chmod operations into single RUN (better layer caching)
 RUN set -euo pipefail && \
     chmod +x /usr/local/bin/healthcheck.sh && \
     chmod +x /usr/local/bin/docker-auto-config-entrypoint.sh && \
+    chmod +x /usr/local/bin/pgflow-upgrade && \
+    chmod +x /usr/local/bin/pg_repack && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
 # Copy runtime metadata files LATE (frequently change with any manifest update)
@@ -468,21 +376,27 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user
+# The name resolves from the image's own /etc/passwd and keeps `docker inspect` readable; DL3066 wants a numeric id.
+# hadolint ignore=DL3066
 USER postgres
 
+# Build metadata ARGs (no defaults: CI/CD passes them). Declared after the last RUN because every RUN after an
+# ARG gets it in its environment and cache key, so a new BUILD_DATE would re-run each of them on every build.
+ARG BUILD_DATE
+ARG VCS_REF
+
 # OCI image labels with build metadata
-# Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
-LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.4"
-LABEL org.opencontainers.image.description="PostgreSQL 18.4 with curated extension bundle (vector, time-series, search, security, ops)"
-LABEL org.opencontainers.image.version="18.4"
+LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.6"
+LABEL org.opencontainers.image.description="PostgreSQL 18.6 with curated extension bundle (vector, time-series, search, security, ops)"
+LABEL org.opencontainers.image.version="18.6"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Health check and port exposure moved to end (metadata operations)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD /usr/local/bin/healthcheck.sh
+    CMD ["/usr/local/bin/healthcheck.sh"]
 
 EXPOSE 5432
 

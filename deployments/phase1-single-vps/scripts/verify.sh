@@ -113,7 +113,8 @@ for ext in "${EXTENSIONS[@]}"; do
 done
 
 # Test 3.5: Create test table
-if docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF &>/dev/null
+# -i: without it psql gets no stdin, runs nothing and exits 0. ON_ERROR_STOP: otherwise a failed statement still exits 0.
+if docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} -v ON_ERROR_STOP=1 <<EOF &>/dev/null
 CREATE TABLE IF NOT EXISTS verify_test (id SERIAL PRIMARY KEY, ts TIMESTAMP DEFAULT NOW(), data TEXT);
 INSERT INTO verify_test (data) VALUES ('test-$(date +%s)');
 SELECT count(*) FROM verify_test;
@@ -271,11 +272,14 @@ if [ -f "$DEPLOY_DIR/.env" ]; then
 fi
 
 # Test 8.3: File permissions
-USERLIST_PERMS=$(stat -c "%a" "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null || echo "000")
-if [ "$USERLIST_PERMS" = "600" ]; then
-    test_pass "userlist.txt permissions correct (600)"
+# PgBouncer runs as uid 70: at mode 600 it reads the file only if it owns it
+USERLIST_PERMS=$(stat -c "%a %u" "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null || echo "000 -")
+if [ "$USERLIST_PERMS" = "600 70" ]; then
+    test_pass "userlist.txt permissions correct (600, owner uid 70)"
+elif [ "${USERLIST_PERMS#600 }" != "$USERLIST_PERMS" ]; then
+    test_fail "userlist.txt is mode 600 but owned by uid ${USERLIST_PERMS#600 }: PgBouncer (uid 70) cannot read it; chown 70:70"
 else
-    test_warn "userlist.txt permissions: $USERLIST_PERMS (should be 600)"
+    test_warn "userlist.txt mode/owner: $USERLIST_PERMS (should be 600 70)"
 fi
 
 test_section "9. Resource Usage"

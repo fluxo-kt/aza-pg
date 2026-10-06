@@ -150,8 +150,9 @@ echo ""
 
 # Check 8: Disk usage
 echo "8. Disk Usage"
-DISK_USAGE=$(df -h /var/lib/postgresql/data 2>/dev/null | awk 'NR==2 {print $5}' | sed 's/%//' || echo "100")
-DISK_AVAIL=$(df -h /var/lib/postgresql/data 2>/dev/null | awk 'NR==2 {print $4}' || echo "unknown")
+# PGDATA lives in a Docker volume, so df must run inside the container
+DISK_USAGE=$(docker exec postgres sh -c 'df -h "$PGDATA"' 2>/dev/null | awk 'NR==2 {print $5}' | sed 's/%//' || echo "100")
+DISK_AVAIL=$(docker exec postgres sh -c 'df -h "$PGDATA"' 2>/dev/null | awk 'NR==2 {print $4}' || echo "unknown")
 
 if [ "$DISK_USAGE" -lt 80 ]; then
     check_pass "Disk usage: ${DISK_USAGE}% (${DISK_AVAIL} available)"

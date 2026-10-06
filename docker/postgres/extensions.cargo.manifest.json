@@ -21,13 +21,47 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG (Rust pgrx extension). Alt: Pigsty v0.3.3 (older)",
+          "NOT in PGDG (Rust pgrx extension).",
           "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
           "Source build required for latest features"
         ]
       },
       "sourceUrl": "https://github.com/supabase/pg_jsonschema",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/pg_jsonschema"
+    },
+    {
+      "name": "vectorscale",
+      "displayName": "pgvectorscale",
+      "kind": "extension",
+      "soFileName": "vectorscale-0.9.1.so",
+      "category": "ai",
+      "description": "DiskANN-inspired ANN index and quantization for pgvector embeddings.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/timescale/pgvectorscale.git",
+        "tag": "0.9.1",
+        "commit": "9d9851ce9966f01cdbbdc80e510d4938e3cd26bf"
+      },
+      "build": {
+        "type": "cargo-pgrx",
+        "subdir": "pgvectorscale",
+        "features": ["pg18", "build_parallel"],
+        "noDefaultFeatures": true,
+        "patches": ["vectorscale-runtime-dispatch.patch", "vectorscale-cargo-lock.patch"]
+      },
+      "dependencies": ["vector"],
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": true,
+        "notes": [
+          "Built from source with runtime CPU dispatch: AVX2/FMA only when the CPU has them",
+          "Supports both amd64 and arm64 architectures",
+          "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
+          "Alt: PGDG has no package (Rust pgrx extension)"
+        ]
+      },
+      "sourceUrl": "https://github.com/timescale/pgvectorscale",
+      "docsUrl": "https://github.com/timescale/pgvectorscale#readme"
     },
     {
       "name": "wrappers",
@@ -38,8 +72,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.1",
-        "commit": "adfb7a311baa6cef077a53b5a6055aa4f8d9a6e4"
+        "tag": "v0.6.3",
+        "commit": "44dc1996d859a718be7517212218188ad657858b"
       },
       "build": {
         "type": "cargo-pgrx",
@@ -54,12 +88,26 @@
         "defaultEnable": false
       },
       "notes": [
-        "Requires cargo-pgrx 0.16.1 aligned with PG18.",
-        "v0.6.1: FDW parameter rescan, aggregate pushdown for enabled FDWs, dependency fixes.",
-        "NOT available in PGDG. Pigsty has v0.5.0 (3 versions behind). Building from source for latest."
+        "NOT available in PGDG. build-extensions.ts installs the cargo-pgrx version pinned in its Cargo.toml."
       ],
       "sourceUrl": "https://github.com/supabase/wrappers",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"
     }
-  ]
+  ],
+  "sourceLibraries": {
+    "libsodium": {
+      "asset": "libsodium-1.0.22.tar.gz",
+      "sha256": "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/jedisct1/libsodium.git",
+        "tag": "1.0.22-RELEASE"
+      },
+      "notes": [
+        "pgsodium 3.1.11 needs libsodium >= 1.0.21; trixie ships 1.0.18.",
+        "Before changing the pin, verify the tarball: minisign -VP RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 -m <tarball> (key from https://doc.libsodium.org/installation), then record its sha256.",
+        "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast."
+      ]
+    }
+  }
 }

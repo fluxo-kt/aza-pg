@@ -18,9 +18,6 @@
  *   1 - Image verification failed
  */
 
-// Empty export makes this file a module (enables top-level await)
-export {};
-
 import { $ } from "bun";
 
 interface VerifyOptions {

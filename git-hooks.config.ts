@@ -6,21 +6,12 @@ import type { GitHooksConfig } from "bun-git-hooks";
  * Hooks are managed by bun-git-hooks for Bun-optimized TypeScript projects.
  *
  * Installation: bun run hooks:install
- * Uninstall: bun run hooks:uninstall
+ * Uninstall: ./node_modules/.bin/bun-git-hooks uninstall
  */
 const config: GitHooksConfig = {
   /**
-   * Pre-commit: Auto-fix issues and stage fixes
-   *
-   * Philosophy: Hooks should HELP, not BLOCK development
-   *
-   * Auto-fixes:
-   * - Linting issues (oxlint --fix)
-   * - Code formatting (prettier --write)
-   * - Regenerates artifacts if manifest-data.ts changed
-   * - Auto-stages all fixes
-   *
-   * Only fails if there are real errors that can't be auto-fixed (e.g., type errors)
+   * Pre-commit: auto-fix and stage the fixes (oxlint --fix, prettier --write, regenerate when manifest-data.ts
+   * changed), then run `bun run validate`, so a failing fast check stops the commit instead of reaching CI.
    */
   "pre-commit": "bun scripts/pre-commit.ts",
 

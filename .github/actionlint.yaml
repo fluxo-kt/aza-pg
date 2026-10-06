@@ -1,0 +1,5 @@
+# GitHub-hosted labels actionlint does not know yet; without them it rejects valid runs-on values as unknown.
+# ubuntu-26.04 is GitHub's x64 Ubuntu 26.04 image (actions/runner-images#14748). Drop an entry once actionlint lists it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

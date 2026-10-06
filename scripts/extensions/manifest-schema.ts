@@ -46,8 +46,9 @@ export const BuildKindSchema = type(
  * - features: Optional Cargo feature flags (for cargo-pgrx builds)
  * - noDefaultFeatures: Disable default Cargo features (for cargo-pgrx builds)
  * - mesonOptions: Optional Meson setup options (for meson builds)
+ * - makeOptions: Optional make command-line assignments (for pgxs builds)
  * - script: Optional script identifier for custom build logic
- * - patches: Optional sed expressions to apply before building
+ * - patches: Optional unified-diff file names in docker/postgres/patches/, applied with git apply before building
  */
 export const BuildSpecSchema = type({
   type: BuildKindSchema,
@@ -55,6 +56,7 @@ export const BuildSpecSchema = type({
   "features?": "string[]",
   "noDefaultFeatures?": "boolean",
   "mesonOptions?": "string[]",
+  "makeOptions?": "string[]",
   "script?": "string",
   "patches?": "string[]",
 });
@@ -68,7 +70,6 @@ export const BuildSpecSchema = type({
  * - preloadOnly: Whether extension is SQL-only schema (no CREATE EXTENSION support)
  * - preloadLibraryName: Library name in shared_preload_libraries (if different from extension name)
  * - preloadInComprehensiveTest: Include in comprehensive test preload (even if defaultEnable is false)
- * - excludeFromAutoTests: Exclude from automated test suite (with reasons in notes)
  * - notes: Optional runtime configuration notes for users
  */
 export const RuntimeSpecSchema = type({
@@ -77,7 +78,6 @@ export const RuntimeSpecSchema = type({
   "preloadOnly?": "boolean",
   "preloadLibraryName?": "string",
   "preloadInComprehensiveTest?": "boolean",
-  "excludeFromAutoTests?": "boolean",
   "notes?": "string[]",
 });
 
@@ -103,16 +103,17 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - dependencies: List of extension dependencies
  * - provides: List of features/extensions provided
  * - aptPackages: System packages required for building
+ * - sourceLibraries: SOURCE_LIBRARIES keys the module links against (built first, shipped once)
  * - notes: General notes about the extension
- * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build, "github-release" for GitHub binaries)
- * - githubRepo: GitHub repository in owner/repo format (required when install_via="github-release")
- * - githubReleaseTag: GitHub release tag for downloading assets (required when install_via="github-release")
- * - githubAssetPattern: Asset filename pattern with {version}, {pgMajor}, {arch} placeholders (required when install_via="github-release")
+ * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build)
+ * - pgdgPackage: PGDG apt name suffix, postgresql-<major>-<pgdgPackage> (required when install_via="pgdg" for extensions)
  * - perconaVersion: Version string for Percona packages (required when install_via="percona")
  * - perconaPackage: Package name for Percona packages (required when install_via="percona")
  * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
  * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
- * - soFileName: Shared object filename for verification (required when install_via="percona", "timescale", or "github-release")
+ * - soFileName: Shared object filename. Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
+ * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
+ * - postgresOwnedDirs: Directories a tool writes by default; created postgres-owned 0750 in the image
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -127,16 +128,17 @@ export const ManifestEntrySchema = type({
   "dependencies?": "string[]",
   "provides?": "string[]",
   "aptPackages?": "string[]",
+  "sourceLibraries?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'percona'|'timescale'|'source'|'github-release'",
-  "githubRepo?": "string",
-  "githubReleaseTag?": "string",
-  "githubAssetPattern?": "string",
+  "install_via?": "'pgdg'|'percona'|'timescale'|'source'",
   "perconaVersion?": "string",
   "perconaPackage?": "string",
+  "pgdgPackage?": "string",
   "timescaleVersion?": "string",
   "timescalePackage?": "string",
   "soFileName?": "string",
+  "binaryPath?": "string",
+  "postgresOwnedDirs?": "string[]",
   "enabled?": "boolean",
 });
 
@@ -171,55 +173,6 @@ export function validateManifest(data: unknown): ValidatedManifest {
 }
 
 /**
- * Validates a single manifest entry at runtime.
- *
- * @param data - Unknown data to validate as manifest entry
- * @returns Validated manifest entry
- * @throws Error if validation fails with detailed error messages
- *
- * @example
- * ```typescript
- * try {
- *   const entry = validateManifestEntry(rawEntry);
- *   // entry is now type-safe
- * } catch (error) {
- *   console.error('Entry validation failed:', error.message);
- * }
- * ```
- */
-export function validateManifestEntry(data: unknown): ValidatedManifestEntry {
-  const result = ManifestEntrySchema(data);
-  if (result instanceof type.errors) {
-    throw new Error(`Manifest entry validation failed:\n${result.summary}`);
-  }
-  return result;
-}
-
-/**
- * Validates source specification at runtime.
- *
- * @param data - Unknown data to validate as source spec
- * @returns Validated source specification
- * @throws Error if validation fails
- *
- * @example
- * ```typescript
- * const source = validateSourceSpec({
- *   type: "git",
- *   repository: "https://github.com/user/repo.git",
- *   tag: "v1.0.0"
- * });
- * ```
- */
-export function validateSourceSpec(data: unknown): ValidatedSourceSpec {
-  const result = SourceSpecSchema(data);
-  if (result instanceof type.errors) {
-    throw new Error(`Source spec validation failed:\n${result.summary}`);
-  }
-  return result;
-}
-
-/**
  * Validates build specification at runtime.
  *
  * @param data - Unknown data to validate as build spec
@@ -229,8 +182,8 @@ export function validateSourceSpec(data: unknown): ValidatedSourceSpec {
  * @example
  * ```typescript
  * const build = validateBuildSpec({
- *   type: "pgxs",
- *   patches: ["s/old/new/"]
+ *   type: "cargo-pgrx",
+ *   patches: ["vectorscale-runtime-dispatch.patch"]
  * });
  * ```
  */
@@ -266,10 +219,6 @@ export function validateRuntimeSpec(data: unknown): ValidatedRuntimeSpec {
 }
 
 // Inferred types from ArkType schemas
-export type ValidatedSourceSpec = typeof SourceSpecSchema.infer;
-export type ValidatedBuildKind = typeof BuildKindSchema.infer;
 export type ValidatedBuildSpec = typeof BuildSpecSchema.infer;
 export type ValidatedRuntimeSpec = typeof RuntimeSpecSchema.infer;
-export type ValidatedExtensionKind = typeof ExtensionKindSchema.infer;
-export type ValidatedManifestEntry = typeof ManifestEntrySchema.infer;
 export type ValidatedManifest = typeof ManifestSchema.infer;

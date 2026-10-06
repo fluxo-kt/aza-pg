@@ -13,6 +13,7 @@
  *   1: Some files need formatting (check mode) or formatting failed
  */
 
+import { resolve } from "node:path";
 import { format } from "sql-formatter";
 
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
@@ -81,22 +82,26 @@ async function formatSqlFile(
   }
 }
 
-async function findSqlFiles(): Promise<string[]> {
-  const glob = new Bun.Glob("**/*.sql");
-  const files: string[] = [];
+function isExcluded(file: string): boolean {
+  return EXCLUDE_PATTERNS.some((pattern) =>
+    new RegExp(pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")).test(file)
+  );
+}
 
-  for await (const file of glob.scan({ cwd: REPO_ROOT, absolute: true })) {
-    // Skip excluded patterns
-    const shouldExclude = EXCLUDE_PATTERNS.some((pattern) => {
-      const regex = new RegExp(pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*"));
-      return regex.test(file);
-    });
-
-    if (!shouldExclude) {
-      files.push(file);
-    }
+/**
+ * The named files, or every SQL file in the repo when none are named. The pre-commit hook names the staged files:
+ * a tree-wide --write would rewrite files other people are still editing.
+ */
+async function findSqlFiles(named: string[]): Promise<string[]> {
+  if (named.length > 0) {
+    return named
+      .map((f) => resolve(REPO_ROOT, f))
+      .filter((f) => f.endsWith(".sql") && !isExcluded(f));
   }
-
+  const files: string[] = [];
+  for await (const file of new Bun.Glob("**/*.sql").scan({ cwd: REPO_ROOT, absolute: true })) {
+    if (!isExcluded(file)) files.push(file);
+  }
   return files;
 }
 
@@ -112,6 +117,7 @@ SQL Formatter
 Usage:
   bun scripts/format-sql.ts           # Check formatting (dry-run)
   bun scripts/format-sql.ts --write   # Format files in-place
+  bun scripts/format-sql.ts --write a.sql b.sql   # Only the named files
   bun scripts/format-sql.ts --help    # Show this help
 
 Options:
@@ -126,7 +132,7 @@ Exit codes:
   }
 
   console.log(`🔍 Finding SQL files...`);
-  const sqlFiles = await findSqlFiles();
+  const sqlFiles = await findSqlFiles(args.filter((a) => !a.startsWith("-")));
 
   if (sqlFiles.length === 0) {
     console.log("No SQL files found.");

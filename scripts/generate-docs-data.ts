@@ -10,12 +10,15 @@
  * - Preloaded modules vs extensions distinction
  * - Auto-created extensions list
  * - Category groupings
- * - Memory tier allocation tables
+ *
+ * Auto-config values per memory size are not here: the entrypoint computes them, and a hand-typed copy drifted
+ * from it. Read them from the `[AUTO-CONFIG]` line a container logs at startup.
  *
  * Output: docs/.generated/docs-data.json
  */
 
 import { join } from "node:path";
+import { isAutoCreated } from "./config-generator/manifest-loader";
 import { info, success, error } from "./utils/logger";
 
 // Derive project root from current file location (scripts/generate-docs-data.ts)
@@ -38,15 +41,6 @@ interface ManifestEntry {
 
 interface Manifest {
   entries: ManifestEntry[];
-}
-
-interface MemoryTier {
-  ram: string;
-  shared_buffers: string;
-  effective_cache_size: string;
-  work_mem: string;
-  maintenance_work_mem: string;
-  max_connections: number;
 }
 
 interface DocsData {
@@ -75,55 +69,6 @@ interface DocsData {
   byCategory: {
     [category: string]: string[];
   };
-  memoryTiers: MemoryTier[];
-}
-
-/**
- * Calculate memory tiers based on total RAM
- */
-function calculateMemoryTiers(): MemoryTier[] {
-  return [
-    {
-      ram: "2GB",
-      shared_buffers: "512MB",
-      effective_cache_size: "1536MB",
-      work_mem: "4MB",
-      maintenance_work_mem: "64MB",
-      max_connections: 120,
-    },
-    {
-      ram: "4GB",
-      shared_buffers: "1024MB",
-      effective_cache_size: "3072MB",
-      work_mem: "5MB",
-      maintenance_work_mem: "128MB",
-      max_connections: 200,
-    },
-    {
-      ram: "8GB",
-      shared_buffers: "2048MB",
-      effective_cache_size: "6144MB",
-      work_mem: "10MB",
-      maintenance_work_mem: "256MB",
-      max_connections: 200,
-    },
-    {
-      ram: "16GB",
-      shared_buffers: "4096MB",
-      effective_cache_size: "12288MB",
-      work_mem: "20MB",
-      maintenance_work_mem: "512MB",
-      max_connections: 200,
-    },
-    {
-      ram: "32GB",
-      shared_buffers: "6553MB",
-      effective_cache_size: "24576MB",
-      work_mem: "32MB",
-      maintenance_work_mem: "1024MB",
-      max_connections: 200,
-    },
-  ];
 }
 
 async function main() {
@@ -192,10 +137,8 @@ async function main() {
     .map((e) => e.name)
     .toSorted();
 
-  // Auto-created extensions (from 01-extensions.sql)
-  // Dynamically derived from manifest entries with defaultEnable=true (not preloadOnly)
   const autoCreated = enabledEntries
-    .filter((e) => e.runtime?.defaultEnable && !e.runtime?.preloadOnly)
+    .filter(isAutoCreated)
     .map((e) => e.name)
     .toSorted();
 
@@ -233,7 +176,6 @@ async function main() {
     },
     autoCreated,
     byCategory,
-    memoryTiers: calculateMemoryTiers(),
   };
 
   // Ensure output directory exists

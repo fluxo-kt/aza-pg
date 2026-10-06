@@ -1,96 +1,57 @@
 # pgsodium & Vault Setup Guide
 
-Production setup guide for pgsodium Transparent Column Encryption (TCE) and supabase_vault.
+pgsodium and supabase_vault are preloaded by default and work without configuration. This guide covers where their root key lives, how to supply your own, and how to move a database off the key older images published.
 
-## Auto-Detection (Default Behavior)
+## The Root Key
 
-aza-pg **automatically detects** pgsodium support at container startup:
+pgsodium derives every key it uses (Vault secrets, `derive_key`, Transparent Column Encryption) from one 32-byte root key. The server reads it at every start; it never appears in SQL.
 
-| Scenario                                      | Behavior                                         |
-| --------------------------------------------- | ------------------------------------------------ |
-| Valid getkey script exists                    | pgsodium **enabled** in shared_preload_libraries |
-| Script missing or non-executable              | pgsodium **disabled** (graceful, no crash)       |
-| Script outputs invalid key (not 64 hex chars) | pgsodium **disabled** (graceful, no crash)       |
+| Situation                          | Root key                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| New data directory (default)       | Random, created at the first start in `$PGDATA/pgsodium_root.key` (mode 600, owner postgres) |
+| `PGSODIUM_KEY_FILE` is set         | That file: 64 hex characters, readable by postgres; nothing is created in the data directory |
+| Your own `pgsodium_getkey` mounted | Whatever it prints; the image creates, checks and warns about nothing                        |
+| Data directory from an older image | The key older images published, written to `$PGDATA/pgsodium_root.key`; every start warns    |
 
-**How it works:**
+A new data directory records which of the first three it was created with (`$PGDATA/pgsodium_key_source`). If that source is gone at a later start — the key file deleted, `PGSODIUM_KEY_FILE` unset, your getkey no longer mounted — or `PGSODIUM_KEY_FILE` holds a key other than the one the data directory already uses, the container stops and names it, instead of starting with another key under which existing encrypted data is unreadable.
 
-1. Entrypoint checks for executable script at `/usr/share/postgresql/18/extension/pgsodium_getkey`
-2. If found, validates output is 64 hexadecimal characters
-3. If valid → adds pgsodium to preload + sets `pgsodium.getkey_script` GUC
-4. If invalid/missing → removes pgsodium from preload (PostgreSQL starts without it)
+**What carries the key:** file-level copies of the data directory do — volume backups, `pg_basebackup` (so replicas decrypt what the primary encrypted) and pgBackRest backups. `pg_dump` output does not: restoring a dump into a new container gives it a new key, and values encrypted under the old one cannot be decrypted. Keep a copy of the key file, and start the new server with `PGSODIUM_KEY_FILE` pointing at that copy before restoring the dump (a new data directory cannot be seeded with the file, because initdb needs it empty).
 
-**Logs show the detection result:**
+**A wrong `PGSODIUM_KEY_FILE`** (unreadable, or not 64 hex characters) stops the container with `ERROR: PGSODIUM_KEY_FILE=<path> must be readable by postgres and hold 64 hex characters`.
 
-```
-# Enabled:
-[POSTGRES] [AUTO-CONFIG] pgsodium enabled (getkey script at /usr/share/.../pgsodium_getkey validated)
-
-# Disabled (no script):
-[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (no executable script at /usr/share/.../pgsodium_getkey)
-
-# Disabled (invalid output):
-[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (getkey script output invalid: expected 64 hex chars)
-```
-
-**Note:** The built-in CI/testing image includes a stub getkey script, so pgsodium is enabled by default in test environments.
-
----
-
-## Quick Start
-
-### Required Configuration
-
-For full vault encryption functionality, you need:
-
-1. **pgsodium_getkey script** at `/usr/share/postgresql/18/extension/pgsodium_getkey`
-2. **Both extensions in shared_preload_libraries**: `pgsodium,supabase_vault`
-3. **ENABLE_PGSODIUM_INIT=true** environment variable
+## Supplying Your Own Key
 
 ```bash
-# Docker run example
+head -c 32 /dev/urandom | od -An -v -tx1 | tr -d ' \n' > pgsodium.key   # or: openssl rand -hex 32
+chmod 644 pgsodium.key   # postgres in the container must read it
+
 docker run -d \
-  -v /path/to/your/pgsodium_getkey:/usr/share/postgresql/18/extension/pgsodium_getkey:ro \
   -e POSTGRES_PASSWORD=secure_password \
-  -e POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,pgsodium,supabase_vault" \
-  -e ENABLE_PGSODIUM_INIT=true \
-  ghcr.io/fluxo-kt/aza-pg:18.1-YYYYMMDD-single-node
+  -e PGSODIUM_KEY_FILE=/run/secrets/pgsodium.key \
+  -v "$PWD/pgsodium.key:/run/secrets/pgsodium.key:ro" \
+  ghcr.io/fluxo-kt/aza-pg:18
 ```
 
-### Docker Compose Example
+For an existing database the file must hold the key it already uses; another key stops the container (`PGSODIUM_KEY_FILE=… holds a different key than this data directory uses`), because data encrypted under the old one would be unreadable. Copy the key out of the data directory, even from a stopped container: `docker cp <container>:/var/lib/postgresql/18/docker/pgsodium_root.key pgsodium.key`. From the first start with the file, the data directory records `PGSODIUM_KEY_FILE` as its key source, so the copy inside it may be deleted. To move to a new key, follow the rotation steps below first. A data directory from an image older than per-database keys whose key came from your own mounted `pgsodium_getkey` has no record of that: keep the script mounted and record the switch first, `docker exec -u postgres <container> sh -c 'echo PGSODIUM_KEY_FILE > "$PGDATA/pgsodium_key_source"'`.
 
-```yaml
-services:
-  postgres:
-    image: ghcr.io/fluxo-kt/aza-pg:18.1-YYYYMMDD-single-node
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_SHARED_PRELOAD_LIBRARIES: "pg_stat_statements,pgsodium,supabase_vault"
-      ENABLE_PGSODIUM_INIT: "true"
-    volumes:
-      - ./secrets/pgsodium_getkey:/usr/share/postgresql/18/extension/pgsodium_getkey:ro
-      - postgres_data:/var/lib/postgresql/data
+To fetch the key from a secret manager instead of a file, mount your own executable at `/usr/share/postgresql/18/extension/pgsodium_getkey`; it must print the 64 hex characters on stdout and exit 0. Examples: [pgsodium getkey scripts](https://github.com/michelp/pgsodium/tree/main/getkey_scripts). A failing script stops the server.
+
+## Rotating the Published Key
+
+A data directory created by an image that shipped a fixed key keeps using that key, because anything it encrypted needs it. The key is public, so anyone with a copy of your data can decrypt those values. The container log says so at every start:
+
+```
+[POSTGRES] [AUTO-CONFIG] WARNING: pgsodium uses the key older aza-pg images published (...pgsodium_root.key); ...
 ```
 
----
+1. **List what is encrypted.** Vault secrets: `SELECT name FROM vault.secrets;`. Your own pgsodium use: columns with `SECURITY LABEL FOR pgsodium`, and values you encrypted with `derive_key` or server-key functions.
+2. **If nothing is encrypted:** write a new key and restart:
+   `docker exec -u postgres <container> sh -c 'head -c 32 /dev/urandom | od -An -v -tx1 | tr -d " \n" > "$PGDATA/pgsodium_root.key"'`
+3. **Otherwise,** while the old key is still active, read the plaintext out (for Vault: `SELECT name, description, decrypted_secret FROM vault.decrypted_secrets;`), write the new key as in step 2, restart, and store the values again (`vault.update_secret` or `vault.create_secret`; re-insert TCE columns). Do this in a maintenance window: the plaintext exists outside the database until you finish.
 
 ## Coolify Deployment
 
-Deploy aza-pg with pgsodium on [Coolify](https://coolify.io) using either Docker Compose (recommended) or direct database deployment.
-
-### Prerequisites
-
-- Coolify instance running
-- Understanding of [pgsodium_getkey script](#pgsodium_getkey-script) requirements
-- **CRITICAL**: PostgreSQL 18+ requires volume mount at `/var/lib/postgresql` (NOT `/var/lib/postgresql/data`)
-
-### Method 1: Docker Compose (Recommended)
-
-Coolify's Docker Compose deployment supports inline file content, simplifying pgsodium_getkey setup.
-
-**Steps:**
-
-1. In Coolify: **Projects** → **+ New** → **Docker Compose**
-2. Paste the following `compose.yml`:
+PostgreSQL 18 needs the volume at `/var/lib/postgresql` (not `/var/lib/postgresql/data`; [Coolify issue](https://github.com/coollabsio/coolify/issues/7279)). pgsodium and Vault need nothing else; to supply your own key with Docker Compose:
 
 ```yaml
 services:
@@ -99,216 +60,31 @@ services:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
       POSTGRES_MEMORY: ${POSTGRES_MEMORY:-2048}
-      POSTGRES_SHARED_PRELOAD_LIBRARIES: "pg_stat_statements,pgsodium,supabase_vault"
-      ENABLE_PGSODIUM_INIT: "true"
+      PGSODIUM_KEY_FILE: /run/secrets/pgsodium.key
     volumes:
       - type: volume
         source: postgres_data
         target: /var/lib/postgresql
       - type: bind
-        source: ./pgsodium_getkey
-        target: /usr/share/postgresql/18/extension/pgsodium_getkey
+        source: ./pgsodium.key
+        target: /run/secrets/pgsodium.key
         read_only: true
         content: |
-          #!/bin/sh
-          # PRODUCTION: Replace with actual secret management (AWS Secrets Manager, Vault, etc.)
-          # For now, generate a key: openssl rand -hex 32
-          echo "YOUR_64_HEX_CHAR_KEY_HERE"
+          YOUR_64_HEX_CHAR_KEY_HERE
 
 volumes:
   postgres_data:
 ```
 
-3. Set environment variable `POSTGRES_PASSWORD` in Coolify's **Environment** tab
-4. **Deploy**
+With Coolify's **Databases → PostgreSQL** form, set the Persistent Storage destination to `/var/lib/postgresql`, create the key file on the host, add it as a bind mount, and set `PGSODIUM_KEY_FILE` to its destination path.
 
-**Generate a secure key:**
+## Why Both Extensions Are Preloaded
 
-```bash
-openssl rand -hex 32
-```
+Both pgsodium and supabase_vault load the root key in their `_PG_init()`, which runs only for preloaded libraries; without the preload, `vault.create_secret()` fails with `no server secret key defined`. `POSTGRES_SHARED_PRELOAD_LIBRARIES` replaces the default list, so an override must keep both (and the order: pgsodium before supabase_vault).
 
-### Method 2: Direct Database Deployment
+## Optional: pgsodium Key Table Row
 
-For deploying via Coolify's **Databases** → **PostgreSQL** interface:
-
-**Steps:**
-
-1. **Create Database:**
-   - **Databases** → **PostgreSQL** → **+ New Database**
-   - **Image**: `ghcr.io/fluxo-kt/aza-pg:18`
-
-2. **Fix Volume Path (CRITICAL):**
-   - Navigate to **Configuration** → **Persistent Storage**
-   - Change **Destination Path** from `/var/lib/postgresql/data` to `/var/lib/postgresql`
-   - See [PostgreSQL 18 Volume Issue](https://github.com/coollabsio/coolify/issues/7279) for details
-
-3. **Create pgsodium_getkey Script on Host:**
-
-   SSH into your Coolify server:
-
-   ```bash
-   mkdir -p /opt/coolify/pgsodium
-   cat > /opt/coolify/pgsodium/pgsodium_getkey << 'EOF'
-   #!/bin/sh
-   # Generate key: openssl rand -hex 32
-   echo "YOUR_64_HEX_CHAR_KEY_HERE"
-   EOF
-   chmod +x /opt/coolify/pgsodium/pgsodium_getkey
-   ```
-
-4. **Add Bind Mount in Coolify UI:**
-   - **Configuration** → **Persistent Storage** → **+ Add**
-   - **Type**: Bind Mount
-   - **Source Path**: `/opt/coolify/pgsodium/pgsodium_getkey`
-   - **Destination Path**: `/usr/share/postgresql/18/extension/pgsodium_getkey`
-
-5. **Set Environment Variables:**
-
-   Navigate to **Configuration** → **Environment**:
-
-   | Variable                            | Value                                        | Purpose        |
-   | ----------------------------------- | -------------------------------------------- | -------------- |
-   | `POSTGRES_PASSWORD`                 | (strong password)                            | Required       |
-   | `POSTGRES_MEMORY`                   | (match limit, e.g., `2048`)                  | Auto-tuning    |
-   | `POSTGRES_SHARED_PRELOAD_LIBRARIES` | `pg_stat_statements,pgsodium,supabase_vault` | For vault      |
-   | `ENABLE_PGSODIUM_INIT`              | `true`                                       | For vault      |
-   | `POSTGRES_BIND_IP`                  | `0.0.0.0`                                    | Network access |
-
-6. **Restart Database**
-
-### Verification via Coolify Terminal
-
-1. Navigate to your database in Coolify
-2. Open the **Terminal** tab
-3. Run: `psql -U postgres`
-4. Execute verification SQL:
-
-```sql
--- Check server key loaded (should see in container logs)
--- LOG: pgsodium primary server secret key loaded
--- LOG: vault primary server secret key loaded
-
--- Test pgsodium
-SELECT pgsodium.derive_key(1, 32, 'pgsodium'::bytea);
-
--- Test vault
-SELECT vault.create_secret('test_value', 'test_key', 'Test secret');
-SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'test_key';
-```
-
-### Coolify-Specific Troubleshooting
-
-| Issue                                  | Cause                     | Solution                                                                   |
-| -------------------------------------- | ------------------------- | -------------------------------------------------------------------------- |
-| Container exits `unhealthy`            | Wrong volume path         | Change Persistent Storage destination to `/var/lib/postgresql`             |
-| `no server secret key defined`         | getkey script not mounted | Add bind mount for `pgsodium_getkey`                                       |
-| `FATAL: getkey script not found`       | Wrong mount path          | Verify destination is `/usr/share/postgresql/18/extension/pgsodium_getkey` |
-| `Permission denied` executing getkey   | Script not executable     | Ensure `chmod +x` on host file                                             |
-| `Using /proc/meminfo fallback` warning | No cgroup limit detected  | Set `POSTGRES_MEMORY` to match Coolify's memory limit                      |
-
-**Additional Resources:**
-
-- [Coolify DEPLOYMENT.md](COOLIFY.md) - Full aza-pg deployment guide
-- [Coolify Persistent Storage](https://coolify.io/docs/knowledge-base/persistent-storage)
-- [Coolify Docker Compose](https://coolify.io/docs/knowledge-base/docker/compose)
-
----
-
-## pgsodium_getkey Script
-
-The getkey script provides the 32-byte server root key used for key derivation. **This key is never exposed to SQL** - it's loaded into process memory at startup.
-
-### Script Requirements
-
-- **Location**: `/usr/share/postgresql/18/extension/pgsodium_getkey`
-- **Permissions**: Executable (`chmod +x`)
-- **Output**: 64 hexadecimal characters (32 bytes)
-- **Exit code**: 0 on success
-
-### Example Scripts
-
-#### Development/Testing (DO NOT USE IN PRODUCTION)
-
-```bash
-#!/bin/sh
-# Test key - replace with secure key management in production
-echo "4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2"
-```
-
-#### Production: AWS Secrets Manager
-
-```bash
-#!/bin/sh
-set -euo pipefail
-aws secretsmanager get-secret-value \
-  --secret-id pgsodium/server-key \
-  --query SecretString \
-  --output text
-```
-
-#### Production: HashiCorp Vault
-
-```bash
-#!/bin/sh
-set -euo pipefail
-curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-  "${VAULT_ADDR}/v1/secret/data/pgsodium/server-key" | \
-  jq -r '.data.data.key'
-```
-
-#### Production: File-based with Key Generation
-
-```bash
-#!/bin/sh
-set -euo pipefail
-KEY_FILE="/var/lib/postgresql/pgsodium_root.key"
-if [ ! -f "$KEY_FILE" ]; then
-    # Generate new key (first run only)
-    head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n' > "$KEY_FILE"
-    chmod 600 "$KEY_FILE"
-fi
-cat "$KEY_FILE"
-```
-
-### Generating a New Key
-
-```sql
--- In PostgreSQL (requires pgsodium extension)
-SELECT encode(pgsodium.randombytes_buf(32), 'hex');
-```
-
----
-
-## Why Both Extensions Need Preloading
-
-### pgsodium Preloading
-
-When `pgsodium` is in `shared_preload_libraries`:
-
-- Reads server key from `pgsodium.getkey_script` during `_PG_init()`
-- Stores key in shared memory for all backends
-- Enables `pgsodium.derive_key()` and TCE functions
-- Registers `pgsodium.enable_event_trigger` GUC parameter
-
-### supabase_vault Preloading
-
-When `supabase_vault` is in `shared_preload_libraries`:
-
-- Has its **own** `_PG_init()` that loads the same server key
-- Uses the key for `vault._crypto_aead_det_encrypt()` calls
-- **Without preloading**: `vault.create_secret()` fails with "no server secret key defined"
-
-### Common Mistake
-
-```bash
-# WRONG: Only preloading pgsodium
-POSTGRES_SHARED_PRELOAD_LIBRARIES="pgsodium"
-# vault.create_secret() will fail!
-
-# CORRECT: Preload both
-POSTGRES_SHARED_PRELOAD_LIBRARIES="pgsodium,supabase_vault"
-```
+`ENABLE_PGSODIUM_INIT=true` makes first start also create the `pgsodium_root` row in `pgsodium.key` (`docker-entrypoint-initdb.d/03-pgsodium-init.sh`). Vault does not need it.
 
 ---
 
@@ -469,9 +245,7 @@ SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'stripe_api_ke
 SELECT id, name, description, created_at FROM vault.secrets;
 
 -- Update secret value
-UPDATE vault.secrets
-SET secret = vault.encrypt_secret('new_key_value')
-WHERE name = 'stripe_api_key';
+SELECT vault.update_secret(id, 'new_key_value') FROM vault.secrets WHERE name = 'stripe_api_key';
 ```
 
 ### Password Hashing (Argon2)
@@ -493,23 +267,25 @@ SELECT pgsodium.crypto_pwhash_str_verify(
 
 ## Security Considerations
 
-1. **Never commit the getkey script with hardcoded keys** to version control
-2. **Use secret management** (AWS Secrets Manager, HashiCorp Vault, etc.) in production
-3. **Backup the root key** - losing it means losing access to all encrypted data
-4. **Rotate keys carefully** - pgsodium supports key rotation but requires planning
-5. **Mount getkey script read-only** (`:ro`) to prevent modification
+1. **Back up the root key** (`$PGDATA/pgsodium_root.key` or your `PGSODIUM_KEY_FILE`): losing it loses every value encrypted under it, and `pg_dump` does not carry it
+2. **Never commit a key file** to version control; mount it read-only
+3. **Move off the published key** if the container log warns about it (see Rotating the Published Key)
 
 ---
 
 ## Troubleshooting
 
-| Error                                                 | Cause                   | Solution                                               |
-| ----------------------------------------------------- | ----------------------- | ------------------------------------------------------ |
-| `no server secret key defined`                        | Extension not preloaded | Mount valid getkey script (auto-detection enables it)  |
-| `pgsodium DISABLED` in logs                           | Invalid/missing script  | Check script is executable + outputs 64 hex chars      |
-| `FATAL: getkey script not found`                      | Missing getkey script   | Volume mount the script                                |
-| `crypto_kdf_derive_from_key: context must be 8 bytes` | Wrong context parameter | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
-| `pgsodium.key table empty`                            | Init script didn't run  | Set `ENABLE_PGSODIUM_INIT=true`                        |
+| Error                                                                          | Cause                                         | Solution                                               |
+| ------------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------ |
+| `no server secret key defined`                                                 | pgsodium or supabase_vault not preloaded      | Keep both in `POSTGRES_SHARED_PRELOAD_LIBRARIES`       |
+| `ERROR: PGSODIUM_KEY_FILE=... must be readable ...`                            | Wrong path, permissions or content            | Fix the file: 64 hex characters, readable by postgres  |
+| `pgsodium_getkey: ... must hold 64 hex characters`                             | Key file corrupted                            | Restore the key file from your backup                  |
+| `...pgsodium_root.key is missing, but this data directory was created with it` | Key file deleted                              | Restore it from your backup                            |
+| `this data directory was created with PGSODIUM_KEY_FILE, which is not set now` | Variable removed                              | Set it to the same key file                            |
+| `PGSODIUM_KEY_FILE=... holds a different key than this data directory uses`    | Another key set on an existing database       | Put the database's own key in the file, or unset it    |
+| `...created with your own pgsodium_getkey, which is not mounted now`           | Mount removed                                 | Mount the same script again                            |
+| `crypto_kdf_derive_from_key: context must be 8 bytes`                          | Wrong context parameter                       | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
+| No `pgsodium_root` row in `pgsodium.key`                                       | `ENABLE_PGSODIUM_INIT` was off at first start | `SELECT pgsodium.create_key(name := 'pgsodium_root');` |
 
 ---
 

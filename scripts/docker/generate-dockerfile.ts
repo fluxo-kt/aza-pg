@@ -2,43 +2,37 @@
 /**
  * Generate Dockerfile from template using manifest data
  *
- * This script reads the Dockerfile.template and regression.Dockerfile.template
- * and replaces placeholders with actual values from the extensions manifest and extension-defaults.
+ * This script reads Dockerfile.template
+ * and replaces placeholders with values from the extensions manifest and MANIFEST_METADATA.
  *
  * ARG Strategy:
  * - All version dependencies are HARDCODED at generation time (PG_VERSION, PG_MAJOR, PG_BASE_IMAGE_SHA, PGDG versions)
  * - Only BUILD_DATE and VCS_REF remain as ARGs WITHOUT defaults (required at build time)
- * - To test different versions: update extension-defaults.ts and regenerate
+ * - To test different versions: update scripts/extensions/manifest-data.ts and regenerate
  *
  * Placeholders:
  * - {{PG_VERSION}} - PostgreSQL version (hardcoded, e.g., "18.1")
  * - {{PG_MAJOR}} - PostgreSQL major version (hardcoded, extracted from PG_VERSION, e.g., "18")
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
+ * - {{RUST_TOOLCHAIN}} - Rust toolchain version (hardcoded)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
- * - {{PGDG_PACKAGES_INSTALL_REGRESSION}} - Regression mode PGDG package installation (all extensions)
- * - {{VERSION_INFO_GENERATION}} - Version info generation script
  *
  * Usage:
  *   bun scripts/docker/generate-dockerfile.ts
  */
 
 import { join } from "node:path";
-import { extensionDefaults } from "../extension-defaults";
-import { PGDG_MAPPINGS } from "../extensions/pgdg-mappings";
+import { MANIFEST_METADATA } from "../extensions/manifest-data";
+import { pgdgAptPackageName } from "../extensions/pgdg-package";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-const REGRESSION_TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile.template");
-const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
-
-// PGDG_MAPPINGS imported from shared module (scripts/extensions/pgdg-mappings.ts)
-// This eliminates duplication with validate-pgdg-versions.ts
 
 interface BuildSpec {
   type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
@@ -55,6 +49,7 @@ interface ManifestEntry {
   kind?: "extension" | "tool" | "builtin";
   install_via?: string;
   pgdgVersion?: string;
+  pgdgPackage?: string;
   perconaVersion?: string;
   perconaPackage?: string;
   /** Timescale repository package name (e.g., timescaledb-2-postgresql-18) */
@@ -62,19 +57,13 @@ interface ManifestEntry {
   /** Timescale repository package version (e.g., 2.24.0~debian13-1801) */
   timescaleVersion?: string;
   soFileName?: string;
-  /** GitHub repository in owner/repo format for github-release installations */
-  githubRepo?: string;
-  /** GitHub release tag for downloading assets */
-  githubReleaseTag?: string;
-  /** Asset filename pattern with {version}, {pgMajor}, {arch} placeholders */
-  githubAssetPattern?: string;
+  binaryPath?: string;
+  postgresOwnedDirs?: string[];
   enabled?: boolean;
-  enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
   runtime?: {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
-    preloadInComprehensiveTest?: boolean;
     preloadLibraryName?: string;
   };
   source: {
@@ -85,6 +74,7 @@ interface ManifestEntry {
 
 interface Manifest {
   entries: ManifestEntry[];
+  sourceLibraries?: Record<string, unknown>;
 }
 
 /**
@@ -107,6 +97,29 @@ function validatePackageName(packageName: string, context: string): void {
 }
 
 /**
+ * A `test -f` per entry for the module file it installs, so a package that ships nothing, or renames its
+ * library, fails the build instead of the operator's first CREATE EXTENSION. The file name comes from the
+ * entry's soFileName and is interpolated into the shell command, hence the strict pattern.
+ */
+function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string): string[] {
+  return entries.map((entry) => {
+    if (!entry.soFileName) {
+      throw new Error(
+        `${source} entry "${entry.name}" has no soFileName. Add the module file it installs ` +
+          `(listed by: ls $(pg_config --pkglibdir)), e.g. soFileName: "${entry.name}.so".`
+      );
+    }
+    if (!/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
+      throw new Error(
+        `${source} entry "${entry.name}" has invalid soFileName "${entry.soFileName}": ` +
+          `use a bare file name of letters, digits, dots, underscores or hyphens ending in .so.`
+      );
+    }
+    return `test -f /usr/lib/postgresql/${pgMajor}/lib/${entry.soFileName}`;
+  });
+}
+
+/**
  * Read and parse manifest
  */
 async function readManifest(): Promise<Manifest> {
@@ -119,69 +132,45 @@ async function readManifest(): Promise<Manifest> {
 }
 
 /**
+ * `postgresql-<major>-<pgdgPackage>=<pgdgVersion>` for every enabled PGDG extension, in
+ * manifest order. Tools are excluded: they install in their own layer (generatePgdgToolsInstall).
+ * Name and version are validated here because both are interpolated into a shell command.
+ */
+function pgdgExtensionPins(manifest: Manifest, pgMajor: string): string[] {
+  return manifest.entries
+    .filter((e) => e.kind === "extension" && e.install_via === "pgdg" && (e.enabled ?? true))
+    .map((entry) => {
+      if (!entry.pgdgVersion) {
+        throw new Error(
+          `PGDG extension "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
+            `shown by: apt-cache madison ${pgdgAptPackageName(entry, pgMajor)}`
+        );
+      }
+      const pin = `${pgdgAptPackageName(entry, pgMajor)}=${entry.pgdgVersion}`;
+      validatePackageName(pin, `PGDG package pin (${entry.name})`);
+      return pin;
+    });
+}
+
+/**
  * Generate PGDG package installation script
  * Versions and PG_MAJOR are hardcoded directly
  */
 function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): string {
-  const enabledPgdgPackages: string[] = [];
-
-  for (const mapping of PGDG_MAPPINGS) {
-    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
-    // Check if entry exists, is PGDG, and is enabled (default true)
-    if (entry && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
-      // Package is enabled - use hardcoded version from extensionDefaults
-      const version =
-        extensionDefaults.pgdgVersions[
-          mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
-        ];
-
-      // Validate package name and version for shell safety (SC2046/SC2086 protection)
-      validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
-      validatePackageName(version, `PGDG version (${mapping.manifestName})`);
-
-      enabledPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
-    }
-  }
+  const enabledPgdgPackages = pgdgExtensionPins(manifest, pgMajor);
 
   if (enabledPgdgPackages.length === 0) {
     return `RUN echo "No PGDG packages enabled in manifest"`;
   }
 
   const packagesList = enabledPgdgPackages.join(" ");
-  const expectedCount = enabledPgdgPackages.length;
-
-  // Build list of expected .so files for verification
-  // Map PGDG package names to their .so file names
-  const soFileMap: Record<string, string> = {
-    cron: "pg_cron.so",
-    pgvector: "vector.so",
-    pgaudit: "pgaudit.so",
-    repack: "pg_repack.so",
-    hll: "hll.so",
-    http: "http.so",
-    hypopg: "hypopg.so",
-    rum: "rum.so",
-    "set-user": "set_user.so",
-    partman: "pg_partman_bgw.so",
-  };
-
-  // Get expected .so files for enabled packages
-  const expectedSoFiles = enabledPgdgPackages
-    .map((pkg) => {
-      const match = pkg.match(/postgresql-\d+-([^=]+)/);
-      if (match?.[1] && soFileMap[match[1]]) {
-        return soFileMap[match[1]];
-      }
-      return null;
-    })
-    .filter((f): f is string => f !== null);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(
+    manifest.entries.filter(
+      (e) => e.kind === "extension" && e.install_via === "pgdg" && (e.enabled ?? true)
+    ),
+    "PGDG",
+    pgMajor
+  );
 
   return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
@@ -191,21 +180,24 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
     # Install enabled PGDG packages (pre-calculated in TS)
     echo "Installing PGDG packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
-    # Verify expected PGDG extensions were installed (Phase 4.1 assertion)
-    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log && \\
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log) && \\
-    echo "Installed $INSTALLED_COUNT PGDG extension package(s)" && \\
-    echo "Expected ${expectedCount} enabled PGDG packages from manifest" && \\
-    test "$INSTALLED_COUNT" -ge ${expectedCount} || (echo "ERROR: Installed count mismatch (expected >= ${expectedCount}, got $INSTALLED_COUNT)" && exit 1) && \\
-    rm -f /tmp/installed-pgdg-exts.log && \\
-    # Verify critical .so files exist (prevents silent installation failures)
-    echo "Verifying PGDG .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} PGDG .so files verified" && \\
+    # Each entry's module file must exist (prevents silent installation failures)
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} PGDG module files verified" && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
-    rm -f /tmp/extensions.manifest.json; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
+
+/**
+ * Where Dockerfile.template copies docker/postgres/apt-keys/. The Percona and Timescale sources trust only these
+ * committed keys (Percona 4D1BB29D63D98E422B2113B19334A25F8507EFA5, Timescale/packagecloud
+ * 1005FB68604CE9B8F6879CF759F18EDF47F24417, each checked against the vendor's published fingerprint), so no
+ * build-day download decides what apt trusts. The vendors' own installers (percona-release_latest .deb, Timescale's
+ * script.deb.sh) used to do this and ran as root unchecked. A key the vendor rotates fails `apt-get update` with
+ * NO_PUBKEY: replace the file after checking the new fingerprint. `--error-on=any` makes that a build failure:
+ * plain `apt-get update` exits 0 when a repository fails, and the build would fail later as "package not found".
+ */
+const APT_KEY_DIR = "/usr/share/keyrings/aza-pg";
 
 /**
  * Generate Percona package installation script
@@ -245,38 +237,12 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
     }
     validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
 
-    // soFileName is REQUIRED for .so verification (single source of truth in manifest)
-    if (!entry.soFileName) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required soFileName field.\n` +
-          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
-      );
-    }
-    // Validate soFileName format (must end with .so and be a safe filename)
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `Percona entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be alphanumeric with underscores/hyphens and end with .so`
-      );
-    }
-
     packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
   }
 
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
-
-  // Get expected .so files for verification (from manifest - single source of truth)
-  const expectedSoFiles = enabledPerconaEntries
-    .map((entry) => entry.soFileName)
-    .filter((f): f is string => f !== undefined);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(enabledPerconaEntries, "Percona", pgMajor);
 
   return `# Percona repository setup and package installation
 # Provides: pg_stat_monitor and wal2json from Percona ppg-${pgMajor}
@@ -285,24 +251,18 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
-    echo "Setting up Percona repository for ppg-${pgMajor}..." && \\
-    apt-get update && \\
-    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \\
-    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \\
-    dpkg -i /tmp/percona-release.deb && \\
-    percona-release enable ppg-${pgMajor} release && \\
-    apt-get update && \\
+    echo "deb [signed-by=${APT_KEY_DIR}/percona.asc] https://repo.percona.com/ppg-${pgMajor}/apt trixie main" > /etc/apt/sources.list.d/percona-ppg-${pgMajor}.list && \\
+    apt-get update --error-on=any && \\
     echo "Installing Percona packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     echo "Installed ${expectedCount} Percona package(s)" && \\
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Percona .so files verified" && \\
-    # Cleanup Percona release package
-    rm -f /tmp/percona-release.deb && \\
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} Percona module files verified" && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/*; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    rm -rf /var/lib/apt/lists/* && \\
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
 }
 
 /**
@@ -343,20 +303,6 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     }
     validatePackageName(entry.timescaleVersion, `Timescale version (${entry.name})`);
 
-    // soFileName is REQUIRED for .so verification
-    if (!entry.soFileName) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required soFileName field.\n` +
-          `Add soFileName: "${entry.name}.so" to manifest entry for .so verification.`
-      );
-    }
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `Timescale entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"\n` +
-          `Must be a filename with alphanumerics, dots, underscores, or hyphens and end with .so`
-      );
-    }
-
     packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
 
     // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
@@ -375,18 +321,7 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
 
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
-
-  // Get expected .so files for verification
-  const expectedSoFiles = enabledTimescaleEntries
-    .map((entry) => entry.soFileName)
-    .filter((f): f is string => f !== undefined);
-
-  const soVerificationCommands =
-    expectedSoFiles.length > 0
-      ? expectedSoFiles
-          .map((so) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${so}`)
-          .join(" && \\\n    ") + " && \\\n    "
-      : "";
+  const soChecks = soFileChecks(enabledTimescaleEntries, "Timescale", pgMajor);
 
   return `# Timescale repository setup and package installation
 # Provides: TimescaleDB with full TSL license (not available in PGDG)
@@ -395,140 +330,134 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
-    echo "Setting up Timescale repository for PostgreSQL ${pgMajor}..." && \\
-    apt-get update && \\
-    apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \\
-    curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \\
-    apt-get update && \\
+    echo "deb [signed-by=${APT_KEY_DIR}/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main" > /etc/apt/sources.list.d/timescale.list && \\
+    apt-get update --error-on=any && \\
     echo "Installing Timescale packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     echo "Installed ${expectedCount} Timescale package(s)" && \\
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \\
-    ${soVerificationCommands}echo "All ${expectedSoFiles.length} Timescale .so files verified" && \\
+    ${soChecks.join(" && \\\n    ")} && \\
+    echo "All ${soChecks.length} Timescale module files verified" && \\
     apt-get clean && \\
-    rm -rf /var/lib/apt/lists/*; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
-}
-
-/**
- * Generate regression mode shared preload libraries list
- * Includes ALL preload libraries (default + optional) for maximum test coverage
- */
-function generateRegressionPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true
-  // 2. (runtime.defaultEnable == true) OR (runtime.preloadInComprehensiveTest == true)
-  // 3. enabled != false (i.e., enabled is null or true)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime || !runtime.sharedPreload) return false;
-
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isRegressionPreload = runtime.preloadInComprehensiveTest === true;
-    const isEnabled = entry.enabled !== false;
-
-    return (isDefaultEnable || isRegressionPreload) && isEnabled;
-  });
-
-  // Use preloadLibraryName if specified, otherwise use extension name
-  const libraryNames = preloadExtensions.map((e) => e.runtime?.preloadLibraryName || e.name).sort();
-
-  return libraryNames.join(",");
-}
-
-/**
- * Generate PGDG package installation script for regression test mode
- * Installs ALL PGDG packages (including disabled ones) for regression testing
- */
-function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: string): string {
-  const allPgdgPackages: string[] = [];
-
-  for (const mapping of PGDG_MAPPINGS) {
-    const entry = manifest.entries.find((e) => e.name === mapping.manifestName);
-    // Include ALL PGDG packages (enabled OR enabledInComprehensiveTest)
-    if (entry && entry.install_via === "pgdg") {
-      const shouldInclude = (entry.enabled ?? true) || entry.enabledInComprehensiveTest === true;
-      if (shouldInclude) {
-        // Use hardcoded version from extensionDefaults
-        const version =
-          extensionDefaults.pgdgVersions[
-            mapping.versionKey as keyof typeof extensionDefaults.pgdgVersions
-          ];
-
-        // Validate package name and version for shell safety
-        validatePackageName(mapping.packageName, `PGDG package name (${mapping.manifestName})`);
-        validatePackageName(version, `PGDG version (${mapping.manifestName})`);
-
-        allPgdgPackages.push(`postgresql-${pgMajor}-${mapping.packageName}=${version}`);
-      }
-    }
-  }
-
-  if (allPgdgPackages.length === 0) {
-    return `RUN echo "No PGDG packages available for regression testing"`;
-  }
-
-  // For regression mode, use install-or-skip logic since some packages may not be available for PG18 yet
-  const installCommands = allPgdgPackages
-    .map(
-      (pkg) =>
-        `    (apt-get install -y --no-install-recommends ${pkg} && echo "✓ Installed: ${pkg}") || echo "⚠ Skipped (not available): ${pkg}"`
-    )
-    .join(" && \\\n");
-
-  return `RUN set -euo pipefail && \\
     rm -rf /var/lib/apt/lists/* && \\
-    apt-get update && \\
-    # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
-    echo "Installing PGDG packages (regression mode): ${allPgdgPackages.length} packages" && \\
-${installCommands} && \\
-    # Report what was installed
-    dpkg -l | grep "^ii.*postgresql-${pgMajor}-" | tee /tmp/installed-pgdg-exts.log || true && \\
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \\
-    echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
-    rm -f /tmp/installed-pgdg-exts.log && \\
-    apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* /tmp/extensions.manifest.json; \\
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true`;
+    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
+}
+
+/** Paths are interpolated into RUN lines, so only plain absolute paths pass. */
+function safeAbsolutePath(path: string | undefined, context: string): string {
+  if (!path || !/^(\/[a-zA-Z0-9_.+-]+)+$/.test(path) || path.split("/").includes("..")) {
+    throw new Error(
+      `${context}: "${path ?? ""}" is not a plain absolute path. Use letters, digits and [_.+-] between slashes, e.g. "/usr/bin/pgbackrest".`
+    );
+  }
+  return path;
 }
 
 /**
- * PGDG tool binary verification mapping
- * Maps tool name to expected binary path after PGDG installation
+ * Enabled tools built from source that install an executable. The builder copies exactly each
+ * binaryPath into the final image (a whole-directory copy of /usr/local/bin once shipped bun and the
+ * build scripts), and the final stage fails the build when the binary misses a shared library.
  */
-const PGDG_TOOL_BINARIES: Record<string, string> = {
-  pgbackrest: "/usr/bin/pgbackrest",
-  pgbadger: "/usr/bin/pgbadger",
-};
+function sourceTools(manifest: Manifest): ManifestEntry[] {
+  return manifest.entries.filter(
+    (e) =>
+      e.kind === "tool" &&
+      (e.install_via ?? "source") === "source" &&
+      (e.enabled ?? true) &&
+      e.binaryPath !== undefined
+  );
+}
+
+/** Builder-stage lines (each ending in "&& \\") copying every source tool binary into /opt/ext-out. */
+function sourceToolBinariesCopy(manifest: Manifest): string {
+  return sourceTools(manifest)
+    .map((e) => {
+      const bin = safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`);
+      return `    install -D -m 0755 ${bin} /opt/ext-out${bin} && \\\n`;
+    })
+    .join("");
+}
+
+/**
+ * Final-stage steps appended to the ldconfig RUN (after every tool install), each starting with
+ * " && \\": each source tool binary exists, and the directories any enabled tool writes by default are
+ * postgres-owned so a named volume mounted there starts writable by postgres. Package-installed tools
+ * get this too: their maintainer scripts decide ownership, and that can change between versions.
+ */
+function toolsRuntimeSetup(manifest: Manifest): string {
+  const binaries = sourceTools(manifest).map(
+    (e) => `test -x ${safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`)}`
+  );
+  const dirs = manifest.entries
+    .filter((e) => e.kind === "tool" && (e.enabled ?? true))
+    .flatMap((e) =>
+      (e.postgresOwnedDirs ?? []).map((d) =>
+        safeAbsolutePath(d, `tool "${e.name}" postgresOwnedDirs`)
+      )
+    );
+  const steps =
+    dirs.length > 0
+      ? [...binaries, `install -d -o postgres -g postgres -m 0750 ${dirs.join(" ")}`]
+      : binaries;
+  return steps.map((s) => ` && \\\n    ${s}`).join("");
+}
+
+/**
+ * Steps (each starting with " && \\") failing the build when any module in the package library
+ * directory, any library in /usr/local/lib or any source tool binary has a shared library ldd cannot
+ * find. Objects built from source have no Debian package declaring their dependencies, so apt keeps
+ * their libraries only while some installed package depends on them; an `apt-get purge --auto-remove`
+ * then removes a library no remaining package needs. The check therefore belongs after the last purge,
+ * and the fix for a failure is listing the owning package in extensions.runtime-packages.txt, which
+ * marks it manually installed.
+ */
+function sharedLibrariesCheck(manifest: Manifest, pgMajor: string): string {
+  const tools = sourceTools(manifest).map((e) =>
+    safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`)
+  );
+  const objects = [`/usr/lib/postgresql/${pgMajor}/lib/*.so`, "/usr/local/lib/*.so*", ...tools];
+  // A glob matching nothing stays literal, hence the -f test. ldd prints one "<lib> => not found" line
+  // per unresolved library; each is printed with its object before the build fails.
+  return [
+    "unresolved=0",
+    `for f in ${objects.join(" ")}; do \\\n` +
+      `      [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \\\n` +
+      "    done",
+    '[ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }',
+  ]
+    .map((s) => ` && \\\n    ${s}`)
+    .join("");
+}
 
 /**
  * Generate PGDG tool installation script
  * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
  *
- * Note: Version pinning is optional. Some tools (like pgbadger on Debian Trixie) are virtual
- * packages that resolve to Percona packages, where direct version pinning doesn't work.
- * Omit pgdgVersion in manifest for such virtual packages.
+ * Every tool must be version-pinned: an unpinned name installs whatever apt resolves on build day,
+ * so two builds of one commit can differ. (pgbadger was once left unpinned on the belief that it is
+ * a Percona virtual package; with the Percona repo enabled it resolves to the real PGDG package and
+ * `pgbadger=<version>` installs fine.)
  */
 function generatePgdgToolsInstall(manifest: Manifest): string {
-  const enabledPgdgTools: Array<{ name: string; version: string | undefined; binary: string }> = [];
+  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
 
   for (const entry of manifest.entries) {
     if (entry.kind === "tool" && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
       // Validate tool name for shell safety
       validatePackageName(entry.name, `PGDG tool name (${entry.name})`);
-      // Version is optional - validate only if provided
-      if (entry.pgdgVersion) {
-        validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
-      }
-
-      const binary = PGDG_TOOL_BINARIES[entry.name];
-      if (!binary) {
+      if (!entry.pgdgVersion) {
         throw new Error(
-          `Missing binary path in PGDG_TOOL_BINARIES for tool: ${entry.name}\n` +
-            `Add it to the PGDG_TOOL_BINARIES object in generate-dockerfile.ts`
+          `PGDG tool "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
+            `shown by: apt-cache madison ${entry.name} (run inside postgres:<pgVersion>-trixie)`
         );
       }
+      validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+
+      const binary = safeAbsolutePath(
+        entry.binaryPath,
+        `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${entry.name})`
+      );
 
       enabledPgdgTools.push({
         name: entry.name,
@@ -542,19 +471,12 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     return `RUN echo "No PGDG tools enabled in manifest"`;
   }
 
-  // Build package list - only pin version if specified (virtual packages don't support version pinning)
-  const packagesList = enabledPgdgTools
-    .map((t) => (t.version ? `${t.name}=${t.version}` : t.name))
-    .join(" ");
+  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
   const binaryVerifications = enabledPgdgTools
     .map((t) => `test -x ${t.binary}`)
     .join(" && \\\n    ");
 
-  // Add hadolint ignore if any packages are unpinned (virtual packages)
-  const hasUnpinned = enabledPgdgTools.some((t) => !t.version);
-  const hadolintIgnore = hasUnpinned ? "# hadolint ignore=DL3008\n" : "";
-
-  return `${hadolintIgnore}RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
+  return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
     apt-get update && \\
@@ -568,109 +490,9 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
 }
 
 /**
- * Generate GitHub release binary installation script.
- * Downloads pre-built binaries from GitHub releases for extensions not available via apt.
- * Supports multi-architecture builds (amd64, arm64) via runtime detection.
- */
-function generateGithubReleaseInstall(manifest: Manifest, pgMajor: string): string {
-  const enabledEntries = manifest.entries.filter(
-    (entry) => entry.install_via === "github-release" && (entry.enabled ?? true)
-  );
-
-  if (enabledEntries.length === 0) {
-    return `RUN echo "No GitHub release packages enabled in manifest"`;
-  }
-
-  // Validate required fields for each entry
-  for (const entry of enabledEntries) {
-    if (!entry.githubRepo) {
-      throw new Error(`GitHub release entry "${entry.name}" missing required githubRepo field.`);
-    }
-    if (!entry.githubReleaseTag) {
-      throw new Error(
-        `GitHub release entry "${entry.name}" missing required githubReleaseTag field.`
-      );
-    }
-    if (!entry.githubAssetPattern) {
-      throw new Error(
-        `GitHub release entry "${entry.name}" missing required githubAssetPattern field.`
-      );
-    }
-    if (!entry.soFileName) {
-      throw new Error(`GitHub release entry "${entry.name}" missing required soFileName field.`);
-    }
-    // Validate soFileName format
-    if (!entry.soFileName.endsWith(".so") || !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      throw new Error(
-        `GitHub release entry "${entry.name}" has invalid soFileName: "${entry.soFileName}"`
-      );
-    }
-  }
-
-  // Build installation commands for each extension
-  // pgvectorscale releases contain .deb packages inside the zip, not raw .so files
-  const installCommands = enabledEntries
-    .map((entry) => {
-      // Pattern uses {version}, {pgMajor}, {arch} placeholders
-      // {arch} is resolved at runtime using dpkg --print-architecture
-      const assetPattern = entry
-        .githubAssetPattern!.replace("{version}", entry.githubReleaseTag!)
-        .replace("{pgMajor}", pgMajor);
-      // {arch} will be resolved at runtime in the shell
-
-      const url = `https://github.com/${entry.githubRepo}/releases/download/${entry.githubReleaseTag}`;
-
-      // The zip contains .deb packages. We extract and install the non-dbgsym one.
-      // File pattern in zip: pgvectorscale-postgresql-18_0.9.0-Linux_arm64.deb
-      return `    # Install ${entry.name} from GitHub release (.deb package inside zip)
-    ARCH=$(dpkg --print-architecture) && \\
-    ASSET="${assetPattern.replace("{arch}", "${ARCH}")}" && \\
-    echo "Downloading ${entry.name} v${entry.githubReleaseTag} for $ARCH..." && \\
-    rm -rf /tmp/${entry.name} /tmp/${entry.name}.zip /tmp/${entry.name}.zip.tmp && \\
-    curl --fail --location --show-error --http1.1 --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 300 "${url}/$ASSET" -o /tmp/${entry.name}.zip.tmp && \\
-    test -s /tmp/${entry.name}.zip.tmp || { echo "ERROR: Empty ${entry.name} release archive"; exit 1; } && \\
-    unzip -tq /tmp/${entry.name}.zip.tmp && \\
-    mv /tmp/${entry.name}.zip.tmp /tmp/${entry.name}.zip && \\
-    unzip -q /tmp/${entry.name}.zip -d /tmp/${entry.name} && \\
-    # Install the .deb package (skip debug symbols package)
-    DEB_FILE=$(find /tmp/${entry.name} -name "*.deb" ! -name "*-dbgsym*" | head -1) && \\
-    test -n "$DEB_FILE" || { echo "ERROR: No .deb file found in ${entry.name} zip"; exit 1; } && \\
-    echo "Installing $DEB_FILE..." && \\
-    dpkg -i "$DEB_FILE" && \\
-    rm -rf /tmp/${entry.name}* && \\
-    echo "✓ Installed ${entry.name} v${entry.githubReleaseTag}"`;
-    })
-    .join(" && \\\n");
-
-  // .so verification
-  const soVerification = enabledEntries
-    .map((e) => `test -f /usr/lib/postgresql/${pgMajor}/lib/${e.soFileName}`)
-    .join(" && \\\n    ");
-
-  return `# GitHub release binary installation
-# Provides pre-built extensions not available via apt for Debian Trixie
-# Architecture detected at build time (supports amd64, arm64)
-# hadolint ignore=DL3008
-RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \\
-    set -euo pipefail && \\
-    apt-get update && \\
-    apt-get install -y --no-install-recommends curl unzip && \\
-${installCommands} && \\
-    # Verify .so files exist
-    echo "Verifying GitHub release .so files..." && \\
-    ${soVerification} && \\
-    echo "All ${enabledEntries.length} GitHub release .so file(s) verified" && \\
-    # Strip debug symbols from newly installed .so files (best-effort; semicolon separates from install chain)
-    find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -newer /tmp -exec strip --strip-unneeded {} \\; 2>/dev/null || true; \\
-    # Clean apt lists (Dockle DKL-DI-0005)
-    rm -rf /var/lib/apt/lists/*`;
-}
-
-/**
  * Generate filtered manifest for PGXS-style builds
  * Includes: pgxs, autotools, cmake, meson, make, timescaledb (build type)
- * Excludes: entries with install_via === "pgdg", "percona", "timescale", or "github-release"
+ * Excludes: entries with install_via === "pgdg", "percona", or "timescale"
  */
 function generatePgxsManifest(manifest: Manifest): Manifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
@@ -680,19 +502,19 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
       pgxsBuildTypes.includes(entry.build.type) &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
       entry.install_via !== "percona" && // Exclude Percona-installed entries
-      entry.install_via !== "timescale" && // Exclude Timescale repo entries
-      entry.install_via !== "github-release" // Exclude GitHub release entries
+      entry.install_via !== "timescale" // Exclude Timescale repo entries
   );
 
   return {
     entries: filteredEntries,
+    sourceLibraries: manifest.sourceLibraries,
   };
 }
 
 /**
  * Generate filtered manifest for Cargo builds
  * Includes: cargo-pgrx
- * Excludes: entries with install_via === "pgdg", "percona", "timescale", or "github-release"
+ * Excludes: entries with install_via === "pgdg", "percona", or "timescale"
  */
 function generateCargoManifest(manifest: Manifest): Manifest {
   const filteredEntries = manifest.entries.filter(
@@ -701,12 +523,12 @@ function generateCargoManifest(manifest: Manifest): Manifest {
       entry.build.type === "cargo-pgrx" &&
       entry.install_via !== "pgdg" && // Exclude PGDG-installed entries
       entry.install_via !== "percona" && // Exclude Percona-installed entries
-      entry.install_via !== "timescale" && // Exclude Timescale repo entries
-      entry.install_via !== "github-release" // Exclude GitHub release-installed entries
+      entry.install_via !== "timescale" // Exclude Timescale repo entries
   );
 
   return {
     entries: filteredEntries,
+    sourceLibraries: manifest.sourceLibraries,
   };
 }
 
@@ -714,37 +536,12 @@ function generateCargoManifest(manifest: Manifest): Manifest {
  * Extract PG_MAJOR from PG_VERSION (e.g., "18.1" -> "18")
  */
 function extractPgMajor(): string {
-  const pgVersion = extensionDefaults.pgVersion;
+  const pgVersion = MANIFEST_METADATA.pgVersion;
   const majorVersion = pgVersion.split(".")[0];
   if (!majorVersion) {
     throw new Error(`Could not extract major version from PG_VERSION: ${pgVersion}`);
   }
   return majorVersion;
-}
-
-/**
- * Generate version info generation instructions
- * Uses a separate builder stage with Bun to generate version files
- * This ensures consistency between local testing and Docker builds
- */
-function generateVersionInfoGeneration(_manifest: Manifest): string {
-  // The version-info files are generated in a separate builder stage (builder-version-info)
-  // This stage is defined in the Dockerfile template and has Bun available
-  // The generated files are then copied to the final stage
-  //
-  // Template must include:
-  // FROM builder-base AS builder-version-info
-  // ARG PG_VERSION
-  // COPY scripts/generate-version-info.ts /tmp/
-  // RUN PG_VER=$(echo ${PG_VERSION} | awk -F'-' '{print $1}') && \
-  //     bun /tmp/generate-version-info.ts txt --pg-version=${PG_VER} > /tmp/version-info.txt && \
-  //     bun /tmp/generate-version-info.ts json --pg-version=${PG_VER} > /tmp/version-info.json
-  //
-  // Then in final stage:
-  // COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/
-  // COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/
-
-  return `# Version info files copied from builder-version-info stage (defined earlier in template)`;
 }
 
 /**
@@ -772,23 +569,32 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   info("Generating PGDG tools installation script...");
   const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
 
-  info("Generating GitHub release installation script...");
-  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
-
-  info("Generating version info generation script...");
-  const versionInfoGeneration = generateVersionInfoGeneration(manifest);
-
   // Replace placeholders
   info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
+  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
+  dockerfile = dockerfile.replace(/\{\{RUST_IMAGE_SHA\}\}/g, MANIFEST_METADATA.rustImageSha);
+  dockerfile = dockerfile.replace(/\{\{BUN_IMAGE_SHA\}\}/g, MANIFEST_METADATA.bunImageSha);
+  // .tool-versions is the one Bun version for local runs, CI and this builder; bunImageSha must be re-resolved with it.
+  const bunVersion = (await Bun.file(join(REPO_ROOT, ".tool-versions")).text()).match(
+    /^bun (\S+)$/m
+  )?.[1];
+  if (!bunVersion)
+    throw new Error(".tool-versions has no `bun X.Y.Z` line; the builder's Bun image tag needs it");
+  dockerfile = dockerfile.replace(/\{\{BUN_VERSION\}\}/g, bunVersion);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
   dockerfile = dockerfile.replace("{{PGDG_TOOLS_INSTALL}}", pgdgToolsInstall);
-  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
-  dockerfile = dockerfile.replace("{{VERSION_INFO_GENERATION}}", versionInfoGeneration);
+  dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
+    sourceToolBinariesCopy(manifest)
+  );
+  dockerfile = dockerfile.replace("{{TOOLS_RUNTIME_SETUP}}", () => toolsRuntimeSetup(manifest));
+  dockerfile = dockerfile.replace("{{SHARED_LIBRARIES_CHECK}}", () =>
+    sharedLibrariesCheck(manifest, pgMajor)
+  );
 
   // Add generation header
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
@@ -809,59 +615,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
 }
 
 /**
- * Generate regression test Dockerfile from template
- */
-async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string): Promise<void> {
-  // Read template
-  info("Reading regression template...");
-  if (!(await Bun.file(REGRESSION_TEMPLATE_PATH).exists())) {
-    throw new Error(`Template not found: ${REGRESSION_TEMPLATE_PATH}`);
-  }
-
-  const templateFile = Bun.file(REGRESSION_TEMPLATE_PATH);
-  let dockerfile = await templateFile.text();
-
-  info("Generating regression PGDG package installation script...");
-  const pgdgPackagesInstallRegression = generatePgdgPackagesInstallRegression(manifest, pgMajor);
-
-  info("Generating GitHub release installation script...");
-  const githubReleaseInstall = generateGithubReleaseInstall(manifest, pgMajor);
-
-  info("Generating regression preload libraries list...");
-  const regressionPreloadLibs = generateRegressionPreloadLibraries(manifest);
-
-  // Replace placeholders
-  info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, extensionDefaults.pgVersion);
-  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, extensionDefaults.baseImageSha);
-  dockerfile = dockerfile.replace(
-    "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
-    pgdgPackagesInstallRegression
-  );
-  dockerfile = dockerfile.replace("{{GITHUB_RELEASE_PACKAGES_INSTALL}}", githubReleaseInstall);
-  dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
-
-  // Add generation header
-  const header = `# AUTO-GENERATED FILE - DO NOT EDIT
-# Generator: scripts/docker/generate-dockerfile.ts
-# Template: docker/postgres/regression.Dockerfile.template
-# Manifest: docker/postgres/extensions.manifest.json
-# To regenerate: bun run generate
-
-`;
-
-  dockerfile = header + dockerfile;
-
-  // Write output
-  info(`Writing regression Dockerfile to ${REGRESSION_OUTPUT_PATH}...`);
-  await Bun.write(REGRESSION_OUTPUT_PATH, dockerfile);
-
-  success("Regression Dockerfile generated successfully!");
-}
-
-/**
- * Generate both Dockerfiles from templates
+ * Generate the Dockerfile and the filtered build manifests
  */
 async function generateDockerfile(): Promise<void> {
   section("Dockerfile Generation");
@@ -902,11 +656,6 @@ async function generateDockerfile(): Promise<void> {
   section("Production Dockerfile");
   await generateProductionDockerfile(manifest, pgMajor);
 
-  // Generate regression Dockerfile
-  console.log("");
-  section("Regression Dockerfile");
-  await generateRegressionDockerfile(manifest, pgMajor);
-
   // Print stats
   console.log("");
   section("Summary");
@@ -916,15 +665,11 @@ async function generateDockerfile(): Promise<void> {
   const disabledPgdg = manifest.entries.filter(
     (e) => e.install_via === "pgdg" && e.enabled === false
   ).length;
-  const regressionOnlyPgdg = manifest.entries.filter(
-    (e) => e.install_via === "pgdg" && e.enabled === false && e.enabledInComprehensiveTest === true
-  ).length;
 
   info(`PGDG extensions: ${enabledPgdg} enabled, ${disabledPgdg} disabled`);
-  info(`Regression-only extensions: ${regressionOnlyPgdg}`);
   info(`Total extensions: ${manifest.entries.length}`);
   console.log("");
-  success("All Dockerfiles generated successfully!");
+  success("Dockerfile generated successfully!");
 }
 
 // Main execution

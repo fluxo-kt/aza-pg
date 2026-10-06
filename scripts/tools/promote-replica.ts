@@ -1,502 +1,163 @@
 #!/usr/bin/env bun
 /**
- * Promote PostgreSQL replica to primary
+ * Promote a running aza-pg standby container to primary (failover).
  *
  * USAGE:
- *   ./promote-replica.ts [OPTIONS]
+ *   bun scripts/tools/promote-replica.ts [-c NAME] [-d PATH] [-y] [-f]
  *
  * OPTIONS:
- *   -c, --container NAME    Container name (default: postgres-replica)
- *   -d, --data-dir PATH     Data directory path (default: auto-detect from container's $PGDATA)
- *   -n, --no-backup         Skip backup before promotion (not recommended)
- *   -y, --yes               Skip confirmation prompt
- *   -h, --help              Show this help message
+ *   -c, --container NAME    Container (default: aza-pg-replica-postgres-replica,
+ *                           the replica stack's name under its .env.example's COMPOSE_PROJECT_NAME)
+ *   -d, --data-dir PATH     Data directory (default: the container's $PGDATA)
+ *   -y, --yes               Skip the confirmation prompt
+ *   -f, --force             Promote even while this standby still streams from a live upstream
+ *   -n, --no-backup         Accepted for old scripts; the tool takes no backup (see below)
+ *   -h, --help              Show this help
  *
- * DESCRIPTION:
- *   Promotes a PostgreSQL replica to primary role by:
- *   1. Verifying replica is in recovery mode
- *   2. Creating backup of current state (optional)
- *   3. Stopping the replica container
- *   4. Promoting replica using pg_ctl promote
- *   5. Updating configuration for primary role
- *   6. Restarting as primary
+ * The old primary MUST be stopped first: two primaries accepting writes is split-brain. The tool refuses while this
+ * standby still streams from its upstream (pg_stat_wal_receiver), because that server is visibly alive. Not streaming
+ * proves nothing: a primary cut off by a network partition looks the same from here, so stopping it stays the
+ * operator's job. Promotion is one-way: this server starts a new timeline, and the old primary can only rejoin as a
+ * replica of it (re-clone, or pg_rewind).
  *
- * EXAMPLES:
- *   # Promote default replica container
- *   ./promote-replica.ts
- *
- *   # Promote specific container without confirmation
- *   ./promote-replica.ts -c my-replica -y
- *
- *   # Promote without backup (fast, risky)
- *   ./promote-replica.ts -n -y
- *
- * PREREQUISITES:
- *   - Docker or Docker Compose installed
- *   - Replica container running in standby mode
- *   - Sufficient disk space for backup (unless -n used)
- *
- * WARNINGS:
- *   - This is a one-way operation - cannot revert to replica after promotion
- *   - Old primary must be stopped before promoting replica to avoid split-brain
- *   - Ensure clients are redirected to new primary after promotion
+ * How it works: `pg_ctl promote` on the running server. pg_ctl refuses a server that is not a standby, then waits
+ * until the control file reads "in production" (its -w is the default for promote), so its exit status is the
+ * completion signal and no sleep decides readiness. The server keeps running throughout and PostgreSQL removes
+ * standby.signal itself, so no restart or file edit is needed. It runs as user postgres because pg_ctl refuses root
+ * and the image's USER may be overridden.
+ * No backup step: promotion changes no existing data, and a copy of a standby restores nothing the old primary does
+ * not also hold; take backups with backup-postgres.ts or pgBackRest.
  */
 
 import { $ } from "bun";
-import { info, success, warning, error } from "../utils/logger";
+import { error, info, success, warning } from "../utils/logger";
 
-interface PromoteConfig {
-  containerName: string;
-  dataDir: string;
-  createBackup: boolean;
-  skipConfirmation: boolean;
-}
-
-/**
- * Show usage information
- */
-function showHelp(): void {
-  process.stdout.write(`
-Promote PostgreSQL replica to primary
+const HELP = `Promote a running aza-pg standby container to primary.
 
 USAGE:
-  ./promote-replica.ts [OPTIONS]
+  bun scripts/tools/promote-replica.ts [-c NAME] [-d PATH] [-y] [-f]
 
 OPTIONS:
-  -c, --container NAME    Container name (default: postgres-replica)
-  -d, --data-dir PATH     Data directory path (default: auto-detect from container's $PGDATA)
-  -n, --no-backup         Skip backup before promotion (not recommended)
-  -y, --yes               Skip confirmation prompt
-  -h, --help              Show this help message
+  -c, --container NAME    Container (default: aza-pg-replica-postgres-replica)
+  -d, --data-dir PATH     Data directory (default: the container's $PGDATA)
+  -y, --yes               Skip the confirmation prompt
+  -f, --force             Promote even while this standby still streams from a live upstream
+  -h, --help              Show this help
 
-DESCRIPTION:
-  Promotes a PostgreSQL replica to primary role by:
-  1. Verifying replica is in recovery mode
-  2. Creating backup of current state (optional)
-  3. Stopping the replica container
-  4. Promoting replica using pg_ctl promote
-  5. Updating configuration for primary role
-  6. Restarting as primary
+Stop the old primary first: two primaries is split-brain. The tool refuses while this standby still streams from
+its upstream; not streaming does not prove the old primary is down. Promotion is one-way.
+`;
 
-EXAMPLES:
-  # Promote default replica container
-  ./promote-replica.ts
-
-  # Promote specific container without confirmation
-  ./promote-replica.ts -c my-replica -y
-
-  # Promote without backup (fast, risky)
-  ./promote-replica.ts -n -y
-
-PREREQUISITES:
-  - Docker or Docker Compose installed
-  - Replica container running in standby mode
-  - Sufficient disk space for backup (unless -n used)
-
-WARNINGS:
-  - This is a one-way operation - cannot revert to replica after promotion
-  - Old primary must be stopped before promoting replica to avoid split-brain
-  - Ensure clients are redirected to new primary after promotion
-`);
-  process.exit(0);
+function fail(message: string): never {
+  error(message);
+  process.exit(1);
 }
 
-/**
- * Parse command line arguments
- */
-function parseArgs(): PromoteConfig {
-  const args = Bun.argv.slice(2);
-  const config: PromoteConfig = {
-    containerName: Bun.env.POSTGRES_CONTAINER_NAME || "postgres-replica",
-    dataDir: "", // Auto-detect from container's $PGDATA
-    createBackup: true,
-    skipConfirmation: false,
-  };
-
+function parseArgs(args: string[]) {
+  let container = "aza-pg-replica-postgres-replica";
+  let dataDir = "";
+  let yes = false;
+  let force = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-
+    const value = () => args[++i] ?? fail(`Missing value for ${arg}`);
     switch (arg) {
       case "-c":
       case "--container":
-        if (i + 1 >= args.length) {
-          error("Missing value for --container option");
-          process.exit(1);
-        }
-        config.containerName = args[++i] ?? "";
+        container = value();
         break;
-
       case "-d":
       case "--data-dir":
-        if (i + 1 >= args.length) {
-          error("Missing value for --data-dir option");
-          process.exit(1);
-        }
-        config.dataDir = args[++i] ?? "";
+        dataDir = value();
         break;
-
-      case "-n":
-      case "--no-backup":
-        config.createBackup = false;
-        break;
-
       case "-y":
       case "--yes":
-        config.skipConfirmation = true;
+        yes = true;
         break;
-
+      case "-f":
+      case "--force":
+        force = true;
+        break;
+      case "-n":
+      case "--no-backup":
+        break;
       case "-h":
       case "--help":
-        showHelp();
-        break;
-
+        process.stdout.write(HELP);
+        process.exit(0);
       default:
-        error(`Unknown option: ${arg}. Use -h for help.`);
-        process.exit(1);
+        fail(`Unknown option: ${arg}. Use -h for help.`);
     }
   }
-
-  return config;
+  return { container, dataDir, yes, force };
 }
 
-/**
- * Check prerequisites
- */
-async function checkPrerequisites(config: PromoteConfig): Promise<void> {
-  info("Checking prerequisites...");
+const { container, dataDir, yes, force } = parseArgs(Bun.argv.slice(2));
+const dataDirArgs = dataDir ? ["-D", dataDir] : [];
 
-  // Check if docker is available
-  try {
-    await $`command -v docker`.quiet();
-  } catch {
-    error("Docker is not installed or not in PATH");
-    process.exit(1);
-  }
-
-  // Check if container exists
-  try {
-    const containers = await $`docker ps -a --format {{.Names}}`.text();
-    const containerList = containers.split("\n").filter((name) => name.trim() !== "");
-    if (!containerList.includes(config.containerName)) {
-      error(`Container '${config.containerName}' does not exist`);
-      process.exit(1);
-    }
-  } catch {
-    error(`Failed to check if container '${config.containerName}' exists`);
-    process.exit(1);
-  }
-
-  // Check if container is running
-  try {
-    const runningContainers = await $`docker ps --format {{.Names}}`.text();
-    const runningList = runningContainers.split("\n").filter((name) => name.trim() !== "");
-    if (!runningList.includes(config.containerName)) {
-      error(`Container '${config.containerName}' is not running`);
-      process.exit(1);
-    }
-  } catch {
-    error(`Failed to check if container '${config.containerName}' is running`);
-    process.exit(1);
-  }
-
-  success("Prerequisites check passed");
-}
-
-/**
- * Verify replica is in recovery mode
- */
-async function verifyReplicaState(config: PromoteConfig): Promise<void> {
-  info("Verifying replica state...");
-
-  try {
-    const result =
-      await $`docker exec ${config.containerName} psql -U postgres -t -c "SELECT pg_is_in_recovery();"`.text();
-    const inRecovery = result.trim();
-
-    if (inRecovery !== "t") {
-      error(`Container '${config.containerName}' is not in recovery mode (already a primary?)`);
-      process.exit(1);
-    }
-
-    success("Confirmed: Container is in standby/recovery mode");
-  } catch {
-    error("Failed to verify replica state");
-    process.exit(1);
-  }
-}
-
-/**
- * Create backup before promotion
- */
-async function createBackup(config: PromoteConfig): Promise<void> {
-  if (!config.createBackup) {
-    warning("Skipping backup (--no-backup flag set)");
-    return;
-  }
-
-  info("Creating backup before promotion...");
-
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:T]/g, "_")
-    .replace(/\.\d{3}Z$/, "");
-  const backupName = `pre-promotion-backup-${timestamp}`;
-
-  try {
-    await $`docker exec ${config.containerName} pg_basebackup -D /backup/${backupName} -F tar -z -P`;
-    success(`Backup created: /backup/${backupName}`);
-  } catch {
-    warning("Backup failed, but continuing with promotion");
-    warning("Manual backup recommended if this is production");
-  }
-}
-
-/**
- * Confirm promotion
- */
-async function confirmPromotion(config: PromoteConfig): Promise<void> {
-  if (config.skipConfirmation) {
-    return;
-  }
-
-  process.stdout.write("\n");
-  warning("=========================================");
-  warning("REPLICA PROMOTION WARNING");
-  warning("=========================================");
-  process.stdout.write("You are about to promote replica to primary.\n");
-  process.stdout.write("\n");
-  process.stdout.write(`Container: ${config.containerName}\n`);
-  process.stdout.write(`Data Dir:  ${config.dataDir}\n`);
-  process.stdout.write(`Backup:    ${config.createBackup ? "Yes" : "No"}\n`);
-  process.stdout.write("\n");
-  warning("IMPORTANT:");
-  process.stdout.write("  - This is a ONE-WAY operation\n");
-  process.stdout.write("  - Ensure old primary is STOPPED to avoid split-brain\n");
-  process.stdout.write("  - Clients must be redirected to new primary after promotion\n");
-  process.stdout.write("  - Replication slots from old primary will be lost\n");
-  process.stdout.write("\n");
-  process.stdout.write("Continue with promotion? [yes/NO]: ");
-
-  // Read user input
-  const input = await readLine();
-  const response = input.trim().toLowerCase();
-
-  if (response !== "yes") {
-    info("Promotion cancelled by user");
-    process.exit(0);
-  }
-}
-
-/**
- * Read a line from stdin
- */
-async function readLine(): Promise<string> {
-  const decoder = new TextDecoder();
-  const bytesRead = await Bun.stdin.stream().getReader().read();
-  if (bytesRead.value) {
-    return decoder.decode(bytesRead.value);
-  }
-  return "";
-}
-
-/**
- * Stop replica container
- */
-async function stopContainer(config: PromoteConfig): Promise<void> {
-  info(`Stopping container '${config.containerName}'...`);
-
-  try {
-    await $`docker stop ${config.containerName}`.quiet();
-    success("Container stopped");
-  } catch {
-    error("Failed to stop container");
-    process.exit(1);
-  }
-}
-
-/**
- * Promote replica using pg_ctl
- */
-async function promoteReplica(config: PromoteConfig): Promise<void> {
-  info("Promoting replica to primary...");
-
-  // Start container temporarily to run pg_ctl promote
-  try {
-    await $`docker start ${config.containerName}`.quiet();
-  } catch {
-    error("Failed to start container");
-    process.exit(1);
-  }
-
-  // Wait for container to be ready
-  await Bun.sleep(2000);
-
-  // Detect PGDATA from container if not specified
-  let dataDir = config.dataDir;
-  if (!dataDir) {
-    const pgdataResult = await $`docker exec ${config.containerName} printenv PGDATA`
-      .quiet()
-      .nothrow();
-    dataDir = pgdataResult.text().trim() || "/var/lib/postgresql";
-    info(`Detected data directory: ${dataDir}`);
-  }
-
-  // Run pg_ctl promote
-  try {
-    await $`docker exec ${config.containerName} su - postgres -c "pg_ctl promote -D ${dataDir}"`;
-    success("Replica promoted successfully");
-  } catch {
-    error("Failed to promote replica");
-    process.exit(1);
-  }
-
-  // Wait for promotion to complete
-  info("Waiting for promotion to complete...");
-  await Bun.sleep(5000);
-
-  // Verify promotion
-  try {
-    const result =
-      await $`docker exec ${config.containerName} psql -U postgres -t -c "SELECT pg_is_in_recovery();"`.text();
-    const inRecovery = result.trim();
-
-    if (inRecovery === "f") {
-      success("Promotion verified: Container is now a primary");
-    } else {
-      error("Promotion verification failed: Container still in recovery mode");
-      process.exit(1);
-    }
-  } catch {
-    error("Failed to verify promotion");
-    process.exit(1);
-  }
-}
-
-/**
- * Update configuration for primary role
- */
-async function updateConfiguration(config: PromoteConfig): Promise<void> {
-  info("Updating configuration for primary role...");
-
-  // Remove standby.signal if it exists (use $PGDATA for portability)
-  try {
-    const testResult =
-      await $`docker exec ${config.containerName} bash -c 'test -f "$PGDATA/standby.signal"'`.quiet();
-    if (testResult.exitCode === 0) {
-      await $`docker exec ${config.containerName} bash -c 'rm -f "$PGDATA/standby.signal"'`;
-      success("Removed standby.signal");
-    }
-  } catch {
-    // File doesn't exist or already removed
-  }
-
-  // Note: Config changes (e.g., hot_standby settings) are typically handled
-  // by postgresql.conf mounted from host. If using auto-config, no changes needed.
-
-  success("Configuration updated");
-}
-
-/**
- * Restart as primary
- */
-async function restartPrimary(config: PromoteConfig): Promise<void> {
-  info("Restarting container as primary...");
-
-  // Stop container
-  try {
-    await $`docker stop ${config.containerName}`.quiet();
-  } catch {
-    error("Failed to stop container");
-    process.exit(1);
-  }
-
-  // Start container
-  try {
-    await $`docker start ${config.containerName}`.quiet();
-    success("Container restarted");
-  } catch {
-    error("Failed to restart container");
-    process.exit(1);
-  }
-
-  // Wait for PostgreSQL to be ready
-  info("Waiting for PostgreSQL to accept connections...");
-  const maxAttempts = 30;
-  let attempt = 0;
-
-  while (attempt < maxAttempts) {
-    try {
-      await $`docker exec ${config.containerName} pg_isready -U postgres`.quiet();
-      success("PostgreSQL is ready and accepting connections");
-      return;
-    } catch {
-      // Not ready yet
-    }
-
-    attempt++;
-    await Bun.sleep(1000);
-  }
-
-  error(`PostgreSQL failed to start within ${maxAttempts} seconds`);
-  process.exit(1);
-}
-
-/**
- * Display post-promotion instructions
- */
-function showPostPromotionInstructions(config: PromoteConfig): void {
-  process.stdout.write("\n");
-  success("=========================================");
-  success("PROMOTION COMPLETE");
-  success("=========================================");
-  process.stdout.write("\n");
-  process.stdout.write("Next steps:\n");
-  process.stdout.write("\n");
-  process.stdout.write("1. Verify primary status:\n");
-  process.stdout.write(
-    `   docker exec ${config.containerName} psql -U postgres -c "SELECT pg_is_in_recovery();"\n`
+// Checked before the confirmation prompt so an operator is never asked to confirm a promotion pg_ctl would refuse.
+// The state comes from the control file, the same field pg_ctl promote checks, so it needs no database login and
+// names a stopped or non-standby server correctly even where a login would fail. LC_ALL=C keeps pg_controldata's
+// labels in English whatever locale the container runs.
+const control =
+  await $`docker exec -u postgres -e LC_ALL=C ${container} pg_controldata ${dataDirArgs}`
+    .nothrow()
+    .quiet();
+const state = /^Database cluster state:\s*(.+)$/m.exec(control.stdout.toString())?.[1];
+if (state === "in production") fail(`'${container}' is already a primary`);
+if (state !== "in archive recovery")
+  fail(
+    `'${container}' is not a running standby (cluster state: ${state ?? "unreadable — is the container running? docker ps -a"})`
   );
-  process.stdout.write("\n");
-  process.stdout.write("2. Check replication slots (if setting up new replicas):\n");
-  process.stdout.write(
-    `   docker exec ${config.containerName} psql -U postgres -c "SELECT * FROM pg_replication_slots;"\n`
+
+// A standby still streaming has a live upstream, so promoting it now gives two servers accepting writes. The login
+// resolves the superuser like the image's healthcheck (POSTGRES_USER, else its _FILE, else postgres) because
+// POSTGRES_USER can rename it; the shell script is a plain string and the SQL its $1, so nothing is quoted by hand.
+// A status that cannot be read counts as unsafe: refusing costs a --force, a wrong promotion costs diverged data.
+const ASK_AS_SUPERUSER =
+  'u="${POSTGRES_USER:-}"; if [ -z "$u" ] && [ -n "${POSTGRES_USER_FILE:-}" ]; then u="$(cat "$POSTGRES_USER_FILE")"; fi; exec psql -X -At -U "${u:-postgres}" -d postgres -c "$1"';
+const RECEIVER_SQL =
+  "SELECT status || ' from ' || coalesce(sender_host, 'unknown host') FROM pg_stat_wal_receiver";
+if (!force) {
+  const receiver =
+    await $`docker exec -u postgres ${container} sh -c ${ASK_AS_SUPERUSER} sh ${RECEIVER_SQL}`
+      .nothrow()
+      .quiet();
+  if (receiver.exitCode !== 0)
+    fail(
+      `cannot read the replication status of '${container}': ${receiver.stderr.toString().trim()}\nStop the old primary, then rerun with --force.`
+    );
+  const status = receiver.stdout.toString().trim();
+  if (status.startsWith("streaming"))
+    fail(
+      `'${container}' is still ${status}: that server is alive, so promoting gives two primaries (split-brain).\nStop it and rerun once this standby no longer streams; --force promotes anyway.`
+    );
+  warning(
+    "Not streaming from a primary. That does not prove it is down: one cut off by a network split looks the same."
   );
-  process.stdout.write("\n");
-  process.stdout.write("3. Update application connection strings to point to new primary\n");
-  process.stdout.write("\n");
-  process.stdout.write("4. Configure new replicas to connect to this primary (if needed)\n");
-  process.stdout.write("\n");
-  process.stdout.write("5. Stop or reconfigure old primary to prevent split-brain\n");
-  process.stdout.write("\n");
-  warning("IMPORTANT: Ensure only ONE primary exists in your cluster!");
-  process.stdout.write("\n");
 }
 
-/**
- * Main function
- */
-async function main(): Promise<void> {
-  const config = parseArgs();
-
-  process.stdout.write("\n");
-  info("=========================================");
-  info("PostgreSQL Replica Promotion Script");
-  info("=========================================");
-  process.stdout.write("\n");
-
-  await checkPrerequisites(config);
-  await verifyReplicaState(config);
-  await confirmPromotion(config);
-  await createBackup(config);
-  await stopContainer(config);
-  await promoteReplica(config);
-  await updateConfiguration(config);
-  await restartPrimary(config);
-  showPostPromotionInstructions(config);
+if (!yes) {
+  warning(`About to promote '${container}' to primary. This is one-way.`);
+  warning("The old primary MUST already be stopped, or both will accept writes (split-brain).");
+  const answer = prompt("Type 'yes' to continue:");
+  // prompt() returns null at EOF. Non-zero, so `promote-replica.ts && <repoint clients>` stops when nothing was promoted.
+  if (answer?.trim().toLowerCase() !== "yes") {
+    info("Promotion cancelled");
+    process.exit(1);
+  }
 }
 
-// Run main function
-main().catch((error) => {
-  error(error.message);
-  process.exit(1);
-});
+info(`Promoting '${container}'...`);
+const promote =
+  await $`docker exec -u postgres ${container} pg_ctl promote ${dataDirArgs}`.nothrow();
+if (promote.exitCode !== 0)
+  fail(`pg_ctl promote failed (exit ${promote.exitCode}); its message is above`);
+
+success(`'${container}' is now a primary.`);
+process.stdout.write(`
+Next:
+  1. Point applications at '${container}'.
+  2. Rebuild the old primary as a replica of it before starting it again (re-clone or pg_rewind).
+  3. Replication slots are not copied to replicas: create the slots the new replicas need.
+`);

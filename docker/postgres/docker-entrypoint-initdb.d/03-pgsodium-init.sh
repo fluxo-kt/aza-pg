@@ -1,22 +1,16 @@
 #!/bin/bash
 #
-# pgsodium Server Secret Initialization (Optional)
-# ================================================
-# Initializes pgsodium server secret key required for supabase_vault encryption.
-# This script creates the master encryption key used by pgsodium for envelope encryption.
+# Optional pgsodium key row
+# =========================
+# Creates a pgsodium key row named 'pgsodium_root' (pgsodium.create_key) for code that looks keys up by that name.
+# Neither pgsodium nor Vault needs it: both derive their keys from the root key the server loads at start
+# ($PGDATA/pgsodium_root.key or PGSODIUM_KEY_FILE), which is why the script is off by default.
 #
 # Gating:
 # - Only runs if ENABLE_PGSODIUM_INIT=true (default: disabled)
-# - pgsodium is marked as optional in manifest (defaultEnable: false)
+# - pgsodium itself is preloaded and created by default (01-extensions.sql); this script only adds the row
 #
-# Prerequisites (if enabled):
-# - pgsodium extension will be created by this script
-# - Runs after baseline extension creation
-#
-# Security Note:
-# - Server secret is stored in pgsodium.key table
-# - Required for supabase_vault secret encryption/decryption
-# - Without this, supabase_vault operations will fail with "no server secret key defined"
+# "no server secret key defined" from Vault means pgsodium or supabase_vault is not preloaded; this row does not fix it.
 
 set -euo pipefail
 
@@ -29,38 +23,29 @@ fi
 echo "[03-pgsodium] Initializing pgsodium (ENABLE_PGSODIUM_INIT=true)"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Security: Use pg_catalog search_path to prevent malicious schema injection attacks
-    -- This ensures that unqualified identifiers (functions, operators, types) resolve to
-    -- system catalog objects only, preventing privilege escalation via user-created schemas.
-    SET LOCAL search_path = pg_catalog;
-
     DO \$\$
     BEGIN
         -- Create pgsodium extension if it doesn't exist
         CREATE EXTENSION IF NOT EXISTS pgsodium;
 
         -- IMPORTANT: pgsodium event triggers require preloading to avoid GUC parameter errors
-        -- pgsodium v3.1.9 event triggers call current_setting('pgsodium.enable_event_trigger')
+        -- pgsodium event triggers call current_setting('pgsodium.enable_event_trigger')
         -- without missing_ok=true. The parameter is only registered when pgsodium is preloaded.
         -- Without preload, event triggers fail during DDL operations with:
         -- "unrecognized configuration parameter 'pgsodium.enable_event_trigger'"
         --
-        -- By default, pgsodium is NOT preloaded (optional module, defaultEnable: false).
-        -- To enable pgsodium + vault: Add to POSTGRES_SHARED_PRELOAD_LIBRARIES:
-        --   POSTGRES_SHARED_PRELOAD_LIBRARIES="...,pgsodium"
-        --
-        -- Full Transparent Column Encryption (TCE) additionally requires:
-        --   - pgsodium_getkey script configured via pgsodium.getkey_script GUC parameter
+        -- The image preloads pgsodium by default with a root key per data directory (or the operator's
+        -- PGSODIUM_KEY_FILE); a POSTGRES_SHARED_PRELOAD_LIBRARIES override must keep it.
 
-        -- Create server secret key if it doesn't exist
+        -- Create the named key row if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pgsodium.key WHERE name = 'pgsodium_root') THEN
             PERFORM pgsodium.create_key(name := 'pgsodium_root');
-            RAISE NOTICE 'pgsodium server secret initialized';
+            RAISE NOTICE 'pgsodium key pgsodium_root created';
         ELSE
-            RAISE NOTICE 'pgsodium server secret already exists';
+            RAISE NOTICE 'pgsodium key pgsodium_root already exists';
         END IF;
     END
     \$\$;
 EOSQL
 
-echo "pgsodium initialization complete"
+echo "[03-pgsodium] pgsodium_root key row ready"

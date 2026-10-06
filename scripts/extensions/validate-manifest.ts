@@ -4,6 +4,7 @@
  * Validates extensions.manifest.json against expected counts, consistency rules, and cross-references
  */
 
+import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { validateManifest } from "./manifest-schema";
 import * as logger from "../utils/logger";
@@ -15,7 +16,6 @@ interface ManifestCounts {
   pgdg: number;
   percona: number;
   timescale: number;
-  githubRelease: number;
   compiled: number;
   enabled: number;
   disabled: number;
@@ -24,7 +24,6 @@ interface ManifestCounts {
 // File paths - derive PROJECT_ROOT from import.meta.dir
 const PROJECT_ROOT = join(import.meta.dir, "../..");
 const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
-const DOCKERFILE_PATH = join(PROJECT_ROOT, "docker/postgres/Dockerfile");
 const INIT_SQL_PATH = join(
   PROJECT_ROOT,
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
@@ -48,15 +47,14 @@ interface ManifestEntry {
   name: string;
   displayName?: string;
   kind: "extension" | "builtin" | "tool";
-  install_via?: "pgdg" | "percona" | "timescale" | "source" | "github-release";
-  githubRepo?: string;
-  githubReleaseTag?: string;
-  githubAssetPattern?: string;
+  install_via?: "pgdg" | "percona" | "timescale" | "source";
   soFileName?: string;
+  binaryPath?: string;
   source?: SourceSpec;
   runtime?: RuntimeSpec;
   dependencies?: string[];
   enabled?: boolean;
+  disabledReason?: string;
 }
 
 interface Manifest {
@@ -110,16 +108,14 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
   const percona = manifest.entries.filter((e) => e.install_via === "percona").length;
   const timescale = manifest.entries.filter((e) => e.install_via === "timescale").length;
-  const githubRelease = manifest.entries.filter((e) => e.install_via === "github-release").length;
 
-  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale, not github-release)
+  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale)
   const compiled = manifest.entries.filter(
     (e) =>
       e.kind !== "builtin" &&
       e.install_via !== "pgdg" &&
       e.install_via !== "percona" &&
-      e.install_via !== "timescale" &&
-      e.install_via !== "github-release"
+      e.install_via !== "timescale"
   ).length;
 
   const enabled = manifest.entries.filter((e) => e.enabled !== false).length;
@@ -131,15 +127,14 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   console.log(`  PGDG: ${pgdg}`);
   console.log(`  Percona: ${percona}`);
   console.log(`  Timescale: ${timescale}`);
-  console.log(`  GitHub Release: ${githubRelease}`);
   console.log(`  Compiled: ${compiled}`);
   console.log(`  Enabled: ${enabled}`);
   console.log(`  Disabled: ${disabled}`);
 
   // Sanity check: counts should sum correctly
-  if (builtin + pgdg + percona + timescale + githubRelease + compiled !== total) {
+  if (builtin + pgdg + percona + timescale + compiled !== total) {
     error(
-      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + githubRelease(${githubRelease}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + githubRelease + compiled}, but total = ${total}`
+      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + compiled}, but total = ${total}`
     );
   }
 
@@ -149,7 +144,7 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
     );
   }
 
-  return { total, builtin, pgdg, percona, timescale, githubRelease, compiled, enabled, disabled };
+  return { total, builtin, pgdg, percona, timescale, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -191,7 +186,7 @@ async function validateDefaultEnable(manifest: Manifest): Promise<void> {
     if (entry.runtime?.defaultEnable) {
       const inBaseline = baselineExtensions.has(entry.name.toLowerCase());
       // Check both the extension name and the custom preloadLibraryName if specified
-      const preloadName = entry.runtime?.preloadLibraryName ?? entry.name;
+      const preloadName = preloadLibraryName(entry);
       const inPreload = preloadLibraries.has(preloadName);
 
       // Builtin extensions that don't require CREATE EXTENSION (like plpgsql)
@@ -234,9 +229,7 @@ async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void>
   const expectedPreloadEntries = manifest.entries.filter(
     (e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.enabled !== false
   );
-  const expectedPreload = expectedPreloadEntries.map(
-    (e) => e.runtime?.preloadLibraryName ?? e.name
-  );
+  const expectedPreload = expectedPreloadEntries.map((e) => preloadLibraryName(e));
 
   console.log(`  Expected preload (from manifest): ${expectedPreload.join(", ")}`);
 
@@ -294,69 +287,6 @@ async function validateSharedPreloadLibraries(manifest: Manifest): Promise<void>
   }
 }
 
-// 4. PGDG consistency
-async function validatePgdgConsistency(manifest: Manifest): Promise<void> {
-  console.log(); // Empty line for spacing
-  logger.info("[PGDG CONSISTENCY VALIDATION]");
-
-  const dockerfile = await readFile(DOCKERFILE_PATH);
-  const pgdgExtensions = manifest.entries.filter((e) => e.install_via === "pgdg");
-
-  // Extract PGDG package names from apt-get install commands
-  // Pattern: postgresql-${PG_MAJOR}-<package>=<version>
-  // Example: postgresql-${PG_MAJOR}-cron=1.6.7-2.pgdg13+1
-  const packageRegex = /postgresql-\$\{PG_MAJOR\}-([a-z0-9-]+)=[0-9.+a-z-]+/g;
-  const dockerfilePgdgPackages = new Set<string>();
-
-  let match;
-  while ((match = packageRegex.exec(dockerfile)) !== null) {
-    const packageName = match[1];
-    if (packageName) {
-      dockerfilePgdgPackages.add(packageName);
-    }
-  }
-
-  console.log(`  PGDG packages in Dockerfile: ${Array.from(dockerfilePgdgPackages).join(", ")}`);
-
-  // The Dockerfile uses TypeScript-generated package lists with hardcoded versions
-  // Validate that enabled PGDG extensions have corresponding package installations
-  for (const entry of pgdgExtensions) {
-    // Map extension name to Dockerfile package name (e.g., "pg_cron" -> "cron")
-    const packageName = getDockerfilePackageName(entry.name);
-
-    if (!dockerfilePgdgPackages.has(packageName)) {
-      // This is expected for enabled=false entries, so only warn
-      if (entry.enabled !== false) {
-        warn(
-          `Extension '${entry.name}' has install_via="pgdg" but no corresponding package in Dockerfile ` +
-            `(expected: postgresql-\${PG_MAJOR}-${packageName}=...). This may be intentional for dynamic installation.`
-        );
-      }
-    }
-  }
-}
-
-// Map manifest extension name to Dockerfile package name (as used in apt-get install)
-function getDockerfilePackageName(extensionName: string): string {
-  const mapping: Record<string, string> = {
-    vector: "pgvector",
-    pg_cron: "cron",
-    pgaudit: "pgaudit",
-    timescaledb: "timescaledb",
-    postgis: "postgis-3",
-    pg_partman: "partman",
-    pg_repack: "repack",
-    hll: "hll",
-    http: "http",
-    hypopg: "hypopg",
-    pgrouting: "pgrouting",
-    rum: "rum",
-    set_user: "set-user",
-  };
-
-  return mapping[extensionName] || extensionName;
-}
-
 // 5. Runtime spec completeness
 async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
   console.log(); // Empty line for spacing
@@ -368,113 +298,58 @@ async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
     if (!entry.runtime) {
       warn(`Tool '${entry.name}' (kind="tool") is missing 'runtime' object`);
     }
+    // The image checks find a tool by the file it ships; a tool naming neither is never checked at all.
+    if (entry.enabled !== false && !entry.binaryPath && !entry.soFileName) {
+      error(
+        `Tool '${entry.name}' names neither binaryPath (the executable it installs, e.g. /usr/bin/pgbadger) nor soFileName (the library it installs); set the one it ships in scripts/extensions/manifest-data.ts`
+      );
+    }
+  }
+
+  // A disabled entry is read by whoever wants it back: the reason is the only record of why it is off.
+  for (const entry of manifest.entries) {
+    if (entry.enabled === false && !entry.disabledReason?.trim()) {
+      error(
+        `Entry '${entry.name}' is disabled without disabledReason; add one in scripts/extensions/manifest-data.ts saying why it is off and what would let it back on`
+      );
+    }
   }
 }
 
-// 6. Dependency validation
+// 6. Dependency validation: every dependency of an enabled entry exists and is enabled. This is the only
+// such check: it sees the whole manifest, and the builders run only after it (bun run build's preflight),
+// so they need no copy of the full manifest — a copy would tie their cache to every entry's text.
 function validateDependencies(manifest: Manifest): void {
   console.log(); // Empty line for spacing
   logger.info("[DEPENDENCY VALIDATION]");
 
-  const extensionNames = new Set(manifest.entries.map((e) => e.name));
+  // Names identify entries everywhere (CREATE EXTENSION, preload lists, this lookup): a second entry with the same
+  // name would silently replace the first here and in every generator.
+  const names = manifest.entries.map((e) => e.name);
+  for (const name of new Set(names.filter((n, i) => names.indexOf(n) !== i))) {
+    error(
+      `Entry name '${name}' is used more than once; rename or merge the entries in scripts/extensions/manifest-data.ts`
+    );
+  }
+
+  const byName = new Map(manifest.entries.map((e) => [e.name, e]));
 
   for (const entry of manifest.entries) {
-    if (entry.dependencies) {
-      for (const dep of entry.dependencies) {
-        if (!extensionNames.has(dep)) {
-          error(
-            `Extension '${entry.name}' has dependency on '${dep}' which does NOT exist in manifest`
-          );
-        }
-      }
-    }
-  }
-}
-
-// 7. GitHub release entry validation
-function validateGithubReleaseEntries(manifest: Manifest): void {
-  console.log(); // Empty line for spacing
-  logger.info("[GITHUB RELEASE VALIDATION]");
-
-  const githubReleaseEntries = manifest.entries.filter(
-    (e) => e.install_via === "github-release" && e.enabled !== false
-  );
-
-  if (githubReleaseEntries.length === 0) {
-    console.log("  No enabled GitHub release entries to validate");
-    return;
-  }
-
-  for (const entry of githubReleaseEntries) {
-    // Check required fields
-    if (!entry.githubRepo) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubRepo' field`);
-    }
-    if (!entry.githubReleaseTag) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubReleaseTag' field`);
-    }
-    if (!entry.githubAssetPattern) {
-      error(`GitHub release entry '${entry.name}' is missing required 'githubAssetPattern' field`);
-    }
-    if (!entry.soFileName) {
-      error(`GitHub release entry '${entry.name}' is missing required 'soFileName' field`);
-    }
-
-    // Validate githubRepo format (owner/repo)
-    if (entry.githubRepo && !/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(entry.githubRepo)) {
-      error(
-        `GitHub release entry '${entry.name}' has invalid githubRepo format: '${entry.githubRepo}'. Expected: owner/repo`
-      );
-    }
-
-    // Validate soFileName format
-    if (entry.soFileName && !/^[a-z0-9_.-]+\.so$/i.test(entry.soFileName)) {
-      error(
-        `GitHub release entry '${entry.name}' has invalid soFileName: '${entry.soFileName}'. Expected: name.so or name-version.so`
-      );
-    }
-
-    // Validate asset pattern has required placeholders
-    if (entry.githubAssetPattern) {
-      const hasVersion =
-        entry.githubAssetPattern.includes("{version}") ||
-        entry.githubAssetPattern.includes(entry.githubReleaseTag || "");
-      const hasArch = entry.githubAssetPattern.includes("{arch}");
-
-      if (!hasArch) {
-        warn(
-          `GitHub release entry '${entry.name}' asset pattern may not support multi-arch (missing {arch} placeholder)`
-        );
-      }
-      if (!hasVersion) {
-        warn(
-          `GitHub release entry '${entry.name}' asset pattern may not include version information`
-        );
-      }
-    }
-
-    // Validate consistency between githubReleaseTag and source.tag
-    if (entry.githubReleaseTag && entry.source?.type === "git" && "tag" in entry.source) {
-      const githubTag = entry.githubReleaseTag;
-      const sourceTag = entry.source.tag;
-
-      // Extract semantic versions (strip 'v' prefix if present)
-      const normalizeVersion = (v: string): string => v.replace(/^v/, "");
-      const normalizedGithubTag = normalizeVersion(githubTag);
-      const normalizedSourceTag = normalizeVersion(sourceTag);
-
-      if (normalizedGithubTag !== normalizedSourceTag) {
+    if (entry.enabled === false) continue;
+    for (const dep of entry.dependencies ?? []) {
+      const target = byName.get(dep);
+      if (!target) {
         error(
-          `GitHub release entry '${entry.name}' has inconsistent version tags:\n` +
-            `  githubReleaseTag: '${githubTag}' (normalized: '${normalizedGithubTag}')\n` +
-            `  source.tag:       '${sourceTag}' (normalized: '${normalizedSourceTag}')\n` +
-            `  These should reference the same version to ensure correct asset downloads.`
+          `Extension '${entry.name}' has dependency on '${dep}' which does NOT exist in manifest`
+        );
+      } else if (target.enabled === false) {
+        error(
+          `Extension '${entry.name}' requires '${dep}', which is disabled (${target.disabledReason ?? "no disabledReason"}). ` +
+            `Enable '${dep}' or disable '${entry.name}' in scripts/extensions/manifest-data.ts.`
         );
       }
     }
   }
-
-  console.log(`  Validated ${githubReleaseEntries.length} GitHub release entries`);
 }
 
 // Main validation
@@ -490,10 +365,8 @@ async function main(): Promise<void> {
     const counts = deriveCounts(manifest);
     await validateDefaultEnable(manifest);
     await validateSharedPreloadLibraries(manifest);
-    await validatePgdgConsistency(manifest);
     await validateRuntimeSpec(manifest);
     validateDependencies(manifest);
-    validateGithubReleaseEntries(manifest);
 
     // Store counts for success message
     const manifestCounts = counts;
@@ -521,7 +394,7 @@ async function main(): Promise<void> {
       logger.success(
         `Manifest validation passed (${manifestCounts.total} extensions: ` +
           `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.percona} Percona + ` +
-          `${manifestCounts.timescale} Timescale + ${manifestCounts.githubRelease} GitHub + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.timescale} Timescale + ${manifestCounts.compiled} compiled, ` +
           `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);

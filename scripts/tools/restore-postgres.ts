@@ -57,9 +57,10 @@ async function checkRequiredCommands(): Promise<void> {
  */
 function showUsage(): void {
   const scriptName = Bun.argv[1];
-  error("Backup file argument required");
-  process.stdout.write("\n");
   process.stdout.write(`Usage: ${scriptName} <backup-file> [database]\n`);
+  process.stdout.write(
+    "Connection: PGHOST, PGPORT, PGUSER, PGPASSWORD (default localhost:5432, postgres)\n"
+  );
   process.stdout.write("\n");
   process.stdout.write("Examples:\n");
   process.stdout.write(
@@ -80,8 +81,8 @@ function showUsage(): void {
 function parseConfig(): RestoreConfig {
   const args = Bun.argv.slice(2);
 
-  // Guard: Check backup file argument
-  if (args.length === 0 || !args[0]) {
+  // Only positional arguments exist; a flag (--help, -h …) would otherwise be read as the backup file's name.
+  if (args.length === 0 || !args[0] || args.some((a) => a.startsWith("-"))) {
     showUsage();
   }
 
@@ -159,14 +160,23 @@ function checkPgPassword(config: RestoreConfig): void {
  * Warn about destructive operation and get user confirmation
  */
 async function confirmRestore(database: string): Promise<void> {
-  process.stdout.write(`\n⚠️  WARNING: This will overwrite the database '${database}'\n`);
+  process.stdout.write(
+    `\n⚠️  WARNING: This replaces every table, function and other object the backup holds in database '${database}'\n` +
+      "with the backup's version; objects the backup lacks stay. Missing roles are created; existing roles are kept.\n" +
+      "The restore is one transaction: if any statement fails, nothing changes.\n" +
+      // pg_dump leaves out the pgsodium root key, and the entrypoint refuses to switch an existing data directory to
+      // another key: a server created without the original key cannot decrypt them, and must be recreated with it.
+      "Vault secrets and pgsodium-encrypted values in the backup decrypt only if this server was created with\n" +
+      "PGSODIUM_KEY_FILE pointing at a copy of the original server's pgsodium root key; see docs/PGSODIUM-SETUP.md.\n"
+  );
   process.stdout.write("Press Ctrl+C to cancel, or Enter to continue...\n");
 
-  // Read user input
   for await (const _line of console) {
-    // User pressed Enter, continue
     return;
   }
+  // stdin closed without a line (cron, CI, < /dev/null): nobody confirmed
+  error("No confirmation (stdin closed); nothing restored");
+  process.exit(1);
 }
 
 /**
@@ -175,24 +185,41 @@ async function confirmRestore(database: string): Promise<void> {
 async function performRestore(config: RestoreConfig): Promise<void> {
   info("Restoring backup...");
 
-  try {
-    if (config.backupFile.endsWith(".gz")) {
-      process.stdout.write("Decompressing and restoring...\n");
-      await $`gunzip -c ${config.backupFile} | psql -h ${config.pgHost} -p ${config.pgPort.toString()} -U ${config.pgUser} -d ${config.database} --quiet`.quiet();
-    } else {
-      process.stdout.write("Restoring uncompressed backup...\n");
-      await $`psql -h ${config.pgHost} -p ${config.pgPort.toString()} -U ${config.pgUser} -d ${config.database} -f ${config.backupFile} --quiet`.quiet();
-    }
-  } catch {
+  // One transaction that stops at the first error, so a failed restore changes nothing. backup-postgres dumps with
+  // --clean --if-exists, which replaces the objects a new aza-pg server creates at init instead of failing on them.
+  // TimescaleDB needs its restore mode around a dump holding hypertables; the dump empties search_path, hence
+  // public.-qualified calls, guarded because the target database may lack the extension.
+  const psqlArgs = [
+    "-h",
+    config.pgHost,
+    "-p",
+    config.pgPort.toString(),
+    "-U",
+    config.pgUser,
+    "-d",
+    config.database,
+  ];
+  const tsdb = (fn: string) =>
+    `DO $t$ BEGIN IF to_regproc('public.${fn}') IS NOT NULL THEN PERFORM public.${fn}(); END IF; END $t$;`;
+  const script =
+    'set -euo pipefail; f=$1; shift; { echo "$PRE"; if [[ $f == *.gz ]]; then gunzip -c "$f"; else cat "$f"; fi; echo "$POST"; } | psql "$@" -X -q -1 -v ON_ERROR_STOP=1';
+  const result = await $`bash -c ${script} bash ${config.backupFile} ${psqlArgs}`
+    .env({
+      ...Bun.env,
+      PRE: tsdb("timescaledb_pre_restore"),
+      POST: tsdb("timescaledb_post_restore"),
+    })
+    .nothrow()
+    .quiet();
+  if (result.exitCode !== 0) {
+    process.stderr.write(result.stderr);
     process.stdout.write("\n");
     error("Restore failed");
-    process.stdout.write("   Check psql output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
       `   - Database '${config.database}' does not exist: createdb -h ${config.pgHost} -U ${config.pgUser} ${config.database}\n`
     );
     process.stdout.write(`   - Insufficient permissions for user ${config.pgUser}\n`);
-    process.stdout.write("   - Conflicting extensions: DROP EXTENSION ... CASCADE\n");
     process.stdout.write("   - Check PostgreSQL logs: docker logs <postgres-container>\n");
     process.exit(1);
   }
@@ -242,7 +269,8 @@ async function main(): Promise<void> {
       user: config.pgUser,
       timeout: 10,
     });
-  } catch {
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
     process.stdout.write("   Troubleshooting:\n");
     process.stdout.write(
       `   - Verify host/port: pg_isready -h ${config.pgHost} -p ${config.pgPort}\n`
@@ -268,7 +296,7 @@ async function main(): Promise<void> {
 }
 
 // Run main function
-main().catch((error) => {
-  error(error.message);
+main().catch((err) => {
+  error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

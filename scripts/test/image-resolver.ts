@@ -5,10 +5,14 @@
  * 1. CLI positional argument (Bun.argv[2])
  * 2. CLI named flag (--image=VALUE)
  * 3. Environment variable (POSTGRES_IMAGE or custom)
- * 4. Default fallback (ghcr.io/fluxo-kt/aza-pg:pg18)
+ * 4. Default fallback: DEFAULT_TEST_IMAGE, the tag `bun run build` produces locally. (The registry never publishes
+ *    a `pg18` tag — its floating tags are `18`, `18.4`, `<pg>-<timestamp>-single-node` — so a ghcr default made every
+ *    run without POSTGRES_IMAGE fail to pull.)
  *
  * Supports remote (ghcr.io/*), local (aza-pg:*), and digest (@sha256:*) references
  */
+
+export const DEFAULT_TEST_IMAGE = "aza-pg:pg18";
 
 export interface ImageResolverOptions {
   /**
@@ -23,7 +27,7 @@ export interface ImageResolverOptions {
 
   /**
    * Default image tag if no CLI arg or env var provided
-   * (defaults to ghcr.io/fluxo-kt/aza-pg:pg18)
+   * (defaults to DEFAULT_TEST_IMAGE)
    */
   defaultImage?: string;
 }
@@ -35,7 +39,7 @@ export interface ImageResolverOptions {
  * 1. Positional argument (first non-flag argument)
  * 2. Named flag (--image=VALUE)
  * 3. Environment variable (POSTGRES_IMAGE or custom)
- * 4. Default (ghcr.io/fluxo-kt/aza-pg:pg18 or custom)
+ * 4. Default (DEFAULT_TEST_IMAGE or custom)
  *
  * @param options Resolution options
  * @returns Resolved image tag
@@ -58,39 +62,7 @@ export interface ImageResolverOptions {
  * });
  */
 export function resolveImageTag(options: ImageResolverOptions = {}): string {
-  const {
-    argv = Bun.argv,
-    envKey = "POSTGRES_IMAGE",
-    defaultImage = "ghcr.io/fluxo-kt/aza-pg:pg18",
-  } = options;
-
-  // 1. Check for positional argument (first non-flag argument after script name)
-  // Skip argv[0] (bun) and argv[1] (script path)
-  for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i];
-    // Skip flags (--flag or -f)
-    if (arg && !arg.startsWith("-")) {
-      return arg;
-    }
-  }
-
-  // 2. Check for named flag (--image=VALUE)
-  const imageFlag = argv.find((arg) => arg.startsWith("--image="));
-  if (imageFlag) {
-    const value = imageFlag.split("=", 2)[1];
-    if (value) {
-      return value;
-    }
-  }
-
-  // 3. Check environment variable
-  const envValue = Bun.env[envKey];
-  if (envValue) {
-    return envValue;
-  }
-
-  // 4. Return default
-  return defaultImage;
+  return resolveImageWithSource(options).image;
 }
 
 /**
@@ -157,11 +129,7 @@ export function resolveImageWithSource(options: ImageResolverOptions = {}): {
   image: string;
   source: string;
 } {
-  const {
-    argv = Bun.argv,
-    envKey = "POSTGRES_IMAGE",
-    defaultImage = "ghcr.io/fluxo-kt/aza-pg:pg18",
-  } = options;
+  const { argv = Bun.argv, envKey = "POSTGRES_IMAGE", defaultImage = DEFAULT_TEST_IMAGE } = options;
 
   // Check positional argument
   for (let i = 2; i < argv.length; i++) {

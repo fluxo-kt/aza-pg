@@ -4,16 +4,10 @@
 # =================================
 # Creates pg_cron extension in POSTGRES_DB to match cron.database_name configuration.
 #
-# Why separate script:
-# - pg_cron can ONLY be created in the database specified by cron.database_name
-# - cron.database_name is set to ${POSTGRES_DB:-postgres} in entrypoint (configurable)
-# - 01-extensions.sql runs in postgres database by default
-# - This script ensures pg_cron is created in the correct database
-#
-# Execution order:
-# - 01-extensions.sql creates other extensions in postgres database
-# - 01b-pg_cron.sh (this script) creates pg_cron in POSTGRES_DB
-# - Both run during first cluster initialization
+# pg_cron can only be created in the database named by cron.database_name, which the auto-config entrypoint sets to
+# POSTGRES_DB (defaulting, like the official entrypoint, to POSTGRES_USER). CREATE EXTENSION also fails unless pg_cron
+# is preloaded, and an operator can drop it from POSTGRES_SHARED_PRELOAD_LIBRARIES, so this script checks the preload
+# list and skips pg_cron when it is absent.
 
 set -euo pipefail
 
@@ -26,9 +20,6 @@ if echo "$PRELOAD_LIBS" | grep -qw "pg_cron"; then
     echo "[01b-pg_cron] pg_cron is preloaded, creating extension in database: $TARGET_DB"
 
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$TARGET_DB" <<-EOSQL
-        -- Security: Use pg_catalog search_path to prevent schema injection attacks
-        SET LOCAL search_path = pg_catalog;
-
         -- Create pg_cron extension
         -- NOTE: This must be created in the database specified by cron.database_name
         CREATE EXTENSION IF NOT EXISTS pg_cron;

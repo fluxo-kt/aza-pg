@@ -1,10 +1,10 @@
-# pgflow v0.14.1 - Quick Reference
+# pgflow - Quick Reference
 
 > **📖 Complete Documentation**: See **[docs/PGFLOW.md](../../docs/PGFLOW.md)** for the full guide
 
 ## Status in aza-pg
 
-**pgflow v0.14.1 is bundled** and automatically installed in:
+**pgflow is bundled** (version: see `docs/PGFLOW.md` → Version Compatibility) and automatically installed in:
 
 - Initial database (`POSTGRES_DB`) via initdb.
 
@@ -15,7 +15,7 @@ the pgflow schema into each additional database explicitly.
 
 ```sql
 -- Verify installation
-SELECT pgflow.is_local();  -- Returns: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
 -- List tables
 \dt pgflow.*
@@ -39,14 +39,14 @@ See:
 
 Located in `tests/fixtures/pgflow/`:
 
-- `schema-v0.14.1.sql` - pgflow schema
+- `schema.sql` - pgflow schema
 - `README.md` - Schema usage notes
 
 ## Compatibility Layer
 
 aza-pg provides Supabase-to-PostgreSQL compatibility:
 
-- `realtime.send()` stub (3-layer event broadcasting)
+- `realtime.send()` stub: always broadcasts through `pg_notify`; also sends to a pgmq queue when `realtime.pgmq_enabled` is `true`, and posts to an HTTP webhook through pg_net when `realtime.webhook_url` is set
 - Security patches (search_path fixes)
 - Custom installation detection
 

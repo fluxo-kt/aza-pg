@@ -12,7 +12,7 @@ This gets you production-ready PostgreSQL with:
 - Connection pooling (2000 clients → 25 DB connections)
 - Daily backups to S3 (7-day retention, encrypted)
 - Prometheus + Grafana monitoring
-- 40+ PostgreSQL extensions pre-installed
+- The image's PostgreSQL extensions pre-installed ([catalog](EXTENSIONS.md))
 
 ---
 
@@ -214,12 +214,14 @@ docker network inspect aza-pg-network
 
 ---
 
-### Step 4: Build aza-pg Docker Image
+### Step 4 (Optional): Build Your Own aza-pg Image
+
+Skip this step to run the published `ghcr.io/fluxo-kt/aza-pg:18` (the compose default). Build your own only to change the image, then point `POSTGRES_IMAGE` at your pushed tag.
 
 **4.1 Clone repository locally (on your machine)**
 
 ```bash
-git clone https://github.com/yourusername/aza-pg.git
+git clone https://github.com/fluxo-kt/aza-pg.git
 cd aza-pg
 ```
 
@@ -242,13 +244,12 @@ docker images | grep aza-pg
 # Login to GHCR
 echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
-# Tag image
-docker tag aza-pg:latest ghcr.io/USERNAME/aza-pg:18.1-$(date +%Y%m%d%H%M%S)
-docker tag aza-pg:latest ghcr.io/USERNAME/aza-pg:18.1-latest
+# Tag and push (bun run build produces aza-pg:pg18)
+TAG=ghcr.io/USERNAME/aza-pg:18-$(date +%Y%m%d%H%M%S)
+docker tag aza-pg:pg18 "$TAG"
+docker push "$TAG"
 
-# Push
-docker push ghcr.io/USERNAME/aza-pg:18.1-$(date +%Y%m%d%H%M%S)
-docker push ghcr.io/USERNAME/aza-pg:18.1-latest
+# Then set POSTGRES_IMAGE=$TAG in the stack's .env
 ```
 
 ---
@@ -267,7 +268,7 @@ In Coolify UI:
 
 **5.2 Configure Docker Compose**
 
-1. In the Docker Compose editor, paste the content from `/opt/apps/art/infra/aza-pg/deployments/phase1-single-vps/docker-compose.yml`
+1. In the Docker Compose editor, paste the content of this repository's `deployments/phase1-single-vps/docker-compose.yml`
 2. Modify the `networks` section to reference the Coolify network:
 
 ```yaml
@@ -288,7 +289,7 @@ Add these variables:
 POSTGRES_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
 POSTGRES_DB=main
 POSTGRES_USER=postgres
-POSTGRES_MEMORY=5GB
+POSTGRES_MEMORY=5120   # MB, integer only
 POSTGRES_WORKLOAD_TYPE=web
 POSTGRES_STORAGE_TYPE=ssd
 
@@ -300,6 +301,7 @@ PGBOUNCER_MAX_CLIENT_CONN=2000
 # Monitoring Configuration
 MONITORING_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
 GRAFANA_ADMIN_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
+GRAFANA_ROOT_URL=https://grafana.yourdomain.com
 
 # Hetzner S3 Configuration (for backups)
 S3_ENDPOINT=fsn1.your-objectstorage.hetzner.cloud
@@ -324,23 +326,15 @@ openssl rand -base64 32
 
 **5.4 Configure Volumes**
 
-Copy configuration files to Coolify persistent storage:
+The compose file bind-mounts configuration files from paths next to it, and creates its data volumes (`postgres_data`, `prometheus_data`, `grafana_data`) on first deploy:
+
+- `prometheus/prometheus.yml` and `prometheus/postgres_exporter_queries.yaml`
+- `grafana/provisioning/`
+- `pgbouncer/userlist.txt`: generated from PostgreSQL after the first start (see `pgbouncer/userlist.txt.example`); PgBouncer runs as uid 70, so `chown 70:70` it before `chmod 600`
 
 **Method 1: Via Coolify File Manager (Recommended)**
 
-1. In Coolify UI, go to: Storage tab
-2. Create volumes for:
-   - `prometheus_config`
-   - `prometheus_data`
-   - `grafana_data`
-   - `pgbouncer_config`
-   - `pgbackrest_config`
-   - `postgres_data`
-
-3. Use File Manager to upload files:
-   - Upload `prometheus/prometheus.yml` to `prometheus_config` volume
-   - Upload `pgbouncer/pgbouncer.ini` to `pgbouncer_config` volume
-   - Upload `pgbackrest/pgbackrest.conf` to `pgbackrest_config` volume
+In Coolify UI, Storage tab: add each file above at the path the compose file mounts it from.
 
 **Method 2: Via SSH (Bare VPS Alternative)**
 
@@ -353,12 +347,8 @@ mkdir -p /opt/aza-pg-stack
 cd /opt/aza-pg-stack
 
 # Copy files from repository
-# - Copy docker-compose.yml
-# - Copy prometheus/prometheus.yml
-# - Copy pgbouncer/pgbouncer.ini
-# - Copy pgbackrest/pgbackrest.conf
-# - Copy grafana/ directory
-# - Copy scripts/ directory
+# - Copy docker-compose.yml, .env.example (as .env)
+# - Copy prometheus/, grafana/, pgbouncer/ and scripts/ directories
 ```
 
 **5.5 Deploy the Stack**
@@ -387,6 +377,7 @@ docker compose ps
 - postgres (running, port 5432/tcp)
 - pgbouncer (running, port 6432/tcp)
 - postgres-exporter (running, port 9187/tcp)
+- pgbouncer-exporter (running, port 9127/tcp)
 - prometheus (running, port 9090/tcp)
 - grafana (running, port 3000/tcp)
 
@@ -406,7 +397,7 @@ psql -U postgres -c "SHOW shared_buffers;"
 # Expected: ~1280MB (1.25GB = 25% of 5GB)
 
 psql -U postgres -c "SHOW max_connections;"
-# Expected: 200 (web workload type)
+# Expected: 170 (web workload's 200, scaled to 85% below 8 GB of RAM)
 
 psql -U postgres -c "SHOW random_page_cost;"
 # Expected: 1.1 (SSD optimized)
@@ -427,7 +418,7 @@ docker exec postgres psql -U postgres -c "SHOW random_page_cost;"
 
 **6.1 Create monitoring database user**
 
-In Coolify UI, execute in postgres container:
+The password must equal `MONITORING_PASSWORD`: the postgres-exporter logs in with it. In Coolify UI, execute in postgres container:
 
 ```bash
 psql -U postgres -c "
@@ -464,25 +455,15 @@ Login:
 - Username: `admin`
 - Password: Value from `GRAFANA_ADMIN_PASSWORD` in environment variables
 
-**6.3 Add Prometheus datasource**
+**6.3 Datasource and dashboard**
 
-1. Go to: Configuration → Data Sources → Add data source
-2. Select: Prometheus
-3. URL: `http://prometheus:9090`
-4. Click: Save & Test
+Nothing to add by hand: `grafana/provisioning/` provisions the `Prometheus` datasource (`http://prometheus:9090`) and the "PostgreSQL Overview" dashboard.
 
-**6.4 Import PostgreSQL dashboard**
-
-1. Go to: Dashboards → Import
-2. Enter ID: `14114`
-3. Select Prometheus datasource
-4. Click: Import
-
-**6.5 Verify metrics**
+**6.4 Verify metrics**
 
 Check dashboard shows:
 
-- PostgreSQL version: 18.1
+- PostgreSQL version: 18.x
 - Uptime: >0
 - Connections: 1-5 (just monitoring)
 - QPS: 0-10 (background queries)
@@ -589,13 +570,13 @@ Access Postgresus:
 In Coolify UI, execute in pgbouncer container:
 
 ```bash
-psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;"
+psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 ```
 
 **Bare VPS Alternative:**
 
 ```bash
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 ```
 
 **Expected output:**
@@ -683,7 +664,7 @@ EOF
 **Bare VPS Alternative:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 CREATE DATABASE test_db;
 \c test_db
 CREATE TABLE health_check (
@@ -845,30 +826,26 @@ CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_P
 EOF
 ```
 
-**12.2 On Primary: Configure pg_hba.conf**
+**12.2 On Primary: Publish the port on the private network and configure pg_hba.conf**
+
+The phase 1 compose file publishes PostgreSQL on `127.0.0.1` only, so the replica cannot reach it. In the `postgres` service change the port mapping to `"10.0.0.2:5432:5432"` and redeploy (details: [phase 2 README](../deployments/phase2-dual-vps/README.md)).
 
 ```bash
-bash -c "echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> "$PGDATA/pg_hba.conf"
 
 # Reload PostgreSQL
 psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
-**12.3 On Primary: Enable WAL archiving**
+**12.3 On Primary: Keep WAL for the replica**
 
 ```bash
+# The image already ships wal_level=logical (a superset of replica), max_wal_senders=10 and hot_standby=on.
+# Never lower wal_level: with a logical slot present PostgreSQL refuses to start.
 psql -U postgres <<EOF
-ALTER SYSTEM SET wal_level = 'replica';
-ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 EOF
-```
-
-Then restart the postgres service in Coolify UI or via:
-
-```bash
-docker restart postgres
 ```
 
 **12.4 On Replica: Create base backup**
@@ -882,32 +859,15 @@ In Coolify UI on replica:
 Then execute via Coolify terminal or SSH:
 
 ```bash
-# Run pg_basebackup
+# Copy the primary into the image's PGDATA; -R also writes standby.signal and primary_conninfo
 docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  --network aza-pg-network \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  pg_basebackup -h 10.0.0.2 -D /var/lib/postgresql/data -U replicator -v -P -W
-# Enter replication password when prompted
+  -v aza-pg-stack_postgres_data:/var/lib/postgresql \
+  -e PGHOST=10.0.0.2 -e PGUSER=replicator -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
+  ghcr.io/fluxo-kt/aza-pg:18 \
+  bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 ```
 
-**12.5 On Replica: Create standby.signal**
-
-```bash
-# Create standby configuration
-docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  bash -c "touch /var/lib/postgresql/data/standby.signal"
-
-# Configure primary connection
-docker run --rm \
-  -v aza-pg-stack_postgres_data:/var/lib/postgresql/data \
-  ghcr.io/USERNAME/aza-pg:18.1-latest \
-  bash -c "echo \"primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
-```
-
-**12.6 On Replica: Start PostgreSQL**
+**12.5 On Replica: Start PostgreSQL**
 
 In Coolify UI: Start postgres service
 
@@ -921,7 +881,7 @@ psql -U postgres -c "SELECT pg_is_in_recovery();"
 psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
 ```
 
-**12.7 On Primary: Verify replica connected**
+**12.6 On Primary: Verify replica connected**
 
 ```bash
 psql -U postgres -c "SELECT * FROM pg_stat_replication;"
@@ -939,89 +899,24 @@ psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 ### Step 13: Configure Keepalived for VIP
 
-Keepalived provides a Virtual IP (VIP) that automatically moves between primary and replica during failover.
+Keepalived gives clients one Virtual IP (VIP) that only a writable primary holds. Install it on each VPS host, not in a container: its check runs `docker exec` against the `postgres` container, and moving a VIP needs the host's network.
 
-**Option A: Run on Host VPS (Recommended for production)**
-
-Both servers need Keepalived installed directly on the host OS (not in Docker).
-
-**On Primary VPS:**
+On each VPS (SSH to the host, also under Coolify):
 
 ```bash
-# SSH to VPS
-ssh root@PRIMARY_VPS_IP
+apt update && apt install -y keepalived
+# From a checkout of this repo; on the replica host copy keepalived/replica.conf instead
+cp deployments/phase2-dual-vps/keepalived/primary.conf /etc/keepalived/keepalived.conf
+# Set auth_pass (the same on both hosts), interface and the VIP for your network
+systemctl enable --now keepalived
 
-# Install Keepalived
-apt install -y keepalived
-
-# Create config
-nano /etc/keepalived/keepalived.conf
-```
-
-**Content:**
-
-```
-vrrp_script chk_postgres {
-    script "/usr/bin/docker exec postgres pg_isready"
-    interval 2
-    weight 2
-}
-
-vrrp_instance VI_1 {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 100
-    advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass CHANGE_ME_SECURE_PASSWORD
-    }
-
-    virtual_ipaddress {
-        10.0.0.100/24 dev eth0
-    }
-
-    track_script {
-        chk_postgres
-    }
-}
-```
-
-```bash
-# Start Keepalived
-systemctl enable keepalived
-systemctl start keepalived
-
-# Verify VIP assigned
+# On the primary: the VIP is assigned
 ip addr show eth0 | grep 10.0.0.100
 ```
 
-**On Replica VPS:**
+The check fails on a standby and on a stopped server, so a standby never holds the VIP: after a primary failure clients get no connection until you promote the replica, then the VIP moves to it within a few seconds. Both nodes start as `BACKUP` with `nopreempt`, so an old primary that comes back does not take the VIP back; rebuild it as a replica before starting its PostgreSQL again. Rationale is in the config's comments.
 
-Repeat the same steps, but change in `/etc/keepalived/keepalived.conf`:
-
-- `state BACKUP`
-- `priority 90`
-
-```bash
-systemctl enable keepalived
-systemctl start keepalived
-```
-
-**Option B: Run Keepalived in Docker (Development/Testing only)**
-
-Create a Docker service in Coolify with:
-
-- Image: `osixia/keepalived:latest`
-- Network mode: `host` (required for VRRP)
-- Privileged mode: enabled
-- Volume: Mount keepalived.conf
-
-**Note:** This option is less reliable and should only be used for testing.
-
-**13.2 Test VIP failover**
+**13.2 Test that the VIP never moves to a standby**
 
 On Primary:
 
@@ -1032,15 +927,14 @@ systemctl stop keepalived
 On Replica:
 
 ```bash
-# Check VIP migrated
-ip addr show eth0 | grep 10.0.0.100
-# VIP should now appear on Replica
+# No VIP, because it is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 ```
 
 On Primary:
 
 ```bash
-# Restart Keepalived (VIP returns)
+# The VIP comes back
 systemctl start keepalived
 ```
 
@@ -1056,22 +950,23 @@ On Primary VPS:
 
 ```bash
 docker stop postgres
-systemctl stop keepalived
 ```
 
 On Replica VPS:
 
 ```bash
-# Verify VIP migrated
-ping 10.0.0.100
-# Should respond from Replica
+# No node holds the VIP while the replica is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 
 # Promote to Primary (execute in postgres container)
-pg_ctl promote -D /var/lib/postgresql/data
+pg_ctl promote   # reads the container's $PGDATA
 
-# Wait 10 seconds, verify promotion
+# Verify promotion
 psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Expected: f (false - now primary)
+
+# The VIP moves here within a few seconds (on the host)
+ip addr show eth0 | grep 10.0.0.100
 
 # Test write capability
 psql -U postgres -c "INSERT INTO health_check (message) VALUES ('Failover test successful');"
@@ -1083,9 +978,9 @@ On old Primary (now to become Replica):
 
 1. In Coolify UI: Stop and delete postgres service
 2. Delete postgres_data volume
-3. Repeat Step 12.4-12.6 but with:
-   - primary_conninfo pointing to new Primary (10.0.0.3)
-   - Keepalived priority set to 90
+3. Repeat Step 12.4-12.5 but with:
+   - PGHOST pointing to new Primary (10.0.0.3)
+4. Keep its Keepalived config unchanged: a standby cannot hold the VIP, so priorities need no swap
 
 ---
 
@@ -1116,7 +1011,7 @@ docker exec postgres psql -U postgres -t -c "SELECT pg_size_pretty(pg_database_s
 echo ""
 
 echo "4. PgBouncer Pools"
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -t -c "SHOW POOLS;"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -t -c "SHOW POOLS;"
 echo ""
 
 echo "5. Last Backup (check Postgresus UI)"
@@ -1359,7 +1254,7 @@ psql -U postgres -c "SELECT query, calls, total_exec_time, mean_exec_time FROM p
 psql -U postgres -c "SELECT count(*) FROM pg_stat_activity;"
 
 # Check PgBouncer wait queue
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;" | grep -v " 0 |" | grep -v "maxwait"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;" | grep -v " 0 |" | grep -v "maxwait"
 
 # Check cache hit ratio
 psql -U postgres -c "SELECT sum(blks_hit)::float / (sum(blks_hit) + sum(blks_read)) AS cache_hit_ratio FROM pg_stat_database;"
@@ -1385,7 +1280,7 @@ psql -U postgres -c "SELECT sum(blks_hit)::float / (sum(blks_hit) + sum(blks_rea
 
 ```bash
 # Run locally in repo
-bun run scripts/generate-ssl-certs.ts
+bun scripts/tools/generate-ssl-certs.ts
 
 # Or manually on VPS:
 cd /opt/aza-pg-stack/ssl
@@ -1404,8 +1299,7 @@ chown 999:999 server.key server.crt  # PostgreSQL user inside container
    ```yaml
    postgres:
      volumes:
-       - ./ssl/server.crt:/var/lib/postgresql/data/server.crt:ro
-       - ./ssl/server.key:/var/lib/postgresql/data/server.key:ro
+       - ./ssl:/etc/postgresql/ssl:ro
    ```
 
 **Enable SSL in PostgreSQL:**
@@ -1413,8 +1307,8 @@ chown 999:999 server.key server.crt  # PostgreSQL user inside container
 ```bash
 psql -U postgres <<EOF
 ALTER SYSTEM SET ssl = 'on';
-ALTER SYSTEM SET ssl_cert_file = 'server.crt';
-ALTER SYSTEM SET ssl_key_file = 'server.key';
+ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/ssl/server.crt';
+ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/ssl/server.key';
 EOF
 ```
 
@@ -1431,16 +1325,17 @@ postgresql://postgres:PASSWORD@pgbouncer:6432/main?sslmode=require
 ### Restrict pg_hba.conf
 
 ```bash
-bash -c 'cat > /var/lib/postgresql/data/pg_hba.conf << EOF
+bash -c 'cat > "$PGDATA/pg_hba.conf" << EOF
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
-local   all             postgres                                peer
+local   all             all                                     peer    map=local_postgres
 host    all             all             127.0.0.1/32            scram-sha-256
 host    all             all             ::1/128                 scram-sha-256
 host    all             all             172.20.0.0/16           scram-sha-256
 host    replication     replicator      10.0.0.0/24             scram-sha-256
-EOF'
+EOF
+printf "local_postgres\tpostgres\tall\n" > "$PGDATA/pg_ident.conf"'
 
-psql -U postgres -c "SELECT pg_reload_conf();"
+pg_ctl reload
 ```
 
 ---
@@ -1566,14 +1461,13 @@ All configuration files are in:
 
 - `deployments/phase1-single-vps/` - Single VPS setup
 - `deployments/phase2-dual-vps/` - Replication setup
-- `scripts/` - Automation scripts
+- `deployments/phase1-single-vps/scripts/` - Setup, hardening and health-check scripts
 
 **Key files to copy to Coolify:**
 
 - `docker-compose.yml` - Main stack definition
-- `prometheus/prometheus.yml` - Metrics collection config
-- `pgbouncer/pgbouncer.ini` - Connection pooler config
-- `pgbackrest/pgbackrest.conf` - Backup tool config (if using)
+- `prometheus/` - Metrics collection config and the exporter's queries
+- `pgbouncer/userlist.txt` - Connection pooler logins, generated after the first start
 - `grafana/` - Dashboard configurations
 - `scripts/` - Helper scripts
 
@@ -1583,9 +1477,8 @@ All configuration files are in:
 
 **Documentation:**
 
-- Project README: `/opt/apps/art/infra/aza-pg/README.md`
-- Architecture: `/opt/apps/art/infra/aza-pg/ARCHITECTURE.md`
-- This guide: `/opt/apps/art/infra/aza-pg/docs/DEPLOYMENT.md`
+- Project README: [README.md](../README.md)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 **Monitoring:**
 

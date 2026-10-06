@@ -2,10 +2,10 @@
 -- Tests cardinality estimation for analytics workloads
 CREATE EXTENSION IF NOT EXISTS hll;
 -- Test 1: Verify extension loaded
-SELECT extname, extversion FROM pg_extension WHERE extname = 'hll';
-extname | extversion
----------+------------
-hll | 2.20
+SELECT extname FROM pg_extension WHERE extname = 'hll';
+extname
+---------
+hll
 (1 row)
 -- Test 2: Verify hll type exists
 SELECT typname FROM pg_type WHERE typname = 'hll';

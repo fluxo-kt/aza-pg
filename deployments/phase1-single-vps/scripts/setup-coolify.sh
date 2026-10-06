@@ -63,7 +63,6 @@ required_vars=(
     "POSTGRES_PASSWORD"
     "MONITORING_PASSWORD"
     "GRAFANA_ADMIN_PASSWORD"
-    "GITHUB_USERNAME"
 )
 
 errors=0
@@ -92,7 +91,7 @@ echo ""
 log_step "Checking PgBouncer configuration..."
 if [ ! -f "$DEPLOY_DIR/pgbouncer/userlist.txt" ]; then
     log_warn "pgbouncer/userlist.txt not found - will be generated after PostgreSQL deployment"
-    log_warn "After deploying PostgreSQL, run: ./scripts/generate-pgbouncer-userlist.sh"
+    log_warn "After deploying PostgreSQL, follow step 3 (GENERATE PGBOUNCER USERLIST) printed below"
 else
     log_info "pgbouncer/userlist.txt exists ✓"
 fi
@@ -132,7 +131,7 @@ echo "   • Go to: Services → + Create"
 echo "   • Select: Docker Compose"
 echo "   • Paste docker-compose.yml postgres service section"
 echo "   • Environment variables (from .env):"
-for var in POSTGRES_PASSWORD POSTGRES_DB POSTGRES_USER POSTGRES_MEMORY POSTGRES_WORKLOAD_TYPE POSTGRES_STORAGE_TYPE GITHUB_USERNAME; do
+for var in POSTGRES_PASSWORD POSTGRES_DB POSTGRES_USER POSTGRES_MEMORY POSTGRES_WORKLOAD_TYPE POSTGRES_STORAGE_TYPE POSTGRES_IMAGE; do
     if [ -n "${!var:-}" ]; then
         echo "     - $var=${!var}"
     fi
@@ -174,13 +173,13 @@ echo ""
 echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
 echo "POSTGRES_DB=${POSTGRES_DB:-main}"
 echo "POSTGRES_USER=${POSTGRES_USER:-postgres}"
-echo "POSTGRES_MEMORY=${POSTGRES_MEMORY:-5GB}"
+echo "POSTGRES_MEMORY=${POSTGRES_MEMORY:-5120}"
 echo "POSTGRES_WORKLOAD_TYPE=${POSTGRES_WORKLOAD_TYPE:-web}"
 echo "POSTGRES_STORAGE_TYPE=${POSTGRES_STORAGE_TYPE:-ssd}"
 echo "MONITORING_USER=${MONITORING_USER:-monitoring}"
 echo "MONITORING_PASSWORD=${MONITORING_PASSWORD}"
 echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
-echo "GITHUB_USERNAME=${GITHUB_USERNAME}"
+[ -n "${POSTGRES_IMAGE:-}" ] && echo "POSTGRES_IMAGE=${POSTGRES_IMAGE}"
 echo ""
 echo "========================================="
 log_info "For bare VPS deployment (without Coolify), use: ./scripts/setup.sh"

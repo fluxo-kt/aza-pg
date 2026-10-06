@@ -20,7 +20,7 @@ All tools are written in Bun TypeScript and located in `scripts/tools/`. They pr
 - **Bun runtime** installed (`bun --version`)
 - **Docker** or **Docker Compose** (for container operations)
 - **PostgreSQL client tools** (for backup/restore):
-  - `pg_dump`, `psql`, `pg_isready` (install from https://www.postgresql.org/download/)
+  - `pg_dump`, `psql`, `pg_isready` at major version 18 or newer — `pg_dump` refuses a newer server (install from https://www.postgresql.org/download/)
   - `gzip`, `gunzip` (compression tools)
 
 ### Connection Configuration
@@ -64,8 +64,8 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 #### Output Format
 
 - **Format:** Plain SQL (gzip compressed)
-- **Flags:** `--no-owner --no-acl` (portability across environments)
-- **Naming:** Auto-generated with timestamp: `backup_<database>_YYYY_MM_DD_HHmmss.sql.gz`
+- **Contents:** the source's roles (created on restore only where missing, with their password hashes), then a `pg_dump --clean --if-exists` with owners and GRANTs: the file is as sensitive as the database
+- **Naming:** Auto-generated with UTC timestamp: `backup_<database>_YYYY_MM_DD_HH_mm_ss.sql.gz`
 
 #### Safety Features
 
@@ -91,11 +91,11 @@ bun scripts/tools/backup-postgres.ts production pre_migration_$(date +%Y%m%d).sq
 0 2 * * * cd /opt/aza-pg && bun scripts/tools/backup-postgres.ts production /backups/daily/backup_$(date +\%Y\%m\%d).sql.gz
 ```
 
-**Scenario 3: Container backup**
+**Scenario 3: Backup from a stack**
 
 ```bash
-# Backup from container via Docker network
-PGHOST=postgres-primary PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
+# The stacks publish PostgreSQL on 127.0.0.1:5432 (POSTGRES_BIND_IP, POSTGRES_PORT)
+PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/backup-postgres.ts postgres container_backup.sql.gz
 ```
 
@@ -109,8 +109,8 @@ Install PostgreSQL client tools:
 # macOS
 brew install postgresql@18
 
-# Ubuntu/Debian
-sudo apt-get install postgresql-client
+# Ubuntu/Debian (PGDG apt repo; the distro's default client may be older than 18)
+sudo apt-get install postgresql-client-18
 
 # Alpine
 apk add postgresql-client
@@ -170,8 +170,10 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 
 **DESTRUCTIVE OPERATION:**
 
-- Restore **overwrites** the target database
-- Requires user confirmation (press Enter to continue)
+- Restore replaces every object the backup holds in the target database with the backup's version; objects the backup lacks stay
+- **The backup does not carry the pgsodium root key** (`$PGDATA/pgsodium_root.key`, or your `PGSODIUM_KEY_FILE`): keep a copy of it, and start the new server with `PGSODIUM_KEY_FILE` pointing at that copy before restoring, or Vault secrets and pgsodium-encrypted values cannot be decrypted ([PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#the-root-key))
+- One transaction that stops at the first error: a failed restore changes nothing
+- Requires user confirmation (press Enter to continue; a closed stdin cancels)
 - **No automatic backup** is created before restore
 - Cannot be undone without a backup
 
@@ -198,10 +200,10 @@ bun scripts/tools/restore-postgres.ts old_backup.sql.gz mydb
 
 ```bash
 # 1. Ensure database exists
-docker exec postgres-primary psql -U postgres -c "CREATE DATABASE production;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "CREATE DATABASE production;"
 
 # 2. Restore from backup
-PGHOST=postgres-primary PGPASSWORD=$POSTGRES_PASSWORD \
+PGHOST=127.0.0.1 PGPASSWORD=$POSTGRES_PASSWORD \
   bun scripts/tools/restore-postgres.ts disaster_backup.sql.gz production
 ```
 
@@ -219,16 +221,16 @@ PGHOST=staging.db bun scripts/tools/restore-postgres.ts prod_clone.sql.gz stagin
 
 ```bash
 # 1. Create test database
-docker exec postgres-primary psql -U postgres -c "CREATE DATABASE restore_test;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "CREATE DATABASE restore_test;"
 
 # 2. Restore to test database
 bun scripts/tools/restore-postgres.ts backup.sql.gz restore_test
 
 # 3. Verify data
-docker exec postgres-primary psql -U postgres -d restore_test -c "SELECT COUNT(*) FROM users;"
+docker exec aza-pg-postgres-primary psql -U postgres -d restore_test -c "SELECT COUNT(*) FROM users;"
 
 # 4. Clean up
-docker exec postgres-primary psql -U postgres -c "DROP DATABASE restore_test;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "DROP DATABASE restore_test;"
 ```
 
 #### Troubleshooting
@@ -263,7 +265,7 @@ psql -h $PGHOST -U postgres -c "GRANT ALL ON DATABASE mydb TO your_user;"
 
 - Large database (expected for multi-GB dumps)
 - Check network bandwidth for remote restores
-- Monitor with: `docker logs postgres-primary -f`
+- Monitor with: `docker logs aza-pg-postgres-primary -f`
 
 ---
 
@@ -298,83 +300,47 @@ Promotes a PostgreSQL replica to primary role during failover scenarios.
 #### Usage
 
 ```bash
-# Promote default replica container (interactive)
+# Promote the replica stack's standby (interactive confirmation)
 bun scripts/tools/promote-replica.ts
 
-# Promote specific container without confirmation (DANGEROUS!)
+# Promote a named container without confirmation
 bun scripts/tools/promote-replica.ts -c my-replica -y
-
-# Promote without backup (faster, riskier)
-bun scripts/tools/promote-replica.ts -n -y
-
-# Custom data directory
-bun scripts/tools/promote-replica.ts -c postgres-replica -d /var/lib/postgresql/data
 ```
 
 #### Options
 
-| Flag                   | Description               | Default                                          |
-| ---------------------- | ------------------------- | ------------------------------------------------ |
-| `-c, --container NAME` | Container name            | `postgres-replica` or `$POSTGRES_CONTAINER_NAME` |
-| `-d, --data-dir PATH`  | Data directory path       | `/var/lib/postgresql/data`                       |
-| `-n, --no-backup`      | Skip pre-promotion backup | `false` (backup enabled)                         |
-| `-y, --yes`            | Skip confirmation prompt  | `false` (requires confirmation)                  |
-| `-h, --help`           | Show help                 | -                                                |
+| Flag                   | Description                                        | Default                           |
+| ---------------------- | -------------------------------------------------- | --------------------------------- |
+| `-c, --container NAME` | Container name                                     | `aza-pg-replica-postgres-replica` |
+| `-d, --data-dir PATH`  | Data directory path                                | container's `$PGDATA`             |
+| `-y, --yes`            | Skip confirmation prompt                           | `false` (requires typing `yes`)   |
+| `-f, --force`          | Promote while still streaming from a live upstream | `false`                           |
+| `-h, --help`           | Show help                                          | -                                 |
+
+`-n, --no-backup` is still accepted and does nothing: the tool takes no backup. Promotion changes no existing data, so take backups with `backup-postgres.ts` or pgBackRest instead.
 
 #### Promotion Process
 
-The script executes the following steps:
-
-1. **Prerequisite checks:**
-   - Docker is installed and running
-   - Container exists and is running
-
-2. **State verification:**
-   - Confirms container is in recovery mode (`pg_is_in_recovery() = true`)
-   - Fails if already a primary
-
-3. **Pre-promotion backup** (unless `-n` flag):
-   - Creates `pg_basebackup` to `/backup/pre-promotion-backup-TIMESTAMP`
-   - Continues even if backup fails (with warning)
-
-4. **User confirmation** (unless `-y` flag):
-   - Shows warnings about one-way operation
-   - Requires typing "yes" to proceed
-
-5. **Container stop:**
-   - Stops replica container gracefully
-
-6. **Promotion:**
-   - Starts container temporarily
-   - Runs `pg_ctl promote` inside container
-   - Waits for promotion to complete
-
-7. **Verification:**
-   - Confirms `pg_is_in_recovery() = false`
-   - Removes `standby.signal` file
-
-8. **Restart as primary:**
-   - Restarts container in primary mode
-   - Waits for PostgreSQL to accept connections (max 30 seconds)
-
-9. **Post-promotion instructions:**
-   - Shows verification commands
-   - Reminds to update application connections
-   - Warns about split-brain risk
+1. Reads the cluster state with `pg_controldata` (no database login, so a renamed superuser or strict `pg_hba.conf` does not matter); refuses a primary or a container that is not a running standby.
+2. Refuses (exit 1) while the standby still streams from its upstream, read from `pg_stat_wal_receiver` as `POSTGRES_USER`: that server is alive, so promoting would leave two primaries. A status it cannot read counts as unsafe. `--force` skips this check. Not streaming does not prove the old primary is down — one cut off by a network split looks the same — so stop it first regardless.
+3. Asks for confirmation (unless `-y`).
+4. Runs `pg_ctl promote` as user `postgres` on the running server. pg_ctl waits until the server is a primary; the server is not restarted, and PostgreSQL removes `standby.signal` itself.
+5. Prints the next steps.
 
 #### Common Scenarios
 
 **Scenario 1: Planned failover (maintenance)**
 
 ```bash
-# 1. Stop writes to old primary
-psql -h old-primary -U postgres -c "ALTER SYSTEM SET default_transaction_read_only = on; SELECT pg_reload_conf();"
+# 1. Stop writes to old primary (one -c per statement: ALTER SYSTEM cannot run inside the
+#    transaction that a multi-statement -c string becomes)
+psql -h old-primary -U postgres -c "ALTER SYSTEM SET default_transaction_read_only = on" -c "SELECT pg_reload_conf()"
 
 # 2. Wait for replica to catch up
 psql -h old-primary -U postgres -c "SELECT client_addr, state, replay_lag FROM pg_stat_replication;"
 
 # 3. Stop old primary
-docker stop postgres-primary
+docker stop aza-pg-postgres-primary
 
 # 4. Promote replica
 bun scripts/tools/promote-replica.ts
@@ -388,18 +354,18 @@ bun scripts/tools/promote-replica.ts
 
 ```bash
 # 1. Confirm old primary is down
-docker ps | grep postgres-primary  # Should be stopped
+docker ps | grep aza-pg-postgres-primary  # Should be stopped
 
 # 2. Promote replica immediately
-bun scripts/tools/promote-replica.ts -c postgres-replica -y
+bun scripts/tools/promote-replica.ts -c aza-pg-replica-postgres-replica -y
 
 # 3. Update application connection strings
 
 # 4. Verify promotion
-docker exec postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should be 'f'
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in_recovery();"  # Should be 'f'
 
 # 5. Check replication slots (will be empty)
-docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_slots;"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_slots;"
 ```
 
 **Scenario 3: Cascading replicas (multi-tier replication)**
@@ -408,17 +374,15 @@ docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_replication_s
 # Topology: primary → replica1 → replica2
 
 # 1. Stop primary
-docker stop postgres-primary
+docker stop aza-pg-postgres-primary
 
 # 2. Promote replica1
 bun scripts/tools/promote-replica.ts -c postgres-replica1
 
 # 3. Reconfigure replica2 to replicate from replica1 (new primary)
 #    Edit replica2's primary_conninfo to point to replica1
-docker exec postgres-replica2 psql -U postgres -c "
-  ALTER SYSTEM SET primary_conninfo = 'host=replica1 port=5432 user=replicator password=xxx';
-  SELECT pg_reload_conf();
-"
+docker exec postgres-replica2 psql -U postgres \
+  -c "ALTER SYSTEM SET primary_conninfo = 'host=replica1 port=5432 user=replicator password=xxx'"
 docker restart postgres-replica2
 ```
 
@@ -463,58 +427,11 @@ docker restart postgres-replica2
 
 #### Troubleshooting
 
-**Error: "Container is not in recovery mode"**
+**"'<container>' is already a primary"**: nothing to promote (an earlier run or another operator already did it).
 
-Container is already a primary:
+**"'<container>' is not a running standby (cluster state: …)"**: `unreadable` means the container is not running or the name is wrong (`docker ps -a`); any other state means the server is not running as a standby (`shut down in recovery`: start it first; `in crash recovery`: wait for it to finish).
 
-```bash
-# Check status
-docker exec <container> psql -U postgres -c "SELECT pg_is_in_recovery();"
-
-# If already promoted, skip promotion
-```
-
-**Error: "Promotion verification failed: Container still in recovery mode"**
-
-Promotion command succeeded but verification failed:
-
-```bash
-# Check PostgreSQL logs
-docker logs <container> | tail -50
-
-# Manually verify standby.signal
-docker exec <container> ls -la /var/lib/postgresql/data/standby.signal
-
-# If file exists, remove it
-docker exec <container> rm -f /var/lib/postgresql/data/standby.signal
-docker restart <container>
-```
-
-**Warning: Backup failed**
-
-Pre-promotion backup failed but script continues:
-
-- Check disk space: `docker exec <container> df -h /backup`
-- Check permissions: `docker exec <container> ls -la /backup`
-- Consider using `-n` flag if backup consistently fails
-- **Manually backup before promotion if critical**
-
-**PostgreSQL failed to start after promotion**
-
-```bash
-# Check logs
-docker logs <container>
-
-# Common issues:
-# 1. Configuration errors in postgresql.conf
-# 2. Port conflict with old primary
-# 3. Insufficient memory/resources
-
-# Rollback (if old primary still exists):
-# 1. Stop promoted container
-# 2. Restore old primary
-# 3. Investigate issue before retrying
-```
+**"pg_ctl promote failed"**: pg_ctl's own message is printed above it. `server did not promote in time` means promotion is still running past pg_ctl's 60 s wait: watch `docker logs <container>`, then run the tool again, which reports "already a primary" once it has finished.
 
 ---
 
@@ -584,22 +501,28 @@ POSTGRES_HOSTNAME=db.example.com \
 # 1. Generate certificates
 bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs 3650
 
-# 2. Edit stacks/primary/compose.yml - mount certs
+# 2. Let the container's postgres user (uid 999) read them: PostgreSQL refuses a key it does not own
+#    or that others can read (Linux hosts; the generator leaves them owned by you)
+sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
+
+# 3. Edit stacks/primary/compose.yml - mount certs
 #    volumes:
 #      - ./certs:/etc/postgresql/certs:ro
 
-# 3. Edit stacks/primary/configs/postgresql.conf - enable TLS
-#    ssl = on
-#    ssl_cert_file = '/etc/postgresql/certs/server.crt'
-#    ssl_key_file = '/etc/postgresql/certs/server.key'
-
-# 4. Restart stack
+# 4. Recreate the container so the mount applies
 cd stacks/primary
-docker compose down
 docker compose up -d
 
-# 5. Verify TLS enabled
-docker exec postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
+# 5. Enable TLS with ALTER SYSTEM (stored in the data directory; stacks/*/configs files are generated
+#    and overwritten by `bun run generate`). One -c per statement: ALTER SYSTEM cannot run in a transaction.
+docker exec aza-pg-postgres-primary psql -U postgres \
+  -c "ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/certs/server.crt'" \
+  -c "ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/certs/server.key'" \
+  -c "ALTER SYSTEM SET ssl = on" \
+  -c "SELECT pg_reload_conf()"
+
+# 6. Verify TLS enabled
+docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
 ```
 
 **Scenario 2: Require TLS for all connections**
@@ -608,6 +531,7 @@ docker exec postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
 # 1. Generate and mount certs (see Scenario 1)
 
 # 2. Edit stacks/primary/configs/pg_hba.conf - change 'host' to 'hostssl'
+#    (the file is generated: `bun run generate` overwrites it, so keep this change in your deployment copy)
 #    Before: host    all    all    10.0.0.0/8    scram-sha-256
 #    After:  hostssl all    all    10.0.0.0/8    scram-sha-256
 
@@ -633,8 +557,9 @@ mv stacks/primary/certs stacks/primary/certs.old
 # 3. Generate new certs
 bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs 3650
 
-# 4. Restart PostgreSQL (no downtime if mounted as volume)
-docker compose restart postgres
+# 4. Give the new files to uid 999 (see Scenario 1), then reload: PostgreSQL rereads certificates on reload, no restart
+sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT pg_reload_conf()"
 ```
 
 **Scenario 4: Client certificate verification (mutual TLS)**
@@ -644,7 +569,7 @@ Not supported by this script. For client certificate verification:
 1. Generate CA certificate separately
 2. Generate server cert signed by CA
 3. Generate client certs signed by same CA
-4. Configure `ssl_ca_file` in postgresql.conf
+4. Set `ssl_ca_file` with `ALTER SYSTEM`
 5. Set `clientcert=verify-full` in pg_hba.conf
 
 See PostgreSQL docs: https://www.postgresql.org/docs/current/ssl-tcp.html
@@ -676,13 +601,17 @@ services:
       - ./certs:/etc/postgresql/certs:ro
 ```
 
-**2. Enable SSL in postgresql.conf:**
+On Linux hosts, `sudo chown 999:999 certs/server.key certs/server.crt` first: the container's postgres user (uid 999) must own the key.
 
-```conf
-ssl = on
-ssl_cert_file = '/etc/postgresql/certs/server.crt'
-ssl_key_file = '/etc/postgresql/certs/server.key'
-ssl_ca_file = '/etc/postgresql/certs/ca.crt'  # Optional, for client verification
+**2. Enable SSL with ALTER SYSTEM** (the stack config files are generated; see Scenario 1):
+
+```bash
+docker exec aza-pg-postgres-primary psql -U postgres \
+  -c "ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/certs/server.crt'" \
+  -c "ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/certs/server.key'" \
+  -c "ALTER SYSTEM SET ssl = on"
+# Optional, for client certificate verification:
+#   -c "ALTER SYSTEM SET ssl_ca_file = '/etc/postgresql/certs/ca.crt'"
 ```
 
 **3. Restart PostgreSQL:**
@@ -694,7 +623,7 @@ docker compose restart postgres
 **4. Verify SSL is enabled:**
 
 ```bash
-docker exec postgres-primary psql -U postgres -c "SHOW ssl;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"
 # Output: on
 
 # Check connection uses SSL
@@ -736,7 +665,7 @@ apk add openssl
 Check logs:
 
 ```bash
-docker logs postgres-primary 2>&1 | grep -i ssl
+docker logs aza-pg-postgres-primary 2>&1 | grep -i ssl
 ```
 
 Common issues:
@@ -744,15 +673,16 @@ Common issues:
 1. **Wrong file permissions:**
 
    ```bash
-   # server.key must be 600 or less
+   # server.key must be 600 or less and owned by the container's postgres user (uid 999)
    chmod 600 stacks/primary/certs/server.key
+   sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
    ```
 
 2. **File not found:**
 
    ```bash
-   # Verify mount path matches postgresql.conf
-   docker exec postgres-primary ls -la /etc/postgresql/certs/
+   # Verify the mount path matches ssl_cert_file / ssl_key_file
+   docker exec aza-pg-postgres-primary ls -la /etc/postgresql/certs/
    ```
 
 3. **Invalid certificate:**
@@ -970,29 +900,17 @@ chmod +x scripts/tools/*.ts
 - pg_dump failed silently (check stderr)
 - Disk full during backup (check `df -h`)
 
-**Issue: Restore fails with "extension already exists"**
-
-Use `--clean` flag or drop extensions first:
-
-```bash
-# Option 1: Drop database and recreate
-dropdb -h localhost -U postgres mydb
-createdb -h localhost -U postgres mydb
-
-# Option 2: Drop conflicting extensions
-psql -h localhost -U postgres -d mydb -c "DROP EXTENSION IF EXISTS postgis CASCADE;"
-```
-
 **Issue: Backup takes hours on large database**
 
 Consider using `pg_basebackup` for physical backups:
 
 ```bash
 # Faster for multi-GB databases
-pg_basebackup -h localhost -U postgres -D /backup/physical -Ft -z -P
+# pg_hba.conf admits replication connections only for the replicator role
+pg_basebackup -h localhost -U replicator -D /backup/physical -Ft -z -P
 ```
 
-Or use pgBackRest (installed in image, see PRODUCTION.md).
+Or use pgBackRest (installed in the image, see [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md)).
 
 ### Failover Issues
 
@@ -1002,8 +920,8 @@ Or use pgBackRest (installed in image, see PRODUCTION.md).
 
 ```bash
 # 1. Identify which primary has most recent data
-docker exec postgres-primary psql -U postgres -c "SELECT pg_current_wal_lsn();"
-docker exec postgres-replica psql -U postgres -c "SELECT pg_current_wal_lsn();"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT pg_current_wal_lsn();"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_current_wal_lsn();"
 
 # 2. Stop the primary with older data
 docker stop <older-primary>
@@ -1049,7 +967,7 @@ Fix file permissions:
 
 ```bash
 chmod 600 stacks/primary/certs/server.key
-chown postgres:postgres stacks/primary/certs/server.key  # If using host UID mapping
+sudo chown 999:999 stacks/primary/certs/server.key  # the container's postgres uid
 ```
 
 **Issue: "server.key has group or world access"**
@@ -1100,7 +1018,7 @@ chmod 600 server.key
 
 **For PostgreSQL issues:**
 
-- Check PostgreSQL logs: `docker logs postgres-primary`
+- Check PostgreSQL logs: `docker logs aza-pg-postgres-primary`
 - Review PostgreSQL documentation
 - Check system resources: `docker stats`
 

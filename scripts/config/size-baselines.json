@@ -20,14 +20,14 @@
     "description": "PGroonga full-text search (optimized build)"
   },
   "timescaledb_toolkit": {
-    "min": 12.0,
-    "max": 12.8,
-    "description": "TimescaleDB analytical hyperfunctions (versioned shared library)"
+    "min": 8.5,
+    "max": 10.8,
+    "description": "TimescaleDB analytical hyperfunctions, Timescale apt 1.26.0 (measured 8.94MB arm64, 10.25MB amd64)"
   },
   "pg_jsonschema": {
-    "min": 3.0,
-    "max": 3.4,
-    "description": "JSON Schema validation (Rust/pgrx, current optimized build)"
+    "min": 3.2,
+    "max": 4.3,
+    "description": "JSON Schema validation (Rust/pgrx, upstream release profile: measured 3.44MB arm64, 4.01MB amd64)"
   },
   "wrappers": {
     "min": 0.25,
@@ -36,7 +36,7 @@
   },
   "vectorscale": {
     "min": 0.8,
-    "max": 1.1,
-    "description": "pgvectorscale DiskANN index (versioned prebuilt GitHub release binary)"
+    "max": 1.35,
+    "description": "pgvectorscale DiskANN index (amd64 carries AVX2/FMA and fallback code for runtime dispatch: measured 1.00MB arm64, 1.28MB amd64)"
   }
 }

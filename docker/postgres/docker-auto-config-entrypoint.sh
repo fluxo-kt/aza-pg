@@ -13,14 +13,9 @@ set -euo pipefail
 readonly DEFAULT_RAM_MB=1024
 
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
-# This list is automatically derived from the extensions manifest and regenerated when the manifest changes.
-# Note: timescaledb is now enabled by default for time-series features
-# Optional libraries requiring preload (enable via POSTGRES_SHARED_PRELOAD_LIBRARIES):
-#   - pgsodium: Requires pgsodium_getkey script for TCE (Transparent Column Encryption)
-#   - supautils: Superuser guards for managed Postgres
-#   - safeupdate: UPDATE/DELETE safety guard
+# POSTGRES_SHARED_PRELOAD_LIBRARIES replaces this list (optional ones such as supautils are added that way).
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,timescaledb"
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
@@ -102,12 +97,9 @@ detect_ram() {
     local source="unknown"
 
     if [ -n "${POSTGRES_MEMORY:-}" ]; then
-        if ! [[ "${POSTGRES_MEMORY}" =~ ^[0-9]+$ ]]; then
-            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB" >&2
-            exit 1
-        fi
-        if [ "${POSTGRES_MEMORY}" -lt 1 ]; then
-            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
+        # No leading zero: bash arithmetic reads 01024 as octal (532) and 08192 as an error.
+        if ! [[ "${POSTGRES_MEMORY}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB: positive, without leading zeros" >&2
             exit 1
         fi
         if [ "${POSTGRES_MEMORY}" -gt 1048576 ]; then
@@ -437,41 +429,13 @@ fi
 # Storage-based parameters
 RANDOM_PAGE_COST=${STORAGE_RANDOM_COST[$STORAGE_TYPE]}
 MAINTENANCE_IO_CONCURRENCY=${STORAGE_MAINT_IO_CONCURRENCY[$STORAGE_TYPE]}
+EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
 
-# Linux-only parameter
-if [ "$(uname -s)" = "Linux" ]; then
-    EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
-else
-    EFFECTIVE_IO_CONCURRENCY=""
-fi
-
-# Auto-detect pgsodium support: only include if getkey script exists and works
-# pgsodium v3.1.9 crashes PostgreSQL if loaded without valid getkey script
-# Use pg_config to get sharedir path (works for any PG version)
+# The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
+# after this script) refuses a non-empty directory. Its failures surface when the server starts.
 PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
 PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
-PGSODIUM_ENABLED=""
-if [ -x "${PGSODIUM_GETKEY_PATH}" ]; then
-    # Verify script produces valid output (64 hex chars, trim whitespace)
-    GETKEY_OUTPUT=$("${PGSODIUM_GETKEY_PATH}" 2>/dev/null | tr -d '[:space:]' || echo "")
-    if [[ "${GETKEY_OUTPUT}" =~ ^[0-9a-fA-F]{64}$ ]]; then
-        PGSODIUM_ENABLED="true"
-        echo "[POSTGRES] [AUTO-CONFIG] pgsodium enabled (getkey script at ${PGSODIUM_GETKEY_PATH} validated)"
-    else
-        echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (getkey script output invalid: expected 64 hex chars)"
-    fi
-else
-    echo "[POSTGRES] [AUTO-CONFIG] pgsodium DISABLED (no executable script at ${PGSODIUM_GETKEY_PATH})"
-fi
-
-# Build shared_preload_libraries - remove pgsodium if not enabled
-BASE_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
-if [ "${PGSODIUM_ENABLED}" != "true" ]; then
-    # Remove pgsodium from list (handles: "pgsodium,x", "x,pgsodium", "x,pgsodium,y")
-    SHARED_PRELOAD_LIBRARIES=$(echo "${BASE_PRELOAD_LIBRARIES}" | sed 's/,pgsodium//g; s/pgsodium,//g; s/^pgsodium$//g')
-else
-    SHARED_PRELOAD_LIBRARIES="${BASE_PRELOAD_LIBRARIES}"
-fi
+SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
 # Default: logical (safest, enables CDC extensions like wal2json)
@@ -488,61 +452,279 @@ case "$WAL_LEVEL" in
         ;;
 esac
 
-# Override listen_addresses based on POSTGRES_BIND_IP
-# Default: 127.0.0.1 (localhost only, secure)
-# Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
+# Logical decoding output plugins that slots may use. Since PostgreSQL 18.6 (CVE-2026-6471) any
+# plugin missing from output_plugin_libraries is refused, superusers included, and the built-in
+# default lists only pgoutput and test_decoding — the shipped wal2json would stop working for CDC.
+# Keep pgoutput in any override (here, -c or ALTER SYSTEM): built-in logical replication needs it.
+OUTPUT_PLUGIN_LIBRARIES=${POSTGRES_OUTPUT_PLUGIN_LIBRARIES:-pgoutput,test_decoding,wal2json}
+
+# listen_addresses comes from POSTGRES_BIND_IP and defaults to 127.0.0.1. Inside a container that means only processes
+# in the same container can connect: no published port and no other container reaches it. The default stays closed on
+# purpose: `-p 5432:5432` publishes on every host interface and bypasses host firewalls such as ufw, so one copied
+# `docker run` would expose the database. Reaching it takes an explicit POSTGRES_BIND_IP=0.0.0.0 (or a specific
+# address), which the stacks set; the log line below names that fix, because the failure is otherwise only
+# "connection refused".
 LISTEN_ADDR="${POSTGRES_BIND_IP:-127.0.0.1}"
-# Always set listen_addresses explicitly to prevent PostgreSQL's default of '*'
+# Always set listen_addresses explicitly: initdb writes listen_addresses='*' into postgresql.conf
 if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDR}"
 else
-    echo "[POSTGRES] [AUTO-CONFIG] Secure mode (localhost only) → listen_addresses=${LISTEN_ADDR}"
+    echo "[POSTGRES] [AUTO-CONFIG] Secure mode (localhost only) → listen_addresses=${LISTEN_ADDR}; only this container can connect. Set POSTGRES_BIND_IP=0.0.0.0 to accept connections through a published port or from other containers"
 fi
 
 echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"
 
-set -- "$@" \
-    -c "shared_buffers=${SHARED_BUFFERS_MB}MB" \
-    -c "effective_cache_size=${EFFECTIVE_CACHE_MB}MB" \
-    -c "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB" \
-    -c "work_mem=${WORK_MEM_MB}MB" \
-    -c "max_connections=${MAX_CONNECTIONS}" \
-    -c "max_worker_processes=${MAX_WORKER_PROCESSES}" \
-    -c "wal_level=${WAL_LEVEL}" \
-    -c "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}" \
-    -c "cron.database_name=${POSTGRES_DB:-postgres}" \
-    -c "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}" \
-    -c "wal_buffers=${WAL_BUFFERS_MB}MB" \
-    -c "min_wal_size=${MIN_WAL_SIZE_MB}MB" \
-    -c "max_wal_size=${MAX_WAL_SIZE_MB}MB" \
-    -c "random_page_cost=${RANDOM_PAGE_COST}" \
-    -c "default_statistics_target=${DEFAULT_STATISTICS_TARGET}" \
-    -c "io_workers=${IO_WORKERS}" \
-    -c "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
+# pg_cron lives in the database initdb creates, which the official entrypoint resolves only after this script has
+# run, with file_env: POSTGRES_DB (or the content of POSTGRES_DB_FILE), else the superuser's name, POSTGRES_USER (or
+# POSTGRES_USER_FILE), else postgres. The same resolution is repeated here.
+env_or_file() {
+    local file_var="${1}_FILE"
+    if [ -n "${!1:-}" ]; then printf '%s' "${!1}"; elif [ -n "${!file_var:-}" ]; then cat "${!file_var}"; fi
+}
+CRON_DATABASE="$(env_or_file POSTGRES_DB)"
+CRON_DATABASE="${CRON_DATABASE:-$(env_or_file POSTGRES_USER)}"
+CRON_DATABASE="${CRON_DATABASE:-postgres}"
 
-# Conditional parameters
-if [ -n "$MAX_PARALLEL_WORKERS" ]; then
-    set -- "$@" \
-        -c "max_parallel_workers=${MAX_PARALLEL_WORKERS}" \
-        -c "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}" \
-        -c "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
-fi
-
-if [ -n "$EFFECTIVE_IO_CONCURRENCY" ]; then
-    set -- "$@" -c "effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}"
-fi
-
+AUTO_SETTINGS=(
+    "shared_buffers=${SHARED_BUFFERS_MB}MB"
+    "effective_cache_size=${EFFECTIVE_CACHE_MB}MB"
+    "maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB"
+    "work_mem=${WORK_MEM_MB}MB"
+    "max_connections=${MAX_CONNECTIONS}"
+    "max_worker_processes=${MAX_WORKER_PROCESSES}"
+    "wal_level=${WAL_LEVEL}"
+    "output_plugin_libraries=${OUTPUT_PLUGIN_LIBRARIES}"
+    "shared_preload_libraries=${SHARED_PRELOAD_LIBRARIES}"
+    "cron.database_name=${CRON_DATABASE}"
+    "checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}"
+    "wal_buffers=${WAL_BUFFERS_MB}MB"
+    "min_wal_size=${MIN_WAL_SIZE_MB}MB"
+    "max_wal_size=${MAX_WAL_SIZE_MB}MB"
+    "random_page_cost=${RANDOM_PAGE_COST}"
+    "default_statistics_target=${DEFAULT_STATISTICS_TARGET}"
+    "io_workers=${IO_WORKERS}"
+    "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
+    "listen_addresses=${LISTEN_ADDR}"
+    "max_parallel_workers=${MAX_PARALLEL_WORKERS}"
+    "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
+    "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
+    "effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}"
+    # Set explicitly so the path does not depend on how pgsodium resolves its share directory.
+    "pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}"
+    # Parallel queries and index builds keep their shared state in dynamic shared memory. PostgreSQL's Linux default,
+    # posix, puts it in /dev/shm, which Docker, Kubernetes and CI runners mount at 64 MB: a parallel hash join or a
+    # parallel pgvector HNSW build (sized by maintenance_work_mem) then fails with "could not resize shared memory
+    # segment … No space left on device". System V segments come from RAM under the container's memory limit, the limit
+    # auto-tuning already sizes against; a container's own IPC namespace has the kernel defaults (shmmax and shmall
+    # effectively unlimited, 4096 segments). posix stays one -c away for --ipc=host on a host with low SysV limits.
+    # Rejected: shm_size in compose (docker run and Kubernetes still fail; any size is a guess); mmap (writes the
+    # shared pages to the data volume); serial builds when /dev/shm is small (hash joins still fail).
+    "dynamic_shared_memory_type=sysv"
+)
 # wal_level=minimal requires max_wal_senders=0 (no replication)
 if [ "$WAL_LEVEL" = "minimal" ]; then
-    set -- "$@" -c "max_wal_senders=0"
+    AUTO_SETTINGS+=("max_wal_senders=0")
 fi
 
-# Always apply listen_addresses explicitly (prevents PostgreSQL default of '*')
-set -- "$@" -c "listen_addresses=${LISTEN_ADDR}"
+# Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
+# postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
+# generated config file that first includes the operator's config file and then sets them: they beat postgresql.conf
+# — where initdb writes max_connections, shared_buffers, max_wal_size, min_wal_size and listen_addresses='*' into every
+# data directory, so letting it win would switch auto-tuning off — while ALTER SYSTEM and the operator's own -c win.
+# data_directory and hba_file defaults derive from -D/PGDATA, not from config_file, so they stay where they were.
+shift # "postgres"
+DATA_DIR="${PGDATA:-}"
+OPERATOR_CONFIG=""
+declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
+OPERATOR_ARGS=()
+while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+        -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
+        -c*) pair="${arg#-c}" ;;
+        --*=*) pair="${arg#--}" ;;
+        -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
+        *) OPERATOR_ARGS+=("$arg"); continue ;;
+    esac
+    # PostgreSQL accepts --config-file and -c config_file alike, and matches names case-insensitively.
+    name="${pair%%=*}"
+    name="${name//-/_}"
+    name="${name,,}"
+    if [ "$name" = "config_file" ]; then
+        OPERATOR_CONFIG="${pair#*=}"
+        continue
+    fi
+    OPERATOR_SET[$name]="${pair#*=}"
+    OPERATOR_ARGS+=(-c "$pair")
+done
+OPERATOR_CONFIG="${OPERATOR_CONFIG:-${DATA_DIR}/postgresql.conf}"
 
-# pgsodium getkey_script (only if enabled - explicitly set to avoid path detection issues)
-if [ "${PGSODIUM_ENABLED}" = "true" ]; then
-    set -- "$@" -c "pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}"
+as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
+
+# pgsodium root key, read by the image's pgsodium_getkey (its header explains where it lives). The operator's
+# PGSODIUM_KEY_FILE is checked here so a wrong path or content stops the container naming it, before the
+# server would stop on it with a less direct message.
+# Images before per-database keys shipped one fixed key, published in this repository. A data directory they
+# created may hold data encrypted with it, and a new key would make that data unreadable, so it keeps that key
+# as its key file and every start warns until the operator rotates it (docs/PGSODIUM-SETUP.md).
+# An operator who mounts their own pgsodium_getkey owns the key, so none of this applies: the image's script
+# differs from the pristine copy the image keeps beside it.
+readonly PUBLISHED_PGSODIUM_KEY=4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2
+pgsodium_key_file=""
+if cmp -s "/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey" /usr/local/share/aza-pg/pgsodium_getkey; then
+    image_getkey=true
+elif [ $? -eq 1 ]; then
+    image_getkey=false
+else # cmp could not read one of them: the image is broken, and guessing either way could pick the wrong key
+    printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare pgsodium_getkey with the image's copy" >&2
+    exit 1
+fi
+if [ "$image_getkey" = false ]; then
+    : # the operator's getkey owns the key: nothing to check, write or warn about
+elif [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
+    operator_key=$(as_postgres cat "$PGSODIUM_KEY_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+    if ! [[ "$operator_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: PGSODIUM_KEY_FILE=${PGSODIUM_KEY_FILE} must be readable by postgres and hold 64 hex characters; create one with: head -c 32 /dev/urandom | od -An -v -tx1 | tr -d ' \\n'" >&2
+        exit 1
+    fi
+    pgsodium_key_file="$PGSODIUM_KEY_FILE"
+    # An existing data directory already has a key, and data encrypted under it is unreadable under any other, so
+    # the file must hold that same key. Its key is the data-directory key file when present, else (a directory made
+    # by an image that predates per-database keys and never started on a later one) the published key. A directory
+    # created with PGSODIUM_KEY_FILE has no key the entrypoint can read; one created with the operator's own
+    # getkey needs that getkey.
+    key_source=$(as_postgres cat "${PGDATA}/pgsodium_key_source" 2>/dev/null || true)
+    if [ ! -f "${PGDATA}/PG_VERSION" ] || [ "$key_source" = "PGSODIUM_KEY_FILE" ]; then
+        :
+    elif [ "$key_source" = "pgsodium_getkey" ]; then
+        printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with your own pgsodium_getkey, which is not mounted now; mount it again (docs/PGSODIUM-SETUP.md)" >&2
+        exit 1
+    else
+        directory_key_file="${PGDATA}/pgsodium_root.key"
+        if [ -e "$directory_key_file" ]; then
+            directory_key=$(as_postgres cat "$directory_key_file" 2>/dev/null | tr -d '[:space:]' || true)
+            directory_key_name="the key in ${directory_key_file}"
+        elif [ -z "$key_source" ]; then
+            directory_key="$PUBLISHED_PGSODIUM_KEY"
+            directory_key_name="the key older aza-pg images published"
+        else
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: ${directory_key_file} is missing, but this data directory was created with it; restore it from a backup: data encrypted under it cannot be read without it (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        fi
+        if [ "${operator_key,,}" != "${directory_key,,}" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: PGSODIUM_KEY_FILE=${PGSODIUM_KEY_FILE} holds a different key than this data directory uses (${directory_key_name}); data encrypted under that key would be unreadable. Put that key in the file, or unset PGSODIUM_KEY_FILE; to change the key, see docs/PGSODIUM-SETUP.md, section \"Rotating the published key\"" >&2
+            exit 1
+        fi
+        # The same key: from now on it comes from the operator's file, so the copy in the data directory may go.
+        # shellcheck disable=SC2016 # $1 is the inner sh's argument
+        as_postgres sh -c 'printf "%s\n" PGSODIUM_KEY_FILE > "$1"' sh "${PGDATA}/pgsodium_key_source"
+    fi
+else
+    pgsodium_key_file="${PGDATA}/pgsodium_root.key"
+    if [ -f "${PGDATA}/PG_VERSION" ] && [ ! -e "$pgsodium_key_file" ]; then
+        # Data directories this image creates record their key's home (initdb script 00-pgsodium-key.sh); with that
+        # record present a missing key is an operator error, and the published key would silently replace it.
+        key_source=$(as_postgres cat "${PGDATA}/pgsodium_key_source" 2>/dev/null || true)
+        if [ "$key_source" = "PGSODIUM_KEY_FILE" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with PGSODIUM_KEY_FILE, which is not set now; set it to the same key file (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        elif [ "$key_source" = "pgsodium_getkey" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with your own pgsodium_getkey, which is not mounted now; mount it again (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        elif [ -n "$key_source" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: ${pgsodium_key_file} is missing, but this data directory was created with it; restore it from a backup: data encrypted under it cannot be read without it (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        fi
+        # shellcheck disable=SC2016 # $1/$2 are the inner sh's arguments
+        as_postgres sh -c 'umask 077 && printf "%s\n" "$1" > "$2"' sh "$PUBLISHED_PGSODIUM_KEY" "$pgsodium_key_file"
+    fi
+fi
+current_key=""
+[ -z "$pgsodium_key_file" ] || current_key=$(as_postgres cat "$pgsodium_key_file" 2>/dev/null | tr -d '[:space:]' || true)
+if [ "${current_key,,}" = "$PUBLISHED_PGSODIUM_KEY" ]; then
+    echo "[POSTGRES] [AUTO-CONFIG] WARNING: pgsodium uses the key older aza-pg images published (${pgsodium_key_file}); anyone can decrypt data encrypted with it. Rotate it: docs/PGSODIUM-SETUP.md, section \"Rotating the published key\"" >&2
 fi
 
-exec /usr/local/bin/docker-entrypoint.sh "$@"
+# A config-file string literal doubles single quotes and treats backslash as an escape character.
+conf_quote() {
+    local q="'" text="${1//\\/\\\\}"
+    printf "'%s'" "${text//$q/$q$q}"
+}
+
+# /var/run/postgresql is PostgreSQL's socket directory, writable even on read-only root filesystems.
+AUTO_CONFIG_DIR=/var/run/postgresql
+[ -w "$AUTO_CONFIG_DIR" ] || AUTO_CONFIG_DIR="${TMPDIR:-/tmp}"
+AUTO_CONFIG_FILE="${AUTO_CONFIG_DIR}/aza-auto-config.conf"
+{
+    echo "# Written at every start by docker-auto-config-entrypoint.sh; edits here are lost."
+    echo "# Override a value with ALTER SYSTEM or -c name=value; postgresql.conf values below are replaced."
+    # Later lines win, so the order is the precedence: aza-pg's base settings (logging, telemetry off, …) for every
+    # container, then the operator's file, then auto-tuning. A plain include, not include_if_exists: the image ships
+    # the file, and a missing one should stop the server rather than silently drop the base settings.
+    echo "include '/etc/postgresql/postgresql-base.conf'"
+    echo "include $(conf_quote "$OPERATOR_CONFIG")"
+    for setting in "${AUTO_SETTINGS[@]}"; do
+        echo "${setting%%=*} = $(conf_quote "${setting#*=}")"
+    done
+} > "$AUTO_CONFIG_FILE"
+chmod 0644 "$AUTO_CONFIG_FILE"
+
+# One log line per tuned setting that does not take the tuned value, so no operator value is silently overridden
+# or silently ignored. postgresql.conf values are compared through `postgres -C`, which prints PostgreSQL's base
+# units (8kB pages, kB) and needs an initialised data directory, so the check skips the very first start. A file
+# value equal to what initdb writes is indistinguishable from initdb's own lines, and one equal to the tuned value
+# changes nothing; neither is reported. initdb writes the image's postgresql.conf.sample (listen_addresses = '*' — the
+# official image sets it there) plus lines holding the built-in default (max_connections = 100, …), so that sample is
+# the baseline.
+ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
+for setting in "${AUTO_SETTINGS[@]}"; do
+    name="${setting%%=*}"
+    tuned="${setting#*=}"
+    if [ -n "${OPERATOR_SET[$name]+set}" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: -c ${OPERATOR_SET[$name]} overrides auto-tuned ${tuned}"
+        continue
+    fi
+    # postgresql.auto.conf is written by PostgreSQL itself, one "name = 'value'" line per setting.
+    altered=$(awk -F ' = ' -v n="$name" '$1 == n { v = $2 } END { print v }' "$ALTER_SYSTEM_FILE" 2>/dev/null || true)
+    if [ -n "$altered" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: ALTER SYSTEM ${altered} overrides auto-tuned ${tuned}"
+        continue
+    fi
+    [ -f "${DATA_DIR}/PG_VERSION" ] || continue
+    in_file=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${OPERATOR_CONFIG}" -C "$name" 2>/dev/null) || continue
+    initdb_value=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${PG_SHAREDIR}/postgresql.conf.sample" -C "$name" 2>/dev/null) || continue
+    [ "$in_file" != "$initdb_value" ] || continue
+    applied=$(as_postgres postgres -D "$DATA_DIR" -c config_file=/dev/null -c "${name}=${tuned}" -C "$name" 2>/dev/null) || applied="$tuned"
+    if [ "$in_file" != "$applied" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: ${in_file} from ${OPERATOR_CONFIG} is ignored, auto-tuned ${applied} applies (base units; override with ALTER SYSTEM or -c)"
+    fi
+done
+
+# A server recovering WAL (standby.signal: a replica; recovery.signal: a backup restore) refuses to start with
+# "insufficient parameter settings" when any of these five is below the value the primary ran with: they size
+# shared-memory arrays that replayed WAL must fit into. pg_control records the primary's values. Auto-tuning sizes
+# max_connections and max_worker_processes from this container's RAM and CPUs, so a replica smaller than its primary
+# never started. Each one below the primary's is raised to it, as -c after every operator argument because nothing
+# lower can work; `postgres -C` with the same arguments gives the value the server would otherwise use.
+RAISE_ARGS=()
+if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; then
+    controldata=$(as_postgres pg_controldata -D "$DATA_DIR")
+    for pair in max_connections:max_connections max_worker_processes:max_worker_processes \
+        max_wal_senders:max_wal_senders max_prepared_transactions:max_prepared_xacts \
+        max_locks_per_transaction:max_locks_per_xact; do
+        name="${pair%%:*}"
+        primary=$(awk -F ': *' -v l="${pair#*:} setting" '$1 == l { print $2 }' <<<"$controldata")
+        current=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" -C "$name")
+        if ! [[ "$primary" =~ ^[0-9]+$ && "$current" =~ ^[0-9]+$ ]]; then
+            echo "[POSTGRES] [AUTO-CONFIG] ERROR: cannot compare ${name} with the primary's (pg_controldata: '${primary}', postgres -C: '${current}'); the line format of pg_controldata -D ${DATA_DIR} may have changed" >&2
+            exit 1
+        fi
+        if [ "$current" -lt "$primary" ]; then
+            echo "[POSTGRES] [AUTO-CONFIG] ${name}: raised from ${current} to the primary's ${primary} (recovery cannot start below it)"
+            RAISE_ARGS+=(-c "${name}=${primary}")
+        fi
+    done
+fi
+
+exec /usr/local/bin/docker-entrypoint.sh postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" "${RAISE_ARGS[@]}"

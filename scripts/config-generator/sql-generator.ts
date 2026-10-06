@@ -6,7 +6,7 @@
 import { createHash } from "crypto";
 import { format } from "sql-formatter";
 import { MANIFEST_METADATA, type ManifestEntry } from "../extensions/manifest-data";
-import { resolveExtensionDependencies } from "../test/manifest-test-utils";
+import { resolveExtensionDependencies } from "./extension-dependencies";
 
 /**
  * Generate 01-extensions.sql initialization script with state tracking

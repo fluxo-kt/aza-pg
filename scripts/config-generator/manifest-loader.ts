@@ -35,56 +35,73 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
   }
 }
 
-/**
- * Get extensions that should be enabled by default
- * Filters manifest entries for extensions with enabled=true AND runtime.defaultEnable=true
- * Excludes "tool" kind extensions and preload-only extensions (no CREATE EXTENSION support)
- * @param manifest - Parsed manifest object
- * @returns Array of manifest entries for extensions to enable
- */
+/** The entries initdb creates with CREATE EXTENSION in every new database (see isAutoCreated). */
 export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[] {
-  return manifest.entries.filter((entry) => {
-    const enabled = entry.enabled ?? true; // Default to true for backward compatibility
-    const defaultEnable = entry.runtime?.defaultEnable ?? false;
-    const kind = entry.kind;
-    const preloadOnly = entry.runtime?.preloadOnly ?? false;
-
-    // Only enable if:
-    // 1. Extension is enabled in manifest (not disabled)
-    // 2. Extension has runtime.defaultEnable = true
-    // 3. Extension is not a "tool" (tools don't support CREATE EXTENSION)
-    // 4. Extension is not preload-only (activated via shared_preload_libraries, no .control file)
-    return enabled && defaultEnable && kind !== "tool" && !preloadOnly;
-  });
+  return manifest.entries.filter(isAutoCreated);
 }
 
 /**
- * Get comma-separated list of extensions/modules that should be preloaded at server start
- * Filters for entries with shared_preload and defaultEnable = true
- * @param manifest - Parsed manifest object
- * @returns Comma-separated list of preload libraries (e.g., "auto_explain,pg_cron,timescaledb")
+ * Whether initdb runs CREATE EXTENSION for this entry. defaultEnable alone is not enough: it is also set on
+ * preload-only modules (auto_explain) and tools (pg_safeupdate), which have no CREATE EXTENSION. Every
+ * "auto-created" list or count must use this, or it disagrees with what new databases actually contain.
  */
-export function getDefaultSharedPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true (must be loaded at server start)
-  // 2. runtime.defaultEnable == true (enabled by default)
-  // 3. enabled != false (not explicitly disabled in manifest)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime) return false;
+export function isAutoCreated(entry: {
+  enabled?: boolean;
+  kind?: string;
+  runtime?: { defaultEnable?: boolean; preloadOnly?: boolean };
+}): boolean {
+  return (
+    entry.enabled !== false &&
+    entry.runtime?.defaultEnable === true &&
+    entry.kind !== "tool" &&
+    entry.runtime?.preloadOnly !== true
+  );
+}
 
-    const isSharedPreload = runtime.sharedPreload === true;
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isEnabled = entry.enabled !== false; // null or true
+/**
+ * Whether this entry is in the default shared_preload_libraries. sharedPreload alone only means the library
+ * must be preloaded to work; without defaultEnable it is opt-in (supautils, set_user, plan_filter).
+ */
+export function isPreloadedByDefault(entry: PreloadCandidate): boolean {
+  return (
+    entry.runtime?.sharedPreload === true &&
+    entry.runtime.defaultEnable === true &&
+    entry.enabled !== false
+  );
+}
 
-    return isSharedPreload && isDefaultEnable && isEnabled;
-  });
+/**
+ * The manifest fields that decide whether an entry is preloaded by default. Structural, so a caller
+ * holding only these fields (the entrypoint generator) shares this one implementation.
+ */
+export interface PreloadCandidate {
+  name: string;
+  enabled?: boolean;
+  runtime?: { sharedPreload?: boolean; defaultEnable?: boolean; preloadLibraryName?: string };
+}
 
-  // Sort alphabetically for consistency across regenerations
-  // Use preloadLibraryName if specified (e.g., pg_safeupdate → safeupdate)
-  const extensionNames = preloadExtensions
-    .map((e) => e.runtime?.preloadLibraryName ?? e.name)
-    .sort();
+/**
+ * The library name an entry loads under in shared_preload_libraries: runtime.preloadLibraryName when set
+ * (pg_safeupdate loads as safeupdate, pg_plan_filter as plan_filter), else the entry name. Every list of
+ * preload libraries goes through here, so a renamed library cannot be spelled two ways.
+ * @throws Error when preloadLibraryName is empty: it names no library, and neither guessing the extension
+ *   name nor emitting an empty list element would load what was meant
+ */
+export function preloadLibraryName(entry: PreloadCandidate): string {
+  const library = entry.runtime?.preloadLibraryName;
+  if (library === "") throw new Error(`${entry.name}: runtime.preloadLibraryName is empty`);
+  return library ?? entry.name;
+}
 
-  return extensionNames.join(",");
+/**
+ * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
+ * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
+ * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
+ * reads this.
+ * @throws Error when an entry's preloadLibraryName is empty (see preloadLibraryName)
+ */
+export function getDefaultSharedPreloadLibraries(manifest: {
+  entries: readonly PreloadCandidate[];
+}): string {
+  return manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort().join(",");
 }

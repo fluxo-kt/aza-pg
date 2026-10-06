@@ -1,9 +1,9 @@
 name: Load Test Image
-description: Load Docker image from artifact or registry
+description: Load Docker image from an artifact, the actions cache, or a registry
 
 inputs:
   source:
-    description: Image source (artifact or registry)
+    description: Image source (artifact, cache or registry)
     required: true
   image-name:
     description: Docker image name/tag to use
@@ -16,6 +16,9 @@ inputs:
     description: Artifact download path (required if source=artifact)
     required: false
     default: /tmp
+  cache-key:
+    description: actions/cache key of aza-pg-ci-image.tar.gz (required if source=cache)
+    required: false
   registry-image:
     description: Full registry image reference (required if source=registry)
     required: false
@@ -34,16 +37,31 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.artifact-path }}
 
-    - name: Load Docker image from artifact
-      if: inputs.source == 'artifact'
+    # The build job saved the tarball under this key; a miss means the build job did not run or failed to save,
+    # so the test job fails here instead of testing nothing.
+    - name: Restore image from cache
+      if: inputs.source == 'cache'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz
+        key: ${{ inputs.cache-key }}
+        fail-on-cache-miss: true
+
+    # Inputs reach the shell only through env: a dispatch input (regression-tests.yml image_ref) feeds image-name,
+    # and interpolating it into the script would run its value as shell code.
+    - name: Load Docker image from tarball
+      if: inputs.source == 'artifact' || inputs.source == 'cache'
       shell: bash
+      env:
+        TARBALL: ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz
+        IMAGE_NAME: ${{ inputs.image-name }}
       run: |
         set -euo pipefail
         echo "Loading Docker image from artifact..."
 
         # Parse docker load output to get exact loaded image reference (deterministic)
         # Avoids race condition from grepping image list when multiple matches exist
-        LOAD_OUTPUT=$(docker load < ${{ inputs.artifact-path }}/aza-pg-ci-image.tar.gz)
+        LOAD_OUTPUT=$(docker load < "$TARBALL")
         LOADED_IMAGE=$(echo "$LOAD_OUTPUT" | grep -oP 'Loaded image: \K.*' | head -1)
 
         if [ -z "$LOADED_IMAGE" ]; then
@@ -55,9 +73,9 @@ runs:
         echo "Loaded image: $LOADED_IMAGE"
 
         # Tag with requested name if different from loaded image
-        if [ "$LOADED_IMAGE" != "${{ inputs.image-name }}" ]; then
-          docker tag "$LOADED_IMAGE" "${{ inputs.image-name }}"
-          echo "Tagged $LOADED_IMAGE as ${{ inputs.image-name }}"
+        if [ "$LOADED_IMAGE" != "$IMAGE_NAME" ]; then
+          docker tag "$LOADED_IMAGE" "$IMAGE_NAME"
+          echo "Tagged $LOADED_IMAGE as $IMAGE_NAME"
         fi
 
         docker images | grep aza-pg-ci || docker images
@@ -70,13 +88,17 @@ runs:
     - name: Pull image from registry
       if: inputs.source == 'registry'
       shell: bash
+      env:
+        REGISTRY_IMAGE: ${{ inputs.registry-image }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        MAX_RETRIES: ${{ inputs.max-retries }}
       run: |
         set -euo pipefail
         echo "Pulling Docker image from registry..."
         bun scripts/docker/pull-with-retry.ts \
-          --image "${{ inputs.registry-image }}" \
-          --max-retries ${{ inputs.max-retries }}
+          --image "$REGISTRY_IMAGE" \
+          --max-retries "$MAX_RETRIES"
 
         # Tag with local name for consistency
-        docker tag "${{ inputs.registry-image }}" "${{ inputs.image-name }}"
-        echo "✅ Image pulled and tagged: ${{ inputs.image-name }}"
+        docker tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
+        echo "✅ Image pulled and tagged: $IMAGE_NAME"

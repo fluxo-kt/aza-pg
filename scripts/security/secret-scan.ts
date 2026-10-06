@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
+/**
+ * Fails (exit 1) when a tracked file assigns a literal to a credential-like name (password, secret, api key, token),
+ * printing each file:line. A required check of `bun run validate:all`: a hard-coded credential must stop the change,
+ * never print a warning nobody reads.
+ *
+ * Usage: bun scripts/security/secret-scan.ts
+ */
 
 import { getErrorMessage } from "../utils/errors";
-
-type Profile = "validate" | "test-all";
-
-type Options = {
-  profile: Profile;
-  strict: boolean;
-};
 
 export type SecretFinding = {
   file: string;
@@ -34,32 +34,8 @@ const ALLOWED_LINE_PATTERNS = [
   /PASSWORD.*test/,
 ];
 
-function parseArgs(): Options {
-  let profile: Profile = "test-all";
-  let strict = true;
-
-  for (let i = 2; i < Bun.argv.length; i++) {
-    const arg = Bun.argv[i];
-    if (arg === "--warn-only") {
-      strict = false;
-    } else if (arg === "--strict") {
-      strict = true;
-    } else if (arg === "--profile") {
-      const value = Bun.argv[++i];
-      if (value !== "validate" && value !== "test-all") {
-        throw new Error(`Invalid --profile: ${value}`);
-      }
-      profile = value;
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
-  }
-
-  return { profile, strict };
-}
-
-function isExcluded(file: string, profile: Profile): boolean {
-  if (
+function isExcluded(file: string): boolean {
+  return (
     file.endsWith(".env.example") ||
     file.startsWith(".archived/") ||
     file.startsWith(".github/") ||
@@ -68,19 +44,7 @@ function isExcluded(file: string, profile: Profile): boolean {
     file.endsWith(".test.ts") ||
     /(^|\/)test-[^/]*\.ts$/.test(file) ||
     /(^|\/)\.[^/]*rc$/.test(file)
-  ) {
-    return true;
-  }
-
-  if (profile === "test-all") {
-    return (
-      file.startsWith("scripts/test/") ||
-      file.startsWith("examples/") ||
-      file === "scripts/README.md"
-    );
-  }
-
-  return false;
+  );
 }
 
 function isCodeExpression(file: string, value: string): boolean {
@@ -122,7 +86,7 @@ export function findSecretFindingsInText(file: string, text: string): SecretFind
   return findings;
 }
 
-async function getTrackedFiles(profile: Profile): Promise<string[]> {
+async function getTrackedFiles(): Promise<string[]> {
   const proc = Bun.spawn(["git", "ls-files"], {
     stdout: "pipe",
     stderr: "pipe",
@@ -137,13 +101,13 @@ async function getTrackedFiles(profile: Profile): Promise<string[]> {
     throw new Error(`git ls-files failed: ${stderr.trim()}`);
   }
 
-  return stdout.split("\n").filter((file) => file !== "" && !isExcluded(file, profile));
+  return stdout.split("\n").filter((file) => file !== "" && !isExcluded(file));
 }
 
-async function scanTrackedFiles(profile: Profile): Promise<SecretFinding[]> {
+async function scanTrackedFiles(): Promise<SecretFinding[]> {
   const findings: SecretFinding[] = [];
 
-  for (const file of await getTrackedFiles(profile)) {
+  for (const file of await getTrackedFiles()) {
     const source = Bun.file(file);
     if (!(await source.exists())) {
       continue;
@@ -155,14 +119,18 @@ async function scanTrackedFiles(profile: Profile): Promise<SecretFinding[]> {
 }
 
 async function main(): Promise<void> {
-  const options = parseArgs();
-  const findings = await scanTrackedFiles(options.profile);
+  if (Bun.argv.length > 2) throw new Error(`takes no arguments: ${Bun.argv.slice(2).join(" ")}`);
+  const findings = await scanTrackedFiles();
 
   for (const finding of findings) {
     console.log(`${finding.file}:${finding.lineNumber}:${finding.line}`);
   }
 
-  if (findings.length > 0 && options.strict) {
+  if (findings.length > 0) {
+    console.error(
+      "Possible hard-coded secrets above. A real credential: read it from the environment (Bun.env.X) or a secret " +
+        "store and rotate it. A false positive: rename the variable so it no longer looks like a credential."
+    );
     process.exit(1);
   }
 }

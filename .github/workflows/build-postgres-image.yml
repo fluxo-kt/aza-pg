@@ -29,19 +29,19 @@
 #
 # WHAT IT DOES:
 # -----------
-# 1. Lint & Validate: Fast syntax checks, manifest validation, smoke tests
+# 1. Lint & Validate: bun run validate:all (the checks ci.yml runs)
 # 2. Build: Single or multi-platform based on push_image input
 #    - push_image=false: Single-platform amd64, local load (no push)
 #    - push_image=true: Multi-platform (amd64 + arm64 native), push to registry
-# 3. Test: Extension loading, auto-config, primary/replica/single stacks
-# 4. Scan: Trivy security vulnerability scan
+# 3. Test: every routine suite group of scripts/test-all.ts (push_image=true only)
+# 4. Scan: Trivy security vulnerability scan (push_image=true only)
 # 5. Output: Full test report, image digest, SHA hashes
 #
 # BUILD METHOD:
 # ------------
 # When push_image=true:
 #   - Native builds on platform-specific runners (no QEMU emulation)
-#   - amd64: ubuntu-latest (x86_64)
+#   - amd64: ubuntu-26.04 (x86_64)
 #   - arm64: ubuntu-24.04-arm (ARM64 native)
 #   - Builds run in parallel for faster execution
 #   - Each platform pushes by digest
@@ -50,50 +50,45 @@
 # When push_image=false:
 #   - Single-platform amd64 build
 #   - No push to registry (local load only)
-#   - Fast iteration for local testing
+#   - Fast iteration for local testing; no tests or scan (later jobs run on other runners and cannot see it)
 #
 # HOW TO TRIGGER:
 # ---------------
 # GitHub UI:
 #   Actions tab → "Build PostgreSQL Image" → "Run workflow"
-#   Choose branch and optional version inputs
+#   Choose branch and whether to push
 #
 # GitHub CLI:
 #   gh workflow run build-postgres-image.yml -r main
-#   gh workflow run build-postgres-image.yml -r main \
-#     -f pg_version=18 \
-#     -f pgvector_version=0.8.1 \
-#     -f pg_cron_version=1.6.7 \
-#     -f pgaudit_version=18.0 \
-#     -f push_image=true
+#   gh workflow run build-postgres-image.yml -r main -f push_image=true
 #
 # OUTPUTS:
 # --------
 # - Built image (local by default, push optional via 'push_image' input)
-# - Dev-prefixed tags if pushed (e.g., dev-main, dev-main-abc123)
-# - Full SBOM and provenance (only when pushed)
+# - Dev-prefixed tags if pushed, in the testing package (workflow-config.json testingImageName): dev-<branch> and
+#   dev-<branch>-<full commit SHA>
+# - SBOM attestation (only when pushed; BuildKit provenance is off)
 # - Test results in GitHub Actions UI
-# - Step summary with extension catalog, versions, test status
+# - Step summary with the manifest digest, tags, platforms and the scan gate result
 #
 # DIFFERENCES FROM OTHER WORKFLOWS:
 # --------------------------------
-# vs ci.yml:     No Docker build (ci.yml only validates code/configs)
+# vs ci.yml:     Manual, amd64 + arm64, pushed (ci.yml builds amd64 on every push/PR, loads it, tests, never pushes)
 # vs publish.yml: Manual trigger (publish.yml auto-runs on 'release' branch)
-#                 More detailed testing (publish.yml is minimal pre-signature)
-#                 Different tagging strategy (build.yml uses dev-prefixed tags)
+#                 Dev-prefixed tags (publish.yml pushes release tags)
 #                 No push by default (publish.yml always pushes production tags)
 #                 No Cosign signing (dev builds only)
 #
 # TROUBLESHOOTING:
 # ---------------
-# Failed tests → Check GitHub Actions logs in "Test PostgreSQL Stack" section
+# Failed tests → Check the "Test <group>" job logs; each failed suite's output is printed in full
 # arm64 timeout → Native builds should be fast; check logs for actual error
 # Push fails → May need GHCR write permissions or GITHUB_TOKEN with packages scope
 # Build fails → Run locally: bun run build or check Dockerfile for syntax
 #
 # RELATED DOCUMENTATION:
 # ----------------------
-# - CLAUDE.md - Development standards and fast paths
+# - AGENTS.md - Development standards and fast paths
 # - scripts/build.ts - Local build script (Bun TypeScript)
 #
 # ============================================================================
@@ -119,17 +114,26 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
+# timeout-minutes: 4–8x each job's measured run time, builds sized on a full rebuild; reason in ci.yml above jobs:
 jobs:
   lint:
     name: Lint and Validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-26.04
+    timeout-minutes: 3
+    outputs:
+      image_name: ${{ steps.config.outputs.image_name }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Dev builds go to the testing package, never the production one operators pull; its cleanup workflows prune them.
+      - name: Load workflow config
+        id: config
+        run: |
+          set -euo pipefail
+          echo "image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -137,29 +141,17 @@ jobs:
       - name: Run full validation
         run: bun run validate:all
 
-      - name: Check documentation consistency
-        run: bun scripts/check-docs-consistency.ts
-
-      - name: Run smoke tests
-        run: bun scripts/test-smoke.ts
-
-      - name: Verify manifest sync
-        run: bun scripts/verify-generated.ts
-
-      - name: Validate workflow defaults
-        run: bun scripts/ci/validate-workflow-defaults.ts
-
   build:
     name: Build PostgreSQL Image (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     needs: lint
-    timeout-minutes: 60
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
             artifact: linux-amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -167,10 +159,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Validate Dockerfile paths
-        run: bun scripts/build/validate-dockerfile-paths.ts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
         uses: ./.github/actions/setup-buildx
@@ -183,9 +172,9 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}
           tags: |
             type=ref,event=branch,prefix=dev-
             type=sha,prefix=dev-{{branch}}-,format=short
@@ -197,29 +186,18 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
-      - name: Generate cache key
-        id: cache-key
-        run: |
-          set -euo pipefail
-          CONTENT_HASH="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}"
-          CACHE_KEY="build-cache-${{ github.ref_name }}-${CONTENT_HASH}-${{ matrix.artifact }}"
-          echo "key=${CACHE_KEY}" >> $GITHUB_OUTPUT
-          echo "content_hash=${CONTENT_HASH}" >> $GITHUB_OUTPUT
-          echo "Generated cache key: ${CACHE_KEY}"
-
       - name: Build and push by digest (multi-platform)
         id: build
         if: github.event.inputs.push_image == 'true'
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./docker/postgres/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           cache-from: |
             type=gha,scope=aza-pg-${{ matrix.artifact }}
-            type=gha,scope=aza-pg-base
           cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
           # BuildKit provenance disabled to prevent potential secret leakage via build args
           # Dev builds don't use GitHub attestation action (publish.yml only)
@@ -229,7 +207,7 @@ jobs:
       - name: Build and load (local only)
         id: build-local
         if: github.event.inputs.push_image != 'true'
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./docker/postgres/Dockerfile
@@ -239,7 +217,6 @@ jobs:
           load: true
           cache-from: |
             type=gha,scope=aza-pg-${{ matrix.artifact }}
-            type=gha,scope=aza-pg-base
           cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
           provenance: false
           sbom: false
@@ -278,16 +255,17 @@ jobs:
             --platform "${{ matrix.platform }}" \
             --github-summary
 
-      - name: Output build information (amd64 only)
-        if: matrix.platform == 'linux/amd64'
+      # Local builds only: they get no test jobs, so this extension count is their only extension check. A pushed build
+      # is loaded nowhere here, and its test jobs check every extension, so pulling it back to count would add nothing.
+      # One tag, not meta's two-line tag list (docker run takes one ref).
+      - name: Verify extensions in the local image
+        if: github.event.inputs.push_image != 'true' && matrix.platform == 'linux/amd64'
         run: |
           set -euo pipefail
-          DIGEST="${{ github.event.inputs.push_image == 'true' && steps.build.outputs.digest || steps.build-local.outputs.digest }}"
           bun scripts/ci/verify-build-output.ts \
-            --image="${{ steps.meta.outputs.tags }}" \
+            --image="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
             --platform="${{ matrix.platform }}" \
-            --digest="${DIGEST}" \
-            --push-image="${{ github.event.inputs.push_image }}" \
+            --digest="${{ steps.build-local.outputs.digest }}" \
             --github-summary
 
       - name: Verify local image
@@ -295,21 +273,21 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/ci/verify-local-image-with-fallback.ts \
-            --image-ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --image-ref="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
             --ref-name="${{ github.ref_name }}"
 
   merge:
     name: Create Multi-Platform Manifest
-    runs-on: ubuntu-latest
-    needs: build
+    runs-on: ubuntu-26.04
+    needs: [lint, build]
     if: github.event.inputs.push_image == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 4
     outputs:
       image_digest: ${{ steps.merge.outputs.digest }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -335,7 +313,7 @@ jobs:
           set -euo pipefail
           bun scripts/ci/merge-multi-platform-manifest.ts \
             --registry="${{ env.REGISTRY }}" \
-            --repository="${{ env.IMAGE_NAME }}" \
+            --repository="${{ needs.lint.outputs.image_name }}" \
             --tag="dev-${{ github.ref_name }}" \
             --sha="${{ github.sha }}" \
             --digests-dir="${{ runner.temp }}/digests" \
@@ -345,82 +323,65 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
             --max-retries 3
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} psql --version
+          docker run --rm ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }} psql --version
           echo "✅ PostgreSQL version verified"
 
       - name: Output manifest digest
         run: |
           set -euo pipefail
-          echo "### Multi-Platform Manifest Created :package:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo "- \`dev-${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:**" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/amd64 (native build on ubuntu-latest)" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/arm64 (native build on ubuntu-24.04-arm)" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Multi-Platform Manifest Created :package:"
+            echo ""
+            echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`"
+            echo "**Tags:**"
+            echo "- \`dev-${{ github.ref_name }}\`"
+            echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`"
+            echo ""
+            echo "**Platforms:**"
+            echo "- linux/amd64 (native build on ubuntu-26.04)"
+            echo "- linux/arm64 (native build on ubuntu-24.04-arm)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   scan-image:
     name: Scan Image for Vulnerabilities
-    runs-on: ubuntu-latest
-    needs: [build, merge]
-    if: always() && needs.build.result == 'success'
-    timeout-minutes: 15
+    runs-on: ubuntu-26.04
+    needs: [lint, build, merge]
+    # Pushed images only: a push_image=false build exists only in its own build job's Docker, which this runner
+    # cannot see (the test jobs follow the same rule). No always(): after a failed merge the dev tag still names the
+    # previous run's image, so the scan would judge a stale image.
+    if: github.event.inputs.push_image == 'true'
+    timeout-minutes: 8
+    # Job permissions replace the workflow's, so the private testing package needs packages: read here.
     permissions:
       contents: read
+      packages: read
       security-events: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GitHub Container Registry
-        if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/ghcr-login
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Bun and dependencies
-        if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/setup-bun
 
-      - name: Pull built image (pushed)
-        if: github.event.inputs.push_image == 'true'
+      - name: Pull built image
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
             --max-retries 3
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan
-          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}"
-
-      - name: Use local image (not pushed)
-        if: github.event.inputs.push_image != 'true'
-        run: |
-          set -euo pipefail
-          echo "🔍 Using locally built image for security scan..."
-          # When loaded locally, image name may not include registry prefix
-          # Try with registry prefix first, fallback to finding local tag
-          if docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }} aza-pg-testing:scan 2>/dev/null; then
-            echo "📦 Tagged image with registry prefix for scanning"
-          else
-            # Find the locally built image by tag pattern
-            LOCAL_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'dev-${{ github.ref_name }}$' | head -1)
-            if [ -n "$LOCAL_IMAGE" ]; then
-              docker tag "$LOCAL_IMAGE" aza-pg-testing:scan
-              echo "📦 Tagged local image $LOCAL_IMAGE for scanning"
-            else
-              echo "❌ Could not find locally built image"
-              exit 1
-            fi
-          fi
+          docker tag ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }} aza-pg-testing:scan
+          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}"
 
       - name: Cache Trivy vulnerability database
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .trivy-cache
           key: trivy-db-${{ runner.os }}-${{ hashFiles('.github/workflows/build-postgres-image.yml') }}
@@ -440,7 +401,7 @@ jobs:
           skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
@@ -479,366 +440,52 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "### Security Scan Results :shield:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.event.inputs.push_image }}" == "true" ]; then
-            DIGEST="${{ needs.merge.outputs.image_digest }}"
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST:0:12}\`" >> $GITHUB_STEP_SUMMARY
-          else
-            TAG="dev-${{ github.ref_name }}"
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}\` (local build)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Severity Filter:** CRITICAL, HIGH" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Scan completed. Check Security tab for details (if pushed)." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Security Scan Results :shield:"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          DIGEST="${{ needs.merge.outputs.image_digest }}"
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}@${DIGEST:0:12}\`" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo ""
+            echo "**Severity Filter:** CRITICAL, HIGH"
+            echo ""
+            echo "**Gate:** ${{ job.status }} (fixable CRITICAL/HIGH fail it; all findings are in the Security tab)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test:
-    name: Test PostgreSQL Stack
-    runs-on: ubuntu-latest
-    needs: [build, merge]
+    name: Test ${{ matrix.group }}
+    runs-on: ubuntu-26.04
+    needs: [lint, build, merge]
     if: github.event.inputs.push_image == 'true'
-    timeout-minutes: 25
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: extensions
+            timeout: 6
+          - group: security
+            timeout: 5
+          - group: stacks
+            timeout: 7
+          - group: features
+            timeout: 6
+          - group: regression
+            timeout: 5
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up test environment
-        if: github.event.inputs.push_image == 'true'
         uses: ./.github/actions/test-job-setup
         with:
           ghcr-login: "true"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
           image-name: aza-pg-testing:test
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}
 
-      - name: Test extension loading
-        run: |
-          set -euo pipefail
-          echo "🧪 Testing extension loading..."
-          docker run -d --name pg-test \
-            -e POSTGRES_PASSWORD=test \
-            aza-pg-testing:test
-
-          echo "⏳ Waiting for PostgreSQL to start..."
-          for i in {1..30}; do
-            if docker exec pg-test pg_isready -U postgres > /dev/null 2>&1; then
-              echo "✅ PostgreSQL ready"
-              break
-            fi
-            sleep 2
-          done
-
-          docker exec pg-test psql -U postgres -c "CREATE EXTENSION vector;"
-          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_trgm;"
-          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_stat_statements;"
-          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pg_cron;"
-          docker exec pg-test psql -U postgres -c "CREATE EXTENSION pgaudit;"
-
-          echo "🔍 Verifying extensions functional..."
-          EXT_LIST=$(docker exec pg-test psql -U postgres -tAc \
-            "SELECT extname FROM pg_extension \
-             WHERE extname IN ('vector', 'pg_trgm', 'pg_stat_statements', \
-                               'pg_cron', 'pgaudit') ORDER BY extname;")
-          echo "$EXT_LIST" | grep -q "pg_cron" || { echo "❌ pg_cron not found"; exit 1; }
-          echo "$EXT_LIST" | grep -q "pg_stat_statements" || { echo "❌ pg_stat_statements not found"; exit 1; }
-          echo "$EXT_LIST" | grep -q "pg_trgm" || { echo "❌ pg_trgm not found"; exit 1; }
-          echo "$EXT_LIST" | grep -q "pgaudit" || { echo "❌ pgaudit not found"; exit 1; }
-          echo "$EXT_LIST" | grep -q "vector" || { echo "❌ vector not found"; exit 1; }
-          echo "✅ All 5 extensions installed"
-
-          TRGM_TEST=$(docker exec pg-test psql -U postgres -tAc "SELECT similarity('test', 'test');")
-          echo "$TRGM_TEST" | grep -q "1" || { echo "❌ pg_trgm test failed (expected 1, got: $TRGM_TEST)"; exit 1; }
-          echo "✅ pg_trgm functional"
-
-          VECTOR_TEST=$(docker exec pg-test psql -U postgres -tAc "SELECT '[1,2,3]'::vector;")
-          echo "$VECTOR_TEST" | grep -q "\[1,2,3\]" || { echo "❌ vector test failed (got: $VECTOR_TEST)"; exit 1; }
-          echo "✅ vector functional"
-
-          docker stop pg-test
-          docker rm -v pg-test
-          echo "✅ Extensions test passed!"
-
-      - name: Test auto-config with different memory limits
-        run: |
-          set -euo pipefail
-          echo "🧪 Testing auto-config with 2GB memory limit..."
-          docker run -d --name pg-test-2gb \
-            -e POSTGRES_PASSWORD=test \
-            --memory=2g \
-            aza-pg-testing:test
-
-          for i in {1..30}; do
-            if docker exec pg-test-2gb pg_isready -U postgres > /dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
-
-          echo "Checking auto-config logs for 2GB..."
-          docker logs pg-test-2gb 2>&1 | grep -i "detected ram" || true
-          docker logs pg-test-2gb 2>&1 | grep -i "shared_buffers" || true
-
-          docker exec pg-test-2gb psql -U postgres -c "SHOW shared_buffers;"
-          docker exec pg-test-2gb psql -U postgres -c "SHOW max_connections;"
-
-          docker stop pg-test-2gb
-          docker rm -v pg-test-2gb
-
-          echo "🧪 Testing auto-config with 4GB memory limit..."
-          docker run -d --name pg-test-4gb \
-            -e POSTGRES_PASSWORD=test \
-            --memory=4g \
-            aza-pg-testing:test
-
-          for i in {1..30}; do
-            if docker exec pg-test-4gb pg_isready -U postgres > /dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
-
-          echo "Checking auto-config logs for 4GB..."
-          docker logs pg-test-4gb 2>&1 | grep -i "detected ram" || true
-          docker logs pg-test-4gb 2>&1 | grep -i "shared_buffers" || true
-
-          docker exec pg-test-4gb psql -U postgres -c "SHOW shared_buffers;"
-          docker exec pg-test-4gb psql -U postgres -c "SHOW max_connections;"
-
-          docker stop pg-test-4gb
-          docker rm -v pg-test-4gb
-          echo "✅ Auto-config test passed!"
-
-      - name: Test all extensions (comprehensive)
-        run: |
-          set -euo pipefail
-          # Derive enabled extension count dynamically
-          eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
-          echo "🧪 Testing all ${CATALOG_ENABLED} enabled catalog entries comprehensively..."
-          docker run -d --name pg-ext-test \
-            -e POSTGRES_PASSWORD=test \
-            --memory=4g \
-            aza-pg-testing:test
-
-          echo "⏳ Waiting for PostgreSQL to start..."
-          for i in {1..30}; do
-            if docker exec pg-ext-test pg_isready -U postgres > /dev/null 2>&1; then
-              echo "✅ PostgreSQL ready"
-              break
-            fi
-            sleep 2
-          done
-
-          echo "🧪 Running comprehensive extension tests..."
-          cd scripts/test
-          if ! bun run test-all-extensions-functional.ts --container=pg-ext-test; then
-            echo "❌ Extension tests failed"
-            docker logs pg-ext-test --tail=100
-            docker stop pg-ext-test
-            docker rm -v pg-ext-test
-            exit 1
-          fi
-
-          docker stop pg-ext-test
-          docker rm -v pg-ext-test
-          echo "✅ All extension tests passed!"
-
-      - name: Deploy and test primary stack
-        run: |
-          set -euo pipefail  # Exit on any error
-
-          echo "🚀 Deploying primary stack..."
-          cd stacks/primary
-
-          # Function for cleanup
-          cleanup() {
-            echo "Cleaning up..."
-            docker compose -f compose.yml -f compose.dev.yml logs --tail=100 || true
-            docker compose -f compose.yml -f compose.dev.yml down -v || true
-          }
-          trap cleanup EXIT ERR  # Cleanup on exit or error
-
-          # Generate test-only credentials (NOT for production)
-          TEST_POSTGRES_PASS="test_pg_${GITHUB_RUN_ID}_$(date +%s)"
-          TEST_PGBOUNCER_PASS="test_pgb_${GITHUB_RUN_ID}_$(date +%s)"
-          TEST_REPLICATION_PASS="test_repl_${GITHUB_RUN_ID}_$(date +%s)"
-
-          # Create .env file
-          cat > .env << EOF
-          POSTGRES_PASSWORD=${TEST_POSTGRES_PASS}
-          PGBOUNCER_AUTH_PASS=${TEST_PGBOUNCER_PASS}
-          PG_REPLICATION_PASSWORD=${TEST_REPLICATION_PASS}
-          POSTGRES_IMAGE=aza-pg-testing:test
-          POSTGRES_MEMORY_LIMIT=2g
-          EOF
-
-          # Start stack
-          docker compose up -d
-
-          echo "⏳ Waiting for services to be healthy..."
-          sleep 30
-
-          # Check service health
-          docker compose ps
-
-          echo "🧪 Testing direct PostgreSQL connection..."
-          if ! docker compose exec -T postgres psql -U postgres -c "SELECT version();"; then
-            echo "❌ Direct PostgreSQL connection failed"
-            touch /tmp/test-failed
-            exit 1
-          fi
-
-          echo "🧪 Testing PgBouncer connection..."
-          if ! PGPASSWORD=${TEST_PGBOUNCER_PASS} docker compose exec -T pgbouncer \
-            psql -h localhost -p 6432 -U pgbouncer_auth -d postgres -c "SHOW POOLS;"; then
-            echo "❌ PgBouncer connection failed"
-            touch /tmp/test-failed
-            exit 1
-          fi
-
-          echo "🧪 Testing postgres_exporter metrics..."
-          if ! docker compose exec -T postgres_exporter wget -q -O - http://localhost:9187/metrics | head -20; then
-            echo "❌ postgres_exporter metrics failed"
-            touch /tmp/test-failed
-            exit 1
-          fi
-
-          echo "📊 Stack logs..."
-          docker compose logs --tail=50
-
-          echo "✅ Primary stack test passed!"
-
-      - name: Check test results
-        if: always()
-        run: |
-          set -euo pipefail
-          if [ -f /tmp/test-failed ]; then
-            echo "::error::Primary stack tests failed"
-            exit 1
-          fi
-
-      - name: Capture PostgreSQL logs on failure
-        if: failure()
-        run: |
-          set -euo pipefail
-          bun scripts/debug/capture-postgres-diagnostics.ts \
-            --container pg-ext-test \
-            --output-dir "${{ runner.temp }}/diagnostics"
-
-      - name: Upload test failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: test-failure-diagnostics-${{ github.sha }}
-          path: ${{ runner.temp }}/diagnostics/*
-          if-no-files-found: warn
-          retention-days: 7
-
-    outputs:
-      test-status: success
-
-  test-replica-stack:
-    name: Test Replica Stack
-    runs-on: ubuntu-latest
-    needs: [build, merge]
-    if: github.event.inputs.push_image == 'true'
-    timeout-minutes: 25
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Set up test environment
-        if: github.event.inputs.push_image == 'true'
-        uses: ./.github/actions/test-job-setup
-        with:
-          ghcr-login: "true"
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          image-source: registry
-          image-name: aza-pg-testing:pg18
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
-
-      - name: Run replica stack tests
-        run: |
-          set -euo pipefail
-          echo "🧪 Running replica stack tests..."
-
-          cd "$GITHUB_WORKSPACE"
-          if ! bun scripts/test/test-replica-stack.ts; then
-            echo "❌ Replica stack tests failed"
-            exit 1
-          fi
-
-          echo "✅ Replica stack tests passed!"
-
-      - name: Check test results
-        if: always()
-        run: |
-          set -euo pipefail
-          if [ -f /tmp/test-failed ]; then
-            echo "::error::Replica stack tests failed"
-            exit 1
-          fi
-
-      - name: Capture test diagnostics
-        if: failure()
-        uses: ./.github/actions/capture-test-diagnostics
-        with:
-          test-type: replica-stack
-          containers: all
-          artifact-prefix: replica-test
-          retention-days: 7
-
-  test-single-stack:
-    name: Test Single Stack
-    runs-on: ubuntu-latest
-    needs: [build, merge]
-    if: github.event.inputs.push_image == 'true'
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Set up test environment
-        if: github.event.inputs.push_image == 'true'
-        uses: ./.github/actions/test-job-setup
-        with:
-          ghcr-login: "true"
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          image-source: registry
-          image-name: aza-pg-testing:pg18
-          registry-image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.ref_name }}
-
-      - name: Run single stack tests
-        run: |
-          set -euo pipefail
-          echo "🧪 Running single stack tests..."
-
-          cd "$GITHUB_WORKSPACE"
-          if ! bun scripts/test/test-single-stack.ts; then
-            echo "❌ Single stack tests failed"
-            exit 1
-          fi
-
-          echo "✅ Single stack tests passed!"
-
-      - name: Check test results
-        if: always()
-        run: |
-          set -euo pipefail
-          if [ -f /tmp/test-failed ]; then
-            echo "::error::Single stack tests failed"
-            exit 1
-          fi
-
-      - name: Capture test diagnostics
-        if: failure()
-        uses: ./.github/actions/capture-test-diagnostics
-        with:
-          test-type: single-stack
-          containers: all
-          artifact-prefix: single-test
-          retention-days: 7
+      - name: Run ${{ matrix.group }} suites
+        run: bun scripts/test-all.ts --group "${{ matrix.group }}" --image aza-pg-testing:test

@@ -7,8 +7,8 @@ High availability setup with automatic VIP failover and manual database promotio
 ```
 Primary VPS (10.0.0.2)          Replica VPS (10.0.0.3)
 ├── PostgreSQL (Primary)        ├── PostgreSQL (Standby)
-├── PgBouncer (Priority 100)    ├── PgBouncer (Priority 90)
-├── Keepalived (MASTER)         ├── Keepalived (BACKUP)
+├── PgBouncer                   ├── PgBouncer
+├── Keepalived (priority 100)   ├── Keepalived (priority 90)
 └── Monitoring Stack            └── Monitoring Stack
 
            ↓ VIP ↓
@@ -57,7 +57,7 @@ postgres:
 
 ```bash
 cd /opt/aza-pg-stack-primary
-cp -r /path/to/phase1-single-vps/* .
+cp -r /path/to/phase1-single-vps/. .   # "/." also copies .env.example
 # Edit docker-compose.yml to bind to private IP
 docker compose up -d
 ```
@@ -76,45 +76,39 @@ CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_P
 3. Add to pg_hba.conf via terminal:
 
 ```bash
-echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf
+echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> "$PGDATA/pg_hba.conf"
 psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
 **Bare VPS Method:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_PASSWORD';
 EOF
 
-docker exec postgres bash -c "echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+docker exec postgres bash -c 'echo "host replication replicator 10.0.0.3/32 scram-sha-256" >> "$PGDATA/pg_hba.conf"'
 docker exec postgres psql -U postgres -c "SELECT pg_reload_conf();"
 ```
 
-### 3. Enable WAL Settings
+### 3. Keep WAL for the Replica
+
+The image already ships `wal_level = logical` (a superset of `replica`), `max_wal_senders = 10` and `hot_standby = on`. Never lower `wal_level`: with a logical slot present PostgreSQL refuses to start. Only retain WAL so a briefly disconnected replica can catch up (reload, no restart):
 
 **Coolify Method:** Execute via PostgreSQL terminal tab:
 
 ```sql
-ALTER SYSTEM SET wal_level = 'replica';
-ALTER SYSTEM SET max_wal_senders = 3;
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 ```
-
-Then restart PostgreSQL via Coolify UI (Service → Restart button).
 
 **Bare VPS Method:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
-ALTER SYSTEM SET wal_level = 'replica';
-ALTER SYSTEM SET max_wal_senders = 3;
+docker exec -i postgres psql -U postgres <<EOF
 ALTER SYSTEM SET wal_keep_size = '1GB';
-ALTER SYSTEM SET hot_standby = 'on';
+SELECT pg_reload_conf();
 EOF
-
-docker restart postgres
 ```
 
 ### 4. Create Base Backup on Replica
@@ -129,6 +123,7 @@ Execute these commands on the **replica VPS**:
 **Bare VPS Method:**
 
 ```bash
+# Holds a copy of the phase 1 files, as on the primary (step 1)
 cd /opt/aza-pg-stack-replica
 
 # Stop postgres if running
@@ -140,24 +135,12 @@ docker volume rm aza-pg-stack-replica_postgres_data || true
 # Create volume
 docker volume create aza-pg-stack-replica_postgres_data
 
-# Run pg_basebackup (replace USERNAME with your GitHub username)
+# Copy the primary into the image's PGDATA; -R also writes standby.signal and primary_conninfo
 docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
-    -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    pg_basebackup -h 10.0.0.2 -D /var/lib/postgresql/data -U replicator -v -P
-
-# Create standby.signal
-docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "touch /var/lib/postgresql/data/standby.signal"
-
-# Configure primary_conninfo
-docker run --rm \
-    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql/data \
-    ghcr.io/USERNAME/aza-pg:18.1-latest \
-    bash -c "echo \"primary_conninfo = 'host=10.0.0.2 port=5432 user=replicator password=SECURE_REPLICATION_PASSWORD'\" >> /var/lib/postgresql/data/postgresql.auto.conf"
+    -v aza-pg-stack-replica_postgres_data:/var/lib/postgresql \
+    -e PGHOST=10.0.0.2 -e PGUSER=replicator -e PGPASSWORD='SECURE_REPLICATION_PASSWORD' \
+    ghcr.io/fluxo-kt/aza-pg:18 \
+    bash -c 'pg_basebackup -D "$PGDATA" -R -v -P'
 ```
 
 ### 5. Start Replica
@@ -183,107 +166,40 @@ SELECT * FROM pg_stat_wal_receiver;
 
 ### 6. Install Keepalived
 
-> **IMPORTANT for Coolify Users:** Keepalived must run on the HOST VPS, not inside containers. Coolify containers don't have systemd or network control. Choose one of these options:
-
-#### Option A: Keepalived on Host VPS (Recommended for Coolify)
-
-SSH directly to both VPS hosts and install Keepalived at the OS level:
-
-**On Primary VPS host:**
+Keepalived runs on each VPS host, not in a container: its check script runs `docker exec` against the `postgres` container, and moving a VIP needs the host's network. On Coolify this means SSH to the host.
 
 ```bash
 apt update && apt install -y keepalived
-
-cat > /etc/keepalived/keepalived.conf << 'EOF'
-vrrp_instance VI_1 {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 100
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass your_secret_password
-    }
-    virtual_ipaddress {
-        10.0.0.100/24
-    }
-}
-EOF
-
-systemctl enable keepalived
-systemctl start keepalived
+cp keepalived/primary.conf /etc/keepalived/keepalived.conf   # on the replica host: keepalived/replica.conf
+# Set auth_pass (the same on both hosts), interface and the VIP for your network
+systemctl enable --now keepalived
 ```
 
-**On Replica VPS host:**
+Only a writable primary holds the VIP. The config's check fails on a standby and on a stopped server, and a node whose check fails gives the VIP up, so:
 
-```bash
-apt update && apt install -y keepalived
+- While the primary is down and the standby is not promoted, no node holds the VIP. Clients fail to connect instead of writing to a read-only standby.
+- Promoting the standby moves the VIP to it within a few seconds.
+- Both nodes start as `BACKUP` with `nopreempt`: an old primary that comes back still writable does not take the VIP back. Rebuild it as a replica before starting its PostgreSQL again.
 
-cat > /etc/keepalived/keepalived.conf << 'EOF'
-vrrp_instance VI_1 {
-    state BACKUP
-    interface eth0
-    virtual_router_id 51
-    priority 90
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass your_secret_password
-    }
-    virtual_ipaddress {
-        10.0.0.100/24
-    }
-}
-EOF
-
-systemctl enable keepalived
-systemctl start keepalived
-```
-
-**Verify VIP on primary:**
+**Verify the VIP is on the primary:**
 
 ```bash
 ip addr show eth0 | grep 10.0.0.100
-# Should show the VIP
+# Shows the VIP on the primary only
 ```
-
-#### Option B: Dockerized Keepalived (Advanced)
-
-Add to docker-compose.yml on both VPS:
-
-```yaml
-keepalived:
-  image: osixia/keepalived:2.0.20
-  container_name: keepalived
-  restart: unless-stopped
-  network_mode: host
-  cap_add:
-    - NET_ADMIN
-    - NET_BROADCAST
-  environment:
-    KEEPALIVED_VIRTUAL_IPS: "10.0.0.100"
-    KEEPALIVED_PRIORITY: "100" # 100 on primary, 90 on replica
-    KEEPALIVED_INTERFACE: "eth0"
-    KEEPALIVED_PASSWORD: "your_secret_password"
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
-```
-
-**Note:** Dockerized Keepalived requires `network_mode: host` and `CAP_NET_ADMIN` capability. This works on bare VPS but may have limitations on Coolify depending on configuration.
 
 ### 7. Test Failover
 
-**Network failover test:**
+**The VIP never moves to a standby:**
 
 ```bash
-# On primary: Simulate Keepalived failure
+# On primary: stop Keepalived
 systemctl stop keepalived
 
-# Verify VIP migrated to replica (from any machine)
-ping 10.0.0.100  # Should respond from replica IP
+# On replica: no VIP, because it is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 
-# Restart primary Keepalived
+# On primary: start Keepalived; the VIP comes back
 systemctl start keepalived
 ```
 
@@ -291,11 +207,11 @@ systemctl start keepalived
 
 ```bash
 # On replica - promote to primary
-docker exec postgres pg_ctl promote -D /var/lib/postgresql/data
+docker exec postgres pg_ctl promote  # pg_ctl reads the container's $PGDATA
 
 # Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
-# Should return 'f' (false) - no longer in recovery
+# Should return 'f' (false); the VIP moves to this host within a few seconds
 ```
 
 ## Files Required
@@ -311,8 +227,8 @@ phase2-dual-vps/
 │   ├── docker-compose.yml    # Copy from phase1, modify ports
 │   └── .env                  # Replica-specific values
 ├── keepalived/
-│   ├── primary.conf          # Priority 100, state MASTER
-│   └── replica.conf          # Priority 90, state BACKUP
+│   ├── primary.conf          # Priority 100; holds the VIP only while its PostgreSQL is a writable primary
+│   └── replica.conf          # Same check, priority 90
 └── README.md                 # This file
 ```
 
@@ -325,7 +241,7 @@ phase2-dual-vps/
 
 ## Monitoring
 
-Configure Prometheus to scrape both VPS:
+Configure Prometheus to scrape both VPS. The phase 1 compose file publishes the exporters (9187, 9127) on `127.0.0.1` only; bind them to the host's private IP, as for PostgreSQL, or these targets are unreachable:
 
 ```yaml
 scrape_configs:
@@ -388,15 +304,12 @@ grep virtual_router_id /etc/keepalived/keepalived.conf
 ### Promotion Issues
 
 ```bash
-# After promotion, update DNS/VIP to point to new primary
-# Then rebuild old primary as new replica:
+# The VIP follows the promotion. Then rebuild old primary as new replica:
 
 1. Stop old primary PostgreSQL
 2. Remove data volume
-3. Run pg_basebackup from new primary
-4. Create standby.signal
-5. Configure primary_conninfo pointing to new primary
-6. Start as replica
+3. Run pg_basebackup -R from new primary (step 4; -R writes standby.signal and primary_conninfo)
+4. Start as replica
 ```
 
 See `docs/RUNBOOKS.md` for detailed failover and recovery procedures.

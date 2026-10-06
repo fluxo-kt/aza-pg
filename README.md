@@ -1,6 +1,6 @@
 # aza-pg
 
-PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment stacks. Single Docker image adapts to 2-16GB RAM (scales to 128GB), 1-64 cores. Docker Compose only.
+PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment stacks. Single Docker image adapts to its memory and CPU limits (512 MB minimum). Docker Compose only.
 
 > **Open Source Notice:** This is MIT licensed open source software provided AS IS with NO WARRANTY, NO SUPPORT, and NO LIABILITY. Docker images are published for convenience but come with NO GUARANTEES of functionality, security, or maintenance. Use at your own risk.
 
@@ -16,13 +16,13 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 
 - PostgreSQL 18 only (no multi-version support)
 - Docker Compose only (no Kubernetes)
-- Auto-config requires cgroup v2 or `POSTGRES_MEMORY` env var
+- Auto-config sizes from `POSTGRES_MEMORY` or the cgroup v2 limit; without either it falls back to the host's RAM and warns
 - Connection limits: 60 (≤2GB), 84 (2-4GB), 102 (4-8GB), 120 (≥8GB) with `mixed` workload default
 - PgBouncer transaction mode: No prepared statements, advisory locks, or LISTEN/NOTIFY
 
 ## Extensions
 
-Comprehensive extension catalog across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. Multiple extensions preloaded by default (see docs). See "Popular Use Cases" below for examples.
+Extensions for vector search, time series, full-text search, security and operations, plus PostgreSQL contrib modules. Current counts of extensions, tools and preloaded libraries: [docs/.generated/docs-data.json](docs/.generated/docs-data.json).
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
 
@@ -70,17 +70,17 @@ See [docs/EXTENSIONS.md](docs/EXTENSIONS.md) for complete catalog.
 
 ## Image Details
 
-~250MB compressed / ~900MB uncompressed (amd64 + arm64). Multi-stage build with parallel compilation. Runtime: ca-certificates, zstd, lz4.
+amd64 + arm64. Multi-stage build: extensions compile in builder stages, and the final image carries only runtime files.
 
 ## Quick Start
 
-**Security:** Default binding 127.0.0.1 (localhost). TLS disabled. Set `POSTGRES_BIND_IP=0.0.0.0` for network access. See [Production](#security) for hardening.
+**Security:** Default binding 127.0.0.1 (localhost). TLS disabled. Set `POSTGRES_BIND_IP=0.0.0.0` for network access (in the compose stacks it only chooses the host address the port is published on; companions always reach PostgreSQL over the stack network). See [Production](#security) for hardening.
 
 ### Setup
 
 ```bash
-docker network create monitoring
-bun run build  # 2min with remote cache
+docker network create monitoring  # primary and replica stacks attach exporters to this external network
+bun run build
 docker run --rm aza-pg:pg18 psql --version
 ```
 
@@ -110,24 +110,23 @@ Configs in `stacks/{primary,replica,single}`.
 
 ### Auto-Config
 
-Detects RAM (cgroup v2 → `POSTGRES_MEMORY` → /proc/meminfo) and CPU at startup:
+Detects RAM (`POSTGRES_MEMORY` → cgroup v2 limit → /proc/meminfo) and CPU at startup and writes the tuned values to `/var/run/postgresql/aza-auto-config.conf` (`docker exec <container> cat /var/run/postgresql/aza-auto-config.conf` shows them). The rules, owned by the `calculate_*` functions in `docker/postgres/docker-auto-config-entrypoint.sh`:
 
-| RAM  | shared_buffers | effective_cache_size | work_mem | max_connections\* |
-| ---- | -------------- | -------------------- | -------- | ----------------- |
-| 512M | 128M (25%)     | 384M (75%)           | 1M       | 60                |
-| 2G   | 512M (25%)     | 1536M (75%)          | 4M       | 84                |
-| 4G   | 1G (25%)       | 3G (75%)             | 5M       | 102               |
-| 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 120               |
+- `max_connections`: by `POSTGRES_WORKLOAD_TYPE` — `mixed` (default) 120, `web` 200, `oltp` 300, `dw` 100 — scaled to 50%/70%/85% below 2/4/8 GB of RAM.
+- `shared_buffers`: 25% of RAM up to 8 GB, 20% up to 32 GB, 15% above; at most 32 GB.
+- `work_mem`: RAM left after `shared_buffers`, 10 MB per connection and 512 MB, divided by 4 × `max_connections`; at least 1 MB. Capped at 32 MB for `web` and `oltp`; for `mixed` and `dw` at 32 MB below 2 GB of RAM, 64 MB from 2 GB, 128 MB from 8 GB and 256 MB from 32 GB.
+- `maintenance_work_mem`: RAM/16 (`dw`: RAM/8), between 32 MB and 2 GB.
+- `effective_cache_size`: 70% of RAM left after `shared_buffers` and the larger of 20% of RAM or 512 MB; at least 2 × `shared_buffers`.
 
-\*Connection limits shown for `mixed` workload (default). Set `POSTGRES_WORKLOAD_TYPE=web` (200), `oltp` (300), or `dw` (100) to change base limit. RAM-tier scaling applies: 50%/70%/85%/100% for <2GB/2-4GB/4-8GB/≥8GB.
+For example, the default `mixed` workload gets `max_connections` 84 and `work_mem` 1 MB at 2 GB, 120 and 9 MB at 8 GB, 120 and 112 MB at 64 GB.
 
-Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
+Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 
 **PgBouncer:** Set `PGBOUNCER_AUTH_PASS` in .env. Escape `:` and `\` only.
 
 ### Extension Customization
 
-Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Cannot disable preloaded (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, timescaledb). See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → `bun run build`. Disabling a default-preloaded entry also drops it from the default preload list. See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
 ## Monitoring
 
@@ -146,7 +145,7 @@ scrape_configs:
 ## Build & Test
 
 ```bash
-bun run build                # 2min with remote cache
+bun run build                                       # Build the image (aza-pg:pg18)
 bun run test:all                                    # Full suite
 bun run validate                                    # Validation only (fast)
 bun scripts/docker/validate-published-image-artifacts.ts  # Validate published image
@@ -155,31 +154,19 @@ bun scripts/docker/validate-published-image-artifacts.ts  # Validate published i
 **Regression Testing:**
 
 ```bash
-# Run all regression tests (production mode)
-bun test:regression:all
+# Run all regression tests (extension SQL vs expected output, extension interactions)
+bun scripts/test-all.ts --group regression
 
-# Run specific tier
-bun test:regression:core        # Tier 1: PostgreSQL core (30 tests)
-bun test:regression:extensions  # Tier 2: Extension tests (13 extensions)
-bun test:regression:interactions # Tier 3: Interaction tests (14 scenarios)
-
-# Run in regression mode (all extensions including disabled ones)
-TEST_MODE=regression bun test:regression:all
-
-# Build regression image (includes pgTAP + all extensions)
-bun scripts/build.ts --regression
+# Run in regression mode (optional preload libraries added; disabled extensions never run)
+bun scripts/test-all.ts --group nightly
 ```
 
 **Test Tiers:**
 
-- **Tier 1**: Core PostgreSQL regression (30 official tests, ~3-5 min)
-- **Tier 2**: Extension-specific regression (13 extensions, ~5-8 min)
-- **Tier 3**: Extension interactions (14 scenarios, ~2-4 min)
-- **Tier 4**: pgTAP unit tests (82 SQL tests, ~5-10 min)
+- **Tier 2**: each extension's SQL against its expected output
+- **Tier 3**: extension interactions
 
 See [docs/REGRESSION-TESTING.md](docs/REGRESSION-TESTING.md) for comprehensive regression testing documentation.
-
-**Release Validation:** [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md) contains comprehensive validation results for the latest published release image (updated with each release).
 
 See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 
@@ -188,17 +175,18 @@ See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 **Database Management:**
 
 ```bash
-# Backup database
+# Backup database (pg_dump; reads PGHOST/PGPORT/PGUSER/PGPASSWORD). The dump does not contain the
+# pgsodium root key: keep a copy of it, or Vault secrets will not decrypt after restore (docs/PGSODIUM-SETUP.md)
 bun scripts/tools/backup-postgres.ts mydb backup.sql.gz
 
 # Restore from backup
-bun scripts/tools/restore-postgres.ts mydb backup.sql.gz
+bun scripts/tools/restore-postgres.ts backup.sql.gz mydb
 
 # Promote replica to primary (failover)
-bun scripts/tools/promote-replica.ts replica-container
+bun scripts/tools/promote-replica.ts -c replica-container
 
 # Generate SSL certificates (development)
-bun scripts/tools/generate-ssl-certs.ts
+bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs
 ```
 
 ⚠️ **CRITICAL:** Replica promotion is a one-way operation. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for safety warnings, detailed usage, troubleshooting, and best practices.
@@ -247,7 +235,7 @@ PostgreSQL 18+ uses a new data directory structure (`/var/lib/postgresql/18/dock
 
 **Why PgBouncer transaction mode?** Maximizes connection multiplexing. Use :5432 for prepared statements/advisory locks.
 
-**Override auto-config?** Set `POSTGRES_MEMORY=<MB>` or modify entrypoint.
+**Override auto-config?** Pass `-c name=value` to the container command or use `ALTER SYSTEM`; both win over auto-tuning. A value in a `postgresql.conf` file is replaced by the tuned one; from the second start on, the startup log names each such value. `POSTGRES_MEMORY=<MB>` changes the RAM the rules start from.
 
 **Docker Desktop?** Yes, auto-detects limits.
 

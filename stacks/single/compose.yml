@@ -4,7 +4,7 @@
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:pg18}
+    image: ${POSTGRES_IMAGE:-ghcr.io/fluxo-kt/aza-pg:18}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-single
     restart: unless-stopped
 
@@ -13,6 +13,11 @@ services:
         required: false
 
     environment:
+      # The image uses POSTGRES_BIND_IP as PostgreSQL's listen_addresses. In a stack PostgreSQL must listen on the
+      # container's Docker networks, or pgbouncer, the exporters and replicas cannot connect (pg_hba.conf admits only
+      # those networks, with passwords). This entry overrides the .env value inside the container only; the host port
+      # mapping still reads POSTGRES_BIND_IP from .env, so host exposure stays what the operator chose.
+      POSTGRES_BIND_IP: "0.0.0.0"
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
@@ -22,43 +27,44 @@ services:
       - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
 
     volumes:
-      - ${POSTGRES_DATA_VOLUME:-postgres_data}:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - ./configs/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./configs/pg_ident.conf:/etc/postgresql/pg_ident.conf:ro
 
     mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
     mem_reservation: ${POSTGRES_MEMORY_RESERVATION:-256m}
 
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf -c ident_file=/etc/postgresql/pg_ident.conf
 
     networks:
       - postgres_net
 
-    # Explicit healthcheck (uses image's built-in 7-tier healthcheck script)
+    # Explicit healthcheck (the image's built-in healthcheck script)
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 120s
+      # Probe every second until first healthy: services waiting on service_healthy start when PostgreSQL is ready, not at the next 10s tick (Docker Engine 25+).
+      start_interval: 1s
 
     cpus: ${POSTGRES_CPU_LIMIT:-0.5}
 
   postgres_exporter:
     image: >-
-      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f}
+      ${POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e}
     container_name: ${COMPOSE_PROJECT_NAME:-aza-pg}-postgres-exporter-single
     restart: unless-stopped
 
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres@postgres:5432/postgres?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}@postgres:5432/postgres?sslmode=disable"
       # SECURITY NOTE: PGPASSWORD is visible in docker inspect. This is acceptable for
       # monitoring on private Docker networks. For production, consider Docker secrets.
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
       PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
-      PG_EXPORTER_DISABLE_SETTINGS_METRICS: "false"
-      PG_EXPORTER_COLLECTOR_STAT_BGWRITER: "false"
 
     volumes:
       - ../../docker/postgres/configs/postgres_exporter_queries.yaml:/etc/postgres_exporter/queries.yaml:ro

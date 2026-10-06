@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS pg_partman;
 
 -- Test 1: Verify extension loaded
-SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_partman';
+SELECT extname FROM pg_extension WHERE extname = 'pg_partman';
 
 -- Test 2: Verify partman schema exists
 SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'partman';

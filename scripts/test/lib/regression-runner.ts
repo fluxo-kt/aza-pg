@@ -6,6 +6,9 @@
  */
 
 import { $ } from "bun";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { cleanPsqlOutput, normalizeRegressionOutput } from "./output-normalizer";
 
 /**
@@ -107,8 +110,9 @@ export async function runRegressionTest(
       // Run psql inside container via docker exec
       // Copy SQL file to container first
       const containerPath = `/tmp/${testName}.sql`;
-      const cpResult =
-        await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.nothrow();
+      const cpResult = await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`
+        .nothrow()
+        .quiet();
 
       if (cpResult.exitCode !== 0) {
         const stderr = cpResult.stderr.toString();
@@ -116,7 +120,9 @@ export async function runRegressionTest(
         exitCode = cpResult.exitCode;
       } else {
         // Fix file permissions (docker cp creates files as root, need to make readable)
-        await $`docker exec --user root ${connection.containerName} chmod 644 ${containerPath}`.nothrow();
+        await $`docker exec --user root ${connection.containerName} chmod 644 ${containerPath}`
+          .nothrow()
+          .quiet();
 
         // Run psql with options:
         // -X: Don't read .psqlrc (ensures clean environment)
@@ -131,13 +137,17 @@ export async function runRegressionTest(
         const dbName = connection.database || "postgres";
         const user = connection.user || "postgres";
         const result =
-          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
+          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`
+            .nothrow()
+            .quiet();
 
         exitCode = result.exitCode;
         actualOutput = result.stdout.toString();
 
         // Cleanup temporary file (as root via docker exec with --user)
-        await $`docker exec --user root ${connection.containerName} rm -f ${containerPath}`.nothrow();
+        await $`docker exec --user root ${connection.containerName} rm -f ${containerPath}`
+          .nothrow()
+          .quiet();
 
         // Capture stderr if command failed (exit code 2+ indicates true error, not SQL errors)
         // Exit code 1 is normal for regression tests that test error conditions
@@ -160,7 +170,9 @@ export async function runRegressionTest(
       // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
       // lc_monetary=C prevents currency symbols in to_char() L format
       const result =
-        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
+        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`
+          .nothrow()
+          .quiet();
 
       exitCode = result.exitCode;
       actualOutput = result.stdout.toString();
@@ -254,11 +266,9 @@ async function generateDiff(
   actual: string,
   testName: string
 ): Promise<string | null> {
+  // A private directory: a fixed shared path let two runs on one host overwrite each other's files mid-diff
+  const tmpDir = await mkdtemp(join(tmpdir(), "pg-regression-"));
   try {
-    // Write expected and actual to temporary files
-    const tmpDir = "/tmp/pg-regression";
-    await $`mkdir -p ${tmpDir}`.quiet();
-
     const expectedPath = `${tmpDir}/${testName}.expected`;
     const actualPath = `${tmpDir}/${testName}.actual`;
 
@@ -267,7 +277,7 @@ async function generateDiff(
 
     // Generate context diff (-c flag)
     // Use nothrow() because diff returns exit code 1 when files differ
-    const result = await $`diff -c ${expectedPath} ${actualPath}`.nothrow();
+    const result = await $`diff -c ${expectedPath} ${actualPath}`.nothrow().quiet();
 
     // diff exit codes:
     // 0 = files identical (shouldn't happen here)
@@ -282,6 +292,8 @@ async function generateDiff(
     // diff command not available or other error
     console.warn(`Warning: Could not generate diff for ${testName}: ${error}`);
     return null;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -323,253 +335,4 @@ export async function generateRegressionDiffs(
   }
 
   await Bun.write(outputPath, content);
-}
-
-/**
- * Execute multiple regression tests in sequence.
- *
- * @param tests Array of test configurations
- * @param connection Connection configuration
- * @param onProgress Optional progress callback
- * @returns Array of test results
- */
-export async function runRegressionTests(
-  tests: Array<{ testName: string; sqlFile: string; expectedFile: string }>,
-  connection: ConnectionConfig,
-  onProgress?: (testName: string, index: number, total: number) => void
-): Promise<TestResult[]> {
-  const results: TestResult[] = [];
-
-  for (let i = 0; i < tests.length; i++) {
-    const test = tests[i];
-    if (!test) continue;
-
-    if (onProgress) {
-      onProgress(test.testName, i + 1, tests.length);
-    }
-
-    const result = await runRegressionTest(
-      test.testName,
-      test.sqlFile,
-      test.expectedFile,
-      connection
-    );
-    results.push(result);
-  }
-
-  return results;
-}
-
-/**
- * Result of running a setup phase
- */
-export interface SetupResult {
-  /** Whether setup succeeded */
-  success: boolean;
-
-  /** Actual output from psql execution */
-  actualOutput: string;
-
-  /** Expected output (if expectedFile provided) */
-  expectedOutput: string;
-
-  /** Diff between expected and actual (null if passed or no expected file) */
-  diff: string | null;
-
-  /** Setup execution duration in milliseconds */
-  duration: number;
-
-  /** Error message if execution failed */
-  error: string | null;
-
-  /** Exit code from psql command */
-  exitCode: number;
-}
-
-/**
- * Run a setup script (minimal_setup.sql or test_setup.sql) to prepare
- * the database for regression tests.
- *
- * @param setupName Name of the setup (e.g., "minimal_setup", "test_setup")
- * @param sqlFile Path to setup SQL file
- * @param expectedFile Path to expected output file (optional)
- * @param connection Connection configuration
- * @returns Setup result
- */
-export async function runSetupPhase(
-  setupName: string,
-  sqlFile: string,
-  expectedFile: string | null,
-  connection: ConnectionConfig
-): Promise<SetupResult> {
-  const startTime = performance.now();
-
-  // Read expected output if provided
-  let expectedOutput = "";
-  if (expectedFile) {
-    try {
-      expectedOutput = await Bun.file(expectedFile).text();
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      return {
-        success: false,
-        actualOutput: "",
-        expectedOutput: "",
-        diff: null,
-        duration: performance.now() - startTime,
-        error: `Failed to read expected output file: ${errorMsg}`,
-        exitCode: -1,
-      };
-    }
-  }
-
-  // Execute setup script via psql
-  let actualOutput = "";
-  let exitCode = 0;
-  let executionError: string | null = null;
-
-  try {
-    if (connection.containerName) {
-      // Run psql inside container via docker exec
-      const containerPath = `/tmp/${setupName}.sql`;
-      const cpResult =
-        await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.nothrow();
-
-      if (cpResult.exitCode !== 0) {
-        const stderr = cpResult.stderr.toString();
-        executionError = `Failed to copy setup file to container: ${stderr}`;
-        exitCode = cpResult.exitCode;
-      } else {
-        // Fix file permissions (docker cp creates files as root, need to make readable)
-        await $`docker exec --user root ${connection.containerName} chmod 644 ${containerPath}`.nothrow();
-
-        // Run setup with same flags as tests
-        // PGOPTIONS: Set session defaults to match pg_regress expectations
-        // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
-        // lc_monetary=C prevents currency symbols in to_char() L format
-        // safeupdate.enabled=0 disables pg_safeupdate for regression tests (they use bare DELETE)
-        const dbName = connection.database || "postgres";
-        const user = connection.user || "postgres";
-        const result =
-          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
-
-        exitCode = result.exitCode;
-        actualOutput = result.stdout.toString();
-
-        // Cleanup temporary file (as root via docker exec with --user)
-        await $`docker exec --user root ${connection.containerName} rm -f ${containerPath}`.nothrow();
-
-        // For setup, any exit code other than 0 indicates failure
-        // (unlike tests where exit code 1 is normal for error condition tests)
-        if (exitCode !== 0) {
-          const stderr = result.stderr.toString();
-          executionError = stderr || `psql exited with code ${exitCode}`;
-        }
-      }
-    } else {
-      // Run psql from host
-      const connString = connection.connectionString || buildConnectionString(connection);
-      // PGOPTIONS: Set session defaults to match pg_regress expectations
-      // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
-      // lc_monetary=C prevents currency symbols in to_char() L format
-      const result =
-        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
-
-      exitCode = result.exitCode;
-      actualOutput = result.stdout.toString();
-
-      if (exitCode !== 0) {
-        const stderr = result.stderr.toString();
-        executionError = stderr || `psql exited with code ${exitCode}`;
-      }
-    }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    executionError = `Failed to execute setup: ${errorMsg}`;
-    exitCode = -1;
-  }
-
-  const duration = performance.now() - startTime;
-
-  // Normalize outputs for comparison
-  const normalizedExpected = expectedFile ? normalizeRegressionOutput(expectedOutput) : "";
-  const normalizedActual = cleanPsqlOutput(actualOutput);
-
-  // Compare outputs if expected file provided
-  let diff: string | null = null;
-  let outputMatches = true;
-
-  if (expectedFile && normalizedExpected) {
-    outputMatches = normalizedExpected === normalizedActual;
-    if (!outputMatches) {
-      diff = await generateDiff(normalizedExpected, normalizedActual, setupName);
-    }
-  }
-
-  // Setup succeeds if no execution error AND output matches (if expected)
-  const success = !executionError && outputMatches;
-
-  return {
-    success,
-    actualOutput: normalizedActual,
-    expectedOutput: normalizedExpected,
-    diff,
-    duration,
-    error: executionError,
-    exitCode,
-  };
-}
-
-/**
- * Run regression tests with an optional setup phase.
- *
- * If setup is provided, it runs once before all tests.
- * If setup fails, an error is returned and no tests are run.
- *
- * @param tests Array of test configurations
- * @param connection Connection configuration
- * @param setup Optional setup configuration
- * @param onProgress Optional progress callback
- * @returns Object with setup result (if any) and test results
- */
-export async function runRegressionTestsWithSetup(
-  tests: Array<{ testName: string; sqlFile: string; expectedFile: string }>,
-  connection: ConnectionConfig,
-  setup?: {
-    setupName: string;
-    sqlFile: string;
-    expectedFile: string | null;
-  },
-  onProgress?: (testName: string, index: number, total: number) => void
-): Promise<{
-  setupResult: SetupResult | null;
-  testResults: TestResult[];
-}> {
-  // Run setup phase if provided
-  let setupResult: SetupResult | null = null;
-
-  if (setup) {
-    setupResult = await runSetupPhase(
-      setup.setupName,
-      setup.sqlFile,
-      setup.expectedFile,
-      connection
-    );
-
-    // If setup failed, return early with no test results
-    if (!setupResult.success) {
-      return {
-        setupResult,
-        testResults: [],
-      };
-    }
-  }
-
-  // Run tests
-  const testResults = await runRegressionTests(tests, connection, onProgress);
-
-  return {
-    setupResult,
-    testResults,
-  };
 }

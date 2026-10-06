@@ -86,7 +86,7 @@ try {
       total: allEntries.length,
       enabled: enabledEntries.length,
       disabled: disabledEntries.length,
-      preloaded: preloaded.length, // Required by validation (verify-runtime.ts)
+      preloaded: preloaded.length, // Checked against the manifest by testImageMetadataFiles
     },
     categories: {
       preloaded: preloaded.length,

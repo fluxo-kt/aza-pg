@@ -156,8 +156,7 @@ export async function ensureImageAvailable(imageTag: string): Promise<void> {
 
   // Local image that doesn't exist
   error(`Docker image not found: ${imageTag}`);
-  console.log("   Build image first: bun scripts/build.ts");
-  console.log(`   Or run: bun scripts/test/test-build.ts ${imageTag}`);
+  console.log("   Build it first: bun run build");
   throw new Error(`Image not available: ${imageTag}`);
 }
 
@@ -177,15 +176,90 @@ export interface WaitForPostgresOptions {
   container?: string;
 }
 
+async function dockerText(args: string[]): Promise<{ code: number; text: string }> {
+  const proc = spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, text: out + err };
+}
+
 /**
- * Wait for PostgreSQL to be ready
- * If container is provided, runs pg_isready inside container (for Docker tests)
+ * Wait until the container's FINAL PostgreSQL server accepts queries; throws on timeout or if the container stops.
+ *
+ * Why not pg_isready: on a fresh data directory the official entrypoint first runs a temporary server for the init
+ * scripts, and pg_isready succeeds against it moments before it is shut down for the real start — so tests began
+ * against a server about to vanish. Readiness is therefore read from the logs of the CURRENT container start
+ * (`docker logs --since StartedAt`, so restarts are handled): after "init process complete" (fresh data) or
+ * "Skipping initialization" (existing data), the next "ready to accept connections" (a standby says "read-only
+ * connections") is the final server; a `SELECT 1` then confirms it. Fixed sleeps only pace the polling; they never decide readiness.
+ */
+async function waitForContainerPostgres(
+  container: string,
+  user: string,
+  timeoutSeconds: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  const startedAt = (
+    await dockerText(["inspect", "-f", "{{.State.StartedAt}}", container])
+  ).text.trim();
+  let logs = "";
+  while (Date.now() < deadline) {
+    logs = (await dockerText(["logs", "--since", startedAt, container])).text;
+    const marker = Math.max(
+      logs.lastIndexOf("PostgreSQL init process complete"),
+      logs.lastIndexOf("Skipping initialization")
+    );
+    if (marker >= 0 && /ready to accept (read-only )?connections/.test(logs.slice(marker))) {
+      const probe = await dockerText([
+        "exec",
+        container,
+        "psql",
+        "-X",
+        "-U",
+        user,
+        // initdb always creates "postgres"; without -d psql would pick a database named after the user.
+        "-d",
+        "postgres",
+        "-tAc",
+        "SELECT 1",
+      ]);
+      if (probe.code === 0 && probe.text.trim() === "1") {
+        success(`PostgreSQL in ${container} is ready`);
+        return;
+      }
+    }
+    const running = (
+      await dockerText(["inspect", "-f", "{{.State.Running}}", container])
+    ).text.trim();
+    if (running !== "true") {
+      throw new Error(
+        `Container ${container} stopped before PostgreSQL was ready. Last log lines:\n${lastLines(logs, 40)}`
+      );
+    }
+    await Bun.sleep(250);
+  }
+  throw new Error(
+    `PostgreSQL in ${container} not ready after ${timeoutSeconds}s. Last log lines:\n${lastLines(logs, 40)}`
+  );
+}
+
+function lastLines(text: string, count: number): string {
+  return text.trimEnd().split("\n").slice(-count).join("\n");
+}
+
+/**
+ * Wait for PostgreSQL to be ready, and THROW when it does not become ready, so a caller can never proceed against a
+ * server that is not there.
+ * With `container`: waits for the container's final server (see waitForContainerPostgres).
+ * Without `container`: polls pg_isready on host:port.
  *
  * @param options - Configuration options
- * @returns true if PostgreSQL becomes ready, false if timeout reached
- * @throws Error if invalid parameters provided
+ * @throws Error on invalid parameters, on timeout, and in container mode on a stopped container
  */
-export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<boolean> {
+export async function waitForPostgres(options: WaitForPostgresOptions = {}): Promise<void> {
   const host = options.host ?? "localhost";
   const port = options.port ?? 5432;
   const user = options.user ?? "postgres";
@@ -195,6 +269,11 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
   // Validate timeout is a positive integer
   if (!Number.isInteger(timeout) || timeout < 0) {
     throw new Error(`Invalid timeout value: ${timeout} (must be a positive integer)`);
+  }
+
+  if (container && container.trim() !== "") {
+    await waitForContainerPostgres(container, user, timeout);
+    return;
   }
 
   // Validate port is a number
@@ -214,25 +293,14 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      let proc;
-      if (container && container.trim() !== "") {
-        // Check from inside container
-        proc = spawn(["docker", "exec", container, "pg_isready", "-U", user], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-      } else {
-        // Check from host
-        proc = spawn(["pg_isready", "-h", host, "-p", String(port), "-U", user], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-      }
-
+      const proc = spawn(["pg_isready", "-h", host, "-p", String(port), "-U", user], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
       const exitCode = await proc.exited;
       if (exitCode === 0) {
-        success(`PostgreSQL is ready${container ? "" : ` at ${host}:${port}`}`);
-        return true;
+        success(`PostgreSQL is ready at ${host}:${port}`);
+        return;
       }
     } catch {
       // Ignore errors, continue waiting
@@ -241,86 +309,7 @@ export async function waitForPostgres(options: WaitForPostgresOptions = {}): Pro
     await Bun.sleep(2000); // Sleep 2 seconds
   }
 
-  error(`PostgreSQL not ready after ${timeout} seconds`);
-  return false;
-}
-
-/**
- * Options for waiting for PostgreSQL to be stable
- */
-export interface WaitForPostgresStableOptions extends WaitForPostgresOptions {
-  /** Number of consecutive successful queries required (default: 3) */
-  requiredSuccesses?: number;
-  /** Interval between stability checks in milliseconds (default: 2000) */
-  checkInterval?: number;
-}
-
-/**
- * Wait for PostgreSQL to be stable after initialization
- *
- * IMPORTANT: pg_isready returns true during initdb phase, but PostgreSQL restarts after
- * initdb completes. This causes a race condition where tests try to connect during shutdown.
- *
- * This function requires multiple consecutive successful SQL queries to verify stability,
- * avoiding the initdb restart race condition.
- *
- * @param options - Configuration options
- * @returns true if PostgreSQL is stable, false if timeout reached
- * @throws Error if container is not provided (required for stability check)
- */
-export async function waitForPostgresStable(
-  options: WaitForPostgresStableOptions = {}
-): Promise<boolean> {
-  const { container, timeout = 60, requiredSuccesses = 3, checkInterval = 2000 } = options;
-
-  if (!container || container.trim() === "") {
-    throw new Error(
-      "waitForPostgresStable: container name is required (cannot check stability without docker exec)"
-    );
-  }
-
-  // First, wait for basic readiness
-  const isReady = await waitForPostgres(options);
-  if (!isReady) {
-    return false;
-  }
-
-  // Now wait for stability (consecutive successful queries)
-  info(`Waiting for PostgreSQL stability (${requiredSuccesses} consecutive successful queries)...`);
-
-  const startTime = Date.now();
-  const timeoutMs = timeout * 1000;
-  let consecutiveSuccesses = 0;
-
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const proc = spawn(
-        ["docker", "exec", container, "psql", "-U", "postgres", "-c", "SELECT 1", "-t"],
-        {
-          stdout: "ignore",
-          stderr: "ignore",
-        }
-      );
-      const exitCode = await proc.exited;
-
-      if (exitCode === 0) {
-        consecutiveSuccesses++;
-        if (consecutiveSuccesses >= requiredSuccesses) {
-          success(`PostgreSQL is stable (${requiredSuccesses} consecutive queries succeeded)`);
-          return true;
-        }
-      } else {
-        consecutiveSuccesses = 0; // Reset on failure
-      }
-    } catch {
-      consecutiveSuccesses = 0; // Reset on error
-    }
-
-    await Bun.sleep(checkInterval);
-  }
-
-  error(`PostgreSQL not stable after ${timeout} seconds`);
-  return false;
+  throw new Error(`PostgreSQL at ${host}:${port} not ready after ${timeout} seconds`);
 }
 
 /**
@@ -369,23 +358,104 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 }
 
 /**
- * Generate unique container name for test isolation
- * Format: {prefix}-{timestamp}-{pid}
- * @param prefix - Prefix for the container name (default: "aza-pg-test")
- * @returns Unique container name
+ * test-all sets this per suite to a token of [a-z0-9] only (it goes into a regex and into hostnames). Every name below
+ * carries it between dashes, so sweepTestScope can find whatever a suite left behind — a suite killed at its
+ * timeout never runs its own teardown. Child processes inherit it, so suites that run other suites are covered.
  */
+export const TEST_SCOPE_ENV = "AZA_PG_TEST_SCOPE";
+
+/**
+ * `{prefix}-[{scope}-]{stamp}-{pid}`, numbers in base36: unique per process and call, and findable by its test-all
+ * scope. `stamp` is the time in ms, moved one past the previous call's when calls share a millisecond (cases started
+ * together with Promise.all), so it never repeats in a process and never grows the name. Short because suites use
+ * container names as hostnames, and Docker's DNS cannot resolve a name longer than one 63-octet DNS label: decimal
+ * numbers put the replica suite's primary at 65+ characters, and the replica waited for it forever.
+ */
+let lastStamp = 0;
+function scopedName(prefix: string): string {
+  const scope = Bun.env[TEST_SCOPE_ENV];
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return `${prefix}-${scope ? `${scope}-` : ""}${lastStamp.toString(36)}-${process.pid.toString(36)}`;
+}
+
+/** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {
-  return `${prefix}-${Date.now()}-${process.pid}`;
+  return scopedName(prefix);
+}
+
+/** Unique Docker Compose project name for test isolation; compose derives container, volume and network names from it. */
+export function generateUniqueProjectName(prefix: string = "aza-pg-test"): string {
+  return scopedName(prefix);
 }
 
 /**
- * Generate unique project name for Docker Compose test isolation
- * Format: {prefix}-{timestamp}-{pid}
- * @param prefix - Prefix for the project name (default: "aza-pg-test")
- * @returns Unique project name
+ * Removes every container, volume and network whose name matches `names` (see TEST_SCOPE_ENV); returns every name it
+ * found and those still present when it gave up. Containers go first: a volume or network still attached to one
+ * cannot be removed.
+ *
+ * One list-and-remove pass is not enough on a loaded host: `docker rm -f -v` kills a container and then fails to remove
+ * it, and a killed `docker run` or `compose up` whose request the daemon had already accepted creates its container
+ * after the listing. So passes repeat until a listing comes back empty, bounded by `deadlineMs`; what is left then
+ * is returned, never assumed gone. Matching is done here, not by Docker's `name` filter, whose semantics differ
+ * between containers, volumes and networks. A listing that fails (daemon unreachable or overloaded) says nothing
+ * about what is left, so it is retried like a leftover and reported in `remaining` at the deadline. Every docker call
+ * is killed at the deadline, so a hung daemon cannot stall the caller past it.
  */
-export function generateUniqueProjectName(prefix: string = "aza-pg-test"): string {
-  return `${prefix}-${Date.now()}-${process.pid}`;
+export async function sweepTestScope(
+  names: RegExp,
+  deadlineMs = 30_000
+): Promise<{ found: string[]; remaining: string[] }> {
+  const deadline = Date.now() + deadlineMs;
+  const untilDeadline = () => Math.max(1, deadline - Date.now());
+  // `docker ps` names its field Names; volume and network ls name it Name. A failed listing yields its error text.
+  const list = async (cmd: string[], field = "Name") => {
+    const proc = spawn(["docker", ...cmd, "--format", `{{.${field}}}`], {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: untilDeadline(),
+    });
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (code !== 0) {
+      const why = proc.signalCode
+        ? "no answer before the sweep deadline"
+        : err.trim() || `exit ${code}`;
+      return { names: [], failure: `docker ${cmd.join(" ")}: ${why}` };
+    }
+    return { names: out.split("\n").filter((name) => names.test(name)), failure: null };
+  };
+  const remove = async (cmd: string[], targets: string[]) => {
+    if (targets.length > 0)
+      await spawn(["docker", ...cmd, ...targets], {
+        stdout: "ignore",
+        stderr: "ignore",
+        timeout: untilDeadline(),
+      }).exited;
+  };
+  const found = new Set<string>();
+  for (let pass = 0; ; pass++) {
+    const listings = await Promise.all([
+      list(["ps", "-a"], "Names"),
+      list(["volume", "ls"]),
+      list(["network", "ls"]),
+    ]);
+    const [{ names: containers }, { names: volumes }, { names: networks }] = listings;
+    const failures = listings.flatMap((l) => (l.failure ? [l.failure] : []));
+    const present = [...containers, ...volumes, ...networks];
+    if ((present.length === 0 && failures.length === 0) || Date.now() >= deadline)
+      return { found: [...found], remaining: [...present, ...failures] };
+    for (const name of present) found.add(name);
+    // Poll pace only: a removal that just failed under load rarely succeeds at once.
+    if (pass > 0) await Bun.sleep(1000);
+    await remove(["rm", "-f", "-v"], containers);
+    await Promise.all([
+      remove(["volume", "rm", "-f"], volumes),
+      remove(["network", "rm"], networks),
+    ]);
+  }
 }
 
 /**

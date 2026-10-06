@@ -16,8 +16,8 @@ const base = (over: Partial<ValidationCheck>): ValidationCheck => ({
 });
 
 describe("runCheck classification", () => {
-  // ATTACK 1 regression guard: an OPTIONAL tool that is absent must be a SKIP, not a failure —
-  // previously this hit the catch and returned { passed: false } counted as "Failed".
+  // An OPTIONAL tool that is absent is a SKIP, never a failure: the missing executable throws in the
+  // spawn, and that path must not report { passed: false } counted as "Failed".
   test("optional + missing binary → skipped, not failed", async () => {
     const r = await runCheck(
       base({ command: ["definitely-not-a-real-binary-xyz-123"], envOverride: OVERRIDE }),

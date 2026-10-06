@@ -15,6 +15,20 @@ import { $ } from "bun";
 import { checkCommand, waitForPostgres } from "../utils/docker";
 import { info, success, error } from "../utils/logger";
 import { dirname } from "node:path";
+import { open, stat } from "node:fs/promises";
+
+// A new aza-pg data directory gets its own random pgsodium root key, which pg_dump never includes: restoring this file
+// into another server leaves Vault secrets and pgsodium-encrypted values undecryptable unless that server runs on the
+// original key. The entrypoint refuses to switch an existing data directory to another key, so the new server must be
+// created with the copy, and the copy must exist before the old server is gone.
+const PGSODIUM_KEY_NOTE = [
+  "pgsodium root key: this backup does not contain it, and Vault secrets and pgsodium-encrypted values in it decrypt",
+  "only under the original server's key. Keep a private copy with the backup, from an aza-pg container:",
+  "  (umask 077; docker exec -u postgres <container> sh -c 'cat \"$PGDATA/pgsodium_root.key\"' > pgsodium_root.key)",
+  "(or the file that server's PGSODIUM_KEY_FILE names). To restore, create the new server with PGSODIUM_KEY_FILE",
+  "pointing at that copy before its first start; see docs/PGSODIUM-SETUP.md.",
+  "",
+].join("\n");
 
 interface BackupConfig {
   database: string;
@@ -41,7 +55,7 @@ async function commandExists(command: string): Promise<boolean> {
  * Guard: Check required commands
  */
 async function checkRequiredCommands(): Promise<void> {
-  const commands = ["pg_dump", "pg_isready", "gzip", "du"];
+  const commands = ["pg_dump", "psql", "pg_isready", "gzip", "du"];
 
   for (const cmd of commands) {
     if (!(await commandExists(cmd))) {
@@ -59,6 +73,14 @@ async function checkRequiredCommands(): Promise<void> {
  */
 function parseConfig(): BackupConfig {
   const args = Bun.argv.slice(2);
+  // Only positional arguments exist; a flag (--help, -h …) would otherwise be read as the database name.
+  if (args.some((a) => a.startsWith("-"))) {
+    process.stdout.write(
+      `Usage: ${Bun.argv[1]} [database] [output-file]\n` +
+        "Connection: PGHOST, PGPORT, PGUSER, PGPASSWORD (default localhost:5432, postgres)\n"
+    );
+    process.exit(args.every((a) => a === "-h" || a === "--help") ? 0 : 1);
+  }
   const database = args[0] || "postgres";
 
   // Generate default output filename with timestamp
@@ -103,10 +125,9 @@ function checkPgPassword(config: BackupConfig): void {
 async function checkOutputDirectory(outputFile: string): Promise<void> {
   const outputDir = dirname(outputFile);
 
-  // Check if directory exists
+  // Bun.file().exists() is false for every directory, so stat it
   try {
-    const stat = await Bun.file(outputDir).exists();
-    if (!stat) {
+    if (!(await stat(outputDir)).isDirectory()) {
       error(`Output directory does not exist: ${outputDir}`);
       process.stdout.write(`   Create directory: mkdir -p ${outputDir}\n`);
       process.exit(1);
@@ -145,28 +166,73 @@ async function checkFileExists(outputFile: string): Promise<void> {
 /**
  * Perform the backup operation
  */
+// Prints one idempotent statement per role and membership. A role missing on the restore target is created with the
+// source's attributes and password hash; an existing one is left alone, so the target's own superuser and any role a
+// platform (e.g. Coolify) manages keep their passwords. pg_* roles are built in. Needs a superuser (reads pg_authid).
+const ROLES_SQL = `
+SELECT stmt FROM (
+SELECT 1 AS step, rolname AS name, format('DO $r$ BEGIN CREATE ROLE %I WITH %s %s %s %s %s %s %s CONNECTION LIMIT %s %s %s; EXCEPTION WHEN duplicate_object THEN NULL; END $r$;',
+  rolname,
+  CASE WHEN rolsuper THEN 'SUPERUSER' ELSE 'NOSUPERUSER' END,
+  CASE WHEN rolinherit THEN 'INHERIT' ELSE 'NOINHERIT' END,
+  CASE WHEN rolcreaterole THEN 'CREATEROLE' ELSE 'NOCREATEROLE' END,
+  CASE WHEN rolcreatedb THEN 'CREATEDB' ELSE 'NOCREATEDB' END,
+  CASE WHEN rolcanlogin THEN 'LOGIN' ELSE 'NOLOGIN' END,
+  CASE WHEN rolreplication THEN 'REPLICATION' ELSE 'NOREPLICATION' END,
+  CASE WHEN rolbypassrls THEN 'BYPASSRLS' ELSE 'NOBYPASSRLS' END,
+  rolconnlimit,
+  CASE WHEN rolpassword IS NOT NULL THEN format('PASSWORD %L', rolpassword) ELSE '' END,
+  CASE WHEN rolvaliduntil IS NOT NULL THEN format('VALID UNTIL %L', rolvaliduntil) ELSE '' END) AS stmt
+FROM pg_authid WHERE rolname !~ '^pg_'
+UNION ALL
+SELECT 2, r.rolname, format('GRANT %I TO %I;', r.rolname, m.rolname)
+FROM pg_auth_members a JOIN pg_roles r ON r.oid = a.roleid JOIN pg_roles m ON m.oid = a.member
+WHERE m.rolname !~ '^pg_'
+) s ORDER BY step, name;`;
+
 async function performBackup(config: BackupConfig): Promise<void> {
   info("Creating backup...");
 
+  // The file holds every row, so only its owner may read it. Created here with mode 0600 because Bun.write cannot
+  // set a mode, and pg_dump -f keeps an existing file's mode. "wx" refuses a file that appeared since the existence
+  // check; that happens outside the try below, so its cleanup never deletes a file this run did not create.
   try {
-    // Run pg_dump and pipe to gzip
-    const result = await $`pg_dump \
-      -h ${config.pgHost} \
-      -p ${config.pgPort.toString()} \
-      -U ${config.pgUser} \
-      -d ${config.database} \
-      --format=plain \
-      --no-owner \
-      --no-acl \
-      --verbose`.quiet();
+    await (await open(config.outputFile, "wx", 0o600)).close();
+  } catch (err) {
+    error(
+      `Cannot create ${config.outputFile}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    process.exit(1);
+  }
 
-    // Compress output
-    const compressed = Bun.gzipSync(new Uint8Array(await result.arrayBuffer()));
-    await Bun.write(config.outputFile, compressed);
-  } catch {
+  const conn = [
+    "-h",
+    config.pgHost,
+    "-p",
+    config.pgPort.toString(),
+    "-U",
+    config.pgUser,
+    "-d",
+    config.database,
+  ];
+  try {
+    // One file restores a working database: the roles first, then the dump with its owners and GRANTs. Without the
+    // roles a fresh server lacks every role the GRANTs and owners name, and those statements fail. The file thus
+    // holds password hashes too; it already holds every row, so it is protected (0600) as the database is.
+    // --clean --if-exists: the restore replaces each dumped object, so a fresh aza-pg server's init objects
+    // (pgflow, partman, vault, ...) do not fail as "already exists" and any real error can stop the restore.
+    // bash with pipefail, because a pipe's status is otherwise gzip's and a failed pg_dump would look like success.
+    // The dump streams through the pipe, never through this process's memory.
+    const script =
+      'set -euo pipefail; out=$1; shift; { psql "$@" -X -At -v ON_ERROR_STOP=1 -c "$ROLES_SQL"; pg_dump "$@" --format=plain --clean --if-exists --verbose; } | gzip -6 > "$out"';
+    await $`bash -c ${script} bash ${config.outputFile} ${conn}`
+      .env({ ...Bun.env, ROLES_SQL })
+      .quiet();
+  } catch (err) {
+    // .quiet() captured pg_dump's messages; show them
+    if (err instanceof $.ShellError) process.stderr.write(err.stderr);
     process.stdout.write("\n");
     error("Backup failed");
-    process.stdout.write("   Check pg_dump output above for details\n");
     process.stdout.write("   Common issues:\n");
     process.stdout.write(
       `   - Database does not exist: psql -h ${config.pgHost} -U ${config.pgUser} -l\n`
@@ -248,7 +314,7 @@ async function showBackupInfo(config: BackupConfig): Promise<void> {
   process.stdout.write("Backup contains:\n");
   try {
     const preview =
-      await $`zcat ${config.outputFile} | grep -E "^(CREATE TABLE|CREATE INDEX|CREATE EXTENSION)" | head -20`.text();
+      await $`gzip -dc ${config.outputFile} | grep -E "^(CREATE TABLE|CREATE INDEX|CREATE EXTENSION)" | head -20`.text();
     process.stdout.write(preview);
   } catch {
     process.stdout.write("(no tables/indexes/extensions found)\n");
@@ -258,6 +324,8 @@ async function showBackupInfo(config: BackupConfig): Promise<void> {
   process.stdout.write(
     `To restore: gunzip -c ${config.outputFile} | psql -h HOST -U USER -d DATABASE\n`
   );
+  process.stdout.write("\n");
+  process.stdout.write(PGSODIUM_KEY_NOTE);
 }
 
 /**
@@ -289,7 +357,8 @@ async function main(): Promise<void> {
       user: config.pgUser,
       timeout: 10,
     });
-  } catch {
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
     process.stdout.write("   Troubleshooting:\n");
     process.stdout.write(
       `   - Verify host/port: pg_isready -h ${config.pgHost} -p ${config.pgPort}\n`
@@ -308,7 +377,7 @@ async function main(): Promise<void> {
 }
 
 // Run main function
-main().catch((error) => {
-  error(error.message);
+main().catch((err) => {
+  error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

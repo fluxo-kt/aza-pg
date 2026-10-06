@@ -1,0 +1,319 @@
+diff --git a/.cargo/config.toml b/.cargo/config.toml
+index 335fd83..fe0c390 100644
+--- a/.cargo/config.toml
++++ b/.cargo/config.toml
+@@ -2,5 +2,5 @@
+ # Postgres symbols won't be available until runtime
+ rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
+ 
+-[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))']
+-rustflags = ["-Ctarget-feature=+avx2,+fma"]
++# aza-pg: no x86 rustflags. A global `+avx2,+fma` lets the compiler emit AVX2/FMA anywhere in the .so, which
++# kills the server with SIGILL on x86-64 CPUs without them; AVX2/FMA kernels are selected at runtime instead.
+diff --git a/pgvectorscale/src/access_method/distance/distance_x86.rs b/pgvectorscale/src/access_method/distance/distance_x86.rs
+index 00a0dbd..957400f 100644
+--- a/pgvectorscale/src/access_method/distance/distance_x86.rs
++++ b/pgvectorscale/src/access_method/distance/distance_x86.rs
+@@ -1,22 +1,17 @@
+ //! Calculate the distance by vector arithmetic optimized for x86
++//!
++//! aza-pg patch: this module builds for the baseline x86 target. Its AVX2+FMA kernels are
++//! `#[target_feature]` functions reachable only through `kernels()`, which stores them only after
++//! `is_x86_feature_detected!` confirms both features on the running CPU.
++
++use std::sync::OnceLock;
+ 
+ use simdeez::avx2::*;
+ use simdeez::scalar::*;
+ use simdeez::sse2::*;
+ use simdeez::sse41::*;
+ 
+-#[cfg(not(target_feature = "avx2"))]
+-#[cfg(not(doc))]
+-compile_error!(
+-    "On x86, the AVX2 feature must be enabled. Set RUSTFLAGS=\"-C target-feature=+avx2,+fma\""
+-);
+-
+-//note: without fmadd, the performance degrades pretty badly. Benchmark before disbaling
+-#[cfg(not(target_feature = "fma"))]
+-#[cfg(not(doc))]
+-compile_error!(
+-    "On x86, the fma feature must be enabled. Set RUSTFLAGS=\"-C target-feature=+avx2,+fma\""
+-);
++// aza-pg: no compile_error! demanding target_feature avx2/fma; the build is baseline and AVX2+FMA is chosen at runtime.
+ 
+ simdeez::simd_runtime_generate!(
+     pub fn distance_l2_x86(x: &[f32], y: &[f32]) -> f32 {
+@@ -30,35 +25,171 @@ simdeez::simd_runtime_generate!(
+     }
+ );
+ 
++/// A distance kernel; `unsafe` because it may point at a `#[target_feature]` function.
++type F32Kernel = unsafe fn(&[f32], &[f32]) -> f32;
++/// A hamming-distance kernel over binary-quantized vectors.
++type XorKernel = unsafe fn(&[u64], &[u64]) -> usize;
++
++struct Kernels {
++    l2: F32Kernel,
++    inner_product: F32Kernel,
++    xor: XorKernel,
++}
++
++// simdeez's `*_runtime_select` is not used: it checks avx2 but never fma, re-checks on every call, and
++// its `*_avx2` variant enables only avx2, so `_mm256_fmadd_ps` cannot inline there yet still runs FMA.
++// Enabling avx2+fma together lets FMA inline, the codegen upstream got from its global `+avx2,+fma`.
++#[target_feature(enable = "avx2,fma")]
++unsafe fn distance_l2_x86_avx2_fma(x: &[f32], y: &[f32]) -> f32 {
++    distance_l2_x86::<Avx2>(x, y)
++}
++
++#[target_feature(enable = "avx2,fma")]
++unsafe fn inner_product_x86_avx2_fma(x: &[f32], y: &[f32]) -> f32 {
++    inner_product_x86::<Avx2>(x, y)
++}
++
++// The SBQ hamming distance is plain Rust that upstream's global flags auto-vectorized with AVX2;
++// compiling the same body under avx2+fma keeps that codegen on CPUs that have them.
++#[target_feature(enable = "avx2,fma")]
++unsafe fn distance_xor_x86_avx2_fma(a: &[u64], b: &[u64]) -> usize {
++    super::distance_xor_portable(a, b)
++}
++
++fn distance_xor_x86_baseline(a: &[u64], b: &[u64]) -> usize {
++    super::distance_xor_portable(a, b)
++}
++
++/// Picks the fastest kernels this CPU can execute, detecting features once per backend process.
++fn kernels() -> &'static Kernels {
++    static KERNELS: OnceLock<Kernels> = OnceLock::new();
++    KERNELS.get_or_init(|| {
++        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
++            Kernels {
++                l2: distance_l2_x86_avx2_fma,
++                inner_product: inner_product_x86_avx2_fma,
++                xor: distance_xor_x86_avx2_fma,
++            }
++        } else if is_x86_feature_detected!("sse4.1") {
++            Kernels {
++                l2: distance_l2_x86_sse41,
++                inner_product: inner_product_x86_sse41,
++                xor: distance_xor_x86_baseline,
++            }
++        } else if is_x86_feature_detected!("sse2") {
++            Kernels {
++                l2: distance_l2_x86_sse2,
++                inner_product: inner_product_x86_sse2,
++                xor: distance_xor_x86_baseline,
++            }
++        } else {
++            Kernels {
++                l2: distance_l2_x86_scalar,
++                inner_product: inner_product_x86_scalar,
++                xor: distance_xor_x86_baseline,
++            }
++        }
++    })
++}
++
++/// Runs feature detection at load time so the first query does not pay for it.
++pub fn init() {
++    kernels();
++}
++
++pub fn distance_l2_x86_dispatch(x: &[f32], y: &[f32]) -> f32 {
++    // SAFETY: kernels() stores a #[target_feature] function only after detecting its features on this CPU.
++    unsafe { (kernels().l2)(x, y) }
++}
++
++pub fn inner_product_x86_dispatch(x: &[f32], y: &[f32]) -> f32 {
++    // SAFETY: as in distance_l2_x86_dispatch.
++    unsafe { (kernels().inner_product)(x, y) }
++}
++
+ /// Calculate the cosine distance between two normal vectors
+-pub unsafe fn distance_cosine_x86_avx2(x: &[f32], y: &[f32]) -> f32 {
+-    (1.0 - inner_product_x86_avx2(x, y)).max(0.0)
++pub fn distance_cosine_x86_dispatch(x: &[f32], y: &[f32]) -> f32 {
++    (1.0 - inner_product_x86_dispatch(x, y)).max(0.0)
++}
++
++pub fn distance_xor_x86_dispatch(a: &[u64], b: &[u64]) -> usize {
++    // SAFETY: as in distance_l2_x86_dispatch.
++    unsafe { (kernels().xor)(a, b) }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    #[test]
+-    fn distances_equal() {
++    use super::*;
++
++    fn unit_vectors() -> (Vec<f32>, Vec<f32>) {
+         let r: Vec<f32> = (0..2000).map(|v| v as f32 + 1.0).collect();
+         let l: Vec<f32> = (0..2000).map(|v| v as f32 + 2.0).collect();
+ 
+         let r_size = r.iter().map(|v| v * v).sum::<f32>().sqrt();
+         let l_size = l.iter().map(|v| v * v).sum::<f32>().sqrt();
+ 
+-        let r: Vec<f32> = r.iter().map(|v| v / r_size).collect();
+-        let l: Vec<f32> = l.iter().map(|v| v / l_size).collect();
++        (
++            r.iter().map(|v| v / r_size).collect(),
++            l.iter().map(|v| v / l_size).collect(),
++        )
++    }
+ 
++    #[test]
++    fn distances_equal() {
++        let (r, l) = unit_vectors();
+         assert!(
+-            (unsafe { super::distance_cosine_x86_avx2(&r, &l) }
++            (distance_cosine_x86_dispatch(&r, &l)
+                 - super::super::distance_cosine_unoptimized(&r, &l))
+             .abs()
+                 < 0.000001
+         );
+         assert!(
+-            (unsafe { super::distance_l2_x86_avx2(&r, &l) }
+-                - super::super::distance_l2_unoptimized(&r, &l))
+-            .abs()
++            (distance_l2_x86_dispatch(&r, &l) - super::super::distance_l2_unoptimized(&r, &l))
++                .abs()
+                 < 0.000001
+         );
+     }
++
++    // Dispatch exercises one variant per CPU, so check every variant this CPU can execute.
++    #[test]
++    fn every_runnable_variant_agrees() {
++        let (r, l) = unit_vectors();
++        let mut variants: Vec<(&str, F32Kernel, F32Kernel)> = Vec::new();
++        variants.push(("scalar", distance_l2_x86_scalar, inner_product_x86_scalar));
++        if is_x86_feature_detected!("sse2") {
++            variants.push(("sse2", distance_l2_x86_sse2, inner_product_x86_sse2));
++        }
++        if is_x86_feature_detected!("sse4.1") {
++            variants.push(("sse41", distance_l2_x86_sse41, inner_product_x86_sse41));
++        }
++        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
++            variants.push((
++                "avx2_fma",
++                distance_l2_x86_avx2_fma,
++                inner_product_x86_avx2_fma,
++            ));
++        }
++        let l2_expected = super::super::distance_l2_unoptimized(&r, &l);
++        let ip_expected = super::super::inner_product_unoptimized(&r, &l);
++        for (name, l2, ip) in variants {
++            // SAFETY: each variant was pushed only after detecting the features it enables.
++            let (l2_got, ip_got) = unsafe { (l2(&r, &l), ip(&r, &l)) };
++            assert!((l2_got - l2_expected).abs() < 0.000001, "{name} l2");
++            assert!((ip_got - ip_expected).abs() < 0.000001, "{name} ip");
++        }
++
++        let a: Vec<u64> = (0..37)
++            .map(|v: u64| v.wrapping_mul(0x9E37_79B9_7F4A_7C15))
++            .collect();
++        let b: Vec<u64> = (0..37)
++            .map(|v: u64| v.wrapping_mul(0xD1B5_4A32_D192_ED03))
++            .collect();
++        let xor_expected: usize = a
++            .iter()
++            .zip(&b)
++            .map(|(x, y)| (x ^ y).count_ones() as usize)
++            .sum();
++        assert_eq!(distance_xor_x86_baseline(&a, &b), xor_expected);
++        assert_eq!(distance_xor_x86_dispatch(&a, &b), xor_expected);
++    }
+ }
+diff --git a/pgvectorscale/src/access_method/distance/mod.rs b/pgvectorscale/src/access_method/distance/mod.rs
+index e4fb410..5c5bee5 100644
+--- a/pgvectorscale/src/access_method/distance/mod.rs
++++ b/pgvectorscale/src/access_method/distance/mod.rs
+@@ -64,19 +64,12 @@ pub fn distance_type_inner_product() -> i16 {
+     DistanceType::InnerProduct as i16
+ }
+ 
+-/* we use the avx2 version of x86 functions. This verifies that's kosher */
+-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+-#[cfg(not(target_feature = "avx2"))]
+-#[cfg(not(doc))]
+-compile_error!(
+-    "On x86, the AVX2 feature must be enabled. Set RUSTFLAGS=\"-C target-feature=+avx2,+fma\""
+-);
++// aza-pg: no compile-time avx2 requirement; distance_x86 selects AVX2+FMA or a baseline kernel at runtime.
+ 
+ pub fn init() {
++    // aza-pg: select kernels instead of panicking, so a CPU without AVX2/FMA runs the baseline kernels.
+     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
+-        panic!("On x86, pgvectorscale requires the CPU to support AVX2 and FMA. See https://github.com/timescale/pgvectorscale/issues/115");
+-    }
++    distance_x86::init();
+ 
+     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+     if !std::arch::is_aarch64_feature_detected!("neon") {
+@@ -86,11 +79,9 @@ pub fn init() {
+ 
+ #[inline]
+ pub fn distance_l2(a: &[f32], b: &[f32]) -> f32 {
++    // aza-pg: runtime-selected kernel; the unconditional AVX2 call faulted on CPUs without AVX2.
+     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+-    //note safety is guraranteed by compile_error above
+-    unsafe {
+-        return distance_x86::distance_l2_x86_avx2(a, b);
+-    }
++    return distance_x86::distance_l2_x86_dispatch(a, b);
+ 
+     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+     unsafe {
+@@ -173,10 +164,9 @@ pub fn distance_l2_optimized_for_few_dimensions(a: &[f32], b: &[f32]) -> f32 {
+ #[inline]
+ /// Negative inner product for use as distance function
+ pub fn distance_inner_product(a: &[f32], b: &[f32]) -> f32 {
++    // aza-pg: runtime-selected kernel; the unconditional AVX2 call faulted on CPUs without AVX2.
+     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+-    unsafe {
+-        return -distance_x86::inner_product_x86_avx2(a, b);
+-    }
++    return -distance_x86::inner_product_x86_dispatch(a, b);
+ 
+     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+     unsafe {
+@@ -191,11 +181,9 @@ pub fn distance_inner_product(a: &[f32], b: &[f32]) -> f32 {
+ 
+ #[inline]
+ pub fn distance_cosine(a: &[f32], b: &[f32]) -> f32 {
++    // aza-pg: runtime-selected kernel; the unconditional AVX2 call faulted on CPUs without AVX2.
+     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+-    //note safety is guraranteed by compile_error above
+-    unsafe {
+-        return distance_x86::distance_cosine_x86_avx2(a, b);
+-    }
++    return distance_x86::distance_cosine_x86_dispatch(a, b);
+ 
+     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+     unsafe {
+@@ -262,8 +250,22 @@ macro_rules! xor_arm {
+     };
+ }
+ 
++// aza-pg: the SBQ hot path; on x86 it runs a kernel compiled with or without AVX2+FMA, because the
++// baseline build no longer auto-vectorizes it with AVX2. Other targets inline it as before.
++#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ #[inline(always)]
+ pub fn distance_xor_optimized(a: &[u64], b: &[u64]) -> usize {
++    distance_x86::distance_xor_x86_dispatch(a, b)
++}
++
++#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
++#[inline(always)]
++pub fn distance_xor_optimized(a: &[u64], b: &[u64]) -> usize {
++    distance_xor_portable(a, b)
++}
++
++#[inline(always)]
++pub fn distance_xor_portable(a: &[u64], b: &[u64]) -> usize {
+     match a.len() {
+         1 => xor_arm!(a, b, 1),
+         2 => xor_arm!(a, b, 2),

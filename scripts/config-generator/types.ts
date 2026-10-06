@@ -2,10 +2,8 @@ export type StackType = "primary" | "replica" | "single";
 
 export interface PostgreSQLSettings {
   // Connection Settings
-  listenAddresses: string;
   port: number;
   maxConnections?: number; // Overridden by auto-config
-  maxWorkerProcesses?: number; // Min 8 for background workers (TimescaleDB, pg_cron, etc.)
   sharedPreloadLibraries: string[];
   idleSessionTimeout?: string;
 
@@ -42,6 +40,7 @@ export interface PostgreSQLSettings {
   pgStatStatementsMax: number;
   pgStatStatementsTrack: string;
   timescaledbTelemetryLevel?: string;
+  cronHost?: string;
 
   // auto_explain
   autoExplainLogMinDuration: string;
@@ -60,17 +59,11 @@ export interface PostgreSQLSettings {
   autovacuumFreezeMaxAge?: number;
 
   // Checkpoints
-  checkpointCompletionTarget: number;
 
   // Query Planner (SSD optimizations)
-  randomPageCost?: number;
-  effectiveIoConcurrency?: number;
 
   // WAL Settings
-  walLevel: "minimal" | "replica" | "logical";
   walCompression: "off" | "lz4" | "pglz";
-  maxWalSize?: string;
-  minWalSize?: string;
   maxWalSenders?: number;
   walKeepSize?: string;
   archiveMode?: "on" | "off";
@@ -89,7 +82,6 @@ export interface PostgreSQLSettings {
   walReceiverStatusInterval?: string;
 
   // pg_cron
-  cronDatabaseName?: string;
   cronLogRun?: "on" | "off";
   cronLogStatement?: "on" | "off";
 
@@ -106,6 +98,8 @@ export interface PgHbaRule {
   user: string;
   address?: string;
   method: "trust" | "reject" | "scram-sha-256" | "md5" | "peer";
+  /** pg_ident.conf map a peer rule consults (written next to pg_hba.conf). */
+  map?: string;
   comment?: string;
   stackSpecific?: StackType[];
 }

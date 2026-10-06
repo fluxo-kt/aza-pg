@@ -44,15 +44,11 @@ psql -v ON_ERROR_STOP=1 -v repl_password="$PG_REPLICATION_PASSWORD" -v slot_name
 
     SELECT pg_temp.setup_replication(:'repl_password', :'slot_name');
 
-    -- Security: Limit connections per user
-    ALTER ROLE postgres CONNECTION LIMIT 50;
+    -- Security: cap replication connections. The superuser gets no limit: PostgreSQL never enforces CONNECTION LIMIT
+    -- on a superuser, and its name is POSTGRES_USER, not necessarily "postgres".
     ALTER ROLE replicator CONNECTION LIMIT 5;
-
-    GRANT CONNECT ON DATABASE postgres TO replicator;
-
-    -- Grant pg_monitor to allow replicator to view replication slots
-    -- Required for replica setup script to verify slot exists before pg_basebackup
-    GRANT pg_monitor TO replicator;
+    -- No pg_monitor or database grants: pg_basebackup and streaming use replication connections, which need only
+    -- the REPLICATION attribute; pg_monitor would also let this role read every session's query text.
 EOSQL
 
 echo "[02-replication] Replication configuration complete (slot: $REPLICATION_SLOT_NAME)"

@@ -6,7 +6,6 @@ cmake
 flex
 g++
 libboost-graph-dev
-libbz2-dev
 libcurl4-openssl-dev
 libgdal-dev
 libgeos-dev
@@ -20,12 +19,9 @@ libnuma-dev
 libproj-dev
 libprotobuf-c-dev
 libreadline-dev
-libsodium-dev
-libssl-dev
 libtext-csv-xs-perl
 libtool
 libxml2-dev
-libyaml-dev
 libzstd-dev
 llvm
 make

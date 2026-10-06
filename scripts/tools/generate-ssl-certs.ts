@@ -9,6 +9,7 @@
  */
 
 import { $ } from "bun";
+import { resolve } from "node:path";
 import { info, success, error, warning } from "../utils/logger";
 
 interface CertConfig {
@@ -143,10 +144,23 @@ function printSuccess(certDir: string): void {
   console.log(`  - ${certDir}/server.crt  (certificate)`);
   console.log(`  - ${certDir}/ca.crt      (CA certificate, copy of server.crt)`);
   console.log("");
+  // No stack config carries SSL settings (the stack configs are generated), so TLS is switched on with ALTER SYSTEM,
+  // which outranks the config files. Ownership: on a Linux host a bind mount keeps host uids, and PostgreSQL opens a
+  // key only when it owns it (or root does) and others cannot read it; the container's postgres is uid 999.
+  const dir = resolve(certDir);
   console.log("Next steps:");
-  console.log("  1. Uncomment SSL lines in postgresql.conf");
-  console.log("  2. Mount certs in compose.yml volumes section");
-  console.log("  3. Restart PostgreSQL stack");
+  console.log(`  1. Linux host: sudo chown 999:999 ${dir}/server.key ${dir}/server.crt`);
+  console.log(
+    "  2. Mount the directory in the postgres service's volumes, then recreate it (docker compose up -d):"
+  );
+  console.log(`       - ${dir}:/etc/postgresql/ssl:ro`);
+  console.log("  3. Turn TLS on (one -c per statement: ALTER SYSTEM cannot share a transaction):");
+  console.log(
+    `       docker exec <container> psql -U postgres -c "ALTER SYSTEM SET ssl = on" \\\n` +
+      `         -c "ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/ssl/server.crt'" \\\n` +
+      `         -c "ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/ssl/server.key'" -c "SELECT pg_reload_conf()"`
+  );
+  console.log("     Check: psql \"sslmode=require host=<host> user=postgres\" -c 'SHOW ssl'");
   console.log("");
   console.log("For production, replace these self-signed certificates with real ones from a CA.");
 }
@@ -174,9 +188,10 @@ async function main(): Promise<void> {
     warning(`Certificates already exist in ${certDir}`);
     const shouldOverwrite = await promptConfirmation("Overwrite existing certificates?");
 
+    // Non-zero: no certificates were generated (an empty or closed stdin also lands here)
     if (!shouldOverwrite) {
       info("Aborted");
-      process.exit(0);
+      process.exit(1);
     }
 
     await removeExistingCerts(certDir);

@@ -134,7 +134,6 @@ function validateExtensionNamespaces(result: ValidationResult): void {
  */
 function validateBaseConfig(result: ValidationResult): void {
   const requiredSettings = [
-    "listen_addresses",
     "io_method",
     "io_combine_limit",
     "log_destination",
@@ -161,8 +160,6 @@ function validatePrimaryConfig(result: ValidationResult): void {
     "synchronous_commit",
     "max_wal_senders",
     "max_replication_slots",
-    "wal_level",
-    "cron.database_name",
     "pgaudit.log",
   ];
 
@@ -196,6 +193,42 @@ function validateReplicaConfig(result: ValidationResult): void {
 }
 
 // Run validations
+/**
+ * Names the entrypoint always auto-tunes: the entries ("name=value") of its unconditional AUTO_SETTINGS=( … ) list.
+ * Those values outrank every config file (docs/ARCHITECTURE.md "Configuration Hierarchy"), so such a name in a shipped
+ * config never applies, misleads its reader and is logged as ignored on every start. Names the entrypoint adds only
+ * under a condition (max_wal_senders=0 with wal_level=minimal) still apply from a config file otherwise.
+ */
+async function autoTunedNames(): Promise<Set<string>> {
+  const script = await Bun.file(
+    join(REPO_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh")
+  ).text();
+  const start = script.indexOf("AUTO_SETTINGS=(");
+  const end = script.indexOf("\n)\n", start);
+  const names = new Set(
+    [...script.slice(start, end).matchAll(/"([a-z_][a-z0-9_.]*)=/g)].map((m) => m[1] ?? "")
+  );
+  // An empty or partial set would pass every config silently; shared_buffers is always tuned.
+  if (start < 0 || end < 0 || !names.has("shared_buffers")) {
+    throw new Error(
+      "Cannot read AUTO_SETTINGS from docker/postgres/docker-auto-config-entrypoint.sh"
+    );
+  }
+  return names;
+}
+
+function validateNoAutoTunedSettings(result: ValidationResult, tuned: Set<string>): void {
+  for (const setting of result.settings) {
+    if (tuned.has(setting)) {
+      result.errors.push(
+        `"${setting}" is auto-tuned by the entrypoint, which outranks config files, so this value never applies. ` +
+          `Remove it from scripts/config-generator/base-config.ts; operators override tuned settings with ALTER SYSTEM or -c.`
+      );
+      result.valid = false;
+    }
+  }
+}
+
 async function main() {
   info("Validating PostgreSQL configurations...\n");
 
@@ -219,6 +252,7 @@ async function main() {
   ];
 
   let allValid = true;
+  const tuned = await autoTunedNames();
 
   for (const config of configs) {
     const fullPath = join(REPO_ROOT, config.path);
@@ -226,6 +260,7 @@ async function main() {
 
     const result = await parseConfig(fullPath);
     validateExtensionNamespaces(result);
+    validateNoAutoTunedSettings(result, tuned);
 
     if (config.validator) {
       config.validator(result);

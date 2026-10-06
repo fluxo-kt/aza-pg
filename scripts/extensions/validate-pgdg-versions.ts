@@ -16,7 +16,7 @@
  */
 
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
-import { PACKAGE_NAME_MAP } from "../extensions/pgdg-mappings";
+import { pgdgAptPackageName } from "../extensions/pgdg-package";
 
 interface PgdgExtension {
   name: string;
@@ -24,17 +24,31 @@ interface PgdgExtension {
   aptPackageName: string;
 }
 
-const pgdgExtensions: PgdgExtension[] = MANIFEST_ENTRIES.filter(
-  (ext) => ext.install_via === "pgdg" && ext.pgdgVersion && ext.kind === "extension"
-).map((ext) => ({
-  name: ext.name,
-  pgdgVersion: ext.pgdgVersion!,
-  aptPackageName: `postgresql-18-${PACKAGE_NAME_MAP[ext.name] || ext.name.replace(/_/g, "-")}`,
-}));
+const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0]!;
 
-console.log(`Validating ${pgdgExtensions.length} PGDG package versions...\n`);
+// Every apt-installed entry, tools included: a filter on kind === "extension" once let a
+// removed pgbackrest pin pass this check while the Dockerfile could no longer build.
+const pgdgEntries = MANIFEST_ENTRIES.filter((ext) => ext.install_via === "pgdg");
 
 let hasErrors = false;
+
+for (const ext of pgdgEntries.filter((e) => !e.pgdgVersion)) {
+  console.error(
+    `❌ ${ext.name}: install_via "pgdg" without pgdgVersion — the build would take whatever apt ` +
+      `resolves that day. Pin it to the version shown by: apt-cache madison ${pgdgAptPackageName(ext, pgMajor)}`
+  );
+  hasErrors = true;
+}
+
+const pgdgExtensions: PgdgExtension[] = pgdgEntries
+  .filter((ext) => ext.pgdgVersion)
+  .map((ext) => ({
+    name: ext.name,
+    pgdgVersion: ext.pgdgVersion!,
+    aptPackageName: pgdgAptPackageName(ext, pgMajor),
+  }));
+
+console.log(`Validating ${pgdgExtensions.length} PGDG package versions...\n`);
 
 // Batch all apt-cache checks into a single Docker run for performance (20s → ~2s)
 // Build bash script that checks all packages and outputs "packageName:version" per line
@@ -93,7 +107,9 @@ for (const ext of pgdgExtensions) {
     console.error(`❌ ${ext.name}: Version mismatch!`);
     console.error(`   Manifest:  ${ext.pgdgVersion}`);
     console.error(`   Available: ${availableVersion}`);
-    console.error(`   → Update manifest-data.ts with the correct version`);
+    console.error(
+      `   → Set pgdgVersion to the available version and source.tag to the matching upstream tag in manifest-data.ts, then bun run generate`
+    );
     hasErrors = true;
   } else {
     console.log(`✅ ${ext.name}: ${ext.pgdgVersion}`);
@@ -102,7 +118,7 @@ for (const ext of pgdgExtensions) {
 
 if (hasErrors) {
   console.error("\n❌ PGDG version validation failed!");
-  console.error("Fix the version mismatches in scripts/extensions/manifest-data.ts");
+  console.error("Fix the entries above in scripts/extensions/manifest-data.ts");
   process.exit(1);
 }
 

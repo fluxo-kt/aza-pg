@@ -39,9 +39,9 @@ docker compose up -d
 **Verify:**
 
 ```bash
-docker ps  # All 3-4 services healthy
-docker logs postgres-primary | grep "database system is ready"
-docker logs pgbouncer-primary | grep "process up"
+docker ps  # All 4 services healthy
+docker logs aza-pg-postgres-primary | grep "database system is ready"
+docker logs aza-pg-pgbouncer-primary | grep "process up"
 ```
 
 ### Replica Stack
@@ -62,30 +62,30 @@ docker compose up -d
 The primary stack uses **asynchronous replication** by default (`synchronous_standby_names = ''` in `postgresql-primary.conf`). This provides maximum flexibility and performance:
 
 - **Asynchronous (default):** Primary commits transactions without waiting for replica confirmation. Better performance, slight risk of data loss if primary fails before replica catches up.
-- **Synchronous (optional):** Set `synchronous_standby_names = 'replica_name'` to require replica confirmation before commit. Guarantees zero data loss but reduces throughput and increases latency.
+- **Synchronous (optional):** Set `synchronous_standby_names` to the standby's `application_name` to require replica confirmation before commit. Guarantees zero data loss but reduces throughput and increases latency.
 
 To enable synchronous replication:
 
-1. Edit `stacks/primary/configs/postgresql-primary.conf`
-2. Set `synchronous_standby_names = 'replica1'` (or your replica's `application_name`)
-3. Restart primary: `docker compose restart postgres`
+1. Run `ALTER SYSTEM SET synchronous_standby_names = 'walreceiver'` on the primary (not in `stacks/primary/configs/postgresql-primary.conf`: that file is generated and `bun run generate` overwrites it)
+2. Use `'walreceiver'` — the replica stack's `primary_conninfo` (written by `pg_basebackup -R`) sets no `application_name`, so the standby reports PostgreSQL's default `walreceiver`; check `SELECT application_name FROM pg_stat_replication;`
+3. Reload: `SELECT pg_reload_conf();` (the setting needs no restart)
 4. Verify: `SELECT sync_state FROM pg_stat_replication;` should show `sync` instead of `async`
 
 **Verify Replication:**
 
 ```bash
 # On replica:
-docker exec postgres-replica psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
+docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT * FROM pg_stat_wal_receiver;"
 # Should show status='streaming'
 
 # On primary:
-docker exec postgres-primary psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;"
 # Should show sync_state='async' (or 'sync' if synchronous replication enabled)
 ```
 
 ### Single Stack
 
-Minimal setup without PgBouncer or monitoring.
+Minimal setup: PostgreSQL plus `postgres_exporter`, no PgBouncer. Its exporter publishes host port 9189 but does not join the `monitoring` network, so this stack needs no external network.
 
 ```bash
 cd stacks/single
@@ -101,12 +101,12 @@ The aza-pg stacks use **two Docker networks**:
 
 1. **`postgres_net`** (stack-specific): Created automatically by Docker Compose
    - Isolates database traffic (PostgreSQL, PgBouncer, exporters)
-   - Each stack creates its own: `postgres-primary-net`, `postgres-replica-net`, `postgres-single-net`
+   - The primary and single stacks create their own (`postgres-primary-net`, `postgres-single-net`); the replica stack joins the primary's to reach it
    - Internal communication only
 
 2. **`monitoring`** (external, shared): Must be created manually before deployment
    - Allows multiple stacks to expose metrics to a single Prometheus instance
-   - Shared across all aza-pg stacks (primary, replica, single)
+   - Joined by the primary and replica stacks' exporters
    - Prevents port conflicts when running multiple stacks on the same host
 
 ### Creating the Monitoring Network
@@ -135,7 +135,7 @@ Error response from daemon: network monitoring declared as external, but could n
 
 **Services affected:**
 
-- `postgres_exporter` (all stacks)
+- `postgres_exporter` (primary and replica stacks)
 - `pgbouncer_exporter` (primary stack only)
 
 **Fix:** Create the network and redeploy:
@@ -220,9 +220,9 @@ scrape_configs:
 
 **PgBouncer (port 9127):**
 
-- `pgbouncer_pools_cl_active` - Active client connections
-- `pgbouncer_pools_sv_active` - Active server connections
-- `pgbouncer_pools_cl_waiting` - Waiting clients
+- `pgbouncer_pools_client_active_connections` - Active client connections
+- `pgbouncer_pools_server_active_connections` - Active server connections
+- `pgbouncer_pools_client_waiting_connections` - Waiting clients
 
 ## Backup Configuration
 
@@ -233,30 +233,14 @@ scrape_configs:
 bun scripts/tools/backup-postgres.ts postgres backup.sql.gz
 
 # Direct pg_dump:
-docker exec postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
+docker exec aza-pg-postgres-primary pg_dump -U postgres postgres | gzip > backup.sql.gz
 ```
 
 ### Automated Backups
 
-pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest` (PGDG package).
+pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest`.
 
-For production backup configuration, see `examples/backup/` directory which contains:
-
-- Sample compose configuration for running pgBackRest as a separate service
-- Documentation on stanza creation, backup schedules, and retention policies
-- Point-in-Time Recovery (PITR) restore procedures
-
-Example backup commands:
-
-```bash
-# Manual backup via installed pgbackrest
-docker exec postgres-primary pgbackrest backup --stanza=main --type=full
-
-# Or use the provided script
-bun scripts/tools/backup-postgres.ts postgres-primary backup.sql.gz
-```
-
-See `examples/backup/README.md` for comprehensive backup strategy and automation examples.
+Continuous WAL archiving, scheduled backups and point-in-time restore: [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md) (settings in `examples/backup/compose.yml`).
 
 ## Troubleshooting
 
@@ -267,14 +251,14 @@ See `examples/backup/README.md` for comprehensive backup strategy and automation
 **Check:**
 
 ```bash
-docker logs pgbouncer-primary | grep -i error
-docker exec postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles WHERE rolname = 'pgbouncer_auth';"
+docker logs aza-pg-pgbouncer-primary | grep -i error
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT rolname FROM pg_roles WHERE rolname = 'pgbouncer_auth';"
 ```
 
 **Fix:** Ensure `PGBOUNCER_AUTH_PASS` is set in `.env` and that PgBouncer rendered `/tmp/.pgpass`:
 
 ```bash
-docker exec pgbouncer-primary ls -l /tmp/.pgpass
+docker exec aza-pg-pgbouncer-primary ls -l /tmp/.pgpass
 ```
 
 ### Replica Won't Connect
@@ -283,9 +267,9 @@ docker exec pgbouncer-primary ls -l /tmp/.pgpass
 
 **Check:**
 
-1. Primary has replication user: `docker exec postgres-primary psql -U postgres -c "SELECT * FROM pg_roles WHERE rolname = 'replicator';"`
-2. Replication slot exists: `docker exec postgres-primary psql -U postgres -c "SELECT * FROM pg_replication_slots;"`
-3. Network connectivity: `docker exec postgres-replica pg_isready -h <PRIMARY_HOST> -p 5432`
+1. Primary has replication user: `docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT * FROM pg_roles WHERE rolname = 'replicator';"`
+2. Replication slot exists: `docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT * FROM pg_replication_slots;"`
+3. Network connectivity: `docker exec aza-pg-replica-postgres-replica pg_isready -h <PRIMARY_HOST> -p 5432`
 4. Password matches between primary and replica
 
 ### Memory Detection Issues
@@ -295,7 +279,7 @@ docker exec pgbouncer-primary ls -l /tmp/.pgpass
 **Check logs:**
 
 ```bash
-docker logs postgres-primary | grep "\[POSTGRES\] \[AUTO-CONFIG\]"
+docker logs aza-pg-postgres-primary | grep "\[POSTGRES\] \[AUTO-CONFIG\]"
 ```
 
 Look for source markers in the log output: `manual`, `cgroup-v2`, or `meminfo`. If you see `meminfo` with unexpectedly large RAM, Docker is not applying limits.
@@ -303,7 +287,7 @@ Look for source markers in the log output: `manual`, `cgroup-v2`, or `meminfo`. 
 Example log output:
 
 ```
-[POSTGRES] [AUTO-CONFIG] RAM: 2048MB (cgroup-v2), CPU: 4 cores (nproc) → shared_buffers=512MB, effective_cache_size=1536MB, ...
+[POSTGRES] [AUTO-CONFIG] RAM: 2048MB (cgroup-v2), CPU: 2 cores (cgroup-v2), Workload: mixed, Storage: ssd → shared_buffers=512MB, effective_cache_size=1024MB, ...
 ```
 
 **Fix:** Either set `mem_limit` / `mem_reservation` in compose (already provided in the sample files) or export `POSTGRES_MEMORY=<MB>` to pin the value.
@@ -315,8 +299,8 @@ Example log output:
 **Check:**
 
 ```bash
-docker exec postgres-primary psql -U postgres -c "\dx"  # List extensions
-docker logs postgres-primary | grep shared_preload_libraries
+docker exec aza-pg-postgres-primary psql -U postgres -c "\dx"  # List extensions
+docker logs aza-pg-postgres-primary | grep shared_preload_libraries
 ```
 
 **Fix:** Verify `shared_preload_libraries` in postgresql.conf and restart:
@@ -345,9 +329,9 @@ All images published to `ghcr.io/fluxo-kt/aza-pg` follow the **MM.mm-TS-TYPE** v
 **Format:** `MM.mm-YYYYMMDDHHMM-TYPE`
 
 - **MM**: PostgreSQL major version (e.g., `18`)
-- **mm**: PostgreSQL minor version (e.g., `0`)
+- **mm**: PostgreSQL minor version (e.g., `1`)
 - **TS**: Build timestamp with minute precision (e.g., `202511092330`)
-- **TYPE**: Image type (`single-node`, `primary`, `replica`)
+- **TYPE**: Image type; only `single-node` is published — the primary, replica and single stacks all run that image
 
 **Example:** `18.1-202511142330-single-node`
 
@@ -360,10 +344,10 @@ Each image is published with multiple tags for convenience:
 ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
 
 # Version-specific convenience tags
-ghcr.io/fluxo-kt/aza-pg:18.0-single-node  # Tracks PostgreSQL 18.0 minor
+ghcr.io/fluxo-kt/aza-pg:18.1-single-node  # Tracks PostgreSQL 18.1 minor
 ghcr.io/fluxo-kt/aza-pg:18-single-node    # Tracks PostgreSQL 18 major
-ghcr.io/fluxo-kt/aza-pg:18.0              # Latest 18.0 build (any type)
-ghcr.io/fluxo-kt/aza-pg:18                # Latest 18.x build (any type)
+ghcr.io/fluxo-kt/aza-pg:18.1              # Latest 18.1 build
+ghcr.io/fluxo-kt/aza-pg:18                # Latest 18.x build
 ```
 
 ### Verification
@@ -431,7 +415,7 @@ docker compose pull
 docker compose up -d --force-recreate
 
 # Verify
-docker exec postgres-primary psql -U postgres -c "SELECT version();"
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT version();"
 ```
 
 ### PostgreSQL Major Version
@@ -440,24 +424,15 @@ Requires `pg_upgrade` or dump/restore. See [UPGRADING.md](UPGRADING.md).
 
 ### Extensions
 
-Update `Dockerfile` ARGs, rebuild image, deploy.
+Extensions ship inside the image: pull a newer image tag (minor-version steps above), then run `ALTER EXTENSION <name> UPDATE;` in each database that uses an updated extension. See [UPGRADING.md](UPGRADING.md#extension-updates).
 
 ## Performance Tuning
 
 ### Auto-Config Baseline
 
-Default settings target **2GB RAM**. Auto-config scales from there.
+Auto-config sizes memory and connections from the container's RAM, CPUs and `POSTGRES_WORKLOAD_TYPE`; the rules and caps are in [README.md "Auto-Config"](../README.md#auto-config).
 
-**Memory Map:**
-
-- `shared_buffers`: 15-25% of RAM (capped at 32GB)
-- `effective_cache_size`: 75-85% of RAM
-- `maintenance_work_mem`: 3.1% of RAM (capped at 2GB)
-- `work_mem`: RAM/(max_connections\*4) (capped at 32MB)
-
-**Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
-
-For comprehensive memory allocation table with specific RAM tiers and connection limits, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
+**Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM. A single setting is overridden with `-c name=value` or `ALTER SYSTEM`; a value in a postgresql.conf file is replaced by the tuned one.
 
 ### Extension Optimization
 
@@ -465,8 +440,8 @@ The aza-pg image includes multiple extensions with some disabled by default. You
 
 ### Connection Limits
 
-**PgBouncer:** Max 200 client connections (configurable in `pgbouncer.ini`)
-**Postgres:** Auto-calculated based on RAM and work_mem
+**PgBouncer:** Max 200 client connections (`PGBOUNCER_MAX_CLIENT_CONN` in `.env`)
+**Postgres:** `max_connections` auto-calculated from `POSTGRES_WORKLOAD_TYPE` and RAM
 
 **Increase:** Edit `.env`:
 
@@ -489,7 +464,7 @@ Recommended Prometheus alerts:
   for: 5m
 
 - alert: PgBouncerHighWait
-  expr: pgbouncer_pools_cl_waiting > 10
+  expr: pgbouncer_pools_client_waiting_connections > 10
   for: 2m
 
 - alert: HighConnections
@@ -503,35 +478,14 @@ Recommended Prometheus alerts:
 
 - [ ] Use TLS/SSL for Postgres connections (see [TLS Configuration](#tls-configuration))
 - [ ] Limit network exposure (bind to private IPs only)
-- [ ] Regular security updates (rebuild images monthly)
-- [ ] Audit logs enabled (`log_connections`, `log_disconnections`)
+- [ ] Regular security updates (pull newer image tags)
+- [ ] Connection logging kept on (`log_connections`, `log_disconnections`: on by default in `docker/postgres/configs/postgresql-base.conf`)
 - [ ] pgAudit configured for sensitive operations
 - [ ] Regular backup testing (restore to staging)
 
 ### TLS Configuration
 
-1. Generate certificates:
-
-```bash
-bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs
-```
-
-2. Uncomment TLS lines in `postgresql.conf`:
-
-```conf
-ssl = on
-ssl_cert_file = '/etc/postgresql/certs/server.crt'
-ssl_key_file = '/etc/postgresql/certs/server.key'
-```
-
-3. Mount certs in `compose.yml`:
-
-```yaml
-volumes:
-  - ./certs:/etc/postgresql/certs:ro
-```
-
-4. Restart stack
+Follow [OPERATIONS.md "Enable TLS on primary stack"](OPERATIONS.md#ssl-certificate-generation): generate certificates with `bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs`, give them to the container's postgres user (uid 999), mount them at `/etc/postgresql/certs`, and enable `ssl` with `ALTER SYSTEM` — the stack config files are generated, so edits there are overwritten.
 
 ### Network Security Considerations
 
@@ -539,7 +493,7 @@ volumes:
 
 The default configuration binds to localhost only:
 
-- `listen_addresses = '127.0.0.1'` in base config (localhost only, secure by default)
+- `listen_addresses` comes from `POSTGRES_BIND_IP`, default `127.0.0.1` (localhost only); the entrypoint sets it at every start, so initdb's `listen_addresses = '*'` never applies
 - The default `pg_hba.conf` allows connections from all RFC1918 private IP ranges when network access is enabled:
   - `10.0.0.0/8` (Class A private)
   - `172.16.0.0/12` (Class B private)
@@ -547,7 +501,7 @@ The default configuration binds to localhost only:
 
 **Enabling Network Access:**
 
-To allow network connections, set `POSTGRES_BIND_IP=0.0.0.0` in `.env` and ensure firewall rules are configured.
+In the compose stacks PostgreSQL always listens on the stack's Docker networks, where pgbouncer, the exporters and replicas connect; `POSTGRES_BIND_IP` in `.env` only chooses the host address its port is published on. To accept connections from other hosts, set `POSTGRES_BIND_IP=0.0.0.0` (publishes on every host interface) and configure firewall rules. Running the image alone (`docker run`), `POSTGRES_BIND_IP` is PostgreSQL's listen address.
 
 **Production Hardening:**
 

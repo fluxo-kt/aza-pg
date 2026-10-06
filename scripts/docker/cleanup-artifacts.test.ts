@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   builderPresentInList,
   ids,
+  isAnonymousVolume,
   isAzaImageTitle,
   parseImageInspectLine,
   parseVolumeProbeMatches,
@@ -61,6 +62,28 @@ describe("parseVolumeProbeMatches — only positively-marked volumes, correct id
   // not coerced into a wrong id.
   test("malformed or out-of-range indices are ignored, not mapped to a wrong volume", () => {
     expect(parseVolumeProbeMatches("99\nfoo\n-1\n1", batch)).toEqual(["volB"]);
+  });
+});
+
+// Regression: named data volumes of a stopped stack are dangling and carry the aza marker, and cleanup deleted them.
+describe("isAnonymousVolume — a named volume is never a cleanup candidate", () => {
+  test("named volumes, including the stacks' data volumes, are rejected", () => {
+    for (const name of [
+      "postgres_data",
+      "aza-pg_postgres_data",
+      "postgres-replica-data",
+      "my-volume",
+    ]) {
+      expect(isAnonymousVolume(name)).toBe(false);
+    }
+  });
+
+  test("a Docker-generated 64-hex name is anonymous; near misses are not", () => {
+    const hex = "a".repeat(32) + "0123456789abcdef".repeat(2);
+    expect(isAnonymousVolume(hex)).toBe(true);
+    expect(isAnonymousVolume(hex.slice(1))).toBe(false);
+    expect(isAnonymousVolume(hex.toUpperCase())).toBe(false);
+    expect(isAnonymousVolume(`${hex}_data`)).toBe(false);
   });
 });
 

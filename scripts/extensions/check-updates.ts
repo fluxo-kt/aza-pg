@@ -3,7 +3,8 @@
  * Check Extension Updates
  *
  * Queries upstream sources for all extensions to detect available updates.
- * - Checks GitHub Releases API for git-tag extensions
+ * - Checks GitHub Releases API for git-tag extensions, source libraries, the Rust toolchain and the
+ *   container images pinned in stacks/ and deployments/
  * - Checks git-ref extensions against remote HEAD commit
  * - Outputs JSON report of available updates
  *
@@ -487,6 +488,56 @@ async function checkExtensionUpdates(
   return null;
 }
 
+/**
+ * Container images the stacks and deployments run or tell operators to run. An image's version lives only in the
+ * files that pin it, so nothing else would ever report one as outdated; each is checked like an extension against
+ * the GitHub repository whose release tags name its versions. Docker image names do not say which repository that
+ * is, hence this table. An image missing from it is reported as "could not check", never skipped. `tagPrefix` is
+ * what the repository puts before the image tag: Grafana tags images 13.2.3 but releases v13.2.3, and comparing
+ * the bare form picks up Grafana's old unprefixed tags instead.
+ */
+const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> = {
+  "edoburu/pgbouncer": { repository: "https://github.com/edoburu/docker-pgbouncer" },
+  "prometheuscommunity/pgbouncer-exporter": {
+    repository: "https://github.com/prometheus-community/pgbouncer_exporter",
+  },
+  "prometheuscommunity/postgres-exporter": {
+    repository: "https://github.com/prometheus-community/postgres_exporter",
+  },
+  "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
+  "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
+  "osixia/keepalived": { repository: "https://github.com/osixia/docker-keepalived" },
+};
+
+/**
+ * Every image reference in tracked files under stacks/ and deployments/ (compose files and the compose snippets
+ * in their READMEs), one entry per repo:tag: an `image: repo:tag` line, or a compose default
+ * `${…IMAGE:-repo:tag@sha256:…}`, which the stacks write on the line after `image:`. aza-pg's own image, published
+ * or built locally, is skipped: the stacks follow its floating major tag on purpose.
+ */
+async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files: string[] }>> {
+  const files = (await Bun.$`git ls-files -- stacks deployments`.quiet().text())
+    .split("\n")
+    .filter(Boolean);
+  const images = new Map<string, { repo: string; tag: string; files: string[] }>();
+  for (const file of files) {
+    for (const line of (await Bun.file(file).text()).split("\n")) {
+      const m =
+        /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
+          line
+        );
+      if (!m) continue;
+      const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
+      if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
+      const key = `${repo}:${m[2]}`;
+      const known = images.get(key) ?? { repo, tag: m[2]!, files: [] };
+      if (!known.files.includes(file)) known.files.push(file);
+      images.set(key, known);
+    }
+  }
+  return [...images.values()];
+}
+
 function printTable(updates: UpdateInfo[]) {
   console.log("");
   console.log("============================================================");
@@ -633,6 +684,33 @@ async function main() {
     enabled: true,
   });
   if (rust) results.push(rust);
+
+  for (const image of await pinnedImages()) {
+    const upstream = IMAGE_SOURCES[image.repo];
+    const pinnedIn = `pinned in ${image.files.join(", ")}`;
+    if (!upstream) {
+      results.push({
+        name: image.repo,
+        current: image.tag,
+        latest: null,
+        updateAvailable: false,
+        source: image.repo,
+        sourceType: "git",
+        releaseUrl: null,
+        notes: `Could not check: no upstream repository for this image; add it to IMAGE_SOURCES in scripts/extensions/check-updates.ts (${pinnedIn})`,
+        enabled: true,
+      });
+      continue;
+    }
+    const prefix = upstream.tagPrefix ?? "";
+    const update = await checkExtensionUpdates({
+      name: image.repo,
+      source: { type: "git", repository: upstream.repository, tag: `${prefix}${image.tag}` },
+      enabled: true,
+    });
+    if (update)
+      results.push({ ...update, current: image.tag, notes: `${update.notes} (${pinnedIn})` });
+  }
 
   if (args.format === "json") {
     console.log(JSON.stringify(results, null, 2));

@@ -85,16 +85,12 @@ Check:
    **CRITICAL**: This checks that every PGDG version in the manifest is what the repository serves now. Any mismatch will cause apt-get install to fail silently during Docker build (due to cache layers), resulting in missing extensions at runtime.
 
 5. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
-   Enumerate repo-wide, not just `stacks/`: `deployments/` runs its own images (some, e.g. Prometheus and
-   Grafana, appear nowhere else), and docs quote image references too:
-
-   ```bash
-   # [[:space:]], not \s: git grep -E is POSIX ERE, and on macOS a \s pattern silently matches nothing
-   git grep -nE '^[[:space:]]*image:|_IMAGE[:=-]' -- stacks deployments '*.env.example' docs
-   ```
-
-   For each repository found, check the latest release (`gh release list --repo ORG/REPO --limit 5`) and
-   that every default still resolves (`docker buildx imagetools inspect <ref>`). Update procedure: Phase 5.6.
+   `check-updates.ts` (item 1) already reports each image pinned in `stacks/` and `deployments/` against its
+   upstream releases, naming the files that pin it. A row "could not check … IMAGE_SOURCES" is a new image:
+   add its GitHub repository to `IMAGE_SOURCES` in that script. Docs copying a companion pin are held to it by
+   `validate`'s Companion Image Pins. The stack suites pull the stacks' images, but nothing pulls an image
+   only `deployments/` uses: check each still resolves (`docker buildx imagetools inspect <ref>`). Update
+   procedure: Phase 5.6.
 
 ## Pre-Flight: Additional Checks (MANDATORY)
 

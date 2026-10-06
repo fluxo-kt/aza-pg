@@ -11,9 +11,6 @@
  *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
  *   bun scripts/validate.ts --parallel            # Run checks concurrently, output buffered per check (default except --fix)
  *   bun scripts/validate.ts --sequential          # Run checks one by one with live output (default with --fix)
- *   bun scripts/validate.ts --runtime             # Include runtime verification (requires --image=<tag>)
- *   bun scripts/validate.ts --filesystem          # Include filesystem verification (requires --image=<tag>)
- *   bun scripts/validate.ts --image=<tag>         # Docker image tag for runtime/filesystem verification
  *
  * Environment variables:
  *   ALLOW_MISSING_SHELLCHECK=1           # Don't fail if shellcheck not installed
@@ -39,9 +36,9 @@ export type ValidationCheck = {
   required: boolean; // If false, failure only warns but doesn't fail the whole validation
   requiresDocker?: boolean; // If true, check if Docker is available
   envOverride?: string; // Environment variable to make check non-critical
-  // Extended check cheap + safety-critical enough to ALSO run in default (fast) mode — e.g. the
-  // static grep guards. They cost milliseconds and need no Docker, so gating them behind --all/CI
-  // would let a leak land via `bun run validate` (the documented pre-commit gate) and only fail later.
+  // Extended check cheap + safety-critical enough to ALSO run in default (fast) mode. Such a check
+  // costs milliseconds and needs no Docker, so gating it behind --all/CI would let its defect land via
+  // `bun run validate` (the documented pre-commit gate) and only fail later.
   fast?: boolean;
 };
 
@@ -209,9 +206,6 @@ async function validate(
   mode: "fast" | "all",
   parallel?: boolean,
   stagedOnly: boolean = false,
-  includeRuntime: boolean = false,
-  includeFilesystem: boolean = false,
-  imageTag?: string,
   fixMode: boolean = false
 ): Promise<void> {
   const startTime = Date.now();
@@ -220,11 +214,7 @@ async function validate(
   const concurrent = parallel ?? !fixMode;
   const parallelLabel = concurrent ? " (PARALLEL)" : "";
   const stagedLabel = stagedOnly ? " (STAGED FILES)" : "";
-  const runtimeLabel = includeRuntime ? " + RUNTIME" : "";
-  const filesystemLabel = includeFilesystem ? " + FILESYSTEM" : "";
-  section(
-    `Validation Mode: ${modeLabel}${parallelLabel}${stagedLabel}${runtimeLabel}${filesystemLabel}`
-  );
+  section(`Validation Mode: ${modeLabel}${parallelLabel}${stagedLabel}`);
 
   // Core checks (always run)
   const coreChecks: ValidationCheck[] = [
@@ -240,7 +230,7 @@ async function validate(
     },
     {
       name: "Manifest Validation",
-      command: ["bun", "scripts/validate-manifest.ts"],
+      command: ["bun", "scripts/extensions/validate-manifest.ts"],
       description: "Extension manifest validation",
       required: true,
     },
@@ -305,6 +295,13 @@ async function validate(
       command: ["bun", "scripts/validate/check-suite-registry.ts"],
       description:
         "Every Docker suite is in scripts/test-all.ts SUITES; workflows run suites only by group",
+      required: true,
+    },
+    {
+      name: "Subprocess Calls",
+      command: ["bun", "scripts/validate/subprocess-calls.ts"],
+      description:
+        "Container removal passes -v; subprocess env objects spread Bun.env; stdin-fed docker exec passes -i",
       required: true,
     },
     {
@@ -379,7 +376,7 @@ async function validate(
       description: fixMode ? "Auto-formatting SQL files" : "SQL formatting and syntax validation",
       required: true,
     },
-    // Unit tests: fast (~50ms), no Docker, catches logic bugs before CI.
+    // Unit tests: no Docker, catch logic bugs before CI.
     // Test files are auto-discovered via glob — no manual registration needed.
     // Docker-dependent integration tests are excluded explicitly below.
     // Skipped in fix mode since fix mode is for auto-formatting, not running tests.
@@ -473,9 +470,9 @@ async function validate(
     },
     {
       name: "Secret Scan",
-      command: ["bun", "scripts/security/secret-scan.ts", "--warn-only", "--profile", "validate"],
-      description: "Scan for potential secrets in tracked files (warn-only)",
-      required: false,
+      command: ["bun", "scripts/security/secret-scan.ts"],
+      description: "No hard-coded credential in tracked files",
+      required: true,
     },
     {
       name: "Bun OSV Ignore Audit",
@@ -488,55 +485,6 @@ async function validate(
       fast: true,
     },
     {
-      name: "Subprocess Env Safety",
-      command: [
-        "sh",
-        "-c",
-        // $.env({ KEY: val }) replaces the ENTIRE subprocess env, stripping PATH/HOME/DOCKER_CONFIG
-        // and breaking docker-credential helpers and build tools (cargo, etc.). All .env() calls
-        // must spread Bun.env: .env({ ...Bun.env, KEY: val }). Covers scripts/ AND docker/postgres/
-        // (build-extensions.ts uses cargo subprocess that also needs HOME/CARGO_HOME/RUSTUP_HOME).
-        // Uses -F (fixed string) for the spread filters — avoids BSD/GNU grep regex-escaping differences.
-        // validate.ts excluded — its description string contains ".env({" as a literal example.
-        // Comment lines excluded — grep output format is "file:line:content"; pattern ":[0-9]+:[[:space:]]*//'"
-        // catches lines whose content starts with // (allowing leading whitespace), preventing false-positives
-        // on comments that explain the anti-pattern (e.g. "// bare .env({ PATH }) would strip…").
-        'result=$(git ls-files scripts/ docker/postgres/ | grep -E "\\.ts$" | grep -v "^scripts/validate.ts$" | xargs grep -nE "\\.env\\(\\{" 2>/dev/null | grep -Fv "...Bun.env" | grep -Fv "...process.env" | grep -Ev ":[0-9]+:[[:space:]]*//" || true); if [ -n "$result" ]; then printf "Bare .env({}) strips PATH — use .env({ ...Bun.env, KEY: val }):\\n%s\\n" "$result" >&2; exit 1; fi',
-      ],
-      description:
-        "Detect bare subprocess .env() calls in scripts/ and docker/postgres/ that strip PATH (must spread Bun.env)",
-      required: true,
-      fast: true,
-    },
-    {
-      name: "Docker Volume Leak Guard",
-      command: [
-        "sh",
-        "-c",
-        // A container `docker rm` MUST pass `-v` so the container's anonymous PGDATA volume is
-        // dropped with it. Without `-v`, PG18's anonymous /var/lib/postgresql volume is orphaned on
-        // every test teardown — this silently accumulated hundreds of dangling volumes (tens of GB).
-        // `-v` never removes NAMED volumes, so it is always safe (persistence/replica stacks keep
-        // their data). Covers scripts/*.ts AND .github/workflows/*.yml (CI also runs containers).
-        // Matching notes: the pattern covers BOTH "docker rm " and its alias "docker container rm "
-        // (a clueless future edit could reach for either). The trailing space excludes "docker rmi";
-        // the substring does not occur in "docker volume rm". The exclusion requires the canonical
-        // separate " -v" form (not the combined "-fv") — intentional, to keep one obvious idiom.
-        // Scope is `docker rm` ONLY — deliberately NOT `docker compose down/rm`. For a raw container
-        // `rm`, `-v` is always safe: it drops the anonymous volume but never a NAMED one. For compose,
-        // `-v` ALSO destroys NAMED volumes declared in the stack, so there it encodes intent, not
-        // correctness (e.g. test-persistence.ts runs a bare `compose down` on purpose to prove data
-        // survives teardown). A blanket -v rule on compose would mandate data loss — do NOT add it.
-        // Comment lines (TS // and /** */ body lines starting with *, YAML #) are excluded (grep output
-        // is file:line:content): prose explaining docker's own rm behaviour is not a call site.
-        'result=$(git ls-files scripts/ .github/workflows/ | grep -E "\\.(ts|ya?ml)$" | xargs grep -nE "docker( container)? rm " 2>/dev/null | grep -v " -v" | grep -Ev ":[0-9]+:[[:space:]]*(//|#|[*])" || true); if [ -n "$result" ]; then printf "Container docker rm without -v leaks anonymous PGDATA volumes (use docker rm -f -v):\\n%s\\n" "$result" >&2; exit 1; fi',
-      ],
-      description:
-        "Ensure container `docker rm` always passes -v (prevents anonymous PGDATA volume leaks)",
-      required: true,
-      fast: true,
-    },
-    {
       name: "Extension Size Regression",
       command: ["bun", "scripts/check-size-regression.ts"],
       description: "Check for unexpected extension binary size increases (warn-only)",
@@ -544,49 +492,13 @@ async function validate(
     },
   ];
 
-  // Docker verification checks (optional, require image tag)
-  const dockerVerificationChecks: ValidationCheck[] = [];
-
-  if (includeRuntime && imageTag) {
-    dockerVerificationChecks.push({
-      name: "Runtime Verification",
-      command: ["bun", "scripts/docker/verify-runtime.ts", imageTag],
-      description: `Docker image runtime verification (${imageTag})`,
-      required: true,
-      requiresDocker: true,
-    });
-  }
-
-  if (includeFilesystem && imageTag) {
-    dockerVerificationChecks.push({
-      name: "Filesystem Verification",
-      command: ["bun", "scripts/docker/verify-filesystem.ts", imageTag],
-      description: `Docker image filesystem verification (${imageTag})`,
-      required: true,
-      requiresDocker: true,
-    });
-    dockerVerificationChecks.push({
-      name: "Image Artifacts Validation",
-      command: ["bun", "scripts/docker/validate-published-image-artifacts.ts", imageTag],
-      description: `Docker image artifacts validation (${imageTag})`,
-      required: true,
-      requiresDocker: true,
-    });
-  }
-
-  // Validate image tag requirement
-  if ((includeRuntime || includeFilesystem) && !imageTag) {
-    error("Runtime and filesystem verification require --image=<tag> parameter");
-    throw new Error("Missing required --image parameter");
-  }
-
   // Determine which checks to run
   const checks =
     mode === "all"
-      ? [...coreChecks, ...extendedChecks, ...dockerVerificationChecks]
-      : // Default (fast) mode still runs the cheap static safety guards (fast: true) so the leak
-        // classes they catch are blocked at the pre-commit gate, not just in --all/CI.
-        [...coreChecks, ...extendedChecks.filter((c) => c.fast), ...dockerVerificationChecks];
+      ? [...coreChecks, ...extendedChecks]
+      : // Default (fast) mode still runs the cheap extended checks (fast: true) so the defects
+        // they catch are blocked at the pre-commit gate, not just in --all/CI.
+        [...coreChecks, ...extendedChecks.filter((c) => c.fast)];
 
   // Checks run concurrently by default: they are independent, and one by one they sum to more than the time
   // budget (--all is dominated by two network lookups that overlap everything else). No check writes the tree
@@ -649,11 +561,7 @@ if (import.meta.main) {
       ? false
       : undefined;
   const stagedOnly = argsSet.has("--staged");
-  const includeRuntime = argsSet.has("--runtime");
-  const includeFilesystem = argsSet.has("--filesystem");
   const fixMode = argsSet.has("--fix");
-  const imageArg = args.find((arg) => arg.startsWith("--image="));
-  const imageTag = imageArg ? imageArg.split("=")[1] : undefined;
 
-  await validate(mode, parallel, stagedOnly, includeRuntime, includeFilesystem, imageTag, fixMode);
+  await validate(mode, parallel, stagedOnly, fixMode);
 }

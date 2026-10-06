@@ -11,6 +11,7 @@
  * Usage: bun scripts/test/test-pg-net-functional.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import {
   generateUniqueContainerName,
   generateUniqueProjectName,
@@ -55,7 +56,7 @@ async function sql(query: string): Promise<string> {
 
 /** Wait for the worker to store the response for request `id`; returns `status|content`. */
 async function collect(id: string): Promise<string> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
   while (Date.now() < deadline) {
     const row = await sql(
       `SELECT coalesce(status_code::text, 'ERR ' || error_msg) || '|' || coalesce(content, '') FROM net._http_response WHERE id = ${id}`
@@ -83,14 +84,14 @@ try {
     $`docker run -d --name ${echo} --network ${network} --entrypoint perl ${image} -e ${ECHO_SERVER}`.quiet(),
     $`docker run -d --name ${db} --network ${network} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
-  const echoDeadline = Date.now() + 20_000;
+  const echoDeadline = Date.now() + TIMEOUTS.health * 1000;
   while (
     !(await $`docker logs ${echo}`.quiet().nothrow()).stdout.toString().includes("listening")
   ) {
     if (Date.now() > echoDeadline) throw new Error("echo server did not start");
     await Bun.sleep(100);
   }
-  await waitForPostgres({ container: db, timeout: 120 });
+  await waitForPostgres({ container: db, timeout: TIMEOUTS.startup });
   await sql("CREATE EXTENSION IF NOT EXISTS pg_net");
 
   await check("GET with query parameters and a custom header reaches the endpoint", async () => {

@@ -5,8 +5,10 @@
  * A container that keeps running on bad input is the failure: it either serves with a configuration the operator
  * did not ask for or fails later and further from the cause. Every case therefore asserts a non-zero exit AND the
  * message naming the input; exit is observed with `docker wait`, never assumed after a delay.
- * Each case owns its container, so the cases run concurrently: run serially, the suite took the sum of four container
- * lifecycles, and under CPU contention the last full-initdb case ran past its 90 s hang bound.
+ * Each case owns its container, so the cases run concurrently: run serially, the suite takes the sum of every case's
+ * container lifecycle, and under CPU contention the last full-initdb case can run past its 90 s hang bound.
+ * RAM below the 512 MB minimum is test-auto-config.ts's "256 MB cgroup is refused" row: the refusal follows detection
+ * whatever the RAM source.
  * PgBouncer's entrypoint validation lives in test-pgbouncer-failures.ts.
  *
  * Usage: bun test ./scripts/test/test-negative-scenarios.ts
@@ -39,16 +41,6 @@ async function runToExit(
   const r = await $`docker logs ${name}`.nothrow().quiet();
   return { code, logs: r.stdout.toString() + r.stderr.toString() };
 }
-
-test.concurrent(
-  "RAM below the 512 MB minimum stops the container",
-  async () => {
-    const { code, logs } = await runToExit("ram-low", { POSTGRES_MEMORY: "128" });
-    expect(code).toBe(1);
-    expect(logs).toContain("[POSTGRES] FATAL: Detected 128MB RAM - minimum 512MB REQUIRED");
-  },
-  30_000
-);
 
 test.concurrent(
   "non-numeric POSTGRES_MEMORY stops the container",

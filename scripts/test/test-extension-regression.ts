@@ -19,6 +19,7 @@ import { $ } from "bun";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { generateRegressionDiffs, runRegressionTest } from "./lib/regression-runner";
@@ -69,7 +70,7 @@ export async function selectSuites(): Promise<string[]> {
 
 async function main(): Promise<number> {
   const options = parseArgs(Bun.argv.slice(2));
-  const mode = options.mode ?? (await detectTestMode());
+  const mode = options.mode ?? (await detectTestMode(resolveImageTag()));
   let suites = await selectSuites();
   if (options.only.length > 0) {
     const unknown = options.only.filter((name) => !suites.includes(name));
@@ -88,8 +89,8 @@ async function main(): Promise<number> {
         mode === "production"
           ? []
           : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries(mode)}`];
-      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres -e TEST_MODE=${mode} ${preloadEnv} ${resolveImageTag()}`.quiet();
-      await waitForPostgres({ container, timeout: 120 });
+      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
+      await waitForPostgres({ container, timeout: TIMEOUTS.startup });
     }
     const results: TestResult[] = [];
     for (const name of suites) {

@@ -10,7 +10,8 @@
  * Then every container, volume and network carrying its scope is removed (TEST_SCOPE_ENV in utils/docker.ts): a suite
  * killed at its timeout never runs its own teardown, and one that passed but left anything behind fails. Suites
  * run in parallel up to the CPU count: each one isolates its containers, volumes, networks and ports, so order and
- * neighbours must not matter (--shuffle proves it). Any failed suite makes the run exit 1.
+ * neighbours must not matter (--shuffle proves it). Any failed suite, or a run over the lane's 5 min ceiling, makes
+ * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep.
  *
  * Usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
  *   --group    default: every group except "nightly", which needs the regression image
@@ -42,16 +43,13 @@ export interface Suite {
 
 export const SUITES: Suite[] = [
   { path: "scripts/docker/test-image.ts", group: "extensions" },
-  { path: "scripts/docker/verify-runtime.ts", group: "extensions" },
-  { path: "scripts/docker/verify-filesystem.ts", group: "extensions" },
   { path: "scripts/test/test-extension-versions.ts", group: "extensions" },
-  { path: "scripts/test/test-timescaledb-breaking-changes.ts", group: "extensions" },
+  { path: "scripts/test/test-timescaledb-tsl.ts", group: "extensions" },
   { path: "scripts/test/test-pgmq-functional.ts", group: "extensions" },
   { path: "scripts/test/test-supautils-functional.ts", group: "extensions" },
   { path: "scripts/test/test-pg-net-functional.ts", group: "extensions" },
   { path: "scripts/test/test-hook-extensions.ts", group: "extensions" },
-  { path: "scripts/test/test-disabled-extensions.ts", group: "extensions" },
-  { path: "scripts/test/test-integration-extension-combinations.ts", group: "extensions" },
+  { path: "scripts/test/test-pgsodium-key.ts", group: "extensions" },
   { path: "scripts/test/test-security.ts", group: "security" },
   { path: "scripts/test/test-pgbouncer-healthcheck.ts", group: "stacks" },
   { path: "scripts/test/test-pgbouncer-failures.ts", group: "stacks" },
@@ -63,7 +61,8 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
   { path: "scripts/test/test-pgflow.ts", group: "features" },
   { path: "scripts/test/test-pgflow-upgrade.ts", group: "features" },
-  // Extension SQL against expected output, and extension interactions; nightly also covers comprehensive-only ones.
+  // Extension SQL against expected output, and extension interactions; nightly reruns both on the regression image,
+  // which preloads some optional libraries the release image does not.
   { path: "scripts/test/test-extension-regression.ts", group: "regression" },
   { path: "scripts/test/test-extension-interactions.ts", group: "regression" },
   {
@@ -78,10 +77,21 @@ export const SUITES: Suite[] = [
   },
 ];
 
-// A suite past this is already over the whole lane's 5 min error ceiling; killing it keeps CI from hanging.
-const SUITE_TIMEOUT_MS = 5 * 60_000;
+// Kills a hung suite. It must fire, and the suite's output print, before the CI job's own timeout cancels the whole
+// run unreported: each job's limit in the workflows is sized from this value plus setup, the log read and the sweep.
+// The slowest suites take about 1–2 min, so 3 min still never cuts a healthy run.
+const SUITE_TIMEOUT_MS = 3 * 60_000;
 // Target per suite; slower suites are named in the summary.
 const SLOW_SUITE_MS = 30_000;
+// Wall-clock ceilings for one whole run (a lane): over the warning it needs work; over the error it fails, because a
+// lane that slow stops being run on every change.
+const LANE_WARN_MS = 4 * 60_000;
+const LANE_ERROR_MS = 5 * 60_000;
+// Log lines kept per container of a failed suite: the error and the startup lines before it, bounded so a
+// crash-looping container cannot flood the log.
+const FAILURE_LOG_LINES = 100;
+// Bounds each docker call that collects those logs, so a wedged daemon cannot hold the run.
+const FAILURE_LOG_TIMEOUT_MS = 15_000;
 const ROOT = join(import.meta.dir, "..");
 
 interface Outcome {
@@ -143,8 +153,59 @@ function parseArgs(argv: string[]): { groups: Group[]; image: string; seed: numb
   return { groups: groups as Group[], image, seed };
 }
 
+/**
+ * The last FAILURE_LOG_LINES of every container in `scope`, stdout and stderr interleaved as docker wrote them. Read
+ * for a failed suite before the sweep deletes its containers: afterwards nothing can show why a server died.
+ */
+async function scopeLogs(scope: RegExp): Promise<string> {
+  const capture = async (cmd: string[]) => {
+    const proc = Bun.spawn(cmd, {
+      stdout: "pipe",
+      stderr: "ignore",
+      timeout: FAILURE_LOG_TIMEOUT_MS,
+    });
+    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return out;
+  };
+  const names = (await capture(["docker", "ps", "-a", "--format", "{{.Names}}"]))
+    .split("\n")
+    .filter((name) => scope.test(name));
+  const logs = await Promise.all(
+    names.map(async (name) => {
+      // `2>&1` inside the shell keeps docker's stderr (PostgreSQL's log) in order with its stdout.
+      const text = await capture([
+        "sh",
+        "-c",
+        'exec docker logs --tail "$1" "$2" 2>&1',
+        "sh",
+        String(FAILURE_LOG_LINES),
+        name,
+      ]);
+      return `──── docker logs --tail ${FAILURE_LOG_LINES} ${name}\n${text}`;
+    })
+  );
+  return logs.join("");
+}
+
+/** Runs one suite; a runner error (unreadable file, failed spawn) is that suite's failure, never the whole run's. */
 async function runSuite(suite: Suite, image: string, scope: string): Promise<Outcome> {
   const started = performance.now();
+  try {
+    return await runSuiteUnguarded(suite, image, scope, started);
+  } catch (err) {
+    console.log(
+      `\n━━━━ ❌ FAIL ${suite.path} [${suite.group}]: runner error: ${err instanceof Error ? err.message : String(err)} ━━━━`
+    );
+    return { suite, passed: false, ms: Math.round(performance.now() - started) };
+  }
+}
+
+async function runSuiteUnguarded(
+  suite: Suite,
+  image: string,
+  scope: string,
+  started: number
+): Promise<Outcome> {
   // A file written for bun's test runner registers nothing when run as a script, so how it runs follows its imports.
   const usesTestRunner = (await Bun.file(join(ROOT, suite.path)).text()).includes(
     'from "bun:test"'
@@ -162,29 +223,37 @@ async function runSuite(suite: Suite, image: string, scope: string): Promise<Out
     detached: true,
   });
   live.add(proc.pid);
-  const timer = setTimeout(() => killGroup(proc.pid), SUITE_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    killGroup(proc.pid);
+  }, SUITE_TIMEOUT_MS);
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
   clearTimeout(timer);
-  // A killed suite never ran its teardown; one that passed and still left something behind has a cleanup defect.
-  const { found, remaining } = await sweepTestScope(new RegExp(`-${scope}-`));
   live.delete(proc.pid);
+  // The suite's own time: the sweep below can take up to its deadline and must not make a suite look slow or hung.
   const ms = Math.round(performance.now() - started);
-  const passed = code === 0 && found.length === 0;
+  const scopePattern = new RegExp(`-${scope}-`);
+  const logs = code === 0 ? "" : await scopeLogs(scopePattern);
+  // A killed suite never ran its teardown; one that passed and still left something behind has a cleanup defect.
+  const { found, remaining } = await sweepTestScope(scopePattern);
+  // `remaining` also holds listings that failed until the deadline: an unread scope is not a clean one.
+  const passed = code === 0 && found.length === 0 && remaining.length === 0;
   const name = [suite.path, ...(suite.args ?? [])].join(" ");
   const verdict = passed
     ? "✅ PASS"
-    : `❌ FAIL (exit ${code}${ms >= SUITE_TIMEOUT_MS ? ", killed at timeout" : ""})`;
+    : `❌ FAIL (exit ${code}${timedOut ? ", killed at timeout" : ""})`;
   const leftNote =
     (found.length === 0
       ? ""
       : `\n${code === 0 ? "❌ Passed but left" : "Left behind"}: ${found.join(", ")}\n`) +
     (remaining.length === 0 ? "" : `❌ Could not remove: ${remaining.join(", ")}\n`);
   console.log(
-    `\n━━━━ ${verdict} ${name} [${suite.group}] ${(ms / 1000).toFixed(1)}s ━━━━\n${out}${err}${leftNote}`
+    `\n━━━━ ${verdict} ${name} [${suite.group}] ${(ms / 1000).toFixed(1)}s ━━━━\n${out}${err}${logs}${leftNote}`
   );
   return { suite, passed, ms };
 }
@@ -254,11 +323,22 @@ async function main(): Promise<void> {
   if (late.found.length > 0)
     console.log(`❌ Appeared after their suite's sweep: ${late.found.join(", ")}`);
   if (late.remaining.length > 0) console.log(`❌ Could not remove: ${late.remaining.join(", ")}`);
+  const wallMs = performance.now() - started;
+  const tooSlow = wallMs > LANE_ERROR_MS;
+  if (tooSlow)
+    console.log(
+      `❌ Lane took ${(wallMs / 1000).toFixed(1)}s, over its ${LANE_ERROR_MS / 60_000} min error ceiling: make the slowest suites above faster`
+    );
+  else if (wallMs > LANE_WARN_MS)
+    console.log(
+      `⚠️  Lane took ${(wallMs / 1000).toFixed(1)}s, over its ${LANE_WARN_MS / 60_000} min warning ceiling (fails over ${LANE_ERROR_MS / 60_000} min)`
+    );
   console.log(
-    `Passed: ${outcomes.length - failed.length}  Failed: ${failed.length}  Wall: ${((performance.now() - started) / 1000).toFixed(1)}s` +
+    `Passed: ${outcomes.length - failed.length}  Failed: ${failed.length}  Wall: ${(wallMs / 1000).toFixed(1)}s` +
       (seed !== null ? `  Seed: ${seed}` : "")
   );
-  const clean = failed.length === 0 && late.found.length === 0;
+  const clean =
+    failed.length === 0 && late.found.length === 0 && late.remaining.length === 0 && !tooSlow;
   process.exit(interrupted ? 130 : clean && outcomes.length > 0 ? 0 : 1);
 }
 

@@ -19,6 +19,7 @@
  */
 
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
@@ -76,6 +77,25 @@ async function runSQL(sql: string): Promise<{ stdout: string; stderr: string; su
   }
 }
 
+/**
+ * Run statements in ONE psql session, one `-c` each. A visibility check needs its two reads microseconds apart: as
+ * separate `docker exec` calls they can be seconds apart on a loaded host, and a short timeout then lapses between them.
+ */
+async function runSQLSession(
+  statements: string[]
+): Promise<{ stdout: string; stderr: string; success: boolean }> {
+  const flags = statements.flatMap((sql) => ["-c", sql]);
+  const result =
+    await $`docker exec ${CONTAINER} psql -U postgres -v ON_ERROR_STOP=1 -t -A ${flags}`
+      .quiet()
+      .nothrow();
+  return {
+    stdout: result.stdout.toString().trim(),
+    stderr: result.stderr.toString().trim(),
+    success: result.exitCode === 0,
+  };
+}
+
 async function test(name: string, fn: () => Promise<void>): Promise<void> {
   const start = Date.now();
   try {
@@ -91,9 +111,9 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-/** Re-run a read until it returns a row (or 10 s pass); the 250 ms sleep only paces the polling. */
+/** Re-run a read until it returns a row (or TIMEOUTS.health passes); the 250 ms sleep only paces the polling. */
 async function pollUntilVisible(sql: string): Promise<string> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
   while (Date.now() < deadline) {
     const r = await runSQL(sql);
     if (!r.success) throw new Error(`Read failed: ${r.stderr}`);
@@ -155,7 +175,7 @@ if (isOwnContainer && imageTag) {
     await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres ${imageTag}`;
     console.log(`✅ Container started: ${CONTAINER}`);
 
-    await waitForPostgres({ container: CONTAINER, timeout: 120 });
+    await waitForPostgres({ container: CONTAINER, timeout: TIMEOUTS.startup });
   } catch (error) {
     console.error(`❌ Failed to start container: ${error}`);
     await cleanupContainer();
@@ -360,15 +380,15 @@ await test("Visibility timeout behavior", async () => {
   );
   assert(send.success, `Send failed: ${send.stderr}`);
 
-  // Read with 2 second visibility timeout
-  const read1 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 2, 1)");
-  assert(read1.success, `First read failed: ${read1.stderr}`);
-  assert(read1.stdout.length > 0, "No message read");
-
-  // Try to read immediately (should get no messages - still invisible)
-  const read2 = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_vt', 2, 1)");
-  assert(read2.success, `Second read failed: ${read2.stderr}`);
-  assert(read2.stdout === "", `Expected no messages, got: ${read2.stdout}`);
+  // Read with a 2 second visibility timeout, then read again at once: the message must be invisible.
+  const reads = await runSQLSession([
+    "SELECT 'first:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_vt', 2, 1)",
+    "SELECT 'second:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_vt', 2, 1)",
+  ]);
+  assert(reads.success, `Reads failed: ${reads.stderr}`);
+  const [first, second] = reads.stdout.split("\n");
+  assert(/^first:\d+$/.test(first ?? ""), `No message read: ${reads.stdout}`);
+  assert(second === "second:", `Expected no messages on the second read, got: ${second}`);
 
   // The message must reappear once the 2 s timeout lapses
   const read3 = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_vt', 30, 1)");
@@ -494,7 +514,7 @@ await test("Purge queue", async () => {
 });
 
 // Test 15: FIFO Queue - read_grouped (v1.9.0)
-await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
+await test("FIFO read_grouped fills the batch from the oldest group first (v1.9.0)", async () => {
   await runSQL("SELECT pgmq.create('test_queue_fifo')");
 
   // Create FIFO index for message headers
@@ -524,17 +544,14 @@ await test("FIFO read_grouped maintains group ordering (v1.9.0)", async () => {
   );
   assert(msg4.success, `Send msg4 failed: ${msg4.stderr}`);
 
-  // read_grouped should return messages grouped together
-  const read = await runSQL(
-    "SELECT msg_id, message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped('test_queue_fifo', 30, 10)"
-  );
+  // A batch of 2 takes both group_a messages; a plain FIFO read would take orders 1 and 2. The function returns
+  // rows in no defined order, so they are sorted by msg_id.
+  const read = await runSQL(`
+    SELECT string_agg((message->>'order') || ':' || (headers->>'x-pgmq-group'), ',' ORDER BY msg_id)
+    FROM pgmq.read_grouped('test_queue_fifo', 30, 2)
+  `);
   assert(read.success, `read_grouped failed: ${read.stderr}`);
-
-  // Verify we got all 4 messages
-  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
-  assert(lines.length === 4, `Expected 4 messages, got ${lines.length}`);
-
-  console.log(`   📊 FIFO read_grouped returned ${lines.length} messages`);
+  assert(read.stdout === "1:group_a,3:group_a", `Unexpected batch: ${read.stdout}`);
 });
 
 // Test 15b: FIFO Queue - read_grouped_head (v1.11.1)
@@ -566,30 +583,35 @@ await test("FIFO read_grouped_head returns one visible head per group (v1.11.1)"
 });
 
 // Test 16: FIFO Queue - read_grouped_rr (v1.9.0)
-await test("FIFO read_grouped_rr distributes across groups (v1.9.0)", async () => {
+await test("FIFO read_grouped_rr alternates between groups (v1.9.0)", async () => {
   await runSQL("SELECT pgmq.create('test_queue_fifo_rr')");
   await runSQL("SELECT pgmq.create_fifo_index('test_queue_fifo_rr')");
 
-  // Send 3 messages to group_a, 3 to group_b
-  for (let i = 0; i < 3; i++) {
-    await runSQL(
-      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 1}}'::jsonb, '{"x-pgmq-group": "group_a"}'::jsonb)`
+  // All of group_a is sent before group_b, so only round robin interleaves them; a plain FIFO read returns 1–6.
+  for (const [order, group] of [
+    [1, "group_a"],
+    [2, "group_a"],
+    [3, "group_a"],
+    [4, "group_b"],
+    [5, "group_b"],
+    [6, "group_b"],
+  ] as const) {
+    const sent = await runSQL(
+      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${order}}'::jsonb, '{"x-pgmq-group": "${group}"}'::jsonb)`
     );
-    await runSQL(
-      `SELECT pgmq.send('test_queue_fifo_rr', '{"order": ${i * 2 + 2}}'::jsonb, '{"x-pgmq-group": "group_b"}'::jsonb)`
-    );
+    assert(sent.success, `Send ${order} failed: ${sent.stderr}`);
   }
 
-  // read_grouped_rr should interleave (round-robin) across groups
-  const read = await runSQL(
-    "SELECT message->>'order' as ord, headers->>'x-pgmq-group' as grp FROM pgmq.read_grouped_rr('test_queue_fifo_rr', 30, 6)"
-  );
+  // The function's own row order is the round-robin order.
+  const read = await runSQL(`
+    SELECT string_agg((message->>'order') || ':' || (headers->>'x-pgmq-group'), ',' ORDER BY ordinality)
+    FROM pgmq.read_grouped_rr('test_queue_fifo_rr', 30, 6) WITH ORDINALITY
+  `);
   assert(read.success, `read_grouped_rr failed: ${read.stderr}`);
-
-  const lines = read.stdout.split("\n").filter((l) => l.length > 0);
-  assert(lines.length === 6, `Expected 6 messages, got ${lines.length}`);
-
-  console.log(`   📊 FIFO read_grouped_rr distributed ${lines.length} messages across groups`);
+  assert(
+    read.stdout === "1:group_a,4:group_b,2:group_a,5:group_b,3:group_a,6:group_b",
+    `Unexpected order: ${read.stdout}`
+  );
 });
 
 // Test 17: FIFO index verification (v1.9.0)
@@ -613,16 +635,15 @@ await test("FIFO create_fifo_index creates GIN index (v1.9.0)", async () => {
 await test("Delayed message send", async () => {
   await runSQL("SELECT pgmq.create('test_queue_delay')");
 
-  // Send with 2-second delay
-  const send = await runSQL(
-    "SELECT pgmq.send('test_queue_delay', '{\"delayed\": true}'::jsonb, 2)"
-  );
-  assert(send.success, `Delayed send failed: ${send.stderr}`);
-
-  // Immediate read should return nothing (message not yet visible)
-  const immediate = await runSQL("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
-  assert(immediate.success, `Immediate read failed: ${immediate.stderr}`);
-  assert(immediate.stdout === "", `Message visible before delay: ${immediate.stdout}`);
+  // Send with a 2 second delay and read at once: the message must not be visible yet.
+  const immediate = await runSQLSession([
+    "SELECT 'sent:' || pgmq.send('test_queue_delay', '{\"delayed\": true}'::jsonb, 2)",
+    "SELECT 'read:' || coalesce(string_agg(msg_id::text, ','), '') FROM pgmq.read('test_queue_delay', 30, 1)",
+  ]);
+  assert(immediate.success, `Delayed send or immediate read failed: ${immediate.stderr}`);
+  const [sent, read] = immediate.stdout.split("\n");
+  assert(/^sent:\d+$/.test(sent ?? ""), `Delayed send returned no id: ${immediate.stdout}`);
+  assert(read === "read:", `Message visible before delay: ${read}`);
 
   const delayed = await pollUntilVisible("SELECT msg_id FROM pgmq.read('test_queue_delay', 30, 1)");
   assert(delayed.length > 0, "Message not visible after delay expired");

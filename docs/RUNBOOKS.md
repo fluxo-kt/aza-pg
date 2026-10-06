@@ -163,7 +163,7 @@ docker exec postgres psql -U postgres -c "CREATE DATABASE restore_test;"
 # Via Postgresus: Select database → Restore to "restore_test"
 
 # 3. Verify data integrity
-docker exec postgres psql -U postgres -d restore_test <<EOF
+docker exec -i postgres psql -U postgres -d restore_test <<EOF
 SELECT
     schemaname,
     tablename,
@@ -391,7 +391,7 @@ docker compose up -d
 
 ```bash
 # Top 10 slowest queries
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     query,
     calls,
@@ -404,7 +404,7 @@ LIMIT 10;
 EOF
 
 # Queries with high execution count
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     query,
     calls,
@@ -429,7 +429,7 @@ docker logs postgres --since 1h | grep "duration:"
 
 ```bash
 # Explain a specific query
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
 SELECT * FROM your_table WHERE condition;
 EOF
@@ -445,7 +445,7 @@ EOF
 
 ```bash
 # Find sequential scans on large tables
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     schemaname,
     tablename,
@@ -460,7 +460,7 @@ LIMIT 10;
 EOF
 
 # Suggest indexes with hypopg
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 CREATE EXTENSION IF NOT EXISTS hypopg;
 CREATE EXTENSION IF NOT EXISTS index_advisor;
 
@@ -479,7 +479,7 @@ EOF
 
 ```bash
 # Find bloated tables
-docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
+docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 SELECT
     schemaname,
     tablename,
@@ -536,7 +536,7 @@ docker restart pgbouncer
 
 ```bash
 # 1. Check active connections
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     pid,
     usename,
@@ -668,7 +668,7 @@ docker run --rm -v aza-pg-stack_postgres_data:/data ubuntu ls -la /data
 
 ```bash
 # Identify expensive queries
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     pid,
     now() - query_start AS duration,
@@ -688,7 +688,7 @@ docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_activity WHERE query LIKE '%autovacuum%';"
 
 # Tune autovacuum if needed
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 ALTER SYSTEM SET autovacuum_max_workers = 2;
 ALTER SYSTEM SET autovacuum_naptime = '30s';
 SELECT pg_reload_conf();
@@ -740,7 +740,7 @@ iostat -x 1
 df -h
 
 # Find largest databases
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 SELECT
     datname,
     pg_size_pretty(pg_database_size(datname))
@@ -760,7 +760,7 @@ docker exec postgres psql -U postgres -c \
 
 # If emergency:
 # Temporarily disable WAL archiving
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 ALTER SYSTEM SET archive_mode = off;
 SELECT pg_reload_conf();
 EOF

@@ -6,12 +6,14 @@
  * or recreates it, because doing so hides a primary that ships without the slot the replica's setup requires.
  * Streaming is proven by rows written on the primary arriving on the replica (polled, never slept on), and the
  * replica's walreceiver must be using that slot. Failover runs last because promotion is destructive: the
- * primary is stopped, the replica promoted, and it must keep every streamed row and accept writes.
+ * primary is stopped, the replica promoted by scripts/tools/promote-replica.ts, and it must keep every streamed row
+ * and accept writes.
  *
  * Usage: bun scripts/test/test-replica-stack.ts [image]
  */
 
 import { $ } from "bun";
+import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
@@ -21,6 +23,7 @@ const image = resolveImageTag();
 const suffix = crypto.randomUUID().slice(0, 8);
 const POSTGRES_PASSWORD = `pg_${suffix}`;
 const PG_REPLICATION_PASSWORD = `repl_${suffix}`;
+const PROMOTE_TOOL = join(import.meta.dir, "../tools/promote-replica.ts");
 const SLOT = "replica_slot_1"; // both stacks' compose default; neither stage overrides it
 const ROWS = 100;
 // Both stacks run their shipped memory and CPU limits (primary 2048m/2 CPUs, replica 512m/0.5): auto-tuning gives the
@@ -209,8 +212,13 @@ try {
     "failover: primary stopped, replica promoted keeps the rows and accepts writes",
     async () => {
       await $`docker stop ${primaryDb}`.quiet();
-      const promoted = await psql(replicaDb, "SELECT pg_promote(wait => true)");
-      if (promoted !== "t") throw new Error(`pg_promote returned "${promoted}"`);
+      // The shipped failover tool, as the operations runbook runs it: this step is its regression test.
+      const promote = await $`bun ${PROMOTE_TOOL} -c ${replicaDb} -y`.nothrow().quiet();
+      if (promote.exitCode !== 0) {
+        throw new Error(
+          `promote-replica.ts exited ${promote.exitCode}: ${(promote.stdout.toString() + promote.stderr.toString()).trim()}`
+        );
+      }
       await until(replicaDb, "SELECT pg_is_in_recovery()", "f", TIMEOUTS.health);
       await psql(replicaDb, `INSERT INTO streamed VALUES (${ROWS + 1})`);
       const count = await psql(replicaDb, "SELECT count(*) FROM streamed");

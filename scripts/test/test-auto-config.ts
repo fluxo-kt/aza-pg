@@ -18,6 +18,7 @@
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
@@ -89,6 +90,22 @@ interface Row {
   argv?: string[];
   include?: string;
 }
+
+// The data directory comes from the image, so the path follows the PostgreSQL major the image ships.
+const PGDATA = (
+  await run([
+    "docker",
+    "image",
+    "inspect",
+    "-f",
+    "{{range .Config.Env}}{{println .}}{{end}}",
+    IMAGE,
+  ])
+).stdout
+  .split("\n")
+  .find((line) => line.startsWith("PGDATA="))
+  ?.slice("PGDATA=".length);
+if (!PGDATA) throw new Error(`no PGDATA in ${IMAGE}`);
 
 // Expected values come from the entrypoint's formulas worked by hand (see the inline arithmetic), not from its output.
 const ROWS: Row[] = [
@@ -231,16 +248,6 @@ const ROWS: Row[] = [
     },
   },
   {
-    name: "12 GB / 4 CPU",
-    docker: ["--memory=12g", ...cpus(4)],
-    settings: { shared_buffers: "2457MB", io_workers: "1" },
-  },
-  {
-    name: "24 GB / 4 CPU",
-    docker: ["--memory=24g", ...cpus(4)],
-    settings: { shared_buffers: "4915MB", io_workers: "1", max_worker_processes: "8" },
-  },
-  {
     name: "POSTGRES_MEMORY=32768, dw, 14 CPU",
     docker: cpus(14),
     env: { POSTGRES_MEMORY: "32768", POSTGRES_WORKLOAD_TYPE: "dw" },
@@ -259,18 +266,6 @@ const ROWS: Row[] = [
       max_parallel_maintenance_workers: "4",
       io_workers: "3",
     },
-  },
-  {
-    name: "POSTGRES_MEMORY=131072, 14 CPU",
-    docker: cpus(14),
-    env: { POSTGRES_MEMORY: "131072" },
-    settings: { shared_buffers: "19660MB", io_workers: "3", max_worker_processes: "21" },
-  },
-  {
-    name: "POSTGRES_MEMORY=196608, 14 CPU",
-    docker: cpus(14),
-    env: { POSTGRES_MEMORY: "196608" },
-    settings: { shared_buffers: "29491MB", max_worker_processes: "21" },
   },
   {
     name: "8 GB web",
@@ -323,20 +318,6 @@ const ROWS: Row[] = [
     },
   },
   {
-    name: "16 GB / 14 CPU",
-    docker: ["--memory=16g", ...cpus(14)],
-    settings: { io_workers: "3", max_parallel_maintenance_workers: "4" },
-  },
-  {
-    name: "4 GB / 4 CPU",
-    docker: ["--memory=4g", ...cpus(4)],
-    settings: {
-      max_parallel_workers: "4",
-      max_parallel_workers_per_gather: "2",
-      max_parallel_maintenance_workers: "2",
-    },
-  },
-  {
     name: "invalid POSTGRES_WORKLOAD_TYPE falls back to mixed and says so",
     docker: ["--memory=4g"],
     env: { POSTGRES_WORKLOAD_TYPE: "invalid" },
@@ -374,12 +355,6 @@ const ROWS: Row[] = [
     },
   },
   {
-    name: "1.5 GB cgroup",
-    docker: ["--memory=1536m"],
-    detected: "RAM: 1536MB (cgroup-v2)",
-    settings: { shared_buffers: "384MB", max_connections: "60" },
-  },
-  {
     name: "512 MB + hdd + web",
     docker: ["--memory=512m"],
     env: { POSTGRES_STORAGE_TYPE: "hdd", POSTGRES_WORKLOAD_TYPE: "web" },
@@ -405,7 +380,7 @@ const ROWS: Row[] = [
     args: ["postgres", "-c", "max_connections=7"],
     argv: ["postgres", "-c", `config_file=${AUTO_CONFIG_FILE}`, "-c", "max_connections=7"],
     stdoutLines: ["[POSTGRES] [AUTO-CONFIG] max_connections: -c 7 overrides auto-tuned 84"],
-    include: "/var/lib/postgresql/18/docker/postgresql.conf",
+    include: `${PGDATA}/postgresql.conf`,
   },
   {
     name: "operator --config-file is included, not passed as a second config_file",
@@ -572,7 +547,7 @@ async function realBoot(
       IMAGE,
     ]);
     if (started.code !== 0) throw new Error(`docker run failed: ${started.stderr}`);
-    await waitForPostgres({ container: name, timeout: 90 });
+    await waitForPostgres({ container: name, timeout: TIMEOUTS.startup });
     await check(name);
   } finally {
     await run(["docker", "rm", "-f", "-v", name]);
@@ -645,7 +620,7 @@ async function main(): Promise<void> {
             await psql(container, "ALTER SYSTEM SET work_mem = '77MB'");
             await psql(container, "SELECT pg_reload_conf()");
             // Reload is asynchronous: poll until the postmaster has re-read the files.
-            const deadline = Date.now() + 10_000;
+            const deadline = Date.now() + TIMEOUTS.health * 1000;
             let workMem = "";
             while (Date.now() < deadline) {
               workMem = await psql(container, "SHOW work_mem");

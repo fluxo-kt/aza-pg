@@ -118,6 +118,17 @@ try {
   }
   await $`docker run -d --name ${restored} ${SERVER} -v ${restoreVolume}:/var/lib/postgresql -v ${repoVolume}:/var/lib/pgbackrest ${image}`.quiet();
   await waitForPostgres({ container: restored, timeout: TIMEOUTS.startup });
+  // The restored cluster starts in archive recovery and accepts read-only queries as soon as it reaches the
+  // backup's end, while later archived WAL — holding the post-backup rows — is still being fetched. Recovery is
+  // complete, and the server writable, only once it leaves recovery.
+  const recoveryDeadline = Date.now() + TIMEOUTS.health * 1000;
+  let inRecovery = "";
+  while (Date.now() < recoveryDeadline) {
+    inRecovery = await psql(restored, "SELECT pg_is_in_recovery()");
+    if (inRecovery === "f") break;
+    await Bun.sleep(250);
+  }
+  if (inRecovery !== "f") throw new Error("restored server still in recovery");
 
   const count = await psql(restored, "SELECT count(*) FROM ledger");
   const logs = await $`docker logs ${restored}`.nothrow().quiet();

@@ -365,14 +365,17 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 export const TEST_SCOPE_ENV = "AZA_PG_TEST_SCOPE";
 
 /**
- * `{prefix}-[{scope}-]{timestamp}-{pid}`, numbers in base36: unique per process and call, and findable by its test-all
- * scope. Short because suites use container names as hostnames, and Docker's DNS cannot resolve a name longer than
- * one 63-octet DNS label: decimal numbers put the replica suite's primary at 65+ characters, and the replica waited
- * for it forever.
+ * `{prefix}-[{scope}-]{stamp}-{pid}`, numbers in base36: unique per process and call, and findable by its test-all
+ * scope. `stamp` is the time in ms, moved one past the previous call's when calls share a millisecond (cases started
+ * together with Promise.all), so it never repeats in a process and never grows the name. Short because suites use
+ * container names as hostnames, and Docker's DNS cannot resolve a name longer than one 63-octet DNS label: decimal
+ * numbers put the replica suite's primary at 65+ characters, and the replica waited for it forever.
  */
+let lastStamp = 0;
 function scopedName(prefix: string): string {
   const scope = Bun.env[TEST_SCOPE_ENV];
-  return `${prefix}-${scope ? `${scope}-` : ""}${Date.now().toString(36)}-${process.pid.toString(36)}`;
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return `${prefix}-${scope ? `${scope}-` : ""}${lastStamp.toString(36)}-${process.pid.toString(36)}`;
 }
 
 /** Unique container name for test isolation; also the root for volume names derived from it. */

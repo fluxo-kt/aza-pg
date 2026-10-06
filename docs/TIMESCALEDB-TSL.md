@@ -59,10 +59,10 @@ await $`cd ${dir} && ./bootstrap -DAPACHE_ONLY=OFF -DREGRESS_CHECKS=OFF -DGENERA
 
 ### Testing TSL Features
 
-`scripts/test/test-timescaledb-breaking-changes.ts` (suite group `extensions`) proves the image ships the TSL module: it compresses chunks, refreshes a continuous aggregate over them and compares its rows with the same aggregate computed directly; any error, including a license error, fails it.
+`scripts/test/test-timescaledb-tsl.ts` (suite group `extensions`) proves the image ships the TSL module: it compresses chunks, refreshes a continuous aggregate over them and compares its rows with the same aggregate computed directly; any error, including a license error, fails it.
 
 ```bash
-bun scripts/test/test-timescaledb-breaking-changes.ts [image]
+bun scripts/test/test-timescaledb-tsl.ts [image]
 ```
 
 ### Manual Verification

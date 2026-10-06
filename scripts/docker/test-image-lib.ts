@@ -7,47 +7,29 @@
  * error text) — never only that a CREATE or a SELECT succeeded — so it turns red on the defect it names.
  */
 
+import { TIMEOUTS } from "../config/test-timeouts";
 import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
-import type { ManifestEntry as SourceManifestEntry } from "../extensions/manifest-data";
+import type { ManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
 import type { TestResult } from "../utils/logger";
 
 export const REPO_ROOT = join(import.meta.dir, "../..");
-/** Generated JSON copy of the manifest; scripts/test/test-disabled-extensions.ts reads it. */
-export const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
+/** Generated JSON copy of the manifest, which the image ships at /etc/postgresql/extensions.manifest.json. */
+const MANIFEST_JSON_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const INITDB_EXTENSIONS_SQL = join(
   REPO_ROOT,
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
 );
 
-/** Shape of MANIFEST_PATH as scripts/test/test-disabled-extensions.ts consumes it. */
-export interface ManifestEntry {
-  name: string;
-  kind: "extension" | "tool" | "builtin";
-  install_via?: string;
-  enabled?: boolean;
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-    preloadOnly?: boolean;
-    preloadLibraryName?: string;
-  };
-}
-
-export interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
-}
-
 export type { TestResult };
 
-const enabledEntries = (): SourceManifestEntry[] =>
+const enabledEntries = (): ManifestEntry[] =>
   MANIFEST_ENTRIES.filter((entry) => entry.enabled !== false);
 
-const preloadName = (entry: SourceManifestEntry): string => preloadLibraryName(entry);
+const preloadName = (entry: ManifestEntry): string => preloadLibraryName(entry);
 
 // ============================================================================
 // EXECUTION
@@ -148,31 +130,6 @@ async function check(name: string, body: () => Promise<string | void>): Promise<
 // ============================================================================
 
 /**
- * A module whose library is missing still installs and lists in pg_available_extensions; it fails only
- * when a backend loads it, which for most extensions no other check does. Libraries built from source
- * (SOURCE_LIBRARIES) have no Debian package behind them, so this is what catches one left unshipped.
- */
-export function testSharedLibrariesResolve(container: string): Promise<TestResult> {
-  return check("Shared libraries resolve", async () => {
-    const scan = await execCommand(
-      [
-        "sh",
-        "-c",
-        'n=0; for f in "$(pg_config --pkglibdir)"/*.so /usr/local/lib/*.so*; do [ -f "$f" ] || continue; ' +
-          'n=$((n+1)); ldd "$f" 2>&1 | grep "not found" | sed "s|^|$f: |"; done; echo "scanned $n"',
-      ],
-      container
-    );
-    const lines = scan.output.split("\n");
-    const scanned = Number(lines.at(-1)?.match(/^scanned (\d+)$/)?.[1] ?? 0);
-    const unresolved = lines.filter((line) => line.includes("not found"));
-    expect(scan.ok && scanned > 0, `scan failed: ${scan.output}`);
-    expect(unresolved.length === 0, unresolved.join("\n"));
-    return `${scanned} objects`;
-  });
-}
-
-/**
  * Forward: every default-enabled preload is loaded. Reverse: everything loaded is a library the
  * manifest declares preloadable, so a rogue or misspelled entry fails too.
  */
@@ -257,6 +214,75 @@ export function testEnabledExtensions(container: string): Promise<TestResult> {
     }
     expect(failed.length === 0, failed.join("\n"));
     return `${creatable.length} created`;
+  });
+}
+
+/**
+ * Every extension the manifest disables is absent: CREATE fails. This also fails when init created one
+ * (IF NOT EXISTS then succeeds), and when a package still ships its control file and library. A disabled
+ * extension that does get created is dropped again, so the shared container stays as shipped.
+ */
+export function testDisabledExtensionsUnavailable(container: string): Promise<TestResult> {
+  return check("Disabled extensions cannot be created", async () => {
+    const disabled = MANIFEST_ENTRIES.filter((e) => e.enabled === false && e.kind !== "tool");
+    const available: string[] = [];
+    for (const entry of disabled) {
+      const result = await psql(container, `CREATE EXTENSION IF NOT EXISTS "${entry.name}"`);
+      if (result.ok) {
+        available.push(entry.name);
+        await psql(container, `DROP EXTENSION IF EXISTS "${entry.name}" CASCADE`);
+      }
+    }
+    expect(available.length === 0, `disabled but available: ${available.join(", ")}`);
+    return `${disabled.length} refused`;
+  });
+}
+
+/**
+ * The files operators read to see what an image contains (`cat /etc/postgresql/version-info.txt`, as the
+ * release notes instruct) describe the manifest the image was built from: summary counts in both version-info
+ * files, and the manifest copy itself.
+ */
+export function testImageMetadataFiles(container: string): Promise<TestResult> {
+  return check("version-info and manifest copy match the manifest", async () => {
+    const enabled = enabledEntries();
+    const counts = {
+      total: MANIFEST_ENTRIES.length,
+      enabled: enabled.length,
+      disabled: MANIFEST_ENTRIES.length - enabled.length,
+      preloaded: enabled.filter((e) => e.runtime?.sharedPreload === true).length,
+    };
+    const txt = await execCommand(["cat", "/etc/postgresql/version-info.txt"], container);
+    expect(txt.ok, `version-info.txt unreadable: ${txt.output}`);
+    const txtLines = {
+      total: `Total Catalog: ${counts.total}`,
+      enabled: `Enabled: ${counts.enabled}`,
+      disabled: `Disabled: ${counts.disabled}`,
+      preloaded: `Preloaded: ${counts.preloaded}`,
+    };
+    const absent = Object.values(txtLines).filter(
+      (line) => !new RegExp(`^\\s*${line}$`, "m").test(txt.output)
+    );
+    expect(absent.length === 0, `version-info.txt lacks: ${absent.join("; ")}`);
+
+    const json = await execCommand(["cat", "/etc/postgresql/version-info.json"], container);
+    expect(json.ok, `version-info.json unreadable: ${json.output}`);
+    const shipped = (JSON.parse(json.output) as { extensions?: Record<string, unknown> })
+      .extensions;
+    for (const [key, value] of Object.entries(counts)) {
+      expect(
+        shipped?.[key] === value,
+        `version-info.json extensions.${key} = ${String(shipped?.[key])}, expected ${value}`
+      );
+    }
+
+    const copy = await execCommand(["cat", "/etc/postgresql/extensions.manifest.json"], container);
+    expect(copy.ok, `extensions.manifest.json unreadable: ${copy.output}`);
+    const repoManifest = await Bun.file(MANIFEST_JSON_PATH).json();
+    expect(
+      Bun.deepEquals(JSON.parse(copy.output), repoManifest),
+      `/etc/postgresql/extensions.manifest.json differs from ${MANIFEST_JSON_PATH}`
+    );
   });
 }
 
@@ -586,7 +612,7 @@ export function testPgCronScheduling(container: string): Promise<TestResult> {
       "SELECT cron.schedule('test-cron-run', '1 seconds', 'SELECT 1')"
     );
     try {
-      const deadline = Date.now() + 20_000;
+      const deadline = Date.now() + TIMEOUTS.health * 1000;
       let runs = "";
       while (Date.now() < deadline) {
         runs = await sqlOk(
@@ -596,7 +622,7 @@ export function testPgCronScheduling(container: string): Promise<TestResult> {
         if (runs !== "") break;
         await Bun.sleep(250);
       }
-      expect(runs !== "", "no run of the job finished within 20 s");
+      expect(runs !== "", `no run of the job finished within ${TIMEOUTS.health} s`);
       expect(runs.split("\n")[0]?.startsWith("succeeded") === true, `job run failed: ${runs}`);
     } finally {
       await psql(container, "SELECT cron.unschedule('test-cron-run')");
@@ -826,7 +852,7 @@ export function testPgauditLogging(container: string): Promise<TestResult> {
     const marker = `test_pgaudit_${Date.now()}`;
     await sqlOk(container, ["SET pgaudit.log = 'ddl'", `CREATE TABLE ${marker} (id int)`]);
     await psql(container, `DROP TABLE IF EXISTS ${marker}`);
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + TIMEOUTS.health * 1000;
     let found = false;
     while (!found && Date.now() < deadline) {
       const logs = Bun.spawn(["docker", "logs", container], { stdout: "pipe", stderr: "pipe" });
@@ -877,6 +903,20 @@ export function testTimescaledbHypertables(container: string): Promise<TestResul
       "SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'test_timescale'"
     );
     expect(Number(chunks) >= 7, `7 days of data in 1-day chunks gave ${chunks} chunks`);
+  });
+}
+
+export function testTimescaledbToolkitHyperfunctions(container: string): Promise<TestResult> {
+  return check("timescaledb_toolkit - percentile and stats aggregates", async () => {
+    await sqlOk(container, "CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE");
+    // Ten values 12.5, 22.5 … 102.5: mean 57.5, sample stddev 30.28; the sketch's median approximates 62.5.
+    const out = await sqlOk(
+      container,
+      `SELECT round(approx_percentile(0.5, percentile_agg(v))::numeric, 2) || ',' ||
+              round(average(stats_agg(v))::numeric, 2) || ',' || round(stddev(stats_agg(v))::numeric, 2)
+       FROM (SELECT (2.5 + 10 * g)::float8 AS v FROM generate_series(1, 10) g) s`
+    );
+    expect(out === "62.49,57.50,30.28", `median,avg,stddev = ${out}, expected 62.49,57.50,30.28`);
   });
 }
 

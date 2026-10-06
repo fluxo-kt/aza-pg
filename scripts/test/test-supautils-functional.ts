@@ -12,6 +12,7 @@
  * Usage: bun scripts/test/test-supautils-functional.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
@@ -46,7 +47,7 @@ async function setReservedRoles(value: string | null): Promise<void> {
       : `ALTER SYSTEM SET supautils.reserved_roles = '${value}'`,
     "SELECT pg_reload_conf()"
   );
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
   while (Date.now() < deadline) {
     if ((await must(withSupautils, "SHOW supautils.reserved_roles")) === (value ?? "")) return;
     await Bun.sleep(100);
@@ -72,8 +73,8 @@ try {
     $`docker run -d --name ${withoutSupautils} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
   await Promise.all([
-    waitForPostgres({ container: withSupautils, timeout: 120 }),
-    waitForPostgres({ container: withoutSupautils, timeout: 120 }),
+    waitForPostgres({ container: withSupautils, timeout: TIMEOUTS.startup }),
+    waitForPostgres({ container: withoutSupautils, timeout: TIMEOUTS.startup }),
   ]);
 
   await check("supautils loads on PG18 without FATAL or WARNING", async () => {
@@ -91,15 +92,15 @@ try {
   await check("reserved_roles blocks ALTER ROLE on a reserved role", async () => {
     await must(
       withSupautils,
-      "CREATE ROLE t2b_reserved",
-      "CREATE ROLE t2b_admin CREATEROLE",
-      "GRANT t2b_reserved TO t2b_admin WITH ADMIN OPTION"
+      "CREATE ROLE reserved_probe",
+      "CREATE ROLE admin_probe CREATEROLE",
+      "GRANT reserved_probe TO admin_probe WITH ADMIN OPTION"
     );
-    const alter = ["SET ROLE t2b_admin", "ALTER ROLE t2b_reserved CONNECTION LIMIT 5"];
+    const alter = ["SET ROLE admin_probe", "ALTER ROLE reserved_probe CONNECTION LIMIT 5"];
     try {
-      await setReservedRoles("t2b_reserved");
+      await setReservedRoles("reserved_probe");
       const blocked = await sql(withSupautils, ...alter);
-      if (blocked.ok || !blocked.out.includes('"t2b_reserved" is a reserved role')) {
+      if (blocked.ok || !blocked.out.includes('"reserved_probe" is a reserved role')) {
         throw new Error(
           `ALTER ROLE on a reserved role was not blocked by supautils: ${blocked.out}`
         );
@@ -113,7 +114,11 @@ try {
         "ALTER SYSTEM RESET supautils.reserved_roles",
         "SELECT pg_reload_conf()"
       );
-      await sql(withSupautils, "DROP ROLE IF EXISTS t2b_admin", "DROP ROLE IF EXISTS t2b_reserved");
+      await sql(
+        withSupautils,
+        "DROP ROLE IF EXISTS admin_probe",
+        "DROP ROLE IF EXISTS reserved_probe"
+      );
     }
   });
 

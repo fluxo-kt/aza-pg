@@ -90,6 +90,8 @@ const tracked = (await Bun.$`git ls-files -z`.quiet().text())
   .filter((f) => /\.(md|sh|ya?ml|ts|conf|example|sql)$|Dockerfile/.test(f));
 await Promise.all(
   tracked.map(async (file) => {
+    // Deleted from the working tree but still in the index: nothing left to break.
+    if (!(await Bun.file(file).exists())) return;
     const text = await Bun.file(file).text();
     // Rule 2 for .env files and documented env lines: the value must be digits, a variable or a `<placeholder>`.
     for (const [i, line] of text.split("\n").entries()) {

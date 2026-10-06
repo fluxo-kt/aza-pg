@@ -4,19 +4,15 @@ Comprehensive regression testing framework for aza-pg PostgreSQL infrastructure.
 
 ## Overview
 
-The regression testing system provides multi-tier validation to ensure correctness, reliability, and robustness of PostgreSQL and extensions across release lifecycle.
+Two suites check extension behaviour against the image:
 
-**Test Coverage:**
+- **Tier 2** (`scripts/test/test-extension-regression.ts`): each extension's SQL against its expected output.
+- **Tier 3** (`scripts/test/test-extension-interactions.ts`): the executor-hook preloads all see the same statement.
 
-- **Tier 1**: Core PostgreSQL regression (30 official tests from postgres/postgres)
-- **Tier 2**: Extension-specific regression (13 extensions, SQL-based tests)
-- **Tier 3**: Extension interaction tests (14 interaction scenarios)
-- **Tier 4**: pgTAP unit tests (82 SQL-based tests)
+Both suites run only extensions whose manifest entry is enabled; an `enabled: false` extension never runs, in either mode.
 
-**Dual-Mode Architecture:**
-
-- **Production mode**: Tests exact release image behavior (enabled extensions from manifest)
-- **Regression mode**: Tests all catalog entries including disabled extensions (comprehensive coverage)
+- **Production mode**: the image's own default preload list.
+- **Regression mode**: the server starts with optional preload libraries added (each suite's header names its list).
 
 ## Quick Start
 
@@ -28,22 +24,18 @@ bun scripts/test-all.ts --group regression
 bun scripts/test/test-extension-regression.ts    # Tier 2: extension SQL vs expected output
 bun scripts/test/test-extension-interactions.ts  # Tier 3: extension interactions
 
-# Regression mode (also extensions the release image disables), as the nightly run does
+# Regression mode (optional preloads added), as the nightly run does
 bun scripts/test-all.ts --group nightly
 ```
 
-Each suite takes `--mode=production|regression`; without it, `TEST_MODE` decides, else production.
+Each suite takes `--mode=production|regression`; see [Test Mode Selection](#test-mode-selection).
 
 ## Test Modes
 
 ### Production Mode
 
-Tests exact release image behavior with enabled extensions only.
+Tests exact release image behavior: the container starts with the image's default preload list.
 
-**Configuration:**
-
-- Extensions: Enabled extensions from manifest (runtime.defaultEnable=true)
-- Preload libraries: 9 default (auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb)
 - Image: `aza-pg:pg18` (production Dockerfile)
 
 **Use cases:**
@@ -60,12 +52,8 @@ bun scripts/test-all.ts --group regression
 
 ### Regression Mode
 
-Tests all extensions including disabled ones for comprehensive coverage.
+Adds optional preload libraries to the default list; the set of extensions tested is the same as in production mode.
 
-**Configuration:**
-
-- Extensions: All catalog entries from manifest (both enabled and disabled for comprehensive testing)
-- Preload libraries: 11 total (9 default + 2 optional: set_user, pg_partman_bgw)
 - Image: `aza-pg:pg18-regression` (separate regression.Dockerfile)
 - pgTAP: Pre-installed for SQL unit testing
 
@@ -92,10 +80,7 @@ PostgreSQL's own regression suite is not run: the image copies PGDG's server bin
 
 Extension-specific functionality tests.
 
-**Coverage:** 13 extensions
-
-- Production (10): vector, timescaledb, pgmq, pg_cron, pg_stat_monitor, pgsodium, timescaledb_toolkit, pgaudit, hypopg, pg_trgm
-- Regression-only (3): postgis, pgrouting, pgq
+**Coverage:** every directory under `tests/regression/extensions/` whose manifest entry is not `enabled: false`; a directory matching no manifest entry fails the run. Writing and updating a test: [tests/regression/extensions/README.md](../tests/regression/extensions/README.md).
 
 **Runner:** `scripts/test/test-extension-regression.ts`
 
@@ -106,7 +91,7 @@ Extension-specific functionality tests.
 bun scripts/test/test-extension-regression.ts
 
 # Run specific extensions
-bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb
+bun scripts/test/test-extension-regression.ts --extensions=hll,pg_partman
 
 # Generate expected outputs
 bun scripts/test/test-extension-regression.ts --generate-expected
@@ -125,46 +110,16 @@ tests/regression/extensions/{extension}/
     └── basic.out           # Expected output
 ```
 
-**Extension Test Examples:**
-
-```sql
--- tests/regression/extensions/vector/sql/basic.sql
-CREATE EXTENSION vector;
-CREATE TABLE items (embedding vector(3));
-INSERT INTO items VALUES ('[1,2,3]'), ('[4,5,6]');
-SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 1;
-```
-
 ### Tier 3: Extension Interaction Tests
 
-Tests combinations of extensions and edge cases.
-
-**Coverage:** 14 interaction scenarios
-
-- Production (4): TimescaleDB+pgvector, hypopg+pg_stat_statements, pgsodium+vault, all preloads
-- Regression (+10): PostGIS combinations, partition compatibility, etc.
+pgaudit, pg_stat_statements and pg_stat_monitor each hook the executor and must call the previous hook; one that breaks the chain silently starves the others while every extension still loads. One tagged statement must therefore produce a pgaudit log line, a pg_stat_statements row and a pg_stat_monitor row in a server running the mode's full preload list.
 
 **Runner:** `scripts/test/test-extension-interactions.ts`
 
 **Usage:**
 
 ```bash
-bun scripts/test/test-extension-interactions.ts
-```
-
-**Interaction Test Examples:**
-
-```typescript
-// TimescaleDB + pgvector: Time-series vector search
-await client.query(`CREATE EXTENSION timescaledb CASCADE`);
-await client.query(`CREATE EXTENSION vector`);
-await client.query(`
-  CREATE TABLE ts_vectors (
-    time TIMESTAMPTZ NOT NULL,
-    embedding vector(3)
-  )
-`);
-await client.query(`SELECT create_hypertable('ts_vectors', 'time')`);
+bun scripts/test/test-extension-interactions.ts [--mode=production|regression]
 ```
 
 ### pgTAP
@@ -184,8 +139,8 @@ The runner is `scripts/test-all.ts`, which owns which suites each group holds.
 
 **Image:** `aza-pg:pg18`
 **Dockerfile:** `docker/postgres/Dockerfile`
-**Extensions:** Enabled from manifest (runtime.defaultEnable=true)
-**Preloads:** 9 default
+**Extensions:** entries the manifest enables
+**Preloads:** the image's default list
 **pgTAP:** Not included
 
 **Build:**
@@ -198,9 +153,9 @@ bun scripts/build.ts
 
 **Image:** `aza-pg:pg18-regression`
 **Dockerfile:** `docker/postgres/regression.Dockerfile`
-**Extensions:** All catalog entries from manifest (comprehensive coverage)
-**Preloads:** 10 total (default + optional)
-**pgTAP:** Pre-installed v1.3.3
+**Extensions:** also installs extensions the release image disables, but no suite runs them (every suite skips `enabled: false` entries)
+**Preloads:** default list plus optional libraries (`POSTGRES_SHARED_PRELOAD_LIBRARIES` in the Dockerfile)
+**pgTAP:** Pre-installed
 
 **Build:**
 
@@ -208,51 +163,9 @@ bun scripts/build.ts
 bun scripts/build.ts --regression
 ```
 
-**Features:**
+## Test Mode Selection
 
-- Separate Dockerfile (no production contamination)
-- All extensions enabled (including postgis, pgrouting, pgq)
-- All optional preload libraries configured
-- testMode marker in `/etc/postgresql/version-info.json`
-
-**Verification:**
-
-```bash
-docker run --rm aza-pg:pg18-regression cat /etc/postgresql/version-info.json | jq .testMode
-# Output: "regression"
-
-docker run --rm aza-pg:pg18-regression psql -U postgres -c "CREATE EXTENSION pgtap;"
-# Output: CREATE EXTENSION
-```
-
-## Test Mode Detection
-
-Tests automatically detect mode from:
-
-1. `TEST_MODE` environment variable
-2. `/etc/postgresql/version-info.json` (if in container)
-3. Default: production
-
-**Implementation:** `scripts/test/lib/test-mode.ts`
-
-```typescript
-import { detectTestMode, getEnabledExtensions } from "./lib/test-mode.ts";
-
-const mode = await detectTestMode();
-const extensions = getEnabledExtensions(mode);
-```
-
-**version-info.json:**
-
-```json
-{
-  "postgresVersion": "18.1",
-  "pgMajor": "18",
-  "buildDate": "2025-11-24T...",
-  "vcsRef": "abc123",
-  "testMode": "regression"
-}
-```
+Each suite takes its mode from `--mode=production|regression`, then the `TEST_MODE` environment variable of the process running the suite, then the `testMode` marker the regression image writes into `/etc/postgresql/version-info.json` (read by running the image), else production (`detectTestMode` in `scripts/test/lib/test-mode.ts`).
 
 ## Test Output Normalization
 
@@ -261,10 +174,11 @@ Regression tests handle platform-specific output variations.
 **Normalizations:**
 
 - Line endings (CRLF → LF)
-- psql prompts and formatting
-- Floating-point precision
-- Timestamp formats
-- Whitespace normalization
+- psql connection headers and prompts
+- Trailing whitespace and trailing empty lines
+- Minor floating-point display variations
+
+Data values, errors and row counts are never normalized, so a real difference still fails.
 
 **Implementation:** `scripts/test/lib/output-normalizer.ts`
 
@@ -281,7 +195,7 @@ bun scripts/test/test-extension-regression.ts --generate-expected
 **Generate for specific extensions:**
 
 ```bash
-bun scripts/test/test-extension-regression.ts --extensions=vector,timescaledb --generate-expected
+bun scripts/test/test-extension-regression.ts --extensions=hll,pg_partman --generate-expected
 ```
 
 **Process:**
@@ -306,11 +220,14 @@ bun scripts/test/test-extension-regression.ts --verbose
 # Start container with test image
 docker run --name pg-test -d -e POSTGRES_PASSWORD=postgres aza-pg:pg18-regression
 
-# Run test manually
-docker exec -it pg-test psql -U postgres -f /tests/regression/pgtap/01_extensions_availability.sql
+# Run one extension's SQL by hand (the files live in the repository, not the image)
+docker exec -i pg-test psql -X -U postgres < tests/regression/extensions/hll/sql/basic.sql
+
+# Or run the suite against the already-running container
+bun scripts/test/test-extension-regression.ts --mode=regression --container=pg-test --extensions=hll --verbose
 
 # Cleanup
-docker stop pg-test && docker rm -v pg-test
+docker rm -f -v pg-test
 ```
 
 ### Common Issues
@@ -337,17 +254,9 @@ docker stop pg-test && docker rm -v pg-test
 
 ### Test Development
 
-1. **Test isolation**: Use transactions (BEGIN/ROLLBACK) for cleanup
+1. **Test isolation**: all files share one server's `postgres` database, so each creates uniquely named objects and drops them at the end
 2. **Deterministic data**: Use fixed timestamps, sorted results
-3. **Clear assertions**: Descriptive test names and error messages
-4. **Mode awareness**: Adapt tests to production/regression modes
-
-### CI/CD Strategy
-
-1. **Fast feedback**: Use Tier 1 fast mode for PRs (~2-3 min)
-2. **Release validation**: Full test suite before releases (~10-15 min)
-3. **Nightly regression**: Comprehensive testing for early detection (~20-30 min)
-4. **Parallel execution**: Run independent tiers in parallel when possible
+3. **No versions in expected output**: `scripts/test/test-extension-versions.ts` owns versions
 
 ### Maintenance
 
@@ -382,10 +291,7 @@ docker stop pg-test && docker rm -v pg-test
 
 **Rationale:**
 
-- Reduces duplication
-- Tests self-documenting (mode-aware assertions)
-- Easy mode switching (environment variable)
-- Comprehensive coverage without separate test suites
+- The mode changes only the preload list, so one suite covers both without duplicated assertions
 
 ### Two Test Tiers
 

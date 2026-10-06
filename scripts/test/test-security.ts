@@ -13,6 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
@@ -29,7 +30,7 @@ async function startContainer(name: string, env: string[]): Promise<void> {
       .quiet()
       .nothrow();
   if (run.exitCode !== 0) throw new Error(`docker run ${name} failed: ${run.stderr.toString()}`);
-  await waitForPostgres({ container: name, timeout: 120 });
+  await waitForPostgres({ container: name, timeout: TIMEOUTS.startup });
 }
 
 async function sql(
@@ -47,21 +48,32 @@ async function sql(
   };
 }
 
-beforeAll(async () => {
-  await Promise.all([
-    startContainer(DEFAULT_CONTAINER, []),
-    startContainer(NETWORK_CONTAINER, ["POSTGRES_BIND_IP=0.0.0.0"]),
-  ]);
-}, 150_000);
+beforeAll(
+  async () => {
+    await Promise.all([
+      startContainer(DEFAULT_CONTAINER, []),
+      startContainer(NETWORK_CONTAINER, ["POSTGRES_BIND_IP=0.0.0.0"]),
+    ]);
+  },
+  (TIMEOUTS.startup + TIMEOUTS.health) * 1000
+);
 
 afterAll(async () => {
   await $`docker rm -f -v ${DEFAULT_CONTAINER} ${NETWORK_CONTAINER}`.quiet().nothrow();
 }, 30_000);
 
 describe("Authentication", () => {
-  test("passwords are hashed with SCRAM-SHA-256", async () => {
-    const result = await sql(DEFAULT_CONTAINER, "SHOW password_encryption");
-    expect(result.out).toBe("scram-sha-256");
+  // initdb stores the superuser's password with its own default, so only a password set on the running server shows
+  // what the image's configuration does; the network login below cannot see an md5 setting.
+  test("a password set on the running server is stored as a SCRAM-SHA-256 verifier", async () => {
+    const created = await sql(DEFAULT_CONTAINER, "CREATE ROLE scram_probe LOGIN PASSWORD 'probe'");
+    expect(created.err).toBe("");
+    const stored = await sql(
+      DEFAULT_CONTAINER,
+      "SELECT left(rolpassword, 14) FROM pg_authid WHERE rolname = 'scram_probe'"
+    );
+    await sql(DEFAULT_CONTAINER, "DROP ROLE scram_probe");
+    expect(stored.out).toBe("SCRAM-SHA-256$");
   });
 
   test("every pg_hba rule for non-loopback clients requires scram-sha-256", async () => {

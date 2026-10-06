@@ -118,20 +118,6 @@ describe("getDefaultSharedPreloadLibraries", () => {
 });
 
 describe("Manifest invariants", () => {
-  test("entry names are unique", () => {
-    const names = MANIFEST_ENTRIES.map((e) => e.name);
-    expect(names.filter((name, i) => names.indexOf(name) !== i)).toEqual([]);
-  });
-
-  test("every disabled entry says why", () => {
-    for (const e of MANIFEST_ENTRIES.filter((x) => x.enabled === false)) {
-      expect({ name: e.name, reason: e.disabledReason?.trim() || undefined }).toEqual({
-        name: e.name,
-        reason: expect.any(String),
-      });
-    }
-  });
-
   test("preload-only entries are shared-preloaded (except SQL-only pgflow)", () => {
     for (const e of MANIFEST_ENTRIES.filter((x) => x.runtime?.preloadOnly === true)) {
       expect({ name: e.name, sharedPreload: e.runtime?.sharedPreload === true }).toEqual({
@@ -151,21 +137,6 @@ describe("Manifest invariants", () => {
         name: tool.name,
         loadsViaPreload: true,
       });
-    }
-  });
-
-  test("an enabled entry depends only on enabled or builtin entries", () => {
-    const byName = new Map(MANIFEST_ENTRIES.map((e) => [e.name, e]));
-    for (const e of MANIFEST_ENTRIES.filter((x) => x.enabled !== false)) {
-      for (const depName of e.dependencies ?? []) {
-        const dep = byName.get(depName);
-        const usable = dep !== undefined && (dep.enabled !== false || dep.kind === "builtin");
-        expect({ entry: e.name, dep: depName, usable }).toEqual({
-          entry: e.name,
-          dep: depName,
-          usable: true,
-        });
-      }
     }
   });
 });

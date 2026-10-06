@@ -110,8 +110,9 @@ export async function runRegressionTest(
       // Run psql inside container via docker exec
       // Copy SQL file to container first
       const containerPath = `/tmp/${testName}.sql`;
-      const cpResult =
-        await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`.nothrow();
+      const cpResult = await $`docker cp ${sqlFile} ${connection.containerName}:${containerPath}`
+        .nothrow()
+        .quiet();
 
       if (cpResult.exitCode !== 0) {
         const stderr = cpResult.stderr.toString();
@@ -119,7 +120,9 @@ export async function runRegressionTest(
         exitCode = cpResult.exitCode;
       } else {
         // Fix file permissions (docker cp creates files as root, need to make readable)
-        await $`docker exec --user root ${connection.containerName} chmod 644 ${containerPath}`.nothrow();
+        await $`docker exec --user root ${connection.containerName} chmod 644 ${containerPath}`
+          .nothrow()
+          .quiet();
 
         // Run psql with options:
         // -X: Don't read .psqlrc (ensures clean environment)
@@ -134,13 +137,17 @@ export async function runRegressionTest(
         const dbName = connection.database || "postgres";
         const user = connection.user || "postgres";
         const result =
-          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`.nothrow();
+          await $`docker exec ${connection.containerName} sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q -U ${user} -d ${dbName} -f ${containerPath} 2>&1'`
+            .nothrow()
+            .quiet();
 
         exitCode = result.exitCode;
         actualOutput = result.stdout.toString();
 
         // Cleanup temporary file (as root via docker exec with --user)
-        await $`docker exec --user root ${connection.containerName} rm -f ${containerPath}`.nothrow();
+        await $`docker exec --user root ${connection.containerName} rm -f ${containerPath}`
+          .nothrow()
+          .quiet();
 
         // Capture stderr if command failed (exit code 2+ indicates true error, not SQL errors)
         // Exit code 1 is normal for regression tests that test error conditions
@@ -163,7 +170,9 @@ export async function runRegressionTest(
       // Note: Postgres,MDY has no space - PostgreSQL parses this correctly
       // lc_monetary=C prevents currency symbols in to_char() L format
       const result =
-        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`.nothrow();
+        await $`sh -c 'PGOPTIONS="-c datestyle=Postgres,MDY -c timezone=PST8PDT -c intervalstyle=postgres_verbose -c lc_monetary=C -c safeupdate.enabled=0" psql -X -a -q ${connString} -f ${sqlFile} 2>&1'`
+          .nothrow()
+          .quiet();
 
       exitCode = result.exitCode;
       actualOutput = result.stdout.toString();
@@ -268,7 +277,7 @@ async function generateDiff(
 
     // Generate context diff (-c flag)
     // Use nothrow() because diff returns exit code 1 when files differ
-    const result = await $`diff -c ${expectedPath} ${actualPath}`.nothrow();
+    const result = await $`diff -c ${expectedPath} ${actualPath}`.nothrow().quiet();
 
     // diff exit codes:
     // 0 = files identical (shouldn't happen here)

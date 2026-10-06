@@ -21,6 +21,7 @@ import { $ } from "bun";
 import { tmpdir } from "node:os";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
@@ -107,15 +108,15 @@ async function verify(c: Case): Promise<void> {
     if (stray !== "0/0") throw new Error(`pg_cron/pgflow also present in postgres: ${stray}`);
   }
 
-  await sql(c, database, "CREATE TABLE t2b_cron_tick (at timestamptz DEFAULT now())");
+  await sql(c, database, "CREATE TABLE cron_tick (at timestamptz DEFAULT now())");
   await sql(
     c,
     database,
-    "SELECT cron.schedule('t2b_tick', '1 seconds', 'INSERT INTO t2b_cron_tick DEFAULT VALUES')"
+    "SELECT cron.schedule('cron_tick_job', '1 seconds', 'INSERT INTO cron_tick DEFAULT VALUES')"
   );
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + TIMEOUTS.health * 1000;
   while (Date.now() < deadline) {
-    if (Number(await sql(c, database, "SELECT count(*) FROM t2b_cron_tick")) > 0) return;
+    if (Number(await sql(c, database, "SELECT count(*) FROM cron_tick")) > 0) return;
     await Bun.sleep(250);
   }
   const runs = await sql(
@@ -123,7 +124,9 @@ async function verify(c: Case): Promise<void> {
     database,
     "SELECT coalesce(string_agg(status || ': ' || coalesce(return_message, ''), '; '), 'no runs') FROM cron.job_run_details"
   );
-  throw new Error(`scheduled job never wrote a row in ${database} within 20s (${runs})`);
+  throw new Error(
+    `scheduled job never wrote a row in ${database} within ${TIMEOUTS.health}s (${runs})`
+  );
 }
 
 let failed = false;
@@ -136,7 +139,7 @@ try {
   // Each case boots and verifies on its own, so one container failing init still lets the others report.
   const outcomes = await Promise.allSettled(
     cases.map(async (c) => {
-      await waitForPostgres({ container: c.container, user: c.user, timeout: 120 });
+      await waitForPostgres({ container: c.container, user: c.user, timeout: TIMEOUTS.startup });
       await verify(c);
     })
   );

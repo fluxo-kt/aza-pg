@@ -175,9 +175,7 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     for (const im of images) info(`  would remove image  ${im.id} (${fmtMB(im.size)})`);
-    // Anonymous volumes are 64-hex ids, shortened like image ids; a named volume prints whole so the operator sees which one goes.
-    for (const v of volumes)
-      info(`  would remove volume ${/^[0-9a-f]{64}$/.test(v) ? v.slice(0, 12) : v}`);
+    for (const v of volumes) info(`  would remove volume ${v.slice(0, 12)}`);
     if (builderPresent) info(`  would remove builder ${AZA_BUILDER} (+ its cache)`);
     success("Dry-run complete — no changes made");
     return;

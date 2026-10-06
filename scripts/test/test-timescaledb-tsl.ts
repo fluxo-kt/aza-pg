@@ -10,9 +10,10 @@
  * equal the same aggregate computed directly, so a refresh that silently skips compressed chunks
  * fails too.
  *
- * Usage: bun scripts/test/test-timescaledb-breaking-changes.ts [image] [--image=TAG]
+ * Usage: bun scripts/test/test-timescaledb-tsl.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
+import { TIMEOUTS } from "../config/test-timeouts";
 import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
@@ -28,7 +29,7 @@ async function sql(query: string): Promise<string> {
 
 async function run(): Promise<void> {
   await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${resolveImageTag()}`.quiet();
-  await waitForPostgres({ container, timeout: 120 });
+  await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   await sql("CREATE EXTENSION IF NOT EXISTS timescaledb");
   await sql("CREATE TABLE metrics (time timestamptz NOT NULL, device text, val integer)");

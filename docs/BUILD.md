@@ -513,7 +513,7 @@ bun run validate:all
 # Aliases (run validate with different modes)
 bun run lint                      # Check only (alias for validate)
 bun run format                    # Check + auto-fix (alias for validate:fix)
-bun scripts/validate-manifest.ts  # Manifest validation
+bun scripts/extensions/validate-manifest.ts  # Manifest validation
 shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh  # Shell scripts
 yamllint -c .yamllint.yaml .      # YAML files
 hadolint docker/postgres/Dockerfile  # Dockerfile
@@ -600,9 +600,7 @@ docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
 
 ### CI Workflow Failure Diagnostics
 
-**Test failures:** each `Test <group>` job prints every failed suite's full output (a suite that cannot start PostgreSQL includes the container's last log lines). Read the job log first.
-
-The job also uploads `<group>-test-failures-<SHA>` (publish: `publish-<group>-test-failures-<SHA>`) with the logs of containers still present. Suites remove their own containers, so this artifact matters mainly when `test-all` killed a suite at its 5-minute limit and its containers were left behind.
+**Test failures:** each `Test <group>` job prints every failed suite's full output (a suite that cannot start PostgreSQL includes the container's last log lines). The job log is the only record: `test-all` removes every container a suite started before it exits, so no step after it could collect their logs.
 
 **Scan failures** (`scan-failure-diagnostics-<SHA>`): full Trivy output, Trivy JSON, image manifest metadata and the SARIF file when generated.
 
@@ -652,42 +650,22 @@ See [TOOLING.md](TOOLING.md) for complete tooling decisions.
 
 ## Script Reference
 
-Comprehensive collection of build, test, and operational scripts using Bun-first TypeScript patterns. All scripts include robust error handling and use shared utilities from `lib/common.ts`.
+Build, test and operational scripts are Bun TypeScript under `scripts/`.
 
-### Directory Structure
+### Shared Utilities
 
-```
-scripts/
-├── lib/              # Shared library functions
-├── test/             # Test and validation scripts
-├── tools/            # Operational tooling
-├── build.ts          # Main build script (Bun TypeScript)
-```
+New scripts import these instead of writing their own:
 
-### Shared Library (lib/common.ts)
-
-Core utilities for all scripts:
-
-**Functions:**
-
-- `logInfo()`, `logSuccess()`, `logWarning()`, `logError()` - Colored logging
-- `dockerCleanup(container)` - Safe container removal
-- `checkCommand(cmd)` - Verify command availability
-- `checkDockerDaemon()` - Verify Docker is running
-- `waitForPostgres(host, port, user, timeout, container?)` - Wait for PostgreSQL readiness
-
-**Usage:**
+- `scripts/utils/docker.ts`: `checkCommand(cmd)`, `checkDockerDaemon()`, `isDockerDaemonRunning()`, `waitForPostgres({ container, timeout })` (or `{ host, port, user, timeout }`; throws on timeout), `generateUniqueContainerName(prefix)`, `dockerCleanup(container)`
+- `scripts/utils/logger.ts`: `info()`, `success()`, `warning()`, `error()`, `section()`
 
 ```typescript
-import {
-  checkCommand,
-  checkDockerDaemon,
-  waitForPostgres,
-} from "../lib/common.ts";
+import { checkDockerDaemon, waitForPostgres } from "../utils/docker";
+import { info } from "../utils/logger";
 
-await checkCommand("docker");
 await checkDockerDaemon();
-await waitForPostgres("localhost", 5432, "postgres", 60);
+await waitForPostgres({ container, timeout: 60 });
+info("PostgreSQL is ready");
 ```
 
 ### Test Scripts
@@ -822,56 +800,6 @@ bun scripts/tools/generate-ssl-certs.ts
 
 ---
 
-### Common Development Patterns
-
-#### Error Handling
-
-All scripts follow consistent error handling using Bun TypeScript:
-
-```typescript
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-} from "./lib/common.ts";
-
-// Prerequisites check
-await checkCommand("docker");
-await checkDockerDaemon();
-
-// Cleanup handler
-process.on("exit", () => {
-  dockerCleanup(containerName);
-});
-```
-
-#### Type Safety
-
-All scripts use TypeScript with Bun for type safety:
-
-```typescript
-import type { BuildOptions } from "./types.ts";
-
-const options: BuildOptions = {
-  multiArch: false,
-  push: false,
-  tag: "aza-pg:pg18",
-};
-```
-
-#### Logging
-
-Consistent colored logging via `common.ts`:
-
-```typescript
-import { logInfo, logSuccess, logWarning, logError } from "./lib/common.ts";
-
-logInfo("Starting operation...");
-logSuccess("Operation completed");
-logWarning("Non-critical issue detected");
-logError("Critical failure");
-```
-
 ### Recommended Test Sequence
 
 `bun run test:all` builds the image, runs `validate:all`, then every routine suite group. Docker suites are listed once, in `SUITES` of `scripts/test-all.ts`, and run by group; `docs/TESTING.md` "Running Tests" has the commands and what each group proves.
@@ -923,64 +851,9 @@ docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in
 
 ### Contributing Scripts
 
-When adding new scripts:
-
-1. **Use common library:** Import from `lib/common.ts` for shared functions
-2. **Type safety:** Use TypeScript with proper type annotations
-3. **Consistent error handling:** Use try-catch with proper cleanup
-4. **Logging:** Use `logInfo()`, `logSuccess()`, etc. from common.ts
-5. **Cleanup handlers:** Use `process.on('exit')` pattern
-6. **Documentation:** Add JSDoc comments and update documentation
-7. **Testing:** Verify script works on clean environment
-
-**Example script template:**
-
-```typescript
-#!/usr/bin/env bun
-/**
- * Script description
- *
- * Usage: bun script.ts [args]
- *
- * Examples:
- *   bun script.ts example1
- *   bun script.ts example2
- */
-
-import {
-  checkCommand,
-  checkDockerDaemon,
-  dockerCleanup,
-  logInfo,
-  logSuccess,
-  logError,
-} from "./lib/common.ts";
-
-const CONTAINER_NAME = "my-container";
-
-// Cleanup handler
-process.on("exit", () => {
-  dockerCleanup(CONTAINER_NAME);
-});
-
-async function main() {
-  try {
-    // Check prerequisites
-    await checkCommand("docker");
-    await checkDockerDaemon();
-
-    // Main logic
-    logInfo("Starting operation...");
-    // ... implementation ...
-    logSuccess("Operation complete");
-  } catch (error) {
-    logError(`Operation failed: ${error}`);
-    process.exit(1);
-  }
-}
-
-main();
-```
+- Use the shared utilities above and Bun APIs (AGENTS.md "Development Standards"); import without file extensions.
+- Remove containers in `finally`, never in a `process.on("exit")` handler: an exit handler cannot wait for async work.
+- Describe usage and the reason for each non-obvious choice in the file's header comment.
 
 ## Related Documentation
 

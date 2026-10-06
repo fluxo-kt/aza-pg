@@ -83,7 +83,7 @@ psql -U postgres -c "SELECT pg_reload_conf();"
 **Bare VPS Method:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_PASSWORD';
 EOF
 
@@ -105,7 +105,7 @@ SELECT pg_reload_conf();
 **Bare VPS Method:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 ALTER SYSTEM SET wal_keep_size = '1GB';
 SELECT pg_reload_conf();
 EOF

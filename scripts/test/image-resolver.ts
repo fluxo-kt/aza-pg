@@ -62,35 +62,7 @@ export interface ImageResolverOptions {
  * });
  */
 export function resolveImageTag(options: ImageResolverOptions = {}): string {
-  const { argv = Bun.argv, envKey = "POSTGRES_IMAGE", defaultImage = DEFAULT_TEST_IMAGE } = options;
-
-  // 1. Check for positional argument (first non-flag argument after script name)
-  // Skip argv[0] (bun) and argv[1] (script path)
-  for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i];
-    // Skip flags (--flag or -f)
-    if (arg && !arg.startsWith("-")) {
-      return arg;
-    }
-  }
-
-  // 2. Check for named flag (--image=VALUE)
-  const imageFlag = argv.find((arg) => arg.startsWith("--image="));
-  if (imageFlag) {
-    const value = imageFlag.split("=", 2)[1];
-    if (value) {
-      return value;
-    }
-  }
-
-  // 3. Check environment variable
-  const envValue = Bun.env[envKey];
-  if (envValue) {
-    return envValue;
-  }
-
-  // 4. Return default
-  return defaultImage;
+  return resolveImageWithSource(options).image;
 }
 
 /**

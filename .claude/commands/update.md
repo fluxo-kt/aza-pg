@@ -101,11 +101,10 @@ Check:
    ```bash
    # TypeScript test files — search ALL scripts/ subdirs (scripts/test/, scripts/docker/, scripts/config/, etc.)
    command grep -rn -E "0\.8|2\.8|0\.5" scripts/ | command grep -iE "version|include|assert" | command grep -v "\.bun/"
-   # Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+   # Hardcoded PG major in paths breaks on a PG major bump (tool checks read binaryPath/soFileName and pg_config)
    command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
-   # SQL regression expected outputs — also hard-code version strings and WILL break nightly if stale
-   command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
    ```
+   Regression expected outputs hold no version strings (`scripts/test/test-extension-versions.ts` owns versions).
    These WILL break tests if not updated alongside the extension. This is the #1 missed item.
 
 6. **Source→PGDG migration opportunities**: For each source-built extension, check if PGDG now has a package:
@@ -447,7 +446,7 @@ repo may not carry the newest upstream git tag yet (e.g. `2.27.2` released on Gi
 packages exist at the target `X.Y.Z~debianNN-NNNN` via `apt-cache madison` before pinning.
 
 **⚠️ PG MAJOR version bump** (18→19): additional files need updating beyond manifest-data.ts:
-- `scripts/docker/test-image-lib.ts` `toolBinaries` dict — `.so` paths hardcode PG major (e.g., `postgresql/18/lib/` → `postgresql/19/lib/`)
+- Tool checks need no edit: `testToolsPresent` finds each tool by its manifest entry's `binaryPath`/`soFileName` and takes PG-major paths from `pg_config`; still grep `scripts/` for hardcoded `postgresql/[0-9]+/` paths
 - pgrx feature flags in manifest-data.ts (e.g., `features: ["pg18"]` → `features: ["pg19"]`)
 - TimescaleDB version suffix (e.g., `-1803` → `-1900`)
 - All `pgdgVersion` strings that contain the PG major version
@@ -518,8 +517,8 @@ suspects — verify and migrate.
   preload worker (e.g. pg_partman ships `pg_partman_bgw.so` at `/usr/lib/postgresql/18/lib/`). Set the
   entry's `soFileName` to the module's `.so`: the generated Dockerfile asserts it exists, and `generate`
   fails for an enabled PGDG module entry without one.
-  Also `grep default_version EXTNAME.control` — if the PGDG extversion equals the old source extversion,
-  the regression `expected/basic.out` needs NO change (confirm, don't assume).
+  Also `grep default_version EXTNAME.control`: `scripts/test/test-extension-versions.ts` fails when it
+  leaves the MAJOR.MINOR line the manifest entry pins.
 - **PGDG may lag upstream**: the apt package can sit a release behind the latest git tag (e.g. plpgsql_check
   upstream `v2.9.1` but PGDG only `2.9.0`). For `install_via: "pgdg"` the **`pgdgVersion` is authoritative** —
   set `source.tag` to match the PGDG-available version, not the newest upstream tag.
@@ -635,7 +634,8 @@ These only need updates when PostgreSQL version changes.
 ### 5.1: pgflow
 
 The version is written once: the pgflow entry's tag (`pgflow@X.Y.Z`) in `manifest-data.ts`;
-`scripts/pgflow/version.ts` derives it for the fixture, init script, docs and tests.
+`scripts/pgflow/generate-schema.ts` writes it into the schema fixture, and `scripts/pgflow/schema-fixture.test.ts`
+(in `validate`) fails when the fixture's version differs from the manifest's.
 
 ```bash
 # 1. Edit the pgflow tag in manifest-data.ts, then regenerate the schema fixture and upgrade bundle
@@ -763,10 +763,8 @@ Before writing tests, search for hardcoded version strings in ALL test files:
 command grep -rn -E 'includes\("0\.|includes\("1\.|includes\("2\.' scripts/ | command grep -v "\.bun/"
 # Also search for specific old version patterns:
 command grep -rn -E "0\.8|0\.5|2\.8|1\.10|5\.4" scripts/ | command grep -v "\.bun/" | command grep -iE "include|assert|version"
-# Check for hardcoded PG major version in .so paths (test-image-lib.ts toolBinaries — breaks on PG major bump)
+# Hardcoded PG major in paths breaks on a PG major bump (tool checks read binaryPath/soFileName and pg_config)
 command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
-# SQL regression expected outputs — hard-code extversion strings; stale = nightly failures
-command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
 ```
 
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
@@ -900,9 +898,6 @@ command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@
 # 5. Verify validate:all passes
 bun run validate:all
 
-# 6. Verify no bare .env() subprocess calls (structural check — also in validate)
-command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v '\.\.\.Bun\.env' | command grep -v '\.\.\.process\.env' | command grep -v '^scripts/validate.ts:'
-# non-empty output = bare .env() that strips PATH/HOME — must use { ...Bun.env, KEY: val }
 ```
 
 **Then review these qualitative questions** — try to break your own work:
@@ -941,16 +936,13 @@ command grep -rn '\.env({' scripts/ | command grep -v '\.bun/' | command grep -v
 - **Check for orphaned test files**: When migrating an extension's install method, search for
   dedicated test files (`test-EXT-NAME-*.ts`) that may now be stale (wrong version assertions,
   wrong install path descriptions). Delete or migrate their valuable tests.
-- **`scripts/test/test-timescaledb-breaking-changes.ts`** (suite group `extensions`):
-  Contains a target-version helper for the TimescaleDB breaking-change series — update it when
-  TimescaleDB crosses the tested minor boundary. Also update the file title and run banner.
-- **`scripts/docker/test-image-lib.ts` `toolBinaries`**: `.so` paths hardcode PG major version
-  (e.g., `/usr/lib/postgresql/18/lib/`). **Update all paths when bumping PG major version.**
-  Keys must match manifest entry `name` exactly (kind: "tool") — wrong keys silently skip checks.
-  Find stale paths: `command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"`
+- **`scripts/test/test-timescaledb-tsl.ts`** (suite group `extensions`): compresses chunks and refreshes a
+  continuous aggregate over them; update it when a TimescaleDB release changes those APIs.
+- **Tools**: `testToolsPresent` finds each enabled tool by its manifest entry's `binaryPath` or `soFileName`,
+  so a new or moved tool is an edit to that entry. Find hardcoded PG-major paths anyway:
+  `command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"`
 - **Search all test files for hardcoded version strings** that would fail after the update:
   `command grep -rn -E 'includes|startsWith|=== "' scripts/ | command grep -E '[0-9]+\.[0-9]' | command grep -v "\.bun/"`
-  Also check SQL regression expected outputs: `command grep -rn -E "[0-9]+\.[0-9]+\.[0-9]+" tests/regression/extensions/*/expected/*.out 2>/dev/null`
 - **Size baselines after updating any tracked extension**: After updating any extension listed in
   `scripts/config/size-baselines.json` (timescaledb, pgroonga, pg_jsonschema, wrappers,
   vectorscale, etc.), run the size regression check. Advisory warnings indicate a stale baseline:
@@ -1004,10 +996,9 @@ After every update round, perform a mandatory self-reflection before closing out
     `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
     Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
-   package versions from their apt repos without warning. If you pin a version that's been removed,
-   `apt-get install` silently "fails" and returns exit code 100 — but due to the `|| true` pattern
-   (now fixed), this used to produce a broken image without any error. **Always verify Percona and
-   Timescale pinned versions still exist in the repo** before finalising the update round:
+   package versions from their apt repos without warning. A removed pin makes `apt-get install` fail
+   the build. **Always verify Percona and Timescale pinned versions still exist in the repo** before
+   finalising the update round:
    ```bash
    # Check Percona versions (run from a container or use the earlier docker run command)
    bun scripts/extensions/validate-pgdg-versions.ts  # validates PGDG; Percona checked separately
@@ -1106,7 +1097,7 @@ identity markers — images by OCI label `org.opencontainers.image.title` ("aza-
 (`docker system/volume/image prune` would also delete other projects' orphans).
 
 The anonymous-volume leak is fixed at source (test teardown passes `docker rm -f -v`, enforced by the
-`Docker Volume Leak Guard` check in `validate:all`), so this step now mainly reclaims superseded image
+`Subprocess Calls` check in `validate`), so this step now mainly reclaims superseded image
 layers and builder cache — but keep running it: it is the backstop that keeps the host from bloating.
 
 ## Recovery Procedure

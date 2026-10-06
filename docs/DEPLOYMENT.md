@@ -673,7 +673,7 @@ EOF
 **Bare VPS Alternative:**
 
 ```bash
-docker exec postgres psql -U postgres <<EOF
+docker exec -i postgres psql -U postgres <<EOF
 CREATE DATABASE test_db;
 \c test_db
 CREATE TABLE health_check (

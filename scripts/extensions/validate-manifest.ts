@@ -323,6 +323,15 @@ function validateDependencies(manifest: Manifest): void {
   console.log(); // Empty line for spacing
   logger.info("[DEPENDENCY VALIDATION]");
 
+  // Names identify entries everywhere (CREATE EXTENSION, preload lists, this lookup): a second entry with the same
+  // name would silently replace the first here and in every generator.
+  const names = manifest.entries.map((e) => e.name);
+  for (const name of new Set(names.filter((n, i) => names.indexOf(n) !== i))) {
+    error(
+      `Entry name '${name}' is used more than once; rename or merge the entries in scripts/extensions/manifest-data.ts`
+    );
+  }
+
   const byName = new Map(manifest.entries.map((e) => [e.name, e]));
 
   for (const entry of manifest.entries) {

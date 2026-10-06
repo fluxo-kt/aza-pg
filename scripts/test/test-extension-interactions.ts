@@ -26,9 +26,9 @@ if (modeArg !== undefined && modeArg !== "production" && modeArg !== "regression
   console.error(`FAIL: invalid --mode=${modeArg}`);
   process.exit(1);
 }
-const mode: TestMode = modeArg ?? (await detectTestMode());
+const mode: TestMode = modeArg ?? (await detectTestMode(resolveImageTag()));
 const container = generateUniqueContainerName("aza-pg-interactions");
-const marker = `t2b_hook_${Date.now()}`;
+const marker = `hook_chain_${Date.now()}`;
 
 async function psql(...commands: string[]): Promise<string> {
   const args = commands.flatMap((c) => ["-c", c]);
@@ -55,7 +55,7 @@ try {
   const preloadEnv =
     mode === "production" ? [] : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload}`];
   await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
-  await waitForPostgres({ container, timeout: 120 });
+  await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   await psql(`CREATE TABLE ${marker} (id int)`);
   await psql("SET pgaudit.log = 'read'", `SELECT count(*) FROM ${marker}`);

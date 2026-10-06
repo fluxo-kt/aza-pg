@@ -13,6 +13,7 @@
  * Any other flag is rejected, so a stale flag in a workflow fails loudly instead of being ignored.
  */
 
+import { TIMEOUTS } from "../config/test-timeouts";
 import {
   checkDockerDaemon,
   dockerCleanup,
@@ -33,17 +34,17 @@ const PHASES: Array<[string, Check[]]> = [
   [
     "Image contents",
     [
-      lib.testSharedLibrariesResolve,
       lib.testToolsPresent,
       lib.testPgBackRestFunctional,
       lib.testPgBadgerFunctional,
+      lib.testImageMetadataFiles,
     ],
   ],
   [
     "Startup state",
     [lib.testPreloadedExtensions, lib.testPrecreatedExtensions, lib.testPostgresConfiguration],
   ],
-  ["Extension creation", [lib.testEnabledExtensions]],
+  ["Extension creation", [lib.testEnabledExtensions, lib.testDisabledExtensionsUnavailable]],
   [
     "Extension behaviour",
     [
@@ -70,6 +71,7 @@ const PHASES: Array<[string, Check[]]> = [
       lib.testPgauditLogging,
       lib.testPgsodiumEncryption,
       lib.testTimescaledbHypertables,
+      lib.testTimescaledbToolkitHyperfunctions,
       lib.testPgHashidsEncoding,
       lib.testPgJsonschemaValidation,
     ],
@@ -115,7 +117,7 @@ async function main(): Promise<number> {
         error(`docker run failed: ${stderr.trim()}`);
         return 1;
       }
-      await waitForPostgres({ container, timeout: 120 });
+      await waitForPostgres({ container, timeout: TIMEOUTS.startup });
     } else {
       section(`Image behaviour: existing container ${container}`);
     }

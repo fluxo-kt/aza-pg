@@ -4,7 +4,7 @@
  *
  * Fails when:
  * - a `scripts/**\/test-*.ts` (Docker suite naming; `*.test.ts` are unit tests) is neither in SUITES nor
- *   imported or run by a file that is (libraries and the regression runner's children are covered that way);
+ *   imported by a file that is (libraries named test-* are covered that way);
  * - a SUITES path does not exist;
  * - a workflow passes `--group` a group test-all does not have, or starts a suite file itself instead of
  *   `bun scripts/test-all.ts --group <group>`.
@@ -13,16 +13,18 @@
  * and workflows called deleted files.
  */
 import { Glob } from "bun";
-import { basename } from "node:path";
+import { dirname, join } from "node:path";
 import { GROUPS, SUITES } from "../test-all";
 
 const problems: string[] = [];
 const read = (path: string) => Bun.file(path).text();
-// Untracked (not ignored) files too: a new suite is most likely unregistered before its first `git add`.
+// Untracked (not ignored) files too: a new suite is most likely unregistered before its first `git add`. Files deleted
+// from the working tree but still in the index are gone for every run, so they count as missing.
+const lsFiles = async (flags: string[]) =>
+  (await Bun.$`git ls-files ${flags}`.quiet().text()).split("\n").filter(Boolean);
+const deleted = new Set(await lsFiles(["--deleted"]));
 const files = new Set(
-  (await Bun.$`git ls-files --cached --others --exclude-standard`.quiet().text())
-    .split("\n")
-    .filter(Boolean)
+  (await lsFiles(["--cached", "--others", "--exclude-standard"])).filter((f) => !deleted.has(f))
 );
 
 for (const suite of new Set(SUITES.map((s) => s.path))) {
@@ -33,7 +35,9 @@ for (const suite of new Set(SUITES.map((s) => s.path))) {
   }
 }
 
-// Covered = registered, or named (import or path) by a covered file; grown to a fixpoint.
+// Covered = registered, or imported by a covered file; grown to a fixpoint. Imports come from the transpiler, never
+// a text search: a path named in a comment or a log line would otherwise count as coverage for a suite that runs
+// nowhere.
 const candidates = [...files].filter(
   (f) =>
     /^scripts\/(.*\/)?test-[^/]*\.ts$/.test(f) &&
@@ -41,19 +45,26 @@ const candidates = [...files].filter(
     f !== "scripts/test-all.ts"
 );
 const covered = new Set(SUITES.map((s) => s.path).filter((p) => files.has(p)));
-const sources = new Map<string, string>();
-const source = async (f: string) => sources.get(f) ?? sources.set(f, await read(f)).get(f)!;
+const transpiler = new Bun.Transpiler({ loader: "ts" });
+const importsOf = async (file: string) =>
+  transpiler
+    // The transpiler rejects a shebang line; blanking it keeps line numbers in its parse errors.
+    .scanImports((await read(file)).replace(/^#!.*/, ""))
+    .map((i) => i.path)
+    .filter((p) => p.startsWith("."))
+    .map((p) => {
+      const target = join(dirname(file), p);
+      return target.endsWith(".ts") ? target : `${target}.ts`;
+    });
+const scanned = new Set<string>();
 for (let grew = true; grew;) {
   grew = false;
-  for (const file of candidates) {
-    if (covered.has(file)) continue;
-    const name = basename(file, ".ts").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const mention = new RegExp(`[/"'\`]${name}(\\.ts)?["'\`]`);
-    for (const owner of covered) {
-      if (mention.test(await source(owner))) {
-        covered.add(file);
+  for (const owner of [...covered].filter((f) => !scanned.has(f))) {
+    scanned.add(owner);
+    for (const target of await importsOf(owner)) {
+      if (candidates.includes(target) && !covered.has(target)) {
+        covered.add(target);
         grew = true;
-        break;
       }
     }
   }

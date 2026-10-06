@@ -4,7 +4,7 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 
 ## Table of Contents
 
-1. [Smoke Test Pattern (Critical - Read This First!)](#smoke-test-pattern-critical-read-this-first)
+1. [Writing a Docker Suite](#writing-a-docker-suite)
 2. [Regression Testing](#regression-testing)
 3. [Regression Test Suites](#regression-test-suites)
    - [Extension Regression Tests (Tier 2)](#extension-regression-tests-tier-2)
@@ -12,205 +12,31 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 4. [Session Isolation Pattern](#session-isolation-pattern)
 5. [Testing Extension Functionality](#testing-extension-functionality)
 6. [Common Pitfalls](#common-pitfalls)
-7. [Test Categories](#test-categories)
-8. [Testing Strategy & Coverage](#testing-strategy-coverage)
-9. [Running Tests](#running-tests)
+7. [Coverage](#coverage)
+8. [Running Tests](#running-tests)
 
-## Smoke Test Pattern (Critical - Read This First!)
+## Writing a Docker Suite
 
-**Why this matters**: Tests that skip environment validation waste hours debugging infrastructure issues instead of finding real bugs.
+Name and register a suite as [Adding a Test](#adding-a-test) says; never name a Docker suite `*.test.ts`, because the unit-test glob runs those without Docker. Image checks that share one container belong in `scripts/docker/test-image-lib.ts`, not a new suite.
 
-### The Problem
+Every suite must:
 
-When writing tests for extensions or new features, it's tempting to immediately write comprehensive test cases. However, **tests can fail for two completely different reasons**:
+- [ ] Test behaviour an operator would notice (a wrong value, a refused connection, lost data). A check that an extension exists or loads is not a test: the `CREATE EXTENSION` a behaviour check runs already fails when it does not.
+- [ ] Run what ships: the image's defaults, with the reason inline for any override that is the subject under test.
+- [ ] Pass `POSTGRES_PASSWORD`, or the container exits at once.
+- [ ] Observe readiness with `await waitForPostgres({ container, timeout })` (`scripts/utils/docker.ts`), never a fixed sleep.
+- [ ] Name containers with `generateUniqueContainerName()` and remove them with `docker rm -f -v` in `finally`, never only on the success path.
 
-1. **Infrastructure failure**: Container won't start, extension not preloaded, missing dependencies
-2. **Functional failure**: The feature you're testing has a bug
+### Common Pitfalls
 
-**Without smoke tests, you can't tell which is which.**
-
-### Real-World Example
-
-From recent work on extension update tests:
-
-**Original approach** (failed):
-
-- Wrote 56 tests across 4 files in parallel
-- 28/56 tests (50%) failed due to infrastructure issues:
-  - Missing `POSTGRES_PASSWORD` → container exit
-  - Missing `waitForReady()` → "connection refused" errors
-  - pg_cron not preloaded → container crash during init
-
-**Time wasted**: 2+ hours debugging infrastructure, not testing extensions.
-
-**Correct approach** (would have succeeded):
-
-- Write ONE smoke test first
-- Run it → discover `POSTGRES_PASSWORD` missing
-- Fix → discover `waitForReady()` missing
-- Fix → discover pg_cron issue
-- **Total time**: 15 minutes, then write comprehensive tests with confidence
-
-### The Smoke Test Pattern
-
-Every test file MUST start with this structure:
-
-```typescript
-describe("Feature X Tests", () => {
-  let container: string;
-
-  // PHASE 0: Environment Validation (MANDATORY)
-  beforeAll(async () => {
-    // Validate prerequisites BEFORE starting container
-    // Example: Check image exists, required files present, etc.
-  });
-
-  // PHASE 1: Smoke Test (MANDATORY - RUN THIS FIRST)
-  test("SMOKE: Container starts and PostgreSQL is ready", async () => {
-    const start = Date.now();
-
-    container = generateUniqueContainerName("aza-pg-feature-x");
-    // POSTGRES_PASSWORD is ALWAYS required; add other required env vars as more -e flags
-    await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=test ${resolveImageTag()}`.quiet();
-
-    await waitForPostgres({ container, timeout: 120 }); // ALWAYS required
-
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(120000); // 120s reasonable limit
-
-    console.log(`✓ Smoke test passed (${elapsed}ms)`);
-  });
-
-  // PHASE 2: Extension/Feature Loading (if applicable)
-  test("Extension loads successfully", async () => {
-    // sql(): the suite's own psql wrapper that throws on error (see scripts/test/test-timescaledb-breaking-changes.ts)
-    await sql("CREATE EXTENSION IF NOT EXISTS my_ext;");
-
-    const version = await sql(
-      "SELECT extversion FROM pg_extension WHERE extname = 'my_ext';"
-    );
-
-    expect(version).toBeTruthy();
-  });
-
-  // PHASE 3: Basic Functionality
-  test("Basic feature works", async () => {
-    // Test simplest use case
-  });
-
-  // PHASE 4: Edge Cases (only after Phases 1-3 pass)
-  test("Edge case 1", async () => {
-    /* ... */
-  });
-  test("Edge case 2", async () => {
-    /* ... */
-  });
-});
-```
-
-### Required Elements Checklist
-
-Before writing ANY functional tests, your test file MUST include:
-
-- [ ] `POSTGRES_PASSWORD` in the `docker run` environment
-- [ ] `await waitForPostgres({ container, timeout })` after `docker run`
-- [ ] `docker rm -f -v` of every container in a `finally` or `afterAll`, never only on the success path
-- [ ] Smoke test that verifies container starts (Phase 1)
-- [ ] Extension load test if testing an extension (Phase 2)
-- [ ] At least ONE basic functionality test before edge cases (Phase 3)
-
-### Common Pitfalls (Learn from These Mistakes)
-
-| Pitfall                               | Symptom                                                            | Fix                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| **No POSTGRES_PASSWORD**              | Container exits immediately: "superuser password not specified"    | Add `POSTGRES_PASSWORD: "test"` to env                                           |
-| **No waitForPostgres()**              | "connection refused" or "No such file or directory" for socket     | Add `await waitForPostgres({ container, timeout })`                              |
-| **Override preload without defaults** | Extensions fail to load: "must be in shared_preload_libraries"     | Don't set `POSTGRES_SHARED_PRELOAD_LIBRARIES` unless you understand implications |
-| **No smoke test**                     | Spend hours debugging 50 test failures that are all infrastructure | Write smoke test FIRST                                                           |
-| **Parallel test creation**            | Multiple test files fail for same infrastructure reason            | Write ONE test file, validate, THEN parallelize                                  |
-| **Timeout cargo-culting**             | Increase timeout without understanding why it failed               | Add logging, measure actual time, understand root cause                          |
-
-### Anti-Patterns to Avoid
-
-❌ **Writing all tests first, running later**
-
-```typescript
-// DON'T DO THIS
-test("feature A", ...);
-test("feature B", ...);
-test("feature C", ...);
-// Run all at once → 3 failures, can't tell if infrastructure or logic
-```
-
-✅ **Write → Run → Pass → Next**
-
-```typescript
-test("SMOKE: container starts", ...);  // Write & run
-// ✓ Passes → confident infrastructure works
-
-test("feature A", ...);  // Write & run
-// ✓ Passes → add next test
-
-test("feature B", ...);  // Write & run
-```
-
-❌ **Assuming environment state**
-
-```typescript
-// DON'T DO THIS
-test("extension works", async () => {
-  // Assumes container started, PostgreSQL ready, extension loaded
-  await runSQL("SELECT my_extension_function()");
-});
-```
-
-✅ **Explicit validation**
-
-```typescript
-test("extension works", async () => {
-  // Explicitly verify prerequisites
-  expect(container).toBeDefined();
-
-  const loaded = await runSQL(
-    "SELECT 1 FROM pg_extension WHERE extname = 'my_ext'"
-  );
-  expect(loaded).toBe("1");
-
-  // NOW test the function
-  await runSQL("SELECT my_extension_function()");
-});
-```
-
-### Progressive Complexity Model
-
-Tests should progress through complexity levels:
-
-```text
-Level 0: Environment validated (prerequisites exist)
-         ↓
-Level 1: Container starts and PostgreSQL ready (smoke test)
-         ↓
-Level 2: Extension/feature loads (if applicable)
-         ↓
-Level 3: Basic happy-path functionality works
-         ↓
-Level 4: Edge cases, error conditions, performance
-```
-
-**Never skip to Level 4 before validating Levels 0-3.**
-
-### When to Stop and Investigate
-
-If you see these patterns, **STOP writing tests and investigate**:
-
-- Container takes >60s to start → Why? Add logging, measure phases
-- Multiple unrelated tests fail with same error → Infrastructure issue, not test logic
-- Error messages mention sockets, files, or "not running" → PostgreSQL not ready
-- Tests pass individually but fail in suite → Cleanup/isolation issue
+| Pitfall                               | Symptom                                                         | Fix                                                                              |
+| ------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **No POSTGRES_PASSWORD**              | Container exits immediately: "superuser password not specified" | Add `POSTGRES_PASSWORD: "test"` to env                                           |
+| **No waitForPostgres()**              | "connection refused" or "No such file or directory" for socket  | Add `await waitForPostgres({ container, timeout })`                              |
+| **Override preload without defaults** | Extensions fail to load: "must be in shared_preload_libraries"  | Don't set `POSTGRES_SHARED_PRELOAD_LIBRARIES` unless you understand implications |
+| **Timeout cargo-culting**             | Increase timeout without understanding why it failed            | Add logging, measure actual time, understand root cause                          |
 
 ### Template for New Test Files
-
-Save this as a template when creating new test files:
 
 ```typescript
 #!/usr/bin/env bun
@@ -252,17 +78,6 @@ if (failure) {
 console.log("PASS: my feature");
 ```
 
-### Key Takeaway
-
-**Structure tests to make infrastructure failures impossible by design:**
-
-1. Explicit environment validation
-2. Smoke test that proves infrastructure works
-3. Progressive complexity (simple → complex)
-4. Clear error messages when assumptions violated
-
-This pattern adds 2 minutes to test writing but saves hours of debugging.
-
 ---
 
 ## Regression Testing
@@ -274,7 +89,7 @@ Quick reference:
 ```bash
 bun scripts/test-all.ts --group regression           # Both suites, production mode
 bun scripts/test/test-extension-regression.ts        # Tier 2: extension SQL vs expected output
-bun scripts/test-all.ts --group nightly              # Regression mode (all extensions)
+bun scripts/test-all.ts --group nightly              # Regression mode (optional preloads added)
 ```
 
 ---
@@ -299,20 +114,20 @@ tests/regression/extensions/
 └── README.md
 ```
 
-**Which suites run:** every directory whose manifest entry is not `enabled: false` (`selectSuites` in `scripts/test/test-extension-regression.ts`); a directory naming no manifest entry fails the run. `--mode=production` (default) starts the image with its own default preload list, `--mode=regression` (nightly) with every preload library, default and optional.
+**Which suites run:** every directory whose manifest entry is not `enabled: false` (`selectSuites` in `scripts/test/test-extension-regression.ts`); a directory naming no manifest entry fails the run. `--mode=production` (default) starts the image with its own default preload list, `--mode=regression` (nightly) adds optional preload libraries; neither mode runs a disabled extension.
 
 **Generating Expected Outputs:** from a known-good image, then read the result before committing: an error in the output (an extension missing from the image, say) becomes the expectation.
 
 ```bash
 bun run build
-bun scripts/test/test-extension-regression.ts --generate-expected --extensions=vector
+bun scripts/test/test-extension-regression.ts --generate-expected --extensions=hll
 ```
 
 **Running Tests:**
 
 ```bash
 bun scripts/test/test-extension-regression.ts                              # every enabled directory
-bun scripts/test/test-extension-regression.ts --extensions=vector,pg_cron  # some of them
+bun scripts/test/test-extension-regression.ts --extensions=hll,pg_partman # some of them
 bun scripts/test/test-extension-regression.ts --container=my-postgres      # an existing container
 ```
 
@@ -449,62 +264,11 @@ await runSQL(`
 
 ## Testing Extension Functionality
 
-### Test Structure
+Image checks are `test<Name>(container)` functions in `scripts/docker/test-image-lib.ts` returning a `TestResult`, run by `scripts/docker/test-image.ts` against one shared container. Inside them, `psql(container, statements)` returns `{ ok, out, err }` and `sqlOk()` throws with psql's error; statements passed as one array run in one session.
 
-```typescript
-await test("extension_name - What it tests", "category", async () => {
-  // 1. Setup (if needed)
-  await runSQL("CREATE TABLE IF NOT EXISTS test_data (...)");
+Each check asserts a value only a working extension produces (a ranked result, a decrypted plaintext, a row a scheduled job wrote). Never assert only that `CREATE EXTENSION` succeeded or that a version is set: the first already fails any behaviour check, and `scripts/test/test-extension-versions.ts` owns versions.
 
-  // 2. Execute functionality
-  const result = await runSQL("SELECT extension_function(...)");
-
-  // 3. Assert results
-  assert(result.success, "Operation failed");
-  assert(condition, "Expected behavior not met");
-});
-```
-
-### Categories
-
-- **core**: Basic CREATE EXTENSION and infrastructure
-- **vector**: Vector search and similarity (pgvector, vectorscale)
-- **fulltext**: Text search (pg_trgm, pgroonga)
-- **spatial**: Geographic data (postgis, pgrouting)
-- **timeseries**: Time-series data (timescaledb, timescaledb_toolkit)
-- **observability**: Monitoring and logging (pg_stat_monitor, auto_explain)
-- **security**: Encryption and audit (pgsodium, pgaudit, set_user)
-- **performance**: Query optimization (pg_stat_statements, hypopg, index_advisor)
-- **cdc**: Change Data Capture (wal2json)
-- **integration**: Foreign data wrappers (wrappers)
-- **safety**: Query safety (pg_safeupdate, pg_plan_filter)
-- **utilities**: General tools (http, pg_cron, pg_partman)
-
-### Functional Testing Checklist
-
-For each extension, verify:
-
-1. ✅ **CREATE EXTENSION** succeeds
-2. ✅ **Basic functionality** works (function calls, queries)
-3. ✅ **Data operations** complete successfully
-4. ✅ **Expected output** matches documentation
-5. ✅ **Session isolation** handled correctly (if applicable)
-
-### Testing Extensions with Dependencies
-
-Some extensions require other extensions to be created first:
-
-```typescript
-// pgvector depends on base vector type
-await runSQL("CREATE EXTENSION IF NOT EXISTS vector");
-await runSQL("CREATE EXTENSION IF NOT EXISTS pgvector");
-
-// supabase_vault depends on pgsodium
-await runSQL("CREATE EXTENSION IF NOT EXISTS pgsodium");
-await runSQL("CREATE EXTENSION IF NOT EXISTS supabase_vault");
-```
-
-Check `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` for the canonical extension creation order.
+`docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` creates the precreated extensions in dependency order.
 
 ## Common Pitfalls
 
@@ -696,218 +460,14 @@ const exitCode = await dockerRunLive([
 
 **Exception**: Only override when explicitly testing preload behavior (e.g., testing what happens when a module is NOT loaded).
 
-## Test Categories
+## Coverage
 
-### Core Extensions (5)
-
-PostgreSQL builtins that should always work:
-
-- btree_gist, btree_gin, pg_trgm, fuzzystrmatch, unaccent
-
-> **Note:** uuid-ossp is intentionally NOT enabled. PostgreSQL 18 includes the superior built-in `uuidv7()` function for time-ordered UUIDs with better indexing performance.
-
-### Vector Search (2)
-
-- pgvector: Vector similarity search, distance functions
-- vectorscale: DiskANN indexing for large-scale vector search
-
-### Full-Text Search (1)
-
-- pgroonga: Multi-language full-text search with indexing
-
-### Spatial (2)
-
-- postgis: Geographic objects, spatial queries
-- pgrouting: Network routing algorithms
-
-### Time-Series (2)
-
-- timescaledb: Hypertables, continuous aggregates
-- timescaledb_toolkit: Time-series analytics functions
-
-### Observability (8)
-
-- pg_stat_statements: Query performance tracking
-- pg_stat_monitor: Enhanced query monitoring (1000-query buffer)
-- auto_explain: Automatic query plan logging
-- pg_stat_kcache: Kernel cache hit statistics
-- plpgsql_check: PL/pgSQL code validation
-- pg_top: Real-time activity monitoring
-- pgbadger: Log analyzer (tool)
-- pg_plan_filter: Query plan filtering
-
-### Security (4)
-
-- pgsodium: Libsodium encryption
-- supabase_vault: Encrypted secrets storage
-- pgaudit: Audit logging
-- set_user: Superuser privilege control
-
-### Performance (6)
-
-- index_advisor: Index recommendation
-- hypopg: Hypothetical indexes (session-local)
-- pg_qualstats: Predicate statistics
-- pg_wait_sampling: Wait event sampling
-- hll: HyperLogLog cardinality estimation
-- rum: Full-text search indexes
-
-### CDC (1)
-
-- wal2json: JSON output plugin for logical replication
-
-### Integration (1)
-
-- wrappers: Foreign data wrappers (Supabase)
-
-### Safety (2)
-
-- pg_safeupdate: Prevent UPDATE/DELETE without WHERE
-- pg_plan_filter: Block queries by plan characteristics
-
-### Utilities (11)
-
-- pg_cron: Job scheduler
-- pg_partman: Partition management
-- pg_repack: Online table repacking
-- http: HTTP client for REST APIs
-- pg_hashids: Encode/decode hashids
-- pg_jsonschema: JSON Schema validation
-- pgmq: Message queue
-- supautils: Superuser utility functions
-- pg_net: Async HTTP (Supabase, requires worker)
-- pgjwt: JWT generation (Supabase, requires pg_net)
-- wal2json: Logical decoding (tool)
-
-## Testing Strategy & Coverage
-
-### Current State
-
-**Comprehensive CI Testing Coverage:**
-
-All enabled extensions have functional tests with 100% coverage across three dimensions (CREATE EXTENSION, functional test, metadata check).
-
-**Test Suite:**
-
-- `scripts/docker/test-image.ts` - extension behaviour for every enabled extension (checks in `test-image-lib.ts`)
-- `scripts/test/test-auto-config.ts` - auto-config dry-run table on the real image plus two real boots
-- `scripts/test/test-pgbouncer-healthcheck.ts` - PgBouncer auth flow validation
-
-### Test Coverage Matrix
-
-| Category      | Extensions | Tests  | Coverage |
-| ------------- | ---------- | ------ | -------- |
-| AI/Vector     | 2          | 6      | 100%     |
-| Analytics     | 1          | 2      | 100%     |
-| CDC           | 1          | 3      | 100%     |
-| GIS           | 2          | 6      | 100%     |
-| Indexing      | 2          | 4      | 100%     |
-| Integration   | 2          | 13     | 100%     |
-| Language      | 1          | 4      | 100%     |
-| Maintenance   | 2          | 5      | 100%     |
-| Observability | 4          | 8      | 100%     |
-| Operations    | 2          | 4      | 100%     |
-| Performance   | 2          | 5      | 100%     |
-| Quality       | 1          | 3      | 100%     |
-| Queueing      | 1          | 4      | 100%     |
-| Safety        | 3          | 6      | 100%     |
-| Search        | 3          | 6      | 100%     |
-| Security      | 4          | 10     | 100%     |
-| Timeseries    | 2          | 5      | 100%     |
-| Utilities     | 1          | 4      | 100%     |
-| Validation    | 1          | 4      | 100%     |
-| **TOTAL**     | **37**     | **98** | **100%** |
-
-> **Note:** For current extension counts (enabled/disabled/total), see `docs/.generated/docs-data.json`.
-
-### Auto-Config Test Coverage
-
-Comprehensive auto-config validation covers 10 memory scenarios from 256MB to 64GB:
-
-| Scenario          | RAM    | CPU     | Detection          | Config Injection                    | Status  |
-| ----------------- | ------ | ------- | ------------------ | ----------------------------------- | ------- |
-| Manual override   | 1536MB | -       | ✅ POSTGRES_MEMORY | shared_buffers, max_connections     | Passing |
-| Cgroup v2 limit   | 2GB    | -       | ✅ cgroup v2       | shared_buffers, max_connections     | Passing |
-| Minimum supported | 512MB  | -       | ✅ cgroup v2       | shared_buffers, max_connections     | Passing |
-| Large node        | 64GB   | -       | ✅ POSTGRES_MEMORY | shared_buffers, max_connections     | Passing |
-| CPU detection     | 2GB    | 2 cores | ✅ nproc           | worker processes                    | Passing |
-| Below minimum     | 256MB  | -       | ✅ Detection       | FATAL error                         | Passing |
-| Custom preload    | 1GB    | -       | ✅ Override        | shared_preload_libraries            | Passing |
-| Medium production | 4GB    | -       | ✅ cgroup v2       | shared_buffers 1024MB, max_conn 200 | Passing |
-| Large production  | 8GB    | -       | ✅ cgroup v2       | shared_buffers 2048MB, max_conn 200 | Passing |
-| High-load         | 16GB   | -       | ✅ cgroup v2       | shared_buffers 3276MB, max_conn 200 | Passing |
-
-Details:
-
-1. **Manual override (1536MB)** - Respects POSTGRES_MEMORY env var, shared_buffers 25%, connection tier 120
-2. **2GB cgroup limit** - Detects via cgroup v2, shared_buffers 512MB, connection tier 120
-3. **512MB minimum** - Minimum supported deployment, shared_buffers 128MB, connection tier 80
-4. **64GB manual override** - Large-node tuning, shared_buffers ~9830MB, connection tier 200
-5. **4GB tier** - Medium production, shared_buffers 1024MB (25%), connection tier 200
-6. **8GB tier** - Large production, shared_buffers 2048MB (25%), connection tier 200
-7. **16GB tier** - High-load deployment, shared_buffers 3276MB (20%), connection tier 200
-
-For comprehensive memory allocation table with all RAM tiers and formulas, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
-
-### PgBouncer Test Coverage
-
-Comprehensive PgBouncer auth flow validation:
-
-1. **.pgpass file existence** - Verified at /tmp/.pgpass with 600 permissions
-2. **.pgpass entries** - Configured for localhost:6432 and pgbouncer:6432
-3. **Authentication** - Tested via localhost and hostname
-4. **SHOW POOLS** - Verified pool status and database entries
-5. **Healthcheck** - Validated healthcheck command execution
-6. **Connection pooling** - Functional integration testing
-
-See `scripts/test/test-pgbouncer-healthcheck.ts` for end-to-end stack testing.
-
-### Test Quality Metrics
-
-**Functional Test Coverage:**
-
-- All enabled extensions tested across 3 dimensions: CREATE EXTENSION, functional test, metadata check
-- Comprehensive smoke test suite with assertions
-- 100% extension coverage (no deferred testing)
-
-**Auto-Config Test Coverage:**
-
-- 10 test scenarios covering RAM/CPU detection (256MB to 64GB)
-- 7 memory tiers (512MB, 1GB, 2GB, 4GB, 8GB, 16GB, 64GB)
-- Manual override, cgroup v2 detection, CPU scaling
-- Edge cases (below-minimum rejection, custom shared_preload_libraries)
-
-**PgBouncer Test Coverage:**
-
-- Happy path: .pgpass file management, authentication via localhost/hostname, SHOW POOLS, healthcheck
-- Failure scenarios: wrong password, missing .pgpass, invalid listen address, PostgreSQL down, max connections, wrong permissions
-
-**Stack Deployment Test Coverage:**
-
-- **Primary stack**: Auto-config, PgBouncer auth, postgres_exporter, pgbouncer_exporter
-- **Replica stack** (7 steps): Replication slot creation, standby mode verification, hot standby queries, WAL sync, postgres_exporter
-- **Single stack** (7 steps): Standalone mode, extension availability, connection limits, auto-config, no pooler verification
-
-**Hook Extension Test Coverage:**
-
-- pg_plan_filter: Without/with preload, functional validation
-- pg_safeupdate: Session preload, functional query blocking
-- supautils: Without/with preload, GUC-based configuration
-- Multi-hook stability testing
-
-### Maintenance
+The extension catalogue is the generated table in [EXTENSIONS.md](EXTENSIONS.md). What each suite proves is written in its header and its group in [Running Tests](#running-tests); no hand-kept count or matrix is kept here, because one goes stale with every added check.
 
 **When to update tests:**
 
-- New extension added to manifest.json → add smoke test to test-all-extensions-functional.ts
-- Extension version upgraded → verify test still valid
-- Upstream API changes → update functional test
-- Auto-config logic changes → update test-auto-config.ts
-
-**Who maintains:**
-
-- Developer adding extension writes smoke test
-- CI enforces all tests pass before merge
+- Extension added or changed → its behaviour check in `scripts/docker/test-image-lib.ts`, and a regression directory if its SQL output is worth pinning ([tests/regression/extensions/README.md](../tests/regression/extensions/README.md))
+- Auto-config logic changed → `scripts/test/test-auto-config.ts` and `scripts/test/test-auto-config-units.test.ts`
 
 ## Running Tests
 
@@ -922,14 +482,14 @@ bun scripts/test-all.ts --shuffle             # random order; prints the seed, r
 bun scripts/test/test-pgflow.ts [image]       # one suite on its own
 ```
 
-| Group        | Proves                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| `extensions` | every enabled extension and tool works in the image; disabled ones are absent                   |
-| `security`   | authentication, roles, pgAudit and network binding defaults                                     |
-| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies                     |
-| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling            |
-| `regression` | each enabled extension's SQL against its expected output, and extension interactions            |
-| `nightly`    | the same in regression mode against the regression image (all extensions); weekly workflow only |
+| Group        | Proves                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| `extensions` | every enabled extension and tool works in the image; disabled ones are absent                            |
+| `security`   | authentication, roles, pgAudit and network binding defaults                                              |
+| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies                              |
+| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling                     |
+| `regression` | each enabled extension's SQL against its expected output, and extension interactions                     |
+| `nightly`    | the same in regression mode (optional preloads added) against the regression image; weekly workflow only |
 
 Suites run in parallel up to the CPU count, each in its own process with its own containers, volumes, networks and ports, so order and neighbours must not matter (`--shuffle` checks that). Each suite's full output is printed when it finishes; any failed suite makes the run exit 1.
 
@@ -945,7 +505,7 @@ Suites run in parallel up to the CPU count, each in its own process with its own
 - **Extension tests:** `scripts/docker/test-image-lib.ts` (run by `scripts/docker/test-image.ts`)
 - **Auto-config tests:** `scripts/test/test-auto-config.ts`
 - **PgBouncer tests:** `scripts/test/test-pgbouncer-healthcheck.ts` (happy path)
-- **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.ts` (6 failure scenarios)
+- **PgBouncer failure tests:** `scripts/test/test-pgbouncer-failures.ts` (PgBouncer entrypoint input rejections)
 - **Hook extension tests:** `scripts/test/test-hook-extensions.ts`
 - **Replica stack tests:** `scripts/test/test-replica-stack.ts` (replication validation)
 - **Single stack tests:** `scripts/test/test-single-stack.ts` (standalone validation)
@@ -953,10 +513,7 @@ Suites run in parallel up to the CPU count, each in its own process with its own
 - **Extension manifest:** `docker/postgres/extensions.manifest.json`
 - **Auto-config entrypoint:** `docker/postgres/docker-auto-config-entrypoint.sh`
 - **Init Order**: `docker/postgres/docker-entrypoint-initdb.d/` for extension creation sequence
-- **Hook Extensions**: See `AGENTS.md` "Hook-Based Extensions & Tools" section for manifest patterns
 
 ---
 
 **Key Takeaway**: When testing session-local PostgreSQL features (LOAD, SET, HypoPG, TEMP tables), always use multi-statement SQL blocks within a single `runSQL()` call. This preserves session state and prevents "feature not active" or "object not found" errors.
-
-**Status:** Regression testing implemented. 100% extension coverage with functional smoke tests. All critical paths tested (extensions, auto-config, PgBouncer auth).

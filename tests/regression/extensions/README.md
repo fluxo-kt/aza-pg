@@ -9,10 +9,12 @@ Each `{extension}/sql/basic.sql` runs through `psql -X -a -q` against the image,
 ```bash
 bun scripts/test/test-extension-regression.ts                      # all enabled, default preloads
 bun scripts/test/test-extension-regression.ts --mode=regression    # comprehensive preload list
-bun scripts/test/test-extension-regression.ts --extensions=vector,pgmq
+bun scripts/test/test-extension-regression.ts --extensions=hll,pg_partman
 ```
 
 ## Add or update a test
+
+A file here earns its container only with behaviour no check in `scripts/docker/test-image-lib.ts` (the image suite, run on the same lanes) already asserts; a file that reads catalogs or repeats an image check catches nothing more.
 
 1. Write `{extension}/sql/basic.sql` (directory name = manifest entry `name`). Assert behaviour with exact values; never select `extversion` or other version strings — `scripts/test/test-extension-versions.ts` owns versions, and a version in an expected file breaks on every bump.
 2. `bun scripts/test/test-extension-regression.ts --extensions={extension} --generate-expected`

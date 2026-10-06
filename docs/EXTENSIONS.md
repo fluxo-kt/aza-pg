@@ -1,15 +1,11 @@
 # PostgreSQL Extension Inventory
 
-The `aza-pg` image ships a curated, SHA-pinned bundle of PostgreSQL extensions covering AI search, time-series analytics, geospatial processing, observability, security, and operations tooling. Every extension is compiled in the builder stage from an immutable source revision and listed in a single source of truth manifest.
+The `aza-pg` image ships a curated, SHA-pinned bundle of PostgreSQL extensions covering vector search, time-series analytics, full-text search, observability, security, and operations tooling. Each one comes from a pinned apt package (PGDG, Percona, Timescale) or is compiled from a commit-locked git revision, and is listed in one manifest ([sources](EXTENSION-SOURCES.md)).
 
 Key principles:
 
-- **Manifest driven.** Edit `scripts/extensions/manifest-data.ts` to change versions or metadata. Regenerate all derived assets with:
-  ```bash
-  bun scripts/extensions/generate-manifest.ts
-  bun scripts/extensions/render-markdown.ts
-  ```
-- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and commit for each entry. The Dockerfile consumes this manifest during the Docker build.
+- **Manifest driven.** Edit `scripts/extensions/manifest-data.ts` to change versions or metadata. Regenerate all derived assets with `bun run generate`.
+- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and resolved commit for each git-sourced entry. The Dockerfile consumes this manifest during the Docker build.
 - **Runtime minimalism.** Only a small baseline is enabled automatically; everything else is installed but disabled by default so teams can opt in without rebuilding the image.
 
 ## Extension Classification
@@ -20,7 +16,7 @@ aza-pg classifies bundled functionality into four buckets:
 
 - **Tools**: CLI / hook utilities that do not require `CREATE EXTENSION`
   - Examples: pgbackrest, pgbadger, wal2json, pg_safeupdate
-  - Installed in `/usr/local/bin/` or wired via PostgreSQL hooks
+  - Ship an executable (manifest `binaryPath`, e.g. `/usr/bin/pgbackrest`) or a library loaded via hooks or logical decoding (`soFileName`)
 
 - **Builtins**: Core PostgreSQL contrib extensions
   - Examples: auto_explain, pg_stat_statements, pg_trgm, plpgsql, btree_gin, btree_gist
@@ -33,16 +29,7 @@ aza-pg classifies bundled functionality into four buckets:
   - Some extensions are disabled by default (tracked in manifest with `disabledReason`)
 
 - **Preloaded**: Modules/extensions loaded by default via `shared_preload_libraries`
-  - auto_explain (module)
-  - pg_cron (extension)
-  - pg_net (extension)
-  - pg_stat_monitor (extension)
-  - pg_stat_statements (extension)
-  - pgaudit (extension)
-  - pgsodium (extension)
-  - safeupdate (tool)
-  - supabase_vault (extension)
-  - timescaledb (extension)
+  - List: `preloaded` in `docs/.generated/docs-data.json`; the resulting default setting is shown under Extension Matrix below
 
 ## Extension Matrix
 
@@ -180,7 +167,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 <!-- extensions-table:end -->
 
-> **Tip:** The Markdown table is auto-generated. After modifying the manifest, rerun `bun scripts/extensions/render-markdown.ts` to refresh this section.
+> **Tip:** The Markdown table is auto-generated. After modifying the manifest, run `bun run generate` to refresh this section.
 
 ## Runtime Defaults
 
@@ -193,10 +180,10 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 - **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector`; both are auto-created during cluster bootstrap.
 - **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
-- **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
+- **Distributed** – Citus is not shipped (see Compatibility Exceptions).
 - **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is preloaded and auto-created by default; it reads its key only when preloaded itself, so keep `supabase_vault` in any custom `POSTGRES_SHARED_PRELOAD_LIBRARIES`.
 - **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis. `pg_repack` inside the container works as shipped; from another machine run it as `PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...`, because the preloaded safeupdate rejects pg_repack's own `DELETE` without `WHERE`.
-- **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
+- **Partitioning** – `CREATE EXTENSION pg_partman`. For the optional background worker, add `pg_partman_bgw` to `POSTGRES_SHARED_PRELOAD_LIBRARIES` and set `pg_partman_bgw.dbname`, `pg_partman_bgw.interval` and `pg_partman_bgw.role`; the role defaults to `partman_maintainer`, which must exist.
 
 ## HTTP Extensions Comparison: pg_net vs pgsql-http
 
@@ -269,7 +256,7 @@ SELECT http_set_curlopt('CURLOPT_SSL_VERIFYPEER', '1');
 
 ## Compatibility Exceptions
 
-- **Citus** – The latest upstream release (Citus 13.0 on 2025-02-10) only supports PostgreSQL 17 and earlier, so the extension is intentionally omitted from the PostgreSQL 18 image to avoid shipping an incompatible build. We will add it once an official PG18-compatible release lands.
+- **Citus** – not in the manifest: it failed to build against PostgreSQL 18. Re-check upstream PG18 support before adding it.
 
 ## Enabling and Disabling Extensions
 
@@ -279,7 +266,7 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
 
 1. **Edit the manifest:** Open `scripts/extensions/manifest-data.ts` and locate the extension entry.
 
-2. **Set enabled to false:** Add `enabled: false` and optionally provide a reason:
+2. **Set enabled to false:** Add `enabled: false` and a `disabledReason`:
 
    ```typescript
    {
@@ -292,10 +279,10 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
    }
    ```
 
-3. **Regenerate artifacts:** Run the manifest generator to update derived files:
+3. **Regenerate artifacts:**
 
    ```bash
-   bun scripts/extensions/generate-manifest.ts
+   bun run generate
    ```
 
 4. **Build the image:** Build your custom image:
@@ -306,7 +293,7 @@ The aza-pg image uses a manifest-driven system that allows you to build custom i
 ### Manifest Fields
 
 - **`enabled`** (build-time): Controls whether extension is compiled and bundled into the image. Default: `true`.
-- **`disabledReason`** (optional): Explanation for why extension is disabled. Shown in build logs.
+- **`disabledReason`**: Why the entry is off and what would let it back on. Required when `enabled: false` (`validate-manifest.ts` fails without it).
 - **`runtime.defaultEnable`** (runtime): Separate field controlling whether `CREATE EXTENSION` runs automatically in `01-extensions.sql`. Default: `false`.
 
 ### Disabling a Default Preload
@@ -331,7 +318,7 @@ Disabling an entry that is preloaded by default also drops it from the default `
 { name: "pgrouting", enabled: false, disabledReason: "AI workload - no geospatial data" },
 ```
 
-**Result:** Smaller customized image (reduction proportional to disabled extensions), faster build (~7 min vs ~12 min).
+**Result:** a smaller image; build time drops only for disabled source-built entries (apt-installed ones cost little build time).
 
 ### Dependency Validation
 
@@ -357,26 +344,20 @@ To enable or disable extensions, edit `scripts/extensions/manifest-data.ts` and 
 
 ## Disabled Extensions
 
-The following extensions are currently disabled in the default build for optimization or technical reasons. They can be re-enabled by setting `enabled: true` in `scripts/extensions/manifest-data.ts` and rebuilding the image.
+The current disabled set is `disabled` in `docs/.generated/docs-data.json`; versions are in the manifest. Entries below can be re-enabled by setting `enabled: true` in `scripts/extensions/manifest-data.ts` and rebuilding the image.
 
 ### postgis (Geospatial Extension)
 
-**Status:** Disabled
-**Version:** 3.6.3
+**Status:** Disabled (PGDG package)
 **Category:** gis
 
 **Why disabled:**
 
-Build time and image size optimization. PostGIS adds significant build complexity and size:
-
-- **Build time impact:** +8-10 minutes (compiling GEOS, PROJ, GDAL dependencies)
-- **Image size impact:** +200-300MB (includes 14 APT dependencies: libgeos-dev, libproj-dev, libgdal-dev, etc.)
-- **Use case specificity:** Geospatial features are not needed by most users
+Image size. PostGIS pulls in large runtime libraries (GEOS, PROJ, GDAL), and most users need no geospatial features.
 
 **Technical status:**
 
-- ✅ Fully functional on PostgreSQL 18
-- ✅ No compilation issues
+- ✅ PGDG packages it for PostgreSQL 18
 - ✅ Can be enabled without code changes
 
 **How to re-enable:**
@@ -393,15 +374,14 @@ bun run build
 
 - ✅ Enables: Spatial data types, geographic queries, raster processing, topology
 - ✅ Use cases: GIS applications, location-based services, spatial analytics
-- ❌ Cost: +8-10 minutes build time, +200-300MB image size
+- ❌ Cost: larger image (GEOS, PROJ, GDAL libraries)
 - ⚠️ Note: pgrouting depends on PostGIS and must also be enabled
 
 ---
 
 ### pgrouting (Routing/Network Analysis)
 
-**Status:** Disabled
-**Version:** v4.0.1
+**Status:** Disabled (PGDG package)
 **Category:** gis
 
 **Why disabled:**
@@ -410,8 +390,7 @@ Cascading dependency on disabled PostGIS extension. pgrouting requires PostGIS t
 
 **Technical status:**
 
-- ✅ Fully functional on PostgreSQL 18 (major release with breaking changes from v3.x)
-- ✅ No compilation issues
+- ✅ PGDG packages it for PostgreSQL 18 (v4 has breaking changes from v3.x)
 - ⚠️ **Hard dependency:** Requires PostGIS to be enabled first
 
 **How to re-enable:**
@@ -430,15 +409,14 @@ bun run build
 
 - ✅ Enables: Graph routing algorithms (Dijkstra, A\*, TSP), network analysis
 - ✅ Use cases: Logistics optimization, route planning, transportation networks
-- ❌ Cost: +4-5 minutes build time (on top of PostGIS), +50-100MB image size
-- ⚠️ Requires: PostGIS must be enabled (adds +200-300MB)
+- ❌ Cost: larger image (Boost Graph libraries)
+- ⚠️ Requires: PostGIS must be enabled
 
 ---
 
 ### pgq (Queue Extension)
 
-**Status:** Disabled
-**Version:** v3.5.1
+**Status:** Disabled (source build)
 **Category:** queueing
 
 **Why disabled:**
@@ -465,7 +443,7 @@ bun run build
 **Trade-offs:**
 
 - ✅ Enables: Generic high-performance queue with SQL function API
-- ✅ Minimal impact: ~2-3 minutes build time, ~10-20MB image size
+- ✅ Minimal impact: ~2-3 minutes build time, small image cost
 - ⚠️ Consider: pgmq (enabled by default) is a more modern alternative with:
   - Better documentation and community support
   - More features (visibility timeout, message retention)
@@ -491,9 +469,7 @@ The `validate-manifest.ts` script performs comprehensive preflight validation of
 
 Ensures manifest is well-formed and consistent:
 
-- Catalog structure (all required fields/categories present)
-- Classification by kind (builtin, extension, tool, module)
-- Installation method (PGDG, compiled, builtin)
+- Counts by install method (builtin, PGDG, Percona, Timescale, compiled) and by enabled/disabled each sum to the total
 
 **2. defaultEnable Consistency**
 
@@ -504,20 +480,19 @@ For extensions with `runtime.defaultEnable=true`, verifies they are either:
 
 Special case: `plpgsql` is always available and doesn't require explicit creation.
 
-**3. PGDG Consistency**
+**3. Shared Preload Consistency**
 
-For all extensions with `install_via: "pgdg"`, verifies:
+Every library in `DEFAULT_SHARED_PRELOAD_LIBRARIES` is an enabled manifest entry with `sharedPreload` and `defaultEnable`, and every such entry is in the list.
 
-- Corresponding `postgresql-${PG_MAJOR}-<name>=<version>` entry exists in Dockerfile
-- Package name mappings are handled correctly (see Package Name Mappings below)
+PGDG pins are checked separately against the live repository by `scripts/extensions/validate-pgdg-versions.ts`.
 
 **4. Runtime Spec Completeness**
 
-Warns if `kind: "tool"` entries are missing `runtime` object.
+Warns if a `kind: "tool"` entry has no `runtime` object; fails if an enabled tool names neither `binaryPath` nor `soFileName`, or a disabled entry has no `disabledReason`.
 
 **5. Dependency Validation**
 
-Ensures all `dependencies` reference valid extension names in the manifest.
+Fails on duplicate entry names, and when an enabled entry depends on a missing or disabled entry.
 
 ### Usage
 
@@ -545,24 +520,11 @@ The output has one section per check — `[MANIFEST COUNTS]`, `[DEFAULT ENABLE V
 
 ### Common Error Examples
 
-**Count Mismatch:**
-
-```
-ERROR: Total extension count mismatch: got 37, expected 38
-```
-
 **defaultEnable Inconsistency:**
 
 ```
 ERROR: Extension 'foo' has defaultEnable=true but is NOT in 01-extensions.sql baseline
        OR DEFAULT_SHARED_PRELOAD_LIBRARIES
-```
-
-**PGDG Missing:**
-
-```
-ERROR: Extension 'bar' has install_via="pgdg" but is NOT installed in Dockerfile
-       (expected package: postgresql-${PG_MAJOR}-bar)
 ```
 
 **Invalid Dependency:**
@@ -580,9 +542,8 @@ A PGDG extension installs `postgresql-<major>-<pgdgPackage>`, where `pgdgPackage
 The validator cross-references:
 
 1. **Manifest**: `docker/postgres/extensions.manifest.json`
-2. **Dockerfile**: `docker/postgres/Dockerfile` (PGDG packages)
-3. **Init SQL**: `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (baseline extensions)
-4. **Entrypoint**: `docker/postgres/docker-auto-config-entrypoint.sh` (preload libraries)
+2. **Init SQL**: `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (baseline extensions)
+3. **Entrypoint**: `docker/postgres/docker-auto-config-entrypoint.sh` (preload libraries)
 
 ### Troubleshooting Validation
 
@@ -600,9 +561,8 @@ echo $?  # 0 = success, 1 = failure
 
 If validation fails incorrectly:
 
-1. Check the entry's `pgdgPackage` in `scripts/extensions/manifest-data.ts`
-2. Verify baseline extension list parsing regex
-3. Check for case sensitivity issues (manifest uses lowercase, SQL might differ)
+1. Verify baseline extension list parsing regex
+2. Check for case sensitivity issues (manifest uses lowercase, SQL might differ)
 
 ### Expected Counts
 
@@ -618,36 +578,23 @@ If validation fails incorrectly:
 
 **Why Preflight vs Post-Build?**
 
-- Catch errors BEFORE 12-minute Docker build
+- Catch errors before a long Docker build
 - Immediate feedback loop
 - Prevents CI/CD failures late in pipeline
 
 **Why Not JSON Schema?**
 
 - Need cross-file validation (Dockerfile, SQL, entrypoint)
-- Custom logic for package name mappings
 - Detailed error messages with context
 
 ## Upgrade Workflow
 
 1. Update the desired entry in `scripts/extensions/manifest-data.ts` (new tag or metadata).
-2. Regenerate derived artifacts:
-   ```bash
-   bun scripts/extensions/generate-manifest.ts
-   bun scripts/extensions/render-markdown.ts
-   ```
+2. Regenerate derived artifacts: `bun run generate`.
 3. Build the Docker image locally to verify (`bun run build`).
 4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
 5. Commit both the manifest/data changes and the regenerated docs.
 
 ## Extension Source Decisions
 
-**PIGSTY Repository Evaluation:**
-
-PIGSTY (PostgreSQL extension repository with 420+ extensions) was evaluated as an alternative to the current SHA-pinned source compilation strategy but not adopted due to:
-
-- **PostgreSQL 18 GA support:** PIGSTY v3.5.0/v3.6.0 only provide beta support for PG18; production-grade support is planned for v4.0 (timeline TBD, estimated Q1-Q2 2026)
-- **Supply chain model:** Current SHA-pinned approach provides immutable source verification; PIGSTY introduces package maintainer as intermediary in trust chain
-- **Maintenance strategy:** Single source approach (PGDG packages + selective source builds) maintains simplicity without added repository dependencies
-
-This decision may be revisited as PIGSTY v4.0 matures and demonstrates stable PostgreSQL 18 support in production environments. For detailed evaluation including security assessment, compatibility matrix, and migration considerations, see git history (archived 2025-11).
+Which repository each extension comes from, and why Pigsty is not used: [EXTENSION-SOURCES.md](EXTENSION-SOURCES.md).

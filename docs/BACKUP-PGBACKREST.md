@@ -35,7 +35,7 @@ docker compose exec postgres pgbackrest info                 # backups, their st
 
 Retention (in `examples/backup/compose.yml`): 7 full backups, 4 differential; older backups and the WAL only they need are expired after each backup.
 
-Schedule from the host's cron (`docker exec` sees the container's `PGBACKREST_*` variables):
+Schedule from the host's cron (`docker exec` sees the container's `PGBACKREST_*` variables; the single stack's container is `aza-pg-postgres-single`):
 
 ```bash
 0 2 * * 0   docker exec aza-pg-postgres-primary pgbackrest backup --type=full

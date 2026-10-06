@@ -67,10 +67,12 @@ Error: in 18+, these Docker images are configured to store database data in a
 
 **Workload Types:**
 
-- `web` (default): max_connections=200, balanced OLTP + read-heavy
+- `mixed` (default): max_connections=120, general-purpose
+- `web`: max_connections=200, balanced OLTP + read-heavy
 - `oltp`: max_connections=300, high-concurrency transactions
 - `dw`: max_connections=100, analytics/data warehouse
-- `mixed`: max_connections=120, general-purpose
+
+Below 8 GB of RAM these connection counts are scaled down.
 
 ## Resource Limits
 
@@ -94,14 +96,7 @@ If limits don't match, you'll see warnings:
 
 ### Auto-Config Scaling
 
-| RAM   | shared_buffers | work_mem | max_connections |
-| ----- | -------------- | -------- | --------------- |
-| 512MB | 128MB          | 1MB      | 60              |
-| 2GB   | 512MB          | 4MB      | 84              |
-| 4GB   | 1GB            | 5MB      | 102             |
-| 8GB   | 2GB            | 8MB      | 120             |
-| 16GB  | 3.2GB          | 16MB     | 120             |
-| 32GB  | 6.5GB          | 32MB     | 120             |
+The tuning rules and worked examples are in the README's [Auto-Config](../README.md#auto-config) section. The startup log prints the values chosen (`[POSTGRES] [AUTO-CONFIG] RAM: …`).
 
 ## Network Configuration
 
@@ -247,45 +242,25 @@ If you have existing data in `/var/lib/postgresql/data` from a pre-18 PostgreSQL
 
 ## Extensions
 
-aza-pg includes comprehensive extensions. Create them after connecting:
+On first start the image creates a baseline set in `POSTGRES_DB`, including `vector`, `vectorscale`, `timescaledb` and `pg_cron`. Create the others where you need them:
 
 ```sql
--- AI/ML & Vector Search
-CREATE EXTENSION vector;
-CREATE EXTENSION vectorscale;
-
--- Time-Series
-CREATE EXTENSION timescaledb;
-
 -- Full-Text Search
-CREATE EXTENSION pgroonga;
-
--- Job Scheduling (preloaded)
-CREATE EXTENSION pg_cron;
+CREATE EXTENSION IF NOT EXISTS pgroonga;
 ```
 
 See [EXTENSIONS.md](EXTENSIONS.md) for complete catalog.
 
-## Custom Docker Options
-
-Coolify supports custom Docker options. Recommended for aza-pg:
-
-```
---cap-add SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined
-```
-
-These are only needed for specific features (FUSE filesystem access). Most deployments work without them.
-
 ## Health Check
 
-aza-pg includes built-in health checks using `pg_isready`. Coolify will automatically detect container health status.
+The image's `HEALTHCHECK` runs `/usr/local/bin/healthcheck.sh`: `pg_isready`, a `SELECT 1`, and a check that the expected libraries are preloaded. Coolify reads the container's health status from it.
 
 Default timing:
 
 - Interval: 10 seconds
 - Timeout: 5 seconds
-- Retries: 5
-- Start period: 45 seconds
+- Retries: 3
+- Start period: 120 seconds
 
 ## Best Practices
 
@@ -293,7 +268,7 @@ Default timing:
 2. **Use strong passwords** - aza-pg uses SCRAM-SHA-256 authentication
 3. **Enable SSL** for production via Coolify's reverse proxy
 4. **Configure backups** using Coolify's backup features or pg_dump scripts
-5. **Monitor** using the built-in postgres_exporter (port 9187 if exposed)
+5. **Monitor** with a separate postgres_exporter container (the image does not include one; `stacks/*/compose.yml` show the setup)
 
 ## Related Documentation
 

@@ -1,6 +1,6 @@
 # Grafana Monitoring Setup Guide
 
-This guide covers Grafana dashboard configuration for PostgreSQL monitoring in aza-pg deployments.
+Grafana dashboards and queries for the metrics of the stacks' postgres_exporter and pgbouncer_exporter. `pg_replication_lag_lag_seconds`, `pg_memory_settings_value_bytes` and `pg_connection_usage_*` come from the custom queries in `docker/postgres/configs/postgres_exporter_queries.yaml`, which `stacks/*/compose.yml` mount; `deployments/phase1-single-vps` uses its own query file without them.
 
 **See also:** [OPERATIONS.md](OPERATIONS.md) for monitoring and observability operations
 
@@ -31,13 +31,13 @@ Import dashboard ID **9628** from Grafana.com:
 
 ```promql
 # Active client connections
-sum(pgbouncer_pools_cl_active) by (database)
+sum(pgbouncer_pools_client_active_connections) by (database)
 
 # Server connections
-sum(pgbouncer_pools_sv_active) by (database)
+sum(pgbouncer_pools_server_active_connections) by (database)
 
 # Waiting clients
-sum(pgbouncer_pools_cl_waiting) by (database)
+sum(pgbouncer_pools_client_waiting_connections) by (database)
 ```
 
 ### Replication Lag
@@ -73,9 +73,7 @@ pg_connection_usage_max_conn
 
 ## Alternative Dashboards
 
-- **ID 12630**: Postgres Overview (simplified)
-- **ID 455**: PostgreSQL Stats (detailed query stats)
-- **ID 13106**: PostgreSQL Exporter Quickstart
+- **ID 455**: Postgres Overview
 
 ## Data Source Configuration
 
@@ -90,15 +88,15 @@ Access: Server (default)
 
 ## Alerts
 
-Configure alerts for:
+`examples/prometheus/alerts.yml` has rules for:
 
 - PostgreSQL instance down
 - High connection count (>80% of max_connections)
 - Replication lag >5 minutes
-- Low cache hit ratio (<95%)
-- Dead tuples accumulation
+- Dead tuples accumulation (>10% of a table)
+- Transactions running >5 minutes
 
-See `examples/prometheus/alerts.yml` for alert rules.
+A low cache hit ratio (<95%) has no rule there; build one from the Cache Hit Ratio query above.
 
 ---
 

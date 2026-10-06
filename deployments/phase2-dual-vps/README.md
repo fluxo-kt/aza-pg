@@ -7,8 +7,8 @@ High availability setup with automatic VIP failover and manual database promotio
 ```
 Primary VPS (10.0.0.2)          Replica VPS (10.0.0.3)
 ├── PostgreSQL (Primary)        ├── PostgreSQL (Standby)
-├── PgBouncer (Priority 100)    ├── PgBouncer (Priority 90)
-├── Keepalived (holds the VIP)  ├── Keepalived (no VIP while standby)
+├── PgBouncer                   ├── PgBouncer
+├── Keepalived (priority 100)   ├── Keepalived (priority 90)
 └── Monitoring Stack            └── Monitoring Stack
 
            ↓ VIP ↓
@@ -57,7 +57,7 @@ postgres:
 
 ```bash
 cd /opt/aza-pg-stack-primary
-cp -r /path/to/phase1-single-vps/* .
+cp -r /path/to/phase1-single-vps/. .   # "/." also copies .env.example
 # Edit docker-compose.yml to bind to private IP
 docker compose up -d
 ```
@@ -123,6 +123,7 @@ Execute these commands on the **replica VPS**:
 **Bare VPS Method:**
 
 ```bash
+# Holds a copy of the phase 1 files, as on the primary (step 1)
 cd /opt/aza-pg-stack-replica
 
 # Stop postgres if running
@@ -240,7 +241,7 @@ phase2-dual-vps/
 
 ## Monitoring
 
-Configure Prometheus to scrape both VPS:
+Configure Prometheus to scrape both VPS. The phase 1 compose file publishes the exporters (9187, 9127) on `127.0.0.1` only; bind them to the host's private IP, as for PostgreSQL, or these targets are unreachable:
 
 ```yaml
 scrape_configs:

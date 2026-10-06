@@ -2,7 +2,7 @@
 
 ## Recommended Dashboards
 
-### Official PostgreSQL Dashboard
+### PostgreSQL Dashboard (community)
 
 Import dashboard ID **9628** from Grafana.com:
 
@@ -25,16 +25,18 @@ Import dashboard ID **9628** from Grafana.com:
 
 ```promql
 # Active client connections
-sum(pgbouncer_pools_cl_active) by (database)
+sum(pgbouncer_pools_client_active_connections) by (database)
 
 # Server connections
-sum(pgbouncer_pools_sv_active) by (database)
+sum(pgbouncer_pools_server_active_connections) by (database)
 
 # Waiting clients
-sum(pgbouncer_pools_cl_waiting) by (database)
+sum(pgbouncer_pools_client_waiting_connections) by (database)
 ```
 
 ### Replication Lag
+
+This and the auto-config metrics below come from the custom queries in `docker/postgres/configs/postgres_exporter_queries.yaml`, which the stacks mount into postgres_exporter.
 
 ```promql
 # Lag in seconds
@@ -67,9 +69,7 @@ pg_connection_usage_max_conn
 
 ## Alternative Dashboards
 
-- **ID 12630**: Postgres Overview (simplified)
-- **ID 455**: PostgreSQL Stats (detailed query stats)
-- **ID 13106**: PostgreSQL Exporter Quickstart
+- **ID 455**: Postgres Overview
 
 ## Data Source Configuration
 

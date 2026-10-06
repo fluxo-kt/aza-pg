@@ -46,7 +46,7 @@ Located in `tests/fixtures/pgflow/`:
 
 aza-pg provides Supabase-to-PostgreSQL compatibility:
 
-- `realtime.send()` stub (3-layer event broadcasting)
+- `realtime.send()` stub: always broadcasts through `pg_notify`; also sends to a pgmq queue when `realtime.pgmq_enabled` is `true`, and posts to an HTTP webhook through pg_net when `realtime.webhook_url` is set
 - Security patches (search_path fixes)
 - Custom installation detection
 

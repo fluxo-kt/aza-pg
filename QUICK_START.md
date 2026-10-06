@@ -6,7 +6,7 @@ Complete deployment artifacts and documentation for production PostgreSQL on Coo
 
 ### 📚 Documentation
 
-- **`docs/DEPLOYMENT.md`** - Step-by-step deployment guide (10,000+ words)
+- **`docs/DEPLOYMENT.md`** - Step-by-step deployment guide
 - **`docs/RUNBOOKS.md`** - Operational procedures for backup/restore/failover
 - **`deployments/phase2-dual-vps/README.md`** - Phase 2 replication guide
 
@@ -16,21 +16,22 @@ Complete deployment artifacts and documentation for production PostgreSQL on Coo
 
 - `docker-compose.yml` - Complete stack (PostgreSQL + PgBouncer + Monitoring)
 - `.env.example` - Environment variables template
-- `prometheus/` - Prometheus + Grafana configurations
+- `prometheus/` - Prometheus scrape config and exporter queries
+- `grafana/` - Grafana datasource and dashboard provisioning
 - `pgbouncer/` - PgBouncer userlist configuration
-- `pgbackrest/` - Hybrid backup configuration (Postgresus + pgBackRest)
+- `pgbackrest/` - pgBackRest configuration example (encrypted S3 repository)
 
 **Phase 2: Dual VPS** (`deployments/phase2-dual-vps/`)
 
-- `primary/` - Primary VPS configs
-- `replica/` - Replica VPS configs
+- `README.md` - primary and replica setup steps
 - `keepalived/` - VIP failover configs
 
 ### 🛠️ Automation Scripts
 
 **Setup & Deployment** (`deployments/phase1-single-vps/scripts/`)
 
-- `setup.sh` - Automated initial deployment
+- `setup.sh` - Automated initial deployment (bare VPS)
+- `setup-coolify.sh` - Initial deployment on Coolify
 - `health-check.sh` - Daily health monitoring
 - `verify.sh` - Comprehensive verification tests
 - `harden-security.sh` - Security hardening automation
@@ -41,12 +42,12 @@ Complete deployment artifacts and documentation for production PostgreSQL on Coo
 
 ```
 CPX31 VPS (4 vCPU, 8GB RAM)
-├── PostgreSQL 18.1 (auto-tuned: 5GB RAM, 200 connections)
+├── PostgreSQL 18 (auto-tuned for POSTGRES_MEMORY=5120 and the web workload: 170 connections)
 ├── PgBouncer (2000 clients → 25 DB connections)
 ├── Postgresus (daily full backups, GUI)
 ├── pgBackRest (3x incremental backups/day)
 ├── Prometheus + Grafana (metrics + dashboards)
-└── Hetzner S3 (encrypted backups, 7-day retention)
+└── Hetzner S3 (encrypted pgBackRest repository)
 ```
 
 **Phase 2: €24/month**
@@ -70,16 +71,15 @@ Primary VPS               Replica VPS
 ### 1. Clone and Build
 
 ```bash
-git clone https://github.com/yourusername/aza-pg.git
+git clone https://github.com/fluxo-kt/aza-pg.git
 cd aza-pg
 
-# Validate and build
+# Optional: build and push your own image. The deployment compose file uses
+# ghcr.io/fluxo-kt/aza-pg:18 unless POSTGRES_IMAGE names another.
 bun run validate
-bun run build
-
-# Push to GitHub Container Registry
-docker tag aza-pg:latest ghcr.io/USERNAME/aza-pg:18.1-latest
-docker push ghcr.io/USERNAME/aza-pg:18.1-latest
+bun run build                      # produces aza-pg:pg18
+docker tag aza-pg:pg18 ghcr.io/USERNAME/aza-pg:18
+docker push ghcr.io/USERNAME/aza-pg:18
 ```
 
 ### 2. Provision Hetzner VPS
@@ -104,24 +104,22 @@ Key sections:
 
 - Step 3: Create Docker Network in Coolify
 - Step 5: Deploy PostgreSQL Stack
-- Step 6: Configure PgBouncer
-- Step 7: Deploy Monitoring Stack
+- Step 6: Configure Monitoring
+- Step 8: Configure PgBouncer
 
 **Bare VPS Alternative (Without Coolify):**
 
 See the alternative method sections in:
 → [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - "Bare VPS Alternative" subsections
 
-Both deployment methods are fully documented with step-by-step instructions.
-
 ### 4. Verify Deployment
 
 See verification procedures in:
-→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 8: Verify Deployment
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 10: Verification & Testing
 
 **Expected results:**
 
-- PostgreSQL 18.1 running with auto-tuned configuration
+- PostgreSQL 18 running with auto-tuned configuration
 - All extensions available (pg_stat_statements, pgvector, timescaledb, etc.)
 - Connection pooling working (2000 clients → 25 DB connections)
 - Monitoring stack accessible
@@ -131,7 +129,7 @@ See verification procedures in:
 **Recommended: Postgresus via Coolify (Daily Full Backups)**
 
 See backup configuration in:
-→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 9: Configure Backup Strategy
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Step 7: Configure Backups with Postgresus
 
 **Optional: Hybrid Setup (6-hour RPO)**
 
@@ -144,36 +142,17 @@ Architecture:
 - **pgBackRest:** 3x incremental backups/day (08:00, 14:00, 20:00)
 - **Result:** Max 6-hour data loss (RPO)
 
-Configure pgBackRest (Bare VPS only):
-
-```bash
-# Install on host (not in container)
-apt install pgbackrest
-
-# Configure
-cp deployments/phase1-single-vps/pgbackrest/pgbackrest.conf.example /etc/pgbackrest.conf
-# Update S3 credentials
-
-# Initialize
-pgbackrest --stanza=main stanza-create
-
-# Test backup
-pgbackrest --stanza=main --type=incr backup
-
-# Add to cron
-crontab -e
-# Add: 0 8,14,20 * * * pgbackrest --stanza=main --type=incr backup
-```
+pgBackRest ships in the image and runs inside the postgres container (`archive_command` runs there); do not install it on the host. Setup, scheduling and restore: [docs/BACKUP-PGBACKREST.md](docs/BACKUP-PGBACKREST.md).
 
 ### 6. Configure Monitoring
 
-1. Access Grafana: `http://VPS_IP:3000`
+1. Access Grafana: it listens on 127.0.0.1 only, so tunnel first (`ssh -L 3000:127.0.0.1:3000 root@VPS_IP`), then open `http://localhost:3000`
    - User: `admin`
    - Pass: (from .env `GRAFANA_ADMIN_PASSWORD`)
 
-2. Add Prometheus datasource (auto-provisioned)
+2. The Prometheus datasource and a PostgreSQL overview dashboard are provisioned from `grafana/provisioning/`
 
-3. Import dashboard:
+3. Optional: import the community dashboard:
    - Dashboard → Import
    - ID: `14114`
    - Select Prometheus datasource
@@ -187,19 +166,20 @@ crontab -e
 ### 7. Security Hardening
 
 ```bash
-./scripts/harden-security.sh
+cd deployments/phase1-single-vps
+sudo ./scripts/harden-security.sh
 ```
 
 **Script applies:**
 
 - Restricts pg_hba.conf to minimal access
-- Creates app-specific users (app_user, readonly)
-- Sets file permissions (600 for sensitive files)
-- Enables pgaudit for DDL/write operations
-- Configures connection logging
-- Documents manual steps (SSL, firewall, Fail2Ban)
+- Sets file permissions (600 for `.env`, `pgbouncer/userlist.txt`, `pgbackrest/pgbackrest.conf`, the TLS key)
+- Checks that PostgreSQL and PgBouncer ports are not published on 0.0.0.0
+- Adds UFW rules (allow 22/80/443, deny 5432/6432); you enable UFW yourself
+- Installs unattended-upgrades
+- Prints the manual steps left (TLS, firewall, Fail2Ban)
 
-**IMPORTANT:** Save generated passwords immediately!
+It creates no database users; create `app_user` by hand ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), "Application-Specific Database Users") and a `readonly` user the same way with SELECT-only grants.
 
 ---
 
@@ -222,6 +202,8 @@ postgresql://postgres:PASSWORD@pgbouncer:6432/main?pgbouncer=true
 
 ### For Application Users
 
+These users exist only after you create them, and PgBouncer accepts them only once their hashes are in `pgbouncer/userlist.txt` (see "PgBouncer connection failed" below).
+
 **Read-write:**
 
 ```
@@ -241,6 +223,7 @@ postgresql://readonly:PASSWORD@pgbouncer:6432/main?pgbouncer=true
 ### Health Check (5 minutes)
 
 ```bash
+cd deployments/phase1-single-vps
 ./scripts/health-check.sh | tee -a /var/log/aza-pg-health.log
 ```
 
@@ -294,6 +277,7 @@ docker logs pgbouncer --tail 50
 docker exec postgres psql -U postgres -Atq -c \
   "SELECT '\"' || usename || '\" \"' || passwd || '\"' FROM pg_shadow WHERE usename IN ('postgres', 'monitoring');" \
   > pgbouncer/userlist.txt
+chown 70:70 pgbouncer/userlist.txt   # PgBouncer runs as uid 70 and must read it
 
 docker restart pgbouncer
 ```
@@ -345,7 +329,7 @@ docker exec postgres psql -U postgres -c \
 - Automatic VIP failover (3-5 sec)
 - Manual DB promotion (1-3 min total RTO)
 - Read scaling (connect to replica)
-- Zero data loss (sync replication option)
+- Zero data loss only with synchronous replication, which these files do not configure (replication is asynchronous)
 
 ### When to Move to Phase 3 (Production Hardening)
 
@@ -382,9 +366,9 @@ docker exec postgres psql -U postgres -c \
 **Security:** pgsodium, supabase_vault, pg_safeupdate
 **HTTP/Webhooks:** pg_net, http
 **CDC:** wal2json
-**Geospatial:** postgis (disabled by default)
+**Geospatial:** postgis is not in the image (disabled in the manifest)
 
-**See `manifest-data.ts` for complete list.**
+**Complete list: [docs/EXTENSIONS.md](docs/EXTENSIONS.md); counts: [docs/.generated/docs-data.json](docs/.generated/docs-data.json).**
 
 ---
 
@@ -399,8 +383,8 @@ docker exec postgres psql -U postgres -c \
 
 ### Monitoring
 
-- Grafana: `http://VPS_IP:3000`
-- Prometheus: `http://VPS_IP:9090`
+- Grafana: `http://localhost:3000` through an SSH tunnel (it listens on 127.0.0.1 only)
+- Prometheus: `http://localhost:9090` through an SSH tunnel (it listens on 127.0.0.1 only)
 - Postgresus: `http://VPS_IP:3002`
 
 ### Logs
@@ -420,11 +404,11 @@ docker logs pgbouncer --tail 100 -f
 
 1. ✅ Review this guide
 2. ✅ Deploy Phase 1 (follow Quick Start above)
-3. ✅ Run `./scripts/verify.sh` to validate
+3. ✅ Run `deployments/phase1-single-vps/scripts/verify.sh` to validate
 4. ✅ Configure backups (Postgresus + pgBackRest hybrid)
 5. ✅ Set up daily health checks (cron)
 6. ✅ Import Grafana dashboard (ID 14114)
-7. ✅ Harden security (`./scripts/harden-security.sh`)
+7. ✅ Harden security (`deployments/phase1-single-vps/scripts/harden-security.sh`)
 8. ✅ Document passwords in password manager
 9. ✅ Connect first microservice via PgBouncer
 10. ✅ Monitor for 30 days before Phase 2 decision
@@ -458,7 +442,7 @@ docker logs pgbouncer --tail 100 -f
 
 - Eliminates manual tuning (shared_buffers, work_mem, etc.)
 - Detects hardware (cgroup v2, nproc)
-- Workload-optimized (web: 200 conn, OLTP: 300 conn)
+- Workload-optimized (web: 200 conn, OLTP: 300 conn at 8 GB RAM or more; fewer below)
 - Storage-optimized (SSD: random_page_cost=1.1)
 
 ---
@@ -467,18 +451,17 @@ docker logs pgbouncer --tail 100 -f
 
 After Phase 1 deployment, you should have:
 
-- ✅ PostgreSQL 18.1 running with auto-tuned config
+- ✅ PostgreSQL 18 running with auto-tuned config
 - ✅ PgBouncer pooling 2000 clients → 25 server connections
 - ✅ Daily full backups (Postgresus) + 3x incremental (pgBackRest)
 - ✅ Prometheus + Grafana monitoring with metrics
-- ✅ All 40+ extensions available
-- ✅ Security hardened (pg_hba.conf, app users, pgaudit)
+- ✅ All enabled extensions available
+- ✅ Security hardened (pg_hba.conf, file permissions, firewall rules, app users)
 - ✅ Automated health checks running daily
 - ✅ 100% verification test pass rate
 
 **Cost:** €12/month (87% cheaper than managed PostgreSQL)
 **Reliability:** Production-grade with 7-day backup retention
-**Performance:** 2000-5000 TPS on CPX31 NVMe SSD
 **Maintainability:** Automated scripts + comprehensive runbooks
 
 ---

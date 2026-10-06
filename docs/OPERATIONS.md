@@ -20,7 +20,7 @@ All tools are written in Bun TypeScript and located in `scripts/tools/`. They pr
 - **Bun runtime** installed (`bun --version`)
 - **Docker** or **Docker Compose** (for container operations)
 - **PostgreSQL client tools** (for backup/restore):
-  - `pg_dump`, `psql`, `pg_isready` (install from https://www.postgresql.org/download/)
+  - `pg_dump`, `psql`, `pg_isready` at major version 18 or newer — `pg_dump` refuses a newer server (install from https://www.postgresql.org/download/)
   - `gzip`, `gunzip` (compression tools)
 
 ### Connection Configuration
@@ -65,7 +65,7 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 
 - **Format:** Plain SQL (gzip compressed)
 - **Contents:** the source's roles (created on restore only where missing, with their password hashes), then a `pg_dump --clean --if-exists` with owners and GRANTs: the file is as sensitive as the database
-- **Naming:** Auto-generated with timestamp: `backup_<database>_YYYY_MM_DD_HHmmss.sql.gz`
+- **Naming:** Auto-generated with UTC timestamp: `backup_<database>_YYYY_MM_DD_HH_mm_ss.sql.gz`
 
 #### Safety Features
 
@@ -109,8 +109,8 @@ Install PostgreSQL client tools:
 # macOS
 brew install postgresql@18
 
-# Ubuntu/Debian
-sudo apt-get install postgresql-client
+# Ubuntu/Debian (PGDG apt repo; the distro's default client may be older than 18)
+sudo apt-get install postgresql-client-18
 
 # Alpine
 apk add postgresql-client
@@ -531,6 +531,7 @@ docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"  # Should sh
 # 1. Generate and mount certs (see Scenario 1)
 
 # 2. Edit stacks/primary/configs/pg_hba.conf - change 'host' to 'hostssl'
+#    (the file is generated: `bun run generate` overwrites it, so keep this change in your deployment copy)
 #    Before: host    all    all    10.0.0.0/8    scram-sha-256
 #    After:  hostssl all    all    10.0.0.0/8    scram-sha-256
 
@@ -556,8 +557,9 @@ mv stacks/primary/certs stacks/primary/certs.old
 # 3. Generate new certs
 bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs 3650
 
-# 4. Restart PostgreSQL (no downtime if mounted as volume)
-docker compose restart postgres
+# 4. Give the new files to uid 999 (see Scenario 1), then reload: PostgreSQL rereads certificates on reload, no restart
+sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
+docker exec aza-pg-postgres-primary psql -U postgres -c "SELECT pg_reload_conf()"
 ```
 
 **Scenario 4: Client certificate verification (mutual TLS)**
@@ -904,10 +906,11 @@ Consider using `pg_basebackup` for physical backups:
 
 ```bash
 # Faster for multi-GB databases
-pg_basebackup -h localhost -U postgres -D /backup/physical -Ft -z -P
+# pg_hba.conf admits replication connections only for the replicator role
+pg_basebackup -h localhost -U replicator -D /backup/physical -Ft -z -P
 ```
 
-Or use pgBackRest (installed in image, see PRODUCTION.md).
+Or use pgBackRest (installed in the image, see [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md)).
 
 ### Failover Issues
 
@@ -964,7 +967,7 @@ Fix file permissions:
 
 ```bash
 chmod 600 stacks/primary/certs/server.key
-chown postgres:postgres stacks/primary/certs/server.key  # If using host UID mapping
+sudo chown 999:999 stacks/primary/certs/server.key  # the container's postgres uid
 ```
 
 **Issue: "server.key has group or world access"**

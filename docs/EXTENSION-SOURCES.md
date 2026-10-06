@@ -7,7 +7,7 @@ Each extension's source is its `install_via` in `scripts/extensions/manifest-dat
 | `install_via`      | Repository                                                                             | Use it when                                                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `pgdg`             | apt.postgresql.org                                                                     | PGDG packages the extension for the current PostgreSQL major and Debian release. Default: official, tested, no compile time. |
-| `percona`          | repo.percona.com (`ppg-<major>`)                                                       | Percona is the upstream (pg_stat_monitor) or packages a version PGDG lacks (wal2json).                                       |
+| `percona`          | repo.percona.com (`ppg-<major>`)                                                       | Percona is the upstream (pg_stat_monitor), or its repo is already required and packages the extension too (wal2json).        |
 | `timescale`        | packagecloud.io/timescale                                                              | TimescaleDB and its toolkit: only Timescale's packages carry the TSL features (compression policies, continuous aggregates). |
 | `source`, or unset | upstream git, commit-locked (built-in modules also leave it unset and install nothing) | PGDG has no package (most Rust/pgrx extensions), lags a needed fix, or the build needs a patch (`build.patches`).            |
 

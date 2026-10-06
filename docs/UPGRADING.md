@@ -5,6 +5,7 @@ Guide for upgrading PostgreSQL major versions, extensions, and handling breaking
 ## Table of Contents
 
 - [PostgreSQL Major Version Upgrades](#postgresql-major-version-upgrades)
+- [Updating the Image (Same PostgreSQL Major)](#updating-the-image-same-postgresql-major)
 - [Extension Updates](#extension-updates)
 - [Breaking Changes](#breaking-changes)
 - [Rollback Procedures](#rollback-procedures)
@@ -68,11 +69,11 @@ Update `scripts/extensions/manifest-data.ts` with compatible versions.
 # Regenerate Dockerfile from template with new versions
 bun run generate
 
-# Build image with hardcoded versions
-bun run build
+# Build the image (tagged aza-pg:pg18 unless POSTGRES_TAG names another tag)
+POSTGRES_TAG=pg19 bun run build
 
 # Verify PostgreSQL version
-docker run --rm aza-pg:pg18 postgres --version
+docker run --rm aza-pg:pg19 postgres --version
 ```
 
 **Note**: All versions are hardcoded in the generated Dockerfile from `scripts/extensions/manifest-data.ts`. The Dockerfile is auto-generated - never edit it directly.
@@ -182,6 +183,24 @@ SELECT * FROM pg_stat_database WHERE stats_reset < NOW() - INTERVAL '7 days';
 SELECT * FROM pg_stat_replication;
 ```
 
+## Updating the Image (Same PostgreSQL Major)
+
+A newer image starts on your existing data volume, but extension upgrades inside existing databases are yours to run. The `Breaking` and `Security` entries of every release you skip over in [CHANGELOG.md](../CHANGELOG.md) name the steps that release needs, some of them before the switch; do those first.
+
+1. Back up the databases and the pgsodium root key (see [Prerequisites](#prerequisites)): `pg_dump` does not include the key.
+2. After the new container starts, list in each database the extensions older than the version the image ships:
+
+   ```sql
+   SELECT e.extname, e.extversion, a.default_version
+   FROM pg_extension e JOIN pg_available_extensions a ON a.name = e.extname
+   WHERE e.extversion <> a.default_version;
+   ```
+
+   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). Update TimescaleDB first, as the first statement of a new session, because its loader must not have loaded the old library: `psql -X -c "ALTER EXTENSION timescaledb UPDATE;"`.
+
+3. pgflow keeps its schema version until you run `docker exec <container> pgflow-upgrade` (see [PGFLOW.md](PGFLOW.md)).
+4. If the log warns that pgsodium uses the published key, rotate it: [PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#rotating-the-published-key).
+
 ## Extension Updates
 
 > **Note:** This section covers upgrading extensions in a **running database**.
@@ -193,40 +212,13 @@ SELECT * FROM pg_stat_replication;
 
 ### Minor Version Updates (e.g., pgvector 0.8.1 → 0.8.2)
 
-#### Step 1: Find New Commit SHA
+#### Steps 1–2: Update the Manifest
 
-```bash
-# Go to GitHub releases page
-# Example: https://github.com/pgvector/pgvector/releases/tag/v0.8.2
-# Find commit SHA from tag (usually in URL or commit list)
-```
-
-#### Step 2: Update Manifest
-
-Edit `scripts/extensions/manifest-data.ts`:
-
-```typescript
-// For PGDG extensions (like pg_cron), update the pgdgVersion in the extension entry:
-{
-  name: 'pg_cron',
-  pgdgVersion: '1.6.8-1.pgdg13+2',  // Changed from 1.6.7-2.pgdg13+1
-  source: { tag: 'v1.6.8' },  // Also update source tag to match
-  // ... other properties
-},
-
-// For source-built extensions, update the source.tag property
-```
-
-Then regenerate:
-
-```bash
-bun run generate
-```
+Change the version in `scripts/extensions/manifest-data.ts` and run `bun run generate`, following [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md) (Procedure 2 for PGDG packages, Procedure 3 for source-built extensions).
 
 #### Step 3: Rebuild and Test
 
 ```bash
-# Build with buildx (uses intelligent caching)
 bun run build
 
 # Test in development
@@ -241,8 +233,8 @@ docker compose exec postgres psql -U postgres -c "SELECT extname, extversion FRO
 #### Step 4: Apply to Production
 
 ```bash
-# Deploy new image (use versioned tag for production)
-docker pull ghcr.io/fluxo-kt/aza-pg:18.0
+# Deploy new image: set POSTGRES_IMAGE in .env to a versioned tag (e.g. 18.6-<timestamp>) or digest
+docker compose pull postgres
 
 # Rolling update (one instance at a time)
 docker compose up -d --no-deps postgres
@@ -342,7 +334,7 @@ bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres
 
 ```sql
 -- Check extension files exist
-SELECT * FROM pg_available_extensions WHERE name = 'pgvector';
+SELECT * FROM pg_available_extensions WHERE name = 'vector';
 
 -- Check shared_preload_libraries
 SHOW shared_preload_libraries;

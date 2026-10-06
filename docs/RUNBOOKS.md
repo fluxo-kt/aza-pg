@@ -1,6 +1,6 @@
 # aza-pg Operational Runbooks
 
-Detailed procedures for common operational tasks.
+Procedures for the VPS deployments in `deployments/` (phase1 single VPS, phase2 dual VPS), whose containers are named `postgres` and `pgbouncer`. On a `stacks/` deployment substitute the stack's container names (`aza-pg-postgres-primary`, `aza-pg-pgbouncer-primary`, `aza-pg-replica-postgres-replica`, `aza-pg-postgres-single` with the `.env.example` project names) and promote a stack replica with `bun scripts/tools/promote-replica.ts`.
 
 ## Daily Operations
 
@@ -39,9 +39,10 @@ Review output for any failures or warnings.
 - Schedule: 08:00, 14:00, 20:00 UTC (3x/day)
 - Method: Block-level incremental
 - Storage: Separate Hetzner S3 bucket
-- Retention: 3 full + 7 incremental
-- Compression: LZ4
+- Retention: 3 full + 7 differential
+- Compression: gzip (pgBackRest's default; `pgbackrest.conf.example` sets no `compress-type`)
 - Encryption: AES-256-CBC
+- Setup: phase1's `docker-compose.yml` wires no pgBackRest; set it up with [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md) first
 
 **Result:** Max 6-hour data loss (RPO)
 
@@ -86,17 +87,9 @@ docker stop postgres
 docker run --rm -v aza-pg-stack_postgres_data:/data -v /tmp:/backup ubuntu \
     tar czf /backup/postgres-data-backup-$(date +%Y%m%d%H%M%S).tar.gz /data
 
-# 3. List available backups
-pgbackrest --stanza=main info
-
-# 4. Restore latest backup
-pgbackrest --stanza=main restore
-
-# 5. Or restore to specific point-in-time
-pgbackrest --stanza=main --type=time \
-    --target="2025-01-20 14:30:00" restore
-
-# 6. Start PostgreSQL
+# 3-6. pgBackRest runs inside the image, never on the host, and restore needs the server stopped, so it runs in a
+#      one-off container on the same data volume and settings: follow BACKUP-PGBACKREST.md "Restore"
+#      (latest state or --type=time point in time), then start PostgreSQL
 docker start postgres
 
 # 7. Verify recovery
@@ -110,8 +103,7 @@ docker exec postgres psql -U postgres -c "SELECT NOW();"
 **Coolify Method:**
 
 - Go to postgres Service → click Stop button
-- Use Terminal tab to backup data directory and list backups
-- Execute restore commands in Terminal tab
+- Back up the data directory and run the restore from host SSH: a stopped service has no Terminal, and restore needs the server stopped
 - Go to Service → click Start button
 - Verify via Terminal tab: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 
@@ -139,11 +131,12 @@ aws s3 cp backup-*.dump.gz s3://your-bucket/manual-backups/
 **Incremental via pgBackRest:**
 
 ```bash
+# Runs inside the container (set up per BACKUP-PGBACKREST.md)
 # Trigger manual incremental backup
-pgbackrest --stanza=main --type=incr backup
+docker exec postgres pgbackrest --stanza=main backup --type=incr
 
 # Trigger manual full backup (weekly)
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 ```
 
 **Coolify Method:**
@@ -228,7 +221,7 @@ docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 ip addr show eth0 | grep 10.0.0.100  # the VIP moves here within a few seconds
 
 # 8. Test write capability
-docker exec postgres psql -U postgres -c \
+docker exec postgres psql -U postgres -d test_db -c \
     "INSERT INTO health_check (message) VALUES ('Failover at $(date)');"
 
 # 9. Monitor Grafana
@@ -451,8 +444,8 @@ docker exec -i postgres psql -U postgres -d ${POSTGRES_DB:-main} <<EOF
 CREATE EXTENSION IF NOT EXISTS hypopg;
 CREATE EXTENSION IF NOT EXISTS index_advisor;
 
--- Analyze queries from pg_stat_statements
--- index_advisor will suggest indexes
+-- Pass one slow query (e.g. from pg_stat_statements); returns CREATE INDEX statements and cost before/after
+SELECT * FROM index_advisor('SELECT * FROM your_table WHERE column = 1');
 EOF
 ```
 
@@ -495,13 +488,12 @@ docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} -c \
 
 ```bash
 # Check PgBouncer wait queue
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -Atq -c \
-    "SHOW POOLS;" | awk -F'|' '{print $1, $3, $4, $10}'
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 
-# If maxwait > 0 frequently:
+# If cl_waiting or maxwait > 0 frequently:
 # Option 1: Increase pool size
-# Edit .env: PGBOUNCER_DEFAULT_POOL_SIZE=40
-docker restart pgbouncer
+# Edit .env: PGBOUNCER_DEFAULT_POOL_SIZE=40, then recreate the container (a restart keeps the old environment)
+docker compose up -d pgbouncer
 
 # Option 2: Optimize queries to reduce execution time
 
@@ -511,7 +503,7 @@ docker restart pgbouncer
 **Coolify Method:**
 
 - Go to pgbouncer Service → Terminal tab
-- Run: `psql -h localhost -p 6432 -U postgres -Atq -c "SHOW POOLS;" | awk -F'|' '{print $1, $3, $4, $10}'`
+- Run: `psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"`
 - To adjust pool size: Go to Service → Environment Variables → edit PGBOUNCER_DEFAULT_POOL_SIZE
 - Restart: Go to Service → click Restart button
 
@@ -561,8 +553,9 @@ docker exec postgres psql -U postgres -c \
 # Restart PgBouncer after updating userlist.txt
 
 # 6. Review audit logs (pgaudit)
-docker exec postgres psql -U postgres -c \
-    "SELECT * FROM pg_log ORDER BY log_time DESC LIMIT 100;"
+# pgaudit writes to the server log (stderr), not a table; the image leaves pgaudit.log at 'none', so these lines
+# exist only if pgaudit.log was set (stacks/primary sets 'ddl,write,role')
+docker logs postgres --since 24h | grep "AUDIT:"
 
 # 7. Document incident
 ```
@@ -735,20 +728,24 @@ FROM pg_database
 ORDER BY pg_database_size(datname) DESC;
 EOF
 
-# Clean up old WAL files
+# Find what holds WAL: a failing archive_command or an inactive replication slot keeps every segment
 docker exec postgres psql -U postgres -c \
-    "SELECT pg_switch_wal();"
+    "SELECT failed_count, last_failed_wal, last_failed_time FROM pg_stat_archiver;"
+docker exec postgres psql -U postgres -c \
+    "SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained FROM pg_replication_slots;"
+# Once the cause is fixed, a checkpoint recycles the segments no longer needed (pg_switch_wal frees nothing)
+docker exec postgres psql -U postgres -c "CHECKPOINT;"
 
 # Remove old backups from S3
 
-# Vacuum databases
-docker exec postgres psql -U postgres -c \
-    "VACUUM FULL;"
+# Vacuum databases: plain VACUUM only. VACUUM FULL rewrites each table and needs that much free space first
+docker exec postgres psql -U postgres -d ${POSTGRES_DB:-main} -c \
+    "VACUUM;"
 
-# If emergency:
-# Temporarily disable WAL archiving
+# If emergency: discard WAL instead of archiving it. This breaks point-in-time recovery until the next full
+# backup. archive_mode itself only changes on restart; archive_command applies on reload
 docker exec -i postgres psql -U postgres <<EOF
-ALTER SYSTEM SET archive_mode = off;
+ALTER SYSTEM SET archive_command = '/bin/true';
 SELECT pg_reload_conf();
 EOF
 ```
@@ -758,9 +755,9 @@ EOF
 - Check disk space: Requires host-level SSH access or Coolify server monitoring dashboard
 - Go to postgres Service → Terminal tab
 - Find largest databases: `psql -U postgres` then run size query
-- Clean WAL: `psql -U postgres -c "SELECT pg_switch_wal();"`
-- Vacuum: `psql -U postgres -c "VACUUM FULL;"`
-- Disable archiving: Run ALTER SYSTEM commands via Terminal tab
+- Find what holds WAL and run `CHECKPOINT;` once fixed: run the pg_stat_archiver and pg_replication_slots queries above
+- Vacuum: `psql -U postgres -d ${POSTGRES_DB:-main} -c "VACUUM;"` (not VACUUM FULL: it needs free space)
+- Discard WAL in an emergency: run the archive_command ALTER SYSTEM above via Terminal tab
 
 ---
 
@@ -786,7 +783,9 @@ Configure these in Prometheus Alertmanager:
 
 ```yaml
 - alert: ReplicationLagHigh
-  expr: pg_replication_lag_bytes > 104857600 # 100MB
+  # postgres_exporter exports lag in seconds since the last replayed transaction, not bytes; it also grows while
+  # the primary is idle
+  expr: pg_replication_lag_seconds > 300
   for: 5m
   labels:
     severity: critical
@@ -814,7 +813,8 @@ Configure these in Prometheus Alertmanager:
 
 ```yaml
 - alert: ConnectionPoolSaturated
-  expr: pgbouncer_pools_server_active_connections / pgbouncer_pools_server_used_connections > 0.9
+  # Clients wait for a server connection only when the pool is full
+  expr: max by (database) (pgbouncer_pools_client_maxwait_seconds) > 1
   for: 10m
   labels:
     severity: warning
@@ -844,7 +844,7 @@ Configure these in Prometheus Alertmanager:
 # 1. Announce maintenance (24h advance)
 
 # 2. Take backup
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 
 # 3. Update packages
 apt update && apt upgrade -y
@@ -871,7 +871,7 @@ reboot
 # A minor upgrade keeps the same data directory; no pg_upgrade.
 
 # 1. Backup
-pgbackrest --stanza=main --type=full backup
+docker exec postgres pgbackrest --stanza=main backup --type=full
 
 # 2. Pull the new image (if you pin a tag or digest, update POSTGRES_IMAGE in .env first)
 docker compose pull postgres

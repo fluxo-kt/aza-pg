@@ -12,7 +12,7 @@ This gets you production-ready PostgreSQL with:
 - Connection pooling (2000 clients → 25 DB connections)
 - Daily backups to S3 (7-day retention, encrypted)
 - Prometheus + Grafana monitoring
-- 40+ PostgreSQL extensions pre-installed
+- The image's PostgreSQL extensions pre-installed ([catalog](EXTENSIONS.md))
 
 ---
 
@@ -221,7 +221,7 @@ Skip this step to run the published `ghcr.io/fluxo-kt/aza-pg:18` (the compose de
 **4.1 Clone repository locally (on your machine)**
 
 ```bash
-git clone https://github.com/yourusername/aza-pg.git
+git clone https://github.com/fluxo-kt/aza-pg.git
 cd aza-pg
 ```
 
@@ -301,6 +301,7 @@ PGBOUNCER_MAX_CLIENT_CONN=2000
 # Monitoring Configuration
 MONITORING_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
 GRAFANA_ADMIN_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
+GRAFANA_ROOT_URL=https://grafana.yourdomain.com
 
 # Hetzner S3 Configuration (for backups)
 S3_ENDPOINT=fsn1.your-objectstorage.hetzner.cloud
@@ -396,7 +397,7 @@ psql -U postgres -c "SHOW shared_buffers;"
 # Expected: ~1280MB (1.25GB = 25% of 5GB)
 
 psql -U postgres -c "SHOW max_connections;"
-# Expected: 200 (web workload type)
+# Expected: 170 (web workload's 200, scaled to 85% below 8 GB of RAM)
 
 psql -U postgres -c "SHOW random_page_cost;"
 # Expected: 1.1 (SSD optimized)
@@ -417,7 +418,7 @@ docker exec postgres psql -U postgres -c "SHOW random_page_cost;"
 
 **6.1 Create monitoring database user**
 
-In Coolify UI, execute in postgres container:
+The password must equal `MONITORING_PASSWORD`: the postgres-exporter logs in with it. In Coolify UI, execute in postgres container:
 
 ```bash
 psql -U postgres -c "
@@ -454,25 +455,15 @@ Login:
 - Username: `admin`
 - Password: Value from `GRAFANA_ADMIN_PASSWORD` in environment variables
 
-**6.3 Add Prometheus datasource**
+**6.3 Datasource and dashboard**
 
-1. Go to: Configuration → Data Sources → Add data source
-2. Select: Prometheus
-3. URL: `http://prometheus:9090`
-4. Click: Save & Test
+Nothing to add by hand: `grafana/provisioning/` provisions the `Prometheus` datasource (`http://prometheus:9090`) and the "PostgreSQL Overview" dashboard.
 
-**6.4 Import PostgreSQL dashboard**
-
-1. Go to: Dashboards → Import
-2. Enter ID: `14114`
-3. Select Prometheus datasource
-4. Click: Import
-
-**6.5 Verify metrics**
+**6.4 Verify metrics**
 
 Check dashboard shows:
 
-- PostgreSQL version: 18.1
+- PostgreSQL version: 18.x
 - Uptime: >0
 - Connections: 1-5 (just monitoring)
 - QPS: 0-10 (background queries)
@@ -579,13 +570,13 @@ Access Postgresus:
 In Coolify UI, execute in pgbouncer container:
 
 ```bash
-psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;"
+psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 ```
 
 **Bare VPS Alternative:**
 
 ```bash
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;"
 ```
 
 **Expected output:**
@@ -835,7 +826,9 @@ CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'SECURE_REPLICATION_P
 EOF
 ```
 
-**12.2 On Primary: Configure pg_hba.conf**
+**12.2 On Primary: Publish the port on the private network and configure pg_hba.conf**
+
+The phase 1 compose file publishes PostgreSQL on `127.0.0.1` only, so the replica cannot reach it. In the `postgres` service change the port mapping to `"10.0.0.2:5432:5432"` and redeploy (details: [phase 2 README](../deployments/phase2-dual-vps/README.md)).
 
 ```bash
 echo 'host replication replicator 10.0.0.3/32 scram-sha-256' >> "$PGDATA/pg_hba.conf"
@@ -1018,7 +1011,7 @@ docker exec postgres psql -U postgres -t -c "SELECT pg_size_pretty(pg_database_s
 echo ""
 
 echo "4. PgBouncer Pools"
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -t -c "SHOW POOLS;"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -t -c "SHOW POOLS;"
 echo ""
 
 echo "5. Last Backup (check Postgresus UI)"
@@ -1261,7 +1254,7 @@ psql -U postgres -c "SELECT query, calls, total_exec_time, mean_exec_time FROM p
 psql -U postgres -c "SELECT count(*) FROM pg_stat_activity;"
 
 # Check PgBouncer wait queue
-docker exec pgbouncer psql -h localhost -p 6432 -U postgres -c "SHOW POOLS;" | grep -v " 0 |" | grep -v "maxwait"
+docker exec pgbouncer psql -h localhost -p 6432 -U postgres -d pgbouncer -c "SHOW POOLS;" | grep -v " 0 |" | grep -v "maxwait"
 
 # Check cache hit ratio
 psql -U postgres -c "SELECT sum(blks_hit)::float / (sum(blks_hit) + sum(blks_read)) AS cache_hit_ratio FROM pg_stat_database;"
@@ -1468,7 +1461,7 @@ All configuration files are in:
 
 - `deployments/phase1-single-vps/` - Single VPS setup
 - `deployments/phase2-dual-vps/` - Replication setup
-- `scripts/` - Automation scripts
+- `deployments/phase1-single-vps/scripts/` - Setup, hardening and health-check scripts
 
 **Key files to copy to Coolify:**
 

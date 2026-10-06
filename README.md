@@ -22,7 +22,7 @@ PostgreSQL 18 with auto-configuration, comprehensive extensions, and deployment 
 
 ## Extensions
 
-Comprehensive extension catalog across AI/ML, time-series, search, security, and operations categories. Includes builtin contrib modules. Multiple extensions preloaded by default (see docs). See "Popular Use Cases" below for examples.
+Extensions for vector search, time series, full-text search, security and operations, plus PostgreSQL contrib modules. Current counts of extensions, tools and preloaded libraries: [docs/.generated/docs-data.json](docs/.generated/docs-data.json).
 
 Complete list: `docker run --rm <image> cat /etc/postgresql/version-info.txt`
 
@@ -79,8 +79,8 @@ amd64 + arm64. Multi-stage build: extensions compile in builder stages, and the 
 ### Setup
 
 ```bash
-docker network create monitoring
-bun run build  # 2min with remote cache
+docker network create monitoring  # primary and replica stacks attach exporters to this external network
+bun run build
 docker run --rm aza-pg:pg18 psql --version
 ```
 
@@ -145,7 +145,7 @@ scrape_configs:
 ## Build & Test
 
 ```bash
-bun run build                # 2min with remote cache
+bun run build                                       # Build the image (aza-pg:pg18)
 bun run test:all                                    # Full suite
 bun run validate                                    # Validation only (fast)
 bun scripts/docker/validate-published-image-artifacts.ts  # Validate published image
@@ -175,7 +175,8 @@ See [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).
 **Database Management:**
 
 ```bash
-# Backup database
+# Backup database (pg_dump; reads PGHOST/PGPORT/PGUSER/PGPASSWORD). The dump does not contain the
+# pgsodium root key: keep a copy of it, or Vault secrets will not decrypt after restore (docs/PGSODIUM-SETUP.md)
 bun scripts/tools/backup-postgres.ts mydb backup.sql.gz
 
 # Restore from backup
@@ -185,7 +186,7 @@ bun scripts/tools/restore-postgres.ts backup.sql.gz mydb
 bun scripts/tools/promote-replica.ts -c replica-container
 
 # Generate SSL certificates (development)
-bun scripts/tools/generate-ssl-certs.ts
+bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs
 ```
 
 ⚠️ **CRITICAL:** Replica promotion is a one-way operation. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for safety warnings, detailed usage, troubleshooting, and best practices.

@@ -23,7 +23,7 @@ This document describes how pgflow (Supabase's workflow orchestration extension)
 
 2. **Security Patches** (`docker/postgres/pgflow/security-patches.sql`)
    - Fixes search_path hijacking vulnerabilities (AZA-PGFLOW-001, AZA-PGFLOW-002)
-   - Applied at runtime after pgflow schema loads
+   - Applied right after the pgflow schema: by `05-pgflow-init.sh` at initdb, and by `pgflow-upgrade`
 
 `pgflow.is_local()` is upstream's: it returns true only when `app.settings.jwt_secret` equals the Supabase CLI's
 built-in local secret, so on aza-pg it is false. That is the production-safe mode: when a worker deploys a flow whose
@@ -106,71 +106,30 @@ CREATE DATABASE my_app;
 -- 2. Connect to new database
 \c my_app
 
--- 3. Install required extensions (pgflow prerequisites)
-CREATE EXTENSION IF NOT EXISTS pgmq;          -- Optional: Message queue for realtime.send() degradation
-CREATE EXTENSION IF NOT EXISTS pg_net;        -- Optional: HTTP webhooks via realtime.send()
-CREATE EXTENSION IF NOT EXISTS supabase_vault;  -- Optional: Credential storage (pgflow works without it)
-
--- 4. Install pgflow schema
+-- 3. Install pgflow schema (schema.sql creates pgmq and pg_net itself, and supabase_vault/pg_cron where they can load)
 \i /opt/pgflow/schema.sql
 \i /opt/pgflow/security-patches.sql
 
--- 5. Verify installation
+-- 4. Verify installation
 SELECT obj_description('pgflow'::regnamespace);  -- pgflow <version>
 
--- 6. pgflow is now ready - use the DSL or SQL API
+-- 5. pgflow is now ready - use the DSL or SQL API
 ```
 
 ### Creating and Running Workflows
 
 pgflow uses a **TypeScript DSL** for workflow definition. Direct SQL manipulation of pgflow tables is not recommended.
 
-**Recommended approach** - Use the official TypeScript packages:
-
-```bash
-bun add @pgflow/dsl @pgflow/client
-```
-
-**TypeScript Example**:
-
-```typescript
-import { Flow } from "@pgflow/dsl";
-import { createClient } from "@pgflow/client";
-
-// Define flow with typed input
-interface WelcomeInput {
-  userId: number;
-}
-
-const welcomeFlow = new Flow<WelcomeInput>({ slug: "welcome-user" }).step(
-  { slug: "send-email" },
-  async (input) => {
-    // Call external API to send welcome email
-    const response = await fetch("https://api.example.com/send-welcome", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: input.userId }),
-    });
-    return await response.json();
-  }
-);
-
-// Initialize pgflow client
-const pgflowClient = createClient({
-  connectionString: "postgresql://postgres:secret@localhost:5432/postgres",
-});
-
-// Start flow and wait for completion
-const run = await pgflowClient.startFlow("welcome-user", { userId: 123 });
-const result = await pgflowClient.waitForStatus(run.run_id, "completed");
-console.log("Flow completed:", result);
-```
+Flows are defined with `@pgflow/dsl` and their step handlers run in a pgflow worker; see the official docs below. `@pgflow/client` takes a supabase-js client and gets live progress from Supabase Realtime broadcasts, which this image replaces with the `realtime.send()` stub, so on aza-pg follow runs through [Event Broadcasting](#event-broadcasting) or by querying `pgflow.runs`.
 
 **SQL API** (advanced usage):
 
 ```sql
 -- Create flow
 SELECT pgflow.create_flow('my-flow', 3, 5, 60);
+
+-- Start a run
+SELECT * FROM pgflow.start_flow('my-flow', '{"userId": 123}'::jsonb);
 
 -- View flows
 SELECT * FROM pgflow.flows;
@@ -254,7 +213,7 @@ Content-Type: application/json
 -- PUBLIC execution is revoked by default
 REVOKE EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) FROM PUBLIC;
 
--- Only postgres superuser has access
+-- Superusers bypass the check
 -- Application roles must be explicitly granted
 GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_role;
 ```
@@ -356,9 +315,7 @@ If missing, the realtime stub was not installed during initialization. This scri
 docker exec <container-name> bash /docker-entrypoint-initdb.d/04a-pgflow-realtime-stub.sh
 ```
 
-Note: This script modifies template1 and requires PostgreSQL superuser privileges. It's normally executed automatically during container initialization.
-
-Note: This script sets custom PostgreSQL parameters and requires superuser privileges. It's normally executed automatically during container initialization.
+Note: the script installs into template1 and `POSTGRES_DB`, and needs superuser privileges.
 
 ### Issue: Permission denied on realtime.send()
 
@@ -387,28 +344,11 @@ GRANT EXECUTE ON FUNCTION realtime.send(jsonb, text, text, boolean) TO my_app_ro
 
 The pgflow version an image ships is listed in `CHANGELOG.md` per release and in `/etc/postgresql/version-info.txt` inside the image; it comes from the `pgflow` tag in `scripts/extensions/manifest-data.ts`. Use `@pgflow/client` and `@pgflow/dsl` of the same version.
 
-## Performance Considerations
+## Choosing an Event Layer
 
-### pg_notify
-
-- **Latency**: <1ms (immediate)
-- **Throughput**: 1000s/sec
-- **Persistence**: None (in-memory only)
-- **Best For**: Real-time UI updates, single-server deployments
-
-### pgmq
-
-- **Latency**: ~10ms (queue write)
-- **Throughput**: 100s-1000s/sec
-- **Persistence**: Durable (table-backed)
-- **Best For**: Reliable event processing, work queues
-
-### pg_net Webhooks
-
-- **Latency**: ~50-500ms (HTTP round-trip)
-- **Throughput**: 10s-100s/sec
-- **Persistence**: Best-effort (no retry on failure)
-- **Best For**: External system integration, audit trails
+- **pg_notify**: immediate, not persisted; listeners must be connected. Real-time UI updates.
+- **pgmq**: durable, table-backed queue. Reliable event processing.
+- **pg_net webhooks**: asynchronous HTTP POST after commit, no retry on failure. External system integration.
 
 ## References
 
@@ -425,6 +365,6 @@ Found a bug or have a suggestion? Please file an issue at: [aza-pg/issues](https
 When reporting pgflow issues, include:
 
 - aza-pg image version
-- pgflow version (check `/opt/pgflow/schema.sql` header or `/opt/pgflow/security-patches.sql`)
+- pgflow version (`SELECT obj_description('pgflow'::regnamespace);`)
 - Error message and stack trace
 - Steps to reproduce

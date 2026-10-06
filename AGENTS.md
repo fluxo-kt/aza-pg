@@ -85,7 +85,7 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 - **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
 - **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild → **also update `tests/regression/extensions/EXTNAME/expected/basic.out`** for any extension whose version string is hard-coded in that file (e.g., `extname | 1.2.3` lines); stale expected outputs cause nightly regression failures
-- **PGDG versions**: Both `source.tag` AND `pgdgVersion` must match semantically — validated against actual PGDG repository via `scripts/extensions/validate-pgdg-versions.ts` (runs in `bun run validate`, prevents silent apt-get failures)
+- **PGDG versions**: `pgdgVersion` must be the version the PGDG repo serves — `scripts/extensions/validate-pgdg-versions.ts` (in `bun run validate`) checks it, preventing silent apt-get failures. Keep `source.tag` at the same upstream version by hand: check-updates compares it with upstream tags, and nothing checks the pair
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, pgbadger, wal2json, pg_safeupdate)
 - **Container teardown**: remove containers with `docker rm -f -v` — the `-v` drops PG18's anonymous `/var/lib/postgresql` PGDATA volume (named volumes always survive); omitting it orphans one per teardown → silent multi-GB bloat. Enforced by `Docker Volume Leak Guard` in `validate:all`; reclaim accumulated artifacts with `bun run cleanup` (marker-scoped via `app.aza_pg_custom` + OCI title, safe on shared hosts)

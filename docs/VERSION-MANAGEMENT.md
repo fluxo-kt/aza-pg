@@ -35,7 +35,7 @@ The aza-pg project uses **one authoritative source** for all version information
 - Each extension entry defines its git source (repository, tag/ref)
 - PGDG-installed extensions additionally include a `pgdgVersion` field
 - The `pgdgVersion` semantic version MUST match the `source.tag` version
-- Version consistency is automatically validated at build time
+- `bun run validate` checks each `pgdgVersion` against the PGDG repo; the tag/version pair is kept in step by hand
 
 **Generated artifacts** (never edit directly):
 
@@ -157,7 +157,7 @@ docker run --rm postgres:18-trixie bash -c "
 
 #### Step 2: Update manifest-data.ts (Both Fields!)
 
-**CRITICAL:** Update BOTH `source.tag` AND `pgdgVersion` in the same entry. Version consistency is automatically validated.
+**CRITICAL:** Update BOTH `source.tag` AND `pgdgVersion` in the same entry. `bun run validate` checks `pgdgVersion` against the PGDG repo; nothing checks the pair, so keep the tag in step by hand.
 
 ```typescript
 // File: scripts/extensions/manifest-data.ts
@@ -174,7 +174,7 @@ docker run --rm postgres:18-trixie bash -c "
 }
 ```
 
-**Validation:** The semantic version from `pgdgVersion` (e.g., "0.8.1") must match `source.tag` (e.g., "v0.8.1"). This is enforced by `validate-pgdg-versions.ts`.
+**Validation:** The semantic version from `pgdgVersion` (e.g., "0.8.1") must match `source.tag` (e.g., "v0.8.1"): check-updates compares the tag with upstream, so a stale tag misreports updates. `validate-pgdg-versions.ts` checks only that `pgdgVersion` is what the PGDG repo serves.
 
 #### Step 3: Regenerate and Validate
 
@@ -907,7 +907,7 @@ git ls-remote https://github.com/owner/repo.git refs/tags/v1.2.3
 
 1. Edit version in `manifest-data.ts` (both `source.tag` AND `pgdgVersion` for PGDG extensions)
 2. Run `bun run generate` to propagate to the Dockerfile, manifests and docs
-3. Run `bun run validate` to verify (includes automatic PGDG version consistency check)
+3. Run `bun run validate` to verify (includes the check that each `pgdgVersion` exists in the PGDG repo)
 4. Commit changes (both source and generated files)
 
-**Key principle:** Generated artifacts are committed to git for reproducibility. Always regenerate after version changes. Version consistency between `source.tag` and `pgdgVersion` is enforced automatically.
+**Key principle:** Generated artifacts are committed to git for reproducibility. Always regenerate after version changes.

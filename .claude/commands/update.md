@@ -259,20 +259,6 @@ actions-up --yes
 This updates the `uses:` SHA in every workflow and composite action. It will report how many
 actions were updated and how many were **breaking** (major version bumps).
 
-**⚠️ MANDATORY held action — `anthropics/claude-code-action`**: this MUST stay pinned at `v1.0.123`
-(the `v1.0.13x` line is unreliable/malfunctioning). The DURABLE control is `actions-up`'s intrinsic
-inline ignore directive — a `--exclude` CLI flag is fragile (one forgotten flag re-bumps it). A
-`# actions-up-ignore-next-line` comment sits directly above each held `uses:` line (in
-`.github/workflows/ai-claude-code-review.yml` and `ai-claude_comment.yml`), so the SHA is skipped on
-every run regardless of flags. actions-up's ignore conventions (v1.14+): `# actions-up-ignore-file`,
-`# actions-up-ignore-next-line`, inline `# actions-up-ignore` (conflicts with the `# vX.Y.Z` comment —
-prefer next-line), and `# actions-up-ignore-start`/`-end`. After running actions-up, CONFIRM the hold
-held: `actions-up --dry-run` must report "All actions are up to date" (it will not list
-claude-code-action). If a directive is ever lost and it gets bumped, revert both `uses:` lines to
-`@51ea8ea73a139f2a74ff649e3092c25a904aed7e # v1.0.123` (verify the SHA with
-`git ls-remote https://github.com/anthropics/claude-code-action.git 'refs/tags/v1.0.123^{}'`) and
-restore the `# actions-up-ignore-next-line` directive.
-
 ### MANDATORY: Identify and Audit Breaking Changes
 
 `actions-up` reports breaking changes (major version jumps) separately. **These require manual

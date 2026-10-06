@@ -411,12 +411,16 @@ async function validate(
       command: ["bun", "scripts/ci/validate-doc-links.ts"],
       description: "Documentation internal link validation",
       required: true,
+      // Static and ~0.1 s: a heading removed from a doc breaks its table of contents, caught before CI
+      fast: true,
     },
     {
       name: "Base Image SHA",
       command: ["bun", "scripts/validate-base-image-sha.ts", "--check", "--require-latest-minor"],
-      description: "Base image SHA validation (warn if stale)",
-      required: false,
+      // Blocking: an unresolvable digest or a PostgreSQL minor behind the floating major tag fails (a stale same-tag
+      // digest only warns, --check). CI's validate job runs it here, once.
+      description: "Base image digest resolvable and on the latest PostgreSQL minor",
+      required: true,
       requiresDocker: true,
       envOverride: "ALLOW_MISSING_DOCKER",
     },

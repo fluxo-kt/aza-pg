@@ -105,9 +105,6 @@ jobs:
         env:
           CI: "true"
 
-      - name: Validate pinned base image digest is resolvable
-        run: bun scripts/validate-base-image-sha.ts --check --require-latest-minor
-
       - name: Repository health check
         run: bun scripts/ci/repository-health-check.ts
 

@@ -10,6 +10,10 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
+### The pg_stat_statements check misses its marker intermittently
+
+`testPgStatStatements` in `scripts/docker/test-image-lib.ts` can read `calls = 0` for a query it just ran, then pass on rerun; no cause is known. Its failure prints pg_stat_statements' row and query-text counts: rows present but texts missing points at the query-text file being discarded, too few rows at eviction. Fix the cause that report names; do not retry the check.
+
 ### Manual image builds fail on branch names containing `/`
 
 `.github/workflows/build-postgres-image.yml` tags images `dev-${{ github.ref_name }}`; a `/` in the branch name makes an invalid image reference and the run fails at the merge step. Fix: compute one sanitised tag in an early step and use it everywhere.

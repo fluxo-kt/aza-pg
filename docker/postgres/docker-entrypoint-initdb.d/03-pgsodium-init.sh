@@ -1,9 +1,10 @@
 #!/bin/bash
 #
-# pgsodium Server Secret Initialization (Optional)
-# ================================================
-# Initializes pgsodium server secret key required for supabase_vault encryption.
-# This script creates the master encryption key used by pgsodium for envelope encryption.
+# Optional pgsodium key row
+# =========================
+# Creates a pgsodium key row named 'pgsodium_root' (pgsodium.create_key) for code that looks keys up by that name.
+# Neither pgsodium nor Vault needs it: both derive their keys from the root key the server loads at start
+# ($PGDATA/pgsodium_root.key or PGSODIUM_KEY_FILE), which is why the script is off by default.
 #
 # Gating:
 # - Only runs if ENABLE_PGSODIUM_INIT=true (default: disabled)
@@ -14,10 +15,7 @@
 # - pgsodium extension will be created by this script
 # - Runs after baseline extension creation
 #
-# Security Note:
-# - Server secret is stored in pgsodium.key table
-# - Required for supabase_vault secret encryption/decryption
-# - Without this, supabase_vault operations will fail with "no server secret key defined"
+# "no server secret key defined" from Vault means pgsodium or supabase_vault is not preloaded; this row does not fix it.
 
 set -euo pipefail
 

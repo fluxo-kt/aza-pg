@@ -452,15 +452,18 @@ esac
 # Keep pgoutput in any override (here, -c or ALTER SYSTEM): built-in logical replication needs it.
 OUTPUT_PLUGIN_LIBRARIES=${POSTGRES_OUTPUT_PLUGIN_LIBRARIES:-pgoutput,test_decoding,wal2json}
 
-# Override listen_addresses based on POSTGRES_BIND_IP
-# Default: 127.0.0.1 (localhost only, secure)
-# Network replication: Set POSTGRES_BIND_IP to specific IP or 0.0.0.0 for all interfaces
+# listen_addresses comes from POSTGRES_BIND_IP and defaults to 127.0.0.1. Inside a container that means only processes
+# in the same container can connect: no published port and no other container reaches it. The default stays closed on
+# purpose: `-p 5432:5432` publishes on every host interface and bypasses host firewalls such as ufw, so one copied
+# `docker run` would expose the database. Reaching it takes an explicit POSTGRES_BIND_IP=0.0.0.0 (or a specific
+# address), which the stacks set; the log line below names that fix, because the failure is otherwise only
+# "connection refused".
 LISTEN_ADDR="${POSTGRES_BIND_IP:-127.0.0.1}"
 # Always set listen_addresses explicitly: initdb writes listen_addresses='*' into postgresql.conf
 if [ "$LISTEN_ADDR" != "127.0.0.1" ]; then
     echo "[POSTGRES] [AUTO-CONFIG] Network mode enabled → listen_addresses=${LISTEN_ADDR}"
 else
-    echo "[POSTGRES] [AUTO-CONFIG] Secure mode (localhost only) → listen_addresses=${LISTEN_ADDR}"
+    echo "[POSTGRES] [AUTO-CONFIG] Secure mode (localhost only) → listen_addresses=${LISTEN_ADDR}; only this container can connect. Set POSTGRES_BIND_IP=0.0.0.0 to accept connections through a published port or from other containers"
 fi
 
 echo "[POSTGRES] [AUTO-CONFIG] RAM: ${TOTAL_RAM_MB}MB ($RAM_SOURCE), CPU: ${CPU_CORES} cores ($CPU_SOURCE), Workload: ${WORKLOAD_TYPE}, Storage: ${STORAGE_TYPE} → shared_buffers=${SHARED_BUFFERS_MB}MB, effective_cache_size=${EFFECTIVE_CACHE_MB}MB, maintenance_work_mem=${MAINTENANCE_WORK_MEM_MB}MB, work_mem=${WORK_MEM_MB}MB, max_connections=${MAX_CONNECTIONS}, wal_buffers=${WAL_BUFFERS_MB}MB, checkpoint_completion_target=${CHECKPOINT_COMPLETION_TARGET}, min_wal_size=${MIN_WAL_SIZE_MB}MB, max_wal_size=${MAX_WAL_SIZE_MB}MB, random_page_cost=${RANDOM_PAGE_COST}, default_statistics_target=${DEFAULT_STATISTICS_TARGET}, io_workers=${IO_WORKERS}, wal_level=${WAL_LEVEL}"

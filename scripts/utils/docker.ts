@@ -394,36 +394,56 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
  * it, and a killed `docker run` or `compose up` whose request the daemon had already accepted creates its container
  * after the listing. So passes repeat until a listing comes back empty, bounded by `deadlineMs`; what is left then
  * is returned, never assumed gone. Matching is done here, not by Docker's `name` filter, whose semantics differ
- * between containers, volumes and networks.
+ * between containers, volumes and networks. A listing that fails (daemon unreachable or overloaded) says nothing
+ * about what is left, so it is retried like a leftover and reported in `remaining` at the deadline. Every docker call
+ * is killed at the deadline, so a hung daemon cannot stall the caller past it.
  */
 export async function sweepTestScope(
   names: RegExp,
   deadlineMs = 30_000
 ): Promise<{ found: string[]; remaining: string[] }> {
-  // `docker ps` names its field Names; volume and network ls name it Name.
+  const deadline = Date.now() + deadlineMs;
+  const untilDeadline = () => Math.max(1, deadline - Date.now());
+  // `docker ps` names its field Names; volume and network ls name it Name. A failed listing yields its error text.
   const list = async (cmd: string[], field = "Name") => {
     const proc = spawn(["docker", ...cmd, "--format", `{{.${field}}}`], {
       stdout: "pipe",
-      stderr: "ignore",
+      stderr: "pipe",
+      timeout: untilDeadline(),
     });
-    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    return out.split("\n").filter((name) => names.test(name));
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (code !== 0) {
+      const why = proc.signalCode
+        ? "no answer before the sweep deadline"
+        : err.trim() || `exit ${code}`;
+      return { names: [], failure: `docker ${cmd.join(" ")}: ${why}` };
+    }
+    return { names: out.split("\n").filter((name) => names.test(name)), failure: null };
   };
   const remove = async (cmd: string[], targets: string[]) => {
     if (targets.length > 0)
-      await spawn(["docker", ...cmd, ...targets], { stdout: "ignore", stderr: "ignore" }).exited;
+      await spawn(["docker", ...cmd, ...targets], {
+        stdout: "ignore",
+        stderr: "ignore",
+        timeout: untilDeadline(),
+      }).exited;
   };
   const found = new Set<string>();
-  const deadline = Date.now() + deadlineMs;
   for (let pass = 0; ; pass++) {
-    const [containers, volumes, networks] = await Promise.all([
+    const listings = await Promise.all([
       list(["ps", "-a"], "Names"),
       list(["volume", "ls"]),
       list(["network", "ls"]),
     ]);
+    const [{ names: containers }, { names: volumes }, { names: networks }] = listings;
+    const failures = listings.flatMap((l) => (l.failure ? [l.failure] : []));
     const present = [...containers, ...volumes, ...networks];
-    if (present.length === 0 || Date.now() >= deadline)
-      return { found: [...found], remaining: present };
+    if ((present.length === 0 && failures.length === 0) || Date.now() >= deadline)
+      return { found: [...found], remaining: [...present, ...failures] };
     for (const name of present) found.add(name);
     // Poll pace only: a removal that just failed under load rarely succeeds at once.
     if (pass > 0) await Bun.sleep(1000);

@@ -23,6 +23,11 @@
 
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
+import {
+  loadManifest,
+  type Manifest,
+  type ResolvedEntry,
+} from "../config-generator/manifest-loader";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
 import { error, info, section, success } from "../utils/logger";
 
@@ -30,52 +35,8 @@ import { error, info, section, success } from "../utils/logger";
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
-
-interface BuildSpec {
-  type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
-  subdir?: string;
-  features?: string[];
-  noDefaultFeatures?: boolean;
-  mesonOptions?: string[];
-  script?: string;
-  patches?: string[];
-}
-
-interface ManifestEntry {
-  name: string;
-  kind?: "extension" | "tool" | "builtin";
-  install_via?: string;
-  pgdgVersion?: string;
-  pgdgPackage?: string;
-  perconaVersion?: string;
-  perconaPackage?: string;
-  /** Timescale repository package name (e.g., timescaledb-2-postgresql-18) */
-  timescalePackage?: string;
-  /** Timescale repository package version (e.g., 2.24.0~debian13-1801) */
-  timescaleVersion?: string;
-  soFileName?: string;
-  binaryPath?: string;
-  postgresOwnedDirs?: string[];
-  enabled?: boolean;
-  build?: BuildSpec;
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-    preloadLibraryName?: string;
-  };
-  source: {
-    tag?: string;
-    ref?: string;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-  sourceLibraries?: Record<string, unknown>;
-}
 
 /**
  * Validate package names to ensure they only contain safe characters
@@ -101,7 +62,7 @@ function validatePackageName(packageName: string, context: string): void {
  * library, fails the build instead of the operator's first CREATE EXTENSION. The file name comes from the
  * entry's soFileName and is interpolated into the shell command, hence the strict pattern.
  */
-function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string): string[] {
+function soFileChecks(entries: ResolvedEntry[], source: string, pgMajor: string): string[] {
   return entries.map((entry) => {
     if (!entry.soFileName) {
       throw new Error(
@@ -117,18 +78,6 @@ function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string)
     }
     return `test -f /usr/lib/postgresql/${pgMajor}/lib/${entry.soFileName}`;
   });
-}
-
-/**
- * Read and parse manifest
- */
-async function readManifest(): Promise<Manifest> {
-  if (!(await Bun.file(MANIFEST_PATH).exists())) {
-    throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
-  }
-
-  const content = Bun.file(MANIFEST_PATH);
-  return (await content.json()) as Manifest;
 }
 
 /**
@@ -359,7 +308,7 @@ function safeAbsolutePath(path: string | undefined, context: string): string {
  * binaryPath into the final image (a whole-directory copy of /usr/local/bin once shipped bun and the
  * build scripts), and the final stage fails the build when the binary misses a shared library.
  */
-function sourceTools(manifest: Manifest): ManifestEntry[] {
+function sourceTools(manifest: Manifest): ResolvedEntry[] {
   return manifest.entries.filter(
     (e) =>
       e.kind === "tool" &&
@@ -622,7 +571,7 @@ async function generateDockerfile(): Promise<void> {
 
   // Read manifest
   info("Reading manifest...");
-  const manifest = await readManifest();
+  const manifest = await loadManifest(REPO_ROOT);
   info(`Manifest loaded: ${manifest.entries.length} total entries`);
 
   // Generate filtered manifests

@@ -6,19 +6,8 @@
 
 import { dirname, join } from "node:path";
 import { spawn } from "bun";
-import {
-  MANIFEST_ENTRIES,
-  SOURCE_LIBRARIES,
-  type ManifestEntry,
-  type SourceSpec,
-} from "./manifest-data";
-
-type ResolvedSource =
-  | { type: "builtin" }
-  | { type: "git"; repository: string; tag: string; commit: string }
-  | { type: "git-ref"; repository: string; ref: string; commit: string };
-
-type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSource };
+import type { Manifest, ResolvedEntry, ResolvedSource } from "../config-generator/manifest-loader";
+import { MANIFEST_ENTRIES, SOURCE_LIBRARIES, type SourceSpec } from "./manifest-data";
 
 async function resolveGitCommit(repo: string, tag: string): Promise<string> {
   const maxAttempts = 3;
@@ -118,7 +107,7 @@ async function main() {
 
   resolved.sort((a, b) => a.name.localeCompare(b.name));
 
-  const manifest = {
+  const manifest: Manifest = {
     entries: resolved,
     sourceLibraries: SOURCE_LIBRARIES,
   };

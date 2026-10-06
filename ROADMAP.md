@@ -10,9 +10,9 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
-### Scripts redeclare the manifest shape
+### Docker suites carry their own psql wrapper
 
-Several scripts declare their own `ManifestEntry` instead of importing the one in `scripts/extensions/manifest-data.ts`, so a renamed manifest field still compiles there and reads `undefined`. Several Docker suites likewise carry their own psql wrapper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`.
+Several Docker suites declare their own psql helper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`, so a fix to one (quoting, session handling, error reporting) misses the others.
 
 ### Unwired scripts
 

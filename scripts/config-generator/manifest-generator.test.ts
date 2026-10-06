@@ -12,10 +12,11 @@ import {
   getDefaultSharedPreloadLibraries,
   type Manifest,
   type PreloadCandidate,
+  type ResolvedEntry,
 } from "./manifest-loader";
-import { MANIFEST_ENTRIES, type ManifestEntry } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "../extensions/manifest-data";
 
-function entry(name: string, fields: Partial<ManifestEntry> = {}): ManifestEntry {
+function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry {
   return {
     name,
     kind: "extension",
@@ -26,8 +27,8 @@ function entry(name: string, fields: Partial<ManifestEntry> = {}): ManifestEntry
   };
 }
 
-function manifest(entries: ManifestEntry[]): Manifest {
-  return { generatedAt: "2025-01-01T00:00:00Z", entries };
+function manifest(entries: ResolvedEntry[]): Manifest {
+  return { entries, sourceLibraries: SOURCE_LIBRARIES };
 }
 
 describe("getDefaultEnabledExtensions", () => {

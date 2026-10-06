@@ -13,57 +13,32 @@
  * Run: bun scripts/docker/generate-image-contents.ts
  */
 
-import { preloadLibraryName } from "../config-generator/manifest-loader";
+import {
+  loadManifest,
+  preloadLibraryName,
+  type Manifest,
+  type ResolvedEntry,
+} from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 
-interface ManifestEntry {
-  name: string;
-  displayName?: string;
-  kind: "extension" | "builtin" | "tool" | "module";
-  category?: string;
-  description?: string;
-  enabled?: boolean;
-  pgdgVersion?: string;
-  source?: {
-    type: string;
-    tag?: string;
-    commit?: string;
-  };
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-    preloadOnly?: boolean;
-    preloadLibraryName?: string;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-  generatedAt?: string;
-}
-
 const REPO_ROOT = join(import.meta.dir, "../..");
 
-async function loadManifest(): Promise<Manifest> {
-  const manifestPath = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
-  const file = Bun.file(manifestPath);
-  return await file.json();
-}
-
-function getVersion(entry: ManifestEntry): string {
-  // Priority: pgdgVersion > source.tag > "builtin"
+/** Display version: `v<version>`, the pinned commit for an untagged git-ref source, or "builtin". */
+function getVersion(entry: ResolvedEntry): string {
+  // Priority: pgdgVersion > source tag > pinned commit > "builtin"
   if (entry.pgdgVersion) {
     // Extract version from PGDG format like "2.19-1.pgdg13+1"
     const match = entry.pgdgVersion.match(/^([\d.]+)/);
-    return match?.[1] ?? entry.pgdgVersion;
+    return `v${match?.[1] ?? entry.pgdgVersion}`;
   }
-  if (entry.source?.tag) {
+  if (entry.source.type === "git") {
     // Strip a release prefix and reduce scoped monorepo tags to the package version.
     const cleaned = entry.source.tag.replace(/^v/, "");
     const scopedVersion = cleaned.split("@").pop();
-    return cleaned.includes("@") && scopedVersion ? scopedVersion : cleaned;
+    return `v${cleaned.includes("@") && scopedVersion ? scopedVersion : cleaned}`;
   }
+  if (entry.source.type === "git-ref") return entry.source.commit.slice(0, 8);
   return "builtin";
 }
 
@@ -104,8 +79,7 @@ function generateContents(manifest: Manifest): string {
   );
 
   for (const ext of sortedExtensions) {
-    const version = getVersion(ext);
-    const versionStr = version !== "builtin" ? `v${version}` : "builtin";
+    const versionStr = getVersion(ext);
     const line = `  ${ext.name.padEnd(28)} ${versionStr.padEnd(14)} ${ext.category ?? ""}`;
     lines.push(line.trimEnd());
   }
@@ -120,8 +94,7 @@ function generateContents(manifest: Manifest): string {
     lines.push("");
 
     for (const schema of sqlOnlySchemas.sort((a, b) => a.name.localeCompare(b.name))) {
-      const version = getVersion(schema);
-      const versionStr = version !== "builtin" ? `v${version}` : "builtin";
+      const versionStr = getVersion(schema);
       lines.push(
         `  ${schema.name.padEnd(28)} ${versionStr.padEnd(14)} ${schema.category ?? ""}`.trimEnd()
       );
@@ -137,7 +110,7 @@ function generateContents(manifest: Manifest): string {
 
   for (const tool of tools.sort((a, b) => a.name.localeCompare(b.name))) {
     const version = getVersion(tool);
-    const versionStr = version !== "builtin" ? `v${version}` : "";
+    const versionStr = version === "builtin" ? "" : version;
     lines.push(`  ${tool.name.padEnd(28)} ${versionStr}`);
   }
   lines.push("");
@@ -171,7 +144,7 @@ function generateContents(manifest: Manifest): string {
 }
 
 async function main(): Promise<string> {
-  const manifest = await loadManifest();
+  const manifest = await loadManifest(REPO_ROOT);
   const contents = generateContents(manifest);
 
   const outputPath = join(REPO_ROOT, "docker/postgres/IMAGE-CONTENTS.txt");

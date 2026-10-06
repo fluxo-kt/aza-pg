@@ -8,23 +8,8 @@
 
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
+import { loadManifest, type Manifest } from "./config-generator/manifest-loader";
 import { setGitHubOutput, isGitHubActions } from "./utils/github";
-
-interface ManifestEntry {
-  name: string;
-  kind: "extension" | "tool" | "builtin" | "module";
-  enabled?: boolean;
-  runtime?: {
-    defaultEnable?: boolean;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-  [key: string]: unknown;
-}
 
 interface CatalogStats {
   total: number;
@@ -33,27 +18,14 @@ interface CatalogStats {
   extensions: number;
   tools: number;
   builtins: number;
-  modules: number;
   enabledExtensions: number;
   enabledTools: number;
   enabledBuiltins: number;
-  enabledModules: number;
 }
 
 /**
  * Load manifest from JSON file.
  */
-async function loadManifest(): Promise<Manifest> {
-  const manifestPath = resolve(import.meta.dir, "../docker/postgres/extensions.manifest.json");
-  const file = Bun.file(manifestPath);
-
-  if (!(await file.exists())) {
-    throw new Error(`Manifest file not found: ${manifestPath}`);
-  }
-
-  return await file.json();
-}
-
 /**
  * Calculate catalog statistics from manifest.
  */
@@ -65,11 +37,9 @@ function deriveCatalogStats(manifest: Manifest): CatalogStats {
   let extensionCount = 0;
   let toolCount = 0;
   let builtinCount = 0;
-  let moduleCount = 0;
   let enabledExtensionCount = 0;
   let enabledToolCount = 0;
   let enabledBuiltinCount = 0;
-  let enabledModuleCount = 0;
 
   for (const ext of extensions) {
     const isEnabled = ext.enabled !== false;
@@ -95,10 +65,6 @@ function deriveCatalogStats(manifest: Manifest): CatalogStats {
         builtinCount++;
         if (isEnabled) enabledBuiltinCount++;
         break;
-      case "module":
-        moduleCount++;
-        if (isEnabled) enabledModuleCount++;
-        break;
     }
   }
 
@@ -109,11 +75,9 @@ function deriveCatalogStats(manifest: Manifest): CatalogStats {
     extensions: extensionCount,
     tools: toolCount,
     builtins: builtinCount,
-    modules: moduleCount,
     enabledExtensions: enabledExtensionCount,
     enabledTools: enabledToolCount,
     enabledBuiltins: enabledBuiltinCount,
-    enabledModules: enabledModuleCount,
   };
 }
 
@@ -128,11 +92,9 @@ function formatShell(stats: CatalogStats): string {
     `CATALOG_EXTENSIONS=${stats.extensions}`,
     `CATALOG_TOOLS=${stats.tools}`,
     `CATALOG_BUILTINS=${stats.builtins}`,
-    `CATALOG_MODULES=${stats.modules}`,
     `CATALOG_ENABLED_EXTENSIONS=${stats.enabledExtensions}`,
     `CATALOG_ENABLED_TOOLS=${stats.enabledTools}`,
     `CATALOG_ENABLED_BUILTINS=${stats.enabledBuiltins}`,
-    `CATALOG_ENABLED_MODULES=${stats.enabledModules}`,
   ].join("\n");
 }
 
@@ -157,7 +119,6 @@ function formatText(stats: CatalogStats): string {
     `  Extensions: ${stats.extensions} (${stats.enabledExtensions} enabled)`,
     `  Tools: ${stats.tools} (${stats.enabledTools} enabled)`,
     `  Builtins: ${stats.builtins} (${stats.enabledBuiltins} enabled)`,
-    `  Modules: ${stats.modules} (${stats.enabledModules} enabled)`,
   ].join("\n");
 }
 
@@ -180,7 +141,7 @@ async function main() {
 
   if (values.help) {
     console.log(`
-Usage: bun scripts/ci/derive-catalog-stats.ts [options]
+Usage: bun scripts/derive-catalog-stats.ts [options]
 
 Derive catalog statistics from extension manifest.
 
@@ -195,23 +156,23 @@ Output Formats:
 
 Examples:
   # Human-readable output
-  bun scripts/ci/derive-catalog-stats.ts
+  bun scripts/derive-catalog-stats.ts
 
   # JSON output
-  bun scripts/ci/derive-catalog-stats.ts --format=json
+  bun scripts/derive-catalog-stats.ts --format=json
 
   # Shell variables (for GitHub Actions)
-  eval "$(bun scripts/ci/derive-catalog-stats.ts --format=shell)"
+  eval "$(bun scripts/derive-catalog-stats.ts --format=shell)"
   echo "Total: $CATALOG_TOTAL, Enabled: $CATALOG_ENABLED"
 
   # Write to GitHub Actions outputs
-  bun scripts/ci/derive-catalog-stats.ts --format=github-output
+  bun scripts/derive-catalog-stats.ts --format=github-output
     `);
     process.exit(0);
   }
 
   // Load manifest and calculate stats
-  const manifest = await loadManifest();
+  const manifest = await loadManifest(resolve(import.meta.dir, ".."));
   const stats = deriveCatalogStats(manifest);
   const format = values.format as string;
 
@@ -241,11 +202,9 @@ Examples:
       await setGitHubOutput("catalog_extensions", stats.extensions);
       await setGitHubOutput("catalog_tools", stats.tools);
       await setGitHubOutput("catalog_builtins", stats.builtins);
-      await setGitHubOutput("catalog_modules", stats.modules);
       await setGitHubOutput("catalog_enabled_extensions", stats.enabledExtensions);
       await setGitHubOutput("catalog_enabled_tools", stats.enabledTools);
       await setGitHubOutput("catalog_enabled_builtins", stats.enabledBuiltins);
-      await setGitHubOutput("catalog_enabled_modules", stats.enabledModules);
       console.log("✅ Catalog stats written to GitHub outputs");
       break;
 

@@ -18,25 +18,14 @@
  */
 
 import { getErrorMessage } from "./utils/errors";
+import { loadManifest, type ResolvedEntry } from "./config-generator/manifest-loader";
 import { join } from "node:path";
 import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 
 // Derive project root from current file location (scripts/check-size-regression.ts)
 const PROJECT_ROOT = join(import.meta.dir, "..");
-const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 const SIZE_BASELINES_PATH = join(import.meta.dir, "config/size-baselines.json");
-
-interface Extension {
-  name: string;
-  kind: string;
-  enabled?: boolean;
-  soFileName?: string;
-}
-
-interface Manifest {
-  entries: Extension[];
-}
 
 export interface SizeBaseline {
   min: number;
@@ -285,7 +274,7 @@ export function classifySize(
  */
 async function checkExtensionSize(
   imageName: string,
-  extension: Extension,
+  extension: ResolvedEntry,
   baseline: SizeBaseline
 ): Promise<SizeCheckResult> {
   const size = await getSoSize(imageName, extension.name, extension.soFileName);
@@ -322,13 +311,7 @@ async function main() {
   }
 
   // Load manifest to see which extensions are enabled
-  const manifestFile = Bun.file(MANIFEST_PATH);
-  if (!(await manifestFile.exists())) {
-    error(`Manifest not found at ${MANIFEST_PATH}`);
-    process.exit(1);
-  }
-
-  const manifest: Manifest = await manifestFile.json();
+  const manifest = await loadManifest(PROJECT_ROOT);
   const enabledExtensions = manifest.entries.filter((e) => e.enabled !== false);
 
   // Determine which image to check
@@ -354,7 +337,7 @@ async function main() {
   const enabledExtensionByName = new Map(enabledExtensions.map((entry) => [entry.name, entry]));
   const extensionsToCheck = Object.keys(SIZE_BASELINES)
     .map((name) => enabledExtensionByName.get(name))
-    .filter((entry): entry is Extension => entry !== undefined);
+    .filter((entry): entry is ResolvedEntry => entry !== undefined);
 
   if (extensionsToCheck.length === 0) {
     info("No tracked large extensions found in enabled extensions");

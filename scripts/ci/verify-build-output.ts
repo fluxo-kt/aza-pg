@@ -51,11 +51,9 @@ interface CatalogStats {
   CATALOG_EXTENSIONS: number;
   CATALOG_TOOLS: number;
   CATALOG_BUILTINS: number;
-  CATALOG_MODULES: number;
   CATALOG_ENABLED_EXTENSIONS: number;
   CATALOG_ENABLED_TOOLS: number;
   CATALOG_ENABLED_BUILTINS: number;
-  CATALOG_ENABLED_MODULES: number;
 }
 
 async function getCatalogStats(): Promise<CatalogStats> {
@@ -79,11 +77,9 @@ async function getCatalogStats(): Promise<CatalogStats> {
     "CATALOG_EXTENSIONS",
     "CATALOG_TOOLS",
     "CATALOG_BUILTINS",
-    "CATALOG_MODULES",
     "CATALOG_ENABLED_EXTENSIONS",
     "CATALOG_ENABLED_TOOLS",
     "CATALOG_ENABLED_BUILTINS",
-    "CATALOG_ENABLED_MODULES",
   ];
 
   for (const field of requiredFields) {

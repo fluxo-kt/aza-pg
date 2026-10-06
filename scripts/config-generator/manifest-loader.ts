@@ -4,14 +4,24 @@
  */
 
 import { join } from "node:path";
-import type { ManifestEntry } from "../extensions/manifest-data";
+import type { ManifestEntry, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+
+/** A tagged source carries the commit its tag resolved to; the build clones that commit, not the tag. */
+export type ResolvedSource =
+  | { type: "builtin" }
+  | { type: "git"; repository: string; tag: string; commit: string }
+  | { type: "git-ref"; repository: string; ref: string; commit: string };
+
+export type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSource };
 
 /**
- * Manifest structure as stored in JSON file
+ * docker/postgres/extensions.manifest.json as generate-manifest.ts writes it. Readers take this type rather than
+ * declaring their own: a local copy keeps compiling after a manifest field is renamed, then reads `undefined`.
  */
 export interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
+  /** Sorted by name. */
+  entries: ResolvedEntry[];
+  sourceLibraries: typeof SOURCE_LIBRARIES;
 }
 
 /**
@@ -36,7 +46,7 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
 }
 
 /** The entries initdb creates with CREATE EXTENSION in every new database (see isAutoCreated). */
-export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[] {
+export function getDefaultEnabledExtensions(manifest: Manifest): ResolvedEntry[] {
   return manifest.entries.filter(isAutoCreated);
 }
 

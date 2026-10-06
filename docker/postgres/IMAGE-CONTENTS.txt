@@ -14,7 +14,7 @@ EXTENSIONS (CREATE EXTENSION available)
   hypopg                       v1.4.3         performance
   index_advisor                v0.2.0         performance
   pg_cron                      v1.6.8         operations
-  pg_hashids                   builtin        utilities
+  pg_hashids                   8c404dd8       utilities
   pg_jsonschema                v0.3.4         validation
   pg_net                       v0.20.5        integration
   pg_partman                   v5.5.0         maintenance

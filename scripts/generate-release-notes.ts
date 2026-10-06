@@ -36,22 +36,21 @@
 
 import { join } from "node:path";
 import type { ManifestEntry } from "./extensions/manifest-data";
-import { isAutoCreated, isPreloadedByDefault } from "./config-generator/manifest-loader";
+import {
+  isAutoCreated,
+  isPreloadedByDefault,
+  loadManifest,
+  type Manifest,
+} from "./config-generator/manifest-loader";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
-const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 const CHANGELOG_PATH = join(PROJECT_ROOT, "CHANGELOG.md");
 
 // GitHub repository info
 const REPO_OWNER = "fluxo-kt";
 const REPO_NAME = "aza-pg";
 const REGISTRY = `ghcr.io/${REPO_OWNER}/${REPO_NAME}`;
-
-interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
-}
 
 interface Args {
   pgVersion: string;
@@ -957,15 +956,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Read manifest
-  const manifestFile = Bun.file(MANIFEST_PATH);
-  if (!(await manifestFile.exists())) {
-    console.error(`ERROR: Manifest not found at ${MANIFEST_PATH}`);
-    console.error("Run 'bun run generate:manifest' to generate it.");
-    process.exit(1);
-  }
-
-  const manifest: Manifest = await manifestFile.json();
+  const manifest = await loadManifest(PROJECT_ROOT);
 
   // Group extensions by category
   const categoryGroups = groupByCategory(manifest);

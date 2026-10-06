@@ -16,8 +16,9 @@
 
 import { join } from "node:path";
 
+// Its own copy of the manifest shape (scripts/config-generator/manifest-loader.ts owns it): this file runs in a
+// Docker build stage that copies only this script (.dockerignore), so it cannot import one.
 interface Manifest {
-  generatedAt: string;
   entries: Array<{
     name: string;
     displayName?: string;
@@ -81,7 +82,6 @@ try {
   const versionInfo = {
     postgres_version: pgVersion,
     build_type: "single-node",
-    manifest_generated: manifest.generatedAt,
     extensions: {
       total: allEntries.length,
       enabled: enabledEntries.length,
@@ -113,8 +113,6 @@ try {
   lines.push("===============================================================================");
   lines.push(`aza-pg - PostgreSQL ${pgMajor} with Extensions`);
   lines.push("===============================================================================");
-  lines.push("");
-  lines.push(`Manifest Generated: ${manifest.generatedAt}`);
   lines.push("");
 
   // PostgreSQL version (note: actual package version determined at build time)

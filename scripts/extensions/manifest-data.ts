@@ -17,7 +17,7 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.6",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+  baseImageSha: "sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf",
   /**
    * Rust toolchain for the source-built extensions (pgrx). Pinned rather than `stable` so a rebuild compiles with the
    * same compiler and a bump changes the Dockerfile (and with it CI's image key); check-updates.ts reports newer ones.

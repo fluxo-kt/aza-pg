@@ -6,17 +6,19 @@
  * another project's images/volumes can never match:
  *   - images:  dangling images whose OCI label `org.opencontainers.image.title` starts with "aza-pg"
  *              (set in docker/postgres/Dockerfile.template).
- *   - volumes: dangling anonymous volumes holding `.aza-pg-volume` (copied from the image into every new
- *              volume), or, for volumes made by older images, whose PGDATA `postgresql.auto.conf` contains
- *              `app.aza_pg_custom` — the marker ALTER SYSTEM-set by
- *              docker-entrypoint-initdb.d/00-aza-pg-settings.sh specifically to identify aza-pg installs.
  *   - builder: the dedicated `aza-pg-builder` buildx builder + its cache (recreated on next build).
+ *
+ * Volumes are only REPORTED, never removed: dangling anonymous volumes whose PGDATA `postgresql.auto.conf` contains
+ * `app.aza_pg_custom` (ALTER SYSTEM-set by docker-entrypoint-initdb.d/00-aza-pg-settings.sh). That marker proves the
+ * aza-pg image made the volume, not that a test did: an operator who ran the image with `docker run` and later
+ * `docker rm` without -v leaves an identical volume holding a real database. Tests create no such volumes (they put
+ * PGDATA on tmpfs — EPHEMERAL_PGDATA in utils/docker.ts — or use named volumes they remove), so a reported volume is
+ * either an old leak or someone's data, and only a person can tell which.
  *
  * NEVER prunes by type (no `docker image/volume/system prune`): a blunt prune would also delete
  * other projects' orphaned artifacts. Every removal here is positively attributed to aza-pg.
  *
- * The anonymous-volume leak this cleans is fixed at source (dockerCleanup/cleanupContainer pass `-v`);
- * this script reclaims pre-existing accumulation plus artifacts the build inherently leaves behind
+ * This script reclaims artifacts the build inherently leaves behind
  * (superseded images when a tag is rebuilt — `bun run build` already removes those itself — and builder cache).
  *
  * Usage: bun scripts/docker/cleanup-artifacts.ts [--dry-run]
@@ -27,8 +29,6 @@ import { info, section, success, warning } from "../utils/logger";
 
 const AZA_IMAGE_TITLE_PREFIX = "aza-pg";
 const AZA_VOLUME_MARKER = "app.aza_pg_custom";
-/** Shipped in the image's /var/lib/postgresql (Dockerfile.template), so Docker copies it into each new data volume. */
-const AZA_VOLUME_FILE = ".aza-pg-volume";
 const AZA_BUILDER = "aza-pg-builder";
 const VOLUME_PROBE_BATCH = 30;
 
@@ -132,10 +132,8 @@ async function azaDanglingVolumes(): Promise<string[]> {
     // contains the aza-pg marker. PG18's image nests PGDATA under /<major>/docker, hence -maxdepth 3.
     // grep -F (fixed string): the marker is a literal and contains a `.`, which as a regex would
     // match any char — this match drives DELETION, so it must be exact, not a pattern.
-    // Or the volume holds the image's AZA_VOLUME_FILE, which marks it from creation, before any initdb.
     const probe =
       'for d in /m/*; do i=$(basename "$d"); ' +
-      `if [ -f "$d/${AZA_VOLUME_FILE}" ]; then echo "$i"; continue; fi; ` +
       'f=$(find "$d" -maxdepth 3 -name postgresql.auto.conf 2>/dev/null | head -1); ' +
       `if [ -n "$f" ] && grep -qF ${AZA_VOLUME_MARKER} "$f" 2>/dev/null; then echo "$i"; fi; done`;
     const res = await dockerRun(["run", "--rm", ...mountArgs, "alpine", "sh", "-c", probe]);
@@ -194,9 +192,15 @@ async function main(): Promise<void> {
       `${volumes.length} aza-pg PGDATA volume(s), builder=${builderPresent ? "present" : "absent"}`
   );
 
+  if (volumes.length > 0)
+    warning(
+      `Not removed: ${volumes.length} unattached aza-pg data volume(s), each an old test leak or a real database ` +
+        `whose container was removed without -v. Inspect one with\n  docker run --rm -v <volume>:/v:ro alpine ls -la /v\n` +
+        `and remove the ones you do not need with\n  docker volume rm ${volumes.join(" ")}`
+    );
+
   if (DRY_RUN) {
     for (const im of images) info(`  would remove image  ${im.id} (${fmtMB(im.size)})`);
-    for (const v of volumes) info(`  would remove volume ${v.slice(0, 12)}`);
     if (builderPresent) info(`  would remove builder ${AZA_BUILDER} (+ its cache)`);
     success("Dry-run complete — no changes made");
     return;
@@ -204,24 +208,13 @@ async function main(): Promise<void> {
 
   const removedImages = await removeImages(images);
 
-  let removedVolumes = 0;
-  // docker volume rm accepts many ids at once; chunk to keep arg lists sane.
-  for (let i = 0; i < volumes.length; i += 100) {
-    const chunk = volumes.slice(i, i + 100);
-    const res = await dockerRun(["volume", "rm", ...chunk]);
-    if (res.success) removedVolumes += chunk.length;
-    else
-      for (const v of chunk) if ((await dockerRun(["volume", "rm", v])).success) removedVolumes++;
-  }
-
   let removedBuilder = false;
   if (builderPresent) {
     removedBuilder = (await dockerRun(["buildx", "rm", AZA_BUILDER])).success;
   }
 
   success(
-    `Removed ${removedImages}/${images.length} image(s) (${fmtMB(imageBytes)}), ` +
-      `${removedVolumes}/${volumes.length} volume(s)` +
+    `Removed ${removedImages}/${images.length} image(s) (${fmtMB(imageBytes)})` +
       `${builderPresent ? `, builder ${removedBuilder ? "removed" : "NOT removed"}` : ""}`
   );
 }

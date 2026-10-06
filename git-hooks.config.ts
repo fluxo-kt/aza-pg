@@ -6,7 +6,7 @@ import type { GitHooksConfig } from "bun-git-hooks";
  * Hooks are managed by bun-git-hooks for Bun-optimized TypeScript projects.
  *
  * Installation: bun run hooks:install
- * Uninstall: bun run hooks:uninstall
+ * Uninstall: ./node_modules/.bin/bun-git-hooks uninstall
  */
 const config: GitHooksConfig = {
   /**

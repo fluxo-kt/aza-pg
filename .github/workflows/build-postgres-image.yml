@@ -198,7 +198,6 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
           cache-from: |
             type=gha,scope=aza-pg-${{ matrix.artifact }}
-            type=gha,scope=aza-pg-base
           cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
           # BuildKit provenance disabled to prevent potential secret leakage via build args
           # Dev builds don't use GitHub attestation action (publish.yml only)
@@ -218,7 +217,6 @@ jobs:
           load: true
           cache-from: |
             type=gha,scope=aza-pg-${{ matrix.artifact }}
-            type=gha,scope=aza-pg-base
           cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
           provenance: false
           sbom: false

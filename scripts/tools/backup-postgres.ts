@@ -55,7 +55,7 @@ async function commandExists(command: string): Promise<boolean> {
  * Guard: Check required commands
  */
 async function checkRequiredCommands(): Promise<void> {
-  const commands = ["pg_dump", "pg_isready", "gzip", "du"];
+  const commands = ["pg_dump", "psql", "pg_isready", "gzip", "du"];
 
   for (const cmd of commands) {
     if (!(await commandExists(cmd))) {

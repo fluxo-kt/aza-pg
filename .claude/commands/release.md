@@ -491,6 +491,8 @@ COMMIT_EOF
 )"
 ```
 
+**If a commit guard refuses a commit without a pathspec**: write the message to a file and name every staged path literally after `--` (`git diff --cached --name-only --no-renames` lists them, both sides of a rename included): `git commit --only -F <msg-file> -- <paths…>`. The guard reads paths only from the command line, so `--pathspec-from-file` is refused as well.
+
 **If commit fails due to signing** (SSH key not available):
 - Ask user: `eval "$(ssh-agent -s)" && ssh-add`
 - NEVER use `--no-gpg-sign` or touch git config

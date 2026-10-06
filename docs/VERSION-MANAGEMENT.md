@@ -126,7 +126,7 @@ git commit -m "deps(postgres): update base image to 18.2"
 
 **Example:** Update hypopg from 1.4.2 to 1.4.3
 
-PGDG extensions are pre-compiled Debian packages: every manifest entry with `install_via: "pgdg"`. Before switching a source-built entry to `pgdg`, read its manifest entry's `notes`: some are built from source because the PGDG package lacks a fix (pgvector, for a CVE), and switching would ship the vulnerable version.
+PGDG extensions are pre-compiled Debian packages: every manifest entry with `install_via: "pgdg"`. Before switching a source-built entry to `pgdg`, read its manifest entry's `notes`: an entry built from source because the PGDG package lacked a fix names the minimum safe version there, and switching to an older PGDG version would ship the vulnerable one.
 
 #### Step 1: Find Latest PGDG Version
 

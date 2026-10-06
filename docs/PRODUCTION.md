@@ -238,7 +238,7 @@ docker exec aza-pg-postgres-primary pg_dump -U postgres postgres | gzip > backup
 
 ### Automated Backups
 
-pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest` (built from source).
+pgBackRest is installed in the PostgreSQL image and available at `/usr/bin/pgbackrest`.
 
 Continuous WAL archiving, scheduled backups and point-in-time restore: [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md) (settings in `examples/backup/compose.yml`).
 

@@ -180,9 +180,9 @@ export interface ManifestEntry {
    */
   binaryPath?: string;
   /**
-   * Directories a source-built tool writes by default (logs, repository, spool). The final image creates
-   * them postgres-owned, mode 0750, as the distribution package would, so a named volume mounted on one
-   * starts writable by postgres instead of root-owned.
+   * Directories a tool writes by default (logs, repository, spool). The image creates them postgres-owned,
+   * mode 0750, whether the tool is built from source or installed from a package whose own setup may
+   * differ, so a named volume mounted on one starts writable by postgres instead of root-owned.
    */
   postgresOwnedDirs?: string[];
   /**
@@ -217,6 +217,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     name: "vector",
     displayName: "pgvector",
     kind: "extension",
+    install_via: "pgdg",
+    pgdgPackage: "pgvector",
+    soFileName: "vector.so",
+    pgdgVersion: "0.8.7-1.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -224,13 +228,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgvector/pgvector.git",
       tag: "v0.8.7",
     },
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
       notes: [
-        'Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG\'s postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage "pgvector") once PGDG ships >= 0.8.7.',
-        "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",
+        "Never below 0.8.7: older versions let a role that can build an IVFFlat index write out of bounds (CVE-2026-103484, arbitrary code execution).",
         "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search",
       ],
     },
@@ -1123,10 +1125,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgbackrest",
     kind: "tool",
-    // Built from source: 2.59.3 fixes the encryption sub-key issue and PGDG still ships 2.59.2.
-    // Installed to /usr/bin (--prefix=/usr) and with the PGDG package's directories, so paths
-    // operators configured against the package keep working.
-    install_via: "source",
+    // Never below 2.59.3: it fixes weak encryption sub-keys and salts.
+    install_via: "pgdg",
+    pgdgVersion: "2.59.3-1.pgdg13+1",
     binaryPath: "/usr/bin/pgbackrest",
     postgresOwnedDirs: ["/var/lib/pgbackrest", "/var/log/pgbackrest", "/var/spool/pgbackrest"],
     category: "operations",
@@ -1136,36 +1137,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgbackrest/pgbackrest.git",
       tag: "release/2.59.3",
     },
-    build: {
-      type: "meson",
-      // libssh2 (SFTP repositories) and libzstd are "auto" upstream: enabled makes a missing -dev
-      // package fail the build instead of silently dropping the feature. No systemd in a container.
-      mesonOptions: [
-        "--prefix=/usr",
-        "-Dlibssh2=enabled",
-        "-Dlibzstd=enabled",
-        "-Dlibsystemd=disabled",
-      ],
-    },
-    aptPackages: [
-      "meson",
-      "ninja-build",
-      "pkg-config",
-      "libpq-dev",
-      "libssl-dev",
-      "liblz4-dev",
-      "libzstd-dev",
-      "libbz2-dev",
-      "libyaml-dev",
-      "libxml2-dev",
-      "libssh2-1-dev",
-      "zlib1g-dev",
-    ],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool built from source. NOT a PostgreSQL extension.",
+        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
         "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root.",
       ],
     },

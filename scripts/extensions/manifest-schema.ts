@@ -113,7 +113,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
  * - soFileName: Shared object filename. Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
  * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
- * - postgresOwnedDirs: Directories a source-built tool writes by default; created postgres-owned 0750 in the image
+ * - postgresOwnedDirs: Directories a tool writes by default; created postgres-owned 0750 in the image
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({

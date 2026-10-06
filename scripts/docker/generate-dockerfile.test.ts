@@ -146,7 +146,6 @@ describe("Generated Dockerfile", () => {
   test("builders ship each source tool's binaryPath and never a whole bin directory", () => {
     // A whole-directory copy of the builder's /usr/local/bin once shipped bun and the build scripts.
     expect(dockerfile.match(/^.*rsync[^\n]*\/bin\/ .*$/gm) ?? []).toEqual([]);
-    expect(sourceToolBinaries.length).toBeGreaterThan(0);
     const unshipped = sourceToolBinaries.filter(
       (bin) => !dockerfile.includes(`install -D -m 0755 ${bin} /opt/ext-out${bin}`)
     );

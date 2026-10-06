@@ -52,7 +52,7 @@ TOOLS (command-line utilities)
 
   pg_plan_filter               v1.0.0
   pg_safeupdate                v1.7
-  pgbackrest                   vrelease/2.59.3
+  pgbackrest                   v2.59.3
   pgbadger                     v13.2
   wal2json                     vwal2json_2_6
 

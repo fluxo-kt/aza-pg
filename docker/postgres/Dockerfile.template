@@ -188,7 +188,7 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # Moved here (right after builder COPYs) to clean up before remaining operations.
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
-RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig{{SOURCE_TOOLS_RUNTIME_SETUP}}
+RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig{{TOOLS_RUNTIME_SETUP}}
 
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
 # APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed

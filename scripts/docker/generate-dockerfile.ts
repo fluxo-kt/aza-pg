@@ -379,23 +379,27 @@ function sourceToolBinariesCopy(manifest: Manifest): string {
 }
 
 /**
- * Final-stage steps appended to the ldconfig RUN, each starting with " && \\": each source tool
- * binary exists, and the directories the tool writes by default are postgres-owned so a named volume
- * mounted there starts writable by postgres.
+ * Final-stage steps appended to the ldconfig RUN (after every tool install), each starting with
+ * " && \\": each source tool binary exists, and the directories any enabled tool writes by default are
+ * postgres-owned so a named volume mounted there starts writable by postgres. Package-installed tools
+ * get this too: their maintainer scripts decide ownership, and that can change between versions.
  */
-function sourceToolsRuntimeSetup(manifest: Manifest): string {
-  return sourceTools(manifest)
-    .map((e) => {
-      const bin = safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`);
-      const dirs = (e.postgresOwnedDirs ?? []).map((d) =>
+function toolsRuntimeSetup(manifest: Manifest): string {
+  const binaries = sourceTools(manifest).map(
+    (e) => `test -x ${safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`)}`
+  );
+  const dirs = manifest.entries
+    .filter((e) => e.kind === "tool" && (e.enabled ?? true))
+    .flatMap((e) =>
+      (e.postgresOwnedDirs ?? []).map((d) =>
         safeAbsolutePath(d, `tool "${e.name}" postgresOwnedDirs`)
-      );
-      const steps = [`test -x ${bin}`];
-      if (dirs.length > 0)
-        steps.push(`install -d -o postgres -g postgres -m 0750 ${dirs.join(" ")}`);
-      return steps.map((s) => ` && \\\n    ${s}`).join("");
-    })
-    .join("");
+      )
+    );
+  const steps =
+    dirs.length > 0
+      ? [...binaries, `install -d -o postgres -g postgres -m 0750 ${dirs.join(" ")}`]
+      : binaries;
+  return steps.map((s) => ` && \\\n    ${s}`).join("");
 }
 
 /**
@@ -577,9 +581,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
     sourceToolBinariesCopy(manifest)
   );
-  dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
-    sourceToolsRuntimeSetup(manifest)
-  );
+  dockerfile = dockerfile.replace("{{TOOLS_RUNTIME_SETUP}}", () => toolsRuntimeSetup(manifest));
   dockerfile = dockerfile.replace("{{SHARED_LIBRARIES_CHECK}}", () =>
     sharedLibrariesCheck(manifest, pgMajor)
   );

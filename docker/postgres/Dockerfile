@@ -90,7 +90,6 @@ RUN set -euo pipefail && \
     rsync -a /usr/lib/postgresql/18/lib/ /opt/ext-out/usr/lib/postgresql/18/lib/ && \
     rsync -a /usr/share/postgresql/18/extension/ /opt/ext-out/usr/share/postgresql/18/extension/ && \
     rsync -a /usr/share/postgresql/18/contrib/ /opt/ext-out/usr/share/postgresql/18/contrib/ && \
-    install -D -m 0755 /usr/bin/pgbackrest /opt/ext-out/usr/bin/pgbackrest && \
     rsync -a /usr/local/lib/ /opt/ext-out/usr/local/lib/ && \
     if [ -d /usr/share/postgresql/18/timescaledb ]; then \
       rsync -a /usr/share/postgresql/18/timescaledb/ /opt/ext-out/usr/share/postgresql/18/timescaledb/; \
@@ -180,8 +179,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2" && \
-    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 && \
+    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
     # Each entry's module file must exist (prevents silent installation failures)
     test -f /usr/lib/postgresql/18/lib/hll.so && \
     test -f /usr/lib/postgresql/18/lib/http.so && \
@@ -193,7 +192,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/plpgsql_check.so && \
     test -f /usr/lib/postgresql/18/lib/rum.so && \
     test -f /usr/lib/postgresql/18/lib/set_user.so && \
-    echo "All 10 PGDG module files verified" && \
+    test -f /usr/lib/postgresql/18/lib/vector.so && \
+    echo "All 11 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
@@ -259,11 +259,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbadger=13.2-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbadger=13.2-1.pgdg13+1 && \
+    echo "Installing PGDG tools: pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
     # Verify tool binaries exist and are executable
+    test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
-    echo "All 1 PGDG tool(s) verified" && \
+    echo "All 2 PGDG tool(s) verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -275,7 +276,6 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
-    test -x /usr/bin/pgbackrest && \
     install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
@@ -337,7 +337,7 @@ RUN set -euo pipefail && \
 # --auto-remove purges above, which drop any library no remaining package depends on.
 RUN set -euo pipefail && \
     unresolved=0 && \
-    for f in /usr/lib/postgresql/18/lib/*.so /usr/local/lib/*.so* /usr/bin/pgbackrest; do \
+    for f in /usr/lib/postgresql/18/lib/*.so /usr/local/lib/*.so*; do \
       [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \
     done && \
     [ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }

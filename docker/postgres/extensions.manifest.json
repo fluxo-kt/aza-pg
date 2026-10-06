@@ -509,7 +509,8 @@
     {
       "name": "pgbackrest",
       "kind": "tool",
-      "install_via": "source",
+      "install_via": "pgdg",
+      "pgdgVersion": "2.59.3-1.pgdg13+1",
       "binaryPath": "/usr/bin/pgbackrest",
       "postgresOwnedDirs": [
         "/var/lib/pgbackrest",
@@ -524,34 +525,11 @@
         "tag": "release/2.59.3",
         "commit": "46cdca625a73403cad4774d97354a1fac1e91e51"
       },
-      "build": {
-        "type": "meson",
-        "mesonOptions": [
-          "--prefix=/usr",
-          "-Dlibssh2=enabled",
-          "-Dlibzstd=enabled",
-          "-Dlibsystemd=disabled"
-        ]
-      },
-      "aptPackages": [
-        "meson",
-        "ninja-build",
-        "pkg-config",
-        "libpq-dev",
-        "libssl-dev",
-        "liblz4-dev",
-        "libzstd-dev",
-        "libbz2-dev",
-        "libyaml-dev",
-        "libxml2-dev",
-        "libssh2-1-dev",
-        "zlib1g-dev"
-      ],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "CLI tool built from source. NOT a PostgreSQL extension.",
+          "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
           "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root."
         ]
       },
@@ -1068,6 +1046,10 @@
       "name": "vector",
       "displayName": "pgvector",
       "kind": "extension",
+      "install_via": "pgdg",
+      "pgdgPackage": "pgvector",
+      "soFileName": "vector.so",
+      "pgdgVersion": "0.8.7-1.pgdg13+1",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
@@ -1076,15 +1058,11 @@
         "tag": "v0.8.7",
         "commit": "f37c13f68b57d2c3472b2214fbcff699d6d34876"
       },
-      "build": {
-        "type": "pgxs"
-      },
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true,
         "notes": [
-          "Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG's postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage \"pgvector\") once PGDG ships >= 0.8.7.",
-          "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",
+          "Never below 0.8.7: older versions let a role that can build an IVFFlat index write out of bounds (CVE-2026-103484, arbitrary code execution).",
           "Regression test coverage includes vector columns, HNSW indexing, EXPLAIN, and similarity search"
         ]
       },

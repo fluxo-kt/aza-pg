@@ -389,8 +389,15 @@ async function validate(options: ValidationOptions): Promise<void> {
     if (allowStale && !options.requireLatestMinor) {
       warning("Latest-minor drift detected but validation passing in check mode");
     } else {
-      error("Pinned base image is not the current PostgreSQL minor for this major");
-      throw new Error("Stale PostgreSQL minor version");
+      // Docker Hub republishes a minor tag for Debian security refreshes, so a differing digest at the same version
+      // is the common case and must not send the reader looking for a minor release that does not exist.
+      const reason = !floatingMajor
+        ? `could not read postgres:${imageInfo.version.split(".")[0]}-trixie, so the pin cannot be proven current`
+        : floatingMajor.version === imageInfo.version
+          ? `postgres:${imageInfo.version}-trixie was republished (same minor, new digest): set MANIFEST_METADATA.baseImageSha to ${floatingMajor.digest}, then bun run generate`
+          : `PostgreSQL ${floatingMajor.version} is out: set MANIFEST_METADATA.pgVersion and baseImageSha to postgres:${floatingMajor.version}-trixie@${floatingMajor.digest}, then bun run generate`;
+      error(reason);
+      throw new Error("Base image is not the latest for its major");
     }
   }
 

@@ -16,7 +16,7 @@
  *
  * The anonymous-volume leak this cleans is fixed at source (dockerCleanup/cleanupContainer pass `-v`);
  * this script reclaims pre-existing accumulation plus artifacts the build inherently leaves behind
- * (superseded image layers when a tag is rebuilt, builder cache).
+ * (superseded images when a tag is rebuilt — `bun run build` already removes those itself — and builder cache).
  *
  * Usage: bun scripts/docker/cleanup-artifacts.ts [--dry-run]
  */
@@ -149,6 +149,22 @@ async function azaBuilderExists(): Promise<boolean> {
   return res.success && builderPresentInList(res.output);
 }
 
+async function removeImages(images: Array<{ id: string }>): Promise<number> {
+  let removed = 0;
+  for (const im of images) if ((await dockerRun(["rmi", "-f", im.id])).success) removed++;
+  return removed;
+}
+
+/**
+ * Removes the dangling aza-pg images only, leaving volumes and the builder cache alone. `bun run build` calls it
+ * after loading a new image: retagging untags the previous build (~1 GB), which nothing else would ever remove.
+ */
+export async function reclaimDanglingAzaImages(): Promise<string> {
+  const images = await azaDanglingImages();
+  const removed = await removeImages(images);
+  return `${removed}/${images.length} superseded aza-pg image(s), ${fmtMB(images.reduce((s, im) => s + im.size, 0))}`;
+}
+
 function fmtMB(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(0)}MB`;
 }
@@ -181,11 +197,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  let removedImages = 0;
-  for (const im of images) {
-    const res = await dockerRun(["rmi", "-f", im.id]);
-    if (res.success) removedImages++;
-  }
+  const removedImages = await removeImages(images);
 
   let removedVolumes = 0;
   // docker volume rm accepts many ids at once; chunk to keep arg lists sane.

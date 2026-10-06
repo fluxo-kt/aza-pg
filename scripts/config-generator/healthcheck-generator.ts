@@ -67,6 +67,26 @@ export function generateHealthcheckScript(extensionsToEnable: ManifestEntry[]): 
   lines.push(`EXPECTED_EXTENSIONS=(${expected.map((e) => `"${e}"`).join(" ")})`);
   lines.push("");
 
+  // Tier 0: the official entrypoint's temporary initdb server answers queries before the final server starts.
+  lines.push("# Tier 0: Initialization Finished");
+  lines.push(
+    "# On a new data directory the official entrypoint runs initdb and the init scripts against a temporary server that"
+  );
+  lines.push(
+    "# accepts socket connections and queries, then stops it and starts the final one by replacing itself with it (exec)."
+  );
+  lines.push(
+    "# So while a process still runs docker-entrypoint.sh, the server answering is not one dependents can use yet. The"
+  );
+  lines.push("# bracket keeps the pattern from matching grep's own command line.");
+  lines.push("if grep -qsa '/docker-entrypoint[.]sh' /proc/[0-9]*/cmdline; then");
+  lines.push(
+    '    echo "FAIL: initialization still running (docker-entrypoint.sh has not started the final server)" >&2'
+  );
+  lines.push("    exit 1");
+  lines.push("fi");
+  lines.push("");
+
   // Tier 1: Connection Test
   lines.push("# Tier 1: Connection Test");
   lines.push("if ! pg_isready --timeout=3 >/dev/null 2>&1; then");
@@ -183,24 +203,8 @@ export function generateHealthcheckScript(extensionsToEnable: ManifestEntry[]): 
   lines.push("fi");
   lines.push("");
 
-  // Tier 5: System Catalog Integrity
-  lines.push("# Tier 5: System Catalog Integrity");
-  lines.push("CATALOG_TABLES=$(psql -tAc \\");
-  lines.push(
-    "    \"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'\" \\"
-  );
-  lines.push('    2>/dev/null || echo "0")');
-  lines.push("");
-  lines.push('if [ "$CATALOG_TABLES" -lt 60 ]; then');
-  lines.push(
-    '    echo "FAIL: pg_catalog appears corrupted (only $CATALOG_TABLES tables, expected 60+)" >&2'
-  );
-  lines.push("    exit 1");
-  lines.push("fi");
-  lines.push("");
-
-  // Tier 6: Database Role Verification
-  lines.push("# Tier 6: Database Role Verification");
+  // Tier 5: Database Role Verification
+  lines.push("# Tier 5: Database Role Verification");
   lines.push('POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"');
   lines.push('if [ "$POSTGRES_ROLE" != "replica" ]; then');
   lines.push("    IN_RECOVERY=$(psql -tAc \\");

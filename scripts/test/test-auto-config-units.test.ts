@@ -165,6 +165,9 @@ describe("worker counts from CPU cores", () => {
   });
 });
 
+const INVALID_MEMORY =
+  "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB: positive, without leading zeros";
+
 describe("POSTGRES_MEMORY is validated before anything is tuned", () => {
   test("a valid value wins over detection", () => {
     expect(bash("detect_ram", { POSTGRES_MEMORY: "1048576" })).toEqual({
@@ -175,8 +178,10 @@ describe("POSTGRES_MEMORY is validated before anything is tuned", () => {
   });
 
   test.each([
-    ["2g", "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB"],
-    ["0", "[POSTGRES] ERROR: POSTGRES_MEMORY must be a positive integer (MB)"],
+    ["2g", INVALID_MEMORY],
+    ["0", INVALID_MEMORY],
+    // Bash arithmetic would read it as octal: 532 MB.
+    ["01024", INVALID_MEMORY],
     ["1048577", "[POSTGRES] ERROR: POSTGRES_MEMORY exceeds maximum (1TB = 1048576 MB)"],
   ])("%s is refused", (memory, message) => {
     expect(bash("detect_ram", { POSTGRES_MEMORY: memory })).toEqual({

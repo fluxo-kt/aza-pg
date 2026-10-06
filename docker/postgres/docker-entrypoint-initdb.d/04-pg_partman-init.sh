@@ -9,9 +9,6 @@ set -euo pipefail
 echo "[04-pg_partman] Initializing pg_partman schema"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Security: Use pg_catalog search_path to prevent malicious schema injection attacks
-    SET LOCAL search_path = pg_catalog;
-
     DO \$\$
     BEGIN
         -- Create pg_partman extension if it doesn't exist

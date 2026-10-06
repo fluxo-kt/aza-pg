@@ -94,29 +94,35 @@ docker compose exec postgres psql -U postgres -c "\dx"
 
 **Option A: In-Place Upgrade** (faster, more complex)
 
+Data directories created by earlier aza-pg images refuse connections to `template1`, and `pg_upgrade --check` stops on any database other than `template0` that does ("All non-template0 databases must allow connections"). Allow them once before stopping the old server:
+
+```bash
+docker compose exec postgres psql -U postgres -c "ALTER DATABASE template1 ALLOW_CONNECTIONS true"
+```
+
 ```bash
 # Stop current stack
 docker compose down
 
-# Create pg_upgrade container
+# Create pg_upgrade container. Mount the data volume at /var/lib/postgresql, as the stacks do: the old
+# cluster is 18/docker inside it and the new one goes to 19/docker in the same volume.
 docker run -it --rm \
-  -v postgres-data-old:/var/lib/postgresql/18/data \
-  -v postgres-data-new:/var/lib/postgresql/19/data \
+  -v postgres_data:/var/lib/postgresql \
   aza-pg:pg19 bash
 
 # Inside container, run pg_upgrade
 su - postgres
 /usr/lib/postgresql/19/bin/pg_upgrade \
-  --old-datadir=/var/lib/postgresql/18/data \
-  --new-datadir=/var/lib/postgresql/19/data \
+  --old-datadir=/var/lib/postgresql/18/docker \
+  --new-datadir=/var/lib/postgresql/19/docker \
   --old-bindir=/usr/lib/postgresql/18/bin \
   --new-bindir=/usr/lib/postgresql/19/bin \
   --check  # Dry run first
 
 # If check passes, run actual upgrade
 /usr/lib/postgresql/19/bin/pg_upgrade \
-  --old-datadir=/var/lib/postgresql/18/data \
-  --new-datadir=/var/lib/postgresql/19/data \
+  --old-datadir=/var/lib/postgresql/18/docker \
+  --new-datadir=/var/lib/postgresql/19/docker \
   --old-bindir=/usr/lib/postgresql/18/bin \
   --new-bindir=/usr/lib/postgresql/19/bin
 ```

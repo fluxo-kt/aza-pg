@@ -20,9 +20,6 @@ if echo "$PRELOAD_LIBS" | grep -qw "pg_cron"; then
     echo "[01b-pg_cron] pg_cron is preloaded, creating extension in database: $TARGET_DB"
 
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$TARGET_DB" <<-EOSQL
-        -- Security: Use pg_catalog search_path to prevent schema injection attacks
-        SET LOCAL search_path = pg_catalog;
-
         -- Create pg_cron extension
         -- NOTE: This must be created in the database specified by cron.database_name
         CREATE EXTENSION IF NOT EXISTS pg_cron;

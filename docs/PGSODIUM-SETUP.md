@@ -13,9 +13,9 @@ pgsodium derives every key it uses (Vault secrets, `derive_key`, Transparent Col
 | Your own `pgsodium_getkey` mounted | Whatever it prints; the image creates, checks and warns about nothing                        |
 | Data directory from an older image | The key older images published, written to `$PGDATA/pgsodium_root.key`; every start warns    |
 
-A new data directory records which of the first three it was created with (`$PGDATA/pgsodium_key_source`). If that source is gone at a later start — the key file deleted, `PGSODIUM_KEY_FILE` unset, your getkey no longer mounted — the container stops and names it, instead of starting with another key under which existing encrypted data is unreadable.
+A new data directory records which of the first three it was created with (`$PGDATA/pgsodium_key_source`). If that source is gone at a later start — the key file deleted, `PGSODIUM_KEY_FILE` unset, your getkey no longer mounted — or `PGSODIUM_KEY_FILE` holds a key other than the one the data directory already uses, the container stops and names it, instead of starting with another key under which existing encrypted data is unreadable.
 
-**What carries the key:** file-level copies of the data directory do — volume backups, `pg_basebackup` (so replicas decrypt what the primary encrypted) and pgBackRest backups. `pg_dump` output does not: restoring a dump into a new container gives it a new key, and values encrypted under the old one cannot be decrypted. Keep a copy of the key file, or supply your own with `PGSODIUM_KEY_FILE`.
+**What carries the key:** file-level copies of the data directory do — volume backups, `pg_basebackup` (so replicas decrypt what the primary encrypted) and pgBackRest backups. `pg_dump` output does not: restoring a dump into a new container gives it a new key, and values encrypted under the old one cannot be decrypted. Keep a copy of the key file, and start the new server with `PGSODIUM_KEY_FILE` pointing at that copy before restoring the dump (a new data directory cannot be seeded with the file, because initdb needs it empty).
 
 **A wrong `PGSODIUM_KEY_FILE`** (unreadable, or not 64 hex characters) stops the container with `ERROR: PGSODIUM_KEY_FILE=<path> must be readable by postgres and hold 64 hex characters`.
 
@@ -32,7 +32,7 @@ docker run -d \
   ghcr.io/fluxo-kt/aza-pg:18
 ```
 
-Switching an existing database to a different key makes data encrypted under the old one unreadable; follow the rotation steps below instead.
+For an existing database the file must hold the key it already uses; another key stops the container (`PGSODIUM_KEY_FILE=… holds a different key than this data directory uses`), because data encrypted under the old one would be unreadable. Copy the key out of the data directory, even from a stopped container: `docker cp <container>:/var/lib/postgresql/18/docker/pgsodium_root.key pgsodium.key`. From the first start with the file, the data directory records `PGSODIUM_KEY_FILE` as its key source, so the copy inside it may be deleted. To move to a new key, follow the rotation steps below first. A data directory from an image older than per-database keys whose key came from your own mounted `pgsodium_getkey` has no record of that: keep the script mounted and record the switch first, `docker exec -u postgres <container> sh -c 'echo PGSODIUM_KEY_FILE > "$PGDATA/pgsodium_key_source"'`.
 
 To fetch the key from a secret manager instead of a file, mount your own executable at `/usr/share/postgresql/18/extension/pgsodium_getkey`; it must print the 64 hex characters on stdout and exit 0. Examples: [pgsodium getkey scripts](https://github.com/michelp/pgsodium/tree/main/getkey_scripts). A failing script stops the server.
 
@@ -284,6 +284,7 @@ SELECT pgsodium.crypto_pwhash_str_verify(
 | `pgsodium_getkey: ... must hold 64 hex characters`                             | Key file corrupted                       | Restore the key file from your backup                  |
 | `...pgsodium_root.key is missing, but this data directory was created with it` | Key file deleted                         | Restore it from your backup                            |
 | `this data directory was created with PGSODIUM_KEY_FILE, which is not set now` | Variable removed                         | Set it to the same key file                            |
+| `PGSODIUM_KEY_FILE=... holds a different key than this data directory uses`    | Another key set on an existing database  | Put the database's own key in the file, or unset it    |
 | `...created with your own pgsodium_getkey, which is not mounted now`           | Mount removed                            | Mount the same script again                            |
 | `crypto_kdf_derive_from_key: context must be 8 bytes`                          | Wrong context parameter                  | Use exactly 8-byte context (e.g., `'pgsodium'::bytea`) |
 | `pgsodium.key table empty`                                                     | Init script didn't run                   | Set `ENABLE_PGSODIUM_INIT=true`                        |

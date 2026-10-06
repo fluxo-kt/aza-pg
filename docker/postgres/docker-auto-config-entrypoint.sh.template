@@ -91,12 +91,9 @@ detect_ram() {
     local source="unknown"
 
     if [ -n "${POSTGRES_MEMORY:-}" ]; then
-        if ! [[ "${POSTGRES_MEMORY}" =~ ^[0-9]+$ ]]; then
-            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB" >&2
-            exit 1
-        fi
-        if [ "${POSTGRES_MEMORY}" -lt 1 ]; then
-            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be a positive integer (MB)" >&2
+        # No leading zero: bash arithmetic reads 01024 as octal (532) and 08192 as an error.
+        if ! [[ "${POSTGRES_MEMORY}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB: positive, without leading zeros" >&2
             exit 1
         fi
         if [ "${POSTGRES_MEMORY}" -gt 1048576 ]; then
@@ -426,13 +423,7 @@ fi
 # Storage-based parameters
 RANDOM_PAGE_COST=${STORAGE_RANDOM_COST[$STORAGE_TYPE]}
 MAINTENANCE_IO_CONCURRENCY=${STORAGE_MAINT_IO_CONCURRENCY[$STORAGE_TYPE]}
-
-# Linux-only parameter
-if [ "$(uname -s)" = "Linux" ]; then
-    EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
-else
-    EFFECTIVE_IO_CONCURRENCY=""
-fi
+EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
 
 # The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
 # after this script) refuses a non-empty directory. Its failures surface when the server starts.
@@ -505,32 +496,26 @@ AUTO_SETTINGS=(
     "io_workers=${IO_WORKERS}"
     "maintenance_io_concurrency=${MAINTENANCE_IO_CONCURRENCY}"
     "listen_addresses=${LISTEN_ADDR}"
+    "max_parallel_workers=${MAX_PARALLEL_WORKERS}"
+    "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
+    "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
+    "effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}"
+    # Set explicitly so the path does not depend on how pgsodium resolves its share directory.
+    "pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}"
+    # Parallel queries and index builds keep their shared state in dynamic shared memory. PostgreSQL's Linux default,
+    # posix, puts it in /dev/shm, which Docker, Kubernetes and CI runners mount at 64 MB: a parallel hash join or a
+    # parallel pgvector HNSW build (sized by maintenance_work_mem) then fails with "could not resize shared memory
+    # segment … No space left on device". System V segments come from RAM under the container's memory limit, the limit
+    # auto-tuning already sizes against; a container's own IPC namespace has the kernel defaults (shmmax and shmall
+    # effectively unlimited, 4096 segments). posix stays one -c away for --ipc=host on a host with low SysV limits.
+    # Rejected: shm_size in compose (docker run and Kubernetes still fail; any size is a guess); mmap (writes the
+    # shared pages to the data volume); serial builds when /dev/shm is small (hash joins still fail).
+    "dynamic_shared_memory_type=sysv"
 )
-if [ -n "$MAX_PARALLEL_WORKERS" ]; then
-    AUTO_SETTINGS+=(
-        "max_parallel_workers=${MAX_PARALLEL_WORKERS}"
-        "max_parallel_workers_per_gather=${MAX_PARALLEL_WORKERS_PER_GATHER}"
-        "max_parallel_maintenance_workers=${MAX_PARALLEL_MAINTENANCE_WORKERS}"
-    )
-fi
-if [ -n "$EFFECTIVE_IO_CONCURRENCY" ]; then
-    AUTO_SETTINGS+=("effective_io_concurrency=${EFFECTIVE_IO_CONCURRENCY}")
-fi
 # wal_level=minimal requires max_wal_senders=0 (no replication)
 if [ "$WAL_LEVEL" = "minimal" ]; then
     AUTO_SETTINGS+=("max_wal_senders=0")
 fi
-# Set explicitly so the path does not depend on how pgsodium resolves its share directory.
-AUTO_SETTINGS+=("pgsodium.getkey_script=${PGSODIUM_GETKEY_PATH}")
-# Parallel queries and index builds keep their shared state in dynamic shared memory. PostgreSQL's Linux default,
-# posix, puts it in /dev/shm, which Docker, Kubernetes and CI runners mount at 64 MB: a parallel hash join or a
-# parallel pgvector HNSW build (sized by maintenance_work_mem) then fails with "could not resize shared memory
-# segment … No space left on device". System V segments come from RAM under the container's memory limit, the limit
-# auto-tuning already sizes against; a container's own IPC namespace has the kernel defaults (shmmax and shmall
-# effectively unlimited, 4096 segments). posix stays one -c away for --ipc=host on a host with low SysV limits.
-# Rejected: shm_size in compose (docker run and Kubernetes still fail; any size is a guess); mmap (writes the
-# shared pages to the data volume); serial builds when /dev/shm is small (hash joins still fail).
-AUTO_SETTINGS+=("dynamic_shared_memory_type=sysv")
 
 # Operator values beat auto-tuning, in PostgreSQL's own order (lowest first): the config file and its includes <
 # postgresql.auto.conf (ALTER SYSTEM, also applied on reload) < command-line -c. So the tuned values go into a
@@ -595,6 +580,37 @@ elif [ -n "${PGSODIUM_KEY_FILE:-}" ]; then
         exit 1
     fi
     pgsodium_key_file="$PGSODIUM_KEY_FILE"
+    # An existing data directory already has a key, and data encrypted under it is unreadable under any other, so
+    # the file must hold that same key. Its key is the data-directory key file when present, else (a directory made
+    # by an image that predates per-database keys and never started on a later one) the published key. A directory
+    # created with PGSODIUM_KEY_FILE has no key the entrypoint can read; one created with the operator's own
+    # getkey needs that getkey.
+    key_source=$(as_postgres cat "${PGDATA}/pgsodium_key_source" 2>/dev/null || true)
+    if [ ! -f "${PGDATA}/PG_VERSION" ] || [ "$key_source" = "PGSODIUM_KEY_FILE" ]; then
+        :
+    elif [ "$key_source" = "pgsodium_getkey" ]; then
+        printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: this data directory was created with your own pgsodium_getkey, which is not mounted now; mount it again (docs/PGSODIUM-SETUP.md)" >&2
+        exit 1
+    else
+        directory_key_file="${PGDATA}/pgsodium_root.key"
+        if [ -e "$directory_key_file" ]; then
+            directory_key=$(as_postgres cat "$directory_key_file" 2>/dev/null | tr -d '[:space:]' || true)
+            directory_key_name="the key in ${directory_key_file}"
+        elif [ -z "$key_source" ]; then
+            directory_key="$PUBLISHED_PGSODIUM_KEY"
+            directory_key_name="the key older aza-pg images published"
+        else
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: ${directory_key_file} is missing, but this data directory was created with it; restore it from a backup: data encrypted under it cannot be read without it (docs/PGSODIUM-SETUP.md)" >&2
+            exit 1
+        fi
+        if [ "${operator_key,,}" != "${directory_key,,}" ]; then
+            printf '%s\n' "[POSTGRES] [AUTO-CONFIG] ERROR: PGSODIUM_KEY_FILE=${PGSODIUM_KEY_FILE} holds a different key than this data directory uses (${directory_key_name}); data encrypted under that key would be unreadable. Put that key in the file, or unset PGSODIUM_KEY_FILE; to change the key, see docs/PGSODIUM-SETUP.md, section \"Rotating the published key\"" >&2
+            exit 1
+        fi
+        # The same key: from now on it comes from the operator's file, so the copy in the data directory may go.
+        # shellcheck disable=SC2016 # $1 is the inner sh's argument
+        as_postgres sh -c 'printf "%s\n" PGSODIUM_KEY_FILE > "$1"' sh "${PGDATA}/pgsodium_key_source"
+    fi
 else
     pgsodium_key_file="${PGDATA}/pgsodium_root.key"
     if [ -f "${PGDATA}/PG_VERSION" ] && [ ! -e "$pgsodium_key_file" ]; then
@@ -648,8 +664,10 @@ chmod 0644 "$AUTO_CONFIG_FILE"
 # One log line per tuned setting that does not take the tuned value, so no operator value is silently overridden
 # or silently ignored. postgresql.conf values are compared through `postgres -C`, which prints PostgreSQL's base
 # units (8kB pages, kB) and needs an initialised data directory, so the check skips the very first start. A file
-# value equal to the built-in default is indistinguishable from initdb's own lines (max_connections = 100, …), and one
-# equal to the tuned value changes nothing; neither is reported.
+# value equal to what initdb writes is indistinguishable from initdb's own lines, and one equal to the tuned value
+# changes nothing; neither is reported. initdb writes the image's postgresql.conf.sample (listen_addresses = '*' — the
+# official image sets it there) plus lines holding the built-in default (max_connections = 100, …), so that sample is
+# the baseline.
 ALTER_SYSTEM_FILE="${DATA_DIR}/postgresql.auto.conf"
 for setting in "${AUTO_SETTINGS[@]}"; do
     name="${setting%%=*}"
@@ -666,8 +684,8 @@ for setting in "${AUTO_SETTINGS[@]}"; do
     fi
     [ -f "${DATA_DIR}/PG_VERSION" ] || continue
     in_file=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${OPERATOR_CONFIG}" -C "$name" 2>/dev/null) || continue
-    builtin=$(as_postgres postgres -D "$DATA_DIR" -c config_file=/dev/null -C "$name" 2>/dev/null) || continue
-    [ "$in_file" != "$builtin" ] || continue
+    initdb_value=$(as_postgres postgres -D "$DATA_DIR" -c "config_file=${PG_SHAREDIR}/postgresql.conf.sample" -C "$name" 2>/dev/null) || continue
+    [ "$in_file" != "$initdb_value" ] || continue
     applied=$(as_postgres postgres -D "$DATA_DIR" -c config_file=/dev/null -c "${name}=${tuned}" -C "$name" 2>/dev/null) || applied="$tuned"
     if [ "$in_file" != "$applied" ]; then
         echo "[POSTGRES] [AUTO-CONFIG] ${name}: ${in_file} from ${OPERATOR_CONFIG} is ignored, auto-tuned ${applied} applies (base units; override with ALTER SYSTEM or -c)"

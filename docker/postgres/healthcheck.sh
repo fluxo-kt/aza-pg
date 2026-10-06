@@ -25,6 +25,16 @@ export PGDATABASE="${PGDATABASE:-$PGUSER}"
 # Extensions this aza-pg version precreates (from manifest), each as name:preload-library (empty: needs none)
 EXPECTED_EXTENSIONS=("pg_cron:pg_cron" "pg_net:pg_net" "pg_stat_monitor:pg_stat_monitor" "pg_stat_statements:pg_stat_statements" "pg_trgm:" "pgaudit:pgaudit" "pgmq:" "pgsodium:pgsodium" "plpgsql:" "supabase_vault:supabase_vault" "timescaledb:timescaledb" "vector:" "vectorscale:")
 
+# Tier 0: Initialization Finished
+# On a new data directory the official entrypoint runs initdb and the init scripts against a temporary server that
+# accepts socket connections and queries, then stops it and starts the final one by replacing itself with it (exec).
+# So while a process still runs docker-entrypoint.sh, the server answering is not one dependents can use yet. The
+# bracket keeps the pattern from matching grep's own command line.
+if grep -qsa '/docker-entrypoint[.]sh' /proc/[0-9]*/cmdline; then
+    echo "FAIL: initialization still running (docker-entrypoint.sh has not started the final server)" >&2
+    exit 1
+fi
+
 # Tier 1: Connection Test
 if ! pg_isready --timeout=3 >/dev/null 2>&1; then
     echo "FAIL: PostgreSQL not accepting connections" >&2
@@ -111,17 +121,7 @@ if psql -tAc \
     fi
 fi
 
-# Tier 5: System Catalog Integrity
-CATALOG_TABLES=$(psql -tAc \
-    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'pg_catalog' AND table_type = 'BASE TABLE'" \
-    2>/dev/null || echo "0")
-
-if [ "$CATALOG_TABLES" -lt 60 ]; then
-    echo "FAIL: pg_catalog appears corrupted (only $CATALOG_TABLES tables, expected 60+)" >&2
-    exit 1
-fi
-
-# Tier 6: Database Role Verification
+# Tier 5: Database Role Verification
 POSTGRES_ROLE="${POSTGRES_ROLE:-primary}"
 if [ "$POSTGRES_ROLE" != "replica" ]; then
     IN_RECOVERY=$(psql -tAc \

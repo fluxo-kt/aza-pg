@@ -6,12 +6,13 @@
  * changes across restarts (data encrypted before it becomes unreadable), a key file other users can
  * read, PGSODIUM_KEY_FILE being ignored or a key being generated beside it, a malformed operator key
  * file starting a server instead of stopping with its path, a new database ending up with the published key
- * (first start without pgsodium preloaded, or PGSODIUM_KEY_FILE removed later), the image writing a key or
+ * (first start without pgsodium preloaded, or PGSODIUM_KEY_FILE removed later), a PGSODIUM_KEY_FILE holding another
+ * key replacing an existing database's own, the image writing a key or
  * warning beside an operator-mounted getkey, ENABLE_PGSODIUM_INIT not creating the
  * root key, and vault failing to encrypt or storing a secret in plaintext under the default preload.
  * pgsodium.derive_key(1) is a function of the root key alone, so equal outputs mean equal keys.
  *
- * Usage: bun scripts/test/test-integration-extension-combinations.ts [image] [--image=TAG]
+ * Usage: bun scripts/test/test-pgsodium-key.ts [image] [--image=TAG]
  */
 import { $ } from "bun";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -22,7 +23,7 @@ import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
 
 const image = resolveImageTag();
-const PLAINTEXT = "sk_test_t2b_1234567890abcdef";
+const PLAINTEXT = "sk_test_vault_1234567890abcdef";
 const containers: string[] = [];
 
 async function sql(container: string, query: string): Promise<string> {
@@ -54,6 +55,17 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
     console.error(`FAIL: ${name}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
+
+/** The container's exit code, bounded: an image that should refuse to start but does not keeps running, and an
+ * unbounded docker wait would hang the suite instead of failing it. */
+const exitCode = (container: string) =>
+  Promise.race([
+    $`docker wait ${container}`
+      .quiet()
+      .nothrow()
+      .then((r) => r.text().trim()),
+    Bun.sleep(30_000).then(() => "still running after 30s"),
+  ]);
 
 const keyDir = await mkdtemp(path.join(tmpdir(), "aza-pgsodium-"));
 try {
@@ -195,13 +207,7 @@ try {
       // The same data directory (--volumes-from) without the variable: the published key used to replace it.
       await $`docker stop ${c2}`.quiet();
       const unset = await start("key-c2-unset", ["--volumes-from", c2]);
-      const code = await Promise.race([
-        $`docker wait ${unset}`
-          .quiet()
-          .nothrow()
-          .then((r) => r.text().trim()),
-        Bun.sleep(30_000).then(() => "still running after 30s"),
-      ]);
+      const code = await exitCode(unset);
       const logs = (await $`docker logs ${unset}`.quiet().nothrow()).stderr.toString();
       if (code !== "1") throw new Error(`exit code ${code}, want 1`);
       if (!logs.includes("created with PGSODIUM_KEY_FILE")) {
@@ -210,16 +216,42 @@ try {
     }
   );
 
+  await check(
+    "an existing database refuses a PGSODIUM_KEY_FILE holding another key, and accepts its own key from one",
+    async () => {
+      // Unchecked, setting the variable on a database that already has a key switches keys silently, and its Vault
+      // secrets stop decrypting. The same key copied into the file is how a database moves to PGSODIUM_KEY_FILE.
+      const [before, key] = await Promise.all([derive(b), pgdataFile(b, "pgsodium_root.key")]);
+      const ownKey = path.join(keyDir, "b.key");
+      await writeFile(ownKey, `${key}\n`, { mode: 0o644 });
+      await $`docker stop ${b}`.quiet();
+      const other = await start("key-b-other", [
+        "--volumes-from",
+        b,
+        ...mount(operatorKey),
+        ...operator,
+      ]);
+      const code = await exitCode(other);
+      const logs = (await $`docker logs ${other}`.quiet().nothrow()).stderr.toString();
+      if (code !== "1") throw new Error(`another key: exit code ${code}, want 1`);
+      if (!logs.includes("holds a different key than this data directory uses")) {
+        throw new Error(`log does not name the key mismatch:\n${logs.slice(-500)}`);
+      }
+      const same = await start("key-b-same", ["--volumes-from", b, ...mount(ownKey), ...operator]);
+      await waitForPostgres({ container: same, timeout: 120 });
+      const [after, source] = await Promise.all([
+        derive(same),
+        pgdataFile(same, "pgsodium_key_source"),
+      ]);
+      if (after !== before)
+        throw new Error("the database's own key in a file derived a different key");
+      if (source !== "PGSODIUM_KEY_FILE") throw new Error(`key source record is ${source}`);
+    }
+  );
+
   await check("a malformed PGSODIUM_KEY_FILE stops the container naming the file", async () => {
-    // Bounded: an image that ignores PGSODIUM_KEY_FILE keeps running, and an unbounded docker wait would hang
-    // the suite instead of failing it. The others are already ready, so a validating entrypoint has exited.
-    const code = await Promise.race([
-      $`docker wait ${bad}`
-        .quiet()
-        .nothrow()
-        .then((r) => r.text().trim()),
-      Bun.sleep(30_000).then(() => "still running after 30s"),
-    ]);
+    // The others are already ready, so a validating entrypoint has exited.
+    const code = await exitCode(bad);
     const logs = (await $`docker logs ${bad}`.quiet().nothrow()).stderr.toString();
     if (code !== "1") throw new Error(`exit code ${code}, want 1`);
     if (!logs.includes("PGSODIUM_KEY_FILE=/run/secrets/pgsodium.key")) {
@@ -234,13 +266,13 @@ try {
 
   await check("vault round-trips a secret and stores it encrypted, on defaults", async () => {
     await sql(a, "CREATE EXTENSION IF NOT EXISTS supabase_vault CASCADE");
-    await sql(a, `SELECT vault.create_secret('${PLAINTEXT}', 't2b_api_key')`);
+    await sql(a, `SELECT vault.create_secret('${PLAINTEXT}', 'vault_api_key')`);
     const decrypted = await sql(
       a,
-      "SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 't2b_api_key'"
+      "SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'vault_api_key'"
     );
     if (decrypted !== PLAINTEXT) throw new Error(`decrypted secret is "${decrypted}"`);
-    const raw = await sql(a, "SELECT secret FROM vault.secrets WHERE name = 't2b_api_key'");
+    const raw = await sql(a, "SELECT secret FROM vault.secrets WHERE name = 'vault_api_key'");
     if (raw === "" || raw.includes(PLAINTEXT)) {
       throw new Error(`secret column is not ciphertext: "${raw}"`);
     }
@@ -249,7 +281,8 @@ try {
   failures.push("setup");
   console.error(`FAIL: setup: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
-  // Newest first, one command: key-c2-unset borrows key-c2's volume, which goes with key-c2 only once unused.
+  // Newest first, one command: a container started --volumes-from borrows its source's volume, which goes with the
+  // source only once unused.
   await $`docker rm -f -v ${containers.toReversed()}`.quiet().nothrow();
   await rm(keyDir, { recursive: true, force: true });
 }

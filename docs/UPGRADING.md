@@ -30,7 +30,7 @@ grep pgVersion scripts/extensions/manifest-data.ts
 
 ### Prerequisites
 
-1. **Full backup** of all databases
+1. **Full backup** of all databases, plus a private copy of the pgsodium root key (`$PGDATA/pgsodium_root.key`, or the file `PGSODIUM_KEY_FILE` names): a dump does not carry it, and Vault secrets restored from one decrypt only under it ([PGSODIUM-SETUP.md](PGSODIUM-SETUP.md))
 2. **Test upgrade** on development/staging environment first
 3. **Verify extension compatibility** with new Postgres version
 4. **Plan downtime window** (typically 5-30 minutes depending on database size)
@@ -94,6 +94,8 @@ docker compose exec postgres psql -U postgres -c "\dx"
 
 **Option A: In-Place Upgrade** (faster, more complex)
 
+pg_upgrade starts both the old and the new server, so the container running it needs the PostgreSQL 18 and 19 binaries and every extension the old cluster uses built for both. An aza-pg image ships one major (`ls /usr/lib/postgresql/` in it lists only that major), so build an image holding both before following this option, or use Option B.
+
 Data directories created by earlier aza-pg images refuse connections to `template1`, and `pg_upgrade --check` stops on any database other than `template0` that does ("All non-template0 databases must allow connections"). Allow them once before stopping the old server:
 
 ```bash
@@ -110,8 +112,10 @@ docker run -it --rm \
   -v postgres_data:/var/lib/postgresql \
   aza-pg:pg19 bash
 
-# Inside container, run pg_upgrade
+# Inside container: create the new cluster (pg_upgrade needs it to exist, with the old cluster's encoding,
+# locale and data-checksum setting), then run pg_upgrade
 su - postgres
+/usr/lib/postgresql/19/bin/initdb -D /var/lib/postgresql/19/docker
 /usr/lib/postgresql/19/bin/pg_upgrade \
   --old-datadir=/var/lib/postgresql/18/docker \
   --new-datadir=/var/lib/postgresql/19/docker \
@@ -125,6 +129,11 @@ su - postgres
   --new-datadir=/var/lib/postgresql/19/docker \
   --old-bindir=/usr/lib/postgresql/18/bin \
   --new-bindir=/usr/lib/postgresql/19/bin
+
+# pg_upgrade copies only PostgreSQL's own files: carry the pgsodium key files over, or the new cluster starts
+# under another key and Vault secrets cannot be decrypted (skip any file that does not exist)
+cp -p /var/lib/postgresql/18/docker/pgsodium_root.key /var/lib/postgresql/18/docker/pgsodium_key_source \
+  /var/lib/postgresql/19/docker/
 ```
 
 **Option B: Backup → Restore** (slower, safer)
@@ -133,9 +142,14 @@ su - postgres
 # Backup from old version
 bun scripts/tools/backup-postgres.ts postgres backup-pg18.sql.gz
 
-# Deploy new version with fresh data directory
+# Copy the pgsodium root key out first: it lives in the data volume, the dump does not carry it, and Vault
+# secrets in the dump decrypt only under it (docs/PGSODIUM-SETUP.md)
+(umask 077; docker compose exec -T -u postgres postgres sh -c 'cat "$PGDATA/pgsodium_root.key"' > pgsodium_root.key)
+
+# Deploy new version with fresh data directory; set PGSODIUM_KEY_FILE in .env to the copy, mounted into the
+# container, before this first start
 docker compose down
-docker volume rm postgres-data
+docker volume rm postgres_data # or your POSTGRES_DATA_VOLUME
 docker compose up -d
 
 # Wait for Postgres ready
@@ -149,7 +163,7 @@ bun scripts/tools/restore-postgres.ts backup-pg18.sql.gz postgres
 
 ```sql
 -- After successful upgrade, update extensions
-ALTER EXTENSION pgvector UPDATE;
+ALTER EXTENSION vector UPDATE;
 ALTER EXTENSION pg_cron UPDATE;
 ALTER EXTENSION pgaudit UPDATE;
 ALTER EXTENSION pg_stat_statements UPDATE;
@@ -305,8 +319,9 @@ bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres
 # Deploy old version
 docker pull ghcr.io/fluxo-kt/aza-pg:18
 
-# Create new data directory
-docker volume create postgres-data-rollback
+# Start it on a new, empty data volume: in .env set POSTGRES_IMAGE to the 18 image, POSTGRES_DATA_VOLUME to a new
+# name (e.g. postgres_data_rollback) and PGSODIUM_KEY_FILE to the key copy taken before the upgrade, then
+docker compose up -d
 
 # Restore backup
 bun scripts/tools/restore-postgres.ts backup-pre-upgrade.sql.gz postgres

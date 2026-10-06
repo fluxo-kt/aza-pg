@@ -573,19 +573,7 @@ ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in m
 
 ### Package Name Mappings
 
-Some extensions have different Dockerfile package names:
-
-| Manifest Name | Dockerfile Package                 |
-| ------------- | ---------------------------------- |
-| `vector`      | `postgresql-${PG_MAJOR}-pgvector`  |
-| `postgis`     | `postgresql-${PG_MAJOR}-postgis-3` |
-| `pg_partman`  | `postgresql-${PG_MAJOR}-partman`   |
-| `pg_repack`   | `postgresql-${PG_MAJOR}-repack`    |
-| `pgrouting`   | `postgresql-${PG_MAJOR}-pgrouting` |
-| `set_user`    | `postgresql-${PG_MAJOR}-set-user`  |
-| `pg_cron`     | `postgresql-${PG_MAJOR}-cron`      |
-
-These mappings are defined in `getDockerfilePackageName()` function in the validation script.
+A PGDG extension installs `postgresql-<major>-<pgdgPackage>`, where `pgdgPackage` is set on its manifest entry (e.g. `pg_cron` → `cron`); the Dockerfile generator and the PGDG version check both read it there.
 
 ### Integration Points
 
@@ -612,7 +600,7 @@ echo $?  # 0 = success, 1 = failure
 
 If validation fails incorrectly:
 
-1. Check package name mappings in `getDockerfilePackageName()`
+1. Check the entry's `pgdgPackage` in `scripts/extensions/manifest-data.ts`
 2. Verify baseline extension list parsing regex
 3. Check for case sensitivity issues (manifest uses lowercase, SQL might differ)
 

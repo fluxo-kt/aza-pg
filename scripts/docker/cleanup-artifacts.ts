@@ -6,7 +6,8 @@
  * another project's images/volumes can never match:
  *   - images:  dangling images whose OCI label `org.opencontainers.image.title` starts with "aza-pg"
  *              (set in docker/postgres/Dockerfile.template).
- *   - volumes: dangling anonymous volumes whose PGDATA `postgresql.auto.conf` contains
+ *   - volumes: dangling anonymous volumes holding `.aza-pg-volume` (copied from the image into every new
+ *              volume), or, for volumes made by older images, whose PGDATA `postgresql.auto.conf` contains
  *              `app.aza_pg_custom` — the marker ALTER SYSTEM-set by
  *              docker-entrypoint-initdb.d/00-aza-pg-settings.sh specifically to identify aza-pg installs.
  *   - builder: the dedicated `aza-pg-builder` buildx builder + its cache (recreated on next build).
@@ -26,6 +27,8 @@ import { info, section, success, warning } from "../utils/logger";
 
 const AZA_IMAGE_TITLE_PREFIX = "aza-pg";
 const AZA_VOLUME_MARKER = "app.aza_pg_custom";
+/** Shipped in the image's /var/lib/postgresql (Dockerfile.template), so Docker copies it into each new data volume. */
+const AZA_VOLUME_FILE = ".aza-pg-volume";
 const AZA_BUILDER = "aza-pg-builder";
 const VOLUME_PROBE_BATCH = 30;
 
@@ -129,8 +132,10 @@ async function azaDanglingVolumes(): Promise<string[]> {
     // contains the aza-pg marker. PG18's image nests PGDATA under /<major>/docker, hence -maxdepth 3.
     // grep -F (fixed string): the marker is a literal and contains a `.`, which as a regex would
     // match any char — this match drives DELETION, so it must be exact, not a pattern.
+    // Or the volume holds the image's AZA_VOLUME_FILE, which marks it from creation, before any initdb.
     const probe =
       'for d in /m/*; do i=$(basename "$d"); ' +
+      `if [ -f "$d/${AZA_VOLUME_FILE}" ]; then echo "$i"; continue; fi; ` +
       'f=$(find "$d" -maxdepth 3 -name postgresql.auto.conf 2>/dev/null | head -1); ' +
       `if [ -n "$f" ] && grep -qF ${AZA_VOLUME_MARKER} "$f" 2>/dev/null; then echo "$i"; fi; done`;
     const res = await dockerRun(["run", "--rm", ...mountArgs, "alpine", "sh", "-c", probe]);

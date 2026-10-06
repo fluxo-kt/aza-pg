@@ -327,8 +327,11 @@ RUN set -euo pipefail && \
 COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/share/postgresql/18/extension/pgsodium_getkey
 COPY --chmod=0755 docker/postgres/pgsodium_getkey.sh /usr/local/share/aza-pg/pgsodium_getkey
 
-# Create backup directory with proper ownership
-RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup
+# Create backup directory with proper ownership.
+# .aza-pg-volume: Docker copies the image's /var/lib/postgresql into every new volume mounted there, so each data
+# volume carries this file from creation, even one whose initdb failed. `bun run cleanup` uses it to recognise an
+# orphaned anonymous aza-pg volume without touching other projects' volumes.
+RUN set -euo pipefail && mkdir -p /backup && chown postgres:postgres /backup && touch /var/lib/postgresql/.aza-pg-volume
 
 # Copy configs by stability (base config rarely changes, scripts occasionally change) for layer cache hits
 # Base PostgreSQL config (most stable - rarely modified)

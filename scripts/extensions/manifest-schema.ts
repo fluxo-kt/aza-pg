@@ -70,7 +70,6 @@ export const BuildSpecSchema = type({
  * - preloadOnly: Whether extension is SQL-only schema (no CREATE EXTENSION support)
  * - preloadLibraryName: Library name in shared_preload_libraries (if different from extension name)
  * - preloadInComprehensiveTest: Include in comprehensive test preload (even if defaultEnable is false)
- * - excludeFromAutoTests: Exclude from automated test suite (with reasons in notes)
  * - notes: Optional runtime configuration notes for users
  */
 export const RuntimeSpecSchema = type({
@@ -79,7 +78,6 @@ export const RuntimeSpecSchema = type({
   "preloadOnly?": "boolean",
   "preloadLibraryName?": "string",
   "preloadInComprehensiveTest?": "boolean",
-  "excludeFromAutoTests?": "boolean",
   "notes?": "string[]",
 });
 
@@ -175,55 +173,6 @@ export function validateManifest(data: unknown): ValidatedManifest {
 }
 
 /**
- * Validates a single manifest entry at runtime.
- *
- * @param data - Unknown data to validate as manifest entry
- * @returns Validated manifest entry
- * @throws Error if validation fails with detailed error messages
- *
- * @example
- * ```typescript
- * try {
- *   const entry = validateManifestEntry(rawEntry);
- *   // entry is now type-safe
- * } catch (error) {
- *   console.error('Entry validation failed:', error.message);
- * }
- * ```
- */
-export function validateManifestEntry(data: unknown): ValidatedManifestEntry {
-  const result = ManifestEntrySchema(data);
-  if (result instanceof type.errors) {
-    throw new Error(`Manifest entry validation failed:\n${result.summary}`);
-  }
-  return result;
-}
-
-/**
- * Validates source specification at runtime.
- *
- * @param data - Unknown data to validate as source spec
- * @returns Validated source specification
- * @throws Error if validation fails
- *
- * @example
- * ```typescript
- * const source = validateSourceSpec({
- *   type: "git",
- *   repository: "https://github.com/user/repo.git",
- *   tag: "v1.0.0"
- * });
- * ```
- */
-export function validateSourceSpec(data: unknown): ValidatedSourceSpec {
-  const result = SourceSpecSchema(data);
-  if (result instanceof type.errors) {
-    throw new Error(`Source spec validation failed:\n${result.summary}`);
-  }
-  return result;
-}
-
-/**
  * Validates build specification at runtime.
  *
  * @param data - Unknown data to validate as build spec
@@ -270,10 +219,6 @@ export function validateRuntimeSpec(data: unknown): ValidatedRuntimeSpec {
 }
 
 // Inferred types from ArkType schemas
-export type ValidatedSourceSpec = typeof SourceSpecSchema.infer;
-export type ValidatedBuildKind = typeof BuildKindSchema.infer;
 export type ValidatedBuildSpec = typeof BuildSpecSchema.infer;
 export type ValidatedRuntimeSpec = typeof RuntimeSpecSchema.infer;
-export type ValidatedExtensionKind = typeof ExtensionKindSchema.infer;
-export type ValidatedManifestEntry = typeof ManifestEntrySchema.infer;
 export type ValidatedManifest = typeof ManifestSchema.infer;

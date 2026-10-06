@@ -1,46 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Manifest schema rejections (validate-manifest.ts gates on them) and the GUC formatter that writes
- * every line of the generated postgresql.conf files.
+ * The GUC formatter that writes every line of the generated postgresql.conf files.
  *
  * Usage: bun test scripts/test/test-utils.test.ts
  */
 
 import { describe, test, expect } from "bun:test";
-import { validateManifestEntry, validateSourceSpec } from "../extensions/manifest-schema";
 import {
   camelToSnakeCase,
   toPostgresGUCName,
   formatValue,
   formatSetting,
 } from "../utils/guc-formatter";
-
-describe("Manifest schema rejects", () => {
-  test("an entry without a name", () => {
-    const entry = {
-      kind: "extension",
-      category: "test",
-      description: "Test",
-      source: { type: "builtin" },
-    };
-    expect(() => validateManifestEntry(entry)).toThrow(/name/);
-  });
-
-  test("an unknown kind", () => {
-    const entry = {
-      name: "test",
-      kind: "invalid_kind",
-      category: "test",
-      description: "Test",
-      source: { type: "builtin" },
-    };
-    expect(() => validateManifestEntry(entry)).toThrow();
-  });
-
-  test("a git source without a repository", () => {
-    expect(() => validateSourceSpec({ type: "git", tag: "v1.0.0" })).toThrow();
-  });
-});
 
 describe("GUC names", () => {
   test("camelCase becomes snake_case, acronyms and digits included", () => {

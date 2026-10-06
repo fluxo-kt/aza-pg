@@ -373,7 +373,6 @@
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": true,
-        "excludeFromAutoTests": false,
         "notes": [
           "Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG's postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage \"pgvector\") once PGDG ships >= 0.8.7.",
           "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",

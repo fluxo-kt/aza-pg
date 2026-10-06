@@ -108,7 +108,6 @@ export interface RuntimeSpec {
   sharedPreload?: boolean;
   defaultEnable?: boolean;
   preloadOnly?: boolean; // Extension has no .control file, cannot use CREATE EXTENSION
-  excludeFromAutoTests?: boolean; // Exclude from automated test suite
   /**
    * If true, enable this shared preload library in regression test mode.
    * Only applicable when sharedPreload: true and defaultEnable: false.
@@ -235,7 +234,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
-      excludeFromAutoTests: false,
       notes: [
         'Built from source: CVE-2026-103484 (IVFFlat index build overflow, arbitrary code execution) is fixed only in 0.8.7, newer than PGDG\'s postgresql-18-pgvector when this was set. Return to install_via pgdg (pgdgPackage "pgvector") once PGDG ships >= 0.8.7.',
         "The Makefile defaults OPTFLAGS to -march=native; build-extensions.ts clears it so the binary runs on any CPU of the architecture.",
@@ -263,7 +261,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      excludeFromAutoTests: false,
       notes: [
         "PGDG: postgresql-18-cron",
         "Preloaded by default - background worker scheduling enabled",
@@ -985,7 +982,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      excludeFromAutoTests: false,
       notes: [
         "Timescale repo: timescaledb-2-postgresql-18 (TSL build). The ~debian13-18NN version suffix names the PostgreSQL minor it was built for, and the package Depends on postgresql-18 >= that minor: bump timescaleVersion together with pgVersion.",
         "Preloaded for optimal hypertable performance",

@@ -508,7 +508,7 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> 
   "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
   "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
   "hadolint/hadolint": { repository: "https://github.com/hadolint/hadolint" },
-  "aquasec/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
+  "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
 };
 
 /**

@@ -22,7 +22,7 @@ import { join } from "node:path";
 
 // Pinned to an immutable post-incident release instead of the mutable Docker tag.
 const TRIVY_IMAGE =
-  "aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa";
+  "ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa";
 const DEFAULT_IMAGE = "aza-pg:pg18";
 const SHADOWED_GOSU_PATH = "usr/local/bin/gosu";
 

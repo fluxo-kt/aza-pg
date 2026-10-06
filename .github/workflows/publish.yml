@@ -623,7 +623,7 @@ jobs:
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
           docker run --rm \
             -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
+            ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --skip-files usr/local/bin/gosu \
@@ -634,7 +634,7 @@ jobs:
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
           docker run --rm \
             -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
+            ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --skip-files usr/local/bin/gosu \

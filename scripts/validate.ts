@@ -23,8 +23,11 @@ import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 import { summarizeResults } from "./validate-summary";
 
+// GHCR serves the same digest as Docker Hub without Hub's anonymous pull limit, which otherwise stops this gate from
+// running at all on a busy machine. Before bumping, run the new version on the Dockerfile: releases add rules and
+// false positives (2.15.1 forgot a stage's SHELL after ENV, hence ENV-before-SHELL in the template).
 export const HADOLINT_IMAGE =
-  "hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d";
+  "ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d";
 
 /**
  * Validation check configuration

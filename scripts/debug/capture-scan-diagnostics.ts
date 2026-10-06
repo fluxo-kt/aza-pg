@@ -52,7 +52,7 @@ import { getErrorMessage } from "../utils/errors";
 import { checkDockerDaemon } from "../utils/docker";
 
 const TRIVY_IMAGE =
-  "aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa";
+  "ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa";
 const SHADOWED_GOSU_PATH = "usr/local/bin/gosu";
 
 interface Options {

@@ -364,10 +364,15 @@ export async function dockerRunLive(args: string[]): Promise<number> {
  */
 export const TEST_SCOPE_ENV = "AZA_PG_TEST_SCOPE";
 
-/** `{prefix}-[{scope}-]{timestamp}-{pid}`: unique per process and call, and findable by its test-all scope. */
+/**
+ * `{prefix}-[{scope}-]{timestamp}-{pid}`, numbers in base36: unique per process and call, and findable by its test-all
+ * scope. Short because suites use container names as hostnames, and Docker's DNS cannot resolve a name longer than
+ * one 63-octet DNS label: decimal numbers put the replica suite's primary at 65+ characters, and the replica waited
+ * for it forever.
+ */
 function scopedName(prefix: string): string {
   const scope = Bun.env[TEST_SCOPE_ENV];
-  return `${prefix}-${scope ? `${scope}-` : ""}${Date.now()}-${process.pid}`;
+  return `${prefix}-${scope ? `${scope}-` : ""}${Date.now().toString(36)}-${process.pid.toString(36)}`;
 }
 
 /** Unique container name for test isolation; also the root for volume names derived from it. */

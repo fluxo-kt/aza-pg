@@ -228,8 +228,9 @@ async function main(): Promise<void> {
 
   const started = performance.now();
   const outcomes: Outcome[] = [];
-  // Scope tokens are unique on this host while this run lives: this process's pid plus the suite's position.
-  const pending = queue.map((suite, i) => ({ suite, scope: `t${process.pid}x${i}` }));
+  // Scope tokens are unique on this host while this run lives: this process's pid plus the suite's position. Base36
+  // keeps container names within a DNS label (see scopedName in utils/docker.ts).
+  const pending = queue.map((suite, i) => ({ suite, scope: `t${process.pid.toString(36)}x${i}` }));
   stopAllOnSignal();
   await Promise.all(
     Array.from({ length: workers }, async () => {

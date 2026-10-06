@@ -103,6 +103,10 @@ try {
   });
   stages.push(primary);
   const primaryDb = `${primary.project}-postgres-primary`;
+  // The replica reaches the primary by this name, as the stack's .env.example does; Docker's DNS cannot resolve a
+  // name longer than one DNS label, and the replica would wait for the primary until the suite's timeout.
+  if (primaryDb.length > 63)
+    throw new Error(`primary container name ${primaryDb} is ${primaryDb.length} > 63 characters`);
   console.log(`Primary ${primary.project}, replica follows (${image})`);
   // PgBouncer and the primary's exporters are the primary-stack suite's subject; the replica needs PostgreSQL only.
   await composeUp(primary, "postgres");

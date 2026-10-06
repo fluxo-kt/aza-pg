@@ -188,7 +188,7 @@ _Performance Impact:_
 **Process:**
 
 1. Shared scripts (all stacks): `docker/postgres/docker-entrypoint-initdb.d/`
-   - `01-extensions.sql` → Creates 10 baseline extensions (pg_cron, pg_stat_monitor, pg_stat_statements, pg_trgm, pgaudit, pgmq, plpgsql, timescaledb, vector, vectorscale). Note: auto_explain is a preload-only module, not created via CREATE EXTENSION.
+   - `01-extensions.sql` → Creates the baseline extensions listed in its `v_expected_exts` array (`01b-pg_cron.sh` creates pg_cron). Note: auto_explain is a preload-only module, not created via CREATE EXTENSION.
    - `02-replication.sh` → Creates replicator user (if enabled)
 
 2. Stack-specific scripts: `stacks/*/configs/initdb/`
@@ -349,21 +349,7 @@ Deployment Environment
                Example: 64GB host → shared_buffers≈9830MB
 ```
 
-**Baseline Ratio (2GB):**
-
-- shared_buffers: 25% (512MB)
-- effective_cache: ~75% (1536MB)
-- maintenance_work_mem: ~3% (64MB, capped at 2GB)
-- work_mem: total RAM / (connections×4) → 2MB with 120 connections
-
-**Caps:**
-
-- shared_buffers: max 32GB
-- max_connections: 80 (≤512MB), 120 (<4GB), 200 (≥4GB)
-- maintenance_work_mem: max 2GB
-- work_mem: max 32MB
-
-For comprehensive memory allocation table with additional RAM tiers, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
+The ratios, caps and workload limits are listed in [README.md "Auto-Config"](../README.md#auto-config); the `calculate_*` functions in `docker/postgres/docker-auto-config-entrypoint.sh` own them.
 
 ## Monitoring Data Flow
 
@@ -472,7 +458,7 @@ The following optimizations have been identified for potential implementation ba
 
 **Long-term Considerations:**
 
-- **Rust compilation optimization:** Apply similar optimization flags to remaining cargo-pgrx extensions (pg_jsonschema, pgmq) — vectorscale now uses prebuilt GitHub release binaries
+- **Rust compilation optimization:** tune the cargo-pgrx source builds (`build.type: "cargo-pgrx"` in the manifest), vectorscale among them: it is built from source with `vectorscale-runtime-dispatch.patch`, so its AVX2/FMA code runs only on CPUs that have them
 - **Conditional builds:** Build-time arguments to skip large optional extensions for specific use cases
 - **Alpine base evaluation:** Potential 40% size reduction but requires extensive glibc vs musl compatibility testing
 

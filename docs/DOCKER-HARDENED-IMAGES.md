@@ -85,12 +85,12 @@ Our current security measures are already robust:
 
 DHI runtime images are **distroless** — they contain NO shell (bash/sh). This impacts:
 
-| Component                          | Lines   | Challenge                                           |
-| ---------------------------------- | ------- | --------------------------------------------------- |
-| `docker-auto-config-entrypoint.sh` | 514     | Complex bash with associative arrays, 15+ functions |
-| `healthcheck.sh`                   | 129     | PostgreSQL queries via psql                         |
-| Init scripts                       | 4 files | Heredoc SQL execution                               |
-| Upstream PostgreSQL entrypoint     | ~600    | Official image's bash initialization                |
+| Component                          | Challenge                            |
+| ---------------------------------- | ------------------------------------ |
+| `docker-auto-config-entrypoint.sh` | Complex bash with associative arrays |
+| `healthcheck.sh`                   | PostgreSQL queries via psql          |
+| Init scripts                       | Heredoc SQL execution                |
+| Upstream PostgreSQL entrypoint     | Official image's bash initialization |
 
 **Required work**: Rewrite all logic in Go/Rust compiled binaries.
 
@@ -256,8 +256,8 @@ COPY --from=builder /opt/ext-out /usr/lib/postgresql/17/lib
 
 - `scripts/extensions/manifest-data.ts` — Base image SHA definition
 - `docker/postgres/Dockerfile.template` — Multi-stage build structure
-- `docker/postgres/docker-auto-config-entrypoint.sh` — 514 lines of bash
-- `docker/postgres/healthcheck.sh` — 129 lines of bash
+- `docker/postgres/docker-auto-config-entrypoint.sh` — bash
+- `docker/postgres/healthcheck.sh` — bash
 - `.github/workflows/publish.yml` — Cosign signing, attestations
 
 ---

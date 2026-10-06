@@ -50,7 +50,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 - Default `shared_preload_libraries` (from manifest) is:
   `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb`
-  (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
+  Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set; it replaces the whole list.
 
 <!-- extensions-table:start -->
 
@@ -184,19 +184,17 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ## Runtime Defaults
 
-- Baseline auto-created extensions during cluster bootstrap:
-  - `pg_cron`, `pg_stat_monitor`, `pg_stat_statements`, `pg_trgm`, `pgaudit`, `pgmq`, `plpgsql`, `timescaledb`, `vector`, `vectorscale`
+- Extensions auto-created during cluster bootstrap: the `v_expected_exts` array in `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql`, plus `pg_cron` (created by `01b-pg_cron.sh` in `cron.database_name`).
   - Note: `auto_explain` is a preload-only module (not an extension) and does NOT require CREATE EXTENSION.
-- Default `shared_preload_libraries` is `auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb` (9 entries preloaded by default). Override with `POSTGRES_SHARED_PRELOAD_LIBRARIES` if you need a different set.
 - Optional extensions can be preloaded: `supautils`, `pg_partman_bgw` (background worker), `set_user`, `plan_filter` (pg_plan_filter's library name).
 - Everything else is installed but disabled. Enable on demand with `CREATE EXTENSION ...` once `shared_preload_libraries` includes the required module (if needed).
 
 ## Installation Notes by Category
 
-- **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector` and requires manual `CREATE EXTENSION vectorscale CASCADE`.
+- **AI / Vector** – `vector` (pgvector) ships enabled; `vectorscale` (pgvectorscale) depends on `vector`; both are auto-created during cluster bootstrap.
 - **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus does not yet support PostgreSQL 18 GA (see Compatibility Exceptions); clustering remains unavailable in this image until upstream releases PG18 support.
-- **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is auto-created but requires pgsodium preload for encryption.
+- **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is preloaded and auto-created by default; it reads its key only when preloaded itself, so keep `supabase_vault` in any custom `POSTGRES_SHARED_PRELOAD_LIBRARIES`.
 - **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest` (built from source); configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis. `pg_repack` inside the container works as shipped; from another machine run it as `PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...`, because the preloaded safeupdate rejects pg_repack's own `DELETE` without `WHERE`.
 - **Partitioning** – enable `pg_partman` and optional background worker via `ALTER SYSTEM SET shared_preload_libraries = '...,pg_partman_bgw'` followed by `SELECT partman_bgw_add_job(...)`.
 
@@ -618,18 +616,9 @@ If validation fails incorrectly:
 2. Verify baseline extension list parsing regex
 3. Check for case sensitivity issues (manifest uses lowercase, SQL might differ)
 
-### Updating Expected Counts
+### Expected Counts
 
-If you add/remove extensions, update `EXPECTED_COUNTS` in `validate-manifest.ts`:
-
-```typescript
-const EXPECTED_COUNTS = {
-  total: 38, // Total extensions
-  builtin: 6, // kind: "builtin"
-  pgdg: 14, // install_via: "pgdg"
-  compiled: 18, // Source-built (neither builtin nor PGDG)
-};
-```
+`validate-manifest.ts` derives every count from the manifest, so adding or removing an extension needs no count edit.
 
 ### Design Decisions
 

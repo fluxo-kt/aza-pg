@@ -124,22 +124,20 @@ git commit -m "deps(postgres): update base image to 18.2"
 
 ### Procedure 2: Update PGDG Extension Version
 
-**Example:** Update pgvector from 0.8.0 to 0.8.1
+**Example:** Update hypopg from 1.4.2 to 1.4.3
 
-PGDG extensions are pre-compiled Debian packages. 13 extensions use this method:
-
-- pgvector, pg_cron, pgaudit, postgis, pg_partman, pg_repack, plpgsql_check, hll, http, hypopg, pgrouting, rum, set_user
+PGDG extensions are pre-compiled Debian packages: every manifest entry with `install_via: "pgdg"`. Before switching a source-built entry to `pgdg`, read its manifest entry's `notes`: some are built from source because the PGDG package lacks a fix (pgvector, for a CVE), and switching would ship the vulnerable version.
 
 #### Step 1: Find Latest PGDG Version
 
 PGDG versions follow format: `SEMANTIC_VERSION-DEBIAN_RELEASE.pgdgREPO+BUILD`
 
-Example: `0.8.1-2.pgdg13+1` means:
+Example: `1.4.3-1.pgdg13+2` means:
 
-- Semantic version: 0.8.1
-- Debian release: 2
-- PGDG repository: 13+ (Debian Bullseye)
-- Build number: 1
+- Semantic version: 1.4.3
+- Debian release: 1
+- PGDG repository: `pgdg13` = built for Debian 13 (trixie)
+- PGDG rebuild number: 2
 
 **How to check latest PGDG version:**
 
@@ -147,7 +145,7 @@ Example: `0.8.1-2.pgdg13+1` means:
 # Method 1: Check in Docker container with PGDG repo
 docker run --rm postgres:18-trixie bash -c "
   apt-get update -qq && \
-  apt-cache policy postgresql-18-pgvector | grep Candidate
+  apt-cache policy postgresql-18-hypopg | grep Candidate
 "
 
 # Method 2: Check PGDG package repository
@@ -162,19 +160,19 @@ docker run --rm postgres:18-trixie bash -c "
 ```typescript
 // File: scripts/extensions/manifest-data.ts
 {
-  name: "vector",
+  name: "hypopg",
+  install_via: "pgdg",
+  pgdgVersion: "1.4.3-1.pgdg13+2",  // ← Update PGDG version (semantic must match tag!)
   source: {
     type: "git",
-    repository: "https://github.com/pgvector/pgvector.git",
-    tag: "v0.8.1",  // ← Update git tag (prefix with "v" if repo uses it)
+    repository: "https://github.com/HypoPG/hypopg.git",
+    tag: "1.4.3",  // ← Update git tag (keep the repo's own prefix, e.g. "v")
   },
-  install_via: "pgdg",
-  pgdgVersion: "0.8.1-2.pgdg13+1",  // ← Update PGDG version (semantic must match tag!)
   // ...
 }
 ```
 
-**Validation:** The semantic version from `pgdgVersion` (e.g., "0.8.1") must match `source.tag` (e.g., "v0.8.1"): check-updates compares the tag with upstream, so a stale tag misreports updates. `validate-pgdg-versions.ts` checks only that `pgdgVersion` is what the PGDG repo serves.
+**Validation:** The semantic version from `pgdgVersion` (e.g., "1.4.3") must match `source.tag` (e.g., "1.4.3"): check-updates compares the tag with upstream, so a stale tag misreports updates. `validate-pgdg-versions.ts` checks only that `pgdgVersion` is what the PGDG repo serves.
 
 #### Step 3: Regenerate and Validate
 
@@ -188,7 +186,7 @@ git diff docker/postgres/Dockerfile
 
 ```bash
 git add scripts/extensions/manifest-data.ts docker/
-git commit -m "deps(pgvector): update to 0.8.1"
+git commit -m "deps(hypopg): update to 1.4.3"
 ```
 
 ---
@@ -452,15 +450,15 @@ export const MANIFEST_METADATA = {
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   // PGDG extension example (has pgdgVersion):
   {
-    name: "vector",
+    name: "hypopg",
     kind: "extension",
     source: {
       type: "git",
-      repository: "https://github.com/pgvector/pgvector.git",
-      tag: "v0.8.0",
+      repository: "https://github.com/HypoPG/hypopg.git",
+      tag: "1.4.3",
     },
     install_via: "pgdg",
-    pgdgVersion: "0.8.0-1.pgdg13+1", // Must match source.tag semantically!
+    pgdgVersion: "1.4.3-1.pgdg13+2", // Must match source.tag semantically!
     // ...
   },
   // Source-built extension example (no pgdgVersion):
@@ -527,7 +525,7 @@ bun X.Y.Z
 
 - PG_VERSION (e.g., `18.1`) - from MANIFEST_METADATA.pgVersion
 - PG_BASE_IMAGE_SHA (e.g., `sha256:...`) - from MANIFEST_METADATA.baseImageSha
-- PGDG package versions (e.g., `postgresql-18-pgvector=0.8.1-2.pgdg13+1`) - from pgdgVersion fields
+- PGDG package versions (e.g., `postgresql-18-hypopg=1.4.3-1.pgdg13+2`) - from pgdgVersion fields
 - Metadata ARGs: `BUILD_DATE` and `VCS_REF` (no defaults - passed at build time)
 
 **Note:** Version dependencies are NOT ARGs (cannot be overridden at build time). They are hardcoded in the FROM statement and package installation commands during Dockerfile generation.
@@ -538,7 +536,7 @@ bun X.Y.Z
 
 **Files:**
 
-- `docker/postgres/extensions.manifest.json` (all 39 extensions)
+- `docker/postgres/extensions.manifest.json` (every manifest entry)
 - `docker/postgres/extensions.pgxs.manifest.json` (PGXS builds)
 - `docker/postgres/extensions.cargo.manifest.json` (cargo-pgrx builds)
 
@@ -599,7 +597,7 @@ docker inspect postgres:18.2-trixie --format '{{index .RepoDigests 0}}'
 docker run --rm postgres:18-trixie bash -c "
   echo 'deb http://apt.postgresql.org/pub/repos/apt trixie-pgdg main' > /etc/apt/sources.list.d/pgdg.list && \
   apt-get update -qq && \
-  apt-cache policy postgresql-18-pgvector
+  apt-cache policy postgresql-18-hypopg
 "
 
 # Method 2: Browse package index
@@ -611,7 +609,7 @@ docker run --rm postgres:18-trixie bash -c "
 
 Examples:
 
-- pgvector: `postgresql-18-pgvector`
+- hypopg: `postgresql-18-hypopg`
 - pg_cron: `postgresql-18-cron`
 - pgaudit: `postgresql-18-pgaudit`
 
@@ -782,7 +780,7 @@ bun run generate
 **Symptom:**
 
 ```
-E: Unable to locate package postgresql-18-pgvector=0.8.1-2.pgdg13+1
+E: Unable to locate package postgresql-18-hypopg=1.4.3-1.pgdg13+2
 ```
 
 **Cause:** `pgdgVersion` in manifest-data.ts doesn't match available packages
@@ -792,7 +790,7 @@ E: Unable to locate package postgresql-18-pgvector=0.8.1-2.pgdg13+1
 ```bash
 # Check actual PGDG version
 docker run --rm postgres:18-trixie bash -c "
-  apt-get update && apt-cache policy postgresql-18-pgvector
+  apt-get update && apt-cache policy postgresql-18-hypopg
 "
 
 # Update pgdgVersion in manifest-data.ts
@@ -852,7 +850,7 @@ git ls-remote https://github.com/owner/repo.git refs/tags/v1.2.3
 ### Monthly
 
 - [ ] Check PostgreSQL releases for new minor versions
-- [ ] Check PGDG packages for updates (14 extensions)
+- [ ] Check PGDG packages for updates (`install_via: "pgdg"` entries)
 - [ ] Review GitHub security advisories for used extensions
 
 ### Quarterly

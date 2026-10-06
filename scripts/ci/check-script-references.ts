@@ -7,8 +7,8 @@
  * - a package.json script runs a repo file (`bun scripts/x.ts`) or another script (`bun run x`) that
  *   no longer exists, so the documented command fails only when someone runs it.
  * `bun run <path>` forms (containing "/" or ".") run a file, not a script, and are skipped in docs.
- * - docs and the agent commands cite a backticked repo path (`scripts/…`, `docker/…`, `stacks/…`, `tests/…`)
- *   that no longer exists, so a reader (often an agent) follows it into nothing. Globs and placeholders
+ * - docs, QUICK_START.md, the deployment guides and the agent commands cite a backticked repo path (`scripts/…`,
+ *   `docker/…`, `stacks/…`, `tests/…`, `deployments/…`; relative to the doc's own directory also counts) that no longer exists, so a reader (often an agent) follows it into nothing. Globs and placeholders
  *   (`*`, `<name>`, `{a,b}`, `$VAR`) name no single file and are skipped; a `:line` suffix is ignored.
  *   The file of a `bun <path>` command counts too, backticked or not: commands in fenced code blocks carry no
  *   backticks, and that is where docs kept citing deleted suites.
@@ -17,14 +17,21 @@
  */
 
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Glob } from "bun";
 
 const PROJECT_ROOT = join(import.meta.dir, "../..");
 const DOC_PATTERNS = ["AGENTS.md", "README.md", "docs/**/*.md"];
 // Agent commands are read by agents mid-task, so a dead path there misdirects work, not just a reader.
-const PATH_DOC_PATTERNS = [...DOC_PATTERNS, ".claude/commands/*.md"];
-const REPO_PATH = /`((?:scripts|docker|stacks|tests)\/[^`\s]*)`/g;
+// QUICK_START.md and the deployment guides are where operators start. CHANGELOG.md is left out: its entries name
+// files a release removed or renamed, which must stay as written.
+const PATH_DOC_PATTERNS = [
+  ...DOC_PATTERNS,
+  ".claude/commands/*.md",
+  "QUICK_START.md",
+  "deployments/**/*.md",
+];
+const REPO_PATH = /`((?:scripts|docker|stacks|tests|deployments)\/[^`\s]*)`/g;
 const BUN_FILE =
   /\bbun\s+(?:run\s+|test\s+)?(?:\.\/)?((?:scripts|docker|stacks|tests)\/[\w./-]+\.(?:ts|js|sh))/g;
 const PLACEHOLDER = /[*<>{}$]|\bX{2,}\b|EXTNAME/;
@@ -92,10 +99,15 @@ export async function findBrokenReferences(root: string): Promise<string[]> {
         );
         for (const cited of cites) {
           if (!cited || PLACEHOLDER.test(cited) || NOT_A_PATH.test(cited)) continue;
-          const exists = await stat(join(root, cited)).then(
-            () => true,
-            () => false
-          );
+          // A deployment guide names its own files relative to its directory (`scripts/setup.sh`).
+          const exists = await Promise.all(
+            [join(root, cited), join(root, dirname(file), cited)].map((path) =>
+              stat(path).then(
+                () => true,
+                () => false
+              )
+            )
+          ).then((found) => found.some(Boolean));
           if (!exists) {
             problems.push(
               `${file}:${index + 1}: \`${cited}\` does not exist; point it at the file that replaced it, or delete the sentence if nothing did`

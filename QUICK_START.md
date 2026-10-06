@@ -8,7 +8,6 @@ Complete deployment artifacts and documentation for production PostgreSQL on Coo
 
 - **`docs/DEPLOYMENT.md`** - Step-by-step deployment guide (10,000+ words)
 - **`docs/RUNBOOKS.md`** - Operational procedures for backup/restore/failover
-- **`deployments/phase1-single-vps/README.md`** - Phase 1 quick reference
 - **`deployments/phase2-dual-vps/README.md`** - Phase 2 replication guide
 
 ### 🐳 Deployment Configurations
@@ -152,7 +151,7 @@ Configure pgBackRest (Bare VPS only):
 apt install pgbackrest
 
 # Configure
-cp deployments/phase1-single-vps/pgbackrest/pgbackrest.conf /etc/pgbackrest.conf
+cp deployments/phase1-single-vps/pgbackrest/pgbackrest.conf.example /etc/pgbackrest.conf
 # Update S3 credentials
 
 # Initialize
@@ -372,7 +371,7 @@ docker exec postgres psql -U postgres -c \
 - auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements
 - pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb
 
-### Available Extensions (40 total)
+### Available Extensions
 
 **Monitoring:** pg_stat_statements, pg_stat_monitor, auto_explain, pgaudit
 **Performance:** hypopg, index_advisor, pg_repack

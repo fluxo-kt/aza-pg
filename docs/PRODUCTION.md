@@ -430,18 +430,9 @@ Update `Dockerfile` ARGs, rebuild image, deploy.
 
 ### Auto-Config Baseline
 
-Default settings target **2GB RAM**. Auto-config scales from there.
+Auto-config sizes memory and connections from the container's RAM, CPUs and `POSTGRES_WORKLOAD_TYPE`; the rules and caps are in [README.md "Auto-Config"](../README.md#auto-config).
 
-**Memory Map:**
-
-- `shared_buffers`: 15-25% of RAM (capped at 32GB)
-- `effective_cache_size`: 75-85% of RAM
-- `maintenance_work_mem`: 3.1% of RAM (capped at 2GB)
-- `work_mem`: RAM/(max_connections\*4) (capped at 32MB)
-
-**Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM.
-
-For comprehensive memory allocation table with specific RAM tiers and connection limits, see [AGENTS.md Auto-Config section](../AGENTS.md#auto-config).
+**Override:** Set `POSTGRES_MEMORY=<MB>` to manually specify available RAM. A single setting is overridden with `-c name=value` or `ALTER SYSTEM`; a value in a postgresql.conf file is replaced by the tuned one.
 
 ### Extension Optimization
 

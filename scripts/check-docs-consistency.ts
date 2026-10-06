@@ -2,12 +2,9 @@
 /**
  * Documentation Consistency Checker
  *
- * Validates that documentation files match the generated docs-data.json:
- * - Extension counts must match manifest
- * - Preload library lists must match manifest
- * - Memory tier tables must match generated data
- *
- * Exits with error if mismatches found.
+ * Fails (exit 1) when a documentation or config file:
+ * - writes out a default preload list that lacks a library the image preloads by default;
+ * - documents `.pgpass` escaping of `:@&` (only `:` and `\` are escaped).
  */
 
 import { join } from "node:path";
@@ -47,30 +44,11 @@ interface DocsData {
     modules: string[];
     extensions: string[];
   };
-  memoryTiers: Array<{
-    ram: string;
-    shared_buffers: string;
-    effective_cache_size: string;
-    work_mem: string;
-    maintenance_work_mem: string;
-    max_connections: number;
-  }>;
 }
 
 interface CheckResult {
   file: string;
   errors: string[];
-}
-
-/**
- * Check if file contains extension count mentions
- *
- * NOTE: Disabled - all hardcoded extension counts have been removed from documentation.
- * Counts should be referenced from docs/.generated/docs-data.json or dynamically computed.
- */
-function checkExtensionCounts(_content: string, _data: DocsData, _file: string): string[] {
-  // Hardcoded count checks disabled - documentation now references generated data
-  return [];
 }
 
 /**
@@ -136,27 +114,6 @@ function checkPreloadLibraries(content: string, _data: DocsData, _file: string):
 }
 
 /**
- * Check memory tier tables
- */
-function checkMemoryTiers(content: string, data: DocsData, file: string): string[] {
-  const errors: string[] = [];
-
-  // Look for memory allocation tables (markdown tables with RAM, shared_buffers, etc.)
-  const tablePattern = /\|\s*RAM\s*\|.*shared_buf.*\|/i;
-  if (tablePattern.test(content)) {
-    // Check for known memory tiers
-    const tiers = data.memoryTiers.map((t) => t.ram);
-    const missing = tiers.filter((tier) => !content.includes(tier));
-
-    if (missing.length > 0 && missing.length < tiers.length) {
-      warning(`${file}: Memory table may be incomplete (missing: ${missing.join(", ")})`);
-    }
-  }
-
-  return errors;
-}
-
-/**
  * Check for incorrect password escaping docs
  */
 function checkPasswordEscaping(content: string, _file: string): string[] {
@@ -174,26 +131,6 @@ function checkPasswordEscaping(content: string, _file: string): string[] {
     ) {
       errors.push(
         "Found incorrect password escaping reference (:@&) - should be : and \\ only for .pgpass"
-      );
-    }
-  }
-
-  return errors;
-}
-
-/**
- * Check for incorrect tool classification
- */
-function checkToolClassification(content: string, data: DocsData, file: string): string[] {
-  const errors: string[] = [];
-  const tools = data.tools;
-
-  // pgbackrest, pgbadger, wal2json should be called "tools" not "extensions"
-  for (const tool of tools) {
-    const pattern = new RegExp(`${tool}.*extension`, "gi");
-    if (pattern.test(content)) {
-      warning(
-        `${file}: ${tool} may be incorrectly classified as 'extension' (should be 'tool' - no CREATE EXTENSION needed)`
       );
     }
   }
@@ -239,11 +176,8 @@ async function main() {
     const errors: string[] = [];
 
     // Run checks
-    errors.push(...checkExtensionCounts(content, data, file));
     errors.push(...checkPreloadLibraries(content, data, file));
-    errors.push(...checkMemoryTiers(content, data, file));
     errors.push(...checkPasswordEscaping(content, file));
-    errors.push(...checkToolClassification(content, data, file));
 
     if (errors.length > 0) {
       results.push({ file, errors });

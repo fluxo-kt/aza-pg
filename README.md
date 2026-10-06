@@ -110,18 +110,17 @@ Configs in `stacks/{primary,replica,single}`.
 
 ### Auto-Config
 
-Detects RAM (`POSTGRES_MEMORY` → cgroup v2 limit → /proc/meminfo) and CPU at startup:
+Detects RAM (`POSTGRES_MEMORY` → cgroup v2 limit → /proc/meminfo) and CPU at startup and writes the tuned values to `/var/run/postgresql/aza-auto-config.conf` (`docker exec <container> cat /var/run/postgresql/aza-auto-config.conf` shows them). The rules, owned by the `calculate_*` functions in `docker/postgres/docker-auto-config-entrypoint.sh`:
 
-| RAM  | shared_buffers | effective_cache_size | work_mem | max_connections\* |
-| ---- | -------------- | -------------------- | -------- | ----------------- |
-| 512M | 128M (25%)     | 384M (75%)           | 1M       | 60                |
-| 2G   | 512M (25%)     | 1536M (75%)          | 4M       | 84                |
-| 4G   | 1G (25%)       | 3G (75%)             | 5M       | 102               |
-| 64G  | 9830M (25%)    | 49152M (75%)         | 32M      | 120               |
+- `max_connections`: by `POSTGRES_WORKLOAD_TYPE` — `mixed` (default) 120, `web` 200, `oltp` 300, `dw` 100 — scaled to 50%/70%/85% below 2/4/8 GB of RAM.
+- `shared_buffers`: 25% of RAM up to 8 GB, 20% up to 32 GB, 15% above; at most 32 GB.
+- `work_mem`: RAM left after `shared_buffers`, 10 MB per connection and 512 MB, divided by 4 × `max_connections`; at least 1 MB. Capped at 32 MB for `web` and `oltp`; for `mixed` and `dw` at 32 MB below 2 GB of RAM, 64 MB from 2 GB, 128 MB from 8 GB and 256 MB from 32 GB.
+- `maintenance_work_mem`: RAM/16 (`dw`: RAM/8), between 32 MB and 2 GB.
+- `effective_cache_size`: 70% of RAM left after `shared_buffers` and the larger of 20% of RAM or 512 MB; at least 2 × `shared_buffers`.
 
-\*Connection limits shown for `mixed` workload (default). Set `POSTGRES_WORKLOAD_TYPE=web` (200), `oltp` (300), or `dw` (100) to change base limit. RAM-tier scaling applies: 50%/70%/85%/100% for <2GB/2-4GB/4-8GB/≥8GB.
+For example, the default `mixed` workload gets `max_connections` 84 and `work_mem` 1 MB at 2 GB, 120 and 9 MB at 8 GB, 120 and 112 MB at 64 GB.
 
-Caps: `shared_buffers` ≤32GB, `work_mem` ≤32MB. Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
+Preloaded: auto_explain (module), pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb (add optional via `POSTGRES_SHARED_PRELOAD_LIBRARIES`).
 
 **PgBouncer:** Set `PGBOUNCER_AUTH_PASS` in .env. Escape `:` and `\` only.
 
@@ -158,7 +157,7 @@ bun scripts/docker/validate-published-image-artifacts.ts  # Validate published i
 # Run all regression tests (extension SQL vs expected output, extension interactions)
 bun scripts/test-all.ts --group regression
 
-# Run in regression mode (all extensions including disabled ones)
+# Run in regression mode (optional preload libraries added; disabled extensions never run)
 bun scripts/test-all.ts --group nightly
 
 # Build regression image (includes pgTAP + all extensions)
@@ -238,7 +237,7 @@ PostgreSQL 18+ uses a new data directory structure (`/var/lib/postgresql/18/dock
 
 **Why PgBouncer transaction mode?** Maximizes connection multiplexing. Use :5432 for prepared statements/advisory locks.
 
-**Override auto-config?** Set `POSTGRES_MEMORY=<MB>` or modify entrypoint.
+**Override auto-config?** Pass `-c name=value` to the container command or use `ALTER SYSTEM`; both win over auto-tuning. A value in a `postgresql.conf` file is replaced by the tuned one; from the second start on, the startup log names each such value. `POSTGRES_MEMORY=<MB>` changes the RAM the rules start from.
 
 **Docker Desktop?** Yes, auto-detects limits.
 

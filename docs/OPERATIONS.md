@@ -171,6 +171,7 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 **DESTRUCTIVE OPERATION:**
 
 - Restore runs the backup's SQL in the target database and replaces nothing: rows of a table that already exists are added again, so restore into a new server's database
+- **The backup does not carry the pgsodium root key** (`$PGDATA/pgsodium_root.key`, or your `PGSODIUM_KEY_FILE`): keep a copy of it, and start the new server with `PGSODIUM_KEY_FILE` pointing at that copy before restoring, or Vault secrets and pgsodium-encrypted values cannot be decrypted ([PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#the-root-key))
 - psql continues past failed statements and the script shows them; on a new aza-pg server, "already exists" for the objects the image creates at init (pgflow, partman, vault, …) is expected, and any other error means part of the backup is missing
 - Requires user confirmation (press Enter to continue; a closed stdin cancels)
 - **No automatic backup** is created before restore
@@ -329,8 +330,9 @@ bun scripts/tools/promote-replica.ts -c my-replica -y
 **Scenario 1: Planned failover (maintenance)**
 
 ```bash
-# 1. Stop writes to old primary
-psql -h old-primary -U postgres -c "ALTER SYSTEM SET default_transaction_read_only = on; SELECT pg_reload_conf();"
+# 1. Stop writes to old primary (one -c per statement: ALTER SYSTEM cannot run inside the
+#    transaction that a multi-statement -c string becomes)
+psql -h old-primary -U postgres -c "ALTER SYSTEM SET default_transaction_read_only = on" -c "SELECT pg_reload_conf()"
 
 # 2. Wait for replica to catch up
 psql -h old-primary -U postgres -c "SELECT client_addr, state, replay_lag FROM pg_stat_replication;"
@@ -377,10 +379,8 @@ bun scripts/tools/promote-replica.ts -c postgres-replica1
 
 # 3. Reconfigure replica2 to replicate from replica1 (new primary)
 #    Edit replica2's primary_conninfo to point to replica1
-docker exec postgres-replica2 psql -U postgres -c "
-  ALTER SYSTEM SET primary_conninfo = 'host=replica1 port=5432 user=replicator password=xxx';
-  SELECT pg_reload_conf();
-"
+docker exec postgres-replica2 psql -U postgres \
+  -c "ALTER SYSTEM SET primary_conninfo = 'host=replica1 port=5432 user=replicator password=xxx'"
 docker restart postgres-replica2
 ```
 
@@ -499,21 +499,27 @@ POSTGRES_HOSTNAME=db.example.com \
 # 1. Generate certificates
 bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs 3650
 
-# 2. Edit stacks/primary/compose.yml - mount certs
+# 2. Let the container's postgres user (uid 999) read them: PostgreSQL refuses a key it does not own
+#    or that others can read (Linux hosts; the generator leaves them owned by you)
+sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
+
+# 3. Edit stacks/primary/compose.yml - mount certs
 #    volumes:
 #      - ./certs:/etc/postgresql/certs:ro
 
-# 3. Edit stacks/primary/configs/postgresql.conf - enable TLS
-#    ssl = on
-#    ssl_cert_file = '/etc/postgresql/certs/server.crt'
-#    ssl_key_file = '/etc/postgresql/certs/server.key'
-
-# 4. Restart stack
+# 4. Recreate the container so the mount applies
 cd stacks/primary
-docker compose down
 docker compose up -d
 
-# 5. Verify TLS enabled
+# 5. Enable TLS with ALTER SYSTEM (stored in the data directory; stacks/*/configs files are generated
+#    and overwritten by `bun run generate`). One -c per statement: ALTER SYSTEM cannot run in a transaction.
+docker exec aza-pg-postgres-primary psql -U postgres \
+  -c "ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/certs/server.crt'" \
+  -c "ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/certs/server.key'" \
+  -c "ALTER SYSTEM SET ssl = on" \
+  -c "SELECT pg_reload_conf()"
+
+# 6. Verify TLS enabled
 docker exec aza-pg-postgres-primary psql -U postgres -c "SHOW ssl;"  # Should show 'on'
 ```
 
@@ -559,7 +565,7 @@ Not supported by this script. For client certificate verification:
 1. Generate CA certificate separately
 2. Generate server cert signed by CA
 3. Generate client certs signed by same CA
-4. Configure `ssl_ca_file` in postgresql.conf
+4. Set `ssl_ca_file` with `ALTER SYSTEM`
 5. Set `clientcert=verify-full` in pg_hba.conf
 
 See PostgreSQL docs: https://www.postgresql.org/docs/current/ssl-tcp.html
@@ -591,13 +597,17 @@ services:
       - ./certs:/etc/postgresql/certs:ro
 ```
 
-**2. Enable SSL in postgresql.conf:**
+On Linux hosts, `sudo chown 999:999 certs/server.key certs/server.crt` first: the container's postgres user (uid 999) must own the key.
 
-```conf
-ssl = on
-ssl_cert_file = '/etc/postgresql/certs/server.crt'
-ssl_key_file = '/etc/postgresql/certs/server.key'
-ssl_ca_file = '/etc/postgresql/certs/ca.crt'  # Optional, for client verification
+**2. Enable SSL with ALTER SYSTEM** (the stack config files are generated; see Scenario 1):
+
+```bash
+docker exec aza-pg-postgres-primary psql -U postgres \
+  -c "ALTER SYSTEM SET ssl_cert_file = '/etc/postgresql/certs/server.crt'" \
+  -c "ALTER SYSTEM SET ssl_key_file = '/etc/postgresql/certs/server.key'" \
+  -c "ALTER SYSTEM SET ssl = on"
+# Optional, for client certificate verification:
+#   -c "ALTER SYSTEM SET ssl_ca_file = '/etc/postgresql/certs/ca.crt'"
 ```
 
 **3. Restart PostgreSQL:**
@@ -659,14 +669,15 @@ Common issues:
 1. **Wrong file permissions:**
 
    ```bash
-   # server.key must be 600 or less
+   # server.key must be 600 or less and owned by the container's postgres user (uid 999)
    chmod 600 stacks/primary/certs/server.key
+   sudo chown 999:999 stacks/primary/certs/server.key stacks/primary/certs/server.crt
    ```
 
 2. **File not found:**
 
    ```bash
-   # Verify mount path matches postgresql.conf
+   # Verify the mount path matches ssl_cert_file / ssl_key_file
    docker exec aza-pg-postgres-primary ls -la /etc/postgresql/certs/
    ```
 

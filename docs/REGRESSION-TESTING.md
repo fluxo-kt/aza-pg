@@ -1,6 +1,6 @@
 # Regression Testing
 
-Comprehensive regression testing framework for aza-pg PostgreSQL infrastructure.
+How the extension regression suites run and how to maintain their expected outputs.
 
 ## Overview
 
@@ -36,7 +36,7 @@ Each suite takes `--mode=production|regression`; see [Test Mode Selection](#test
 
 Tests exact release image behavior: the container starts with the image's default preload list.
 
-- Image: `aza-pg:pg18` (production Dockerfile)
+- Image: `aza-pg:pg18` by default (`DEFAULT_TEST_IMAGE` in `scripts/test/image-resolver.ts`); pass another as the first argument
 
 **Use cases:**
 
@@ -107,7 +107,7 @@ pgaudit, pg_stat_statements and pg_stat_monitor each hook the executor and must 
 **Usage:**
 
 ```bash
-bun scripts/test/test-extension-interactions.ts [--mode=production|regression]
+bun scripts/test/test-extension-interactions.ts [image] [--mode=production|regression]
 ```
 
 ## CI/CD Integration
@@ -188,7 +188,6 @@ docker rm -f -v pg-test
 
 **Extension not available:**
 
-- Check test mode (production vs regression)
 - Verify extension enabled in manifest
 - Regenerate Dockerfile: `bun run generate`
 

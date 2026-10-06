@@ -30,12 +30,6 @@ bun run build -- --multi-arch --push
 bun run build -- --push
 ```
 
-**Performance:**
-
-- First build: ~12 minutes (compiles all extensions)
-- Cached build: ~2 minutes (reuses CI artifacts)
-- No network: ~12 minutes (falls back to local cache)
-
 **How it works:**
 
 - Uses Docker Buildx with BuildKit for parallel builds
@@ -95,19 +89,18 @@ gh workflow run build-postgres-image.yml -r main -f push_image=true
 - Debug build issues
 - Manual QA before production release
 
-**Features:**
+**Features (`push_image=true`; the default `false` builds amd64 only and loads it locally):**
 
 - Multi-platform builds (linux/amd64, linux/arm64)
-- SBOM and provenance generation
-- Pushes to registry with test tags
-- ~15-20 minutes (includes full build + tests)
+- SBOM generation
+- Pushes to the testing registry, then runs every routine suite group and a Trivy scan
 
 #### Production Releases (publish.yml)
 
-Automatic on `release` branch:
+Runs when the `CI` workflow succeeds on the `release` branch (`workflow_run`):
 
 - Full multi-platform build
-- SBOM and provenance attestation
+- SBOM and GitHub build-provenance attestation
 - Pushes to `ghcr.io/fluxo-kt/aza-pg`
 - Tagged with version and convenience tags
 
@@ -144,7 +137,7 @@ The publish workflow automatically creates GitHub Releases to showcase image con
 **How it works:**
 
 1. `scripts/generate-release-notes.ts` reads extension manifest
-2. Groups enabled extensions by category (18 categories)
+2. Groups enabled extensions by category
 3. Generates structured markdown with:
    - Extension catalog by use case with versions
    - Image metadata (tags, digest, platforms)
@@ -154,7 +147,7 @@ The publish workflow automatically creates GitHub Releases to showcase image con
    - Documentation links
 
 4. `create-release` job creates GitHub Release via `gh` CLI
-5. Tag format: `v{version}` (e.g., `v18.0-202511132330-single-node`)
+5. Tag format: `v{pg-version}-{timestamp}`, without the image-type suffix (e.g., `v18.1-202511132330`)
 
 **Release notes include:**
 
@@ -163,18 +156,6 @@ The publish workflow automatically creates GitHub Releases to showcase image con
 - Image digest and multi-platform confirmation
 - Production-ready quick start commands
 - Security verification steps
-
-**Release notes structure:**
-
-Generated release notes include:
-
-- Extension catalog grouped by category (AI/ML, time-series, search, security, operations, etc.)
-- Version information for each extension
-- Image metadata (registry, tags, digest, platforms)
-- Quick start examples (Docker run + SQL CREATE EXTENSION)
-- Auto-configuration details
-- Verification commands (Cosign signature, SBOM download)
-- Documentation links
 
 All data is dynamically generated from `docker/postgres/extensions.manifest.json`.
 
@@ -188,31 +169,28 @@ All data is dynamically generated from `docker/postgres/extensions.manifest.json
 
 See workflow files in `.github/workflows/` for complete workflow details.
 
-## CI/CD Performance Optimizations
+## CI/CD Build Design
 
-### Implemented Optimizations (2025-11-12)
+**1. Trivy Security Scanning**
 
-**1. Trivy Security Scanning (3-5 min saved)**
+- SARIF upload runs only when the file exists (`hashFiles()` check), so a scan that wrote no SARIF does not fail the upload step
+- The Trivy vulnerability DB is cached between runs (`actions/cache`, `.trivy-cache`)
 
-- **Problem solved:** SARIF upload failures when no vulnerabilities found
-- **Solution:** Conditional upload using `hashFiles()` check
-- **Database caching:** Trivy vulnerability DB cached between scans
-- **Time saved:** 3-5 minutes per workflow (duplicate DB downloads eliminated)
+**2. Native ARM64 Runners with Parallel Builds**
 
-**2. Native ARM64 Runners with Parallel Builds (15-20 min saved)**
+Each platform builds on its own native runner in parallel; no QEMU emulation.
 
-Complete workflow restructuring from QEMU-based sequential builds to native ARM64 runners with parallel execution.
+**publish.yml jobs:**
 
-**publish.yml Architecture:**
-
-6-job pipeline with parallel platform builds:
-
-1. **prep** - Metadata preparation (version, tags, labels)
-2. **build** - Matrix builds on native runners (amd64 + arm64 in parallel)
-3. **merge** - Multi-arch manifest creation from platform digests
-4. **test** - Platform testing (amd64 native, arm64 QEMU for testing only)
+1. **prep** - Validation and metadata (version, tags, labels, annotations)
+2. **build** - Matrix builds on native runners (amd64 + arm64 in parallel), pushed by digest
+3. **merge** - Multi-arch manifest from platform digests under the `testing-<sha>` tag
+4. **test** - One job per routine suite group (`bun scripts/test-all.ts --group <g>`), amd64 only; **test-complete** gates on all of them
 5. **scan** - Security scanning (Dockle + Trivy)
-6. **release** - Cosign signing and tag promotion
+6. **release** - Cosign signing, promotion to production tags, SBOM and provenance attestation
+7. **create-release** - GitHub Release with generated notes
+8. **verify-public-release** - Verifies the published GitHub Release, manifests, signatures, SBOM and attestation
+9. **cleanup** - Deletes the run's testing images
 
 **Key implementation:**
 
@@ -225,23 +203,8 @@ Complete workflow restructuring from QEMU-based sequential builds to native ARM6
 
 Adaptive multi-platform builds based on `push_image` input:
 
-- **When push_image=false (default):** Single-platform amd64, local build, fast iteration (8-12 min)
-- **When push_image=true:** Matrix builds with native ARM64, parallel execution, full testing (30-45 min)
-
-**Performance Impact:**
-
-| Workflow                                 | Before           | After             | Improvement       |
-| ---------------------------------------- | ---------------- | ----------------- | ----------------- |
-| **publish.yml**                          | ~44 min          | ~25-30 min        | **35-45% faster** |
-| **build-postgres-image.yml** (push=true) | ~90-120 min      | ~30-45 min        | **60-70% faster** |
-| **ARM64 build time**                     | 60-90 min (QEMU) | 8-15 min (native) | **75-85% faster** |
-
-**Benefits:**
-
-- 3-4x faster ARM64 builds (native vs QEMU emulation)
-- Parallel platform execution (both build simultaneously)
-- Better cache hit rates (platform-specific scopes)
-- Same security guarantees (SBOM, provenance, signing)
+- **When push_image=false (default):** Single-platform amd64, local build, no tests or scan
+- **When push_image=true:** Matrix builds with native ARM64, parallel execution, all routine suite groups and a Trivy scan
 
 ### Technical Details
 
@@ -272,11 +235,11 @@ Every workflow names its runner image (`ubuntu-26.04`, `ubuntu-24.04-arm`) inste
 **Platform-Specific Caching:**
 
 ```yaml
-cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.artifact }}
-cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.artifact }}
+cache-from: type=gha,scope=aza-pg-${{ matrix.artifact }}
+cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
 ```
 
-Prevents cache conflicts and improves hit rates.
+One scope per platform, shared by `publish.yml` and `build-postgres-image.yml`, so the two architectures never overwrite each other's layers.
 
 See workflow files in `.github/workflows/` for complete implementation details.
 
@@ -297,14 +260,14 @@ GitHub Container Registry (GHCR) displays package metadata (description, license
 
 Annotations are applied using `docker buildx imagetools create` with `--annotation` flags. The `index:` prefix indicates the annotation applies to the image index (multi-arch manifest list) rather than individual platform manifests.
 
-**Example from publish.yml merge job:**
+**Shape of the command** that `scripts/docker/create-manifest.ts` (merge job) and `scripts/release/promote-image.ts` (release job) run:
 
 ```bash
 docker buildx imagetools create \
   -t ghcr.io/fluxo-kt/aza-pg:testing-sha \
   --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
   --annotation "index:org.opencontainers.image.description=PostgreSQL {version} with {count} extensions..." \
-  --annotation "index:org.opencontainers.image.vendor=fluxo-kt" \
+  --annotation "index:org.opencontainers.image.authors=fluxo-kt" \
   --annotation "index:org.opencontainers.image.version={version}-{timestamp}-single-node" \
   --annotation "index:org.opencontainers.image.source=https://github.com/fluxo-kt/aza-pg" \
   --annotation "index:org.opencontainers.image.licenses=MIT" \
@@ -342,7 +305,7 @@ Expected output shows both platforms and all annotations:
 {
   "org.opencontainers.image.title": "aza-pg Single-Node PostgreSQL",
   "org.opencontainers.image.description": "PostgreSQL {version} with {count} extensions...",
-  "org.opencontainers.image.vendor": "fluxo-kt",
+  "org.opencontainers.image.authors": "fluxo-kt",
   "org.opencontainers.image.source": "https://github.com/fluxo-kt/aza-pg",
   "org.opencontainers.image.licenses": "MIT"
 }
@@ -350,36 +313,28 @@ Expected output shows both platforms and all annotations:
 
 ### Impact on Existing Tags
 
-**Important:** This annotation implementation only affects **future releases**. Existing published tags (pre-dating this change) were created without manifest-level annotations and will continue to show "No description provided" on GitHub Container Registry.
-
-To update existing tags with annotations:
-
-1. Tags will be automatically updated when the next release is published to the `release` branch
-2. The `publish.yml` workflow creates new tags with annotations for each release
-3. GitHub displays metadata from the most recent push of each tag
-
-**No action required** - the next publish workflow run will apply annotations to all tags.
+GHCR shows the metadata of each tag's most recent push. A tag published without manifest-level annotations keeps showing "No description provided" until a `publish.yml` run re-pushes it; every release re-pushes the convenience tags with annotations.
 
 ### Applied Annotations
 
 Standard OCI annotations applied to all published images:
 
-| Annotation                               | Purpose             | Format/Example                                           |
-| ---------------------------------------- | ------------------- | -------------------------------------------------------- |
-| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                          |
-| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`        |
-| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt`                                               |
-| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                     |
-| `org.opencontainers.image.created`       | Build timestamp     | `YYYYMMDDHHmm`                                           |
-| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                  |
-| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                     |
-| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                     |
-| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md` |
-| `org.opencontainers.image.licenses`      | License             | `MIT`                                                    |
-| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:{major}-trixie`              |
-| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:{digest}`                                        |
+| Annotation                               | Purpose             | Format/Example                                                                                                     |
+| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                                                                                    |
+| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`                                                                  |
+| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt` (image labels and per-platform manifests; the index carries `org.opencontainers.image.authors` instead) |
+| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                                                                               |
+| `org.opencontainers.image.created`       | Build timestamp     | RFC 3339 (`2025-11-14T23:30:00Z`)                                                                                  |
+| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                                                                            |
+| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                                                                               |
+| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                                                                               |
+| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md`                                                           |
+| `org.opencontainers.image.licenses`      | License             | `MIT`                                                                                                              |
+| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:{major}-trixie`                                                                        |
+| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:{digest}`                                                                                                  |
 
-Custom annotations for aza-pg metadata:
+Custom aza-pg metadata. Image labels and per-platform manifests (`docker/metadata-action` in the `prep` job) use these keys; the index annotations written by `scripts/utils/oci-metadata.ts` use `io.fluxo-kt.aza-pg.postgresql.version`, `io.fluxo-kt.aza-pg.catalog.enabled` and `io.fluxo-kt.aza-pg.catalog.total` and omit `build.type`:
 
 | Annotation                              | Purpose                 | Format/Source                                  |
 | --------------------------------------- | ----------------------- | ---------------------------------------------- |
@@ -392,54 +347,21 @@ Custom annotations for aza-pg metadata:
 
 ### Multi-Stage Build
 
-```
-┌──────────────────────┐
-│  Stage 1: Builder    │
-│  - Clone pgvector    │ ──SHA──┐
-│  - Clone pg_cron     │   Pin  │
-│  - Clone pgAudit     │ ──────┤
-│  - Compile extensions│       │
-└──────────────────────┘       │
-         │                     │
-         ▼                     │
-┌──────────────────────┐       │
-│  Stage 2: Final      │       │ Supply Chain
-│  - postgres:18       │       │ Security
-│  - Copy .so files    │◄──────┤ (Immutable)
-│  - Copy control files│       │
-│  - Copy entrypoint   │       │
-└──────────────────────┘       │
-         │                     │
-         ▼                     │
-   aza-pg:pg18 Image           │
-   (~450MB)                    │
-   + SBOM/Provenance           │
-```
+`docker/postgres/Dockerfile` (generated from `Dockerfile.template`) has these stages:
 
-**Stage 1 (Builder):**
-
-- Clones extension repos at specific commit SHAs
-- Compiles C extensions with PostgreSQL dev headers
-- Parallel compilation (~40% faster builds)
-- Includes build tools (gcc, make, cargo, etc.)
-
-**Stage 2 (Final):**
-
-- Based on `postgres:18-trixie` (~93-154MB)
-- Copies only `.so` files and control files from builder
-- Minimal runtime dependencies (ca-certificates, zstd, lz4)
-- No build tools in final image
-- Final size: ~900MB uncompressed per platform (~250MB compressed wire, ~1.8GB combined multi-arch)
+- **builder-base** - `postgres:{PG}-trixie` pinned by digest, plus build packages, the Rust toolchain and Bun (build-time only)
+- **builder-pgxs** - builds source extensions using PGXS, autotools, CMake, Meson or make (`docker/postgres/build-extensions.ts` over `extensions.pgxs.manifest.json`) into `/opt/ext-out/`
+- **builder-cargo** - builds Rust (cargo/pgrx) extensions the same way over `extensions.cargo.manifest.json`
+- **builder-version-info** - writes `/etc/postgresql/version-info.{txt,json}`
+- **final** - the same pinned base image; `apt-get upgrade`, runtime packages (`docker/postgres/extensions.runtime-packages.txt`), PGDG/Percona/Timescale packages pinned by version, then copies `/opt/ext-out/` from both builders. No build tools or Bun.
 
 ### Supply Chain Security
 
-**SHA Pinning:**
+**Pinning:**
 
-All extensions are pinned to specific commit SHAs (not tags):
-
-- pgvector: `0.8.1` → SHA `a1ecca1cc67b9f952e43a5d29e0cec2ac4bea0fa`
-- pg_cron: `1.6.7` → SHA `e44fcb7c5d94b53bd0e5ee8e8eecbe9e9f03df35`
-- pgAudit: `18.0` → SHA `5c279fa5f7cd0c50aef39ef4d9a6ec0df4e62c46`
+- Source-built extensions name a git tag (or ref) in `scripts/extensions/manifest-data.ts`; `bun run generate` resolves it to a commit SHA in `docker/postgres/extensions.manifest.json`, and the build fetches that commit
+- Packaged extensions (`pgdg`, `percona`, `timescale`) are apt version pins written into the Dockerfile at generation time
+- Base, Rust and Bun images are pinned by digest
 
 **Why SHA pinning:**
 
@@ -462,8 +384,8 @@ See [EXTENSIONS.md](EXTENSIONS.md) for the complete extension catalog with enabl
 All extension metadata lives in `scripts/extensions/manifest-data.ts`:
 
 - Enabled/disabled state
-- Source type (compiled, PGDG, builtin)
-- SHA pins for compiled extensions
+- Install method (`install_via`: `pgdg`, `percona`, `timescale`, `source`) or `builtin` kind
+- Git tags/refs for source-built extensions
 - Dependencies and build flags
 
 **Customizing Extensions:**
@@ -471,7 +393,7 @@ All extension metadata lives in `scripts/extensions/manifest-data.ts`:
 To disable an extension (e.g., reduce image size):
 
 1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
-2. Regenerate: `bun scripts/extensions/generate-manifest.ts`
+2. Regenerate: `bun run generate` (manifest JSON, Dockerfile and the other generated files)
 3. Rebuild: `bun run build`
 
 **Default preloads:** Disabling an entry that is preloaded by default also drops it from the default `shared_preload_libraries` when `bun run generate` runs (the pre-commit hook does it too); `validate-manifest.ts` only checks that the generated default matches the manifest. Databases that already created the extension can no longer load it.
@@ -483,14 +405,14 @@ See [EXTENSIONS.md](EXTENSIONS.md) for complete details.
 Run regression test suite:
 
 ```bash
-# Full test suite (validation + Docker build + functional tests)
+# Full: build image, validate:all, every routine suite group
 bun run test:all
 
 # Fast mode (validation only, skips Docker build and functional tests)
 bun run validate
 
-# Show help
-bun scripts/test-all.ts --help
+# Docker suites only, against an existing image
+bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
 ```
 
 Release validation requires both exit code `0` and a final summary with `Failed: 0`; a zero exit code alone is insufficient.
@@ -498,8 +420,8 @@ Release validation requires both exit code `0` and a final summary with `Failed:
 The test suite includes:
 
 - **Validation**: manifest, TypeScript, linting, formatting, docs, shell scripts, Dockerfile, YAML
-- **Build**: Docker image build, extension size checks, extension count verification
-- **Functional**: extension loading, auto-tuning (512MB/2GB/4GB), stack deployments, comprehensive extension tests
+- **Build**: Docker image build (`bun run build`)
+- **Functional**: the Docker suite groups in `SUITES` of `scripts/test-all.ts` (extensions, security, stacks, features, regression)
 
 See [TESTING.md](TESTING.md) for detailed testing documentation.
 
@@ -516,10 +438,10 @@ bun run validate:all
 bun run lint                      # Check only (alias for validate)
 bun run format                    # Check + auto-fix (alias for validate:fix)
 bun scripts/extensions/validate-manifest.ts  # Manifest validation
-shellcheck scripts/**/*.sh stacks/*/scripts/*.sh docker/postgres/*.sh  # Shell scripts
-yamllint -c .yamllint.yaml .      # YAML files
-hadolint docker/postgres/Dockerfile  # Dockerfile
+bun scripts/ci/lint-yaml-tracked.ts  # YAML files (pinned yamllint image; .yamllint, .yamllint-workflows)
 ```
+
+ShellCheck (every tracked `*.sh`) and hadolint (pinned image, `.hadolint.yaml`) run inside `bun run validate:all`; it is the reference invocation for both.
 
 ## Troubleshooting
 
@@ -559,32 +481,30 @@ docker system prune -a   # Clean up everything (images, containers, volumes)
 **SHA verification failed:**
 
 ```
-fatal: reference is not a tree: a1ecca1cc67b9f952e43a5d29e0cec2ac4bea0fa
+fatal: reference is not a tree: <commit>
 ```
 
-**Solution:** SHA may be invalid or repo history rewritten. Verify SHA exists:
+**Solution:** The commit resolved from the entry's tag may be gone (tag moved or history rewritten). Compare with upstream:
 
 ```bash
-# Check if SHA exists in GitHub repo
-curl -I https://github.com/pgvector/pgvector/commit/a1ecca1cc67b9f952e43a5d29e0cec2ac4bea0fa
+git ls-remote https://github.com/OWNER/REPO.git 'refs/tags/TAG' 'refs/tags/TAG^{}'
 ```
 
-If 404, update SHA in `scripts/extensions/manifest-data.ts` and regenerate.
+Fix the tag in `scripts/extensions/manifest-data.ts`, then `bun run generate` to re-resolve the commit.
 
 **Base image SHA validation failed:**
 
 The Dockerfile pins the PostgreSQL base image to a specific SHA for reproducibility. If the SHA becomes stale or invalid:
 
 ```bash
-# Check current base image SHA
+# Check the pinned base image digest (add --require-latest-minor to also catch a newer PG minor)
 bun scripts/validate-base-image-sha.ts
 
 # Get latest SHA from Docker Hub
 docker pull postgres:18-trixie
 docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
 
-# Update PG_BASE_IMAGE_SHA in docker/postgres/Dockerfile
-# Example: sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+# Update MANIFEST_METADATA.baseImageSha (and pgVersion) in scripts/extensions/manifest-data.ts, then: bun run generate
 ```
 
 **Why pin base image SHA:**
@@ -612,7 +532,7 @@ Artifacts are kept for 7 days (GitHub Actions run page → Artifacts).
 
 **Slow first build:**
 
-**Expected:** First build takes ~12 minutes to compile all extensions from source. Subsequent builds with cache take ~2 minutes.
+**Expected:** A cold build compiles every source-built extension; later builds reuse the registry and local cache.
 
 **Speed up:**
 
@@ -644,9 +564,8 @@ All builds follow the Bun-first philosophy:
 
 **Quality Checks:**
 
-- Pre-commit: validate + lint + format
-- Pre-push: full validation suite
-- CI: Fast validation on every commit (~10 min)
+- Pre-commit (`scripts/pre-commit.ts`): oxlint --fix, prettier --write, regenerate if `manifest-data.ts` changed, then `bun run validate`
+- No pre-push hook; CI runs `bun run validate:all` on every push and PR
 
 See [TOOLING.md](TOOLING.md) for complete tooling decisions.
 
@@ -721,7 +640,7 @@ PGHOST=db.example.com PGUSER=admin bun scripts/tools/backup-postgres.ts mydb
 - `PGUSER` - PostgreSQL user (default: postgres)
 - `PGPASSWORD` - PostgreSQL password (required for remote)
 
-**Dependencies:** `pg_dump`, `pg_isready`, `gzip`, `du`
+**Dependencies:** `pg_dump`, `psql` (dumps roles too), `pg_isready`, `gzip`, `du`
 
 ---
 
@@ -791,13 +710,15 @@ Generates self-signed SSL certificates for PostgreSQL TLS.
 
 **Output:**
 
-- `server.key` - Private key
+- `server.key` - Private key (mode 600)
 - `server.crt` - Self-signed certificate
+- `ca.crt` - Copy of `server.crt`
 
 **Usage:**
 
 ```bash
-bun scripts/tools/generate-ssl-certs.ts
+bun scripts/tools/generate-ssl-certs.ts <cert-directory> [days-valid]
+bun scripts/tools/generate-ssl-certs.ts stacks/primary/certs 3650
 ```
 
 **Dependencies:** `openssl`

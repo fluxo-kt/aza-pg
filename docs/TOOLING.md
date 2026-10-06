@@ -2,8 +2,6 @@
 
 **Purpose**: This document records all intentional tooling and library decisions for the aza-pg project. These choices must not be changed accidentally or without explicit approval.
 
-**Last Updated**: 2025-11-23
-
 ---
 
 ## 🎯 Design Principles
@@ -41,9 +39,9 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 ### Bun-Only Scripting
 
 **Policy**: All build and utility scripts use Bun TypeScript exclusively. Node.js is not supported.
-**Bun APIs**: Use `Bun.file()`, `Bun.write()`, `Bun.spawn()`, `Bun.$` `, `Bun.argv`, `Bun.env`instead of Node.js equivalents.
+**Bun APIs**: Use `Bun.file()`, `Bun.write()`, `Bun.spawn()`, `Bun.$`, `Bun.argv`, `Bun.env` instead of Node.js equivalents.
 **Status**: Migration from Node.js APIs ongoing where practical; production containers contain no Bun.
-**Examples**: See`scripts/` directory for Bun-native patterns.
+**Examples**: See `scripts/` directory for Bun-native patterns.
 
 ---
 
@@ -97,7 +95,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 **Version**: See `package.json` (`sql-formatter`, `squawk-cli`) + Bun-native linting
 **Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
-**Configuration**: `.sql-formatter.json` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
+**Configuration**: `.sql-formatter.json`, `.squawk.toml` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
 **Usage**:
 
 - `bun run validate` - checks SQL formatting and runs both linters with the other fast checks
@@ -108,7 +106,6 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 - **Formatting**: sql-formatter for PostgreSQL dialect (keywords, functions, indentation)
 - **Linting Layer 1 (Squawk)**: Rust-based PostgreSQL migration/SQL linter - production-grade best practices
 - **Linting Layer 2 (Custom)**: Bun-native rules for additional security/performance checks
-- Fast execution: ~50ms (formatting) + ~200ms (Squawk) + ~50ms (custom) = ~300ms total
 - Zero Python/Ruby dependencies (Bun + Rust only)
 - Integrated into generation pipeline, pre-commit hooks, and CI/CD validation
 
@@ -121,24 +118,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 - Expression width: 80 chars (optimized for readability)
 - Lines between queries: 2 (better visual separation)
 
-**Squawk Linting Rules** (`scripts/lint-sql-squawk.ts` - PostgreSQL Production Best Practices):
-
-1. **Migration Safety**:
-   - Require CONCURRENT for index creation (avoid blocking writes)
-   - Require timeout settings for slow operations (lock_timeout, statement_timeout)
-   - Detect adding columns with DEFAULT (table rewrites)
-   - Warn on renaming/dropping columns (data loss risks)
-2. **Type Safety**:
-   - Prefer BIGINT over INT (avoid 32-bit limit)
-   - Prefer IDENTITY over SERIAL (better schema management)
-   - Detect problematic type changes
-3. **Performance**:
-   - Detect missing indexes on foreign keys
-   - Warn on full table scans
-   - Identify blocking operations
-4. **Security**:
-   - Detect privilege escalations
-   - Warn on dangerous permissions
+**Squawk Linting Rules** (`scripts/lint-sql-squawk.ts`, configured by `.squawk.toml`): Squawk's default rule set minus the rules that only matter for migrations on live databases (concurrent index creation/deletion, `prefer-bigint-over-int`, `constraint-missing-not-valid`, `require-timeout-settings`, `adding-foreign-key-constraint`). Init scripts run once on an empty database, so those rules only add noise; `.squawk.toml` gives the reason per rule.
 
 **Custom Bun-Native Linting Rules** (`scripts/check-sql.ts` - Complementary Checks):
 
@@ -167,10 +147,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
    - `scripts/check-sql.ts` - Custom validator + linter
    - `scripts/lint-sql-squawk.ts` - Squawk PostgreSQL linter wrapper
 
-**Scope**:
-
-- `docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql` (auto-generated)
-- `tests/fixtures/pgflow/schema-v*.sql` (pgflow test schema)
+**Scope**: every `*.sql` in the repo. `format-sql.ts` and `check-sql.ts` skip `tests/regression/` (upstream test fixtures); `check-sql.ts` also skips the vendored `tests/fixtures/pgflow/`.
 
 ---
 
@@ -178,14 +155,12 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ### ArkType (NOT Zod)
 
-**Version**: 2.1.25+
+**Version**: See `package.json` (`devDependencies.arktype`)
 **Why**: Significantly faster than Zod, more efficient runtime validation, better performance
 **Status**: ✅ INSTALLED - **CRITICAL: Use ArkType, NOT Zod**
 **Use Cases**:
 
-- Manifest validation (`extensions.manifest.json`)
-- Configuration validation
-- Runtime type checking
+- Manifest schema validation (`scripts/extensions/manifest-schema.ts`)
 
 **Decision Rationale**:
 
@@ -202,7 +177,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ### bun-git-hooks
 
-**Version**: 0.3.1+
+**Version**: See `package.json` (`devDependencies.bun-git-hooks`)
 **Why**: Bun-native git hooks manager, lightweight, no Husky dependency
 **Status**: ✅ LOCKED
 **Configuration**: `git-hooks.config.ts`
@@ -263,7 +238,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ### Cargo/Rust (for extension compilation)
 
-**Why**: Required for cargo-pgrx extensions (pg_jsonschema, timescaledb_toolkit, etc.)
+**Why**: Required for the Rust extensions in `docker/postgres/extensions.cargo.manifest.json` (e.g. pg_jsonschema, wrappers)
 **Status**: ✅ LOCKED - Build-time only, not in runtime image
 
 ---
@@ -299,7 +274,6 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 5. **Node.js** ❌ (for scripting)
    - Reason: Replaced by Bun (faster, native TypeScript)
-   - Note: Node.js compatibility maintained in `package.json` engines for CI/CD
 
 6. **Jest/Vitest** ❌
    - Reason: Using Bun's native test capabilities
@@ -340,12 +314,12 @@ These choices are **LOCKED** and must not be changed without explicit approval:
 
 The codebase uses two different approaches for executing shell commands:
 
-1. **Bun.spawn()** (~76 usages)
+1. **Bun.spawn()**
    - Use cases: Programmatic control, output capture, error handling
    - Benefits: Better control over stdin/stdout/stderr, async handling
    - Examples: Extension builds, validation checks, Docker operations
 
-2. **Template literals ($\`...\`)** (~202 usages)
+2. **Template literals ($\`...\`)**
    - Use cases: Simple shell commands, Unix pipelines, quick operations
    - Benefits: Concise syntax, natural shell command composition
    - Examples: File operations, git commands, quick checks
@@ -369,9 +343,9 @@ The codebase uses two different approaches for executing shell commands:
 
 | Category   | Choice        | Alternative Rejected | Why                            |
 | ---------- | ------------- | -------------------- | ------------------------------ |
-| Runtime    | Bun 1.3.0+    | Node.js              | Faster, native TS              |
-| Linting    | Oxlint 0.11+  | ESLint               | 50-100x faster                 |
-| Formatting | Prettier 3.6+ | Oxfmt (pre-alpha)    | Prettier stable, Oxfmt pending |
+| Runtime    | Bun           | Node.js              | Faster, native TS              |
+| Linting    | Oxlint        | ESLint               | 50-100x faster                 |
+| Formatting | Prettier      | Oxfmt (pre-alpha)    | Prettier stable, Oxfmt pending |
 | Validation | **ArkType**   | **Zod**              | **Faster, more efficient**     |
 | Git Hooks  | bun-git-hooks | Husky                | Bun-native                     |
 | Testing    | Bun native    | Jest/Vitest          | Simpler for infra              |
@@ -408,7 +382,7 @@ Before adding ANY new dependency:
 
 - **Bun**: Pinned in `.tool-versions` (asdf)
 - **npm packages**: Use caret ranges (^) for patch/minor updates
-- **Lock file**: `bun.lockb` (binary format, committed to git)
+- **Lock file**: `bun.lock` (text format, committed; CI installs with `--frozen-lockfile`)
 
 ---
 
@@ -457,11 +431,11 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ### Build Tools
 
-| Tool                                                      | Repository                                            | Documentation                                                                        | Purpose                                                                    |
-| --------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| [Rust](https://www.rust-lang.org)                         | [GitHub](https://github.com/rust-lang/rust)           | [Docs](https://doc.rust-lang.org/book/)                                              | Systems programming language for extension compilation                     |
-| [Cargo](https://doc.rust-lang.org/cargo/)                 | [GitHub](https://github.com/rust-lang/cargo)          | [Docs](https://doc.rust-lang.org/cargo/)                                             | Rust package manager and build system                                      |
-| [cargo-pgrx](https://github.com/pgcentralfoundation/pgrx) | [GitHub](https://github.com/pgcentralfoundation/pgrx) | [Docs](https://github.com/pgcentralfoundation/pgrx/blob/master/cargo-pgrx/README.md) | Build PostgreSQL extensions with Rust (pg_jsonschema, timescaledb_toolkit) |
+| Tool                                                      | Repository                                            | Documentation                                                                        | Purpose                                                         |
+| --------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| [Rust](https://www.rust-lang.org)                         | [GitHub](https://github.com/rust-lang/rust)           | [Docs](https://doc.rust-lang.org/book/)                                              | Systems programming language for extension compilation          |
+| [Cargo](https://doc.rust-lang.org/cargo/)                 | [GitHub](https://github.com/rust-lang/cargo)          | [Docs](https://doc.rust-lang.org/cargo/)                                             | Rust package manager and build system                           |
+| [cargo-pgrx](https://github.com/pgcentralfoundation/pgrx) | [GitHub](https://github.com/pgcentralfoundation/pgrx) | [Docs](https://github.com/pgcentralfoundation/pgrx/blob/master/cargo-pgrx/README.md) | Build PostgreSQL extensions with Rust (pg_jsonschema, wrappers) |
 
 ### Monitoring & Security
 

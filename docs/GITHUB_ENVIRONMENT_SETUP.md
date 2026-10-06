@@ -34,18 +34,13 @@ Because `workflow_run` uses workflow definitions from the default branch, the wo
 
 ## Reviewer Criteria
 
-Approve only when the run shows:
+The `release` job (`needs: [prep, merge, scan, test-complete]`) is where signing and tag promotion happen, so approve only when the run shows:
 
 - build and merge digest are present and stable
 - all test jobs passed
 - Trivy blocking scan passed
-- production tags resolve to the tested digest
-- Cosign signatures verify
-- SBOM download succeeds
-- provenance attestation verifies
-- GitHub Release exists and references the published digest
 
-Reject on any failed, skipped, stale, or unverifiable gate.
+Reject on any failed, skipped, stale, or unverifiable gate. Signatures, SBOM, provenance and the GitHub Release exist only after approval; `verify-public-release` checks them.
 
 ## Permissions
 
@@ -53,7 +48,7 @@ The workflow already needs:
 
 ```yaml
 permissions:
-  contents: read
+  contents: write # GitHub Release creation
   packages: write
   id-token: write
   attestations: write

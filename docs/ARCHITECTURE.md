@@ -10,27 +10,21 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  Dockerfile (Multi-stage)                                           │
-│  ┌──────────────────────┐                                           │
-│  │  Stage 1: Builder    │                                           │
-│  │  - Clone pgvector    │ ──SHA──┐                                  │
-│  │  - Clone pg_cron     │   Pin  │                                  │
-│  │  - Clone pgAudit     │ ──────┤                                   │
-│  │  - Compile extensions│       │                                   │
-│  └──────────────────────┘       │                                   │
-│           │                     │                                   │
-│           ▼                     │                                   │
-│  ┌──────────────────────┐       │                                   │
-│  │  Stage 2: Final      │       │                                   │
-│  │  - postgres:18       │       │ Supply Chain                      │
-│  │  - Copy .so files    │◄──────┤ Security                          │
-│  │  - Copy control files│       │ (Immutable)                       │
-│  │  - Copy entrypoint   │       │                                   │
-│  └──────────────────────┘       │                                   │
-│           │                     │                                   │
-│           ▼                     │                                   │
-│     aza-pg:pg18 Image           │                                   │
-│     (~900MB)                    │                                   │
-│     + SBOM/Provenance           │                                   │
+│  ┌──────────────────────────────┐                                   │
+│  │  builder-pgxs / builder-cargo│ source extensions at the commit   │
+│  │  - build into /opt/ext-out/  │ resolved from each manifest tag   │
+│  └──────────────────────────────┘                                   │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌──────────────────────────────┐                                   │
+│  │  final (digest-pinned base)  │                                   │
+│  │  - PGDG/Percona/Timescale    │ apt packages, version-pinned      │
+│  │  - COPY /opt/ext-out/        │                                   │
+│  │  - entrypoint, configs       │                                   │
+│  └──────────────────────────────┘                                   │
+│           │                                                         │
+│           ▼                                                         │
+│     aza-pg:pg18 Image + SBOM/Provenance                             │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 
@@ -56,7 +50,7 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 │  │     ├─ effective_cache              │                            │
 │  │     ├─ maintenance_work_mem         │                            │
 │  │     ├─ work_mem                     │                            │
-│  │     └─ max_connections (80/120/200) │                            │
+│  │     └─ max_connections (by workload)│                            │
 │  │                                     │                            │
 │  │  4. Write aza-auto-config.conf      │                            │
 │  │     └─ Above postgresql.conf only   │                            │
@@ -104,12 +98,12 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 
 **Process:**
 
-- Multi-stage build compiles extensions from source
-- Stage 1 (builder): Clones repos at specific commit SHAs, compiles C extensions
-- Stage 2 (final): Copies only `.so` files and control files to slim image
+- Packaged extensions install from the PGDG, Percona and Timescale apt repos at pinned versions
+- Builder stages (`builder-pgxs`, `builder-cargo`) build the source extensions at the commit resolved from each manifest tag
+- Final stage: copies the builders' `/opt/ext-out/` tree; no build tools; stage details in [BUILD.md "Multi-Stage Build"](BUILD.md#multi-stage-build)
 - Embeds auto-config entrypoint script
 
-**Output:** Single multi-arch image (~900MB uncompressed, ~250MB compressed wire) with SBOM/provenance
+**Output:** Single multi-arch image (amd64 + arm64) with SBOM/provenance
 
 **Docker Layer Caching Strategy:**
 
@@ -123,7 +117,7 @@ _Cache Ordering Principles:_
 
 _Final Stage Layer Order:_
 
-1. Base image (postgres:18.3-trixie@sha256) - immutable
+1. Base image (`postgres:{PG}-trixie@sha256:…`) - immutable
 2. Runtime package list COPY - rare changes
 3. Runtime apt-get install - only invalidates on package list changes
 4. PGDG packages (ordered by stability) - STABLE extensions first, VOLATILE last
@@ -136,11 +130,8 @@ _Final Stage Layer Order:_
 _Builder Stage Optimizations (CI/CD focused):_
 
 - builder-base: manifests copied AFTER the Rust and Bun toolchain installs, so a manifest edit does not reinstall them
-  - Impact: +20-40% cache hits when manifests change (~20% of builds)
-  - Before: manifests → Rust → Bun
-  - After: Rust → Bun → manifests
-- builder-cargo: Inline env vars (-3 layers), cargo registry cache mount (-15-30% build time)
-- Both stages: Parallelized strip operations (xargs -P, -30-50% strip time on multi-core)
+- builder-cargo: cargo registry and git cache mounts
+- Both builders: `strip --strip-debug` in parallel (`xargs -P$(nproc)`) and drop LLVM bitcode
 
 _Cache Mount Usage:_
 
@@ -154,12 +145,6 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cargo build
 ```
 
-_Performance Impact:_
-
-- Measured improvement: 70% faster warm rebuilds (17s cold → 5s warm)
-- CI/CD cache hit rate: Improved from ~20% to estimated 50-60%
-- Combined optimizations: -20-30% build time on cache misses, +25-40% on cache hits
-
 **Security:** SHA pinning prevents tag mutation attacks (immutable commits)
 
 ### 2. Runtime (Container Start)
@@ -169,13 +154,9 @@ _Performance Impact:_
 **Process:**
 
 - Entrypoint script runs BEFORE postgres starts
-- Detects actual hardware of deployment environment:
-  - cgroup v2 memory limit (if set)
-  - Manual override via `POSTGRES_MEMORY`
-  - CPU cores via `nproc`
+- Detects RAM in this order: `POSTGRES_MEMORY` override, cgroup v2 memory limit, `/proc/meminfo`; CPU cores via `nproc`
 - Calculates proportional settings (baseline: 25% RAM to shared_buffers, capped at 32GB)
-- Falls back to `/proc/meminfo` when no limit/override is present
-- Injects settings as `-c` command-line flags
+- Writes them to `/var/run/postgresql/aza-auto-config.conf` and starts PostgreSQL with `-c config_file=` pointing at it (precedence in [Configuration Hierarchy](#configuration-hierarchy))
 
 **Output:** PostgreSQL process with auto-tuned configuration
 
@@ -190,6 +171,7 @@ _Performance Impact:_
 1. Shared scripts (all stacks): `docker/postgres/docker-entrypoint-initdb.d/`
    - `01-extensions.sql` → Creates the baseline extensions listed in its `v_expected_exts` array (`01b-pg_cron.sh` creates pg_cron). Note: auto_explain is a preload-only module, not created via CREATE EXTENSION.
    - `02-replication.sh` → Creates replicator user (if enabled)
+   - The other scripts there (run in filename order) set up the pgsodium key, pg_partman and pgflow
 
 2. Stack-specific scripts: `stacks/*/configs/initdb/`
    - Primary: `03-pgbouncer-auth.sh` → Creates pgbouncer_auth user + function
@@ -201,17 +183,18 @@ _Performance Impact:_
 
 **Single Stack:**
 
-- Minimal setup: Just PostgreSQL
+- Minimal setup: PostgreSQL plus postgres_exporter
 - Use case: Development, small apps
-- Services: 1 (postgres)
+- Services: 2 (postgres, postgres_exporter)
 
 **Primary Stack:**
 
 - Full production setup
-- Services: 3
+- Services: 4
   - PostgreSQL (data storage)
   - PgBouncer (connection pooling, transaction mode)
   - postgres_exporter (Prometheus metrics)
+  - pgbouncer_exporter (PgBouncer metrics)
 - Use case: Production with connection pooling and monitoring
 
 **Replica Stack:**
@@ -219,7 +202,7 @@ _Performance Impact:_
 - Streaming replication follower
 - Connects to primary via replication slot
 - Use case: Read replicas, HA setup
-- Services: 1 (postgres replica)
+- Services: 2 (postgres-replica, postgres_exporter)
 
 ## Network Flow
 
@@ -286,7 +269,7 @@ Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] 
 │                  Authentication                            │
 │  - SCRAM-SHA-256 (no MD5/plaintext)                        │
 │  - PgBouncer: auth_query via SECURITY DEFINER function     │
-│  - No plaintext userlist.txt                               │
+│  - userlist.txt: auth_user only, generated at start (600)  │
 └────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -300,7 +283,7 @@ Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] 
                               ▼
 ┌────────────────────────────────────────────────────────────┐
 │                     Auditing / Observability               │
-│  - pgAudit: DDL, writes, role changes                      │
+│  - pgAudit: DDL, writes, roles (primary; others: none)     │
 │  - pg_stat_monitor / pg_stat_statements: Query performance │
 │  - auto_explain: Slow query plans                          │
 └────────────────────────────────────────────────────────────┘
@@ -312,16 +295,16 @@ Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] 
 Build Time                Runtime                  Usage
 ─────────────────────────────────────────────────────────────
 pgvector                  CREATE EXTENSION         Vector
-(compiled .so) ────────► vector; ──────────────► similarity
+(PGDG package) ────────► vector; ──────────────► similarity
                                                    search
 
 pg_cron                   CREATE EXTENSION         Job
-(compiled .so) ────────► pg_cron; ─────────────► scheduling
-                          (in postgresql.conf)
+(PGDG package) ────────► pg_cron; ─────────────► scheduling
+                          (default preload)
 
 pgAudit                   shared_preload_libraries Audit
-(compiled .so) ────────► pgaudit; ─────────────► logging
-                          (in postgresql.conf)
+(PGDG package) ────────► pgaudit; ─────────────► logging
+                          (default preload)
 
 pg_trgm (contrib)         CREATE EXTENSION         Fuzzy
 (built-in) ────────────► pg_trgm; ──────────────► text search
@@ -338,15 +321,15 @@ pg_stat_statements  ───► monitor + statements; ─► monitoring
 ```
 Deployment Environment
        │
+       ├─ POSTGRES_MEMORY set? ─► Use override
+       │    Example: 1024 → shared_buffers=256MB
+       │
        ├─ cgroup v2 memory limit SET
        │  └─► Use limit value
        │     Example: 4GB → shared_buffers=1024MB
        │
-       └─ cgroup v2 memory limit NOT SET
-          ├─ POSTGRES_MEMORY set? ─► Use override
-          │    Example: 1024 → shared_buffers=256MB
-          └─► Read /proc/meminfo (host RAM)
-               Example: 64GB host → shared_buffers≈9830MB
+       └─► Read /proc/meminfo (host RAM)
+            Example: 64GB host → shared_buffers≈9830MB
 ```
 
 The ratios, caps and workload limits are listed in [README.md "Auto-Config"](../README.md#auto-config); the `calculate_*` functions in `docker/postgres/docker-auto-config-entrypoint.sh` own them.
@@ -379,11 +362,13 @@ Grafana Dashboards
 
 **Custom Queries:**
 
-- Replication lag (for primary)
+Defined in `docker/postgres/configs/postgres_exporter_queries.yaml`, among them:
+
+- Replication lag
 - Memory settings (auto-config verification)
 - Postmaster uptime
-- Database size
-- Connection counts
+- WAL directory size, temp files, `pg_stat_io`, `pg_stat_wal`
+- Connection usage
 
 ## Backup Strategy
 
@@ -397,9 +382,9 @@ Primary PostgreSQL
     │
     │ pgBackRest
     │
-    ├─► Full Backup (weekly)
-    ├─► Differential Backup (daily)
-    └─► Incremental Backup (hourly)
+    ├─► Full Backup (e.g. weekly)
+    ├─► Differential Backup (e.g. daily)
+    └─► Incremental Backup (e.g. every 6 hours)
 ```
 
 **Setup:** `examples/backup/compose.yml` adds pgBackRest's settings to a stack's postgres service, where pgBackRest runs (archive_command runs there, and it reaches PostgreSQL through the local socket); guide: [BACKUP-PGBACKREST.md](BACKUP-PGBACKREST.md)
@@ -441,14 +426,12 @@ Primary PostgreSQL
 
 ## Future Optimizations
 
-The following optimizations have been identified for potential implementation based on prior analysis:
+Candidates for later work, and why some size/speed changes were not taken:
 
 **Build Time Reduction:**
 
-- **Quick wins identified:** Remove LLVM bitcode directory (36MB, 0% runtime impact), strip debug symbols from `.so` files (10-20MB savings), cleanup static libraries and build headers (1-2MB)
 - **cargo-pgrx builds:** symbols are stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`); otherwise each crate keeps its upstream release profile (opt-level 3, fat LTO). A global `opt-level=s`/thin-LTO override once shrank timescaledb_toolkit (186MB → 13MB together with stripping) and was dropped once toolkit moved to the Timescale apt repo.
 - **PostgreSQL itself stays PGDG's `-O2` build:** PostgreSQL 18 already picks CRC-32C and popcount CPU instructions at runtime, and a pgbench comparison of PGDG, self-built `-O2` and `-O3 -flto` showed no gain above the ±25 % run-to-run spread. A self-built server would also have to replace files of the `postgresql-18` package that the PGDG and Percona extension packages depend on.
-- **Applicable techniques:** Similar bitcode/symbol stripping can be applied to other large extensions (pg_jsonschema: 4.4MB, pgroonga: 2.1MB)
 
 **Potential Image Variant Strategy (Future Consideration):**
 

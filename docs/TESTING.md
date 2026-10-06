@@ -160,7 +160,7 @@ bun scripts/test/test-extension-regression.ts --container=my-postgres      # an 
 
 ### Critical Concept
 
-PostgreSQL session-local state (LOAD, SET, hypothetical indexes) does **not persist** across separate SQL invocations. Each `runSQL()` call creates a new `psql` session.
+PostgreSQL session-local state (LOAD, SET, hypothetical indexes) does **not persist** across separate SQL invocations. Every test helper that spawns one `psql` process per call loses it between calls: `psql()`/`sqlOk()` in `scripts/docker/test-image-lib.ts` (pass an array to run several statements in one session) and the suites' local `runSQL()` helpers. The examples below use `runSQL()` for any such helper.
 
 ### The Problem
 
@@ -365,16 +365,13 @@ await runSQL(`
 
 **Symptom**: pg_safeupdate doesn't block UPDATE without WHERE, or supautils GUC parameters not found.
 
-**Cause**: Extension not preloaded via `shared_preload_libraries` or `session_preload_libraries`.
+**Cause**: The library is missing from `shared_preload_libraries`. `safeupdate` (pg_safeupdate) is in the image's default list, so it goes missing only when an override drops it; `supautils` and `plan_filter` are optional preloads.
 
-**Fix**: Load hook extensions at appropriate scope:
+**Fix**: The variable replaces the default list, so keep it whole and append the optional library:
 
 ```bash
-# pg_plan_filter requires shared_preload_libraries. The variable replaces the default list, so keep it whole.
+# pg_plan_filter (preload library plan_filter)
 POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,plan_filter"
-
-# pg_safeupdate uses session_preload_libraries
-psql -c "SET session_preload_libraries = 'pg_safeupdate'; UPDATE table SET col = 1;"
 
 # supautils requires shared_preload_libraries for GUC parameters
 POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,supautils"
@@ -412,7 +409,7 @@ sudo apt-get install docker-credential-helpers
 sudo pacman -S docker-credential-helpers
 ```
 
-**Automatic Fallback**: Test scripts automatically detect missing credential helpers and create isolated test configurations. No manual intervention required unless you want to fix the system-level configuration.
+**Automatic Fallback**: `scripts/utils/docker-test-config.ts` detects a missing credential helper and gives the stack suites (through `scripts/test/staged-stack.ts`) an isolated Docker config. Another common cause is a subprocess env that drops `PATH`/`DOCKER_CONFIG`: pass `$.env({ ...Bun.env, … })`, never a bare object (AGENTS.md "Common Mistakes").
 
 ### 9. Overriding Image Default Preload
 

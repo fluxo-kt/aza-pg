@@ -27,8 +27,7 @@
 # aza-pg never sends it unless the operator enables it: the bundled telemetry migration has its scheduling statement
 # removed.
 #
-# The upgrade runs as a superuser inside every database it upgrades, so with no DBNAME it also runs in databases whose
-# pgflow schema a non-superuser created; name the databases when such roles exist.
+# A pgflow schema owned by a non-superuser is upgraded with that owner's rights (SET LOCAL ROLE), never superuser.
 set -euo pipefail
 
 # The shipped stacks allow local connections only as OS user postgres (pg_hba peer, mapped by pg_ident to any role),
@@ -109,7 +108,7 @@ fi
 
 for db in "${dbs[@]}"; do
   state=$("${PSQL_READ[@]}" -d "$(dbname "$db")" -Atc \
-    "SELECT count(*) || ':' || count(to_regclass('pgflow.worker_functions')) || ':' || coalesce(max(obj_description(oid, 'pg_namespace')), '') FROM pg_namespace WHERE nspname = 'pgflow'") || {
+    "SELECT count(*) || ':' || count(to_regclass('pgflow.worker_functions')) || ':' || coalesce(max(CASE WHEN NOT r.rolsuper THEN quote_ident(r.rolname) END), '') || ':' || coalesce(max(obj_description(n.oid, 'pg_namespace')), '') FROM pg_namespace n JOIN pg_roles r ON r.oid = n.nspowner WHERE nspname = 'pgflow'") || {
     echo "pgflow-upgrade: $db: cannot connect (the error is above); skipped" >&2
     failed=1
     continue
@@ -127,6 +126,8 @@ for db in "${dbs[@]}"; do
     failed=1
     continue
   fi
+  state=${state#*:}
+  owner=${state%%:*} # empty when a superuser owns the schema, as in every database the image created
   recorded=$(sed -n 's/^pgflow \([0-9][0-9.]*\)$/\1/p' <<<"${state#*:}")
   detected=""
   if [ -z "$recorded" ]; then
@@ -160,6 +161,10 @@ for db in "${dbs[@]}"; do
     # Migrations create functions that read supabase_vault or pg_cron objects absent from many aza-pg databases;
     # aza-overrides.sql replaces exactly those functions in the same transaction, so body checks are deferred.
     echo "SET LOCAL check_function_bodies = off;"
+    # A schema a non-superuser owns is upgraded with that owner's rights: as superuser, the functions and triggers
+    # that owner controls would run with superuser rights during the migrations. Rights the owner lacks fail this
+    # database's transaction, which rolls back and is reported; nothing escalates.
+    [ -z "$owner" ] || echo "SET LOCAL ROLE $owner;"
     # awk 1 ends every line, the last included, with a newline: the files end without one, and a file ending in a
     # -- comment would otherwise swallow the next file's first statement. With no file operands it would read
     # stdin, so an empty pending list must not reach it.
@@ -167,7 +172,7 @@ for db in "${dbs[@]}"; do
     awk 1 "$DIR/aza-overrides.sql" /opt/pgflow/security-patches.sql
     echo "COMMENT ON SCHEMA pgflow IS 'pgflow $target';"
   } | "${PSQL[@]}" -1 -q -d "$(dbname "$db")" >/dev/null || {
-    echo "pgflow-upgrade: $db: upgrade from pgflow $start failed and was rolled back; the error is above" >&2
+    echo "pgflow-upgrade: $db: upgrade from pgflow $start failed and was rolled back; the error is above${owner:+ (it ran as $owner, the non-superuser owning schema pgflow: give $owner the right the error names, or make a superuser the owner, then rerun)}" >&2
     failed=1
     continue
   }

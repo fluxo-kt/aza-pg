@@ -4,10 +4,6 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ## Medium
 
-### pgflow-upgrade runs as superuser inside other owners' schemas
-
-Without a database argument it migrates every database's `pgflow` schema as superuser, including schemas a non-superuser created, so functions and triggers that owner controls run with superuser rights during the migration (stated in the header of `docker/postgres/pgflow/pgflow-upgrade.sh`). **Needs a decision:** refuse such databases (changes the command's behaviour) or migrate as the schema owner.
-
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.

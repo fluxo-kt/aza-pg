@@ -595,7 +595,15 @@ export function testPgStatStatements(container: string): Promise<TestResult> {
       container,
       "SELECT coalesce(sum(calls), 0) FROM pg_stat_statements WHERE query LIKE '%AS pgss_marker%' AND query NOT LIKE '%pg_stat_statements%'"
     );
-    expect(Number(calls) >= 1, `the marker query was not recorded (calls = ${calls})`);
+    // This miss is intermittent with no known cause; the counts tell a lost entry (rows) from a lost query text (texts).
+    const counts =
+      Number(calls) >= 1
+        ? ""
+        : await sqlOk(
+            container,
+            "SELECT count(*) || ' rows, ' || count(query) || ' texts' FROM pg_stat_statements"
+          );
+    expect(Number(calls) >= 1, `the marker query was not recorded (calls = ${calls}; ${counts})`);
   });
 }
 

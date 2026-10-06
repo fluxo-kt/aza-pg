@@ -33,7 +33,7 @@
 # 2. Build: Single or multi-platform based on push_image input
 #    - push_image=false: Single-platform amd64, local load (no push)
 #    - push_image=true: Multi-platform (amd64 + arm64 native), push to registry
-# 3. Test: every routine suite group of scripts/test-all.ts (push_image=true only)
+# 3. Test: every routine suite group of scripts/test-all.ts on amd64, plus extensions on arm64 (push_image=true only)
 # 4. Scan: Trivy security vulnerability scan (push_image=true only)
 # 5. Output: Full test report, image digest, SHA hashes
 #
@@ -454,8 +454,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   test:
-    name: Test ${{ matrix.group }}
-    runs-on: ubuntu-26.04
+    name: Test ${{ matrix.group }}${{ matrix.runner && ' (arm64)' || '' }}
+    runs-on: ${{ matrix.runner || 'ubuntu-26.04' }}
     needs: [lint, build, merge]
     if: github.event.inputs.push_image == 'true'
     timeout-minutes: ${{ matrix.timeout }}
@@ -473,6 +473,11 @@ jobs:
             timeout: 6
           - group: regression
             timeout: 5
+          # The pushed arm64 image is otherwise never started; the extensions group loads every extension and
+          # library, so it catches arm-only build or runtime breakage (same entry as publish.yml).
+          - group: extensions
+            timeout: 6
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout repository

@@ -204,7 +204,7 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 Adaptive multi-platform builds based on `push_image` input:
 
 - **When push_image=false (default):** Single-platform amd64, local build, no tests or scan
-- **When push_image=true:** Matrix builds with native ARM64, parallel execution, all routine suite groups and a Trivy scan
+- **When push_image=true:** Matrix builds with native ARM64, parallel execution, all routine suite groups (plus `extensions` on arm64) and a Trivy scan
 
 ### Technical Details
 

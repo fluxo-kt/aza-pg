@@ -75,7 +75,8 @@ To update to a newer pgflow version:
 2. Set the `pgflow` tag in `scripts/extensions/manifest-data.ts` and the `@pgflow/client` / `@pgflow/dsl`
    versions in `package.json` (validate fails while they differ), then `bun run generate && bun install`
 3. Run `bun scripts/pgflow/generate-schema.ts`; it fails loudly if a local schema patch no longer matches upstream
-4. Review the generated schema and run the pgflow tests before committing
+4. Review the generated schema, rebuild (`bun run build`: the image copies this directory) and run
+   `bun scripts/test-all.ts --group features` (fresh-install and upgrade suites) before committing
 
 ## Supabase Realtime Compatibility
 

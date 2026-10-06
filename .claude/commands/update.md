@@ -646,6 +646,7 @@ bun add --dev @pgflow/client@X.Y.Z @pgflow/dsl@X.Y.Z
 # 3. Regenerate, then prove fresh installs AND upgrades of existing databases
 bun run generate
 bun test scripts/pgflow/
+bun run build                              # the image COPYs schema.sql and upgrade/; suites test the image
 bun scripts/test-all.ts --group features   # includes test-pgflow*.ts and test-pgflow-upgrade.ts
 ```
 

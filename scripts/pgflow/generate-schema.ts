@@ -651,7 +651,10 @@ async function main(): Promise<void> {
   console.log("Next steps:");
   console.log("  1. Review the generated schema");
   console.log("  2. Run: bun run validate");
-  console.log("  3. Run: bun run test:pgflow");
+  // The image COPYs schema.sql and upgrade/, so the suites see them only after a rebuild; the features group holds
+  // both pgflow suites (fresh install, and pgflow-upgrade running these migrations).
+  console.log("  3. Run: bun run build");
+  console.log("  4. Run: bun scripts/test-all.ts --group features");
   console.log("═".repeat(70));
 }
 

@@ -17,7 +17,6 @@
     "test": "bun scripts/test-all.ts",
     "test:all": "bun run build && bun run validate:all && bun scripts/test-all.ts",
     "test:unit": "bun run validate",
-    "test:pgflow": "bun scripts/test/test-pgflow.ts",
     "pgflow:generate": "bun scripts/pgflow/generate-schema.ts",
     "build": "bun scripts/build.ts",
     "cleanup": "bun scripts/docker/cleanup-artifacts.ts",

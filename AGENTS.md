@@ -289,6 +289,7 @@ The changelog focuses changes affecting the **release Docker image** only!
 - docs/TOOLING.md — Tech decisions
 - docs/VERSION-MANAGEMENT.md — Version procedures
 - docs/.generated/docs-data.json — Live counts (auto-generated)
+- ROADMAP.md — Known defects and missing work by severity; remove an entry in the commit that fixes it
 
 ---
 

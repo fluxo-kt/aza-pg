@@ -381,7 +381,7 @@ function scopedName(prefix: string): string {
 /**
  * `docker run` arguments putting PGDATA on tmpfs instead of the anonymous volume the image's `VOLUME` would create.
  * A test container that never restarts needs no volume: tmpfs vanishes with the container, so nothing can leak or be
- * mistaken for an operator's data, and initdb's fsyncs cost nothing, so the server is ready several times sooner.
+ * mistaken for an operator's data, and initdb's fsyncs cost nothing (several times faster to start on Docker Desktop; no measurable change on CI runners).
  * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
  * re-runs initdb), nor under a `--memory` limit the test depends on (tmpfs pages count against it).
  */

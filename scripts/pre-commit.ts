@@ -1,18 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Pre-commit hook: Auto-fix issues and stage fixes
+ * Pre-commit hook: auto-fix and stage the fixes, then run the fast checks.
  *
- * This hook AUTO-FIXES issues instead of failing:
  * 1. Auto-regenerate if manifest-data.ts changed
  * 2. Auto-fix linting issues (oxlint --fix)
  * 3. Auto-format code (prettier --write)
  * 4. Auto-format SQL files (sql-formatter)
  * 5. Auto-stage all fixes
- * 6. Only fail if there are REAL errors that can't be auto-fixed — or if a file it would restage has unstaged
- *    changes, which restaging would commit unseen
-
+ * 6. Run `bun run validate`; fail the commit if it fails
  *
- * Philosophy: Hooks should HELP, not BLOCK development
+ * It also fails before fixing when a file it would restage has unstaged changes, which restaging would commit unseen.
  */
 
 import { $ } from "bun";
@@ -174,9 +171,21 @@ async function preCommit(): Promise<void> {
     info("📝 Auto-staged fixed files");
   }
 
-  // The hook only fixes; checking (tsc, tests, shellcheck…) is `bun run validate` locally and `validate:all` in CI.
   success("✅ Pre-commit auto-fixes complete!");
-  info("   💡 Not checked here: run `bun run validate` (CI runs `bun run validate:all`)");
+
+  // The fast checks run on every commit so a failure stops here, not in CI after a push. They run after the fixes,
+  // so nothing the hook can fix blocks the commit. They read the working tree, not the commit candidate: another
+  // person's unfinished file can fail them, and a file missing from the commit can pass (CI's validate:all sees it).
+  // shellcheck, hadolint and yamllint stay in validate:all.
+  info("🧪 Running fast checks (bun run validate)...");
+  const validate = Bun.spawn(["bun", "run", "validate"], { stdout: "inherit", stderr: "inherit" });
+  if ((await validate.exited) !== 0) {
+    // Exit directly: a thrown Error makes Bun print this file's source around the throw, burying the check's output.
+    error(
+      "Commit blocked: `bun run validate` failed. Fix the check named above, then commit again."
+    );
+    process.exit(1);
+  }
 }
 
 // Run and exit with appropriate code

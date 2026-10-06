@@ -208,7 +208,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 **Configuration**: `git-hooks.config.ts`
 **Hooks Configured**:
 
-- `pre-commit`: Bun script `scripts/pre-commit.ts` (oxlint --fix, Prettier --write, regenerate manifest-driven artifacts when `manifest-data.ts` changes, auto-stage fixes)
+- `pre-commit`: Bun script `scripts/pre-commit.ts` (oxlint --fix, Prettier --write, regenerate manifest-driven artifacts when `manifest-data.ts` changes, auto-stage fixes, then `bun run validate`, which blocks the commit on failure)
 - `pre-push`: Disabled – rely on CI (`ci.yml`) for full validation
 
 ---

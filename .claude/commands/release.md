@@ -495,7 +495,7 @@ COMMIT_EOF
 - Hook detects `manifest-data.ts` in staged files → runs `bun run generate`
 - Auto-stages regenerated files
 - Runs `oxlint --fix` and `prettier --write` on staged files
-- Auto-stages fixes
+- Auto-stages fixes, then runs `bun run validate`; a failing check blocks the commit
 - This is HELPFUL — provides additional safety. Requires `bun install` (Phase 4.2) to have run first.
 
 ---

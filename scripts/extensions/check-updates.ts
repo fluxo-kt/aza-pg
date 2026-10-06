@@ -16,7 +16,7 @@
  *   2 - Error occurred
  */
 
-import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "./manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA, SOURCE_LIBRARIES } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 
 interface UpdateInfo {
@@ -621,6 +621,18 @@ async function main() {
       results.push(update);
     }
   }
+
+  // The pinned Rust toolchain compiles every pgrx extension; Rust tags each release as plain X.Y.Z.
+  const rust = await checkExtensionUpdates({
+    name: "rust-toolchain",
+    source: {
+      type: "git",
+      repository: "https://github.com/rust-lang/rust",
+      tag: MANIFEST_METADATA.rustToolchain,
+    },
+    enabled: true,
+  });
+  if (rust) results.push(rust);
 
   if (args.format === "json") {
     console.log(JSON.stringify(results, null, 2));

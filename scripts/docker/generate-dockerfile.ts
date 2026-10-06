@@ -14,6 +14,7 @@
  * - {{PG_VERSION}} - PostgreSQL version (hardcoded, e.g., "18.1")
  * - {{PG_MAJOR}} - PostgreSQL major version (hardcoded, extracted from PG_VERSION, e.g., "18")
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
+ * - {{RUST_TOOLCHAIN}} - Rust toolchain version (hardcoded)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
  * - {{PGDG_PACKAGES_INSTALL_REGRESSION}} - Regression mode PGDG package installation (all extensions)
  *
@@ -617,6 +618,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);
@@ -670,6 +672,7 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
+  dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
   dockerfile = dockerfile.replace(
     "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
     pgdgPackagesInstallRegression

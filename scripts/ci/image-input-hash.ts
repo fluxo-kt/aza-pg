@@ -15,7 +15,7 @@
  * An archive that cannot be read yields a key no cache entry has, so CI rebuilds: a failure may cost time, never
  * reuse a stale image.
  *
- * Not covered, and why that is acceptable: inputs fetched by version from the network (rustup, bun installer,
+ * Not covered, and why that is acceptable: inputs fetched by version from the network (the Rust toolchain, bun,
  * extension git tags locked in extensions.manifest.json) follow tracked files; Percona/Timescale packages are
  * version-pinned. The key reads the git index, so locally uncommitted edits are invisible; CI checks out commits.
  *

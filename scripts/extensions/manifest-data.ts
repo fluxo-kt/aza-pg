@@ -18,6 +18,11 @@ export const MANIFEST_METADATA = {
   pgVersion: "18.6",
   /** Base image SHA256 digest for reproducible builds */
   baseImageSha: "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+  /**
+   * Rust toolchain for the source-built extensions (pgrx). Pinned rather than `stable` so a rebuild compiles with the
+   * same compiler and a bump changes the Dockerfile (and with it CI's image key); check-updates.ts reports newer ones.
+   */
+  rustToolchain: "1.99.0",
 } as const;
 
 /** A C library compiled from a release tarball because Debian trixie's package is too old. */

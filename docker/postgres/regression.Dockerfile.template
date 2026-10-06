@@ -37,10 +37,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Rust toolchain (separate layer for better caching, ~60s install time)
-# Stable tool, rarely updates - placed BEFORE manifests to maximize cache hits
+# Install Rust toolchain (separate layer for better caching, ~60s install time); version from manifest-data.ts,
+# placed BEFORE manifests to maximize cache hits
 RUN set -euo pipefail && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain {{RUST_TOOLCHAIN}}
 
 # Add Rust/Cargo to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"

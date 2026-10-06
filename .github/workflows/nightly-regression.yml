@@ -40,7 +40,7 @@ jobs:
   # ==========================================================================
   build:
     name: Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 100
     outputs:
       image-key: ${{ steps.key.outputs.key }}
@@ -109,7 +109,7 @@ jobs:
   # ==========================================================================
   test:
     name: Test nightly
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     timeout-minutes: 5
 

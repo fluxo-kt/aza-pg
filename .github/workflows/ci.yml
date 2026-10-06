@@ -57,7 +57,7 @@ concurrency:
 permissions:
   contents: read
 
-# Each timeout-minutes is 4–8x the job's measured run time on ubuntu-latest: it exists to stop a hang early, never to
+# Each timeout-minutes is 4–8x the job's measured run time on the hosted x64 runner: it exists to stop a hang early, never to
 # decide that work is done. The build is sized on a full rebuild of the source-built extensions (about 20 min), not on
 # a cache hit: a timeout that kills that rebuild never saves its layer cache, so every later run would start cold and
 # fail the same way. A test job must also outlive a hung suite: setup, the suites queued before it, test-all's own
@@ -71,7 +71,7 @@ jobs:
   # ==========================================================================
   lint-workflows:
     name: Lint Workflows
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 2
 
     steps:
@@ -90,7 +90,7 @@ jobs:
   # ==========================================================================
   validate:
     name: Validate & Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: lint-workflows
     timeout-minutes: 3
     # Skip pull_request events from dev branch (push trigger already handles dev)
@@ -116,7 +116,7 @@ jobs:
   # ==========================================================================
   build:
     name: Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: validate
     timeout-minutes: 100
     outputs:
@@ -198,7 +198,7 @@ jobs:
   # ==========================================================================
   test:
     name: Test ${{ matrix.group }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -236,7 +236,7 @@ jobs:
   # ==========================================================================
   ci-complete:
     name: CI Complete
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint-workflows, validate, build, test]
     timeout-minutes: 1
     # Skipped only where validate is skipped on purpose (a PR from dev; the push run checks dev). Keying on the event,

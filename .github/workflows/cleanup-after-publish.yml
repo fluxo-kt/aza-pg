@@ -16,7 +16,7 @@ permissions:
 jobs:
   cleanup:
     name: Cleanup Orphaned Testing Artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Only run if publish was cancelled (normal cleanup handles success/failure)
     if: github.event.workflow_run.conclusion == 'cancelled'
     timeout-minutes: 10

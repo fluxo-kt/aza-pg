@@ -253,12 +253,14 @@ strategy:
   matrix:
     include:
       - platform: linux/amd64
-        runner: ubuntu-latest
+        runner: ubuntu-26.04
         artifact: linux-amd64
       - platform: linux/arm64
         runner: ubuntu-24.04-arm
         artifact: linux-arm64
 ```
+
+Every workflow names its runner image (`ubuntu-26.04`, `ubuntu-24.04-arm`) instead of `ubuntu-latest`, so a runner upgrade lands as a commit that CI tests instead of on the date GitHub moves the label.
 
 **Digest Handling:**
 

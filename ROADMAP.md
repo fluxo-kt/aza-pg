@@ -26,10 +26,6 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
-### CI runners move to Ubuntu 26 on 2026-10-19
-
-CI, build and publish run on `ubuntu-latest`, which switches to Ubuntu 26 on that date (actions/runner-images#14748). Run the workflows once on `ubuntu-26.04` before then; Docker, buildx and QEMU versions change with the image.
-
 ### Manual image builds fail on branch names containing `/`
 
 `.github/workflows/build-postgres-image.yml` tags images `dev-${{ github.ref_name }}`; a `/` in the branch name makes an invalid image reference and the run fails at the merge step. Fix: compute one sanitised tag in an early step and use it everywhere.

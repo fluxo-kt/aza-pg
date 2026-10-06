@@ -33,7 +33,7 @@ env:
 jobs:
   prep:
     name: Prepare Build Metadata
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 8
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
@@ -232,7 +232,7 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
             artifact: linux-amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -312,7 +312,7 @@ jobs:
 
   merge:
     name: Create Multi-Platform Manifest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, build]
     timeout-minutes: 4
     outputs:
@@ -464,7 +464,7 @@ jobs:
   # ==========================================================================
   test:
     name: Test ${{ matrix.group }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge]
     if: needs.merge.result == 'success'
     timeout-minutes: ${{ matrix.timeout }}
@@ -505,7 +505,7 @@ jobs:
 
   test-complete:
     name: All Tests Complete
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, test]
     timeout-minutes: 1
     # Run when prep actually ran (skipped = CI was cancelled/not from release = nothing to check).
@@ -541,7 +541,7 @@ jobs:
 
   scan:
     name: Security Scanning
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, test-complete]
     timeout-minutes: 8
 
@@ -674,7 +674,7 @@ jobs:
 
   release:
     name: Sign and Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, scan, test-complete]
     timeout-minutes: 20
     outputs:
@@ -889,7 +889,7 @@ jobs:
 
           ## Platforms
 
-          - linux/amd64 (native build on ubuntu-latest)
+          - linux/amd64 (native build on ubuntu-26.04)
           - linux/arm64 (native build on ubuntu-24.04-arm)
 
           ## Verification
@@ -1025,7 +1025,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, release]
     if: success()
     timeout-minutes: 2
@@ -1154,7 +1154,7 @@ jobs:
 
   verify-public-release:
     name: Verify Public Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, release, create-release]
     if: success()
     timeout-minutes: 8
@@ -1254,7 +1254,7 @@ jobs:
 
   cleanup:
     name: Cleanup Testing Artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [prep, merge, test, test-complete, scan, release, create-release, verify-public-release]
     # Run cleanup after all jobs complete — including on test/scan failures.
     # Skipped when prep is skipped (CI cancelled = nothing was built = no testing images to clean up).

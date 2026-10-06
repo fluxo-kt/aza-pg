@@ -174,12 +174,9 @@ async function preCommit(): Promise<void> {
     info("📝 Auto-staged fixed files");
   }
 
-  // 5. Skip type checking (too slow for pre-commit, let CI handle it)
-  // Type checking is comprehensive and slow - better suited for CI
-  // Developers can run `bun run type-check` manually if needed
-
+  // The hook only fixes; checking (tsc, tests, shellcheck…) is `bun run validate` locally and `validate:all` in CI.
   success("✅ Pre-commit auto-fixes complete!");
-  info("   💡 CI will run full validation (type-check, shellcheck, etc.)");
+  info("   💡 Not checked here: run `bun run validate` (CI runs `bun run validate:all`)");
 }
 
 // Run and exit with appropriate code

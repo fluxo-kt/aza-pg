@@ -474,9 +474,11 @@ echo "Dev squash tip: $DEV_SQUASH_TIP"
 - `DEV_SQUASH_TIP` → full hash from the echo above (e.g., `abc1234def5678...`)
 - `Co-Authored-By: Name <email>` → actual co-authors from Phase 1.3 (one line per author)
 
+Name every staged path literally after `--`: the commit guard refuses a commit without a pathspec, and reads paths only from the command line, so `--pathspec-from-file` is refused too. `git diff --cached --name-only --no-renames` lists them, both sides of a rename included.
+
 ```bash
-# Use HEREDOC for correct formatting; never --no-verify; never --no-gpg-sign
-git commit -m "$(cat <<'COMMIT_EOF'
+# Message from the HEREDOC on stdin; never --no-verify; never --no-gpg-sign
+git commit --only -F - -- PATH_1 PATH_2 … <<'COMMIT_EOF'
 TYPE(SCOPE): title here
 
 - change 1
@@ -488,10 +490,9 @@ Dev-Squash-Tip: DEV_SQUASH_TIP
 Co-Authored-By: Name <email>
 Co-Authored-By: Current Agent <agent@example.com>
 COMMIT_EOF
-)"
 ```
 
-**If a commit guard refuses a commit without a pathspec**: write the message to a file and name every staged path literally after `--` (`git diff --cached --name-only --no-renames` lists them, both sides of a rename included): `git commit --only -F <msg-file> -- <paths…>`. The guard reads paths only from the command line, so `--pathspec-from-file` is refused as well.
+Then `git diff --cached --quiet` must succeed: a path missing from the list stays staged and is not released.
 
 **If commit fails due to signing** (SSH key not available):
 - Ask user: `eval "$(ssh-agent -s)" && ssh-add`
@@ -650,8 +651,10 @@ Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should p
 # Fetch tags from origin so TARGET always reflects what CI just published
 git fetch --tags origin
 
-TARGET=$(git tag -l 'v*' --sort=-creatordate | head -1)
-[[ -n "$TARGET" ]] || { echo "ABORT: No release tags (v*) found after fetch."; exit 1; }
+# The tag on origin/release's tip, not the newest tag by date: a re-tag or a tag pushed by hand
+# would otherwise be anchored instead of what was just released.
+TARGET=$(git tag -l 'v*' --points-at origin/release | head -1)
+[[ -n "$TARGET" ]] || { echo "ABORT: origin/release's tip has no v* tag — publish has not finished or failed."; exit 1; }
 echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
 ```
 

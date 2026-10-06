@@ -24,7 +24,7 @@ Without a database argument it migrates every database's `pgflow` schema as supe
 
 ### A logical restore hides real errors among expected ones
 
-Restoring a `pg_dump` into a fresh aza-pg server reports many "already exists" errors, because the init scripts create the pgflow, pg_partman, vault and status objects the dump creates again; a real failure hides among them and `ON_ERROR_STOP` cannot be used. TimescaleDB hypertables also need `timescaledb_pre_restore()` / `timescaledb_post_restore()` around the restore, and `scripts/tools/backup-postgres.ts` dumps with `--no-acl`, so GRANTs are lost (keeping them fails on a server that lacks the roles). **Needs a decision** on what a logical backup must carry: exclude image-owned objects (their data, such as pgflow runs, is then not backed up) or restore into a database without init objects; with or without privileges.
+Restoring a `pg_dump` into a fresh aza-pg server reports many "already exists" errors, because the init scripts create the pgflow, pg_partman, vault and status objects the dump creates again; a real failure hides among them and `ON_ERROR_STOP` cannot be used. TimescaleDB hypertables also need `timescaledb_pre_restore()` / `timescaledb_post_restore()` around the restore, and `scripts/tools/backup-postgres.ts` dumps with `--no-acl`, so GRANTs are lost (keeping them fails on a server that lacks the roles). **Needs two decisions:** skip image-owned objects in the dump (their data, such as pgflow runs, is then not backed up) or restore into a database without init objects; keep or drop GRANTs.
 
 ### The `pg_upgrade` path needs an image holding both majors
 

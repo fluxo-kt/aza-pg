@@ -32,7 +32,7 @@ jobs:
   test:
     name: Test regression
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -51,10 +51,3 @@ jobs:
         env:
           IMAGE_REF: ${{ inputs.image_ref }}
         run: bun scripts/test-all.ts --group regression --image "$IMAGE_REF"
-
-      - name: Capture test diagnostics
-        # Without it the step inherits success() and is skipped after the failed suite it exists for
-        if: failure()
-        uses: ./.github/actions/capture-test-diagnostics
-        with:
-          test-type: regression

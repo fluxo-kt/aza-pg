@@ -52,18 +52,19 @@ jobs:
           # Omit acknowledged-CVE advisories so they don't cancel this non-TTY install (see setup-bun).
           BUN_OSV_SHOW_IGNORED: "0"
 
+      # Dispatch inputs reach the shell only through env, so an input value can never run as shell code.
       - name: Cleanup old testing images
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAYS: ${{ inputs.days }}
+          KEEP_LAST: ${{ inputs.keep_last }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          # Determine retention policy
-          DAYS="${{ inputs.days }}"
-          KEEP_LAST="${{ inputs.keep_last }}"
           DRY_RUN=""
 
           # Set dry-run flag
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "$DRY_RUN_INPUT" = "true" ]; then
             DRY_RUN="--dry-run"
           fi
 
@@ -89,6 +90,10 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          DAYS: ${{ inputs.days || '2' }}
+          KEEP_LAST: ${{ inputs.keep_last }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
           {
@@ -98,18 +103,16 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Determine which policy was used
-          KEEP_LAST="${{ inputs.keep_last }}"
           if [ -n "$KEEP_LAST" ]; then
             echo "- **Retention Policy**: Count-based (keep last $KEEP_LAST tags)" >> "$GITHUB_STEP_SUMMARY"
           else
-            DAYS="${{ inputs.days || '2' }}"
             echo "- **Retention Policy**: Time-based (delete tags older than $DAYS days)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           {
-            echo "- **Dry Run**: \`${{ inputs.dry_run || 'false' }}\`"
+            echo "- **Dry Run**: \`$DRY_RUN_INPUT\`"
             echo "- **Pattern**: \`*\` (all tags in testing repository)"
             echo ""
-            echo "**Note**: This is an automated daily cleanup to reduce storage costs."
+            echo "**Note**: This is an automated weekly cleanup to reduce storage costs."
             echo "Testing tags are ephemeral and only used during the build-test-promote cycle."
           } >> "$GITHUB_STEP_SUMMARY"

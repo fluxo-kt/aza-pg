@@ -24,7 +24,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-  RELEASE_REF_NAME: ${{ github.event.workflow_run.head_branch }}
   # Acknowledged-CVE advisories must be omitted from scanner output, else they re-emit as warn and
   # cancel the non-TTY `bun install` in every job below. Workflow-level so all inline installs inherit
   # it. No-op while .bun-osv.json is empty; enforced for every install site by validate-bun-osv.ts.
@@ -42,27 +41,15 @@ jobs:
       github.event.workflow_run.event == 'push'
     outputs:
       pg_version_major: ${{ steps.pg-version.outputs.major }}
-      pg_version_minor: ${{ steps.pg-version.outputs.minor }}
       pg_version_full: ${{ steps.pg-version.outputs.full }}
       base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
       base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
       timestamp: ${{ steps.timestamp.outputs.timestamp }}
       version_tag: ${{ steps.tags.outputs.version_tag }}
       image_tag: ${{ steps.tags.outputs.image_tag }}
-      tag_convenience: ${{ steps.tags.outputs.convenience }}
       catalog_total: ${{ steps.catalog.outputs.total }}
       catalog_enabled: ${{ steps.catalog.outputs.enabled }}
       catalog_disabled: ${{ steps.catalog.outputs.disabled }}
-      catalog_extensions: ${{ steps.catalog.outputs.extensions }}
-      catalog_tools: ${{ steps.catalog.outputs.tools }}
-      catalog_builtins: ${{ steps.catalog.outputs.builtins }}
-      catalog_modules: ${{ steps.catalog.outputs.modules }}
-      catalog_enabled_extensions: ${{ steps.catalog.outputs.enabled_extensions }}
-      catalog_enabled_tools: ${{ steps.catalog.outputs.enabled_tools }}
-      catalog_enabled_builtins: ${{ steps.catalog.outputs.enabled_builtins }}
-      catalog_enabled_modules: ${{ steps.catalog.outputs.enabled_modules }}
-      cache_key: ${{ steps.cache-key.outputs.key }}
-      content_hash: ${{ steps.cache-key.outputs.content_hash }}
       meta_labels: ${{ steps.meta.outputs.labels }}
       meta_annotations: ${{ steps.meta.outputs.annotations }}
       bun_version: ${{ steps.bun-version.outputs.bun-version }}
@@ -137,14 +124,6 @@ jobs:
             echo "total=${CATALOG_TOTAL}"
             echo "enabled=${CATALOG_ENABLED}"
             echo "disabled=${CATALOG_DISABLED}"
-            echo "extensions=${CATALOG_EXTENSIONS}"
-            echo "tools=${CATALOG_TOOLS}"
-            echo "builtins=${CATALOG_BUILTINS}"
-            echo "modules=${CATALOG_MODULES}"
-            echo "enabled_extensions=${CATALOG_ENABLED_EXTENSIONS}"
-            echo "enabled_tools=${CATALOG_ENABLED_TOOLS}"
-            echo "enabled_builtins=${CATALOG_ENABLED_BUILTINS}"
-            echo "enabled_modules=${CATALOG_ENABLED_MODULES}"
           } >> "$GITHUB_OUTPUT"
           echo "Catalog: ${CATALOG_ENABLED} enabled (${CATALOG_ENABLED_EXTENSIONS} ext, ${CATALOG_ENABLED_BUILTINS} builtin, ${CATALOG_ENABLED_TOOLS} tools), ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
 
@@ -232,15 +211,6 @@ jobs:
             index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
             index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
             index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
-
-      - name: Generate cache key
-        id: cache-key
-        run: |
-          set -euo pipefail
-          bun scripts/release/generate-cache-key.ts \
-            --branch="${{ env.RELEASE_REF_NAME }}" \
-            --content-hash="${{ hashFiles('docker/**', 'scripts/extensions/**', 'bun.lock', 'package.json') }}" \
-            --github-output
 
       - name: Document existing tags (for rollback reference)
         continue-on-error: true
@@ -503,15 +473,15 @@ jobs:
       matrix:
         include:
           - group: extensions
-            timeout: 8
+            timeout: 6
           - group: security
-            timeout: 4
-          - group: stacks
             timeout: 5
-          - group: features
+          - group: stacks
             timeout: 7
+          - group: features
+            timeout: 6
           - group: regression
-            timeout: 4
+            timeout: 5
 
     steps:
       - name: Checkout repository
@@ -532,14 +502,6 @@ jobs:
         env:
           TEST_IMAGE: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}
         run: bun scripts/test-all.ts --group "${{ matrix.group }}" --image "$TEST_IMAGE"
-
-      - name: Capture test diagnostics
-        # Without it the step inherits success() and is skipped after the failed suite it exists for
-        if: failure()
-        uses: ./.github/actions/capture-test-diagnostics
-        with:
-          test-type: ${{ matrix.group }}
-          artifact-prefix: publish-${{ matrix.group }}
 
   test-complete:
     name: All Tests Complete
@@ -1337,7 +1299,7 @@ jobs:
           elif [ "${{ steps.cleanup-step.outcome }}" = "failure" ]; then
             echo "::warning::Cleanup failed - some versions may remain"
             echo "Repository: ghcr.io/${{ needs.prep.outputs.testing_image_name }}"
-            echo "Daily cleanup will remove remaining orphaned versions"
+            echo "Weekly cleanup will remove remaining orphaned versions"
           else
             echo "::warning::Cleanup skipped or cancelled"
           fi
@@ -1362,7 +1324,7 @@ jobs:
               echo "⚠️ **Cleanup encountered issues**"
               echo ""
               echo "- **Repository**: \`ghcr.io/${{ needs.prep.outputs.testing_image_name }}\`"
-              echo "- **Action**: Daily scheduled cleanup will remove remaining versions"
+              echo "- **Action**: Weekly scheduled cleanup will remove remaining versions"
               echo ""
               echo "This does not affect the release. All images are published to production."
             } >> "$GITHUB_STEP_SUMMARY"

@@ -48,8 +48,10 @@ on:
     branches:
       - "**"
 
+# The event is part of the group: a push to dev and a PR whose head is dev share the branch name, and would cancel
+# each other's run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -58,7 +60,10 @@ permissions:
 # Each timeout-minutes is 4–8x the job's measured run time on ubuntu-latest: it exists to stop a hang early, never to
 # decide that work is done. The build is sized on a full rebuild of the source-built extensions (about 20 min), not on
 # a cache hit: a timeout that kills that rebuild never saves its layer cache, so every later run would start cold and
-# fail the same way. Re-measure (gh run view <id> --json jobs) when a job's duration moves.
+# fail the same way. A test job must also outlive a hung suite: setup, the suites queued before it, test-all's own
+# kill (SUITE_TIMEOUT_MS, 3 min), its log read and its 30 s sweep; otherwise GitHub cancels the job before test-all
+# names the hung suite. That floor (about 4.5 min) puts the fastest group, regression, at 8x rather than below it.
+# Re-measure (gh run view <id> --json jobs) when a job's duration moves.
 jobs:
   # ==========================================================================
   # Job 1: Lint workflows (fail fast on invalid GitHub Actions expressions)
@@ -67,7 +72,7 @@ jobs:
   lint-workflows:
     name: Lint Workflows
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository
@@ -201,15 +206,15 @@ jobs:
       matrix:
         include:
           - group: extensions
-            timeout: 8
+            timeout: 6
           - group: security
-            timeout: 4
-          - group: stacks
             timeout: 5
-          - group: features
+          - group: stacks
             timeout: 7
+          - group: features
+            timeout: 6
           - group: regression
-            timeout: 4
+            timeout: 5
 
     steps:
       - name: Checkout repository
@@ -226,27 +231,22 @@ jobs:
       - name: Run ${{ matrix.group }} suites
         run: bun scripts/test-all.ts --group "${{ matrix.group }}" --image aza-pg-ci:test
 
-      - name: Capture test diagnostics
-        # Without it the step inherits success() and is skipped after the failed suite it exists for
-        if: failure()
-        uses: ./.github/actions/capture-test-diagnostics
-        with:
-          test-type: ${{ matrix.group }}
-
   # ==========================================================================
   # Job 4: CI Complete (final gate)
   # ==========================================================================
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
-    needs: [validate, build, test]
+    needs: [lint-workflows, validate, build, test]
     timeout-minutes: 1
-    # Skip if validate was skipped (intentional skip for PR from dev branch)
-    if: always() && needs.validate.result != 'skipped'
+    # Skipped only where validate is skipped on purpose (a PR from dev; the push run checks dev). Keying on the event,
+    # not on validate's result, keeps the gate running when a failed lint-workflows is what skipped validate.
+    if: always() && !(github.event_name == 'pull_request' && github.head_ref == 'dev')
 
     steps:
       - name: Check all jobs status
         env:
+          LINT_WORKFLOWS: ${{ needs.lint-workflows.result }}
           VALIDATE: ${{ needs.validate.result }}
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
@@ -257,12 +257,13 @@ jobs:
             echo ""
             echo "| Job | Result |"
             echo "|-----|--------|"
+            echo "| Lint Workflows | $LINT_WORKFLOWS |"
             echo "| Validate | $VALIDATE |"
             echo "| Build | $BUILD |"
             echo "| Test (all groups) | $TEST |"
           } >> "$GITHUB_STEP_SUMMARY"
           # A failed or cancelled job fails the gate; skipped jobs do not.
-          for result in "$VALIDATE" "$BUILD" "$TEST"; do
+          for result in "$LINT_WORKFLOWS" "$VALIDATE" "$BUILD" "$TEST"; do
             case "$result" in
               failure | cancelled)
                 echo "::error::A CI job ended with: $result"

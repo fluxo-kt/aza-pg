@@ -8,12 +8,7 @@
 #
 # Gating:
 # - Only runs if ENABLE_PGSODIUM_INIT=true (default: disabled)
-# - pgsodium itself is preloaded and created by default (01-extensions.sql); this script only adds
-#   its server secret key
-#
-# Prerequisites (if enabled):
-# - pgsodium extension will be created by this script
-# - Runs after baseline extension creation
+# - pgsodium itself is preloaded and created by default (01-extensions.sql); this script only adds the row
 #
 # "no server secret key defined" from Vault means pgsodium or supabase_vault is not preloaded; this row does not fix it.
 
@@ -42,15 +37,15 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         -- The image preloads pgsodium by default with a root key per data directory (or the operator's
         -- PGSODIUM_KEY_FILE); a POSTGRES_SHARED_PRELOAD_LIBRARIES override must keep it.
 
-        -- Create server secret key if it doesn't exist
+        -- Create the named key row if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pgsodium.key WHERE name = 'pgsodium_root') THEN
             PERFORM pgsodium.create_key(name := 'pgsodium_root');
-            RAISE NOTICE 'pgsodium server secret initialized';
+            RAISE NOTICE 'pgsodium key pgsodium_root created';
         ELSE
-            RAISE NOTICE 'pgsodium server secret already exists';
+            RAISE NOTICE 'pgsodium key pgsodium_root already exists';
         END IF;
     END
     \$\$;
 EOSQL
 
-echo "pgsodium initialization complete"
+echo "[03-pgsodium] pgsodium_root key row ready"

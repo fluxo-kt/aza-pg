@@ -38,7 +38,7 @@ This image implements the following security best practices:
 1. **Non-root execution**: Container runs as `postgres` user (not root)
 2. **No default passwords**: `POSTGRES_PASSWORD` must be explicitly set
 3. **Strong authentication**: connections from other hosts use SCRAM-SHA-256. The base image's initdb trusts the Unix socket and loopback (127.0.0.1, ::1) inside the container without a password, so anyone who can `docker exec` into it is a superuser
-4. **Network isolation**: listens only inside its container until `POSTGRES_BIND_IP` is set, so publishing a port alone exposes nothing
+4. **Network isolation**: a lone container listens only on its own loopback until `POSTGRES_BIND_IP` is set, so a published port alone exposes nothing; the stacks listen on their Docker networks and publish on the host's `127.0.0.1` by default
 5. **Signed images**: All releases are signed with Cosign
 6. **SLSA attestations**: Supply chain security via GitHub Actions
 7. **Minimal runtime tooling**: the final image purges the base image's GnuPG CLI stack and the compilers used to build su-exec. Percona and Timescale apt repositories are trusted only through the keys committed in `docker/postgres/apt-keys/`; no vendor repo-setup package or script runs

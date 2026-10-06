@@ -1,6 +1,6 @@
 # Environment Variables Reference
 
-aza-pg supports comprehensive configuration through environment variables. Variables are auto-detected where possible (RAM, CPU) and provide safe defaults.
+Variables aza-pg adds to the official `postgres` image, whose own variables (e.g. `POSTGRES_INITDB_ARGS`) still work. RAM and CPU are detected from the container's limits unless set.
 
 ## PostgreSQL Auto-Configuration
 
@@ -21,13 +21,13 @@ Auto-tuning from container resource limits (cgroup v2) and system memory.
 
 ## PostgreSQL Connection
 
-| Variable            | Default         | Description                                                                                                                                                                                                                                                                             |
-| ------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POSTGRES_USER`     | `postgres`      | Database superuser                                                                                                                                                                                                                                                                      |
-| `POSTGRES_PASSWORD` | **(required)**  | Superuser password (16+ chars recommended)                                                                                                                                                                                                                                              |
-| `POSTGRES_DB`       | `POSTGRES_USER` | Initial database; also where the default extensions and pg_cron go. The stacks default it to `postgres`                                                                                                                                                                                 |
-| `POSTGRES_BIND_IP`  | `127.0.0.1`     | Stacks: host address the port is published on (PostgreSQL itself listens on the stack's Docker networks). Lone container: PostgreSQL's listen address; the default lets only this container connect, so set `0.0.0.0` to use a published port. `127.0.0.1`, `0.0.0.0`, or a specific IP |
-| `POSTGRES_PORT`     | Stack-specific  | `5432` (primary/single), `5433` (replica)                                                                                                                                                                                                                                               |
+| Variable            | Default         | Description                                                                                                                                                                                                                                                                                    |
+| ------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`     | `postgres`      | Database superuser                                                                                                                                                                                                                                                                             |
+| `POSTGRES_PASSWORD` | **(required)**  | Superuser password (16+ chars recommended)                                                                                                                                                                                                                                                     |
+| `POSTGRES_DB`       | `POSTGRES_USER` | Initial database; also where the default extensions and pg_cron go. The stacks default it to `postgres`                                                                                                                                                                                        |
+| `POSTGRES_BIND_IP`  | `127.0.0.1`     | Lone container: PostgreSQL's listen address. The default accepts connections only from inside the container; set `0.0.0.0` to reach it through a published port or from other containers. Stacks: the host address the port is published on; PostgreSQL itself listens on the stack's networks |
+| `POSTGRES_PORT`     | Stack-specific  | `5432` (primary/single), `5433` (replica)                                                                                                                                                                                                                                                      |
 
 `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` also accept a `_FILE` variant (e.g. `POSTGRES_PASSWORD_FILE`) naming a file to read the value from, such as a Docker secret.
 

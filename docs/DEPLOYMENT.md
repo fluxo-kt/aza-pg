@@ -906,82 +906,24 @@ psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 ### Step 13: Configure Keepalived for VIP
 
-Keepalived provides a Virtual IP (VIP) that automatically moves between primary and replica during failover.
+Keepalived gives clients one Virtual IP (VIP) that only a writable primary holds. Install it on each VPS host, not in a container: its check runs `docker exec` against the `postgres` container, and moving a VIP needs the host's network.
 
-**Option A: Run on Host VPS (Recommended for production)**
-
-Both servers need Keepalived installed directly on the host OS (not in Docker).
-
-**On Primary VPS:**
+On each VPS (SSH to the host, also under Coolify):
 
 ```bash
-# SSH to VPS
-ssh root@PRIMARY_VPS_IP
+apt update && apt install -y keepalived
+# From a checkout of this repo; on the replica host copy keepalived/replica.conf instead
+cp deployments/phase2-dual-vps/keepalived/primary.conf /etc/keepalived/keepalived.conf
+# Set auth_pass (the same on both hosts), interface and the VIP for your network
+systemctl enable --now keepalived
 
-# Install Keepalived
-apt install -y keepalived
-
-# Create config
-nano /etc/keepalived/keepalived.conf
-```
-
-**Content:**
-
-```
-vrrp_script chk_postgres {
-    script "/usr/bin/docker exec postgres pg_isready"
-    interval 2
-    weight 2
-}
-
-vrrp_instance VI_1 {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 100
-    advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass CHANGE_ME_SECURE_PASSWORD
-    }
-
-    virtual_ipaddress {
-        10.0.0.100/24 dev eth0
-    }
-
-    track_script {
-        chk_postgres
-    }
-}
-```
-
-```bash
-# Start Keepalived
-systemctl enable keepalived
-systemctl start keepalived
-
-# Verify VIP assigned
+# On the primary: the VIP is assigned
 ip addr show eth0 | grep 10.0.0.100
 ```
 
-**On Replica VPS:**
+The check fails on a standby and on a stopped server, so a standby never holds the VIP: after a primary failure clients get no connection until you promote the replica, then the VIP moves to it within a few seconds. Both nodes start as `BACKUP` with `nopreempt`, so an old primary that comes back does not take the VIP back; rebuild it as a replica before starting its PostgreSQL again. Rationale is in the config's comments.
 
-Repeat the same steps, but change in `/etc/keepalived/keepalived.conf`:
-
-- `state BACKUP`
-- `priority 90`
-
-```bash
-systemctl enable keepalived
-systemctl start keepalived
-```
-
-**Option B: Run Keepalived in Docker (Development/Testing only)**
-
-Use the pinned compose service in `deployments/phase2-dual-vps/README.md` ("Option B: Dockerized Keepalived"). It moves the VIP only when a node or its keepalived stops, not when PostgreSQL stops: the image has no `docker` CLI, so the `chk_postgres` script above cannot run inside it.
-
-**13.2 Test VIP failover**
+**13.2 Test that the VIP never moves to a standby**
 
 On Primary:
 
@@ -992,15 +934,14 @@ systemctl stop keepalived
 On Replica:
 
 ```bash
-# Check VIP migrated
-ip addr show eth0 | grep 10.0.0.100
-# VIP should now appear on Replica
+# No VIP, because it is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 ```
 
 On Primary:
 
 ```bash
-# Restart Keepalived (VIP returns)
+# The VIP comes back
 systemctl start keepalived
 ```
 
@@ -1016,22 +957,23 @@ On Primary VPS:
 
 ```bash
 docker stop postgres
-systemctl stop keepalived
 ```
 
 On Replica VPS:
 
 ```bash
-# Verify VIP migrated
-ping 10.0.0.100
-# Should respond from Replica
+# No node holds the VIP while the replica is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 
 # Promote to Primary (execute in postgres container)
 pg_ctl promote   # reads the container's $PGDATA
 
-# Wait 10 seconds, verify promotion
+# Verify promotion
 psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Expected: f (false - now primary)
+
+# The VIP moves here within a few seconds (on the host)
+ip addr show eth0 | grep 10.0.0.100
 
 # Test write capability
 psql -U postgres -c "INSERT INTO health_check (message) VALUES ('Failover test successful');"
@@ -1045,7 +987,7 @@ On old Primary (now to become Replica):
 2. Delete postgres_data volume
 3. Repeat Step 12.4-12.5 but with:
    - PGHOST pointing to new Primary (10.0.0.3)
-   - Keepalived priority set to 90
+4. Keep its Keepalived config unchanged: a standby cannot hold the VIP, so priorities need no swap
 
 ---
 

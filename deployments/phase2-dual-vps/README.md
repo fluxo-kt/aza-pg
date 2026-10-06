@@ -8,7 +8,7 @@ High availability setup with automatic VIP failover and manual database promotio
 Primary VPS (10.0.0.2)          Replica VPS (10.0.0.3)
 ├── PostgreSQL (Primary)        ├── PostgreSQL (Standby)
 ├── PgBouncer (Priority 100)    ├── PgBouncer (Priority 90)
-├── Keepalived (MASTER)         ├── Keepalived (BACKUP)
+├── Keepalived (holds the VIP)  ├── Keepalived (no VIP while standby)
 └── Monitoring Stack            └── Monitoring Stack
 
            ↓ VIP ↓
@@ -165,107 +165,40 @@ SELECT * FROM pg_stat_wal_receiver;
 
 ### 6. Install Keepalived
 
-> **IMPORTANT for Coolify Users:** Keepalived must run on the HOST VPS, not inside containers. Coolify containers don't have systemd or network control. Choose one of these options:
-
-#### Option A: Keepalived on Host VPS (Recommended for Coolify)
-
-SSH directly to both VPS hosts and install Keepalived at the OS level:
-
-**On Primary VPS host:**
+Keepalived runs on each VPS host, not in a container: its check script runs `docker exec` against the `postgres` container, and moving a VIP needs the host's network. On Coolify this means SSH to the host.
 
 ```bash
 apt update && apt install -y keepalived
-
-cat > /etc/keepalived/keepalived.conf << 'EOF'
-vrrp_instance VI_1 {
-    state MASTER
-    interface eth0
-    virtual_router_id 51
-    priority 100
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass your_secret_password
-    }
-    virtual_ipaddress {
-        10.0.0.100/24
-    }
-}
-EOF
-
-systemctl enable keepalived
-systemctl start keepalived
+cp keepalived/primary.conf /etc/keepalived/keepalived.conf   # on the replica host: keepalived/replica.conf
+# Set auth_pass (the same on both hosts), interface and the VIP for your network
+systemctl enable --now keepalived
 ```
 
-**On Replica VPS host:**
+Only a writable primary holds the VIP. The config's check fails on a standby and on a stopped server, and a node whose check fails gives the VIP up, so:
 
-```bash
-apt update && apt install -y keepalived
+- While the primary is down and the standby is not promoted, no node holds the VIP. Clients fail to connect instead of writing to a read-only standby.
+- Promoting the standby moves the VIP to it within a few seconds.
+- Both nodes start as `BACKUP` with `nopreempt`: an old primary that comes back still writable does not take the VIP back. Rebuild it as a replica before starting its PostgreSQL again.
 
-cat > /etc/keepalived/keepalived.conf << 'EOF'
-vrrp_instance VI_1 {
-    state BACKUP
-    interface eth0
-    virtual_router_id 51
-    priority 90
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass your_secret_password
-    }
-    virtual_ipaddress {
-        10.0.0.100/24
-    }
-}
-EOF
-
-systemctl enable keepalived
-systemctl start keepalived
-```
-
-**Verify VIP on primary:**
+**Verify the VIP is on the primary:**
 
 ```bash
 ip addr show eth0 | grep 10.0.0.100
-# Should show the VIP
+# Shows the VIP on the primary only
 ```
-
-#### Option B: Dockerized Keepalived (Advanced)
-
-Load the `ip_vs` kernel module on both VPS (`modprobe ip_vs`), then add to docker-compose.yml on both:
-
-```yaml
-keepalived:
-  image: osixia/keepalived:2.3.4@sha256:e6092c753816163d4ca7140e01d1ab5f2c7c131afac90a7d2aef36224887fc00
-  container_name: keepalived
-  restart: unless-stopped
-  network_mode: host
-  cap_add:
-    - NET_ADMIN
-    - NET_RAW
-    - NET_BROADCAST
-  environment:
-    KEEPALIVED_VIRTUAL_IPS: "10.0.0.100"
-    KEEPALIVED_UNICAST_PEERS: "10.0.0.3" # the OTHER VPS: 10.0.0.3 on primary, 10.0.0.2 on replica
-    KEEPALIVED_PRIORITY: "100" # 100 on primary, 90 on replica
-    KEEPALIVED_INTERFACE: "eth0"
-    KEEPALIVED_PASSWORD: "your_secret_password"
-```
-
-`KEEPALIVED_UNICAST_PEERS` is required: without it the image sends VRRP to its sample peers (192.168.1.10/11), the two VPS never hear each other, and both hold the VIP. The image's config sets `nopreempt`, so a node that comes back does not take the VIP back. It moves the VIP only when the other node or its keepalived stops — not when PostgreSQL stops; Option A's `chk_postgres` script covers that.
 
 ### 7. Test Failover
 
-**Network failover test:**
+**The VIP never moves to a standby:**
 
 ```bash
-# On primary: Simulate Keepalived failure
+# On primary: stop Keepalived
 systemctl stop keepalived
 
-# Verify VIP migrated to replica (from any machine)
-ping 10.0.0.100  # Should respond from replica IP
+# On replica: no VIP, because it is a standby
+ip addr show eth0 | grep 10.0.0.100   # prints nothing
 
-# Restart primary Keepalived
+# On primary: start Keepalived; the VIP comes back
 systemctl start keepalived
 ```
 
@@ -277,7 +210,7 @@ docker exec postgres pg_ctl promote  # pg_ctl reads the container's $PGDATA
 
 # Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
-# Should return 'f' (false) - no longer in recovery
+# Should return 'f' (false); the VIP moves to this host within a few seconds
 ```
 
 ## Files Required
@@ -293,8 +226,8 @@ phase2-dual-vps/
 │   ├── docker-compose.yml    # Copy from phase1, modify ports
 │   └── .env                  # Replica-specific values
 ├── keepalived/
-│   ├── primary.conf          # Priority 100, state MASTER
-│   └── replica.conf          # Priority 90, state BACKUP
+│   ├── primary.conf          # Priority 100; holds the VIP only while its PostgreSQL is a writable primary
+│   └── replica.conf          # Same check, priority 90
 └── README.md                 # This file
 ```
 
@@ -370,15 +303,12 @@ grep virtual_router_id /etc/keepalived/keepalived.conf
 ### Promotion Issues
 
 ```bash
-# After promotion, update DNS/VIP to point to new primary
-# Then rebuild old primary as new replica:
+# The VIP follows the promotion. Then rebuild old primary as new replica:
 
 1. Stop old primary PostgreSQL
 2. Remove data volume
-3. Run pg_basebackup from new primary
-4. Create standby.signal
-5. Configure primary_conninfo pointing to new primary
-6. Start as replica
+3. Run pg_basebackup -R from new primary (step 4; -R writes standby.signal and primary_conninfo)
+4. Start as replica
 ```
 
 See `docs/RUNBOOKS.md` for detailed failover and recovery procedures.

@@ -205,9 +205,8 @@ docker exec postgres psql -U postgres -c "DROP DATABASE restore_test;"
 ping PRIMARY_VPS_IP
 ssh root@PRIMARY_VPS_IP  # Should fail
 
-# 2. Verify VIP migrated to replica
-ping 10.0.0.100
-# Should respond from REPLICA IP
+# 2. The VIP is down too: only a writable primary holds it, and the replica is still a standby
+ping 10.0.0.100  # no answer until step 6
 
 # 3. SSH to replica
 ssh root@REPLICA_VPS_IP
@@ -226,6 +225,7 @@ docker exec postgres pg_ctl promote
 # 7. Wait 10-30 seconds, verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Should show 'f' (false - now primary)
+ip addr show eth0 | grep 10.0.0.100  # the VIP moves here within a few seconds
 
 # 8. Test write capability
 docker exec postgres psql -U postgres -c \
@@ -277,23 +277,19 @@ docker exec postgres psql -U postgres -c \
     "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes \
      FROM pg_stat_replication;"
 
-# 3. On PRIMARY: Lower Keepalived priority
+# 3. On PRIMARY: stop PostgreSQL; its Keepalived then gives the VIP up, so no client writes to it from here on
 ssh root@PRIMARY_VPS_IP
-nano /etc/keepalived/keepalived.conf
-# Change: priority 100 → priority 80
-systemctl reload keepalived
+docker stop postgres
 
-# VIP should migrate to replica immediately
-
-# 4. Verify VIP migrated
-ping 10.0.0.100  # Should be REPLICA IP
-
-# 5. On REPLICA: Promote to primary
+# 4. On REPLICA: Promote to primary
 docker exec postgres pg_ctl promote
 
-# 6. Verify promotion
+# 5. Verify promotion
 docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 # Should be 'f' (false)
+
+# 6. Verify the VIP moved (within a few seconds of the promotion)
+ip addr show eth0 | grep 10.0.0.100
 
 # 7. Perform maintenance on old primary
 # - OS updates
@@ -302,16 +298,13 @@ docker exec postgres psql -U postgres -c "SELECT pg_is_in_recovery();"
 
 # 8. Rebuild old primary as new replica
 # (See "Rebuild Failed Primary" section below)
-
-# 9. Restore Keepalived priority
-# After rebuild, set priority back to 100 on original primary
 ```
 
 **Coolify Method:**
 
 - Go to primary postgres Service → Terminal tab
 - Check replication lag: `psql -U postgres -c "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes FROM pg_stat_replication;"`
-- Keepalived configuration requires host-level access (SSH to VPS)
+- Stop the primary postgres Service
 - Switch to replica Service → Terminal tab
 - Promote: `pg_ctl promote`
 - Verify: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
@@ -364,12 +357,7 @@ docker exec postgres psql -U postgres -c \
     "SELECT * FROM pg_stat_replication;"
 # Should show replica connected
 
-# 11. Configure Keepalived (BACKUP mode)
-nano /etc/keepalived/keepalived.conf
-# Set: state BACKUP, priority 90
-systemctl restart keepalived
-
-# 12. Start remaining services
+# 9. Start remaining services. Keepalived needs no change: a standby cannot hold the VIP
 docker compose up -d
 ```
 
@@ -381,7 +369,6 @@ docker compose up -d
 - Go to Service → Start button to bring services back up
 - Verify replication via Terminal tab: `psql -U postgres -c "SELECT pg_is_in_recovery();"`
 - Check new primary via its Service → Terminal tab: `psql -U postgres -c "SELECT * FROM pg_stat_replication;"`
-- Keepalived configuration requires host-level SSH access
 
 ---
 

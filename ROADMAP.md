@@ -2,12 +2,6 @@
 
 Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it.
 
-## High
-
-### Phase-2 failover can split-brain
-
-`deployments/phase2-dual-vps/keepalived/{primary,replica}.conf` set no `nopreempt`, and their health check is `pg_isready`, which a standby passes too. When the old primary comes back, its higher priority takes the virtual IP back and clients write to a server whose data is stale or has diverged. Fix: `nopreempt` on both nodes, a check that passes only where `pg_is_in_recovery()` is false, and a fencing step in the failover runbook (`docs/DEPLOYMENT.md`, `deployments/phase2-dual-vps/README.md`).
-
 ## Medium
 
 ### The build runs unpinned vendor installers as root

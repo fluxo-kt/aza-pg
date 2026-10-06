@@ -506,7 +506,6 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> 
   },
   "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
   "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
-  "osixia/keepalived": { repository: "https://github.com/osixia/docker-keepalived" },
 };
 
 /**

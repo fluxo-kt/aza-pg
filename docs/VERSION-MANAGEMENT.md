@@ -354,7 +354,8 @@ vectorscale is built from source because upstream's release binary is compiled w
 1. Follow Procedure 4 for the tag bump, and set `soFileName` to `vectorscale-<new version>.so`.
 2. Check upstream's default features in `pgvectorscale/Cargo.toml` at the new tag; the manifest pins them (`noDefaultFeatures` + `features`) so an upstream default change cannot silently alter the build.
 3. If the build stops with `Patch vectorscale-runtime-dispatch.patch no longer applies`, regenerate it: clone the new tag, `git apply --3way` the old patch, resolve, and write `git diff` back to the patch file. `git apply` is all-or-nothing, so a stale patch can never ship half-applied.
-4. Prove the dispatch on an amd64 CPU without AVX2 (e.g. QEMU `-cpu Nehalem`): `CREATE EXTENSION vectorscale` and a DiskANN index query must succeed there.
+4. Regenerate `docker/postgres/patches/vectorscale-cargo-lock.patch` on every bump: upstream ships no `Cargo.lock`, and the build refuses a cargo crate without one, because unlocked crates resolve differently from day to day. In a `rust:<MANIFEST_METADATA.rustToolchain>` container: clone at the new commit, apply the runtime-dispatch patch, `cargo generate-lockfile` at the workspace root, `git add -f -N Cargo.lock`, and write `git diff -- Cargo.lock` to the patch file.
+5. Prove the dispatch on an amd64 CPU without AVX2 (e.g. QEMU `-cpu Nehalem`): `CREATE EXTENSION vectorscale` and a DiskANN index query must succeed there.
 
 ---
 

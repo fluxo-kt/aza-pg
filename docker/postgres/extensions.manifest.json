@@ -1091,7 +1091,8 @@
         ],
         "noDefaultFeatures": true,
         "patches": [
-          "vectorscale-runtime-dispatch.patch"
+          "vectorscale-runtime-dispatch.patch",
+          "vectorscale-cargo-lock.patch"
         ]
       },
       "dependencies": [

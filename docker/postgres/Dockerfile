@@ -24,7 +24,6 @@ COPY docker/postgres/extensions.build-packages.txt /tmp/extensions.build-package
 # Install build dependencies
 # Note: This is the first of 4 apt-get calls in the Dockerfile. Each stage has its own
 # dependencies optimized for multi-stage build efficiency. DO NOT consolidate across stages.
-# unzip: the Bun installer (bun.sh/install) unpacks a zip; no repo script needs it.
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -36,30 +35,21 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
       curl \
       ca-certificates \
       rsync \
-      unzip \
       postgresql-server-dev-18 \
       $(tr '\n' ' ' < /tmp/extensions.build-packages.txt) && \
     apt-get clean && \
     rm -f /tmp/extensions.build-packages.txt
 
-# Install Rust toolchain (separate layer for better caching, ~60s install time); version from manifest-data.ts,
-# placed BEFORE manifests to maximize cache hits
-RUN set -euo pipefail && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99.0
-
-# Add Rust/Cargo to PATH
+# Rust and Bun come from their official images pinned by digest (MANIFEST_METADATA rustImageSha/bunImageSha), the
+# same trust anchor as the postgres base image: the rustup and bun.sh install scripts used before ran build-day
+# bytes as root unchecked. The rust image holds the same minimal profile (rustc, cargo, rust-std); copied to rustup's
+# default homes so HOME=/root finds it with no extra environment.
+COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/cargo /root/.cargo
+COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/rustup /root/.rustup
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Bun for running TypeScript build scripts (separate layer)
-# Extracts version from project .tool-versions file (single source of truth)
-# Placed BEFORE manifests to maximize cache hits (~30s install)
-COPY .tool-versions /tmp/.tool-versions
-RUN set -euo pipefail && \
-    BUN_VERSION=$(grep "^bun " /tmp/.tool-versions | awk '{print $2}') && \
-    echo "Installing Bun v${BUN_VERSION}" && \
-    curl -fsSL https://bun.sh/install | bash -s -- bun-v${BUN_VERSION} && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
-    rm /tmp/.tool-versions
+# Bun runs the TypeScript build script; its version is .tool-versions' (the generator reads it)
+COPY --from=oven/bun:1.4.2-debian@sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73 /usr/local/bin/bun /usr/local/bin/bun
 
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
@@ -198,6 +188,9 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
 
+# Signing keys of the Percona and Timescale apt repositories (why: generate-dockerfile.ts APT_KEY_DIR)
+COPY docker/postgres/apt-keys/ /usr/share/keyrings/aza-pg/
+
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
 # Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
 # Percona repository setup and package installation
@@ -207,13 +200,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    echo "Setting up Percona repository for ppg-18..." && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \
-    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \
-    dpkg -i /tmp/percona-release.deb && \
-    percona-release enable ppg-18 release && \
-    apt-get update && \
+    echo "deb [signed-by=/usr/share/keyrings/aza-pg/percona.asc] https://repo.percona.com/ppg-18/apt trixie main" > /etc/apt/sources.list.d/percona-ppg-18.list && \
+    apt-get update --error-on=any && \
     echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie" && \
     apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie && \
     echo "Installed 2 Percona package(s)" && \
@@ -222,8 +210,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/pg_stat_monitor.so && \
     test -f /usr/lib/postgresql/18/lib/wal2json.so && \
     echo "All 2 Percona module files verified" && \
-    # Cleanup Percona release package
-    rm -f /tmp/percona-release.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
@@ -237,11 +223,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
-    echo "Setting up Timescale repository for PostgreSQL 18..." && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \
-    curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \
-    apt-get update && \
+    echo "deb [signed-by=/usr/share/keyrings/aza-pg/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main" > /etc/apt/sources.list.d/timescale.list && \
+    apt-get update --error-on=any && \
     echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13" && \
     apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
@@ -314,22 +297,17 @@ RUN set -euo pipefail && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Remove package-manager helpers needed only while installing repositories and release assets.
-# Debian 13 apt verifies repositories through sqv, so apt remains usable without the GnuPG CLI stack.
+# Remove the GnuPG CLI stack the postgres base image ships; nothing at runtime uses it.
+# Debian 13 apt verifies repositories through sqv, so apt remains usable without it.
 RUN set -euo pipefail && \
     apt-get purge -y --auto-remove \
-      curl \
       dirmngr \
       gnupg \
       gnupg-l10n \
-      gnupg2 \
       gpg \
       gpg-agent \
       gpgconf \
-      gpgsm \
-      gpgv \
-      lsb-release \
-      percona-release && \
+      gpgsm && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

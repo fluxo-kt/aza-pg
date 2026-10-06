@@ -4,14 +4,6 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ## Medium
 
-### The build runs unpinned vendor installers as root
-
-The generated Dockerfile downloads `percona-release_latest.generic_all.deb` and pipes Timescale's `script.deb.sh` into bash, so whatever those URLs serve on build day runs as root in the build, unchecked. Fix: commit both repositories' signing keys, verify them by fingerprint, and write the apt sources (`signed-by=`) from the manifest; that also removes the install-then-purge of curl, gnupg and percona-release.
-
-### pgvectorscale builds without a lockfile
-
-Upstream ships no `Cargo.lock`, so its crates resolve on build day while the other Rust extensions build `--locked`: the same pinned commit can compile different code. Fix: generate a lock at the pinned commit with the repository's patch applied, ship it through `docker/postgres/patches/`, and regenerate it on every pgvectorscale bump.
-
 ### pgflow-upgrade runs as superuser inside other owners' schemas
 
 Without a database argument it migrates every database's `pgflow` schema as superuser, including schemas a non-superuser created, so functions and triggers that owner controls run with superuser rights during the migration (stated in the header of `docker/postgres/pgflow/pgflow-upgrade.sh`). **Needs a decision:** refuse such databases (changes the command's behaviour) or migrate as the schema owner.

@@ -189,6 +189,17 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 }
 
 /**
+ * Where Dockerfile.template copies docker/postgres/apt-keys/. The Percona and Timescale sources trust only these
+ * committed keys (Percona 4D1BB29D63D98E422B2113B19334A25F8507EFA5, Timescale/packagecloud
+ * 1005FB68604CE9B8F6879CF759F18EDF47F24417, each checked against the vendor's published fingerprint), so no
+ * build-day download decides what apt trusts. The vendors' own installers (percona-release_latest .deb, Timescale's
+ * script.deb.sh) used to do this and ran as root unchecked. A key the vendor rotates fails `apt-get update` with
+ * NO_PUBKEY: replace the file after checking the new fingerprint. `--error-on=any` makes that a build failure:
+ * plain `apt-get update` exits 0 when a repository fails, and the build would fail later as "package not found".
+ */
+const APT_KEY_DIR = "/usr/share/keyrings/aza-pg";
+
+/**
  * Generate Percona package installation script
  * Percona repository provides pg_stat_monitor and keeps wal2json on the same already-required repo layer.
  * Versions are hardcoded directly from manifest perconaVersion field
@@ -240,13 +251,8 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
-    echo "Setting up Percona repository for ppg-${pgMajor}..." && \\
-    apt-get update && \\
-    apt-get install -y --no-install-recommends curl gnupg2 gpgv lsb-release && \\
-    curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/percona-release.deb && \\
-    dpkg -i /tmp/percona-release.deb && \\
-    percona-release enable ppg-${pgMajor} release && \\
-    apt-get update && \\
+    echo "deb [signed-by=${APT_KEY_DIR}/percona.asc] https://repo.percona.com/ppg-${pgMajor}/apt trixie main" > /etc/apt/sources.list.d/percona-ppg-${pgMajor}.list && \\
+    apt-get update --error-on=any && \\
     echo "Installing Percona packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     echo "Installed ${expectedCount} Percona package(s)" && \\
@@ -254,8 +260,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Verifying Percona .so files exist..." && \\
     ${soChecks.join(" && \\\n    ")} && \\
     echo "All ${soChecks.length} Percona module files verified" && \\
-    # Cleanup Percona release package
-    rm -f /tmp/percona-release.deb && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
     { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
@@ -326,11 +330,8 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
     set -euo pipefail && \\
-    echo "Setting up Timescale repository for PostgreSQL ${pgMajor}..." && \\
-    apt-get update && \\
-    apt-get install -y --no-install-recommends curl gnupg2 lsb-release && \\
-    curl -fsSL https://packagecloud.io/install/repositories/timescale/timescaledb/script.deb.sh | bash && \\
-    apt-get update && \\
+    echo "deb [signed-by=${APT_KEY_DIR}/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main" > /etc/apt/sources.list.d/timescale.list && \\
+    apt-get update --error-on=any && \\
     echo "Installing Timescale packages: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
     echo "Installed ${expectedCount} Timescale package(s)" && \\
@@ -574,6 +575,15 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
   dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
   dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
+  dockerfile = dockerfile.replace(/\{\{RUST_IMAGE_SHA\}\}/g, MANIFEST_METADATA.rustImageSha);
+  dockerfile = dockerfile.replace(/\{\{BUN_IMAGE_SHA\}\}/g, MANIFEST_METADATA.bunImageSha);
+  // .tool-versions is the one Bun version for local runs, CI and this builder; bunImageSha must be re-resolved with it.
+  const bunVersion = (await Bun.file(join(REPO_ROOT, ".tool-versions")).text()).match(
+    /^bun (\S+)$/m
+  )?.[1];
+  if (!bunVersion)
+    throw new Error(".tool-versions has no `bun X.Y.Z` line; the builder's Bun image tag needs it");
+  dockerfile = dockerfile.replace(/\{\{BUN_VERSION\}\}/g, bunVersion);
   dockerfile = dockerfile.replace("{{PGDG_PACKAGES_INSTALL}}", pgdgPackagesInstall);
   dockerfile = dockerfile.replace("{{PERCONA_PACKAGES_INSTALL}}", perconaPackagesInstall);
   dockerfile = dockerfile.replace("{{TIMESCALE_PACKAGES_INSTALL}}", timescalePackagesInstall);

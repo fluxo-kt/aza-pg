@@ -387,15 +387,19 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   // Build with the crate's own Cargo.lock under --locked: without it cargo resolves every dependency afresh, so
   // one locked commit builds different Rust code from day to day while nothing in this repository changes.
   // cargo reads the lock at the workspace root, which may sit above `dir`. cargo-pgrx has no --locked flag;
-  // it appends PGRX_BUILD_FLAGS to its `cargo build`.
+  // it appends PGRX_BUILD_FLAGS to its `cargo build`. A crate whose upstream ships no lock gets one through a
+  // build.patches file generated at the pinned commit (vectorscale-cargo-lock.patch), so a missing lock is an error.
   const workspaceManifest = (
     await $`cargo locate-project --workspace --message-format plain`.cwd(dir).text()
   ).trim();
   const lockFile = join(workspaceManifest, "..", "Cargo.lock");
-  const locked = await Bun.file(lockFile).exists();
-  if (!locked)
-    log(`${entry.name}: upstream ships no Cargo.lock; dependencies resolve at build time`);
-  const buildFlags = [Bun.env.PGRX_BUILD_FLAGS, locked ? "--locked" : ""].filter(Boolean).join(" ");
+  if (!(await Bun.file(lockFile).exists())) {
+    log(
+      `${entry.name}: no Cargo.lock at ${lockFile}; generate one at the pinned commit and add it to build.patches`
+    );
+    process.exit(1);
+  }
+  const buildFlags = [Bun.env.PGRX_BUILD_FLAGS, "--locked"].filter(Boolean).join(" ");
 
   const features = entry.build?.features || [];
   const noDefaultFeatures = entry.build?.noDefaultFeatures ? "--no-default-features" : "";

@@ -120,16 +120,19 @@ Check:
 8. **Verify Percona/Timescale pinned versions still exist**: Third-party repos drop old versions
    without warning. Always confirm currently pinned versions are still in the apt repo:
    ```bash
-   docker run --rm postgres:18-trixie bash -c "
-     apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
-     curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
-     dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
-     apt-get update -qq 2>/dev/null &&
-     apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json
-   " 2>&1 | command grep -E "percona-pg|percona-postgresql"
+   docker run --rm -v "$PWD/docker/postgres/apt-keys:/k:ro" postgres:18-trixie bash -c "
+     apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null &&
+     echo 'deb [signed-by=/k/percona.asc] https://repo.percona.com/ppg-18/apt trixie main' > /etc/apt/sources.list.d/p.list &&
+     echo 'deb [signed-by=/k/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main' > /etc/apt/sources.list.d/t.list &&
+     apt-get update -qq --error-on=any &&
+     apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
+   " 2>&1 | command grep -E "percona-|timescaledb-|NO_PUBKEY|EXPKEYSIG|not signed|^E:"
    ```
-   If a version is gone, update `perconaVersion` in `manifest-data.ts` to the new version
+   If a version is gone, update `perconaVersion` / `timescaleVersion` in `manifest-data.ts` to the new version
    and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
+   `NO_PUBKEY`/`EXPKEYSIG` means the vendor rotated or expired its key: fetch the new key from the vendor, check
+   its fingerprint against the vendor's published value, replace the file in `docker/postgres/apt-keys/` and the
+   fingerprint in `APT_KEY_DIR`'s comment (`scripts/docker/generate-dockerfile.ts`).
 
    **⚠️ Timescale split packages**: Timescale ships TWO packages for the main extension:
    `timescaledb-2-postgresql-18` (extension SQL+binary) and `timescaledb-2-loader-postgresql-18`
@@ -538,7 +541,7 @@ Update BOTH `source.tag` AND `perconaVersion`:
 **Percona version format**: `[epoch:]version-build.distro`
 - Epochs matter for version comparison: `1:2.0` > `2.0`
 - Example: `1:2.3.1-2.trixie`
-- Check available versions: Requires container with `percona-release setup ppg-18`
+- Check available versions: Pre-Flight item 8 command
 
 ### Timescale Extensions
 
@@ -980,17 +983,7 @@ After every update round, perform a mandatory self-reflection before closing out
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. A removed pin makes `apt-get install` fail
    the build. **Always verify Percona and Timescale pinned versions still exist in the repo** before
-   finalising the update round:
-   ```bash
-   # Check Percona versions (run from a container or use the earlier docker run command)
-   bun scripts/extensions/validate-pgdg-versions.ts  # validates PGDG; Percona checked separately
-   docker run --rm postgres:18-trixie bash -c "
-     apt-get update -qq && apt-get install -y -qq curl gnupg2 gpgv lsb-release 2>/dev/null &&
-     curl -fsSL https://repo.percona.com/apt/percona-release_latest.generic_all.deb -o /tmp/pr.deb &&
-     dpkg -i /tmp/pr.deb 2>/dev/null && percona-release enable ppg-18 release 2>/dev/null &&
-   apt-get update -qq 2>/dev/null && apt-cache madison percona-pg-stat-monitor18
-  " 2>&1 | command grep "percona-pg-stat-monitor"
-   ```
+   finalising the update round: run the Pre-Flight item 8 command.
 10. **Was extension update detection quality-checked?** If `check-updates.ts` output looked noisy,
     verify each candidate is same-family + monotonic (not prerelease/downgrade) and confirm fallback
     paths were exercised when GitHub API was rate-limited.

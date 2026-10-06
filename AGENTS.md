@@ -194,7 +194,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Security Scanner Resilience**: Use `docker run aquasec/trivy:VERSION image TARGET` (Docker container approach) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+. Local/CI blocking gates fail on fixable CRITICAL/HIGH findings (`--ignore-unfixed`) and skip only `usr/local/bin/gosu` because su-exec shadows the base-layer binary. Avoid static CVE ignores; they hide future fixable regressions.
 
-**Final Image Install Helpers**: `curl`, GnuPG CLI stack, `lsb-release`, and `percona-release` are install-only. Purge them after all apt repositories are installed; Debian 13 apt still verifies repos through `sqv`.
+**Vendor apt repos**: Percona and Timescale sources trust only the keys committed in `docker/postgres/apt-keys/` (`signed-by=`); never install a vendor's repo-setup `.deb` or pipe its script into bash — that runs build-day bytes as root unchecked. The final image purges the base image's GnuPG CLI stack; Debian 13 apt verifies repos through `sqv`.
 
 **PGroonga Build System**: PGroonga 4.0.6+ uses Meson, not PGXS Makefile. Manifest must use `build.type: "meson"`, include `meson` in `aptPackages`, and pass `mesonOptions: ["-Dtest=false"]` for production builds; upstream Meson test setup requires Ruby.
 

@@ -23,6 +23,10 @@ export const MANIFEST_METADATA = {
    * same compiler and a bump changes the Dockerfile (and with it CI's image key); check-updates.ts reports newer ones.
    */
   rustToolchain: "1.99.0",
+  /** Multi-arch digest of rust:<rustToolchain>-slim-trixie, the builder's Rust toolchain; re-resolve on every bump. */
+  rustImageSha: "sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273",
+  /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the builder's Bun; re-resolve on every Bun bump. */
+  bunImageSha: "sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73",
 } as const;
 
 /** A C library compiled from a release tarball because Debian trixie's package is too old. */
@@ -1082,7 +1086,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       subdir: "pgvectorscale",
       features: ["pg18", "build_parallel"],
       noDefaultFeatures: true,
-      patches: ["vectorscale-runtime-dispatch.patch"],
+      patches: ["vectorscale-runtime-dispatch.patch", "vectorscale-cargo-lock.patch"],
     },
     dependencies: ["vector"],
     runtime: {

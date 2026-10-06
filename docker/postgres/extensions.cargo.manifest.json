@@ -47,7 +47,7 @@
         "subdir": "pgvectorscale",
         "features": ["pg18", "build_parallel"],
         "noDefaultFeatures": true,
-        "patches": ["vectorscale-runtime-dispatch.patch"]
+        "patches": ["vectorscale-runtime-dispatch.patch", "vectorscale-cargo-lock.patch"]
       },
       "dependencies": ["vector"],
       "runtime": {

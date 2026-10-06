@@ -170,18 +170,19 @@ async function runSuite(suite: Suite, image: string, scope: string): Promise<Out
   ]);
   clearTimeout(timer);
   // A killed suite never ran its teardown; one that passed and still left something behind has a cleanup defect.
-  const leftovers = await sweepTestScope(scope);
+  const { found, remaining } = await sweepTestScope(new RegExp(`-${scope}-`));
   live.delete(proc.pid);
   const ms = Math.round(performance.now() - started);
-  const passed = code === 0 && leftovers.length === 0;
+  const passed = code === 0 && found.length === 0;
   const name = [suite.path, ...(suite.args ?? [])].join(" ");
   const verdict = passed
     ? "✅ PASS"
     : `❌ FAIL (exit ${code}${ms >= SUITE_TIMEOUT_MS ? ", killed at timeout" : ""})`;
   const leftNote =
-    leftovers.length === 0
+    (found.length === 0
       ? ""
-      : `\n${code === 0 ? "❌ Passed but left" : "Removed what it left"}: ${leftovers.join(", ")}\n`;
+      : `\n${code === 0 ? "❌ Passed but left" : "Left behind"}: ${found.join(", ")}\n`) +
+    (remaining.length === 0 ? "" : `❌ Could not remove: ${remaining.join(", ")}\n`);
   console.log(
     `\n━━━━ ${verdict} ${name} [${suite.group}] ${(ms / 1000).toFixed(1)}s ━━━━\n${out}${err}${leftNote}`
   );
@@ -230,7 +231,8 @@ async function main(): Promise<void> {
   const outcomes: Outcome[] = [];
   // Scope tokens are unique on this host while this run lives: this process's pid plus the suite's position. Base36
   // keeps container names within a DNS label (see scopedName in utils/docker.ts).
-  const pending = queue.map((suite, i) => ({ suite, scope: `t${process.pid.toString(36)}x${i}` }));
+  const runToken = `t${process.pid.toString(36)}x`;
+  const pending = queue.map((suite, i) => ({ suite, scope: `${runToken}${i}` }));
   stopAllOnSignal();
   await Promise.all(
     Array.from({ length: workers }, async () => {
@@ -239,6 +241,9 @@ async function main(): Promise<void> {
       }
     })
   );
+  // A killed client's create can land after its suite's sweep found the scope empty; one more sweep of the whole run,
+  // once every suite has finished, catches those. `\d+-` stops one run's token matching a longer pid's.
+  const late = await sweepTestScope(new RegExp(`-${runToken}\\d+-`));
 
   const failed = outcomes.filter((o) => !o.passed);
   const slow = outcomes.filter((o) => o.ms > SLOW_SUITE_MS).sort((a, b) => b.ms - a.ms);
@@ -246,11 +251,15 @@ async function main(): Promise<void> {
   for (const o of failed) console.log(`❌ ${o.suite.path} [${o.suite.group}]`);
   for (const o of slow)
     console.log(`⏱  ${o.suite.path} ${(o.ms / 1000).toFixed(1)}s (over ${SLOW_SUITE_MS / 1000}s)`);
+  if (late.found.length > 0)
+    console.log(`❌ Appeared after their suite's sweep: ${late.found.join(", ")}`);
+  if (late.remaining.length > 0) console.log(`❌ Could not remove: ${late.remaining.join(", ")}`);
   console.log(
     `Passed: ${outcomes.length - failed.length}  Failed: ${failed.length}  Wall: ${((performance.now() - started) / 1000).toFixed(1)}s` +
       (seed !== null ? `  Seed: ${seed}` : "")
   );
-  process.exit(interrupted ? 130 : failed.length === 0 && outcomes.length > 0 ? 0 : 1);
+  const clean = failed.length === 0 && late.found.length === 0;
+  process.exit(interrupted ? 130 : clean && outcomes.length > 0 ? 0 : 1);
 }
 
 if (import.meta.main) {

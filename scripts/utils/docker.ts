@@ -358,7 +358,7 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 }
 
 /**
- * test-all sets this per suite to a token of [a-z0-9] only (Docker's `name` filter is a regex). Every name below
+ * test-all sets this per suite to a token of [a-z0-9] only (it goes into a regex and into hostnames). Every name below
  * carries it between dashes, so sweepTestScope can find whatever a suite left behind — a suite killed at its
  * timeout never runs its own teardown. Child processes inherit it, so suites that run other suites are covered.
  */
@@ -386,32 +386,53 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
 }
 
 /**
- * Removes every container, volume and network whose name carries `scope` (see TEST_SCOPE_ENV) and returns their names.
- * Containers go first: a volume or network still attached to one cannot be removed.
+ * Removes every container, volume and network whose name matches `names` (see TEST_SCOPE_ENV); returns every name it
+ * found and those still present when it gave up. Containers go first: a volume or network still attached to one
+ * cannot be removed.
+ *
+ * One list-and-remove pass is not enough on a loaded host: `docker rm -f` kills a container and then fails to remove
+ * it, and a killed `docker run` or `compose up` whose request the daemon had already accepted creates its container
+ * after the listing. So passes repeat until a listing comes back empty, bounded by `deadlineMs`; what is left then
+ * is returned, never assumed gone. Matching is done here, not by Docker's `name` filter, whose semantics differ
+ * between containers, volumes and networks.
  */
-export async function sweepTestScope(scope: string): Promise<string[]> {
-  const filter = `name=-${scope}-`;
+export async function sweepTestScope(
+  names: RegExp,
+  deadlineMs = 30_000
+): Promise<{ found: string[]; remaining: string[] }> {
   // `docker ps` names its field Names; volume and network ls name it Name.
   const list = async (cmd: string[], field = "Name") => {
-    const proc = spawn(["docker", ...cmd, "--filter", filter, "--format", `{{.${field}}}`], {
+    const proc = spawn(["docker", ...cmd, "--format", `{{.${field}}}`], {
       stdout: "pipe",
       stderr: "ignore",
     });
     const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    return out.split("\n").filter(Boolean);
+    return out.split("\n").filter((name) => names.test(name));
   };
-  const remove = async (cmd: string[], names: string[]) => {
-    if (names.length > 0)
-      await spawn(["docker", ...cmd, ...names], { stdout: "ignore", stderr: "ignore" }).exited;
+  const remove = async (cmd: string[], targets: string[]) => {
+    if (targets.length > 0)
+      await spawn(["docker", ...cmd, ...targets], { stdout: "ignore", stderr: "ignore" }).exited;
   };
-  const [containers, volumes, networks] = await Promise.all([
-    list(["ps", "-a"], "Names"),
-    list(["volume", "ls"]),
-    list(["network", "ls"]),
-  ]);
-  await remove(["rm", "-f", "-v"], containers);
-  await Promise.all([remove(["volume", "rm", "-f"], volumes), remove(["network", "rm"], networks)]);
-  return [...containers, ...volumes, ...networks];
+  const found = new Set<string>();
+  const deadline = Date.now() + deadlineMs;
+  for (let pass = 0; ; pass++) {
+    const [containers, volumes, networks] = await Promise.all([
+      list(["ps", "-a"], "Names"),
+      list(["volume", "ls"]),
+      list(["network", "ls"]),
+    ]);
+    const present = [...containers, ...volumes, ...networks];
+    if (present.length === 0 || Date.now() >= deadline)
+      return { found: [...found], remaining: present };
+    for (const name of present) found.add(name);
+    // Poll pace only: a removal that just failed under load rarely succeeds at once.
+    if (pass > 0) await Bun.sleep(1000);
+    await remove(["rm", "-f", "-v"], containers);
+    await Promise.all([
+      remove(["volume", "rm", "-f"], volumes),
+      remove(["network", "rm"], networks),
+    ]);
+  }
 }
 
 /**

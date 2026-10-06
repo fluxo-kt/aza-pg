@@ -10,7 +10,6 @@
  *   --image            Docker image tag to verify (required)
  *   --platform         Platform (e.g., "linux/amd64") (required)
  *   --digest           Image digest (optional, for summary)
- *   --push-image       Whether image was pushed ("true" or "false") (optional)
  *   --github-summary   Append output to GITHUB_STEP_SUMMARY
  *
  * Output:
@@ -23,7 +22,6 @@ interface VerifyBuildOptions {
   image: string;
   platform: string;
   digest?: string;
-  pushImage?: boolean;
   githubSummary?: boolean;
 }
 
@@ -113,7 +111,7 @@ async function verifyExtensionCount(image: string, expectedMin: number): Promise
 }
 
 async function verifyBuildOutput(options: VerifyBuildOptions): Promise<void> {
-  const { image, platform, digest, pushImage, githubSummary } = options;
+  const { image, platform, digest, githubSummary } = options;
 
   console.log(`Verifying build output for ${image} (${platform})...`);
 
@@ -139,7 +137,7 @@ async function verifyBuildOutput(options: VerifyBuildOptions): Promise<void> {
 
   // Generate summary if requested
   if (githubSummary && platform === "linux/amd64") {
-    await appendGitHubSummary(pgVersion, stats, digest, pushImage);
+    await appendGitHubSummary(pgVersion, stats, digest);
   }
 
   console.log("✅ Image verification passed");
@@ -148,8 +146,7 @@ async function verifyBuildOutput(options: VerifyBuildOptions): Promise<void> {
 async function appendGitHubSummary(
   pgVersion: string,
   stats: CatalogStats,
-  digest?: string,
-  pushImage?: boolean
+  digest?: string
 ): Promise<void> {
   const summaryFile = Bun.env.GITHUB_STEP_SUMMARY;
   if (!summaryFile) {
@@ -159,16 +156,9 @@ async function appendGitHubSummary(
 
   let summary = "### PostgreSQL Image Built Successfully :rocket:\n\n";
 
-  if (pushImage) {
-    summary += "**Build Type:** Multi-platform (amd64 + arm64 native)\n";
-    if (digest) {
-      summary += `**Image Digest (amd64):** \`${digest}\`\n`;
-    }
-  } else {
-    summary += "**Build Type:** Local single-platform (amd64)\n";
-    if (digest) {
-      summary += `**Image Digest:** \`${digest}\`\n`;
-    }
+  summary += "**Build Type:** Local single-platform (amd64)\n";
+  if (digest) {
+    summary += `**Image Digest:** \`${digest}\`\n`;
   }
 
   summary += `**PostgreSQL Version:** ${pgVersion}\n\n`;
@@ -200,13 +190,12 @@ Arguments:
   --image            Docker image tag to verify (required)
   --platform         Platform (e.g., "linux/amd64") (required)
   --digest           Image digest (optional)
-  --push-image       Whether image was pushed ("true"/"false") (optional)
   --github-summary   Append output to GITHUB_STEP_SUMMARY
   --help, -h         Show this help message
 
 Examples:
   bun scripts/ci/verify-build-output.ts --image=aza-pg-ci:test --platform=linux/amd64
-  bun scripts/ci/verify-build-output.ts --image=aza-pg-ci:test --platform=linux/amd64 --digest=sha256:abc123 --push-image=true --github-summary
+  bun scripts/ci/verify-build-output.ts --image=aza-pg-ci:test --platform=linux/amd64 --digest=sha256:abc123 --github-summary
 `);
   process.exit(0);
 }
@@ -214,7 +203,6 @@ Examples:
 const image = args.find((arg) => arg.startsWith("--image="))?.split("=")[1];
 const platform = args.find((arg) => arg.startsWith("--platform="))?.split("=")[1];
 const digest = args.find((arg) => arg.startsWith("--digest="))?.split("=")[1];
-const pushImageArg = args.find((arg) => arg.startsWith("--push-image="))?.split("=")[1];
 const githubSummary = args.includes("--github-summary");
 
 if (!image) {
@@ -227,14 +215,11 @@ if (!platform) {
   process.exit(1);
 }
 
-const pushImage = pushImageArg === "true";
-
 try {
   await verifyBuildOutput({
     image,
     platform,
     digest,
-    pushImage,
     githubSummary,
   });
 } catch (error) {

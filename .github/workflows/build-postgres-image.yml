@@ -66,7 +66,7 @@
 # --------
 # - Built image (local by default, push optional via 'push_image' input)
 # - Dev-prefixed tags if pushed, in the testing package (workflow-config.json testingImageName): dev-<branch> and
-#   dev-<branch>-<full commit SHA>
+#   dev-<branch>-<full commit SHA>, with every character a tag forbids in <branch> (such as `/`) replaced by `-`
 # - SBOM attestation (only when pushed; BuildKit provenance is off)
 # - Test results in GitHub Actions UI
 # - Step summary with the manifest digest, tags, platforms and the scan gate result
@@ -123,6 +123,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       image_name: ${{ steps.config.outputs.image_name }}
+      ref_slug: ${{ steps.config.outputs.ref_slug }}
 
     steps:
       - name: Checkout repository
@@ -134,6 +135,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "image_name=$(jq -r '.organization + "/" + .testingImageName' .github/workflow-config.json)" >> "$GITHUB_OUTPUT"
+          # The branch name as an image-tag fragment, computed once so every job names the same tag: a tag allows only
+          # [A-Za-z0-9._-] (128 chars), so `feat/x` becomes `feat-x`. Read from env, never interpolated into the script.
+          echo "ref_slug=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-100)" >> "$GITHUB_OUTPUT"
+        env:
+          REF_NAME: ${{ github.ref_name }}
 
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
@@ -176,8 +182,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}
           tags: |
-            type=ref,event=branch,prefix=dev-
-            type=sha,prefix=dev-{{branch}}-,format=short
+            type=raw,value=dev-${{ needs.lint.outputs.ref_slug }}
+            type=sha,prefix=dev-${{ needs.lint.outputs.ref_slug }}-,format=short
           labels: |
             org.opencontainers.image.title=aza-pg-testing PostgreSQL Development Image
             org.opencontainers.image.description=PostgreSQL 18 with extensions (dev build)
@@ -263,7 +269,7 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/ci/verify-build-output.ts \
-            --image="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
+            --image="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}" \
             --platform="${{ matrix.platform }}" \
             --digest="${{ steps.build-local.outputs.digest }}" \
             --github-summary
@@ -273,8 +279,8 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/ci/verify-local-image-with-fallback.ts \
-            --image-ref="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
-            --ref-name="${{ github.ref_name }}"
+            --image-ref="${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}" \
+            --ref-name="${{ needs.lint.outputs.ref_slug }}"
 
   merge:
     name: Create Multi-Platform Manifest
@@ -314,7 +320,7 @@ jobs:
           bun scripts/ci/merge-multi-platform-manifest.ts \
             --registry="${{ env.REGISTRY }}" \
             --repository="${{ needs.lint.outputs.image_name }}" \
-            --tag="dev-${{ github.ref_name }}" \
+            --tag="dev-${{ needs.lint.outputs.ref_slug }}" \
             --sha="${{ github.sha }}" \
             --digests-dir="${{ runner.temp }}/digests" \
             --github-output
@@ -323,9 +329,9 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}" \
             --max-retries 3
-          docker run --rm ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }} psql --version
+          docker run --rm ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }} psql --version
           echo "✅ PostgreSQL version verified"
 
       - name: Output manifest digest
@@ -336,8 +342,8 @@ jobs:
             echo ""
             echo "**Manifest Digest:** \`${{ steps.merge.outputs.digest }}\`"
             echo "**Tags:**"
-            echo "- \`dev-${{ github.ref_name }}\`"
-            echo "- \`dev-${{ github.ref_name }}-${{ github.sha }}\`"
+            echo "- \`dev-${{ needs.lint.outputs.ref_slug }}\`"
+            echo "- \`dev-${{ needs.lint.outputs.ref_slug }}-${{ github.sha }}\`"
             echo ""
             echo "**Platforms:**"
             echo "- linux/amd64 (native build on ubuntu-26.04)"
@@ -375,10 +381,10 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/docker/pull-with-retry.ts \
-            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}" \
+            --image "${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}" \
             --max-retries 3
-          docker tag ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }} aza-pg-testing:scan
-          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}"
+          docker tag ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }} aza-pg-testing:scan
+          echo "📦 Scanning image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}"
 
       - name: Cache Trivy vulnerability database
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -490,7 +496,7 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           image-source: registry
           image-name: aza-pg-testing:test
-          registry-image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ github.ref_name }}
+          registry-image: ${{ env.REGISTRY }}/${{ needs.lint.outputs.image_name }}:dev-${{ needs.lint.outputs.ref_slug }}
 
       - name: Run ${{ matrix.group }} suites
         run: bun scripts/test-all.ts --group "${{ matrix.group }}" --image aza-pg-testing:test

@@ -64,7 +64,7 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 #### Output Format
 
 - **Format:** Plain SQL (gzip compressed)
-- **Flags:** `--no-owner --no-acl` (portability across environments)
+- **Contents:** the source's roles (created on restore only where missing, with their password hashes), then a `pg_dump --clean --if-exists` with owners and GRANTs: the file is as sensitive as the database
 - **Naming:** Auto-generated with timestamp: `backup_<database>_YYYY_MM_DD_HHmmss.sql.gz`
 
 #### Safety Features
@@ -170,9 +170,9 @@ PGHOST=db.example.com PGUSER=admin PGPASSWORD=secret \
 
 **DESTRUCTIVE OPERATION:**
 
-- Restore runs the backup's SQL in the target database and replaces nothing: rows of a table that already exists are added again, so restore into a new server's database
+- Restore replaces every object the backup holds in the target database with the backup's version; objects the backup lacks stay
 - **The backup does not carry the pgsodium root key** (`$PGDATA/pgsodium_root.key`, or your `PGSODIUM_KEY_FILE`): keep a copy of it, and start the new server with `PGSODIUM_KEY_FILE` pointing at that copy before restoring, or Vault secrets and pgsodium-encrypted values cannot be decrypted ([PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#the-root-key))
-- psql continues past failed statements and the script shows them; on a new aza-pg server, "already exists" for the objects the image creates at init (pgflow, partman, vault, …) is expected, and any other error means part of the backup is missing
+- One transaction that stops at the first error: a failed restore changes nothing
 - Requires user confirmation (press Enter to continue; a closed stdin cancels)
 - **No automatic backup** is created before restore
 - Cannot be undone without a backup
@@ -897,19 +897,6 @@ chmod +x scripts/tools/*.ts
 - Database is empty (verify with `psql -l`)
 - pg_dump failed silently (check stderr)
 - Disk full during backup (check `df -h`)
-
-**Issue: Restore fails with "extension already exists"**
-
-Use `--clean` flag or drop extensions first:
-
-```bash
-# Option 1: Drop database and recreate
-dropdb -h localhost -U postgres mydb
-createdb -h localhost -U postgres mydb
-
-# Option 2: Drop conflicting extensions
-psql -h localhost -U postgres -d mydb -c "DROP EXTENSION IF EXISTS postgis CASCADE;"
-```
 
 **Issue: Backup takes hours on large database**
 

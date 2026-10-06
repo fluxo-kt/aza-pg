@@ -57,9 +57,10 @@ async function checkRequiredCommands(): Promise<void> {
  */
 function showUsage(): void {
   const scriptName = Bun.argv[1];
-  error("Backup file argument required");
-  process.stdout.write("\n");
   process.stdout.write(`Usage: ${scriptName} <backup-file> [database]\n`);
+  process.stdout.write(
+    "Connection: PGHOST, PGPORT, PGUSER, PGPASSWORD (default localhost:5432, postgres)\n"
+  );
   process.stdout.write("\n");
   process.stdout.write("Examples:\n");
   process.stdout.write(
@@ -80,8 +81,8 @@ function showUsage(): void {
 function parseConfig(): RestoreConfig {
   const args = Bun.argv.slice(2);
 
-  // Guard: Check backup file argument
-  if (args.length === 0 || !args[0]) {
+  // Only positional arguments exist; a flag (--help, -h …) would otherwise be read as the backup file's name.
+  if (args.length === 0 || !args[0] || args.some((a) => a.startsWith("-"))) {
     showUsage();
   }
 
@@ -160,8 +161,9 @@ function checkPgPassword(config: RestoreConfig): void {
  */
 async function confirmRestore(database: string): Promise<void> {
   process.stdout.write(
-    `\n⚠️  WARNING: This runs the backup's SQL in database '${database}'. Nothing there is replaced: rows of a table\n` +
-      "that already exists are added again. Restore into a new server's database.\n" +
+    `\n⚠️  WARNING: This replaces every table, function and other object the backup holds in database '${database}'\n` +
+      "with the backup's version; objects the backup lacks stay. Missing roles are created; existing roles are kept.\n" +
+      "The restore is one transaction: if any statement fails, nothing changes.\n" +
       // pg_dump leaves out the pgsodium root key, and the entrypoint refuses to switch an existing data directory to
       // another key: a server created without the original key cannot decrypt them, and must be recreated with it.
       "Vault secrets and pgsodium-encrypted values in the backup decrypt only if this server was created with\n" +
@@ -183,9 +185,10 @@ async function confirmRestore(database: string): Promise<void> {
 async function performRestore(config: RestoreConfig): Promise<void> {
   info("Restoring backup...");
 
-  // psql continues past a failed statement and exits 0. It must: a new aza-pg server's database already holds the
-  // objects initdb creates (pgflow, partman, vault, pg_aza_status, ...), and every dump of one recreates them, so
-  // stopping at the first "already exists" (ON_ERROR_STOP) would make every restore fail. Errors are shown instead.
+  // One transaction that stops at the first error, so a failed restore changes nothing. backup-postgres dumps with
+  // --clean --if-exists, which replaces the objects a new aza-pg server creates at init instead of failing on them.
+  // TimescaleDB needs its restore mode around a dump holding hypertables; the dump empties search_path, hence
+  // public.-qualified calls, guarded because the target database may lack the extension.
   const psqlArgs = [
     "-h",
     config.pgHost,
@@ -196,27 +199,20 @@ async function performRestore(config: RestoreConfig): Promise<void> {
     "-d",
     config.database,
   ];
-  let result;
-  if (config.backupFile.endsWith(".gz")) {
-    process.stdout.write("Decompressing and restoring...\n");
-    result = await $`gunzip -c ${config.backupFile} | psql ${psqlArgs} --quiet`.nothrow().quiet();
-  } else {
-    process.stdout.write("Restoring uncompressed backup...\n");
-    result = await $`psql ${psqlArgs} -f ${config.backupFile} --quiet`.nothrow().quiet();
-  }
-  const errors = result.stderr
-    .toString()
-    .split("\n")
-    .filter((line) => line.includes("ERROR:"));
-  if (errors.length > 0) {
-    process.stderr.write(result.stderr);
-    process.stdout.write(
-      `\n${errors.length} statement(s) failed (above). On a new aza-pg server, "already exists" for objects the image\n` +
-        "creates at init is expected; any other error means part of the backup is missing.\n"
-    );
-  }
+  const tsdb = (fn: string) =>
+    `DO $t$ BEGIN IF to_regproc('public.${fn}') IS NOT NULL THEN PERFORM public.${fn}(); END IF; END $t$;`;
+  const script =
+    'set -euo pipefail; f=$1; shift; { echo "$PRE"; if [[ $f == *.gz ]]; then gunzip -c "$f"; else cat "$f"; fi; echo "$POST"; } | psql "$@" -X -q -1 -v ON_ERROR_STOP=1';
+  const result = await $`bash -c ${script} bash ${config.backupFile} ${psqlArgs}`
+    .env({
+      ...Bun.env,
+      PRE: tsdb("timescaledb_pre_restore"),
+      POST: tsdb("timescaledb_post_restore"),
+    })
+    .nothrow()
+    .quiet();
   if (result.exitCode !== 0) {
-    if (errors.length === 0) process.stderr.write(result.stderr);
+    process.stderr.write(result.stderr);
     process.stdout.write("\n");
     error("Restore failed");
     process.stdout.write("   Common issues:\n");

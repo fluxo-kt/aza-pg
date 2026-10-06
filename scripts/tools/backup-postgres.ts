@@ -73,6 +73,14 @@ async function checkRequiredCommands(): Promise<void> {
  */
 function parseConfig(): BackupConfig {
   const args = Bun.argv.slice(2);
+  // Only positional arguments exist; a flag (--help, -h …) would otherwise be read as the database name.
+  if (args.some((a) => a.startsWith("-"))) {
+    process.stdout.write(
+      `Usage: ${Bun.argv[1]} [database] [output-file]\n` +
+        "Connection: PGHOST, PGPORT, PGUSER, PGPASSWORD (default localhost:5432, postgres)\n"
+    );
+    process.exit(args.every((a) => a === "-h" || a === "--help") ? 0 : 1);
+  }
   const database = args[0] || "postgres";
 
   // Generate default output filename with timestamp
@@ -158,6 +166,30 @@ async function checkFileExists(outputFile: string): Promise<void> {
 /**
  * Perform the backup operation
  */
+// Prints one idempotent statement per role and membership. A role missing on the restore target is created with the
+// source's attributes and password hash; an existing one is left alone, so the target's own superuser and any role a
+// platform (e.g. Coolify) manages keep their passwords. pg_* roles are built in. Needs a superuser (reads pg_authid).
+const ROLES_SQL = `
+SELECT stmt FROM (
+SELECT 1 AS step, rolname AS name, format('DO $r$ BEGIN CREATE ROLE %I WITH %s %s %s %s %s %s %s CONNECTION LIMIT %s %s %s; EXCEPTION WHEN duplicate_object THEN NULL; END $r$;',
+  rolname,
+  CASE WHEN rolsuper THEN 'SUPERUSER' ELSE 'NOSUPERUSER' END,
+  CASE WHEN rolinherit THEN 'INHERIT' ELSE 'NOINHERIT' END,
+  CASE WHEN rolcreaterole THEN 'CREATEROLE' ELSE 'NOCREATEROLE' END,
+  CASE WHEN rolcreatedb THEN 'CREATEDB' ELSE 'NOCREATEDB' END,
+  CASE WHEN rolcanlogin THEN 'LOGIN' ELSE 'NOLOGIN' END,
+  CASE WHEN rolreplication THEN 'REPLICATION' ELSE 'NOREPLICATION' END,
+  CASE WHEN rolbypassrls THEN 'BYPASSRLS' ELSE 'NOBYPASSRLS' END,
+  rolconnlimit,
+  CASE WHEN rolpassword IS NOT NULL THEN format('PASSWORD %L', rolpassword) ELSE '' END,
+  CASE WHEN rolvaliduntil IS NOT NULL THEN format('VALID UNTIL %L', rolvaliduntil) ELSE '' END) AS stmt
+FROM pg_authid WHERE rolname !~ '^pg_'
+UNION ALL
+SELECT 2, r.rolname, format('GRANT %I TO %I;', r.rolname, m.rolname)
+FROM pg_auth_members a JOIN pg_roles r ON r.oid = a.roleid JOIN pg_roles m ON m.oid = a.member
+WHERE m.rolname !~ '^pg_'
+) s ORDER BY step, name;`;
+
 async function performBackup(config: BackupConfig): Promise<void> {
   info("Creating backup...");
 
@@ -173,20 +205,29 @@ async function performBackup(config: BackupConfig): Promise<void> {
     process.exit(1);
   }
 
+  const conn = [
+    "-h",
+    config.pgHost,
+    "-p",
+    config.pgPort.toString(),
+    "-U",
+    config.pgUser,
+    "-d",
+    config.database,
+  ];
   try {
-    // pg_dump compresses (-Z, gzip) and writes the file itself, so the dump never passes through this process's
-    // memory, whatever the database size.
-    await $`pg_dump \
-      -h ${config.pgHost} \
-      -p ${config.pgPort.toString()} \
-      -U ${config.pgUser} \
-      -d ${config.database} \
-      --format=plain \
-      --no-owner \
-      --no-acl \
-      -Z 6 \
-      -f ${config.outputFile} \
-      --verbose`.quiet();
+    // One file restores a working database: the roles first, then the dump with its owners and GRANTs. Without the
+    // roles a fresh server lacks every role the GRANTs and owners name, and those statements fail. The file thus
+    // holds password hashes too; it already holds every row, so it is protected (0600) as the database is.
+    // --clean --if-exists: the restore replaces each dumped object, so a fresh aza-pg server's init objects
+    // (pgflow, partman, vault, ...) do not fail as "already exists" and any real error can stop the restore.
+    // bash with pipefail, because a pipe's status is otherwise gzip's and a failed pg_dump would look like success.
+    // The dump streams through the pipe, never through this process's memory.
+    const script =
+      'set -euo pipefail; out=$1; shift; { psql "$@" -X -At -v ON_ERROR_STOP=1 -c "$ROLES_SQL"; pg_dump "$@" --format=plain --clean --if-exists --verbose; } | gzip -6 > "$out"';
+    await $`bash -c ${script} bash ${config.outputFile} ${conn}`
+      .env({ ...Bun.env, ROLES_SQL })
+      .quiet();
   } catch (err) {
     // .quiet() captured pg_dump's messages; show them
     if (err instanceof $.ShellError) process.stderr.write(err.stderr);

@@ -8,10 +8,6 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 Without a database argument it migrates every database's `pgflow` schema as superuser, including schemas a non-superuser created, so functions and triggers that owner controls run with superuser rights during the migration (stated in the header of `docker/postgres/pgflow/pgflow-upgrade.sh`). **Needs a decision:** refuse such databases (changes the command's behaviour) or migrate as the schema owner.
 
-### A logical restore hides real errors among expected ones
-
-Restoring a `pg_dump` into a fresh aza-pg server reports many "already exists" errors, because the init scripts create the pgflow, pg_partman, vault and status objects the dump creates again; a real failure hides among them and `ON_ERROR_STOP` cannot be used. TimescaleDB hypertables also need `timescaledb_pre_restore()` / `timescaledb_post_restore()` around the restore, and `scripts/tools/backup-postgres.ts` dumps with `--no-acl`, so GRANTs are lost (keeping them fails on a server that lacks the roles). **Needs two decisions:** skip image-owned objects in the dump (their data, such as pgflow runs, is then not backed up) or restore into a database without init objects; keep or drop GRANTs.
-
 ### The `pg_upgrade` path needs an image holding both majors
 
 Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and every extension built for both, in one image; none is built. Needed before the next major upgrade.

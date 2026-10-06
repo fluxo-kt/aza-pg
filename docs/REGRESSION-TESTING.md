@@ -52,24 +52,12 @@ bun scripts/test-all.ts --group regression
 
 ### Regression Mode
 
-Adds optional preload libraries to the default list; the set of extensions tested is the same as in production mode.
-
-- Image: `aza-pg:pg18-regression` (separate regression.Dockerfile)
-- pgTAP: Pre-installed for SQL unit testing
-
-**Use cases:**
-
-- Comprehensive nightly testing
-- Extension compatibility validation
-- Pre-deployment full validation
+Adds optional preload libraries to the default list; the set of extensions tested is the same as in production mode. It runs on the release image: the suite starts the server with `POSTGRES_SHARED_PRELOAD_LIBRARIES` set to the longer list.
 
 **Activation:**
 
 ```bash
 bun scripts/test-all.ts --group nightly
-
-# Build regression image
-bun scripts/build.ts --regression
 ```
 
 ## Test Tiers
@@ -122,50 +110,16 @@ pgaudit, pg_stat_statements and pg_stat_monitor each hook the executor and must 
 bun scripts/test/test-extension-interactions.ts [--mode=production|regression]
 ```
 
-### pgTAP
-
-The regression image (`regression.Dockerfile`) installs pgTAP for ad-hoc SQL tests; the repository ships no pgTAP test files.
-
 ## CI/CD Integration
 
 The runner is `scripts/test-all.ts`, which owns which suites each group holds.
 
 - **`regression` group** (production mode, release image): `ci.yml` on every push and PR, `publish.yml` before every release, and `regression-tests.yml` on demand against any image reference.
-- **`nightly` group** (regression mode, regression image built from `regression.Dockerfile`): `nightly-regression.yml`, weekly.
-
-## Docker Images
-
-### Production Image
-
-**Image:** `aza-pg:pg18`
-**Dockerfile:** `docker/postgres/Dockerfile`
-**Extensions:** entries the manifest enables
-**Preloads:** the image's default list
-**pgTAP:** Not included
-
-**Build:**
-
-```bash
-bun scripts/build.ts
-```
-
-### Regression Test Image
-
-**Image:** `aza-pg:pg18-regression`
-**Dockerfile:** `docker/postgres/regression.Dockerfile`
-**Extensions:** also installs extensions the release image disables, but no suite runs them (every suite skips `enabled: false` entries)
-**Preloads:** default list plus optional libraries (`POSTGRES_SHARED_PRELOAD_LIBRARIES` in the Dockerfile)
-**pgTAP:** Pre-installed
-
-**Build:**
-
-```bash
-bun scripts/build.ts --regression
-```
+- **`nightly` group** (regression mode, release image): `nightly-regression.yml`, weekly.
 
 ## Test Mode Selection
 
-Each suite takes its mode from `--mode=production|regression`, then the `TEST_MODE` environment variable of the process running the suite, then the `testMode` marker the regression image writes into `/etc/postgresql/version-info.json` (read by running the image), else production (`detectTestMode` in `scripts/test/lib/test-mode.ts`).
+Each suite takes its mode from `--mode=production|regression`, then the `TEST_MODE` environment variable of the process running the suite, else production (`detectTestMode` in `scripts/test/lib/test-mode.ts`).
 
 ## Test Output Normalization
 
@@ -218,13 +172,13 @@ bun scripts/test/test-extension-regression.ts --verbose
 
 ```bash
 # Start container with test image
-docker run --name pg-test -d -e POSTGRES_PASSWORD=postgres aza-pg:pg18-regression
+docker run --name pg-test -d -e POSTGRES_PASSWORD=postgres aza-pg:pg18
 
 # Run one extension's SQL by hand (the files live in the repository, not the image)
 docker exec -i pg-test psql -X -U postgres < tests/regression/extensions/hll/sql/basic.sql
 
 # Or run the suite against the already-running container
-bun scripts/test/test-extension-regression.ts --mode=regression --container=pg-test --extensions=hll --verbose
+bun scripts/test/test-extension-regression.ts --container=pg-test --extensions=hll --verbose
 
 # Cleanup
 docker rm -f -v pg-test
@@ -268,22 +222,18 @@ docker rm -f -v pg-test
 ## References
 
 - [PostgreSQL Regression Tests](https://www.postgresql.org/docs/current/regress.html)
-- [pgTAP Documentation](https://pgtap.org/)
-- [TAP Protocol](https://testanything.org/)
 - [Testing Best Practices](https://wiki.postgresql.org/wiki/Testing)
 
 ## Architecture Decisions
 
-### Separate Dockerfile for Regression
+### One Image for Both Modes
 
-**Decision:** Use `regression.Dockerfile` instead of multi-stage target in production Dockerfile.
+**Decision:** Regression mode runs on the release image; there is no separate regression image.
 
 **Rationale:**
 
-- Production builds unaffected (no regression artifacts)
-- Better layer caching (independent build paths)
-- Cleaner separation of concerns
-- CI can build images in parallel
+- The modes differ only in the preload list, which the suite sets when it starts the container
+- A second Dockerfile copies the build and drifts from it, so it fails on its own defects instead of the release image's
 
 ### Dual-Mode Testing
 

@@ -928,8 +928,7 @@ bun run validate:all
 
 **What you didn't look at**
 - List files that are related to your changes but that you haven't read. Read them now.
-- Specifically: auto-generated files (`Dockerfile`,
-  `regression.Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
+- Specifically: auto-generated files (`Dockerfile`, `docs/EXTENSIONS.md`) — did they regenerate correctly?
 
 **Mandatory doc sync** (NOT auto-generated — must be updated manually every round):
 - **`CHANGELOG.md` gate**: If `git diff --name-only -- scripts/extensions/manifest-data.ts docker/postgres stacks` is non-empty, `git diff --name-only -- CHANGELOG.md` MUST also be non-empty before Phase 12.

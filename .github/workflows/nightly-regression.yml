@@ -1,15 +1,14 @@
 # ============================================================================
-# Nightly Regression Tests - Comprehensive Coverage
+# Nightly Regression Tests
 # ============================================================================
 #
 # PURPOSE:
 # --------
-# Runs the `nightly` suite group of scripts/test-all.ts (extension regression and interaction tests in
-# regression mode) against the regression image: every extension, including ones disabled in the release image,
-# and every optional preload library. It catches upstream breakage before an extension is enabled.
+# Runs the `nightly` suite group of scripts/test-all.ts against the release image: the extension regression and
+# interaction tests in regression mode, which start the server with the optional preload libraries added to the
+# default ones. ci.yml runs the same suites with the default preloads only.
 #
-# The release image's own suites run on every push (ci.yml) and before every release (publish.yml); this
-# workflow does not repeat them.
+# It reuses the image ci.yml cached for the same image inputs and builds it only when that cache entry is gone.
 #
 # WHEN IT RUNS:
 # -------------
@@ -34,56 +33,76 @@ permissions:
   contents: read
   packages: read
 
-env:
-  TEST_MODE: regression
-
 # timeout-minutes: 4–8x each job's measured run time, builds sized on a full rebuild; reason in ci.yml above jobs:
 jobs:
   # ==========================================================================
-  # Job 1: Build the regression image (regression.Dockerfile: all extensions, pgTAP)
+  # Job 1: Build the release image (only when ci.yml left no cached image for these image inputs)
   # ==========================================================================
   build:
-    name: Build Regression Image
+    name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 100
+    outputs:
+      image-key: ${{ steps.key.outputs.key }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        with:
-          driver: docker-container
-          driver-opts: network=host
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
 
-      # Regression mode expects the regression image; the release Dockerfile lacks the disabled extensions it tests.
+      - name: Compute image input key
+        id: key
+        run: |
+          set -euo pipefail
+          key=$(bun scripts/ci/image-input-hash.ts)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      # lookup-only: on a hit the test job restores the tarball; this job needs only to know it exists.
+      - name: Look up cached image
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/aza-pg-ci-image.tar.gz
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+
+      - name: Set up Docker Buildx
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Same build as ci.yml (tag, platform, cache scope), so either workflow can reuse the other's image and layers.
       - name: Build Docker image with layer caching
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: ./docker/postgres/regression.Dockerfile
-          tags: aza-pg-regression:test
+          file: ./docker/postgres/Dockerfile
+          tags: aza-pg-ci:test
+          platforms: linux/amd64
           load: true
           build-args: |
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             VCS_REF=${{ github.sha }}
-          cache-from: type=gha,scope=aza-pg-regression
-          cache-to: type=gha,mode=max,scope=aza-pg-regression
+          cache-from: type=gha,scope=aza-pg-ci
+          cache-to: type=gha,mode=max,scope=aza-pg-ci
+          sbom: false
+          provenance: false
 
       - name: Export image as tarball
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          docker save aza-pg-regression:test | gzip > /tmp/aza-pg-ci-image.tar.gz
+          docker save aza-pg-ci:test | gzip > /tmp/aza-pg-ci-image.tar.gz
           ls -lh /tmp/aza-pg-ci-image.tar.gz
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Save image to cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          name: regression-image
           path: /tmp/aza-pg-ci-image.tar.gz
-          retention-days: 1
-          compression-level: 0 # Already compressed with gzip
+          key: ${{ steps.key.outputs.key }}
 
   # ==========================================================================
   # Job 2: Run the nightly suite group
@@ -101,9 +120,9 @@ jobs:
       - name: Set up test environment
         uses: ./.github/actions/test-job-setup
         with:
-          image-source: artifact
-          image-name: aza-pg-regression:test
-          artifact-name: regression-image
+          image-source: cache
+          cache-key: ${{ needs.build.outputs.image-key }}
+          image-name: aza-pg-ci:test
 
       - name: Run nightly suites
-        run: bun scripts/test-all.ts --group nightly --image aza-pg-regression:test
+        run: bun scripts/test-all.ts --group nightly --image aza-pg-ci:test

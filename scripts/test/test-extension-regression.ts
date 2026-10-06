@@ -70,7 +70,7 @@ export async function selectSuites(): Promise<string[]> {
 
 async function main(): Promise<number> {
   const options = parseArgs(Bun.argv.slice(2));
-  const mode = options.mode ?? (await detectTestMode(resolveImageTag()));
+  const mode = options.mode ?? detectTestMode();
   let suites = await selectSuites();
   if (options.only.length > 0) {
     const unknown = options.only.filter((name) => !suites.includes(name));

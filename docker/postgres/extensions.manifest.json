@@ -599,7 +599,6 @@
       "category": "workflow",
       "description": "DAG-based workflow orchestration engine with step-by-step task execution.",
       "enabled": true,
-      "enabledInComprehensiveTest": true,
       "source": {
         "type": "git",
         "repository": "https://github.com/pgflow-dev/pgflow.git",
@@ -671,7 +670,6 @@
       "category": "queueing",
       "description": "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
       "enabled": false,
-      "enabledInComprehensiveTest": true,
       "disabledReason": "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
       "source": {
         "type": "git",
@@ -743,7 +741,6 @@
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "enabled": false,
-      "enabledInComprehensiveTest": true,
       "disabledReason": "Disabled to reduce build time and image size. Depends on PostGIS which is also disabled. Enable when routing functionality is needed.",
       "source": {
         "type": "git",
@@ -857,7 +854,6 @@
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
-      "enabledInComprehensiveTest": true,
       "disabledReason": "Disabled to reduce build time and image size. GIS functionality not currently required. Enable when spatial data support is needed.",
       "source": {
         "type": "git",
@@ -989,7 +985,6 @@
     {
       "name": "supautils",
       "enabled": true,
-      "enabledInComprehensiveTest": true,
       "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",

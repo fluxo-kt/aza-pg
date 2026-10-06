@@ -2,7 +2,7 @@
 /**
  * Generate Dockerfile from template using manifest data
  *
- * This script reads the Dockerfile.template and regression.Dockerfile.template
+ * This script reads Dockerfile.template
  * and replaces placeholders with values from the extensions manifest and MANIFEST_METADATA.
  *
  * ARG Strategy:
@@ -16,13 +16,11 @@
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
  * - {{RUST_TOOLCHAIN}} - Rust toolchain version (hardcoded)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
- * - {{PGDG_PACKAGES_INSTALL_REGRESSION}} - Regression mode PGDG package installation (all extensions)
  *
  * Usage:
  *   bun scripts/docker/generate-dockerfile.ts
  */
 
-import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
@@ -32,8 +30,6 @@ import { error, info, section, success } from "../utils/logger";
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-const REGRESSION_TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile.template");
-const REGRESSION_OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/regression.Dockerfile");
 const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
@@ -64,12 +60,10 @@ interface ManifestEntry {
   binaryPath?: string;
   postgresOwnedDirs?: string[];
   enabled?: boolean;
-  enabledInComprehensiveTest?: boolean;
   build?: BuildSpec;
   runtime?: {
     sharedPreload?: boolean;
     defaultEnable?: boolean;
-    preloadInComprehensiveTest?: boolean;
     preloadLibraryName?: string;
   };
   source: {
@@ -138,17 +132,13 @@ async function readManifest(): Promise<Manifest> {
 }
 
 /**
- * `postgresql-<major>-<pgdgPackage>=<pgdgVersion>` for every PGDG extension `include` selects, in
+ * `postgresql-<major>-<pgdgPackage>=<pgdgVersion>` for every enabled PGDG extension, in
  * manifest order. Tools are excluded: they install in their own layer (generatePgdgToolsInstall).
  * Name and version are validated here because both are interpolated into a shell command.
  */
-function pgdgExtensionPins(
-  manifest: Manifest,
-  pgMajor: string,
-  include: (entry: ManifestEntry) => boolean
-): string[] {
+function pgdgExtensionPins(manifest: Manifest, pgMajor: string): string[] {
   return manifest.entries
-    .filter((e) => e.kind === "extension" && e.install_via === "pgdg" && include(e))
+    .filter((e) => e.kind === "extension" && e.install_via === "pgdg" && (e.enabled ?? true))
     .map((entry) => {
       if (!entry.pgdgVersion) {
         throw new Error(
@@ -167,7 +157,7 @@ function pgdgExtensionPins(
  * Versions and PG_MAJOR are hardcoded directly
  */
 function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): string {
-  const enabledPgdgPackages = pgdgExtensionPins(manifest, pgMajor, (e) => e.enabled ?? true);
+  const enabledPgdgPackages = pgdgExtensionPins(manifest, pgMajor);
 
   if (enabledPgdgPackages.length === 0) {
     return `RUN echo "No PGDG packages enabled in manifest"`;
@@ -348,71 +338,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     echo "Verifying Timescale .so files exist..." && \\
     ${soChecks.join(" && \\\n    ")} && \\
     echo "All ${soChecks.length} Timescale module files verified" && \\
-    apt-get clean && \\
-    rm -rf /var/lib/apt/lists/* && \\
-    { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
-}
-
-/**
- * Generate regression mode shared preload libraries list
- * Includes ALL preload libraries (default + optional) for maximum test coverage
- */
-function generateRegressionPreloadLibraries(manifest: Manifest): string {
-  // Filter extensions where:
-  // 1. runtime.sharedPreload == true
-  // 2. (runtime.defaultEnable == true) OR (runtime.preloadInComprehensiveTest == true)
-  // 3. enabled != false (i.e., enabled is null or true)
-  const preloadExtensions = manifest.entries.filter((entry) => {
-    const runtime = entry.runtime;
-    if (!runtime || !runtime.sharedPreload) return false;
-
-    const isDefaultEnable = runtime.defaultEnable === true;
-    const isRegressionPreload = runtime.preloadInComprehensiveTest === true;
-    const isEnabled = entry.enabled !== false;
-
-    return (isDefaultEnable || isRegressionPreload) && isEnabled;
-  });
-
-  // Use preloadLibraryName if specified, otherwise use extension name
-  const libraryNames = preloadExtensions.map((e) => preloadLibraryName(e)).sort();
-
-  return libraryNames.join(",");
-}
-
-/**
- * Generate PGDG package installation script for regression test mode
- * Installs ALL PGDG packages (including disabled ones) for regression testing
- */
-function generatePgdgPackagesInstallRegression(manifest: Manifest, pgMajor: string): string {
-  const allPgdgPackages = pgdgExtensionPins(
-    manifest,
-    pgMajor,
-    (e) => (e.enabled ?? true) || e.enabledInComprehensiveTest === true
-  );
-
-  if (allPgdgPackages.length === 0) {
-    return `RUN echo "No PGDG packages available for regression testing"`;
-  }
-
-  // For regression mode, use install-or-skip logic since some packages may not be available for PG18 yet
-  const installCommands = allPgdgPackages
-    .map(
-      (pkg) =>
-        `    { apt-get install -y --no-install-recommends ${pkg} && echo "✓ Installed: ${pkg}" || echo "⚠ Skipped (not available): ${pkg}"; }`
-    )
-    .join(" && \\\n");
-
-  return `RUN set -euo pipefail && \\
-    rm -rf /var/lib/apt/lists/* && \\
-    apt-get update && \\
-    # Install PGDG packages for regression testing (install-or-skip for unavailable packages)
-    echo "Installing PGDG packages (regression mode): ${allPgdgPackages.length} packages" && \\
-${installCommands} && \\
-    # Report what was installed
-    { dpkg -l | grep "^ii.*postgresql-${pgMajor}-" || true; } | tee /tmp/installed-pgdg-exts.log && \\
-    INSTALLED_COUNT=$(wc -l < /tmp/installed-pgdg-exts.log 2>/dev/null || echo "0") && \\
-    echo "Successfully installed $INSTALLED_COUNT PGDG extension package(s) (regression mode)" && \\
-    rm -f /tmp/installed-pgdg-exts.log && \\
     apt-get clean && \\
     rm -rf /var/lib/apt/lists/* && \\
     { find /usr/lib/postgresql/${pgMajor}/lib -name "*.so" -type f -exec strip --strip-unneeded {} \\; 2>/dev/null || true; }`;
@@ -678,65 +603,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
 }
 
 /**
- * Generate regression test Dockerfile from template
- */
-async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string): Promise<void> {
-  // Read template
-  info("Reading regression template...");
-  if (!(await Bun.file(REGRESSION_TEMPLATE_PATH).exists())) {
-    throw new Error(`Template not found: ${REGRESSION_TEMPLATE_PATH}`);
-  }
-
-  const templateFile = Bun.file(REGRESSION_TEMPLATE_PATH);
-  let dockerfile = await templateFile.text();
-
-  info("Generating regression PGDG package installation script...");
-  const pgdgPackagesInstallRegression = generatePgdgPackagesInstallRegression(manifest, pgMajor);
-
-  info("Generating regression preload libraries list...");
-  const regressionPreloadLibs = generateRegressionPreloadLibraries(manifest);
-
-  // Replace placeholders
-  info("Replacing placeholders...");
-  dockerfile = dockerfile.replace(/\{\{PG_VERSION\}\}/g, MANIFEST_METADATA.pgVersion);
-  dockerfile = dockerfile.replace(/\{\{PG_MAJOR\}\}/g, pgMajor);
-  dockerfile = dockerfile.replace(/\{\{PG_BASE_IMAGE_SHA\}\}/g, MANIFEST_METADATA.baseImageSha);
-  dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
-  dockerfile = dockerfile.replace(
-    "{{PGDG_PACKAGES_INSTALL_REGRESSION}}",
-    pgdgPackagesInstallRegression
-  );
-  dockerfile = dockerfile.replace("{{REGRESSION_PRELOAD_LIBRARIES}}", regressionPreloadLibs);
-  dockerfile = dockerfile.replace("{{SOURCE_TOOL_BINARIES_COPY}}\n", () =>
-    sourceToolBinariesCopy(manifest)
-  );
-  dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
-    sourceToolsRuntimeSetup(manifest)
-  );
-  dockerfile = dockerfile.replace("{{SHARED_LIBRARIES_CHECK}}", () =>
-    sharedLibrariesCheck(manifest, pgMajor)
-  );
-
-  // Add generation header
-  const header = `# AUTO-GENERATED FILE - DO NOT EDIT
-# Generator: scripts/docker/generate-dockerfile.ts
-# Template: docker/postgres/regression.Dockerfile.template
-# Manifest: docker/postgres/extensions.manifest.json
-# To regenerate: bun run generate
-
-`;
-
-  dockerfile = header + dockerfile;
-
-  // Write output
-  info(`Writing regression Dockerfile to ${REGRESSION_OUTPUT_PATH}...`);
-  await Bun.write(REGRESSION_OUTPUT_PATH, dockerfile);
-
-  success("Regression Dockerfile generated successfully!");
-}
-
-/**
- * Generate both Dockerfiles from templates
+ * Generate the Dockerfile and the filtered build manifests
  */
 async function generateDockerfile(): Promise<void> {
   section("Dockerfile Generation");
@@ -777,11 +644,6 @@ async function generateDockerfile(): Promise<void> {
   section("Production Dockerfile");
   await generateProductionDockerfile(manifest, pgMajor);
 
-  // Generate regression Dockerfile
-  console.log("");
-  section("Regression Dockerfile");
-  await generateRegressionDockerfile(manifest, pgMajor);
-
   // Print stats
   console.log("");
   section("Summary");
@@ -791,15 +653,11 @@ async function generateDockerfile(): Promise<void> {
   const disabledPgdg = manifest.entries.filter(
     (e) => e.install_via === "pgdg" && e.enabled === false
   ).length;
-  const regressionOnlyPgdg = manifest.entries.filter(
-    (e) => e.install_via === "pgdg" && e.enabled === false && e.enabledInComprehensiveTest === true
-  ).length;
 
   info(`PGDG extensions: ${enabledPgdg} enabled, ${disabledPgdg} disabled`);
-  info(`Regression-only extensions: ${regressionOnlyPgdg}`);
   info(`Total extensions: ${manifest.entries.length}`);
   console.log("");
-  success("All Dockerfiles generated successfully!");
+  success("Dockerfile generated successfully!");
 }
 
 // Main execution

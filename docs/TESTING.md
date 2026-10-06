@@ -8,7 +8,6 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 2. [Regression Testing](#regression-testing)
 3. [Regression Test Suites](#regression-test-suites)
    - [Extension Regression Tests (Tier 2)](#extension-regression-tests-tier-2)
-   - [pgTAP](#pgtap)
 4. [Session Isolation Pattern](#session-isolation-pattern)
 5. [Testing Extension Functionality](#testing-extension-functionality)
 6. [Common Pitfalls](#common-pitfalls)
@@ -156,10 +155,6 @@ bun scripts/test/test-extension-regression.ts --container=my-postgres      # an 
 
 - **Extension behaviour**: `scripts/docker/test-image-lib.ts`, run by `scripts/docker/test-image.ts`
 - **Regression Runner**: `scripts/test/lib/regression-runner.ts` - Shared test infrastructure
-
-### pgTAP
-
-The regression image (`regression.Dockerfile`) installs pgTAP for ad-hoc SQL tests; the repository ships no pgTAP test files.
 
 ## Session Isolation Pattern
 
@@ -482,14 +477,14 @@ bun scripts/test-all.ts --shuffle             # random order; prints the seed, r
 bun scripts/test/test-pgflow.ts [image]       # one suite on its own
 ```
 
-| Group        | Proves                                                                                                   |
-| ------------ | -------------------------------------------------------------------------------------------------------- |
-| `extensions` | every enabled extension and tool works in the image; disabled ones are absent                            |
-| `security`   | authentication, roles, pgAudit and network binding defaults                                              |
-| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies                              |
-| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling                     |
-| `regression` | each enabled extension's SQL against its expected output, and extension interactions                     |
-| `nightly`    | the same in regression mode (optional preloads added) against the regression image; weekly workflow only |
+| Group        | Proves                                                                               |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `extensions` | every enabled extension and tool works in the image; disabled ones are absent        |
+| `security`   | authentication, roles, pgAudit and network binding defaults                          |
+| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies          |
+| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling |
+| `regression` | each enabled extension's SQL against its expected output, and extension interactions |
+| `nightly`    | the same in regression mode (optional preloads added); weekly workflow only          |
 
 Suites run in parallel up to the CPU count, each in its own process with its own containers, volumes, networks and ports, so order and neighbours must not matter (`--shuffle` checks that). Each suite's full output is printed when it finishes; any failed suite makes the run exit 1.
 

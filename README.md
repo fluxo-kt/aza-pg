@@ -159,9 +159,6 @@ bun scripts/test-all.ts --group regression
 
 # Run in regression mode (optional preload libraries added; disabled extensions never run)
 bun scripts/test-all.ts --group nightly
-
-# Build regression image (includes pgTAP + all extensions)
-bun scripts/build.ts --regression
 ```
 
 **Test Tiers:**

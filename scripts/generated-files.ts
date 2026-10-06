@@ -13,7 +13,6 @@
 export const GENERATED_FILES = [
   // Docker artifacts
   "docker/postgres/Dockerfile",
-  "docker/postgres/regression.Dockerfile",
   "docker/postgres/extensions.manifest.json",
   "docker/postgres/extensions.pgxs.manifest.json",
   "docker/postgres/extensions.cargo.manifest.json",

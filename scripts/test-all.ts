@@ -14,7 +14,7 @@
  * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep.
  *
  * Usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
- *   --group    default: every group except "nightly", which needs the regression image
+ *   --group    default: every group except "nightly", which reruns the "regression" suites in regression mode
  *   --image    default: POSTGRES_IMAGE, else the local build (aza-pg:pg18)
  *   --shuffle  random suite order; prints the seed so a failing order can be replayed
  */
@@ -61,8 +61,8 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
   { path: "scripts/test/test-pgflow.ts", group: "features" },
   { path: "scripts/test/test-pgflow-upgrade.ts", group: "features" },
-  // Extension SQL against expected output, and extension interactions; nightly reruns both on the regression image,
-  // which preloads some optional libraries the release image does not.
+  // Extension SQL against expected output, and extension interactions; nightly reruns both in regression mode,
+  // which starts the server with the optional preload libraries added to the default ones.
   { path: "scripts/test/test-extension-regression.ts", group: "regression" },
   { path: "scripts/test/test-extension-interactions.ts", group: "regression" },
   {

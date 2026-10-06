@@ -198,12 +198,6 @@ export interface ManifestEntry {
    */
   timescaleVersion?: string;
   enabled?: boolean;
-  /**
-   * Enable this extension in regression test mode even if disabled in production.
-   * Useful for extensions disabled to reduce build time/size but still valuable to test.
-   * Default: false (use `enabled` value in regression mode).
-   */
-  enabledInComprehensiveTest?: boolean;
   disabledReason?: string;
   /**
    * Direct URL to source code repository (e.g., GitHub, GitLab).
@@ -474,7 +468,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "supautils",
     enabled: true,
-    enabledInComprehensiveTest: true,
     kind: "extension",
     category: "safety",
     description: "Shared superuser guards and hooks for managed Postgres environments.",
@@ -633,7 +626,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
-    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled to reduce build time and image size. GIS functionality not currently required. Enable when spatial data support is needed.",
     source: {
@@ -676,7 +668,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
-    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled to reduce build time and image size. Depends on PostGIS which is also disabled. Enable when routing functionality is needed.",
     source: {
@@ -827,7 +818,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     category: "workflow",
     description: "DAG-based workflow orchestration engine with step-by-step task execution.",
     enabled: true,
-    enabledInComprehensiveTest: true,
     source: {
       type: "git",
       repository: "https://github.com/pgflow-dev/pgflow.git",
@@ -869,7 +859,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     description:
       "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
     enabled: false,
-    enabledInComprehensiveTest: true,
     disabledReason:
       "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
     source: {

@@ -8,31 +8,17 @@
  * The mode never changes which extensions are tested: the suites test enabled manifest entries only.
  */
 
-import { $ } from "bun";
 import { preloadLibraryName } from "../../config-generator/manifest-loader";
 import { MANIFEST_ENTRIES } from "../../extensions/manifest-data";
 
 export type TestMode = "production" | "regression";
 
-/**
- * Mode for `image` when the suite was given no --mode: TEST_MODE, else the `testMode` marker the regression image
- * writes into /etc/postgresql/version-info.json, else production. The marker is read from the image itself: the suite
- * runs on the host, where that path is not the image's.
- */
-export async function detectTestMode(image: string): Promise<TestMode> {
+/** Mode when the suite was given no --mode: the TEST_MODE environment variable, else production. */
+export function detectTestMode(): TestMode {
   const envMode = Bun.env.TEST_MODE;
+  if (envMode === undefined || envMode === "") return "production";
   if (envMode === "regression" || envMode === "production") return envMode;
-  const info =
-    await $`docker run --rm --network none --entrypoint cat ${image} /etc/postgresql/version-info.json`
-      .nothrow()
-      .quiet();
-  if (info.exitCode !== 0) {
-    throw new Error(
-      `cannot read /etc/postgresql/version-info.json from ${image}: ${info.stderr.toString().trim()}`
-    );
-  }
-  const marker = (JSON.parse(info.stdout.toString()) as { testMode?: unknown }).testMode;
-  return marker === "regression" ? "regression" : "production";
+  throw new Error(`Invalid TEST_MODE=${envMode} (production | regression)`);
 }
 
 /**

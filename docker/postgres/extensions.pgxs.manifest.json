@@ -211,7 +211,6 @@
       "category": "queueing",
       "description": "Generic high-performance lockless queue with simple SQL function API (supports PostgreSQL 10-18).",
       "enabled": false,
-      "enabledInComprehensiveTest": true,
       "disabledReason": "Disabled by default to reduce image size and build time (~2-3 minutes). Enable if queue functionality needed.",
       "source": {
         "type": "git",
@@ -333,7 +332,6 @@
     {
       "name": "supautils",
       "enabled": true,
-      "enabledInComprehensiveTest": true,
       "kind": "extension",
       "category": "safety",
       "description": "Shared superuser guards and hooks for managed Postgres environments.",

@@ -26,7 +26,7 @@ if (modeArg !== undefined && modeArg !== "production" && modeArg !== "regression
   console.error(`FAIL: invalid --mode=${modeArg}`);
   process.exit(1);
 }
-const mode: TestMode = modeArg ?? (await detectTestMode(resolveImageTag()));
+const mode: TestMode = modeArg ?? detectTestMode();
 const container = generateUniqueContainerName("aza-pg-interactions");
 const marker = `hook_chain_${Date.now()}`;
 

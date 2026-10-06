@@ -378,7 +378,7 @@ jobs:
             --tag "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:testing-${{ env.RELEASE_SHA }}" \
             --sources "$SOURCES" \
             --title "aza-pg Single-Node PostgreSQL" \
-            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, pg_cron, etc.), auto-tuned for production" \
             --created "${{ needs.prep.outputs.timestamp }}" \
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
@@ -403,7 +403,7 @@ jobs:
             --exact-platforms \
             --require-annotations \
             --title "aza-pg Single-Node PostgreSQL" \
-            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, pg_cron, etc.), auto-tuned for production" \
             --created "${{ needs.prep.outputs.timestamp }}" \
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
@@ -732,7 +732,7 @@ jobs:
             --target-repo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --tags "${{ needs.prep.outputs.image_tag }},${{ needs.prep.outputs.pg_version_full }}-single-node,${{ needs.prep.outputs.pg_version_major }}-single-node,${{ needs.prep.outputs.pg_version_full }},${{ needs.prep.outputs.pg_version_major }}" \
             --title "aza-pg Single-Node PostgreSQL" \
-            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+            --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, pg_cron, etc.), auto-tuned for production" \
             --created "${{ needs.prep.outputs.timestamp }}" \
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
@@ -762,7 +762,7 @@ jobs:
               --exact-platforms \
               --require-annotations \
               --title "aza-pg Single-Node PostgreSQL" \
-              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, pg_cron, etc.), auto-tuned for production" \
               --created "${{ needs.prep.outputs.timestamp }}" \
               --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
               --licenses "MIT" \
@@ -1208,7 +1208,7 @@ jobs:
               --exact-platforms \
               --require-annotations \
               --title "aza-pg Single-Node PostgreSQL" \
-              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, postgis, pg_cron, etc.), auto-tuned for production" \
+              --description "PostgreSQL ${{ needs.prep.outputs.pg_version_full }} with ${{ needs.prep.outputs.catalog_enabled }} extensions (pgvector, timescaledb, pg_cron, etc.), auto-tuned for production" \
               --created "${{ needs.prep.outputs.timestamp }}" \
               --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
               --licenses "MIT" \

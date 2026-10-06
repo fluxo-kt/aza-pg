@@ -51,9 +51,6 @@ interface WorkflowConfig {
     preloaded: number;
     autoCreated: number;
   };
-
-  // Featured extensions for docs/labels
-  featuredExtensions: string[];
 }
 
 async function loadManifest(): Promise<Manifest> {
@@ -88,9 +85,6 @@ function deriveConfig(manifest: Manifest): WorkflowConfig {
     (e) => e.enabled !== false && e.runtime?.defaultEnable === true && e.kind === "extension"
   ).length;
 
-  // Featured extensions (popular ones for documentation)
-  const featuredExtensions = ["vector", "timescaledb", "postgis", "pg_cron", "pgaudit", "pgsodium"];
-
   return {
     pgVersion: MANIFEST_METADATA.pgVersion,
     pgMajorVersion,
@@ -109,8 +103,6 @@ function deriveConfig(manifest: Manifest): WorkflowConfig {
       preloaded,
       autoCreated,
     },
-
-    featuredExtensions,
   };
 }
 

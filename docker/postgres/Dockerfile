@@ -8,10 +8,12 @@
 
 FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf AS builder-base
 
+# Every stage sets ENV before SHELL: hadolint 2.15.1 treats each RUN after an ENV as /bin/sh again (false SC3040).
+# /root/.cargo/bin is filled by the rust image COPY further down.
+ENV DEBIAN_FRONTEND=noninteractive PATH="/root/.cargo/bin:${PATH}"
+
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
 RUN set -euo pipefail && \
@@ -46,7 +48,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # default homes so HOME=/root finds it with no extra environment.
 COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/cargo /root/.cargo
 COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/rustup /root/.rustup
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Bun runs the TypeScript build script; its version is .tool-versions' (the generator reads it)
 COPY --from=oven/bun:1.4.2-debian@sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73 /usr/local/bin/bun /usr/local/bin/bun
@@ -134,10 +135,10 @@ RUN set -euo pipefail && \
 # Final runtime stage
 FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime libraries for compiled extensions (final stage)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
@@ -375,6 +376,8 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user
+# The name resolves from the image's own /etc/passwd and keeps `docker inspect` readable; DL3066 wants a numeric id.
+# hadolint ignore=DL3066
 USER postgres
 
 # Build metadata ARGs (no defaults: CI/CD passes them). Declared after the last RUN because every RUN after an
@@ -393,7 +396,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Health check and port exposure moved to end (metadata operations)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD /usr/local/bin/healthcheck.sh
+    CMD ["/usr/local/bin/healthcheck.sh"]
 
 EXPOSE 5432
 

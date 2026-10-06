@@ -57,6 +57,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgmq 1.11.1 → 1.13.0**: Fixes partitioned queues that silently overran their pre-created partitions and could not recover.
 - **Build optimisation**: PGroonga (`-O3`) and pgsodium (`-O2`) are now compiled with optimisation (both were built unoptimised at `-O0`), and the Rust extensions (`wrappers`, `pg_jsonschema`) use their upstream release profile (opt-level 3, fat LTO) instead of size-tuned settings.
 - **Compose stacks start faster**: the PostgreSQL and PgBouncer healthchecks probe every second until they first report healthy (`start_interval: 1s`), so PgBouncer and the exporters start as soon as their dependency is ready instead of at its next 10 s or 30 s check. Needs Docker Engine 25+; older engines keep the previous timing.
+- **The image healthcheck runs its script directly** (`docker inspect` shows `CMD` instead of `CMD-SHELL`): no `/bin/sh` wrapper starts on every probe; the check itself is unchanged.
 
 ### Fixed
 

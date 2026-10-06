@@ -2,10 +2,12 @@
 
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}} AS builder-base
 
+# Every stage sets ENV before SHELL: hadolint 2.15.1 treats each RUN after an ENV as /bin/sh again (false SC3040).
+# /root/.cargo/bin is filled by the rust image COPY further down.
+ENV DEBIAN_FRONTEND=noninteractive PATH="/root/.cargo/bin:${PATH}"
+
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Disable apt cache auto-deletion (required for cache mount effectiveness)
 RUN set -euo pipefail && \
@@ -40,7 +42,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # default homes so HOME=/root finds it with no extra environment.
 COPY --from=rust:{{RUST_TOOLCHAIN}}-slim-trixie@{{RUST_IMAGE_SHA}} /usr/local/cargo /root/.cargo
 COPY --from=rust:{{RUST_TOOLCHAIN}}-slim-trixie@{{RUST_IMAGE_SHA}} /usr/local/rustup /root/.rustup
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Bun runs the TypeScript build script; its version is .tool-versions' (the generator reads it)
 COPY --from=oven/bun:{{BUN_VERSION}}-debian@{{BUN_IMAGE_SHA}} /usr/local/bin/bun /usr/local/bin/bun
@@ -129,10 +130,10 @@ RUN set -euo pipefail && \
 # Final runtime stage
 FROM postgres:{{PG_VERSION}}-trixie@{{PG_BASE_IMAGE_SHA}}
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime libraries for compiled extensions (final stage)
 COPY docker/postgres/extensions.runtime-packages.txt /tmp/extensions.runtime-packages.txt
@@ -292,6 +293,8 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 
 # Switch to postgres user for security (fixes CIS-DI-0001)
 # All setup is complete, now run as non-root user
+# The name resolves from the image's own /etc/passwd and keeps `docker inspect` readable; DL3066 wants a numeric id.
+# hadolint ignore=DL3066
 USER postgres
 
 # Build metadata ARGs (no defaults: CI/CD passes them). Declared after the last RUN because every RUN after an
@@ -310,7 +313,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Health check and port exposure moved to end (metadata operations)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
-    CMD /usr/local/bin/healthcheck.sh
+    CMD ["/usr/local/bin/healthcheck.sh"]
 
 EXPOSE 5432
 

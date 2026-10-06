@@ -140,14 +140,18 @@ async function validateManifest(): Promise<void> {
 }
 
 // Check Dockerfile with the same pinned hadolint and config as validate:all, so the verdict cannot
-// depend on whichever hadolint is installed locally (2.15.1 flags every RUN under a bash SHELL as
-// POSIX sh, SC3040, where the pinned 2.14.0 does not).
+// depend on whichever hadolint is installed locally (versions differ in rules and false positives).
 async function checkHadolint(): Promise<void> {
   console.log("Checking Dockerfile with hadolint...");
   const result =
     await $`docker run --rm -i -v ${`${process.cwd()}:/work:ro`} ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`
       .nothrow()
       .quiet();
+  // docker run exits 125 when the container never started (pull refused, daemon error): no lint verdict exists
+  if (result.exitCode === 125) {
+    console.error(`ERROR: could not run hadolint (${HADOLINT_IMAGE})\n${result.stderr}`);
+    process.exit(1);
+  }
   if (result.exitCode !== 0) {
     console.error(`ERROR: hadolint found issues in Dockerfile\n${result.stdout}${result.stderr}`);
     console.error(

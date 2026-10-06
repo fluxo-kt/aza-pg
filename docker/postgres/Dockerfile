@@ -148,11 +148,6 @@ FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
-# Declared ONLY in final stage to prevent builder stage cache invalidation
-ARG BUILD_DATE
-ARG VCS_REF
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime libraries for compiled extensions (final stage)
@@ -281,7 +276,6 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
     test -x /usr/bin/pgbackrest && \
-    ! ldd /usr/bin/pgbackrest | grep "not found" && \
     install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
@@ -338,6 +332,15 @@ RUN set -euo pipefail && \
       percona-release && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Every module, source-built library and source tool binary still finds its shared libraries after the
+# --auto-remove purges above, which drop any library no remaining package depends on.
+RUN set -euo pipefail && \
+    unresolved=0 && \
+    for f in /usr/lib/postgresql/18/lib/*.so /usr/local/lib/*.so* /usr/bin/pgbackrest; do \
+      [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \
+    done && \
+    [ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }
 
 # pgsodium root key: a random key per data directory, or the operator's PGSODIUM_KEY_FILE (script header). The second,
 # never-executed copy lets the entrypoint tell an operator-mounted getkey (it owns the key) from the image's own;
@@ -396,8 +399,12 @@ COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifes
 # All setup is complete, now run as non-root user
 USER postgres
 
+# Build metadata ARGs (no defaults: CI/CD passes them). Declared after the last RUN because every RUN after an
+# ARG gets it in its environment and cache key, so a new BUILD_DATE would re-run each of them on every build.
+ARG BUILD_DATE
+ARG VCS_REF
+
 # OCI image labels with build metadata
-# Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.6"

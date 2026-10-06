@@ -454,10 +454,9 @@ function sourceToolBinariesCopy(manifest: Manifest): string {
 }
 
 /**
- * Final-stage steps appended to the ldconfig RUN, each starting with " && \\": no missing shared
- * library per source tool binary (ldd prints "not found"; the image has only the base image's
- * libraries plus extensions.runtime-packages.txt), and the directories the tool writes by default,
- * postgres-owned so a named volume mounted there starts writable by postgres.
+ * Final-stage steps appended to the ldconfig RUN, each starting with " && \\": each source tool
+ * binary exists, and the directories the tool writes by default are postgres-owned so a named volume
+ * mounted there starts writable by postgres.
  */
 function sourceToolsRuntimeSetup(manifest: Manifest): string {
   return sourceTools(manifest)
@@ -466,11 +465,38 @@ function sourceToolsRuntimeSetup(manifest: Manifest): string {
       const dirs = (e.postgresOwnedDirs ?? []).map((d) =>
         safeAbsolutePath(d, `tool "${e.name}" postgresOwnedDirs`)
       );
-      const steps = [`test -x ${bin}`, `! ldd ${bin} | grep "not found"`];
+      const steps = [`test -x ${bin}`];
       if (dirs.length > 0)
         steps.push(`install -d -o postgres -g postgres -m 0750 ${dirs.join(" ")}`);
       return steps.map((s) => ` && \\\n    ${s}`).join("");
     })
+    .join("");
+}
+
+/**
+ * Steps (each starting with " && \\") failing the build when any module in the package library
+ * directory, any library in /usr/local/lib or any source tool binary has a shared library ldd cannot
+ * find. Objects built from source have no Debian package declaring their dependencies, so apt keeps
+ * their libraries only while some installed package depends on them; an `apt-get purge --auto-remove`
+ * then removes a library no remaining package needs. The check therefore belongs after the last purge,
+ * and the fix for a failure is listing the owning package in extensions.runtime-packages.txt, which
+ * marks it manually installed.
+ */
+function sharedLibrariesCheck(manifest: Manifest, pgMajor: string): string {
+  const tools = sourceTools(manifest).map((e) =>
+    safeAbsolutePath(e.binaryPath, `tool "${e.name}" binaryPath`)
+  );
+  const objects = [`/usr/lib/postgresql/${pgMajor}/lib/*.so`, "/usr/local/lib/*.so*", ...tools];
+  // A glob matching nothing stays literal, hence the -f test. ldd prints one "<lib> => not found" line
+  // per unresolved library; each is printed with its object before the build fails.
+  return [
+    "unresolved=0",
+    `for f in ${objects.join(" ")}; do \\\n` +
+      `      [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \\\n` +
+      "    done",
+    '[ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }',
+  ]
+    .map((s) => ` && \\\n    ${s}`)
     .join("");
 }
 
@@ -629,6 +655,9 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
     sourceToolsRuntimeSetup(manifest)
   );
+  dockerfile = dockerfile.replace("{{SHARED_LIBRARIES_CHECK}}", () =>
+    sharedLibrariesCheck(manifest, pgMajor)
+  );
 
   // Add generation header
   const header = `# AUTO-GENERATED FILE - DO NOT EDIT
@@ -683,6 +712,9 @@ async function generateRegressionDockerfile(manifest: Manifest, pgMajor: string)
   );
   dockerfile = dockerfile.replace("{{SOURCE_TOOLS_RUNTIME_SETUP}}", () =>
     sourceToolsRuntimeSetup(manifest)
+  );
+  dockerfile = dockerfile.replace("{{SHARED_LIBRARIES_CHECK}}", () =>
+    sharedLibrariesCheck(manifest, pgMajor)
   );
 
   // Add generation header

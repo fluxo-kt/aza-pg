@@ -79,7 +79,7 @@ FROM builder-base AS builder-pgxs
 # Use bash for RUN commands (inherited stages must re-declare SHELL)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN --mount=type=cache,target=/root/.cache \
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.pgxs.manifest.json /tmp/extensions-build
 
 RUN set -euo pipefail && \
@@ -110,9 +110,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Each crate builds with its own [profile.release] (upstream picks opt-level 3 + fat LTO for runtime speed);
 # only symbols are stripped. A global opt-level=s/thin-LTO override existed to shrink timescaledb_toolkit,
 # which now comes from the Timescale apt repo, so it would only slow the extensions still built here.
-RUN --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
     bun /usr/local/bin/build-extensions.ts /tmp/extensions.cargo.manifest.json /tmp/extensions-build
 
@@ -148,11 +148,6 @@ FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe
 
 # Use bash with pipefail for RUN commands (Debian's /bin/sh is dash, which doesn't support it)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Build metadata ARGs (required, no defaults - must be passed by CI/CD)
-# Declared ONLY in final stage to prevent builder stage cache invalidation
-ARG BUILD_DATE
-ARG VCS_REF
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -209,11 +204,16 @@ COPY --from=builder-cargo /opt/ext-out/ /
 
 # Remove LLVM bitcode from base PostgreSQL image (34MB of debug artifacts not needed at runtime).
 # ldconfig registers libraries built from source into /usr/local/lib (SOURCE_LIBRARIES in
-# manifest-data.ts): the dynamic loader finds that directory only through its cache.
+# manifest-data.ts): the dynamic loader finds that directory only through its cache. The shared-library
+# check runs here because no later step removes packages.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
     test -x /usr/bin/pgbackrest && \
-    ! ldd /usr/bin/pgbackrest | grep "not found" && \
-    install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
+    install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest && \
+    unresolved=0 && \
+    for f in /usr/lib/postgresql/18/lib/*.so /usr/local/lib/*.so* /usr/bin/pgbackrest; do \
+      [ ! -f "$f" ] || ! ldd "$f" | sed "s|^|$f: |" | grep "not found" || unresolved=1; \
+    done && \
+    [ "$unresolved" = 0 ] || { echo "FATAL: unresolved shared libraries listed above; add each owning package to extensions.runtime-packages.txt"; exit 1; }
 
 # Install pgTAP for testing (v1.3.3)
 # hadolint ignore=DL3003
@@ -268,8 +268,12 @@ RUN set -euo pipefail && \
 # All setup is complete, now run as non-root user
 USER postgres
 
+# Build metadata ARGs (no defaults: CI/CD passes them). Declared after the last RUN because every RUN after an
+# ARG gets it in its environment and cache key, so a new BUILD_DATE would re-run each of them on every build.
+ARG BUILD_DATE
+ARG VCS_REF
+
 # OCI image labels with build metadata
-# Placed AFTER USER to prevent cache invalidation when BUILD_DATE/VCS_REF change
 # Labels ordered by stability: stable (vendor) → occasional (version) → frequent (BUILD_DATE/VCS_REF)
 LABEL org.opencontainers.image.vendor="fluxo-kt"
 LABEL org.opencontainers.image.title="aza-pg PostgreSQL 18.6 (Regression Test)"

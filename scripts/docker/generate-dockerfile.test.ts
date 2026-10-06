@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
  * Properties of the committed, generated Dockerfiles whose loss changes the shipped image or makes its
- * build unsafe: no unfilled template placeholder, fail-fast RUN chains (both Dockerfiles), a module-file
- * check per installed entry, locked cache mounts, a digest-pinned base, the security upgrade, and no
+ * build unsafe: no unfilled template placeholder, fail-fast RUN chains, a module-file check per
+ * installed entry, a shared-library check after the last package removal, locked cache mounts,
+ * digest-pinned bases, the security upgrade, build-metadata ARGs that leave the RUN cache alone, and no
  * whole-context COPY. Whether the committed file matches
  * the template is scripts/verify-generated.ts's job, not this file's.
  *
@@ -59,6 +60,19 @@ function topLevel(script: string): string {
   return text;
 }
 
+/** The text of the last build stage, from its FROM line on. */
+function finalStage(dockerfile: string): string {
+  return dockerfile.slice(dockerfile.lastIndexOf("\nFROM ") + 1);
+}
+
+const sourceToolBinaries = MANIFEST_ENTRIES.filter(
+  (e) =>
+    e.kind === "tool" &&
+    (e.install_via ?? "source") === "source" &&
+    (e.enabled ?? true) &&
+    e.binaryPath
+).map((e) => e.binaryPath as string);
+
 describe("Generated Dockerfile", () => {
   let dockerfile: string;
   let regression: string;
@@ -71,7 +85,9 @@ describe("Generated Dockerfile", () => {
   });
 
   test("no template placeholder is left unfilled", () => {
-    expect(dockerfile.match(/\{\{[A-Z0-9_]+\}\}/g) ?? []).toEqual([]);
+    expect([dockerfile, regression].flatMap((f) => f.match(/\{\{[A-Z0-9_]+\}\}/g) ?? [])).toEqual(
+      []
+    );
   });
 
   test("every RUN that chains commands starts with set -euo pipefail", () => {
@@ -135,44 +151,75 @@ describe("Generated Dockerfile", () => {
     expect(missing).toEqual([]);
   });
 
-  test("builders ship each source tool's binaryPath, checked by ldd, and never a whole bin directory", () => {
+  test("builders ship each source tool's binaryPath and never a whole bin directory", () => {
     // A whole-directory copy of the builder's /usr/local/bin once shipped bun and the build scripts.
     for (const file of [dockerfile, regression]) {
       expect(file.match(/^.*rsync[^\n]*\/bin\/ .*$/gm) ?? []).toEqual([]);
-      const tools = MANIFEST_ENTRIES.filter(
-        (e) =>
-          e.kind === "tool" &&
-          (e.install_via ?? "source") === "source" &&
-          (e.enabled ?? true) &&
-          e.binaryPath
+      expect(sourceToolBinaries.length).toBeGreaterThan(0);
+      const unshipped = sourceToolBinaries.filter(
+        (bin) => !file.includes(`install -D -m 0755 ${bin} /opt/ext-out${bin}`)
       );
-      expect(tools.length).toBeGreaterThan(0);
-      const unshipped = tools
-        .map((e) => e.binaryPath as string)
-        .filter(
-          (bin) =>
-            !file.includes(`install -D -m 0755 ${bin} /opt/ext-out${bin}`) ||
-            !file.includes(`! ldd ${bin} | grep "not found"`)
-        );
       expect(unshipped).toEqual([]);
     }
   });
 
+  test("every module, source library and source tool binary is ldd-checked after the last package removal", () => {
+    // apt-get purge --auto-remove drops libraries that only an unrelated package held; objects built from
+    // source declare no package dependency, so a check that runs before the purge certifies a broken image.
+    const pgMajor = MANIFEST_METADATA.pgVersion.split(".")[0];
+    for (const file of [dockerfile, regression]) {
+      const runs = runInstructions(file);
+      const check = runs.findLastIndex((run) => run.includes('ldd "$f"'));
+      const lastRemoval = runs.findLastIndex((run) =>
+        /apt-get (-\S+ )*(purge|remove|autoremove)\b/.test(run)
+      );
+      expect(check).toBeGreaterThanOrEqual(0);
+      expect(check).toBeGreaterThan(lastRemoval);
+      const objects = runs[check]!.match(/for f in ([^;]*); do/)?.[1]?.split(/\s+/) ?? [];
+      expect(objects).toEqual(
+        expect.arrayContaining([
+          `/usr/lib/postgresql/${pgMajor}/lib/*.so`,
+          "/usr/local/lib/*.so*",
+          ...sourceToolBinaries,
+        ])
+      );
+    }
+  });
+
   test("cache mounts use sharing=locked", () => {
-    const unlocked = dockerfile
-      .split("\n")
+    // builder-pgxs and builder-cargo run concurrently and both mount /root/.cache.
+    const unlocked = [dockerfile, regression]
+      .flatMap((file) => file.split("\n"))
       .filter((line) => line.includes("--mount=type=cache") && !line.trimStart().startsWith("#"))
       .filter((line) => !line.includes("sharing=locked"));
     expect(unlocked).toEqual([]);
   });
 
-  test("the postgres base image is digest-pinned", () => {
-    const baseImage = dockerfile.match(/^FROM .*postgres:.*/m)?.[0];
-    expect(baseImage).toMatch(/@sha256:[a-f0-9]{64}/);
+  test("every postgres base image is digest-pinned", () => {
+    for (const file of [dockerfile, regression]) {
+      const bases = file.match(/^FROM\s+postgres:.*$/gm) ?? [];
+      expect(bases.length).toBeGreaterThanOrEqual(2); // builder-base and the final stage
+      expect(bases.filter((line) => !/@sha256:[a-f0-9]{64}\b/.test(line))).toEqual([]);
+    }
   });
 
-  test("final image refreshes security updates before runtime package installs", () => {
-    expect(dockerfile).toContain("apt-get upgrade -y --no-install-recommends");
+  test("final image refreshes security updates before its first package install", () => {
+    // The pinned base digest freezes Debian packages at its build date; only the upgrade brings security fixes.
+    const commands = runInstructions(finalStage(dockerfile)).map(runBody).join("\n");
+    const upgrade = commands.indexOf("apt-get upgrade -y --no-install-recommends");
+    expect(upgrade).toBeGreaterThanOrEqual(0);
+    expect(upgrade).toBeLessThan(commands.indexOf("apt-get install"));
+  });
+
+  test("build-metadata ARGs come after the final stage's last RUN", () => {
+    // Every RUN after an ARG gets it in its environment and cache key; a per-build BUILD_DATE would
+    // re-run each of those RUNs on every build.
+    for (const file of [dockerfile, regression]) {
+      const stage = finalStage(file);
+      const firstArg = stage.search(/^ARG\s/m);
+      expect(firstArg).toBeGreaterThanOrEqual(0);
+      expect(runInstructions(stage.slice(firstArg))).toEqual([]);
+    }
   });
 
   test("no COPY of the whole build context", () => {

@@ -6,19 +6,14 @@ import {
   copySources,
   imageKey,
   packagesState,
+  readGitIndex,
   selectInputs,
-  type IndexEntry,
+  uncoveredSources,
 } from "./image-input-hash";
 
 const ROOT = join(import.meta.dir, "../..");
 const dockerfile = await Bun.file(join(ROOT, "docker/postgres/Dockerfile")).text();
-const index: IndexEntry[] = (await Bun.$`git ls-files -s -z`.cwd(ROOT).quiet().text())
-  .split("\0")
-  .filter(Boolean)
-  .map((line) => {
-    const [meta, path] = line.split("\t");
-    return { path: path!, blob: meta!.split(" ")[1]! };
-  });
+const index = await readGitIndex(ROOT);
 const sources = copySources(dockerfile);
 const inputs = selectInputs(index, sources);
 const DATES = ["a main/binary-amd64/Packages"];
@@ -26,13 +21,21 @@ const DATES = ["a main/binary-amd64/Packages"];
 describe("image input key", () => {
   test("every COPY source of the generated Dockerfile is a tracked file or directory", () => {
     expect(sources.length).toBeGreaterThan(10);
-    expect(sources.filter((s) => selectInputs(index, [s]).length === 0)).toEqual([]);
+    expect(uncoveredSources(index, sources)).toEqual([]);
   });
 
   test("COPY --from is skipped; flags and the destination are not sources", () => {
     expect(
       copySources("COPY --from=builder /opt/x /\nCOPY --chmod=0755 a.sh b.sh /dst/\nADD ./c /c")
     ).toEqual(["a.sh", "b.sh", "c"]);
+  });
+
+  test("every source of a COPY continued over several lines counts, comment lines included", () => {
+    expect(copySources("COPY a.sh \\\n  # first\n  b.sh \\\n  /dst/\n# x \\\nCOPY c /c")).toEqual([
+      "a.sh",
+      "b.sh",
+      "c",
+    ]);
   });
 
   test("editing a covered file changes the key; editing docs/ does not", () => {

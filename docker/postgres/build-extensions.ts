@@ -22,23 +22,6 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 // ────────────────────────────────────────────────────────────────────────────
-// CRITICAL: PGDG EXTENSION BEHAVIOR
-// ────────────────────────────────────────────────────────────────────────────
-// Disabled PGDG extensions (install_via==pgdg AND enabled==false) are NOT built
-// or apt-installed. They are filtered out in the Dockerfile's dynamic package
-// selection (add_if_enabled function).
-//
-// This is expected behavior because:
-// - PGDG extensions are pre-compiled binaries from apt, not source builds
-// - The Dockerfile conditionally installs only enabled PGDG packages
-// - This script never sees disabled PGDG extensions (they're skipped early)
-// - Only compiled extensions (build.type specified) are built regardless of enabled status
-//
-// Result: Disabled PGDG extensions cannot be verified via build/test cycle.
-// They are simply never installed in the image.
-// ────────────────────────────────────────────────────────────────────────────
-
-// ────────────────────────────────────────────────────────────────────────────
 // Type Definitions
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -401,11 +384,18 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   const installRoot = await ensureCargoPgrx(version);
   await ensurePgrxInitForVersion(installRoot, version);
 
-  // Remove Cargo.lock to avoid conflicts
-  const lockFile = join(dir, "Cargo.lock");
-  if (await Bun.file(lockFile).exists()) {
-    await $`rm -f ${lockFile}`;
-  }
+  // Build with the crate's own Cargo.lock under --locked: without it cargo resolves every dependency afresh, so
+  // one locked commit builds different Rust code from day to day while nothing in this repository changes.
+  // cargo reads the lock at the workspace root, which may sit above `dir`. cargo-pgrx has no --locked flag;
+  // it appends PGRX_BUILD_FLAGS to its `cargo build`.
+  const workspaceManifest = (
+    await $`cargo locate-project --workspace --message-format plain`.cwd(dir).text()
+  ).trim();
+  const lockFile = join(workspaceManifest, "..", "Cargo.lock");
+  const locked = await Bun.file(lockFile).exists();
+  if (!locked)
+    log(`${entry.name}: upstream ships no Cargo.lock; dependencies resolve at build time`);
+  const buildFlags = [Bun.env.PGRX_BUILD_FLAGS, locked ? "--locked" : ""].filter(Boolean).join(" ");
 
   const features = entry.build?.features || [];
   const noDefaultFeatures = entry.build?.noDefaultFeatures ? "--no-default-features" : "";
@@ -418,7 +408,7 @@ async function buildCargoPgrx(dir: string, entry: ManifestEntry): Promise<void> 
   // Bun's $ template requires separate arguments for flags, not array spreading
   // Spread Bun.env to preserve HOME, CARGO_HOME, RUSTUP_HOME etc. — bare .env({ PATH })
   // would strip them, breaking cargo's registry and toolchain resolution.
-  const cargoEnv = { ...Bun.env, PATH: pathEnv };
+  const cargoEnv = { ...Bun.env, PATH: pathEnv, PGRX_BUILD_FLAGS: buildFlags };
 
   // Bun's $ template requires separate arguments for flags, not array spreading
   if (features.length > 0 && noDefaultFeatures) {

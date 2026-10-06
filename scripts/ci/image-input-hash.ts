@@ -16,8 +16,10 @@
  * reuse a stale image.
  *
  * Not covered, and why that is acceptable: inputs fetched by version from the network (the Rust toolchain, bun,
- * extension git tags locked in extensions.manifest.json) follow tracked files; Percona/Timescale packages are
- * version-pinned. The key reads the git index, so locally uncommitted edits are invisible; CI checks out commits.
+ * extension git tags locked in extensions.manifest.json) follow tracked files, and so do a cargo extension's
+ * crates when its upstream ships a Cargo.lock (built with --locked); a crate without one resolves its dependencies
+ * at build time, unseen by the key. Percona/Timescale packages are version-pinned. The key reads the git index, so
+ * locally uncommitted edits are invisible; CI checks out commits.
  *
  * Usage: bun scripts/ci/image-input-hash.ts   (prints the key on stdout)
  */
@@ -36,7 +38,14 @@ export interface IndexEntry {
 /** Repo paths the Dockerfile's COPY/ADD instructions read (stage-to-stage copies excluded). */
 export function copySources(dockerfile: string): string[] {
   const sources = new Set<string>();
-  for (const line of dockerfile.split("\n")) {
+  // Like Docker's parser: drop comment lines, then join `\` continuations, so every source of a multi-line
+  // COPY is seen, not only those on its first line.
+  const instructions = dockerfile
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n")
+    .replace(/\\\r?\n/g, " ");
+  for (const line of instructions.split("\n")) {
     const m = line.match(/^\s*(?:COPY|ADD)\s+(.*)$/i);
     if (!m) continue;
     const args = m[1]!.trim();
@@ -55,6 +64,23 @@ export function copySources(dockerfile: string): string[] {
 export function selectInputs(index: IndexEntry[], sources: string[]): IndexEntry[] {
   const dirs = sources.map((s) => (s.endsWith("/") ? s : `${s}/`));
   return index.filter((e) => sources.includes(e.path) || dirs.some((d) => e.path.startsWith(d)));
+}
+
+/** Sources no tracked file satisfies (generated at build time, or ignored): they would change the image unseen. */
+export function uncoveredSources(index: IndexEntry[], sources: string[]): string[] {
+  return sources.filter((s) => selectInputs(index, [s]).length === 0);
+}
+
+/** The git index of the repository at `root`: each tracked path with its blob id. */
+export async function readGitIndex(root: string): Promise<IndexEntry[]> {
+  return (await Bun.$`git ls-files -s -z`.cwd(root).quiet().text())
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => {
+      // "<mode> <blob> <stage>\t<path>"
+      const [meta, path] = line.split("\t");
+      return { path: path!, blob: meta!.split(" ")[1]! };
+    });
 }
 
 export function imageKey(inputs: IndexEntry[], archiveStates: string[]): string {
@@ -131,17 +157,9 @@ async function archiveState(archive: Archive): Promise<string> {
 async function main(): Promise<void> {
   const dockerfile = await Bun.file(join(ROOT, DOCKERFILE)).text();
   const sources = [...ALWAYS, ...copySources(dockerfile)];
-  const index = (await Bun.$`git ls-files -s -z`.cwd(ROOT).quiet().text())
-    .split("\0")
-    .filter(Boolean)
-    .map((line) => {
-      // "<mode> <blob> <stage>\t<path>"
-      const [meta, path] = line.split("\t");
-      return { path: path!, blob: meta!.split(" ")[1]! };
-    });
+  const index = await readGitIndex(ROOT);
   const inputs = selectInputs(index, sources);
-  // A source no tracked file satisfies (generated at build time, or ignored) would change the image unseen.
-  const uncovered = sources.filter((s) => selectInputs(index, [s]).length === 0);
+  const uncovered = uncoveredSources(index, sources);
   if (uncovered.length > 0) {
     throw new Error(
       `COPY sources with no tracked file, so the key cannot see them: ${uncovered.join(", ")}`

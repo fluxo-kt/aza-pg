@@ -390,7 +390,7 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
  * found and those still present when it gave up. Containers go first: a volume or network still attached to one
  * cannot be removed.
  *
- * One list-and-remove pass is not enough on a loaded host: `docker rm -f` kills a container and then fails to remove
+ * One list-and-remove pass is not enough on a loaded host: `docker rm -f -v` kills a container and then fails to remove
  * it, and a killed `docker run` or `compose up` whose request the daemon had already accepted creates its container
  * after the listing. So passes repeat until a listing comes back empty, bounded by `deadlineMs`; what is left then
  * is returned, never assumed gone. Matching is done here, not by Docker's `name` filter, whose semantics differ

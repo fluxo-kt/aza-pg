@@ -13,7 +13,6 @@
 
 import { resolveImageTag } from "./image-resolver";
 import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
-import { runSQL } from "../../tests/fixtures/pgflow/install";
 
 const IMAGE = resolveImageTag();
 const CONTAINER = generateUniqueProjectName("aza-pg-pgflow");
@@ -54,15 +53,43 @@ function expectEqual(actual: string, expected: string, what: string): void {
   }
 }
 
-/** Runs SQL in one psql session (ON_ERROR_STOP) and returns its rows; throws with psql's error on failure. */
+/**
+ * Runs SQL in one psql session and returns its rows; throws with psql's error on failure.
+ * ON_ERROR_STOP makes psql exit non-zero on the first SQL error (without it psql exits 0 after a failed statement);
+ * -q drops command tags (SET, CREATE ...) so stdout holds only query rows.
+ */
 async function query(database: string, sql: string): Promise<string> {
-  const result = await runSQL(CONTAINER, database, sql);
-  if (!result.success) {
+  const proc = Bun.spawn(
+    [
+      "docker",
+      "exec",
+      "-i",
+      "-u",
+      "postgres",
+      CONTAINER,
+      "psql",
+      "-X",
+      "-q",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-d",
+      database,
+      "-t",
+      "-A",
+    ],
+    { stdin: new Blob([sql]), stdout: "pipe", stderr: "pipe" }
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
     // psql's CONTEXT block repeats whole function bodies; the ERROR and DETAIL lines carry the diagnosis.
-    const diagnosis = (result.stderr || result.stdout).split("\nCONTEXT:")[0];
+    const diagnosis = (stderr.trim() || stdout.trim()).split("\nCONTEXT:")[0];
     throw new Error(`SQL failed in ${database}: ${diagnosis}\n   SQL: ${sql.trim()}`);
   }
-  return result.stdout;
+  return stdout.trim();
 }
 
 async function dockerExec(args: string[]): Promise<{ code: number; output: string }> {

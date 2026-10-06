@@ -293,8 +293,8 @@ function localSchemaContent(filename: string, upstreamContent: string): string {
   return upstreamContent;
 }
 
-// Upstream's telemetry migration schedules a daily usage report to telemetry.pgflow.dev at install time. Art's
-// ruling: aza-pg never sends pgflow telemetry unless the operator enables it (pgflow_telemetry.enable()). The
+// Upstream's telemetry migration schedules a daily usage report to telemetry.pgflow.dev at install time. aza-pg
+// never sends pgflow telemetry unless the operator enables it (pgflow_telemetry.enable()). The
 // declarative schema used for fresh installs never schedules it, so the upgrade path drops the statement too; it
 // would also fail in any pgflow database without pg_cron.
 const TELEMETRY_SCHEDULE_SQL = `insert into pgflow_telemetry.job_registry (jobname, jobid)

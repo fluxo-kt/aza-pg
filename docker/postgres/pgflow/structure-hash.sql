@@ -4,6 +4,13 @@
 -- function settings and the aza_* helper functions were changed by aza-pg's own patches between image releases, so
 -- two databases of one pgflow release can differ there. Index names are dropped: a release defines the index, not
 -- the name a given install path chose. Prints one md5 (empty schema → md5 of the empty string).
+-- regclass, regprocedure and format_type print names relative to search_path, and a database owner can set it; fixed
+-- here, the hash depends on the structure alone (run with psql -q, or the SET's command tag precedes the md5).
+SET
+  search_path = pg_catalog,
+  pg_temp;
+
+
 SELECT
   md5(
     coalesce(

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { PGFLOW_VERSION } from "./version";
 
 const SCHEMA_PATH = "tests/fixtures/pgflow/schema.sql";
+const VERSIONS_PATH = "tests/fixtures/pgflow/upgrade/versions.tsv";
 const SECURITY_PATCHES_PATH = "docker/postgres/pgflow/security-patches.sql";
 
 async function readSchema(): Promise<string> {
@@ -65,6 +67,26 @@ describe("pgflow schema fixture", () => {
       .sort();
 
     expect(missing).toEqual([]);
+  });
+
+  // generate-schema.ts writes the version into both files, but only when someone runs it: a manifest bump without
+  // it ships the old schema under the new version's name, and the upgrade suite (which reads the image's own
+  // versions.tsv) stays green.
+  test("installs and upgrades to the manifest's pgflow version", async () => {
+    const schemaVersions = matches(
+      /COMMENT ON SCHEMA pgflow IS 'pgflow ([^']+)'/g,
+      await readSchema()
+    );
+    const upgradeTarget = (await Bun.file(VERSIONS_PATH).text())
+      .trim()
+      .split("\n")
+      .at(-1)
+      ?.split("\t")[0];
+
+    expect({ schema: schemaVersions.at(-1), upgradeTarget }).toEqual({
+      schema: PGFLOW_VERSION,
+      upgradeTarget: PGFLOW_VERSION,
+    });
   });
 
   test("does not include volatile generation metadata", async () => {

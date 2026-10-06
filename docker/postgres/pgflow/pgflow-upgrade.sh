@@ -18,12 +18,17 @@
 # shipped before the comment). Detection matters because an image never upgrades an existing database: one created
 # under an older image keeps that pgflow, whatever image runs it now, and a wrong starting version would skip
 # migrations without any error. A --from that contradicts the schema comment or the detected structure is refused.
+# A schema without pgflow.worker_functions is refused whatever --from says: every release this command upgrades from
+# has that table, and the images that shipped pgflow 0.13.x installed a schema without it.
 #
 # Per database, in ONE transaction (any error rolls the whole database back): upstream migrations newer than the
 # starting release, then aza-overrides.sql (aza-pg's versions of the functions the migrations leave different from a
 # fresh install), then security-patches.sql, then the new version comment. pgflow telemetry stays off, because
 # aza-pg never sends it unless the operator enables it: the bundled telemetry migration has its scheduling statement
 # removed.
+#
+# The upgrade runs as a superuser inside every database it upgrades, so with no DBNAME it also runs in databases whose
+# pgflow schema a non-superuser created; name the databases when such roles exist.
 set -euo pipefail
 
 # The shipped stacks allow local connections only as OS user postgres (pg_hba peer, mapped by pg_ident to any role),
@@ -34,10 +39,23 @@ fi
 
 readonly DIR=/opt/pgflow/upgrade
 readonly PSQL=(psql -X -v ON_ERROR_STOP=1 -U "${PGUSER:-${POSTGRES_USER:-postgres}}")
+# Reading the catalogs of a database runs under that database's search_path, which its owner may set
+# (ALTER DATABASE ... SET search_path) to put own objects named like catalog ones first; pg_catalog first keeps every
+# lookup on the real catalog. Client options outrank database and role settings, and the last -c wins.
+readonly PSQL_READ=(env "PGOPTIONS=${PGOPTIONS:-} -c search_path=pg_catalog,pg_temp" "${PSQL[@]}")
 
 die() {
   echo "pgflow-upgrade: $*" >&2
   exit 1
+}
+
+# psql -d parses a value containing "=" as a connection string, so a database name passed as is could pick host,
+# user or options of this superuser connection (any role that can create databases chooses the names). Quoted as
+# libpq requires, the name stays a name.
+dbname() {
+  local v=${1//\\/\\\\}
+  v=${v//\'/\\\'}
+  printf "dbname='%s'" "$v"
 }
 
 from=""
@@ -50,7 +68,8 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,24p' "$0"
+      # The header comment, however long it grows: everything after the shebang up to the first non-comment line.
+      awk 'NR > 1 { if (!/^#/) exit; print }' "$0"
       exit 0
       ;;
     -*) die "unknown option $1 (see --help)" ;;
@@ -67,35 +86,51 @@ last_migration_of() { awk -F'\t' -v v="$1" '!/^#/ && $1 == v { print $2 }' "$DIR
 known_versions() { awk -F'\t' '!/^#/ { printf "%s ", $1 }' "$DIR/versions.tsv"; }
 legacy_version_of() { awk -F'\t' -v h="$1" '!/^#/ && $1 == h { print $2 }' /opt/pgflow/legacy-structure.tsv; }
 
+failed=0
 if [ ${#dbs[@]} -eq 0 ]; then
-  mapfile -t candidates < <("${PSQL[@]}" -d postgres -Atc \
-    "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname")
+  # Captured, not read through a process substitution: its exit status is lost, so a failed listing would read as
+  # "no database has a pgflow schema".
+  listed=$("${PSQL_READ[@]}" -d postgres -Atc \
+    "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname") ||
+    die "cannot list the databases (connecting to database postgres failed; the error is above)"
+  mapfile -t candidates <<<"$listed"
   for db in "${candidates[@]}"; do
-    has=$("${PSQL[@]}" -d "$db" -Atc "SELECT 1 FROM pg_namespace WHERE nspname = 'pgflow'")
+    [ -n "$db" ] || continue
+    # One database refusing the connection must not hide the pgflow schemas of the others.
+    has=$("${PSQL_READ[@]}" -d "$(dbname "$db")" -Atc "SELECT 1 FROM pg_namespace WHERE nspname = 'pgflow'") || {
+      echo "pgflow-upgrade: $db: cannot connect (the error is above); skipped" >&2
+      failed=1
+      continue
+    }
     [ "$has" = 1 ] && dbs+=("$db")
   done
-  [ ${#dbs[@]} -gt 0 ] || die "no database has a pgflow schema; nothing to upgrade"
+  [ ${#dbs[@]} -gt 0 ] || die "no reachable database has a pgflow schema; nothing to upgrade"
 fi
 
-failed=0
 for db in "${dbs[@]}"; do
-  state=$("${PSQL[@]}" -d "$db" -Atc \
-    "SELECT count(*) || ':' || coalesce(max(obj_description(oid, 'pg_namespace')), '') FROM pg_namespace WHERE nspname = 'pgflow'") ||
-    die "cannot read database '$db'"
+  state=$("${PSQL_READ[@]}" -d "$(dbname "$db")" -Atc \
+    "SELECT count(*) || ':' || count(to_regclass('pgflow.worker_functions')) || ':' || coalesce(max(obj_description(oid, 'pg_namespace')), '') FROM pg_namespace WHERE nspname = 'pgflow'") || {
+    echo "pgflow-upgrade: $db: cannot connect (the error is above); skipped" >&2
+    failed=1
+    continue
+  }
   if [ "${state%%:*}" = 0 ]; then
     echo "pgflow-upgrade: $db: no pgflow schema; nothing to upgrade" >&2
+    failed=1
+    continue
+  fi
+  state=${state#*:}
+  # Checked on the defect itself, before --from is honoured: a 0.13.x schema whose structure was altered later (an
+  # added index) matches no legacy hash, and following the "rerun with --from" hint would replay migrations over it.
+  if [ "${state%%:*}" = 0 ]; then
+    echo "pgflow-upgrade: $db: this pgflow schema has no pgflow.worker_functions table, which every release this command upgrades from has; aza-pg images that shipped pgflow 0.13.x installed such an incomplete schema, and no migration replay turns it into a correct one; nothing changed" >&2
     failed=1
     continue
   fi
   recorded=$(sed -n 's/^pgflow \([0-9][0-9.]*\)$/\1/p' <<<"${state#*:}")
   detected=""
   if [ -z "$recorded" ]; then
-    detected=$(legacy_version_of "$("${PSQL[@]}" -d "$db" -At -f /opt/pgflow/structure-hash.sql)")
-  fi
-  if [ "$detected" = "-" ]; then
-    echo "pgflow-upgrade: $db: this pgflow schema was installed by an aza-pg image that shipped pgflow 0.13.x, whose schema matches no upstream release, so it cannot be migrated; nothing changed" >&2
-    failed=1
-    continue
+    detected=$(legacy_version_of "$("${PSQL_READ[@]}" -q -d "$(dbname "$db")" -At -f /opt/pgflow/structure-hash.sql)")
   fi
   known="${recorded:-$detected}"
   if [ -n "$from" ] && [ -n "$known" ] && [ "$from" != "$known" ]; then
@@ -131,7 +166,7 @@ for db in "${dbs[@]}"; do
     [ "${#pending[@]}" -eq 0 ] || (cd "$DIR/migrations" && awk 1 "${pending[@]}")
     awk 1 "$DIR/aza-overrides.sql" /opt/pgflow/security-patches.sql
     echo "COMMENT ON SCHEMA pgflow IS 'pgflow $target';"
-  } | "${PSQL[@]}" -1 -q -d "$db" >/dev/null || {
+  } | "${PSQL[@]}" -1 -q -d "$(dbname "$db")" >/dev/null || {
     echo "pgflow-upgrade: $db: upgrade from pgflow $start failed and was rolled back; the error is above" >&2
     failed=1
     continue

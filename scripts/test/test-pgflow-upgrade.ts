@@ -9,7 +9,9 @@
  * because NULL and the default ACL mean the same.
  *
  * Cases: the release's volume keeps its pgsodium key (the published one) and warns; a migration that fails rolls the whole database back (fingerprint byte-identical, files restored); the real
- * upgrade matches the fresh install; a second run says "up to date".
+ * upgrade matches the fresh install; a run the release left in flight is backfilled and completes; a second run says
+ * "up to date"; a database name that reads as a connection string stays a name; a schema without
+ * pgflow.worker_functions (the 0.13.x defect) is refused even with --from.
  *
  * --write-legacy-hashes: for every release that shipped pgflow before the "pgflow X.Y.Z" schema comment, measure the
  * structure hash pgflow-upgrade detects it by, assert the upgrade outcome (0.14.1 upgrades to the fresh fingerprint,
@@ -164,7 +166,8 @@ async function psql(container: string, sql: string): Promise<string> {
       container,
       "psql",
       "-X",
-      "-At",
+      // -q: rows only, no command tags (structure-hash.sql starts with a SET).
+      "-qAt",
       "-v",
       "ON_ERROR_STOP=1",
       "-U",
@@ -198,15 +201,16 @@ function expectSame(actual: string, expected: string, what: string): void {
 }
 
 /**
- * Lets `release` create a database on a new volume, then starts the image under test on that volume.
- * Returns the container name, the structure hash pgflow-upgrade detects the database by, and the release's pgsodium
- * key as derive_key(1) (a function of the root key alone).
+ * Lets `release` create a database on a new volume (running `seed` there, when given), then starts the image under
+ * test on that volume. Returns the container name, the structure hash pgflow-upgrade detects the database by, the
+ * release's pgsodium key as derive_key(1) (a function of the root key alone), and the seed's output.
  */
 async function onReleaseVolume(
   release: Release,
   index: number,
-  hashSql: string
-): Promise<{ container: string; hash: string; sodiumKey: string }> {
+  hashSql: string,
+  seed?: string
+): Promise<{ container: string; hash: string; sodiumKey: string; seeded: string }> {
   const volume = `${RUN_ID}-vol-${index}`;
   volumes.add(volume);
   await must(["volume", "create", volume]);
@@ -214,11 +218,28 @@ async function onReleaseVolume(
   await start(old, release.ref, volume);
   const hash = (await psql(old, hashSql)).trim();
   const sodiumKey = (await psql(old, DERIVE_KEY_SQL)).trim();
+  const seeded = seed === undefined ? "" : (await psql(old, seed)).trim();
   await remove(old);
   const container = `${RUN_ID}-new-${index}`;
   await start(container, IMAGE, volume);
-  return { container, hash, sodiumKey };
+  return { container, hash, sodiumKey, seeded };
 }
+
+// A run in flight, written through the release's own API: the migrations backfill queue names into existing steps
+// and tasks and repair task rows, and on a database without pgflow rows every such data step is a no-op that a
+// dropped or broken one would pass. The mixed-case slug makes the backfilled queue name, lower(flow_slug), differ
+// from the slug itself.
+const SEED_FLOW = "Seed_Flow";
+const SEED_WORKER = "00000000-0000-4000-8000-000000000001";
+const SEED_SQL = `
+SELECT pgflow.create_flow('${SEED_FLOW}') IS NOT NULL;
+SELECT pgflow.add_step('${SEED_FLOW}', 'first') IS NOT NULL;
+SELECT pgflow.add_step('${SEED_FLOW}', 'second', ARRAY['first']) IS NOT NULL;
+SELECT pgflow.start_flow('${SEED_FLOW}', '{}'::jsonb) IS NOT NULL;
+INSERT INTO pgflow.workers (worker_id, queue_name, function_name) VALUES ('${SEED_WORKER}', '${SEED_FLOW}', 'seed');
+SELECT count(*) FROM pgflow.start_tasks('${SEED_FLOW}', ARRAY(SELECT msg_id FROM pgmq.read('${SEED_FLOW}', 60, 1)), '${SEED_WORKER}');
+SELECT run_id || ' ' || step_slug || ' ' || status FROM pgflow.step_tasks WHERE flow_slug = '${SEED_FLOW}';
+`;
 
 const DERIVE_KEY_SQL = "SELECT encode(pgsodium.derive_key(1), 'hex')";
 
@@ -232,7 +253,15 @@ async function upgrade(
 
 async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
   const release = LEGACY.at(-1)!;
-  const { container, sodiumKey } = await onReleaseVolume(release, LEGACY.length - 1, hashSql);
+  const { container, sodiumKey, seeded } = await onReleaseVolume(
+    release,
+    LEGACY.length - 1,
+    hashSql,
+    SEED_SQL
+  );
+  const seededTask = /([0-9a-f-]{36}) first started$/.exec(seeded);
+  if (!seededTask) throw new Error(`seeding a run on ${release.ref} printed:\n${seeded}`);
+  const runId = seededTask[1]!;
   const before = await fingerprint(container);
 
   await test("the release's data volume keeps its pgsodium key and warns about it", async () => {
@@ -293,6 +322,30 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     );
   });
 
+  await test("the run in flight during the upgrade is backfilled and completes", async () => {
+    const queue = SEED_FLOW.toLowerCase();
+    const queues = await psql(
+      container,
+      `SELECT string_agg(DISTINCT coalesce(queue_name, 'NULL'), ',') FROM (
+         SELECT queue_name FROM pgflow.steps WHERE flow_slug = '${SEED_FLOW}'
+         UNION ALL SELECT queue_name FROM pgflow.step_tasks WHERE flow_slug = '${SEED_FLOW}') q`
+    );
+    if (queues.trim() !== queue) throw new Error(`steps/step_tasks queue_name: ${queues.trim()}`);
+    // The task the release's worker claimed completes, which queues the next step; that one is claimed and
+    // completed the way a worker of the new version does.
+    const worker = "00000000-0000-4000-8000-000000000002";
+    const status = await psql(
+      container,
+      `SELECT count(*) FROM pgflow.complete_task('${runId}', 'first', 0, '{"ok": true}'::jsonb);
+       INSERT INTO pgflow.workers (worker_id, queue_name, function_name) VALUES ('${worker}', '${queue}', 'upgraded');
+       SELECT count(*) FROM pgflow.start_tasks('${SEED_FLOW}', ARRAY(SELECT msg_id FROM pgmq.read('${queue}', 60, 1)), '${worker}', '${queue}');
+       SELECT count(*) FROM pgflow.complete_task('${runId}', 'second', 0, '{"ok": true}'::jsonb);
+       SELECT status FROM pgflow.runs WHERE run_id = '${runId}';`
+    );
+    if (status.trim() !== "1\n1\n1\ncompleted")
+      throw new Error(`complete, claim, complete, run status:\n${status.trim()}`);
+  });
+
   await test("a second run reports up to date and changes nothing", async () => {
     const after = await fingerprint(container);
     const r = await upgrade(container);
@@ -306,6 +359,55 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
       );
     expectSame(await fingerprint(container), after, "second run changed the database");
   });
+
+  await test("a database name that reads as a connection string is used as a name", async () => {
+    // psql -d parses a value with "=" as a connection string; passed as is, this name connects to the socket
+    // directory it names (the quote and the backslash check the quoting).
+    const name = "dbname=postgres host=/nonexistent it's\\";
+    const literal = `"${name}"`;
+    await psql(container, `CREATE DATABASE ${literal}`);
+    try {
+      const r = await upgrade(container);
+      if (
+        r.code !== 0 ||
+        r.output !== "postgres: pgflow " + (await target(container)) + ", up to date"
+      )
+        throw new Error(`exit ${r.code}:\n${r.output}`);
+    } finally {
+      await psql(container, `DROP DATABASE ${literal}`);
+    }
+  });
+
+  await test("a schema without pgflow.worker_functions is refused even with --from", async () => {
+    // The 0.13.x defect; an altered 0.13.x schema matches no legacy hash, and the tool then suggests --from.
+    await psql(container, "CREATE DATABASE pgflow_defect");
+    try {
+      await must([
+        "exec",
+        container,
+        "psql",
+        "-X",
+        "-q",
+        "-U",
+        "postgres",
+        "-d",
+        "pgflow_defect",
+        "-c",
+        "CREATE SCHEMA pgflow",
+      ]);
+      const r = await upgrade(container, "--from", "0.13.3", "pgflow_defect");
+      if (r.code === 0 || !/no pgflow\.worker_functions table.*nothing changed/.test(r.output))
+        throw new Error(`exit ${r.code}:\n${r.output}`);
+    } finally {
+      await psql(container, "DROP DATABASE pgflow_defect");
+    }
+  });
+}
+
+/** The pgflow version the image under test installs: the last line of its versions.tsv. */
+async function target(container: string): Promise<string> {
+  const last = await must(["exec", container, "tail", "-n", "1", `${UPGRADE_DIR}/versions.tsv`]);
+  return last.trim().split("\t")[0]!;
 }
 
 async function writeLegacyHashes(fresh: Promise<string>, hashSql: string): Promise<void> {

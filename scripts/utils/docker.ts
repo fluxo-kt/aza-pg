@@ -378,6 +378,15 @@ function scopedName(prefix: string): string {
   return `${prefix}-${scope ? `${scope}-` : ""}${lastStamp.toString(36)}-${process.pid.toString(36)}`;
 }
 
+/**
+ * `docker run` arguments putting PGDATA on tmpfs instead of the anonymous volume the image's `VOLUME` would create.
+ * A test container that never restarts needs no volume: tmpfs vanishes with the container, so nothing can leak or be
+ * mistaken for an operator's data, and initdb skips disk fsyncs (ready in ~2 s instead of 5–14 s on Docker Desktop).
+ * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
+ * re-runs initdb), nor under a `--memory` limit the test depends on (tmpfs pages count against it).
+ */
+export const EPHEMERAL_PGDATA = ["--tmpfs", "/var/lib/postgresql"];
+
 /** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {
   return scopedName(prefix);

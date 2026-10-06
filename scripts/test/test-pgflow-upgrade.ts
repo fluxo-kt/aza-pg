@@ -23,7 +23,7 @@
  */
 
 import { join } from "node:path";
-import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const IMAGE = resolveImageTag();
@@ -138,7 +138,7 @@ async function must(args: string[], stdin?: string): Promise<string> {
 /** Starts `image` (on `volume` when given) and returns once its final server answers. */
 async function start(name: string, image: string, volume?: string): Promise<void> {
   containers.add(name);
-  const mount = volume ? ["-v", `${volume}:/var/lib/postgresql`] : [];
+  const mount = volume ? ["-v", `${volume}:/var/lib/postgresql`] : EPHEMERAL_PGDATA;
   await must([
     "run",
     "-d",

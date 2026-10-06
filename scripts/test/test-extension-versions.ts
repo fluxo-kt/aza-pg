@@ -16,7 +16,7 @@
 import { $ } from "bun";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const image = resolveImageTag();
@@ -42,7 +42,7 @@ async function psql(sql: string): Promise<string> {
 }
 
 async function main(): Promise<string[]> {
-  await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${image}`.quiet();
+  await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet();
   await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   const failures: string[] = [];

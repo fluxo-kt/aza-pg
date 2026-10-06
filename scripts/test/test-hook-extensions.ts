@@ -12,7 +12,7 @@
  */
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
 
@@ -58,8 +58,8 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 
 try {
   await Promise.all([
-    $`docker run -d --name ${guarded} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
-    $`docker run -d --name ${unguarded} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preloadWithoutSafeupdate} ${image}`.quiet(),
+    $`docker run -d --name ${guarded} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
+    $`docker run -d --name ${unguarded} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preloadWithoutSafeupdate} ${image}`.quiet(),
   ]);
   await Promise.all([
     waitForPostgres({ container: guarded, timeout: TIMEOUTS.startup }),

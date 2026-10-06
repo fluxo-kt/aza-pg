@@ -19,7 +19,7 @@ import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const IMAGE = resolveImageTag();
@@ -464,9 +464,8 @@ async function dryRun(row: Row, stub: string): Promise<void> {
       "--rm",
       "--name",
       name,
-      // tmpfs over the image's PGDATA volume: no anonymous volume to create and copy into, nothing left behind
-      "--tmpfs",
-      "/var/lib/postgresql",
+      // The stub entrypoint never runs initdb, so PGDATA stays empty and the --memory limit is unaffected.
+      ...EPHEMERAL_PGDATA,
       "--network",
       "none",
       ...row.docker,
@@ -543,6 +542,7 @@ async function realBoot(
       name,
       "-e",
       `POSTGRES_PASSWORD=autoconfig-${process.pid}`,
+      // No EPHEMERAL_PGDATA: tmpfs pages count against --memory, so the boot would run with less memory than tuned for.
       ...dockerArgs,
       IMAGE,
     ]);

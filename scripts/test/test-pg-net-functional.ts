@@ -13,6 +13,7 @@
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import {
+  EPHEMERAL_PGDATA,
   generateUniqueContainerName,
   generateUniqueProjectName,
   waitForPostgres,
@@ -81,8 +82,8 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 try {
   await $`docker network create ${network}`.quiet();
   await Promise.all([
-    $`docker run -d --name ${echo} --network ${network} --entrypoint perl ${image} -e ${ECHO_SERVER}`.quiet(),
-    $`docker run -d --name ${db} --network ${network} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
+    $`docker run -d --name ${echo} ${EPHEMERAL_PGDATA} --network ${network} --entrypoint perl ${image} -e ${ECHO_SERVER}`.quiet(),
+    $`docker run -d --name ${db} ${EPHEMERAL_PGDATA} --network ${network} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
   const echoDeadline = Date.now() + TIMEOUTS.health * 1000;
   while (

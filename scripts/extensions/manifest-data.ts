@@ -440,7 +440,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       notes: [
         "PGDG: postgresql-18-plpgsql-check",
-        "2.10 ships no 2.9 -> 2.10 upgrade script: databases created on an older image error until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;",
+        "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;",
       ],
     },
     sourceUrl: "https://github.com/okbob/plpgsql_check",

@@ -8,7 +8,6 @@ Comprehensive guide for testing PostgreSQL extensions in aza-pg, covering critic
 2. [Regression Testing](#regression-testing)
 3. [Regression Test Suites](#regression-test-suites)
    - [Extension Regression Tests (Tier 2)](#extension-regression-tests-tier-2)
-   - [Expected Output Generation Status](#expected-output-generation-status)
    - [pgTAP](#pgtap)
 4. [Session Isolation Pattern](#session-isolation-pattern)
 5. [Testing Extension Functionality](#testing-extension-functionality)

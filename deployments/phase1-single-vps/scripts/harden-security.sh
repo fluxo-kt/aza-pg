@@ -58,8 +58,9 @@ log_info "2. Setting file permissions..."
 
 chmod 600 "$DEPLOY_DIR/.env" 2>/dev/null || log_warn ".env not found"
 # PgBouncer runs as uid 70 and must own the file to read it at mode 600
-chown 70:70 "$DEPLOY_DIR/pgbouncer/userlist.txt" 2>/dev/null && chmod 600 "$DEPLOY_DIR/pgbouncer/userlist.txt" ||
+if ! { chown 70:70 "$DEPLOY_DIR/pgbouncer/userlist.txt" && chmod 600 "$DEPLOY_DIR/pgbouncer/userlist.txt"; } 2>/dev/null; then
     log_warn "userlist.txt: chown 70:70 / chmod 600 failed (file missing, or not root)"
+fi
 chmod 600 "$DEPLOY_DIR/pgbackrest/pgbackrest.conf" 2>/dev/null || log_warn "pgbackrest.conf not found"
 
 if [ -d "$DEPLOY_DIR/ssl" ]; then

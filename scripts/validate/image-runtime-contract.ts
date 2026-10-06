@@ -5,15 +5,15 @@
  * Why: deployments/, examples/ and docs/ hand-copy the stacks' setup and no test suite boots them, so they drifted
  * silently into deployments that cannot start or cannot be reached. Each rule below is a startup or connection
  * failure measured against the PG18 image, not a style preference:
- *   1. Data volume at /var/lib/postgresql. PG18 keeps PGDATA at /var/lib/postgresql/<major>/docker; its entrypoint
- *      refuses to start when something is mounted at the pre-18 `/var/lib/postgresql/data`.
- *   2. POSTGRES_BIND_IP=0.0.0.0 inside the container when the compose file runs other services. The image uses it
+ *   1. POSTGRES_BIND_IP=0.0.0.0 inside the container when the compose file runs other services. The image uses it
  *      as listen_addresses with default 127.0.0.1, so pgbouncer, exporters and replicas get "connection refused".
- *   3. POSTGRES_MEMORY is an integer in MB. The entrypoint exits on "5GB"-style values.
- *   4. No `/var/lib/postgresql/data` used as a path in any tracked text (a mount target, a file under it, a command
- *      argument, an assignment). It is the pre-18 Docker convention, so it is what memory and old examples produce.
+ *   2. POSTGRES_MEMORY is an integer in MB. The entrypoint exits on "5GB"-style values.
+ *   3. No `/var/lib/postgresql/data` used as a path in any tracked text (a volume mount, a file under it, a command
+ *      argument, an assignment). PG18 keeps PGDATA at /var/lib/postgresql/<major>/docker and its entrypoint refuses
+ *      to start with a mount at the pre-18 path, which is what memory and old examples produce. Scanning lines rather
+ *      than parsed volumes also catches `"${VOL:-name}:<path>"` mounts, whose `:` inside the default defeats a split.
  *      Naming it as the legacy path inside backticks stays legal.
- * Compose override files (compose.<name>.yml beside a compose.yml) are merged onto that base, so rule 2 judges the
+ * Compose override files (compose.<name>.yml beside a compose.yml) are merged onto that base, so rule 1 judges the
  * base only. The stacks are also booted by their suites; this check is the only detector for everything else.
  *
  * Usage: bun scripts/validate/image-runtime-contract.ts   (exit 1 lists each file:line with the fix)
@@ -23,7 +23,6 @@ import { Glob } from "bun";
 type Service = {
   image?: string;
   environment?: Record<string, unknown> | string[];
-  volumes?: unknown[];
 };
 const problems: string[] = [];
 // Assembled so this file does not contain the literal it forbids.
@@ -61,14 +60,6 @@ for (const file of composeFiles) {
   for (const [name, svc] of Object.entries(services)) {
     if (!svc.image?.includes("aza-pg")) continue;
     const where = `${file} (service ${name})`;
-    for (const v of svc.volumes ?? []) {
-      const target = typeof v === "string" ? v.split(":")[1] : (v as { target?: string }).target;
-      if (target === LEGACY || target?.startsWith(`${LEGACY}/`)) {
-        problems.push(
-          `${where}: volume target ${target} — mount the data volume at /var/lib/postgresql; PG18 refuses to start on the pre-18 path`
-        );
-      }
-    }
     const e = env(svc);
     if (!isOverride && Object.keys(services).length > 1) {
       const bind = e.has("POSTGRES_BIND_IP")
@@ -91,7 +82,7 @@ for (const file of composeFiles) {
   }
 }
 
-// Rule 4: the legacy path used as a path. Legal only as a mention: wrapped in backticks, or at the start of a line
+// Rule 3: the legacy path used as a path. Legal only as a mention: wrapped in backticks, or at the start of a line
 // (the entrypoint's quoted error output). Anything else — `:` mount, `=` assignment, a file under it, a command
 // argument — is a use that breaks on PG18.
 const tracked = (await Bun.$`git ls-files -z`.quiet().text())
@@ -100,7 +91,7 @@ const tracked = (await Bun.$`git ls-files -z`.quiet().text())
 await Promise.all(
   tracked.map(async (file) => {
     const text = await Bun.file(file).text();
-    // Rule 3 for .env files and documented env lines: the value must be digits, a variable or a `<placeholder>`.
+    // Rule 2 for .env files and documented env lines: the value must be digits, a variable or a `<placeholder>`.
     for (const [i, line] of text.split("\n").entries()) {
       const mem = /\bPOSTGRES_MEMORY=["']?([^\s"'#`,)]+)/.exec(line)?.[1];
       if (mem && !/^(\d+|\$.*|<[^>]+>)$/.test(mem))

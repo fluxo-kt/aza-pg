@@ -903,7 +903,10 @@ function generateMarkdown(
   lines.push("## ✅ Verification");
   lines.push("");
   lines.push("```bash");
-  lines.push("# Verify Cosign signature (keyless OIDC)");
+  // Signatures use the Sigstore bundle format: cosign 2 finds none without --new-bundle-format.
+  lines.push(
+    "# Verify Cosign signature (keyless OIDC; cosign 3, or cosign 2 with --new-bundle-format)"
+  );
   lines.push("cosign verify \\");
   lines.push(
     `  --certificate-identity-regexp="^https://github.com/${REPO_OWNER}/${REPO_NAME}/" \\`

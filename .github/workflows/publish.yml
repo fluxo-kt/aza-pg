@@ -965,12 +965,7 @@ jobs:
 
           **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
 
-          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
-
-          ```bash
-          # Search Rekor for this image
-          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
-          ```
+          Use cosign 3; cosign 2 needs `--new-bundle-format`, or it reports "no signatures found". `cosign verify` also checks that each signature is recorded in the Rekor transparency log.
 
           ## Supply Chain Verification
 
@@ -985,7 +980,7 @@ jobs:
 
           # Verify with Cosign
           cosign verify-attestation \
-            --type slsaprovenance \
+            --type slsaprovenance1 \
             --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
@@ -1251,6 +1246,14 @@ jobs:
           gh attestation verify \
             "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
             --owner fluxo-kt
+
+          # The cosign route to the same provenance, as docs/PRODUCTION.md and the run summary give it;
+          # running it here keeps the documented --type valid (slsaprovenance, the v0.2 type, matches nothing).
+          cosign verify-attestation \
+            --type slsaprovenance1 \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" > /dev/null
 
   cleanup:
     name: Cleanup Testing Artifacts

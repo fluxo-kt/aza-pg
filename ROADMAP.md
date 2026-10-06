@@ -14,6 +14,10 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 `.github/workflows/build-postgres-image.yml` tags images `dev-${{ github.ref_name }}`; a `/` in the branch name makes an invalid image reference and the run fails at the merge step. Fix: compute one sanitised tag in an early step and use it everywhere.
 
+### Manual image builds push an arm64 image no test ever starts
+
+`.github/workflows/build-postgres-image.yml` builds and pushes arm64, but its `test` job runs every group on amd64 only, so arm-only build or runtime breakage reaches the registry unseen. `publish.yml` already runs the `extensions` group on `ubuntu-24.04-arm`; copy that matrix entry and its `runs-on` fallback.
+
 ### Scripts redeclare the manifest shape
 
 Several scripts declare their own `ManifestEntry` instead of importing the one in `scripts/extensions/manifest-data.ts`, so a renamed manifest field still compiles there and reads `undefined`. Several Docker suites likewise carry their own psql wrapper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`.

@@ -4,20 +4,20 @@
 #
 # PURPOSE:
 # --------
-# Comprehensive test suite for all PRs and commits to main/dev branches.
+# Comprehensive test suite for all PRs and pushes to main/dev/release.
 # Validates code quality, builds Docker image, and runs extensive test suite.
 #
 # PIPELINE STRUCTURE:
 # ------------------
 # 1. lint-workflows - Workflow syntax/expression validation
-# 2. validate       - Fast validation, unit tests, manifest checks
-# 3. build          - Build Docker image, export as artifact
+# 2. validate       - bun run validate:all (static checks, unit tests, shell/YAML/Dockerfile lint), repo health
+# 3. build          - Build the image unless actions/cache already holds one with its image-input key
 # 4. test           - One job per suite group of scripts/test-all.ts (the only list of Docker suites)
 # 5. ci-complete    - Final gate, summary
 #
 # PARALLELIZATION:
 # ---------------
-# - validate runs first (fast checks)
+# - lint-workflows runs first, then validate
 # - build depends on validate
 # - test-* jobs run in parallel after build completes
 # - ci-complete waits for all tests
@@ -33,8 +33,6 @@
 # - Automatic on PR/push (not manual)
 # - Single-platform amd64 only (not multi-arch)
 # - No registry push (actions/cache-based sharing)
-# - More comprehensive test coverage
-# - Faster feedback (parallel tests)
 #
 # ============================================================================
 
@@ -107,25 +105,6 @@ jobs:
 
       - name: Repository health check
         run: bun scripts/ci/repository-health-check.ts
-
-      - name: Generate job summary
-        if: always()
-        run: |
-          set -euo pipefail
-          {
-            echo "### Validation Summary :white_check_mark:"
-            echo ""
-            echo "**Branch:** \`${{ github.ref_name }}\`"
-            echo "**Commit:** \`${{ github.sha }}\`"
-            echo ""
-            echo "**Checks performed:**"
-            echo "- ✅ Full validation (lint, formatting, type-checking, docs links, shell/yaml/docker checks)"
-            echo "- ✅ Base image digest resolvability check"
-            echo "- ✅ Unit tests (auto-config, utils)"
-            echo "- ✅ Manifest validation"
-            echo "- ✅ Generated files sync (Dockerfile, configs, docs)"
-            echo "- ✅ Repository health check"
-          } >> "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================
   # Job 2: Build (only when no cached image has this commit's image-input key)

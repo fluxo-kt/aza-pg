@@ -230,7 +230,11 @@ async function validate(
   const coreChecks: ValidationCheck[] = [
     {
       name: "Environment File Check",
-      command: ["sh", "-c", "! git ls-files | grep -E '/\\.env$' | grep -v '\\.env\\.example'"],
+      command: [
+        "sh",
+        "-c",
+        "! git ls-files | grep -E '(^|/)\\.env(\\.[^/]*)?$' | grep -v '\\.env\\.example$'",
+      ],
       description: "Verify no .env files are tracked (only .env.example allowed)",
       required: true,
     },

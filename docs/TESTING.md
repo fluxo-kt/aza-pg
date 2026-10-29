@@ -371,10 +371,10 @@ await runSQL(`
 
 ```bash
 # pg_plan_filter (preload library plan_filter)
-POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,plan_filter"
+POSTGRES_SHARED_PRELOAD_LIBRARIES="timescaledb,auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,plan_filter"
 
 # supautils requires shared_preload_libraries for GUC parameters
-POSTGRES_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb,supautils"
+POSTGRES_SHARED_PRELOAD_LIBRARIES="timescaledb,auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,supautils"
 ```
 
 **Note**: Hook-based extensions don't use CREATE EXTENSION - they load via preload libraries.
@@ -419,11 +419,7 @@ sudo pacman -S docker-credential-helpers
 
 **Why This Happens**: The image has a built-in `DEFAULT_SHARED_PRELOAD_LIBRARIES` in the entrypoint (auto-generated from manifest). When tests override this env var, they may miss required modules.
 
-**Image Default** (auto-generated from manifest):
-
-```
-auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb
-```
+**Image Default**: [the generated image contents](../docker/postgres/IMAGE-CONTENTS.txt) shows the manifest's preload order.
 
 **Fix**: Don't override unless testing override behavior:
 

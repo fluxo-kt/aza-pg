@@ -1,7 +1,7 @@
 /**
  * Canonical catalog of extensions and tools bundled with the aza-pg image.
  * ═══════════════════════════════════════════════════════════════════════════
- * THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR ALL VERSION INFORMATION.
+ * THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR BUNDLED-IMAGE VERSION INFORMATION.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Edit this file to upgrade/downgrade extensions. Run:
@@ -17,16 +17,16 @@ export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.6",
   /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf",
+  baseImageSha: "sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4",
   /**
    * Rust toolchain for the source-built extensions (pgrx). Pinned rather than `stable` so a rebuild compiles with the
    * same compiler and a bump changes the Dockerfile (and with it CI's image key); check-updates.ts reports newer ones.
    */
-  rustToolchain: "1.99.0",
+  rustToolchain: "1.99.1",
   /** Multi-arch digest of rust:<rustToolchain>-slim-trixie, the builder's Rust toolchain; re-resolve on every bump. */
-  rustImageSha: "sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273",
+  rustImageSha: "sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247",
   /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the builder's Bun; re-resolve on every Bun bump. */
-  bunImageSha: "sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73",
+  bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
 } as const;
 
 /** A C library compiled from a release tarball because Debian trixie's package is too old. */
@@ -384,13 +384,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     install_via: "pgdg",
     pgdgPackage: "hypopg",
     soFileName: "hypopg.so",
-    pgdgVersion: "1.4.3-1.pgdg13+2",
+    pgdgVersion: "1.4.4-1.pgdg13+1",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
     source: {
       type: "git",
       repository: "https://github.com/HypoPG/hypopg.git",
-      tag: "1.4.3",
+      tag: "1.4.4",
     },
     build: { type: "pgxs" },
     runtime: {
@@ -409,7 +409,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/index_advisor.git",
-      tag: "v0.2.0",
+      tag: "v0.2.1",
     },
     build: { type: "pgxs" },
     dependencies: ["hypopg"],
@@ -424,22 +424,22 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "plpgsql_check",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "plpgsql-check",
+    // PGDG trails the passive-mode composite-variable fix; use the existing PGXS build path.
+    install_via: "source",
     soFileName: "plpgsql_check.so",
-    pgdgVersion: "2.10.12-1.pgdg13+1",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
     source: {
       type: "git",
       repository: "https://github.com/okbob/plpgsql_check.git",
-      tag: "v2.10.12",
+      tag: "v2.10.16",
     },
+    build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "PGDG: postgresql-18-plpgsql-check",
+        "Source build includes the passive-mode composite-variable fix ahead of PGDG.",
         "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;",
       ],
     },
@@ -552,7 +552,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/wrappers.git",
-      tag: "v0.6.3",
+      tag: "v0.6.4",
     },
     build: {
       type: "cargo-pgrx",
@@ -577,7 +577,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgroonga/pgroonga.git",
-      tag: "4.0.9",
+      tag: "4.1.0",
     },
     build: { type: "meson", mesonOptions: ["-Dtest=false"] },
     aptPackages: [
@@ -728,14 +728,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/vault.git",
-      tag: "v0.3.1",
+      tag: "v0.3.2",
     },
     build: { type: "pgxs" },
     sourceLibraries: ["libsodium"],
-    dependencies: ["pgsodium"],
     runtime: {
-      // Preloaded by default: vault 0.3 loads its encryption key from pgsodium at preload time, and
-      // without the preload vault.create_secret fails.
+      // Vault reads pgsodium_getkey independently at startup; both extensions need the same retained
+      // root key for existing ciphertext to remain readable across restart and restore.
       sharedPreload: true,
       defaultEnable: true,
       notes: [
@@ -806,7 +805,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/tembo-io/pgmq.git",
-      tag: "v1.13.0",
+      tag: "v1.13.1",
     },
     build: { type: "pgxs", subdir: "pgmq-extension" },
     runtime: {
@@ -964,7 +963,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.30.2~debian13-1806",
+    timescaleVersion: "2.31.0~debian13-1806",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -972,7 +971,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/timescale/timescaledb.git",
-      tag: "2.30.2",
+      tag: "2.31.0",
     },
     runtime: {
       sharedPreload: true,
@@ -1020,18 +1019,17 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/eulerto/wal2json.git",
-      tag: "wal2json_2_6",
+      tag: "wal2json_2_7",
     },
-    install_via: "percona",
-    perconaPackage: "percona-postgresql-18-wal2json",
-    perconaVersion: "1:2.6-5.trixie",
+    // Both apt suppliers still ship 2.6; PGXS retains the current PostgreSQL 18 decoding fixes.
+    install_via: "source",
     soFileName: "wal2json.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "Installed via Percona ppg-18 repository; PGDG also packages wal2json, but Percona is already required for pg_stat_monitor.",
+        "Built from source because PGDG and Percona trail the PostgreSQL 18 decoding fixes.",
         "Requires wal_level=logical in postgresql.conf for CDC functionality.",
       ],
     },
@@ -1131,7 +1129,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     kind: "tool",
     // Never below 2.59.3: it fixes weak encryption sub-keys and salts.
     install_via: "pgdg",
-    pgdgVersion: "2.59.3-1.pgdg13+1",
+    pgdgVersion: "2.60.0-1.pgdg13+1",
     binaryPath: "/usr/bin/pgbackrest",
     postgresOwnedDirs: ["/var/lib/pgbackrest", "/var/log/pgbackrest", "/var/spool/pgbackrest"],
     category: "operations",
@@ -1139,7 +1137,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgbackrest/pgbackrest.git",
-      tag: "release/2.59.3",
+      tag: "release/2.60.0",
     },
     runtime: {
       sharedPreload: false,

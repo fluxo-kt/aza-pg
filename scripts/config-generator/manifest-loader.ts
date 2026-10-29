@@ -106,12 +106,16 @@ export function preloadLibraryName(entry: PreloadCandidate): string {
 /**
  * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
  * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
- * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
+ * safeupdate), with Timescale first and the rest sorted. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
  * reads this.
  * @throws Error when an entry's preloadLibraryName is empty (see preloadLibraryName)
  */
 export function getDefaultSharedPreloadLibraries(manifest: {
   entries: readonly PreloadCandidate[];
 }): string {
-  return manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort().join(",");
+  // Timescale's loader must precede pgaudit's hooks; alphabetical order can prevent startup.
+  const libraries = manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort();
+  const timescale = libraries.indexOf("timescaledb");
+  if (timescale >= 0) libraries.unshift(...libraries.splice(timescale, 1));
+  return libraries.join(",");
 }

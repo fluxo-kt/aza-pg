@@ -73,11 +73,12 @@ describe("getDefaultSharedPreloadLibraries", () => {
     ...fields,
   });
 
-  test("lists enabled sharedPreload+defaultEnable entries, sorted, comma-joined", () => {
+  test("keeps default preloads enabled and loads Timescale before pgaudit", () => {
     const result = getDefaultSharedPreloadLibraries({
       entries: [
         preload("timescaledb", { enabled: true }),
         preload("auto_explain"), // `enabled` absent counts as enabled
+        preload("pgaudit"),
         preload("disabled", { enabled: false }),
         preload("not_shared", { runtime: { sharedPreload: false, defaultEnable: true } }),
         preload("optional", { runtime: { sharedPreload: true, defaultEnable: false } }),
@@ -85,7 +86,7 @@ describe("getDefaultSharedPreloadLibraries", () => {
         { name: "no_runtime" },
       ],
     });
-    expect(result).toBe("auto_explain,timescaledb");
+    expect(result).toBe("timescaledb,auto_explain,pgaudit");
   });
 
   test("uses preloadLibraryName and sorts by it", () => {

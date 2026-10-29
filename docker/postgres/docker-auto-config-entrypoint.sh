@@ -15,7 +15,7 @@ readonly DEFAULT_RAM_MB=1024
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
 # POSTGRES_SHARED_PRELOAD_LIBRARIES replaces this list (optional ones such as supautils are added that way).
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb"
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="timescaledb,auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048

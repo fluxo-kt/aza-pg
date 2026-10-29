@@ -123,14 +123,14 @@
       "install_via": "pgdg",
       "pgdgPackage": "hypopg",
       "soFileName": "hypopg.so",
-      "pgdgVersion": "1.4.3-1.pgdg13+2",
+      "pgdgVersion": "1.4.4-1.pgdg13+1",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
       "source": {
         "type": "git",
         "repository": "https://github.com/HypoPG/hypopg.git",
-        "tag": "1.4.3",
-        "commit": "21d5461ad1868434cc47d9aa656d7afc2b24c464"
+        "tag": "1.4.4",
+        "commit": "4e564ebbd46e1ab365ad0d05ca4a2f19cf316ba7"
       },
       "build": {
         "type": "pgxs"
@@ -153,8 +153,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/index_advisor.git",
-        "tag": "v0.2.0",
-        "commit": "d37723555e6425f18e6a45cb0956ced2250a3fe7"
+        "tag": "v0.2.1",
+        "commit": "b41d1f5f42f8909091edd6752d1f5006d6535db3"
       },
       "build": {
         "type": "pgxs"
@@ -510,7 +510,7 @@
       "name": "pgbackrest",
       "kind": "tool",
       "install_via": "pgdg",
-      "pgdgVersion": "2.59.3-1.pgdg13+1",
+      "pgdgVersion": "2.60.0-1.pgdg13+1",
       "binaryPath": "/usr/bin/pgbackrest",
       "postgresOwnedDirs": [
         "/var/lib/pgbackrest",
@@ -522,8 +522,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgbackrest/pgbackrest.git",
-        "tag": "release/2.59.3",
-        "commit": "46cdca625a73403cad4774d97354a1fac1e91e51"
+        "tag": "release/2.60.0",
+        "commit": "2e1c4f2ba727c45a0a23d4b326905088dc15b1a1"
       },
       "runtime": {
         "sharedPreload": false,
@@ -624,8 +624,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.13.0",
-        "commit": "32c075bb6dbed66a303d1a792393c93e36c09a97"
+        "tag": "v1.13.1",
+        "commit": "8eab18272e50077ab9f72d9787296655f2849dcc"
       },
       "build": {
         "type": "pgxs",
@@ -678,8 +678,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.9",
-        "commit": "aaa0b6627ceb39f96079589cf4341557ca077dec"
+        "tag": "4.1.0",
+        "commit": "47d0252f76dccbdc2ebeee9ed6cf941dd9552bcc"
       },
       "build": {
         "type": "meson",
@@ -800,23 +800,24 @@
     {
       "name": "plpgsql_check",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "plpgsql-check",
+      "install_via": "source",
       "soFileName": "plpgsql_check.so",
-      "pgdgVersion": "2.10.12-1.pgdg13+1",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
       "source": {
         "type": "git",
         "repository": "https://github.com/okbob/plpgsql_check.git",
-        "tag": "v2.10.12",
-        "commit": "fb4c0aa1a969fbf927a01b18316f4e500a4c9110"
+        "tag": "v2.10.16",
+        "commit": "9a5c0ec4babebd5eb8e0db104c54f7ddb43fcc07"
+      },
+      "build": {
+        "type": "pgxs"
       },
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG: postgresql-18-plpgsql-check",
+          "Source build includes the passive-mode composite-variable fix ahead of PGDG.",
           "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;"
         ]
       },
@@ -936,17 +937,14 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/vault.git",
-        "tag": "v0.3.1",
-        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
+        "tag": "v0.3.2",
+        "commit": "2f05b9be4dcac774a458d5a9e6acae794eb6b8c4"
       },
       "build": {
         "type": "pgxs"
       },
       "sourceLibraries": [
         "libsodium"
-      ],
-      "dependencies": [
-        "pgsodium"
       ],
       "runtime": {
         "sharedPreload": true,
@@ -991,15 +989,15 @@
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-2-postgresql-18",
-      "timescaleVersion": "2.30.2~debian13-1806",
+      "timescaleVersion": "2.31.0~debian13-1806",
       "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
       "source": {
         "type": "git",
         "repository": "https://github.com/timescale/timescaledb.git",
-        "tag": "2.30.2",
-        "commit": "b0977bf2d3a5014ee870247be09bc19d3e9f7a5f"
+        "tag": "2.31.0",
+        "commit": "4fa2a7c6b579171a1a8966fd87a0d4189ebab43b"
       },
       "runtime": {
         "sharedPreload": true,
@@ -1119,12 +1117,10 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/eulerto/wal2json.git",
-        "tag": "wal2json_2_6",
-        "commit": "75629c2e1e81a12350cc9d63782fc53252185d8d"
+        "tag": "wal2json_2_7",
+        "commit": "1fd8720d0145fba505822727c30cf0c5cc96f66f"
       },
-      "install_via": "percona",
-      "perconaPackage": "percona-postgresql-18-wal2json",
-      "perconaVersion": "1:2.6-5.trixie",
+      "install_via": "source",
       "soFileName": "wal2json.so",
       "build": {
         "type": "pgxs"
@@ -1133,7 +1129,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "Installed via Percona ppg-18 repository; PGDG also packages wal2json, but Percona is already required for pg_stat_monitor.",
+          "Built from source because PGDG and Percona trail the PostgreSQL 18 decoding fixes.",
           "Requires wal_level=logical in postgresql.conf for CDC functionality."
         ]
       },
@@ -1149,8 +1145,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.3",
-        "commit": "44dc1996d859a718be7517212218188ad657858b"
+        "tag": "v0.6.4",
+        "commit": "1f5b3f6905bd5b2c5d0299957c374994297cf373"
       },
       "build": {
         "type": "cargo-pgrx",

@@ -15,10 +15,9 @@
 
 import {
   loadManifest,
-  preloadLibraryName,
-  type Manifest,
-  type ResolvedEntry,
+  getDefaultSharedPreloadLibraries,
 } from "../config-generator/manifest-loader";
+import type { Manifest, ResolvedEntry } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 
@@ -61,11 +60,6 @@ function generateContents(manifest: Manifest): string {
   const sqlOnlySchemas = enabled.filter((e) => e.kind === "extension" && e.runtime?.preloadOnly);
   const builtins = enabled.filter((e) => e.kind === "builtin");
   const tools = enabled.filter((e) => e.kind === "tool");
-
-  // Preloaded modules (default enabled + sharedPreload)
-  const preloaded = enabled.filter(
-    (e) => e.runtime?.sharedPreload === true && e.runtime?.defaultEnable === true
-  );
 
   // Extensions section
   lines.push("═══════════════════════════════════════════════════════════════");
@@ -121,10 +115,7 @@ function generateContents(manifest: Manifest): string {
   lines.push("═══════════════════════════════════════════════════════════════");
   lines.push("");
 
-  const preloadNames = preloaded
-    .map((e) => preloadLibraryName(e))
-    .sort()
-    .join(", ");
+  const preloadNames = getDefaultSharedPreloadLibraries(manifest).replaceAll(",", ", ");
   lines.push(`  ${preloadNames}`);
   lines.push("");
   lines.push(`  Configure via POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable.`);

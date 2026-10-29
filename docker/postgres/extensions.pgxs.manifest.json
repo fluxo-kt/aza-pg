@@ -8,8 +8,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/index_advisor.git",
-        "tag": "v0.2.0",
-        "commit": "d37723555e6425f18e6a45cb0956ced2250a3fe7"
+        "tag": "v0.2.1",
+        "commit": "b41d1f5f42f8909091edd6752d1f5006d6535db3"
       },
       "build": {
         "type": "pgxs"
@@ -141,8 +141,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/tembo-io/pgmq.git",
-        "tag": "v1.13.0",
-        "commit": "32c075bb6dbed66a303d1a792393c93e36c09a97"
+        "tag": "v1.13.1",
+        "commit": "8eab18272e50077ab9f72d9787296655f2849dcc"
       },
       "build": {
         "type": "pgxs",
@@ -193,8 +193,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgroonga/pgroonga.git",
-        "tag": "4.0.9",
-        "commit": "aaa0b6627ceb39f96079589cf4341557ca077dec"
+        "tag": "4.1.0",
+        "commit": "47d0252f76dccbdc2ebeee9ed6cf941dd9552bcc"
       },
       "build": {
         "type": "meson",
@@ -253,6 +253,33 @@
       "docsUrl": "https://michelp.github.io/pgsodium"
     },
     {
+      "name": "plpgsql_check",
+      "kind": "extension",
+      "install_via": "source",
+      "soFileName": "plpgsql_check.so",
+      "category": "quality",
+      "description": "Static analyzer for PL/pgSQL functions and triggers.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/okbob/plpgsql_check.git",
+        "tag": "v2.10.16",
+        "commit": "9a5c0ec4babebd5eb8e0db104c54f7ddb43fcc07"
+      },
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "Source build includes the passive-mode composite-variable fix ahead of PGDG.",
+          "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;"
+        ]
+      },
+      "sourceUrl": "https://github.com/okbob/plpgsql_check",
+      "docsUrl": "https://github.com/okbob/plpgsql_check#readme"
+    },
+    {
       "name": "supabase_vault",
       "displayName": "vault",
       "kind": "extension",
@@ -261,14 +288,13 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/vault.git",
-        "tag": "v0.3.1",
-        "commit": "6e0cd916242d922a646e4d611cc215e09dd429f4"
+        "tag": "v0.3.2",
+        "commit": "2f05b9be4dcac774a458d5a9e6acae794eb6b8c4"
       },
       "build": {
         "type": "pgxs"
       },
       "sourceLibraries": ["libsodium"],
-      "dependencies": ["pgsodium"],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
@@ -304,6 +330,33 @@
       },
       "sourceUrl": "https://github.com/supabase/supautils",
       "docsUrl": "https://github.com/supabase/supautils#readme"
+    },
+    {
+      "name": "wal2json",
+      "kind": "tool",
+      "category": "cdc",
+      "description": "Logical decoding output plugin streaming JSON data for CDC.",
+      "source": {
+        "type": "git",
+        "repository": "https://github.com/eulerto/wal2json.git",
+        "tag": "wal2json_2_7",
+        "commit": "1fd8720d0145fba505822727c30cf0c5cc96f66f"
+      },
+      "install_via": "source",
+      "soFileName": "wal2json.so",
+      "build": {
+        "type": "pgxs"
+      },
+      "runtime": {
+        "sharedPreload": false,
+        "defaultEnable": false,
+        "notes": [
+          "Built from source because PGDG and Percona trail the PostgreSQL 18 decoding fixes.",
+          "Requires wal_level=logical in postgresql.conf for CDC functionality."
+        ]
+      },
+      "sourceUrl": "https://github.com/eulerto/wal2json",
+      "docsUrl": "https://github.com/eulerto/wal2json#readme"
     }
   ],
   "sourceLibraries": {

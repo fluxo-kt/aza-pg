@@ -156,22 +156,11 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 ### 4.1 — Squash dev onto current branch
 
 ```bash
-# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
-# If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
 # The preflight's DEV_SQUASH_TIP, not the moving dev ref: the Dev-Squash-Tip trailer then names exactly what was squashed.
-if ! git merge --squash DEV_SQUASH_TIP; then
-  echo "ABORT: Merge conflicts detected. Conflicting files:"
-  git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
-  echo ""
-  echo "Recovering to clean state:"
-  git reset HEAD
-  git checkout -- .
-  git clean -fd          # Remove untracked files introduced by git merge --squash dev
-  bun install
-  echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
-  exit 1
-fi
+git merge --squash DEV_SQUASH_TIP
 ```
+
+This cannot conflict: the preflight proved release's HEAD is the anchor's second parent, so it is the merge base and the squash stages exactly dev's tree. A conflict means that proof broke: stop and report to Art (see [Stopping a release](#stopping-a-release)).
 
 Verify changes were staged (should not be empty once the preflight passed):
 
@@ -227,21 +216,7 @@ bun run validate:all
 
 - CHANGELOG issues → edit directly, then `git add CHANGELOG.md`
 
-**Non-trivial** (ABORT — user fixes on dev, re-runs /release):
-- TypeScript type errors
-- Failed unit tests
-- Missing files or broken imports
-- shellcheck errors in new shell scripts
-
-Abort sequence:
-
-```bash
-git reset HEAD           # Unstage everything (index → HEAD)
-git checkout -- .        # Restore working tree to HEAD
-git clean -fd            # Remove untracked files introduced by git merge --squash dev
-bun install              # Restore release branch's node_modules
-echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
-```
+**Anything else** (type errors, failing tests, broken imports, shellcheck): the staged tree is dev's, so the defect is on dev. Stop the release (below), fix it on dev, then re-run /release.
 
 ### 4.4 — Apply CHANGELOG optimisations
 
@@ -437,23 +412,11 @@ Only works if history is perfectly linear (fast-forward). If the push to `main` 
 
 ---
 
-## Appendix C: Interruption Recovery
+## Stopping a release
 
-If the process is interrupted mid-execution:
+Interrupted before the commit: resume where it stopped; the staged squash is still valid (`git merge --squash` leaves no merge in progress).
 
-```bash
-# Assess state
-git status
-
-# If changes staged but not committed: can resume (edit → stage → commit) or abort
-# git merge --squash does NOT set MERGE_HEAD — no "merge in progress" state
-
-# To abort from any point and return to clean state:
-git reset HEAD           # Unstage everything
-git checkout -- .        # Restore working tree to HEAD
-git clean -fd            # Remove untracked files introduced by git merge --squash dev
-bun install              # Restore release branch's node_modules
-```
+To stop instead, the agent does not discard anything (the Bash hook refuses `git checkout`, and discarding is Art's call): report the failure and ask Art to run `! git reset --hard HEAD && bun install`. Nothing else needs undoing: the preflight required a clean tree, so every change present came from the squash, and the squash staged its new files, which the reset removes too.
 
 ---
 

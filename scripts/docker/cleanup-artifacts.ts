@@ -7,6 +7,8 @@
  *   - images:  dangling images whose OCI label `org.opencontainers.image.title` starts with "aza-pg"
  *              (set in docker/postgres/Dockerfile.template).
  *   - builder: the dedicated `aza-pg-builder` buildx builder + its cache (recreated on next build).
+ *   - test leftovers: containers, volumes and networks named by a test whose creating process has exited
+ *              (sweepOrphanedTestResources in utils/docker.ts; the name carries that pid).
  *
  * Volumes are only REPORTED, never removed: dangling anonymous volumes whose PGDATA `postgresql.auto.conf` contains
  * `app.aza_pg_custom` (ALTER SYSTEM-set by docker-entrypoint-initdb.d/00-aza-pg-settings.sh). That marker proves the
@@ -24,7 +26,7 @@
  * Usage: bun scripts/docker/cleanup-artifacts.ts [--dry-run]
  */
 
-import { dockerRun, isDockerDaemonRunning } from "../utils/docker";
+import { dockerRun, isDockerDaemonRunning, sweepOrphanedTestResources } from "../utils/docker";
 import { info, section, success, warning } from "../utils/logger";
 
 const AZA_IMAGE_TITLE_PREFIX = "aza-pg";
@@ -181,11 +183,18 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [images, volumes, builderPresent] = await Promise.all([
+  const [images, volumes, builderPresent, orphans] = await Promise.all([
     azaDanglingImages(),
     azaDanglingVolumes(),
     azaBuilderExists(),
+    sweepOrphanedTestResources(DRY_RUN),
   ]);
+  if (orphans.found.length > 0)
+    info(
+      `${DRY_RUN ? "Would remove" : "Removed"} leftovers of killed test runs: ${orphans.found.join(", ")}`
+    );
+  if (orphans.remaining.length > 0)
+    warning(`Could not remove test leftovers: ${orphans.remaining.join(", ")}`);
 
   const imageBytes = images.reduce((sum, im) => sum + im.size, 0);
   info(

@@ -398,6 +398,68 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
 }
 
 /**
+ * The name scopedName generated a test resource from (`prefix-[scope-]stamp-pid`), and the pid of the process that
+ * created it; null for any other name. Compose derives names from a project root (`<root>-<service>-1`,
+ * `<root>_<volume>`, `<root>_default`), so the root is found as the first 8-character base36 stamp that decodes to a
+ * time between 2024 and now, followed by a pid segment. A prefix word of 8 letters ("security") decodes to a far
+ * future time, so it is never mistaken for the stamp. This decides what orphan sweeps DELETE: anything it cannot parse
+ * is left alone.
+ */
+export function testResourceOwner(name: string): { root: string; pid: number } | null {
+  if (!name.startsWith("aza-pg-")) return null;
+  const segments = name.split("_")[0]!.split("-");
+  for (let i = 2; i + 1 < segments.length; i++) {
+    const [stamp, pid] = [segments[i]!, segments[i + 1]!];
+    if (!/^[0-9a-z]{8}$/.test(stamp) || !/^[0-9a-z]{1,5}$/.test(pid)) continue;
+    const ms = parseInt(stamp, 36);
+    if (ms < Date.UTC(2024, 0, 1) || ms > Date.now() + 86_400_000) continue;
+    return { root: segments.slice(0, i + 2).join("-"), pid: parseInt(pid, 36) };
+  }
+  return null;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM: the process exists but belongs to another user.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Removes test containers, volumes and networks whose creating process has exited: a suite run on its own and killed
+ * (Ctrl-C, crash), or a test-all that was itself killed, never reaches its teardown or test-all's per-suite sweep.
+ * A live owner means a run still in progress, perhaps in another worktree, so its resources are left alone; a reused
+ * pid only postpones removal to a later sweep. test-all runs this before its suites; `bun run cleanup` runs it too.
+ */
+export async function sweepOrphanedTestResources(
+  dryRun = false
+): Promise<{ found: string[]; remaining: string[] }> {
+  const listed = await Promise.all(
+    [
+      ["ps", "-a", "--format", "{{.Names}}"],
+      ["volume", "ls", "--format", "{{.Name}}"],
+      ["network", "ls", "--format", "{{.Name}}"],
+    ].map(async (cmd) => {
+      const proc = spawn(["docker", ...cmd], { stdout: "pipe", stderr: "ignore" });
+      const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+      return out.split("\n");
+    })
+  );
+  const roots = new Set<string>();
+  for (const name of listed.flat()) {
+    const owner = testResourceOwner(name);
+    if (owner && !processAlive(owner.pid)) roots.add(owner.root);
+  }
+  if (roots.size === 0) return { found: [], remaining: [] };
+  const pattern = new RegExp(`^(?:${[...roots].join("|")})(?:$|[-_])`);
+  if (dryRun) return { found: listed.flat().filter((n) => pattern.test(n)), remaining: [] };
+  return sweepTestScope(pattern);
+}
+
+/**
  * Removes every container, volume and network whose name matches `names` (see TEST_SCOPE_ENV); returns every name it
  * found and those still present when it gave up. Containers go first: a volume or network still attached to one
  * cannot be removed.

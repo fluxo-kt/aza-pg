@@ -11,7 +11,8 @@
  * killed at its timeout never runs its own teardown, and one that passed but left anything behind fails. Suites
  * run in parallel up to the CPU count: each one isolates its containers, volumes, networks and ports, so order and
  * neighbours must not matter (--shuffle proves it). Any failed suite, or a run over the lane's 5 min ceiling, makes
- * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep.
+ * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep. Before the
+ * suites, whatever earlier killed runs left is removed (sweepOrphanedTestResources).
  *
  * Usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
  *   --group    default: every group except "nightly", which reruns the "regression" suites in regression mode
@@ -21,7 +22,12 @@
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { ensureImageAvailable, sweepTestScope, TEST_SCOPE_ENV } from "./utils/docker";
+import {
+  ensureImageAvailable,
+  sweepOrphanedTestResources,
+  sweepTestScope,
+  TEST_SCOPE_ENV,
+} from "./utils/docker";
 import { DEFAULT_TEST_IMAGE } from "./test/image-resolver";
 
 export const GROUPS = [
@@ -295,6 +301,11 @@ async function main(): Promise<void> {
     `Image ${image}; groups ${groups.join(", ")}; ${queue.length} suites, ${workers} at a time`
   );
   await ensureImageAvailable(image);
+  const orphans = await sweepOrphanedTestResources();
+  if (orphans.found.length > 0)
+    console.log(`Removed what killed earlier test runs left: ${orphans.found.join(", ")}`);
+  if (orphans.remaining.length > 0)
+    console.log(`⚠️  Could not remove earlier runs' leftovers: ${orphans.remaining.join(", ")}`);
 
   const started = performance.now();
   const outcomes: Outcome[] = [];

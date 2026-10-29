@@ -37,7 +37,8 @@ for (const entry of manifest.entries) {
   groups.set(entry.category, bucket);
 }
 
-const escape = (text: string) => text.replace(/\|/g, "\\|");
+// Backslash too: a cell ending in `\` would otherwise turn the escaped `\|` back into a column break.
+const escape = (text: string) => text.replace(/[\\|]/g, (c) => `\\${c}`);
 
 /**
  * Generate a clickable version link to the appropriate GitHub page.

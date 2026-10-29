@@ -4,45 +4,43 @@ import {
   generateUniqueContainerName,
   generateUniqueProjectName,
   TEST_SCOPE_ENV,
-  testResourceOwner,
+  testResourceOwnerPid,
 } from "./docker";
 
-// testResourceOwner decides what the orphan sweep DELETES: a name it parses whose pid is dead is removed. The tests
-// try to make it select something that is not a test resource, or to misread the owner of one that is.
+// testResourceOwnerPid decides what the orphan sweep DELETES: a name whose owner pid is dead is removed. The tests try
+// to make it claim a name no test generated, or misread the owner of one that a test did.
 
-describe("testResourceOwner", () => {
-  test("finds the creating pid in generated names and every name compose derives from them", () => {
+describe("testResourceOwnerPid", () => {
+  test("reads the creating pid from generated names and every name compose derives from them", () => {
     for (const scope of [undefined, "tsshx14"]) {
       if (scope) Bun.env[TEST_SCOPE_ENV] = scope;
       else delete Bun.env[TEST_SCOPE_ENV];
-      // An 8-letter word ("security") in the prefix must not be read as the stamp.
       for (const root of [
         generateUniqueContainerName("aza-pg-security-db"),
         generateUniqueProjectName("aza-pg-primary-test"),
-      ]) {
-        for (const name of [
-          root,
-          `${root}-postgres-primary`,
-          `${root}_postgres_data`,
-          `${root}_default`,
-        ])
-          expect(testResourceOwner(name)).toEqual({ root, pid: process.pid });
-      }
+      ])
+        for (const name of [root, `${root}-postgres-1`, `${root}_postgres_data`, `${root}_default`])
+          expect(testResourceOwnerPid(name)).toBe(process.pid);
     }
     delete Bun.env[TEST_SCOPE_ENV];
   });
 
-  test("leaves operator, build and foreign names alone", () => {
+  test("claims no operator, build or foreign name", () => {
     for (const name of [
       "aza-pg-network",
       "aza-pg-builder",
+      "aza-pg-primary-test",
       "aza-pg_postgres_data",
       "primary_postgres_data",
       "buildx_buildkit_aza-pg-builder0_state",
-      "aza-pg-backup-2026-ssk", // no 8-character stamp
-      "aza-pg-security-db-ssk", // "security" decodes to a time after now
+      "my-aza-pg--ssk-x", // marker, but not an aza-pg name
       "04ad98f00db7f7e9dda912ffa58094ef9b4719c797b1b93da0dc9dcabf7c1b79",
     ])
-      expect(testResourceOwner(name)).toBeNull();
+      expect(testResourceOwnerPid(name)).toBeNull();
+  });
+
+  test("refuses a prefix that would hide the owner marker", () => {
+    for (const prefix of ["aza-pg--x", "other-prefix", "aza-pg-Upper"])
+      expect(() => generateUniqueContainerName(prefix)).toThrow();
   });
 });

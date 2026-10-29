@@ -6,7 +6,7 @@
  * Usage:
  *   bun scripts/validate.ts                       # Fast validation (oxlint, prettier, tsc, unit tests)
  *   bun scripts/validate.ts --fast                # Same as above (explicit)
- *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, hadolint, yaml, secret scan)
+ *   bun scripts/validate.ts --all                 # Full validation (includes shellcheck, yaml, secret scan)
  *   bun scripts/validate.ts --fix                 # Auto-fix: prettier --write, oxlint --fix, SQL formatting
  *   bun scripts/validate.ts --staged              # Run only on staged files (for pre-commit hooks)
  *   bun scripts/validate.ts --parallel            # Run checks concurrently, output buffered per check (default except --fix)
@@ -14,7 +14,6 @@
  *
  * Environment variables:
  *   ALLOW_MISSING_SHELLCHECK=1           # Don't fail if shellcheck not installed
- *   ALLOW_MISSING_HADOLINT=1             # Don't fail if Docker/hadolint unavailable
  *   ALLOW_MISSING_YAMLLINT=1             # Don't fail if Docker/yamllint unavailable
  */
 
@@ -22,12 +21,6 @@ import { getErrorMessage, isExecutableNotFoundError } from "./utils/errors";
 import { error, info, section, success, warning } from "./utils/logger";
 import { isDockerDaemonRunning } from "./utils/docker";
 import { summarizeResults } from "./validate-summary";
-
-// GHCR serves the same digest as Docker Hub without Hub's anonymous pull limit, which otherwise stops this gate from
-// running at all on a busy machine. Before bumping, run the new version on the Dockerfile: releases add rules and
-// false positives (2.15.1 forgot a stage's SHELL after ENV, hence ENV-before-SHELL in the template).
-export const HADOLINT_IMAGE =
-  "ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d";
 
 /**
  * Validation check configuration
@@ -238,24 +231,6 @@ async function validate(
       required: true,
     },
     {
-      name: "PGDG Version Validation",
-      // Fast mode reuses a passing result while the PGDG pins are unchanged (sha256 cache under
-      // node_modules/.cache/aza-pg); --all always asks PGDG, so upstream revision drift still fails CI.
-      command:
-        mode === "all"
-          ? ["bun", "scripts/validate/pgdg-versions-cached.ts", "--no-cache"]
-          : ["bun", "scripts/validate/pgdg-versions-cached.ts"],
-      // Scoped to PGDG: it is preinstalled in the base image, so madison is cheap, and the
-      // exact-match-latest rule uniquely catches pgdg packaging-revision drift that git-tag
-      // check-updates misses. Percona/Timescale versions are exact-pinned in the Dockerfile and
-      // enforced by the build's `apt-get install =version` (fails loud on removal) — see the
-      // header note in validate-pgdg-versions.ts for why no pre-build apt check is added here.
-      description: "PGDG apt-version availability (Percona/Timescale enforced by the build)",
-      required: true,
-      requiresDocker: true,
-      envOverride: "ALLOW_MISSING_DOCKER",
-    },
-    {
       name: "Generated Files Verification",
       command: ["bun", "scripts/verify-generated.ts"],
       description: "Fail when `bun run generate` would change any generated file",
@@ -419,16 +394,6 @@ async function validate(
       fast: true,
     },
     {
-      name: "Base Image SHA",
-      command: ["bun", "scripts/validate-base-image-sha.ts", "--check", "--require-latest-minor"],
-      // Blocking: an unresolvable digest or a PostgreSQL minor behind the floating major tag fails (a stale same-tag
-      // digest only warns, --check). CI's validate job runs it here, once.
-      description: "Base image digest resolvable and on the latest PostgreSQL minor",
-      required: true,
-      requiresDocker: true,
-      envOverride: "ALLOW_MISSING_DOCKER",
-    },
-    {
       name: "ShellCheck",
       // One command in CI and locally: no workflow uploads a shellcheck result file, and plain findings read better in a CI log.
       command: [
@@ -439,19 +404,6 @@ async function validate(
       description: "Shell script linting",
       required: true,
       envOverride: "ALLOW_MISSING_SHELLCHECK",
-    },
-    {
-      name: "Hadolint",
-      // One command in CI and locally (CI once failed only on error-level findings, so it passed what the local gate rejects).
-      command: [
-        "sh",
-        "-c",
-        `docker run --rm -i -v "$(pwd):/work:ro" ${HADOLINT_IMAGE} hadolint --config /work/.hadolint.yaml /work/docker/postgres/Dockerfile`,
-      ],
-      description: "Dockerfile linting",
-      required: true,
-      requiresDocker: true,
-      envOverride: "ALLOW_MISSING_HADOLINT",
     },
     {
       name: "YAML Lint",

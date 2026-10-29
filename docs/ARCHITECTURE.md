@@ -9,17 +9,16 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 │                         BUILD TIME (CI/CD)                          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Dockerfile (Multi-stage)                                           │
+│  flake.nix (Nix)                                                    │
 │  ┌──────────────────────────────┐                                   │
-│  │  builder-pgxs / builder-cargo│ source extensions at the commit   │
-│  │  - build into /opt/ext-out/  │ resolved from each manifest tag   │
+│  │  PostgreSQL + JIT (nixpkgs)  │ flake.lock pins nixpkgs           │
+│  │  extensions at their commit  │ resolved from each manifest tag   │
 │  └──────────────────────────────┘                                   │
 │           │                                                         │
 │           ▼                                                         │
 │  ┌──────────────────────────────┐                                   │
-│  │  final (digest-pinned base)  │                                   │
-│  │  - PGDG/Percona/Timescale    │ apt packages, version-pinned      │
-│  │  - COPY /opt/ext-out/        │                                   │
+│  │  nix/image.nix (layered)     │                                   │
+│  │  - runtime closure only      │ no package manager or compiler    │
 │  │  - entrypoint, configs       │                                   │
 │  └──────────────────────────────┘                                   │
 │           │                                                         │
@@ -94,56 +93,18 @@ High-level overview of the aza-pg PostgreSQL deployment system.
 
 ### 1. Build Time (Image Creation)
 
-**Input:** Dockerfile + SHA-pinned extension sources
+**Input:** `flake.nix` + `flake.lock` (the nixpkgs revision) + the generated manifest (each extension's commit)
 
 **Process:**
 
-- Packaged extensions install from the PGDG, Percona and Timescale apt repos at pinned versions
-- Builder stages (`builder-pgxs`, `builder-cargo`) build the source extensions at the commit resolved from each manifest tag
-- Final stage: copies the builders' `/opt/ext-out/` tree; no build tools; stage details in [BUILD.md "Multi-Stage Build"](BUILD.md#multi-stage-build)
+- nixpkgs builds PostgreSQL with JIT and without the features no container uses (reasons at each option in `flake.nix`); its install check runs PostgreSQL's own suite (`make check-world`)
+- `nix/extensions.nix` builds every enabled extension from its pinned commit, reusing a nixpkgs recipe where the entry names one
+- `nix/image.nix` streams a layered image (`dockerTools.streamLayeredImage`) whose closure is only what runs; `testNoBuildOnlyStorePaths` fails when a build-only path leaks in
 - Embeds auto-config entrypoint script
 
-**Output:** Single multi-arch image (amd64 + arm64) with SBOM/provenance
+**Output:** One image per architecture (amd64, arm64, each built natively), joined into a multi-arch tag with an SBOM of its exact closure
 
-**Docker Layer Caching Strategy:**
-
-The Dockerfile is optimized for maximum cache efficiency through careful layer ordering and builder stage design:
-
-_Cache Ordering Principles:_
-
-- Layers ordered from most stable (rare changes) to most volatile (frequent changes)
-- STABLE first → creates foundation cache layers that survive frequent rebuilds
-- VOLATILE last → minimizes cache invalidation impact when updated
-
-_Final Stage Layer Order:_
-
-1. Base image (`postgres:{PG}-trixie@sha256:…`) - immutable
-2. Runtime package list COPY - rare changes
-3. Runtime apt-get install - only invalidates on package list changes
-4. PGDG packages (ordered by stability) - STABLE extensions first, VOLATILE last
-5. Builder artifacts (compiled extensions) - moderate changes
-6. Base PostgreSQL config - rarely modified
-7. Runtime scripts (healthcheck, entrypoint) - occasional changes
-8. Metadata files (manifest copy, version-info.txt from IMAGE-CONTENTS.txt) - change with every manifest edit
-9. USER, LABELs, metadata - always last
-
-_Builder Stage Optimizations (CI/CD focused):_
-
-- builder-base: manifests copied AFTER the Rust and Bun toolchain installs, so a manifest edit does not reinstall them
-- builder-cargo: cargo registry and git cache mounts
-- Both builders: `strip --strip-debug` in parallel (`xargs -P$(nproc)`) and drop LLVM bitcode
-
-_Cache Mount Usage:_
-
-```dockerfile
-# General build cache (all stages)
-RUN --mount=type=cache,target=/root/.cache \
-    bun build-extensions.ts
-
-# Cargo dependency cache (builder-cargo only)
-RUN --mount=type=cache,target=/root/.cargo/registry \
-    cargo build
-```
+**Caching:** every package is its own store path keyed by its inputs, so a manifest edit rebuilds only that extension and the image. On a host without Nix the store lives in a Docker volume (`aza-pg-nix-<arch>`, `scripts/nix/nix.ts`), and in `.github/actions/setup-nix`'s cache in CI.
 
 **Security:** SHA pinning prevents tag mutation attacks (immutable commits)
 
@@ -260,7 +221,7 @@ Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] 
 ┌────────────────────────────────────────────────────────────┐
 │                    Supply Chain                            │
 │  - Extensions: SHA-pinned (immutable commits)              │
-│  - Base image: postgres:18-trixie (official)             │
+│  - Server and libraries: nixpkgs, pinned by flake.lock     │
 │  - SBOM/Provenance: Attestation via GitHub Actions         │
 └────────────────────────────────────────────────────────────┘
                               │
@@ -295,15 +256,15 @@ Nothing is overridden silently: at start the entrypoint logs one `[AUTO-CONFIG] 
 Build Time                Runtime                  Usage
 ─────────────────────────────────────────────────────────────
 pgvector                  CREATE EXTENSION         Vector
-(PGDG package) ────────► vector; ──────────────► similarity
+(source build) ────────► vector; ──────────────► similarity
                                                    search
 
 pg_cron                   CREATE EXTENSION         Job
-(PGDG package) ────────► pg_cron; ─────────────► scheduling
+(source build) ────────► pg_cron; ─────────────► scheduling
                           (default preload)
 
 pgAudit                   shared_preload_libraries Audit
-(PGDG package) ────────► pgaudit; ─────────────► logging
+(source build) ────────► pgaudit; ─────────────► logging
                           (default preload)
 
 pg_trgm (contrib)         CREATE EXTENSION         Fuzzy
@@ -430,8 +391,8 @@ Candidates for later work, and why some size/speed changes were not taken:
 
 **Build Time Reduction:**
 
-- **cargo-pgrx builds:** symbols are stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`); otherwise each crate keeps its upstream release profile (opt-level 3, fat LTO). A global `opt-level=s`/thin-LTO override once shrank timescaledb_toolkit (186MB → 13MB together with stripping) and was dropped once toolkit moved to the Timescale apt repo.
-- **PostgreSQL itself stays PGDG's `-O2` build:** PostgreSQL 18 already picks CRC-32C and popcount CPU instructions at runtime, and a pgbench comparison of PGDG, self-built `-O2` and `-O3 -flto` showed no gain above the ±25 % run-to-run spread. A self-built server would also have to replace files of the `postgresql-18` package that the PGDG and Percona extension packages depend on.
+- **cargo-pgrx builds:** Nix strips them; otherwise each crate keeps its upstream release profile. A global `opt-level=s`/thin-LTO override shrank timescaledb_toolkit from 186 MB to 13 MB together with stripping; measure it on the Nix build before adopting it.
+- **PostgreSQL stays at nixpkgs' release flags (`-O2`):** PostgreSQL 18 already picks CRC-32C and popcount CPU instructions at runtime, and a pgbench comparison of `-O2` and `-O3 -flto` builds showed no gain above the ±25 % run-to-run spread.
 
 **Potential Image Variant Strategy (Future Consideration):**
 

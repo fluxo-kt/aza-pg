@@ -94,7 +94,7 @@ bun scripts/test/test-extension-regression.ts        # Tier 2: extension SQL vs 
 
 ## Regression Test Suites
 
-PostgreSQL's own regression suite is not run: the image copies PGDG's server binary unchanged, so no image defect could fail it.
+PostgreSQL's own regression suite is not run here: the Nix build already runs it (`make check-world`, nixpkgs' install check) on the exact server the image ships.
 
 ### Extension Regression Tests (Tier 2)
 

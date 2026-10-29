@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  builderPresentInList,
   ids,
   isAnonymousVolume,
   isAzaImageTitle,
@@ -84,15 +83,6 @@ describe("isAnonymousVolume — a named volume is never a cleanup candidate", ()
     expect(isAnonymousVolume(hex.slice(1))).toBe(false);
     expect(isAnonymousVolume(hex.toUpperCase())).toBe(false);
     expect(isAnonymousVolume(`${hex}_data`)).toBe(false);
-  });
-});
-
-describe("builderPresentInList", () => {
-  test("detects the dedicated builder, ignores others", () => {
-    const ls =
-      "NAME/NODE          DRIVER\ndefault            docker\naza-pg-builder *   docker-container";
-    expect(builderPresentInList(ls)).toBe(true);
-    expect(builderPresentInList("default docker\nother-builder docker-container")).toBe(false);
   });
 });
 

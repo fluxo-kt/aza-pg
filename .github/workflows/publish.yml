@@ -571,11 +571,10 @@ jobs:
           image-ref: "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}"
           format: "sarif"
           output: "trivy-results.sarif"
-          # Only CVEs a rebuild or update can fix: Debian CVEs with no fix filled the Security tab with hundreds of
-          # alerts nobody could act on. All severities stay (trivy-action ignores `severity` for SARIF anyway unless
+          # Only CVEs a rebuild or update can fix: findings with no fix fill the Security tab with
+          # alerts nobody can act on. All severities stay (trivy-action ignores `severity` for SARIF anyway unless
           # limit-severities-for-sarif is set), so a fixable MEDIUM still shows up as update work.
           ignore-unfixed: "true"
-          skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
@@ -592,7 +591,6 @@ jobs:
           format: "table"
           severity: "CRITICAL,HIGH"
           ignore-unfixed: "true"
-          skip-files: "usr/local/bin/gosu"
           exit-code: "1" # Fail on fixable CRITICAL/HIGH vulnerabilities
 
       - name: Capture security scan diagnostics on failure
@@ -610,7 +608,6 @@ jobs:
             ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-full.txt || true
 
@@ -621,7 +618,6 @@ jobs:
             ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            --skip-files usr/local/bin/gosu \
             "${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}@${{ needs.merge.outputs.image_digest }}" \
             2>&1 | tee -a ${{ runner.temp }}/scan-diagnostics/trivy-results.json || true
 

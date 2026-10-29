@@ -45,9 +45,7 @@ export const BuildKindSchema = type(
  * - subdir: Optional subdirectory within repository to build
  * - features: Optional Cargo feature flags (for cargo-pgrx builds)
  * - noDefaultFeatures: Disable default Cargo features (for cargo-pgrx builds)
- * - mesonOptions: Optional Meson setup options (for meson builds)
  * - makeOptions: Optional make command-line assignments (for pgxs builds)
- * - script: Optional script identifier for custom build logic
  * - patches: Optional unified-diff file names in docker/postgres/patches/, applied with git apply before building
  */
 export const BuildSpecSchema = type({
@@ -55,9 +53,7 @@ export const BuildSpecSchema = type({
   "subdir?": "string",
   "features?": "string[]",
   "noDefaultFeatures?": "boolean",
-  "mesonOptions?": "string[]",
   "makeOptions?": "string[]",
-  "script?": "string",
   "patches?": "string[]",
 });
 
@@ -102,16 +98,8 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - runtime: Runtime behavior configuration
  * - dependencies: List of extension dependencies
  * - provides: List of features/extensions provided
- * - aptPackages: System packages required for building
- * - sourceLibraries: SOURCE_LIBRARIES keys the module links against (built first, shipped once)
  * - notes: General notes about the extension
- * - install_via: Installation method override ("pgdg"/"percona"/"timescale" for package, "source" to build)
- * - pgdgPackage: PGDG apt name suffix, postgresql-<major>-<pgdgPackage> (required when install_via="pgdg" for extensions)
- * - perconaVersion: Version string for Percona packages (required when install_via="percona")
- * - perconaPackage: Package name for Percona packages (required when install_via="percona")
- * - timescaleVersion: Version string for Timescale packages (required when install_via="timescale")
- * - timescalePackage: Package name for Timescale packages (required when install_via="timescale")
- * - soFileName: Shared object filename. Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
+ * - soFileName: Shared object file name when it differs from <name>.so; a tool shipping a server library names it here
  * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
  * - postgresOwnedDirs: Directories a tool writes by default; created postgres-owned 0750 in the image
  * - nix: how flake.nix builds the entry (nixpkgs package to reuse, or link inputs for a generic build)
@@ -128,15 +116,7 @@ export const ManifestEntrySchema = type({
   "runtime?": RuntimeSpecSchema,
   "dependencies?": "string[]",
   "provides?": "string[]",
-  "aptPackages?": "string[]",
-  "sourceLibraries?": "string[]",
   "notes?": "string[]",
-  "install_via?": "'pgdg'|'percona'|'timescale'|'source'",
-  "perconaVersion?": "string",
-  "perconaPackage?": "string",
-  "pgdgPackage?": "string",
-  "timescaleVersion?": "string",
-  "timescalePackage?": "string",
   "soFileName?": "string",
   "binaryPath?": "string",
   "postgresOwnedDirs?": "string[]",

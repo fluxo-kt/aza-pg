@@ -5,8 +5,7 @@
  * Safe on a shared, multi-project host because attribution uses aza-pg's OWN identity markers;
  * another project's images/volumes can never match:
  *   - images:  dangling images whose OCI label `org.opencontainers.image.title` starts with "aza-pg"
- *              (set in docker/postgres/Dockerfile.template).
- *   - builder: the dedicated `aza-pg-builder` buildx builder + its cache (recreated on next build).
+ *              (set in nix/image.nix).
  *   - test leftovers: containers, volumes and networks named by a test whose creating process has exited
  *              (sweepOrphanedTestResources in utils/docker.ts; the name carries that pid).
  *
@@ -21,7 +20,7 @@
  * other projects' orphaned artifacts. Every removal here is positively attributed to aza-pg.
  *
  * This script reclaims artifacts the build inherently leaves behind
- * (superseded images when a tag is rebuilt — `bun run build` already removes those itself — and builder cache).
+ * (superseded images when a tag is rebuilt; `bun run build` already removes those itself).
  *
  * Usage: bun scripts/docker/cleanup-artifacts.ts [--dry-run]
  */
@@ -31,7 +30,6 @@ import { info, section, success, warning } from "../utils/logger";
 
 const AZA_IMAGE_TITLE_PREFIX = "aza-pg";
 const AZA_VOLUME_MARKER = "app.aza_pg_custom";
-const AZA_BUILDER = "aza-pg-builder";
 const VOLUME_PROBE_BATCH = 30;
 
 const DRY_RUN = Bun.argv.includes("--dry-run");
@@ -50,7 +48,7 @@ export function ids(output: string): string[] {
 /**
  * True iff an image's OCI title marks it as an aza-pg build. Uses startsWith (anchored), NOT
  * includes: a foreign project whose name merely contains "aza-pg" (e.g. "my-aza-pg-fork") must NOT
- * match. aza-pg's own title is "aza-pg PostgreSQL <ver>" (docker/postgres/Dockerfile.template).
+ * match. aza-pg's own title is "aza-pg PostgreSQL <ver>" (nix/image.nix).
  */
 export function isAzaImageTitle(title: string | undefined): boolean {
   return !!title && title.startsWith(AZA_IMAGE_TITLE_PREFIX);
@@ -84,11 +82,6 @@ export function parseVolumeProbeMatches(probeOutput: string, batch: string[]): s
  */
 export function isAnonymousVolume(name: string): boolean {
   return /^[0-9a-f]{64}$/.test(name);
-}
-
-/** True iff the dedicated aza-pg buildx builder appears in `docker buildx ls` output. */
-export function builderPresentInList(buildxLsOutput: string): boolean {
-  return buildxLsOutput.split("\n").some((l) => l.trim().startsWith(AZA_BUILDER));
 }
 
 /** Dangling images whose OCI title marks them as aza-pg builds. Returns [id, sizeBytes]. */
@@ -148,12 +141,6 @@ async function azaDanglingVolumes(): Promise<string[]> {
   return matched;
 }
 
-/** Whether the dedicated aza-pg buildx builder currently exists. */
-async function azaBuilderExists(): Promise<boolean> {
-  const res = await dockerRun(["buildx", "ls"]);
-  return res.success && builderPresentInList(res.output);
-}
-
 // No -f: Docker then refuses an image a container still uses, so an operator's stopped container keeps its image.
 async function removeImages(images: Array<{ id: string }>): Promise<number> {
   let removed = 0;
@@ -162,7 +149,7 @@ async function removeImages(images: Array<{ id: string }>): Promise<number> {
 }
 
 /**
- * Removes the dangling aza-pg images only, leaving volumes and the builder cache alone. `bun run build` calls it
+ * Removes the dangling aza-pg images only, leaving volumes alone. `bun run build` calls it
  * after loading a new image: retagging untags the previous build (~1 GB), which nothing else would ever remove.
  */
 export async function reclaimDanglingAzaImages(): Promise<string> {
@@ -183,10 +170,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [images, volumes, builderPresent, orphans] = await Promise.all([
+  const [images, volumes, orphans] = await Promise.all([
     azaDanglingImages(),
     azaDanglingVolumes(),
-    azaBuilderExists(),
     sweepOrphanedTestResources(DRY_RUN),
   ]);
   if (orphans.found.length > 0)
@@ -199,7 +185,7 @@ async function main(): Promise<void> {
   const imageBytes = images.reduce((sum, im) => sum + im.size, 0);
   info(
     `Found: ${images.length} dangling aza-pg image(s) (${fmtMB(imageBytes)}), ` +
-      `${volumes.length} aza-pg PGDATA volume(s), builder=${builderPresent ? "present" : "absent"}`
+      `${volumes.length} aza-pg PGDATA volume(s)`
   );
 
   if (volumes.length > 0)
@@ -211,22 +197,13 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     for (const im of images) info(`  would remove image  ${im.id} (${fmtMB(im.size)})`);
-    if (builderPresent) info(`  would remove builder ${AZA_BUILDER} (+ its cache)`);
     success("Dry-run complete — no changes made");
     return;
   }
 
   const removedImages = await removeImages(images);
 
-  let removedBuilder = false;
-  if (builderPresent) {
-    removedBuilder = (await dockerRun(["buildx", "rm", AZA_BUILDER])).success;
-  }
-
-  success(
-    `Removed ${removedImages}/${images.length} image(s) (${fmtMB(imageBytes)})` +
-      `${builderPresent ? `, builder ${removedBuilder ? "removed" : "NOT removed"}` : ""}`
-  );
+  success(`Removed ${removedImages}/${images.length} image(s) (${fmtMB(imageBytes)})`);
 }
 
 // Only run when invoked directly (`bun run cleanup`), not when imported by tests.

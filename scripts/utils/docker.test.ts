@@ -33,6 +33,8 @@ describe("testResourceOwnerPid", () => {
       "aza-pg_postgres_data",
       "primary_postgres_data",
       "buildx_buildkit_aza-pg-builder0_state",
+      "aza-pg-nix-arm64",
+      "aza-pg-nix-arm64-cache",
       "my-aza-pg--ssk-x", // marker, but not an aza-pg name
       "04ad98f00db7f7e9dda912ffa58094ef9b4719c797b1b93da0dc9dcabf7c1b79",
     ])

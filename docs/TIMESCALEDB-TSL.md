@@ -32,7 +32,7 @@ Reference: [Timescale License](https://github.com/timescale/timescaledb/blob/mai
 
 ## How the Image Gets TSL
 
-The image installs TimescaleDB from Timescale's apt repository (`install_via: "timescale"` on the `timescaledb` entry of `scripts/extensions/manifest-data.ts`). The `timescaledb-2-postgresql-18` package is the full build, so it includes the TSL module; nothing is compiled from source.
+The Nix build compiles TimescaleDB from the commit the `timescaledb` entry of `scripts/extensions/manifest-data.ts` pins, with nixpkgs' `timescaledb` recipe, which builds the TSL module. nixpkgs marks that recipe unfree because of the TSL; `flake.nix` allows it (and `timescaledb_toolkit`) by name.
 
 **Rationale**:
 

@@ -7,12 +7,7 @@
 import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import type { Manifest, ResolvedEntry, ResolvedSource } from "../config-generator/manifest-loader";
-import {
-  MANIFEST_ENTRIES,
-  MANIFEST_METADATA,
-  SOURCE_LIBRARIES,
-  type SourceSpec,
-} from "./manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA, type SourceSpec } from "./manifest-data";
 
 async function resolveGitCommit(repo: string, tag: string): Promise<string> {
   const maxAttempts = 3;
@@ -63,7 +58,7 @@ const lockKey = (repository: string, tag: string) => `${repository}#${tag}`;
  * resolved to a commit once, when an entry's repository or tag changes, and the commit is reused after
  * that. `generate` runs in the pre-commit hook and in the freshness checks, so re-resolving every tag
  * there cost a minute of network round trips per run and made the output depend on the network. The
- * build clones this commit (build-extensions.ts), so a tag moved upstream later changes nothing that is
+ * build fetches this commit (nix/extensions.nix), so a tag moved upstream later changes nothing that is
  * built until someone edits the tag in manifest-data.ts.
  */
 async function readLockedCommits(): Promise<Map<string, string>> {
@@ -114,26 +109,13 @@ async function main() {
 
   const manifest: Manifest = {
     entries: resolved,
-    sourceLibraries: SOURCE_LIBRARIES,
     metadata: MANIFEST_METADATA,
   };
 
   await Bun.$`mkdir -p ${dirname(outputPath)}`;
   await Bun.write(outputPath, JSON.stringify(manifest, null, 2) + "\n");
 
-  const packages = Array.from(
-    new Set(
-      resolved
-        .flatMap((entry) => entry.aptPackages ?? [])
-        .filter((pkg): pkg is string => typeof pkg === "string" && pkg.length > 0)
-    )
-  ).toSorted((a, b) => a.localeCompare(b));
-  const packagesPath = join("docker", "postgres", "extensions.build-packages.txt");
-  await Bun.write(packagesPath, packages.join("\n") + "\n");
-
-  console.log(
-    `Wrote ${outputPath} with ${resolved.length} entries and ${packages.length} build packages.`
-  );
+  console.log(`Wrote ${outputPath} with ${resolved.length} entries.`);
 }
 
 await main();

@@ -116,7 +116,7 @@ let
 in
 pkgs.dockerTools.streamLayeredImage {
   name = "aza-pg";
-  tag = "pg${pgMajor}-nix";
+  tag = "pg${pgMajor}";
   # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
   # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
   contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;

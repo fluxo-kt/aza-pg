@@ -87,7 +87,7 @@ for (const file of composeFiles) {
 // argument — is a use that breaks on PG18.
 const tracked = (await Bun.$`git ls-files -z`.quiet().text())
   .split("\0")
-  .filter((f) => /\.(md|sh|ya?ml|ts|conf|example|sql)$|Dockerfile/.test(f));
+  .filter((f) => /\.(md|sh|ya?ml|ts|conf|example|sql)$/.test(f));
 await Promise.all(
   tracked.map(async (file) => {
     // Deleted from the working tree but still in the index: nothing left to break.

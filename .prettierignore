@@ -30,10 +30,6 @@ docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql
 .DS_Store
 Thumbs.db
 
-# Docker
-*.Dockerfile
-Dockerfile
-
 # Logs
 *.log
 test-results*.log

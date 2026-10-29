@@ -4,11 +4,13 @@
  *
  * flake.nix's `image` is a script that streams the image tarball (dockerTools.streamLayeredImage), so no tarball is
  * ever written to the store or the disk: the script runs where nix.ts runs Nix (natively or in its container), its stdout piped
- * straight into `docker load`. The default tag is aza-pg:pg<major>-nix, beside the Debian image's aza-pg:pg<major>;
- * --tag retags it after loading.
+ * straight into `docker load`. The default tag is aza-pg:pg<major>, the
+ * image the suites test by default; --tag retags it after loading. A rebuilt tag leaves the previous image dangling,
+ * so the build removes dangling aza-pg images.
  */
 
 import path from "node:path";
+import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
 import { nixCommand, nixPlatform } from "./nix";
 
 const tagIndex = Bun.argv.indexOf("--tag");
@@ -61,4 +63,5 @@ if (retag) {
   const tag = Bun.spawn(["docker", "tag", ref, retag], { stdout: "ignore", stderr: "inherit" });
   if ((await tag.exited) !== 0) process.exit(1);
 }
+console.error(`Reclaimed ${await reclaimDanglingAzaImages()}`);
 console.log(retag ?? ref);

@@ -323,12 +323,12 @@ async function main() {
       error(
         `Docker image '${imageName}' not found - REQUIRE_DOCKER is set, failing instead of skipping`
       );
-      info("Build the image first: docker build -t aza-pg:pg18 -f docker/postgres/Dockerfile .");
+      info("Build the image first: bun run build");
       info("Or set POSTGRES_IMAGE env var to point to an existing image");
       process.exit(1);
     }
     warning(`Docker image '${imageName}' not found - size regression check skipped`);
-    info("Build the image first: docker build -t aza-pg:pg18 -f docker/postgres/Dockerfile .");
+    info("Build the image first: bun run build");
     info("Or set POSTGRES_IMAGE env var to point to an existing image");
     return;
   }

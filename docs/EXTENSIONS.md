@@ -1,11 +1,11 @@
 # PostgreSQL Extension Inventory
 
-The `aza-pg` image ships a curated, SHA-pinned bundle of PostgreSQL extensions covering vector search, time-series analytics, full-text search, observability, security, and operations tooling. Each one comes from a pinned apt package (PGDG, Percona, Timescale) or is compiled from a commit-locked git revision, and is listed in one manifest ([sources](EXTENSION-SOURCES.md)).
+The `aza-pg` image ships a curated, SHA-pinned bundle of PostgreSQL extensions covering vector search, time-series analytics, full-text search, observability, security, and operations tooling. Each one is compiled by the Nix build (`flake.nix`) from a commit-locked upstream git revision, and is listed in one manifest.
 
 Key principles:
 
 - **Manifest driven.** Edit `scripts/extensions/manifest-data.ts` to change versions or metadata. Regenerate all derived assets with `bun run generate`.
-- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and resolved commit for each git-sourced entry. The Dockerfile consumes this manifest during the Docker build.
+- **Reproducibility.** The generated `docker/postgres/extensions.manifest.json` stores repo, tag, and resolved commit for each git-sourced entry. `nix/extensions.nix` builds each entry from that commit.
 - **Runtime minimalism.** Only a small baseline is enabled automatically; everything else is installed but disabled by default so teams can opt in without rebuilding the image.
 
 ## Extension Classification
@@ -316,7 +316,7 @@ Disabling an entry that is preloaded by default also drops it from the default `
 { name: "pgrouting", enabled: false, disabledReason: "AI workload - no geospatial data" },
 ```
 
-**Result:** a smaller image; build time drops only for disabled source-built entries (apt-installed ones cost little build time).
+**Result:** a smaller image and a shorter build.
 
 ### Dependency Validation
 
@@ -346,7 +346,7 @@ The current disabled set is `disabled` in `docs/.generated/docs-data.json`; vers
 
 ### postgis (Geospatial Extension)
 
-**Status:** Disabled (PGDG package)
+**Status:** Disabled
 **Category:** gis
 
 **Why disabled:**
@@ -355,8 +355,7 @@ Image size. PostGIS pulls in large runtime libraries (GEOS, PROJ, GDAL), and mos
 
 **Technical status:**
 
-- ✅ PGDG packages it for PostgreSQL 18
-- ✅ Can be enabled without code changes
+- ⚠️ Never built by the Nix image: its entry has no `nix` field, so enabling it first needs its nixpkgs recipe (`nix.package`) or link inputs (`nix.inputs`)
 
 **How to re-enable:**
 
@@ -379,7 +378,7 @@ bun run build
 
 ### pgrouting (Routing/Network Analysis)
 
-**Status:** Disabled (PGDG package)
+**Status:** Disabled
 **Category:** gis
 
 **Why disabled:**
@@ -388,7 +387,7 @@ Cascading dependency on disabled PostGIS extension. pgrouting requires PostGIS t
 
 **Technical status:**
 
-- ✅ PGDG packages it for PostgreSQL 18 (v4 has breaking changes from v3.x)
+- ⚠️ Never built by the Nix image: its entry has no `nix` field (see postgis above); v4 has breaking changes from v3.x
 - ⚠️ **Hard dependency:** Requires PostGIS to be enabled first
 
 **How to re-enable:**
@@ -467,7 +466,7 @@ The `validate-manifest.ts` script performs comprehensive preflight validation of
 
 Ensures manifest is well-formed and consistent:
 
-- Counts by install method (builtin, PGDG, Percona, Timescale, compiled) and by enabled/disabled each sum to the total
+- Counts by kind (builtin, compiled) and by enabled/disabled each sum to the total
 
 **2. defaultEnable Consistency**
 
@@ -481,8 +480,6 @@ Special case: `plpgsql` is always available and doesn't require explicit creatio
 **3. Shared Preload Consistency**
 
 Every library in `DEFAULT_SHARED_PRELOAD_LIBRARIES` is an enabled manifest entry with `sharedPreload` and `defaultEnable`, and every such entry is in the list.
-
-PGDG pins are checked separately against the live repository by `scripts/extensions/validate-pgdg-versions.ts`.
 
 **4. Runtime Spec Completeness**
 
@@ -500,12 +497,7 @@ Fails on duplicate entry names, and when an enabled entry depends on a missing o
 bun run scripts/extensions/validate-manifest.ts
 ```
 
-**Integrated in Build:**
-The script automatically runs as a preflight check in `scripts/build.ts`:
-
-```bash
-bun run build  # Validation runs before Docker build
-```
+**Integrated:** `bun run validate` runs it on every commit (pre-commit hook) and in CI.
 
 ### Exit Codes
 
@@ -530,10 +522,6 @@ ERROR: Extension 'foo' has defaultEnable=true but is NOT in 01-extensions.sql ba
 ```
 ERROR: Extension 'baz' has dependency on 'missing_ext' which does NOT exist in manifest
 ```
-
-### Package Name Mappings
-
-A PGDG extension installs `postgresql-<major>-<pgdgPackage>`, where `pgdgPackage` is set on its manifest entry (e.g. `pg_cron` → `cron`); the Dockerfile generator and the PGDG version check both read it there.
 
 ### Integration Points
 
@@ -582,7 +570,7 @@ If validation fails incorrectly:
 
 **Why Not JSON Schema?**
 
-- Need cross-file validation (Dockerfile, SQL, entrypoint)
+- Need cross-file validation (SQL, entrypoint)
 - Detailed error messages with context
 
 ## Upgrade Workflow
@@ -593,6 +581,6 @@ If validation fails incorrectly:
 4. Run smoke tests (at minimum `CREATE EXTENSION` for the updated module).
 5. Commit both the manifest/data changes and the regenerated docs.
 
-## Extension Source Decisions
+## How an Extension Is Built
 
-Which repository each extension comes from, and why Pigsty is not used: [EXTENSION-SOURCES.md](EXTENSION-SOURCES.md).
+Every entry builds from its upstream source at the manifest's commit. Its `nix` field (documented on `ManifestEntry` in `scripts/extensions/manifest-data.ts`) either reuses a nixpkgs recipe with that source swapped in, or names the libraries a generic `build.type` build links; `build.patches` apply on top.

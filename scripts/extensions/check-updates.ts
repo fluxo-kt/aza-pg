@@ -3,7 +3,7 @@
  * Check Extension Updates
  *
  * Queries upstream sources for all extensions to detect available updates.
- * - Checks GitHub Releases API for git-tag extensions, source libraries, the Rust toolchain and the
+ * - Checks GitHub Releases API for git-tag extensions and the
  *   container images pinned in stacks/ and deployments/
  * - Checks git-ref extensions against remote HEAD commit
  * - Outputs JSON report of available updates
@@ -18,7 +18,7 @@
  */
 
 import { type } from "arktype";
-import { MANIFEST_ENTRIES, MANIFEST_METADATA, SOURCE_LIBRARIES } from "./manifest-data";
+import { MANIFEST_ENTRIES } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 
 interface UpdateInfo {
@@ -412,7 +412,6 @@ async function checkGitHubRelease(
   }
 }
 
-// Takes only what it reads, so source libraries are checked without posing as manifest entries.
 async function checkExtensionUpdates(
   entry: Pick<ManifestEntry, "name" | "source" | "enabled">
 ): Promise<UpdateInfo | null> {
@@ -530,7 +529,6 @@ const IMAGE_SOURCES: Record<
   "prom/prometheus": { repository: "https://github.com/prometheus/prometheus" },
   "grafana/grafana": { repository: "https://github.com/grafana/grafana", tagPrefix: "v" },
   "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
-  "hadolint/hadolint": { repository: "https://github.com/hadolint/hadolint" },
   "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
   // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
   "pipelinecomponents/yamllint": {
@@ -546,7 +544,7 @@ const IMAGE_SOURCES: Record<
  * or built locally, is skipped: the stacks follow its floating major tag on purpose.
  */
 async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files: string[] }>> {
-  // scripts/ and .github/ pin the tool images the checks run (actionlint, hadolint, trivy) as repo:tag@sha256:…
+  // scripts/ and .github/ pin the tool images the checks run (actionlint, trivy) as repo:tag@sha256:…
   // literals (tag for this check, digest for integrity); without them here those pins went stale unseen.
   const files = (await Bun.$`git ls-files -- stacks deployments scripts .github`.quiet().text())
     .split("\n")
@@ -764,33 +762,6 @@ async function main() {
       results.push(update);
     }
   }
-
-  // Libraries built from source get no Debian security updates, so they are checked like extensions;
-  // a library counts as enabled while any enabled extension links it.
-  for (const [name, library] of Object.entries(SOURCE_LIBRARIES)) {
-    const update = await checkExtensionUpdates({
-      name,
-      source: library.source,
-      enabled: MANIFEST_ENTRIES.some(
-        (e) => e.enabled !== false && (e.sourceLibraries ?? []).some((lib) => lib === name)
-      ),
-    });
-    if (update) {
-      results.push(update);
-    }
-  }
-
-  // The pinned Rust toolchain compiles every pgrx extension; Rust tags each release as plain X.Y.Z.
-  const rust = await checkExtensionUpdates({
-    name: "rust-toolchain",
-    source: {
-      type: "git",
-      repository: "https://github.com/rust-lang/rust",
-      tag: MANIFEST_METADATA.rustToolchain,
-    },
-    enabled: true,
-  });
-  if (rust) results.push(rust);
 
   for (const image of await pinnedImages()) {
     const upstream = IMAGE_SOURCES[image.repo];

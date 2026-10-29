@@ -5,7 +5,7 @@
 Before an update round, read [.claude/commands/update.md](.claude/commands/update.md) and complete its full update matrix; one clean dependency surface does not close the round.
 
 • **Bun-First**: All scripts use Bun TypeScript. Prefer Bun APIs to usuals from Node.js when possible and reasonable. See Development Standards below. **But NO Bun in the final images**. And DO NOT USE bunx, `bun x`, npm, npx, pnpm, pnpx, yarn or corepack — NEVER!! (`.claude/settings.json` denies each; run a `package.json` script or `./node_modules/.bin/<tool>` instead)
-• **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Dockerfiles are auto-generation-only from manifest, should be as simple as possible — all logic and nuances belong in TypeScript scripts.
+• **TS-First**: YAML workflows are orchestration only — all logic, verification, and diagnostics belong in TypeScript scripts that can be tested locally. Nix files (`flake.nix`, `nix/`) build what the manifest declares and stay as simple as possible — logic and nuances belong in TypeScript scripts.
 
 ## CRITICAL RULES
 
@@ -14,11 +14,10 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 
 ## Invariants
 
-- **Manifest = image-version source of truth**: `manifest-data.ts` defines PG, builder image digests, apt pins and bundled git tags. Companion images use the canonical Compose defaults and propagation check in `/update` §5.6.
-- **Per-extension facts live on its manifest entry** (`pgdgPackage`, `perconaPackage`, `soFileName`, …) — NEVER add a side table keyed by extension name; generators/validators read the entry, so changing `install_via` stays a one-entry edit
+- **Manifest = image-version source of truth**: `manifest-data.ts` defines the PG version label and bundled git tags; `flake.lock` pins nixpkgs (server, glibc, every library). Companion images use the canonical Compose defaults and propagation check in `/update` §5.6.
+- **Per-extension facts live on its manifest entry** (`nix`, `soFileName`, `build`, …) — NEVER add a side table keyed by extension name; generators, validators and `nix/extensions.nix` read the entry, so changing how one builds stays a one-entry edit
 - **Tools ≠ extensions** (no CREATE EXTENSION)
 - **No Bun in final image** (build-only dependency)
-- **Dockerfile is auto-generated** from template + manifest (NEVER edit directly)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`) — ⚠️ NEVER use testing images in production
 - **Nothing ships that no shipped feature uses at runtime** (Nix image): every package, plugin, data file and server build option must name the feature and consumer needing it inside a container; anything else is attack surface and size, so remove it. Reasons for each kept or dropped option sit at the option (`flake.nix`, `nix/*.nix`). `testNoBuildOnlyStorePaths` fails when a stray reference drags build-only outputs in (`pg_config` once added 2.3 GB unnoticed). Inspect the closure by size: `docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`
 - **Release builds use the recipes' release flags** (`-O2`, LTO, stripped, debug info split off); add none without a benchmark showing the gain on this workload. `-march=native` stays forbidden: the image must run on any CPU of its architecture
@@ -29,14 +28,11 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 
 **Critical context for AI agents with training cutoffs before 2025:**
 
-### Debian/PostgreSQL Timeline
+### PostgreSQL Timeline
 
-| Fact                                 | Detail                              |
-| ------------------------------------ | ----------------------------------- |
-| Debian 13 "Trixie" = STABLE LTS      | Released Aug 9, 2025 (NOT testing!) |
-| PostgreSQL 18 is RELEASED            | GA Sep 25, 2025; 18.1 Nov 13, 2025  |
-| Bookworm (Debian 12) still supported | LTS until Jun 2028                  |
-| i386 architecture DROPPED            | First time in Debian history        |
+| Fact                      | Detail                             |
+| ------------------------- | ---------------------------------- |
+| PostgreSQL 18 is RELEASED | GA Sep 25, 2025; 18.1 Nov 13, 2025 |
 
 ### Extension Compatibility (PG18)
 
@@ -50,6 +46,8 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 
 ### Version String Formats
 
+Manifests of Debian-built releases (read them for a changelog's old versions) carry apt versions:
+
 | Format Type          | Example                | Notes                    |
 | -------------------- | ---------------------- | ------------------------ |
 | **Percona epochs**   | `1:2.3.1-2.trixie`     | The `1:` prefix matters! |
@@ -59,7 +57,8 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 ## Paths & Fast Commands
 
 ```bash
-docker/postgres/       # Dockerfile, entrypoints, initdb
+flake.nix nix/         # Nix image build (server, extensions, image)
+docker/postgres/       # entrypoints, initdb, configs, patches
 scripts/               # Bun TS scripts (no absolute paths)
 stacks/{primary,replica,single}  # Compose deployments
 
@@ -67,7 +66,7 @@ stacks/{primary,replica,single}  # Compose deployments
 
 # Validation & Fixing
 bun run validate            # Fast: static checks + unit tests
-bun run validate:all        # Full: + shellcheck, hadolint, yamllint
+bun run validate:all        # Full: + shellcheck, yamllint
 bun run validate:fix        # Auto-fix: prettier, oxlint, SQL formatting
 
 # Aliases (conventional names)
@@ -88,10 +87,8 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 ## Gotchas
 
 - **auto_explain**: Module (shared_preload_libraries), NOT extension — NO CREATE EXTENSION needed
-- **Dockerfile**: NEVER edit directly — edit Dockerfile.template → `bun run generate`
 - **Shell safety**: ALL RUN commands MUST use `set -euo pipefail` (not just `set -eu`)
-- **Version changes**: Update `manifest-data.ts` (MANIFEST_METADATA + pgdgVersion) → regenerate → rebuild. Regression expected files (`tests/regression/extensions/*/expected/basic.out`) hold no version strings — `scripts/test/test-extension-versions.ts` checks versions — so never add one
-- **PGDG versions**: `pgdgVersion` must be the version the PGDG repo serves — `scripts/extensions/validate-pgdg-versions.ts` (in `bun run validate`) checks it, preventing silent apt-get failures. Keep `source.tag` at the same upstream version by hand: check-updates compares it with upstream tags, and nothing checks the pair
+- **Version changes**: Update `manifest-data.ts` (`source.tag`; `pgVersion` follows nixpkgs, `flake.nix` refuses a mismatch) → regenerate → rebuild. Regression expected files (`tests/regression/extensions/*/expected/basic.out`) hold no version strings — `scripts/test/test-extension-versions.ts` checks versions — so never add one
 - **PgBouncer .pgpass**: Escape ONLY ":" and "\\" (NOT "@" or "&")
 - **Tools vs extensions**: No CREATE EXTENSION on tools (pgbackrest, wal2json, pg_safeupdate)
 - **Container teardown**: remove containers with `docker rm -f -v` — the `-v` drops PG18's anonymous `/var/lib/postgresql` PGDATA volume (named volumes always survive); omitting it orphans one per teardown → silent multi-GB bloat. A test container that is never restarted puts PGDATA on tmpfs (`...EPHEMERAL_PGDATA`, `scripts/utils/docker.ts`; reasons and exceptions there): no volume exists to leak or to mistake for an operator's data. An ad-hoc probe (`docker run <image> psql --version`, a smoke start) takes `--rm`, or its stopped container keeps that volume. `-v` is enforced by `Subprocess Calls` in `validate`. Test leftovers clean themselves: test-all sweeps each suite, and both test-all (at start) and `bun run cleanup` remove any test container, volume or network whose creating process is gone (`sweepOrphanedTestResources`; generated names carry that pid), so name test resources only through `generateUnique*Name`. `bun run cleanup` also removes superseded aza-pg images and only lists unattached anonymous aza-pg data volumes, since one may hold an operator's database
@@ -103,7 +100,7 @@ bun run cleanup             # Reclaim aza-pg Docker artifacts (cleanup:dry to pr
 
 Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate` → rebuild
 
-**Install methods** (`install_via`): `pgdg` (apt) | `percona` (apt) | `timescale` (apt) | `source` (build from git; `build.patches` applies diffs from `docker/postgres/patches/`)
+**Build**: every non-builtin entry builds from its pinned commit (`nix/extensions.nix`): `nix.package` reuses that nixpkgs recipe, else `build.type` with `nix.inputs`; `build.patches` applies diffs from `docker/postgres/patches/`
 
 **Counts**: See `docs/.generated/docs-data.json` for live module/preload/tool counts
 
@@ -140,7 +137,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 - **Bun `$` starts only when awaited or `.then`-ed**: `` void $`docker rm …` `` in a timer or cleanup never runs; fire-and-forget uses `Bun.spawn([...], { stdout: "ignore", stderr: "ignore" })`
 - **DRY**: use `isDockerDaemonRunning()` from `utils/docker.ts` — NEVER reimplement local `isDockerAvailable()` variants
 
-**Linting**: oxlint (fast) + prettier + shellcheck + hadolint + yamllint | TS strict mode
+**Linting**: oxlint (fast) + prettier + shellcheck + yamllint | TS strict mode
 
 **Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `bun run validate`; a failing check blocks the commit
 
@@ -150,11 +147,10 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 ## Common Mistakes
 
-- ❌ Editing `Dockerfile` directly → ✅ Edit `Dockerfile.template` + regenerate
 - ❌ Using Node.js fs/child_process → ✅ Use Bun.file/Bun.$
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
-- ❌ Skip validation → ✅ pre-commit runs `bun run validate`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh`, YAML or Dockerfile template: ShellCheck (info level), yamllint and hadolint run only there
+- ❌ Skip validation → ✅ pre-commit runs `bun run validate`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
 - ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`); add it to `SUITES` in `scripts/test-all.ts` with its group (`validate` fails until you do). All `*.test.ts` files are unconditionally unit-test safe.
 - ❌ A suite giving a shipped input a value no real deployment writes (bigger memory limits, an explicit default preload list, a mounted getkey) → it hides the defect it works around → ✅ suites run shipped defaults; an override carries the reason inline (e.g. it is the subject under test)
 - ❌ `$.env({ COMPOSE_PROJECT_NAME: name })` in test files — replaces the ENTIRE subprocess env (strips PATH, HOME, DOCKER_CONFIG), causing `docker-credential-osxkeychain: executable file not found` when Docker pulls uncached images → ✅ ALWAYS use `$.env({ ...Bun.env, COMPOSE_PROJECT_NAME: name })` to inherit the full process environment
@@ -177,14 +173,14 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 ## Troubleshooting
 
-| Issue                  | Fix                                                   |
-| ---------------------- | ----------------------------------------------------- |
-| Extension missing      | Check manifest enabled + `bun run generate` + rebuild |
-| Dockerfile out of date | `bun run generate`                                    |
-| Preload error          | Align shared_preload_libraries with manifest defaults |
-| RAM misdetection       | Set POSTGRES_MEMORY explicitly                        |
-| Container exit 125     | Docker daemon issue (compose syntax, volumes)         |
-| Container exit 1       | Application error (check PG logs)                     |
+| Issue                | Fix                                                   |
+| -------------------- | ----------------------------------------------------- |
+| Extension missing    | Check manifest enabled + `bun run generate` + rebuild |
+| Generated file stale | `bun run generate`                                    |
+| Preload error        | Align shared_preload_libraries with manifest defaults |
+| RAM misdetection     | Set POSTGRES_MEMORY explicitly                        |
+| Container exit 125   | Docker daemon issue (compose syntax, volumes)         |
+| Container exit 1     | Application error (check PG logs)                     |
 
 ## Key Learnings
 
@@ -198,15 +194,11 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **CI Workflow Resilience**: Informational steps (SARIF upload, diagnostics) MUST have `continue-on-error: true` — tool infrastructure failures must never block releases. The actual security gate is a separate independent blocking step with `exit-code: 1`. Same pattern for any step that is "nice-to-have" vs "must-pass".
 
-**Security Scanner Resilience**: Use `docker run ghcr.io/aquasecurity/trivy:VERSION@sha256:… image TARGET` (Docker container approach; GHCR has the same digests as Docker Hub without its anonymous pull limit) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+. Local/CI blocking gates fail on fixable CRITICAL/HIGH findings (`--ignore-unfixed`) and skip only `usr/local/bin/gosu` because su-exec shadows the base-layer binary. Avoid static CVE ignores; they hide future fixable regressions.
-
-**Vendor apt repos**: Percona and Timescale sources trust only the keys committed in `docker/postgres/apt-keys/` (`signed-by=`); never install a vendor's repo-setup `.deb` or pipe its script into bash — that runs build-day bytes as root unchecked. The final image purges the base image's GnuPG CLI stack; Debian 13 apt verifies repos through `sqv`.
-
-**PGroonga Build System**: PGroonga 4.0.6+ uses Meson, not PGXS Makefile. Manifest must use `build.type: "meson"`, include `meson` in `aptPackages`, and pass `mesonOptions: ["-Dtest=false"]` for production builds; upstream Meson test setup requires Ruby.
+**Security Scanner Resilience**: Use `docker run ghcr.io/aquasecurity/trivy:VERSION@sha256:… image TARGET` (Docker container approach; GHCR has the same digests as Docker Hub without its anonymous pull limit) for local scans — no GitHub release binary download, immune to supply-chain deletion attacks (Trivy incident 2026-03-01: attacker deleted v0.27-v0.69.1 binaries). Pin to v0.69.3+. Local/CI blocking gates fail on fixable CRITICAL/HIGH findings (`--ignore-unfixed`) Trivy reads no package database in a Nix image, so it covers language packages only (Rust crates, bundled JS), never the C libraries. Avoid static CVE ignores; they hide future fixable regressions.
 
 **SHA Pin Accuracy**: SHA pins go stale silently — run `actions-up` (see `/update` skill) to refresh both the SHA and the `# vX.Y.Z` tag on each `uses:` line. Also audit for version references in prose comments elsewhere in workflow files (`command grep -rn "@v[0-9]" .github/workflows/ .github/actions/ | command grep "#"`). Verify manually: `git ls-remote https://github.com/REPO.git refs/tags/TAG`.
 
-**PostgreSQL Minor Drift Guard**: Release/publish gates MUST run `scripts/validate-base-image-sha.ts --require-latest-minor`; stale `MANIFEST_METADATA.pgVersion/baseImageSha` can pass same-tag SHA checks while PGDG/floating `postgres:N-trixie` has advanced, then fail built-image version verification. Update manifest, regenerate, validate.
+**PostgreSQL Minor Drift Guard**: the server is whatever `flake.lock`'s nixpkgs ships; `flake.nix` refuses to build when `MANIFEST_METADATA.pgVersion` differs, so tags and labels cannot name a version the image lacks. A new minor arrives only by bumping `flake.lock` (`/update`).
 
 **git-ref Drift Guard**: `scripts/extensions/check-updates.ts --format=json` now reports `git-ref` `current` vs remote `HEAD` `latest`; treat any enabled `updateAvailable: true` as mandatory update work (not informational), and pair image-facing manifest updates with a `CHANGELOG.md` entry in the same round.
 
@@ -244,10 +236,6 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **cleanupTestData Must Cover ALL Failure Paths**: The cleanup function is a safety net — it must drop every resource ANY test can create, regardless of whether tests clean up after themselves on the happy path. Tests that create resources only drop them on the success path (early failure returns skip cleanup). If `cleanupTestData` doesn't also drop them, they accumulate on failed runs. Example: `testPgmqQueue` creates `test_queue`, so `cleanupTestData` drops it too.
 
-**Multi-Stage Gosu Replacement: GHA Cache Ambiguity + Trivy Layer Scanning**: All multi-stage approaches (`COPY --from=`, bind-mounts, `apt-get install su-exec` — absent from postgres image repos, `COPY via builder-pgxs output dir` — COPY key matched stale GHA entry) fail due to GHA layer cache interference. `apt-get purge gosu` is a no-op because postgres:18.3-trixie installs gosu via direct binary download (not dpkg). **Root cause of Trivy persistence**: Trivy scans ALL image layers including immutable base layers — gosu in the postgres base layer is reported even when `/usr/local/bin/gosu` is su-exec in the merged filesystem. **Definitive fix**: compile su-exec in the final stage, install at `/usr/local/bin/gosu` (shadows the base binary), skip only that path in Trivy gates; builders copy only each source tool's `binaryPath`, so the base gosu never crosses stages. Add `[ SZ -lt 500000 ]` to FAIL build if wrong binary.
-
-**Digest-Pinned Base Security Drift**: A valid/latest PostgreSQL base digest can still contain stale Debian packages after Debian publishes security updates. Final image builds MUST run `apt-get upgrade -y --no-install-recommends` after `apt-get update`; the merged-image PostgreSQL version check guards against accidental PG minor drift.
-
 **BuildKit SBOM Shape**: `docker/build-push-action sbom:true` emits per-platform SBOMs as `unknown/unknown` OCI attestation manifests with `application/vnd.in-toto+json` SPDX layers. Do NOT verify with deprecated `cosign download sbom`; verify every runnable platform has a matching attestation manifest.
 
 **Bun OSV Install Gate (transitive-CVE remediation)**: `bunfig.toml` runs `scanner = "bun-osv-scanner-extended"` on every `bun install`. A newly-published `warn`-level CVE in a transitive (even dev) dep makes the non-TTY install **exit 1**. Inspect the working-tree diff after failure; cancellation does not establish that earlier dependency edits were undone. Remediate **in this order**: (1) **`overrides`** in `package.json` to a patched version (first resort — actually removes the vuln); regenerate `bun.lock` (CI uses `--frozen-lockfile`). (2) Only when **unfixable** (no patched version exists), add to `.bun-osv.json` `{"ignore":[{"advisory":"CVE-…"|"package"+"range","reason":"…","expires":"<future ISO>"}]}` — `reason` + a **future** `expires` are mandatory (scanner treats missing/unparseable `expires` as permanent silent suppression). Every install site needs `BUN_OSV_SHOW_IGNORED="0"` in env (default re-emits ignored advisories as warn → cancels); already wired at `setup-bun`, the inline-install workflows, and `.1code/worktree.json` (non-CI worktree setup — inline `env BUN_OSV_SHOW_IGNORED=0 bun install`, since a JSON command array has no layered env). `scripts/security/validate-bun-osv.ts` (fast `validate` check) enforces: canonical `{ignore:[…]}` shape + reason/future-expires (both `.bun-osv.json` and `package.json#bunOsv.ignore`), scanner pin (bunfig name **and** that it's a declared dep), SHOW_IGNORED wiring at every `bun install` site (CI files by env-precedence resolution, `.1code/worktree.json` by inline prefix), and forbids the `BUN_OSV_IGNORE_FILE`/`OSV_IGNORE_FILE`/`BUN_OSV_IGNORE_PKG`/`BUN_OSV_IGNORE_ADVISORY` env bypass. **Caveat**: the scanner is fail-open (OSV outage → install proceeds unscanned); the per-site `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE=86400` release-age delay is the backstop. The guard encodes scanner-internal behaviour — re-verify it against the scanner source on any `bun-osv-scanner-extended` bump (lockfile-hash-pinned, so a bump is a reviewable diff).
@@ -262,7 +250,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 **Workflow**:
 
 1. Track image-affecting changes in `[Unreleased]` section
-2. Focus on: extension updates, base image changes, breaking changes, security fixes
+2. Focus on: extension updates, nixpkgs (server, glibc, library) changes, breaking changes, security fixes
 3. The release commit dates itself: `/release` runs `bun scripts/release/date-changelog.ts`, which moves `[Unreleased]` under `## [v<pg>-<UTC timestamp>] - <date>`. publish.yml takes the tag name and the GitHub notes from that newest heading, so every branch shows the release dated the moment it ships and the anchor merge brings it to dev
 4. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
 
@@ -277,7 +265,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 
 **What NEVER belongs in the changelog**:
 
-- Build script fixes (`build-extensions.ts`, `generate-dockerfile.ts`, etc.) — even if they fixed a build bug, the fix itself is invisible; only the **resulting extension change** (if any) belongs
+- Build fixes (`flake.nix`, `nix/*.nix`, generators) — even if they fixed a build bug, the fix itself is invisible; only the **resulting extension change** (if any) belongs
 - Agent commands (`.claude/commands/`), skills, test scripts — invisible to image consumers
 - Individual kaizen/audit passes, validate check improvements, internal refactors
 - CI infra fixes (timeouts, retry logic, credentials) — operators can't see these

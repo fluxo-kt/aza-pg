@@ -16,6 +16,7 @@
 import {
   loadManifest,
   getDefaultSharedPreloadLibraries,
+  tagVersion,
 } from "../config-generator/manifest-loader";
 import type { Manifest, ResolvedEntry } from "../config-generator/manifest-loader";
 import { join } from "node:path";
@@ -25,18 +26,7 @@ const REPO_ROOT = join(import.meta.dir, "../..");
 
 /** Display version: `v<version>`, the pinned commit for an untagged git-ref source, or "builtin". */
 function getVersion(entry: ResolvedEntry): string {
-  // Priority: pgdgVersion > source tag > pinned commit > "builtin"
-  if (entry.pgdgVersion) {
-    // Extract version from PGDG format like "2.19-1.pgdg13+1"
-    const match = entry.pgdgVersion.match(/^([\d.]+)/);
-    return `v${match?.[1] ?? entry.pgdgVersion}`;
-  }
-  if (entry.source.type === "git") {
-    // Strip a release prefix and reduce scoped monorepo tags to the package version.
-    const cleaned = entry.source.tag.replace(/^v/, "");
-    const scopedVersion = cleaned.split("@").pop();
-    return `v${cleaned.includes("@") && scopedVersion ? scopedVersion : cleaned}`;
-  }
+  if (entry.source.type === "git") return `v${tagVersion(entry.source.tag) ?? entry.source.tag}`;
   if (entry.source.type === "git-ref") return entry.source.commit.slice(0, 8);
   return "builtin";
 }

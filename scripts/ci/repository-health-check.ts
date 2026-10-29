@@ -41,8 +41,8 @@ const REQUIRED_ITEMS: CheckItem[] = [
   // Core configuration files
   {
     type: "file",
-    path: "docker/postgres/Dockerfile",
-    description: "PostgreSQL Docker image definition",
+    path: "flake.nix",
+    description: "Nix image definition",
   },
   {
     type: "file",
@@ -85,11 +85,6 @@ const REQUIRED_ITEMS: CheckItem[] = [
   },
 
   // Docker build context files
-  {
-    type: "file",
-    path: "docker/postgres/build-extensions.ts",
-    description: "Extension build script (run inside Docker)",
-  },
   {
     type: "file",
     path: "docker/postgres/docker-auto-config-entrypoint.sh",

@@ -207,7 +207,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ### PostgreSQL
 
-**Version**: 18 (official postgres:18-trixie image)
+**Version**: 18, built by nixpkgs (`flake.lock` pins the revision)
 **Why**: Latest stable PostgreSQL with performance improvements
 **Status**: ✅ LOCKED
 
@@ -230,14 +230,14 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ## 🔧 Build Tools
 
-### Docker Buildx
+### Nix
 
-**Why**: Multi-platform Docker builds (amd64 + arm64)
+**Why**: Builds the image from `flake.nix`: every extension from its pinned commit, the closure holding only what ships (`dockerTools.streamLayeredImage`)
 **Status**: ✅ LOCKED
 
 ### Cargo/Rust (for extension compilation)
 
-**Why**: Required for the Rust extensions in `docker/postgres/extensions.cargo.manifest.json` (e.g. pg_jsonschema, wrappers)
+**Why**: Required for the Rust (pgrx) extensions (e.g. pg_jsonschema, wrappers); nixpkgs provides the toolchain
 **Status**: ✅ LOCKED - Build-time only, not in runtime image
 
 ---
@@ -398,14 +398,13 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ### Code Quality & Linting
 
-| Tool                                             | Repository                                        | Documentation                                          | Purpose                                                                  |
-| ------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
-| [Oxlint](https://oxc.rs)                         | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/linter)         | Rust-based fast linter (50-100x faster than ESLint)                      |
-| [Prettier](https://prettier.io)                  | [GitHub](https://github.com/prettier/prettier)    | [Docs](https://prettier.io/docs/)                      | Industry-standard opinionated code formatter                             |
-| [Oxfmt](https://oxc.rs)                          | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/formatter.html) | Fast formatter (planned migration when stable, 45x faster than Prettier) |
-| [shellcheck](https://www.shellcheck.net)         | [GitHub](https://github.com/koalaman/shellcheck)  | [Wiki](https://github.com/koalaman/shellcheck/wiki)    | Static analysis tool for shell scripts                                   |
-| [hadolint](https://hadolint.github.io/hadolint/) | [GitHub](https://github.com/hadolint/hadolint)    | [Docs](https://hadolint.github.io/hadolint/)           | Dockerfile linter with best practices validation                         |
-| [yamllint](https://yamllint.readthedocs.io)      | [GitHub](https://github.com/adrienverge/yamllint) | [Docs](https://yamllint.readthedocs.io)                | YAML linter for syntax and cosmetic checking                             |
+| Tool                                        | Repository                                        | Documentation                                          | Purpose                                                                  |
+| ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| [Oxlint](https://oxc.rs)                    | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/linter)         | Rust-based fast linter (50-100x faster than ESLint)                      |
+| [Prettier](https://prettier.io)             | [GitHub](https://github.com/prettier/prettier)    | [Docs](https://prettier.io/docs/)                      | Industry-standard opinionated code formatter                             |
+| [Oxfmt](https://oxc.rs)                     | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/formatter.html) | Fast formatter (planned migration when stable, 45x faster than Prettier) |
+| [shellcheck](https://www.shellcheck.net)    | [GitHub](https://github.com/koalaman/shellcheck)  | [Wiki](https://github.com/koalaman/shellcheck/wiki)    | Static analysis tool for shell scripts                                   |
+| [yamllint](https://yamllint.readthedocs.io) | [GitHub](https://github.com/adrienverge/yamllint) | [Docs](https://yamllint.readthedocs.io)                | YAML linter for syntax and cosmetic checking                             |
 
 ### Validation & Schema
 
@@ -421,12 +420,12 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ### Docker & Infrastructure
 
-| Tool                                               | Repository                                       | Documentation                                                  | Purpose                                                    |
-| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| [Docker Compose](https://docs.docker.com/compose/) | [GitHub](https://github.com/docker/compose)      | [Docs](https://docs.docker.com/compose/)                       | Multi-container Docker application orchestration           |
-| [Docker Buildx](https://docs.docker.com/build/)    | [GitHub](https://github.com/docker/buildx)       | [Docs](https://docs.docker.com/build/building/multi-platform/) | Multi-platform Docker builds (amd64 + arm64)               |
-| [PostgreSQL](https://www.postgresql.org)           | [GitHub](https://github.com/postgres/postgres)   | [Docs](https://www.postgresql.org/docs/18/)                    | PostgreSQL 18 database (official postgres:18-trixie image) |
-| [PgBouncer](https://www.pgbouncer.org)             | [GitHub](https://github.com/pgbouncer/pgbouncer) | [Docs](https://www.pgbouncer.org/usage.html)                   | Lightweight PostgreSQL connection pooler                   |
+| Tool                                               | Repository                                       | Documentation                                | Purpose                                          |
+| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------- | ------------------------------------------------ |
+| [Docker Compose](https://docs.docker.com/compose/) | [GitHub](https://github.com/docker/compose)      | [Docs](https://docs.docker.com/compose/)     | Multi-container Docker application orchestration |
+| [Nix](https://nixos.org)                           | [GitHub](https://github.com/NixOS/nix)           | [Docs](https://nix.dev)                      | Builds the image (`flake.nix`)                   |
+| [PostgreSQL](https://www.postgresql.org)           | [GitHub](https://github.com/postgres/postgres)   | [Docs](https://www.postgresql.org/docs/18/)  | PostgreSQL 18 database (nixpkgs build)           |
+| [PgBouncer](https://www.pgbouncer.org)             | [GitHub](https://github.com/pgbouncer/pgbouncer) | [Docs](https://www.pgbouncer.org/usage.html) | Lightweight PostgreSQL connection pooler         |
 
 ### Build Tools
 

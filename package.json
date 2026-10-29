@@ -18,7 +18,7 @@
     "test:all": "bun run build && bun run validate:all && bun scripts/test-all.ts",
     "test:unit": "bun run validate",
     "pgflow:generate": "bun scripts/pgflow/generate-schema.ts",
-    "build": "bun scripts/build.ts",
+    "build": "bun scripts/nix/build-image.ts",
     "cleanup": "bun scripts/docker/cleanup-artifacts.ts",
     "cleanup:dry": "bun scripts/docker/cleanup-artifacts.ts --dry-run",
     "security:scan": "bun scripts/security-scan.ts",

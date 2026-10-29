@@ -25,7 +25,7 @@ OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 1. **⚠️ Net delta only**: CHANGELOG must show ONLY v_old→v_new (the released-to-released delta). Never show intermediate steps.
 2. **⚠️ Consumer-first ordering**: Consumer outcomes first in commit message/CHANGELOG; internal/infra changes after.
 3. **⚠️ No phantom entries**: Don't claim fixes for things not broken in the LAST RELEASED version.
-4. **⚠️ `pgdg13` = Debian 13 (Trixie)**, NOT PostgreSQL 13.
+4. **⚠️ `pgdg13` = Debian 13 (Trixie)**, NOT PostgreSQL 13: manifests of the Debian-built releases carry it.
 5. **⚠️ `bun install` AFTER squash BEFORE validation** — stale node_modules cause false validation failures AND broken pre-commit hook regeneration.
 6. **⚠️ NEVER compare tree hashes after CHANGELOG edits** — trees diverge by design (that's the point).
 7. **⚠️ Use `git add -u` NOT `git add -A`** — never add untracked files (.DS_Store, .env, temp).
@@ -47,7 +47,7 @@ Not on `release`: the agent cannot switch branches, so ask Art to run `! git che
 
 ### 0.8 — Everything the image ships is current
 
-Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: PGDG, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The base-image and `check-updates` gates alone miss companion images, Bun packages and runtime, Actions pins, PGDG revisions and source builds PGDG now packages. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
+Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: nixpkgs, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The `check-updates` gate alone misses companion images, Bun packages and runtime, Actions pins and the nixpkgs revision in `flake.lock`. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
 
 ---
 
@@ -60,14 +60,14 @@ The commits being squashed are the preflight's commit list; `$ANCHOR` below is i
 Scan the diff for consumer-visible changes. Look at:
 
 ```bash
-# Manifest changes (extension versions, PG version, base image)
+# Manifest changes (extension versions, PG version)
 git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts
 
 # CHANGELOG unreleased section (before squash — from dev's HEAD; no truncation)
 git show refs/heads/dev:CHANGELOG.md
 
-# Dockerfile changes (if any)
-git diff $ANCHOR..refs/heads/dev -- docker/postgres/Dockerfile.template
+# Nix build changes (nixpkgs revision, build options, image contents)
+git diff $ANCHOR..refs/heads/dev -- flake.nix flake.lock nix/
 
 # Test additions/changes
 git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
@@ -75,8 +75,8 @@ git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
 
 **Categorise into**:
 - **Consumer-visible** (extensions added/updated/removed, PG version changes, API/behaviour changes, security fixes)
-- **Build/reliability** (Dockerfile improvements, CI fixes, dependency updates — brief if user-impacting)
-- **Infrastructure** (base image, build tools — 1 line if relevant)
+- **Build/reliability** (Nix build improvements, CI fixes, dependency updates — brief if user-impacting)
+- **Infrastructure** (nixpkgs revision, build tools — 1 line if relevant)
 - **Development/tooling** (tests, linting, scripts — 1-line summary)
 
 ---

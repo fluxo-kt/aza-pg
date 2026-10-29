@@ -31,6 +31,7 @@
  */
 
 import { join } from "node:path";
+import { tagVersion } from "./config-generator/manifest-loader";
 import type { ManifestEntry } from "./extensions/manifest-data";
 import {
   isAutoCreated,
@@ -78,7 +79,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "source";
+  installMethod: "builtin" | "source";
 }
 
 // Category merge map: source → target
@@ -190,28 +191,7 @@ function getVersion(entry: ManifestEntry): string {
   }
 
   if (entry.source.type === "git" && entry.source.tag) {
-    let version = entry.source.tag;
-
-    // Remove common tag prefixes (order matters!)
-    // Note: Must check longer prefixes first (ver_ before v)
-    version = version
-      .replace(/^ver_/, "") // ver_1.5.3 -> 1.5.3
-      .replace(/^release\//, "") // release/2.57.0 -> 2.57.0
-      .replace(/^REL/, "") // REL4_2_0 -> 4_2_0
-      .replace(/^v(\d)/, "$1"); // v1.0.0 -> 1.0.0 (only if followed by digit)
-
-    // Handle name_version patterns (e.g., wal2json_2_6 -> 2.6, pgflow@0.7.2 -> 0.7.2)
-    // Extract numeric version from patterns like "name_X_Y" or "name@X.Y.Z"
-    const nameVersionMatch = version.match(/^[a-zA-Z][a-zA-Z0-9]*[_@](.+)$/);
-    if (nameVersionMatch?.[1]) {
-      version = nameVersionMatch[1];
-    }
-
-    // Replace underscores with dots for versioned tags
-    // Examples: 2_6 -> 2.6, 4_2_0 -> 4.2.0
-    version = version.replace(/_/g, ".");
-
-    return version;
+    return tagVersion(entry.source.tag) ?? entry.source.tag;
   }
 
   if (entry.source.type === "git-ref" && entry.source.ref) {
@@ -258,13 +238,9 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
-// Pre-compiled packages (pgdg, percona, timescale) all use 📦️
 // Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
-  pgdg: "📦️",
-  percona: "📦️",
-  timescale: "📦️",
   source: "🏗️",
 };
 
@@ -339,10 +315,7 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       sourceUrl: entry.sourceUrl,
       docsUrl: entry.docsUrl,
       source: entry.source,
-      installMethod:
-        entry.kind === "builtin"
-          ? "builtin"
-          : ((entry.install_via as ExtensionInfo["installMethod"]) ?? "source"),
+      installMethod: entry.kind === "builtin" ? "builtin" : "source",
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -801,8 +774,7 @@ function generateMarkdown(
   lines.push("");
   lines.push("**Source:**");
   lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
-  lines.push("- 📦️ Package (pre-compiled from PGDG, Percona, Timescale, or GitHub releases)");
-  lines.push("- 🏗️ Source build (compiled during Docker image build)");
+  lines.push("- 🏗️ Source build (compiled by the Nix image build)");
   lines.push("");
   lines.push("**Status:**");
   lines.push("- ⚡ preloaded: Loaded via `shared_preload_libraries` on startup");

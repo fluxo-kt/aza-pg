@@ -12,11 +12,7 @@
 
 export const GENERATED_FILES = [
   // Docker artifacts
-  "docker/postgres/Dockerfile",
   "docker/postgres/extensions.manifest.json",
-  "docker/postgres/extensions.pgxs.manifest.json",
-  "docker/postgres/extensions.cargo.manifest.json",
-  "docker/postgres/extensions.build-packages.txt",
   "docker/postgres/healthcheck.sh",
   "docker/postgres/docker-auto-config-entrypoint.sh",
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql",

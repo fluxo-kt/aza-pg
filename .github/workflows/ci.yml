@@ -10,7 +10,7 @@
 # PIPELINE STRUCTURE:
 # ------------------
 # 1. lint-workflows - Workflow syntax/expression validation
-# 2. validate       - bun run validate:all (static checks, unit tests, shell/YAML/Dockerfile lint), repo health
+# 2. validate       - bun run validate:all (static checks, unit tests, shell/YAML lint), repo health
 # 3. build          - Build the image unless actions/cache already holds one with its image-input key
 # 4. test           - One job per suite group of scripts/test-all.ts (the only list of Docker suites)
 # 5. ci-complete    - Final gate, summary

@@ -13,9 +13,6 @@ import * as logger from "../utils/logger";
 interface ManifestCounts {
   total: number;
   builtin: number;
-  pgdg: number;
-  percona: number;
-  timescale: number;
   compiled: number;
   enabled: number;
   disabled: number;
@@ -73,18 +70,8 @@ async function readFile(path: string): Promise<string> {
 function deriveCounts(manifest: Manifest): ManifestCounts {
   const total = manifest.entries.length;
   const builtin = manifest.entries.filter((e) => e.kind === "builtin").length;
-  const pgdg = manifest.entries.filter((e) => e.install_via === "pgdg").length;
-  const percona = manifest.entries.filter((e) => e.install_via === "percona").length;
-  const timescale = manifest.entries.filter((e) => e.install_via === "timescale").length;
-
-  // Compiled = extensions built from source (not PGDG, not builtin, not percona, not timescale)
-  const compiled = manifest.entries.filter(
-    (e) =>
-      e.kind !== "builtin" &&
-      e.install_via !== "pgdg" &&
-      e.install_via !== "percona" &&
-      e.install_via !== "timescale"
-  ).length;
+  // Compiled = built from source by flake.nix (every non-builtin entry)
+  const compiled = manifest.entries.filter((e) => e.kind !== "builtin").length;
 
   const enabled = manifest.entries.filter((e) => e.enabled !== false).length;
   const disabled = manifest.entries.filter((e) => e.enabled === false).length;
@@ -92,17 +79,14 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
   logger.info("[MANIFEST COUNTS]");
   console.log(`  Total: ${total}`);
   console.log(`  Builtin: ${builtin}`);
-  console.log(`  PGDG: ${pgdg}`);
-  console.log(`  Percona: ${percona}`);
-  console.log(`  Timescale: ${timescale}`);
   console.log(`  Compiled: ${compiled}`);
   console.log(`  Enabled: ${enabled}`);
   console.log(`  Disabled: ${disabled}`);
 
   // Sanity check: counts should sum correctly
-  if (builtin + pgdg + percona + timescale + compiled !== total) {
+  if (builtin + compiled !== total) {
     error(
-      `Count arithmetic mismatch: builtin(${builtin}) + pgdg(${pgdg}) + percona(${percona}) + timescale(${timescale}) + compiled(${compiled}) = ${builtin + pgdg + percona + timescale + compiled}, but total = ${total}`
+      `Count arithmetic mismatch: builtin(${builtin}) + compiled(${compiled}) = ${builtin + compiled}, but total = ${total}`
     );
   }
 
@@ -112,7 +96,7 @@ function deriveCounts(manifest: Manifest): ManifestCounts {
     );
   }
 
-  return { total, builtin, pgdg, percona, timescale, compiled, enabled, disabled };
+  return { total, builtin, compiled, enabled, disabled };
 }
 
 // 2. defaultEnable consistency
@@ -361,8 +345,7 @@ async function main(): Promise<void> {
       console.log();
       logger.success(
         `Manifest validation passed (${manifestCounts.total} extensions: ` +
-          `${manifestCounts.builtin} builtin + ${manifestCounts.pgdg} PGDG + ${manifestCounts.percona} Percona + ` +
-          `${manifestCounts.timescale} Timescale + ${manifestCounts.compiled} compiled, ` +
+          `${manifestCounts.builtin} builtin + ${manifestCounts.compiled} compiled, ` +
           `${manifestCounts.enabled} enabled)`
       );
       process.exit(0);

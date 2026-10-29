@@ -27,7 +27,6 @@ Quick navigation for aza-pg documentation.
 | [PRODUCTION.md](PRODUCTION.md)                             | Production deployment guide                          |
 | [COOLIFY.md](COOLIFY.md)                                   | Coolify platform deployment                          |
 | [DEPLOYMENT.md](DEPLOYMENT.md)                             | Hetzner VPS deployment (Coolify or bare), phases 1-2 |
-| [DOCKER-HARDENED-IMAGES.md](DOCKER-HARDENED-IMAGES.md)     | Docker Hardened Images evaluation                    |
 | [GITHUB_ENVIRONMENT_SETUP.md](GITHUB_ENVIRONMENT_SETUP.md) | GitHub env/secrets setup                             |
 
 ## Operations
@@ -43,11 +42,10 @@ Quick navigation for aza-pg documentation.
 
 ## Extension-Specific
 
-| Document                                     | Description                                                 |
-| -------------------------------------------- | ----------------------------------------------------------- |
-| [PGFLOW.md](PGFLOW.md)                       | pgflow workflow orchestration, Supabase compatibility layer |
-| [TIMESCALEDB-TSL.md](TIMESCALEDB-TSL.md)     | TimescaleDB TSL license features                            |
-| [EXTENSION-SOURCES.md](EXTENSION-SOURCES.md) | Extension source types, PGDG vs compiled                    |
+| Document                                 | Description                                                 |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| [PGFLOW.md](PGFLOW.md)                   | pgflow workflow orchestration, Supabase compatibility layer |
+| [TIMESCALEDB-TSL.md](TIMESCALEDB-TSL.md) | TimescaleDB TSL license features                            |
 
 ## Generated
 

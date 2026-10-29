@@ -94,15 +94,18 @@ pkgs.dockerTools.streamLayeredImage {
   contents = [ postgresql postgresql.pg_config files pkgs.cacert ] ++ tools;
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
   extraCommands = ''
-    mkdir -p bin usr/bin tmp var/run/postgresql var/lib/postgresql backup
+    # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint
+    # and operators use /var/run/postgresql.
+    mkdir -p bin usr/bin tmp run/postgresql var/lib/postgresql backup
+    ln -s ../run var/run
     ln -sf ${pkgs.uutils-coreutils-noprefix}/bin/env usr/bin/env
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp
   '';
   fakeRootCommands = ''
-    chown -R 999:999 var/run/postgresql var/lib/postgresql backup
-    chmod 2775 var/run/postgresql
+    chown -R 999:999 run/postgresql var/lib/postgresql backup
+    chmod 2775 run/postgresql
   '';
   enableFakechroot = false;
   config = {

@@ -140,7 +140,12 @@ export const ManifestEntrySchema = type({
   "soFileName?": "string",
   "binaryPath?": "string",
   "postgresOwnedDirs?": "string[]",
-  "nix?": { "package?": "string", "inputs?": "string[]" },
+  "nix?": {
+    "package?": "string",
+    "inputs?": "string[]",
+    "nativeInputs?": "string[]",
+    "mesonFlags?": "string[]",
+  },
   "enabled?": "boolean",
 });
 

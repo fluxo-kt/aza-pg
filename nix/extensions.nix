@@ -44,7 +44,8 @@ let
     # Patched before evaluation reads Cargo.lock: vectorscale's patch adds that file.
     if patches == [ ] then fetched else pkgs.applyPatches { name = "${e.name}-source"; src = fetched; inherit patches; };
 
-  inputsOf = e: map (n: lib.getAttrFromPath (lib.splitString "." n) pkgs) (e.nix.inputs or [ ]);
+  attrsOf = names: map (n: lib.getAttrFromPath (lib.splitString "." n) pkgs) names;
+  inputsOf = e: attrsOf (e.nix.inputs or [ ]);
 
   # cargo-pgrx must match the pgrx crate the source locks; nixpkgs carries one attribute per pgrx release.
   # A release nixpkgs lacks comes from the flake input pgrx-<version> (reason in flake.nix), built with nixpkgs'
@@ -88,6 +89,13 @@ let
       inherit src;
       patches = [ ];
       cargoPatches = [ ];
+      # The recipe targets nixpkgs' version; ours may need more libraries or other build options.
+      buildInputs = (old.buildInputs or [ ]) ++ inputsOf e;
+      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ attrsOf (e.nix.nativeInputs or [ ]);
+      mesonFlags = (old.mesonFlags or [ ]) ++ (e.nix.mesonFlags or [ ]);
+      # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
+      # build/config.yaml there); ignored by recipes that do not use Meson.
+      mesonBuildDir = "_meson";
     } // lib.optionalAttrs (old ? cargoDeps) (pgrxArgs e src));
 
   generic = e:

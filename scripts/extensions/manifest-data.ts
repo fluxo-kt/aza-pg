@@ -259,9 +259,10 @@ export interface ManifestEntry {
    * How the Nix image (flake.nix) builds this entry, always from `source.commit`, so versions stay ours.
    * `package`: attribute in nixpkgs' postgresql_<major>.pkgs (or top-level nixpkgs for a tool) whose build recipe is
    * reused with our source swapped in. Omitted: built from `build.type` with `inputs`, the nixpkgs attributes it
-   * links (the Nix twin of aptPackages).
+   * links (the Nix twin of aptPackages). `nativeInputs`: build-time tools, never in the image. `mesonFlags`: appended
+   * to the recipe's, last one winning.
    */
-  nix?: { package?: string; inputs?: string[] };
+  nix?: { package?: string; inputs?: string[]; nativeInputs?: string[]; mesonFlags?: string[] };
   enabled?: boolean;
   disabledReason?: string;
   /**
@@ -1206,7 +1207,13 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgbackrest",
-    nix: { package: "pgbackrest" },
+    // systemd notify has no use in a container; SFTP repositories and zstd are what the image check requires.
+    // Since 2.60 its build script (Python, build-time only) reads YAML.
+    nix: {
+      package: "pgbackrest",
+      mesonFlags: ["-Dlibsystemd=disabled", "-Dlibssh2=enabled", "-Dlibzstd=enabled"],
+      nativeInputs: ["python3Packages.pyyaml"],
+    },
     kind: "tool",
     // Never below 2.59.3: it fixes weak encryption sub-keys and salts.
     install_via: "pgdg",

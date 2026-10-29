@@ -537,7 +537,15 @@
     {
       "name": "pgbackrest",
       "nix": {
-        "package": "pgbackrest"
+        "package": "pgbackrest",
+        "mesonFlags": [
+          "-Dlibsystemd=disabled",
+          "-Dlibssh2=enabled",
+          "-Dlibzstd=enabled"
+        ],
+        "nativeInputs": [
+          "python3Packages.pyyaml"
+        ]
       },
       "kind": "tool",
       "install_via": "pgdg",

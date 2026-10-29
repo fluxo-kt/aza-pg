@@ -505,7 +505,7 @@ echo "$DIFF_FILES"
 
 **Expected to differ**: `CHANGELOG.md` (always, by design), `bun.lock` (if bun reformatted), any files edited in Phase 4.5.
 **Flag as unexpected**: source files, scripts, Docker files, generated extension lists — these should be IDENTICAL to dev after squash.
-**Note**: if dev has advanced since the squash (new commits landed after Phase 4.1), those files will also appear here. Appendix A.2's Dev-Squash-Tip check will catch this before the anchor merge.
+**Note**: if dev has advanced since the squash (new commits landed after Phase 4.1), those files will also appear here. `anchor-merge.ts` refuses to anchor over them (Dev-Squash-Tip check).
 
 Do NOT compare tree hashes — trees intentionally diverge after CHANGELOG edits.
 
@@ -578,6 +578,8 @@ After every execution, reflect and update this command:
 
 **⚠️ Kaizen commits MUST happen BEFORE creating the Anchor Merge** (Appendix A). The anchor merge captures the release branch tree at that moment — if kaizen edits to this command file happen after the anchor merge, dev and release will drift by exactly those edits. Sequence: Phase 6 kaizen commit → push → CI → Anchor Merge.
 
+A fix that cannot ride in the release (new tooling, anything needing its own tests) waits until the anchor is pushed and Art has checked out `dev`, then lands there as a normal commit. The agent cannot leave `release` itself, since the Bash hook refuses every `git checkout`, so name that one command in the next steps.
+
 Once kaizen is committed, output next steps for the user:
 
 ```bash
@@ -587,7 +589,7 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (main mirrors release; workflow_run runs dev's definitions — a publish.yml fix must be on dev):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  3. After publish succeeds: bun scripts/release/anchor-merge.ts (Appendix A)"
 ```
 
 ---
@@ -598,124 +600,18 @@ Creates a merge commit on dev whose **tree** is forced to match the release bran
 
 > **Note**: The anchor merge is a separate operation from the release itself, typically done after CI passes on the pushed release commit.
 
-### A.1 — Ask user to switch to dev
-
-The AI agent cannot switch branches itself. Output this message verbatim and **wait for the user to confirm** before proceeding:
-
-```text
-Please run:
-  git checkout dev
-Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should print "dev").
-```
-
-### A.2 — Once user confirms they are on dev
+Once publish has succeeded, run from any branch, with no question to the user:
 
 ```bash
-[[ "$(git rev-parse --abbrev-ref HEAD)" == "dev" ]] || \
-  { echo "ABORT: Not on dev branch. Ask user to run: git checkout dev"; exit 1; }
-[[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
-
-# Fetch tags from origin so TARGET always reflects what CI just published
-git fetch --tags origin
-
-# The tag on origin/release's tip, not the newest tag by date: a re-tag or a tag pushed by hand
-# would otherwise be anchored instead of what was just released.
-TARGET=$(git tag -l 'v*' --points-at origin/release | head -1)
-[[ -n "$TARGET" ]] || { echo "ABORT: origin/release's tip has no v* tag — publish has not finished or failed."; exit 1; }
-echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
+bun scripts/release/anchor-merge.ts
 ```
 
-**Ask the user to confirm the tag BEFORE proceeding.** Output:
+It picks the v* tag on `origin/release`'s tip, refuses when `dev` holds commits the squash did not contain (the `Dev-Squash-Tip` trailer) or differs from `origin/dev`, builds the anchor with `git commit-tree`, moves `dev` without checking it out, and pushes it. Re-running after success does nothing. Every refusal names its fix; the script's header gives the reasons.
 
-```text
-Detected release tag: <TARGET>
-Is this the correct tag? (yes/no)
-```
-
-If the user says no, abort and ask them to check `git tag -l 'v*' --sort=-creatordate | head -5`.
-
-Once the tag is confirmed, run the safety check:
-
-```bash
-# Safety check: verify dev has not advanced beyond what was squashed.
-# The squash commit embeds the exact dev tip as a Dev-Squash-Tip trailer.
-# If new commits landed on dev AFTER the squash, the anchor merge would force
-# dev's tree to the release tree, silently overwriting their file content.
-# Search up to 10 commits on the tag — kaizen commits sit between the squash commit and the tag tip,
-# so git log -1 only sees the kaizen commit (no trailer). Search ancestry for the squash commit.
-DEV_SQUASH_TIP=$(git log "$TARGET" -10 --format='%(trailers:key=Dev-Squash-Tip,valueonly)' | command grep -v '^$' | head -1)
-if [[ -n "$DEV_SQUASH_TIP" ]]; then
-  # First check DEV_SQUASH_TIP is an ancestor of HEAD — if not, histories have diverged
-  if ! git merge-base --is-ancestor "$DEV_SQUASH_TIP" HEAD 2>/dev/null; then
-    echo "⚠️ DEV_SQUASH_TIP ($DEV_SQUASH_TIP) is NOT an ancestor of dev HEAD."
-    echo "   Histories may have diverged (reset/rebase?). Inspect manually before continuing."
-    exit 1
-  fi
-  NEW_COMMITS=$(git rev-list "$DEV_SQUASH_TIP"..HEAD --oneline)
-  if [[ -n "$NEW_COMMITS" ]]; then
-    echo "🚨 ABORT: dev has commits AFTER the squash whose content would be LOST:"
-    echo "$NEW_COMMITS"
-    echo ""
-    echo "The anchor merge forces dev's tree to the release tree."
-    echo "These commits exist in git history but their file changes would be overwritten."
-    echo ""
-    echo "Options:"
-    echo "  A) Do another squash release to include these commits first, then anchor."
-    echo "  B) Note the hashes above, proceed with anchor merge, then cherry-pick"
-    echo "     them back onto dev afterwards."
-    exit 1
-  fi
-  echo "✓ dev has not advanced since squash (tip: $(git rev-parse --short "$DEV_SQUASH_TIP")). Safe to anchor."
-else
-  # No Dev-Squash-Tip: release was published via direct commits (hotfix path), not via /release squash.
-  # This is valid — anchor still works. But we must verify dev has no NEW commits since last anchor
-  # that aren't represented in the release tree, because their FILE CONTENT will be superseded.
-  # (All commits remain reachable via parent-1 of the anchor — nothing is deleted from history.)
-  echo "⚠️ No Dev-Squash-Tip trailer in $TARGET — release was likely published via direct commits."
-  LAST_ANCHOR=$(git log HEAD --merges --format="%H %s" --regexp-ignore-case --grep="Anchor Merge" -1)
-  if [[ -n "$LAST_ANCHOR" ]]; then
-    LAST_ANCHOR_SHA=$(echo "$LAST_ANCHOR" | awk '{print $1}')
-    NEW_ON_DEV=$(git rev-list "$LAST_ANCHOR_SHA"..HEAD --oneline)
-    echo "Dev commits since last anchor ($(git rev-parse --short "$LAST_ANCHOR_SHA")):"
-    echo "${NEW_ON_DEV:-(none)}"
-    echo ""
-    echo "These commits will persist in history via parent-1 of the anchor merge."
-    echo "Their FILE CONTENT in the working tree will be replaced by the release tree."
-    if [[ -n "$NEW_ON_DEV" ]]; then
-      echo "ABORT: no Dev-Squash-Tip and dev has commits since the last anchor."
-      echo "       Do another squash release first, or get explicit user approval before anchoring over these file changes."
-      exit 1
-    fi
-  else
-    echo "⚠️ No previous anchor merge found. Inspect dev history manually before proceeding."
-    exit 1
-  fi
-fi
-```
-
-Once safety check passes:
-
-```bash
-# Split into two steps so commit-tree failure is detectable before touching dev's ref
-ANCHOR_COMMIT=$(git commit-tree "$TARGET"^{tree} \
-  -p HEAD -p "$TARGET" \
-  -m "Anchor Merge: merging $(git rev-parse --short HEAD) and $TARGET ($(git rev-parse --short "$TARGET"))")
-[[ -n "$ANCHOR_COMMIT" ]] || { echo "ABORT: git commit-tree failed — ANCHOR_COMMIT is empty."; exit 1; }
-
-git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only failed."; exit 1; }
-# The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
-# node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
-bun install
-git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
-echo "Anchor merge pushed. ✓"
-```
-
-`git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).
-
-This creates a merge commit on dev with:
-- **Parent 1**: dev HEAD (preserves dev history)
-- **Parent 2**: release branch HEAD (the squash commit)
-- **Tree**: release branch's tree (anchored — hence "anchor merge")
+The anchor commit has:
+- **Parent 1**: dev's tip (preserves dev history)
+- **Parent 2**: the release tag (the squash commit and any kaizen commits)
+- **Tree**: the released tree (anchored — hence "anchor merge")
 
 The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 

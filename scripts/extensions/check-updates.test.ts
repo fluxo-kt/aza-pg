@@ -23,6 +23,12 @@ describe("compareTagVersions", () => {
   test("rejects mismatched tag families", () => {
     expect(compareTagVersions("pgflow@0.14.1", "@pgflow/edge-worker@0.14.1")).toBeNull();
   });
+
+  test("compares image packaging revisions after the component version", () => {
+    expect(compareTagVersions("v1.24.1-p0", "v1.24.1-p1")).toBe(1);
+    expect(compareTagVersions("v1.24.1-p2", "v1.24.1-p10")).toBe(1);
+    expect(compareTagVersions("v1.24.1-p99", "v1.25.0-p0")).toBe(1);
+  });
 });
 
 describe("pre-release filtering", () => {

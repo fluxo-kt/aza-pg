@@ -58,7 +58,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **psql skips the data after a failed `COPY ... FROM STDIN`** (PostgreSQL 18.6, CVE-2026-6464): it used to run that data as SQL. A script that runs such a `COPY` expecting it to fail now needs a `\.` line ending its data, or psql treats the following commands as data too.
 - **pg_cron 1.6.7 → 1.6.8**: Fixes a shutdown hang with synchronous replication and a launcher shared-memory leak; job owner checks are now case-sensitive; adds `cron.match_dom_and_dow`.
 - **hypopg 1.4.2 → 1.4.4**: fixes large-OID hypothetical-index names, object invalidation, option leaks and failed-EXPLAIN side effects. **pg_repack** and **set_user** also receive PGDG packaging rebuilds.
-- **wal2json 2.7**: adds PostgreSQL 18 logical-decoding support and fixes escaping and memory handling. It is built from source while the apt packages trail upstream.
+- **wal2json 2.7**: adds PostgreSQL 18 logical-decoding support and fixes escaping and memory handling.
 - **plpgsql_check 2.10.16**: fixes passive-mode composite-variable descriptor access; it is built from source while PGDG trails the fix.
 - **index_advisor 0.2.1**: qualifies HypoPG helpers, fixes comment stripping and deallocates only its own prepared statement.
 - **pg_safeupdate 1.5 → 1.7**: When disabled it now still calls the next query-analysis hook, so extensions loaded after it (such as `pg_stat_statements`) keep working; it no longer blocks `pg_upgrade`.

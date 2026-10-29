@@ -76,8 +76,8 @@ if [ "$1" != "postgres" ]; then
     exec /usr/local/bin/docker-entrypoint.sh "$@"
 fi
 
-# Data checksums are enabled by default via official Debian PostgreSQL package initdb wrapper.
-# Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended - reduces corruption detection).
+# PostgreSQL 18's initdb enables data checksums by default; they detect page corruption and let pg_rewind turn a
+# failed primary into a replica. DISABLE_DATA_CHECKSUMS=true opts out (not recommended).
 if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --no-data-checksums"
 fi

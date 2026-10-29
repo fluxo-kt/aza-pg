@@ -12,14 +12,13 @@ Why not Debian: it cannot get there. Perl stays because `debconf`, `adduser` and
 
 We own every component's updates instead of waiting for a distribution. When a kept component lags its upstream's patched release, we override it from that upstream. When a well-maintained, widely used Rust (or Go) tool does the same job as a C one, we take the Rust one.
 
-Evidence (nixpkgs `31ecbac`, read 2026-10-29): PostgreSQL 18 built with the 19 of our components that nixpkgs already packages has a runtime closure of 69 store paths and 439 MiB, with no Perl or Python; Bash is the only interpreter. PGroonga's tokenizer data (kytea, mecab dictionary) is 175 MiB of that. Karakuri measured nixpkgs security fixes a median of 1 day after Debian's (`docs/foundation-selection.md`).
+Evidence (nixpkgs `31ecbac`, read 2026-10-29): the nixpkgs-built server closure has no Perl or Python; Bash is the only interpreter. Karakuri measured nixpkgs security fixes a median of 1 day after Debian's (`docs/foundation-selection.md`).
 
 Work:
 
 - Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version. The kernel comes from the host, so this covers userland only.
 - Replace every script the image runs with one Rust binary of ours, as Karakuri does: subcommands for the entrypoint (auto-config, then the upstream `docker-entrypoint.sh` flow: initdb, `POSTGRES_*` variables, init files), the healthcheck, `pgsodium_getkey`, `pgflow-upgrade`, the `pg_repack` wrapper and the shipped init scripts. One static, optimised executable brings no runtime, and its logic gets unit tests that shell cannot have. bash, coreutils, grep, sed, gawk, findutils, diffutils, getent and su-exec then leave the image. Open before the rewrite: operators' own `*.sh` files in `/docker-entrypoint-initdb.d` need a shell; decide whether the image keeps one for them.
-- Drop PGroonga tokenizer data (kytea, mecab dictionary) unless a shipped feature needs it.
-- Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
+- Keep the Debian image publishing until the Nix image passes every suite (the replica stack included: a primary + replica cluster is next); then switch `publish.yml` and delete the Debian path.
 - Add `flake.lock` to `/update`. A nixpkgs bump that changes glibc makes every existing en_US cluster stop at its first start (the entrypoint's `EN_US_SAME_ORDER_GLIBC`) until the new version is measured to sort en_US.utf8 like the listed ones and added; the measurement (every code point plus two-character pairs, md5 of the order) takes minutes, so it belongs in the update round, not in a test lane.
 - Judge each CVE finding instead of uploading every scanner hit (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
 

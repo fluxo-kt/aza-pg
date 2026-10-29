@@ -293,15 +293,21 @@ export function testNoBuildOnlyStorePaths(container: string): Promise<TestResult
  * as a cryptic slot error later. PostgreSQL 18.6+ refuses logical-decoding plugins missing from
  * output_plugin_libraries (superusers too); splitting into elements also catches the list stored as one
  * quoted element, which is what a single-string SET/ALTER SYSTEM produces and which matches no plugin.
+ * Data checksums: pg_rewind (a failed primary rejoining as replica) needs them, and only initdb can set them.
  */
 export function testPostgresConfiguration(container: string): Promise<TestResult> {
-  return check("CDC settings (wal_level, output_plugin_libraries)", async () => {
-    const walLevel = await sqlOk(container, "SELECT current_setting('wal_level')");
-    expect(walLevel === "logical", `wal_level = ${walLevel}, expected logical`);
-    const plugins = await sqlOk(container, "SELECT current_setting('output_plugin_libraries')");
-    const list = plugins.split(",").map((lib) => lib.trim());
-    expect(list.includes("wal2json"), `output_plugin_libraries lacks wal2json: ${plugins}`);
-  });
+  return check(
+    "Startup settings (wal_level, output_plugin_libraries, data_checksums)",
+    async () => {
+      const checksums = await sqlOk(container, "SELECT current_setting('data_checksums')");
+      expect(checksums === "on", `data_checksums = ${checksums}, expected on`);
+      const walLevel = await sqlOk(container, "SELECT current_setting('wal_level')");
+      expect(walLevel === "logical", `wal_level = ${walLevel}, expected logical`);
+      const plugins = await sqlOk(container, "SELECT current_setting('output_plugin_libraries')");
+      const list = plugins.split(",").map((lib) => lib.trim());
+      expect(list.includes("wal2json"), `output_plugin_libraries lacks wal2json: ${plugins}`);
+    }
+  );
 }
 
 /**

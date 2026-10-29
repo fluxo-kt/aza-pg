@@ -20,7 +20,8 @@ Work:
 - Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version. The kernel comes from the host, so this covers userland only.
 - Drop from the image what has no runtime job: pgbadger (Perl; operators run it on exported logs), PGroonga tokenizer data unless a shipped feature needs it, su-exec (run as uid 999).
 - Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
-- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; say so in the CHANGELOG under Breaking. Weigh ICU as the default collation provider for new clusters so later glibc moves cannot do this again.
+- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; say so in the CHANGELOG under Breaking. Clusters created with the builtin collation (the default for new clusters) are unaffected.
+- Ship no locale data beyond glibc's built-in C.UTF-8 if nothing needs it: `lc_messages`, `lc_monetary`, `lc_numeric` and `lc_time` are `en_US.utf8` today (`base-config.ts`); switching them to `C.UTF-8` changes `to_char` currency and thousands-separator output, so it is Breaking.
 - Judge each CVE finding instead of uploading every scanner hit (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
 
 ## Medium

@@ -88,9 +88,13 @@ if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --no-data-checksums"
 fi
 
-# Ensure UTF8 encoding and locale at cluster initialization
-# These settings are immutable after the cluster is created
-export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --encoding=UTF8 --locale=en_US.utf8"
+# New clusters sort text with PostgreSQL's builtin provider: code-point order, defined by PostgreSQL itself, so a
+# glibc or ICU upgrade never changes it and never forces a REINDEX. It is also the fastest comparison. PG_UNICODE_FAST
+# gives full Unicode case mapping (upper('ß') = 'SS'). Language-aware order stays available per column or query with
+# an ICU collation, e.g. COLLATE "en-US-x-icu". --locale=C.UTF-8 sets the libc categories to glibc's built-in locale.
+# The operator's POSTGRES_INITDB_ARGS come last so their flags win (initdb takes the last value of a repeated flag).
+# These settings are fixed once the cluster exists.
+export POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale-provider=builtin --builtin-locale=PG_UNICODE_FAST --locale=C.UTF-8 ${POSTGRES_INITDB_ARGS:-}"
 
 detect_ram() {
     local ram_mb=0

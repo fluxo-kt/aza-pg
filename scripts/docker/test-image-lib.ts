@@ -303,6 +303,25 @@ export function testPostgresConfiguration(container: string): Promise<TestResult
 }
 
 /**
+ * A new cluster's databases use the builtin PG_UNICODE_FAST collation (reason at the initdb arguments in the
+ * entrypoint), and ICU stays usable for language-aware order: 'B' < 'a' by code point, 'a' < 'B' under ICU.
+ */
+export function testDefaultCollation(container: string): Promise<TestResult> {
+  return check("Default collation (builtin PG_UNICODE_FAST, ICU per column)", async () => {
+    const db = await sqlOk(
+      container,
+      "SELECT datlocprovider || ' ' || datlocale FROM pg_database WHERE datname = current_database()"
+    );
+    expect(db === "b PG_UNICODE_FAST", `database collation = ${db}, expected b PG_UNICODE_FAST`);
+    const order = await sqlOk(
+      container,
+      `SELECT ('B' < 'a')::text || ' ' || ('a' < 'B' COLLATE "en-US-x-icu")::text || ' ' || upper('ß')`
+    );
+    expect(order === "true true SS", `code-point order, ICU order, case mapping = ${order}`);
+  });
+}
+
+/**
  * Every enabled tool declares its installed file on its manifest entry (binaryPath for an executable,
  * soFileName for a server library under `pg_config --pkglibdir`), and that file exists. An enabled tool
  * declaring neither fails, so a new tool cannot ship unchecked. Its postgresOwnedDirs are postgres:0750,

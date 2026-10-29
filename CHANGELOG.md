@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Breaking
+
+- **New clusters sort text by Unicode code point** (PostgreSQL's builtin `PG_UNICODE_FAST` collation, was glibc `en_US.utf8`). Existing data directories keep their collation. Now no glibc or ICU upgrade can change the sort order or force a `REINDEX`, and comparisons are faster. `ORDER BY` puts uppercase before lowercase (`'B' < 'a'`) and accented letters after `z`. Where people read the order, use ICU per column or query: `COLLATE "en-US-x-icu"`. To get the old default, pass `POSTGRES_INITDB_ARGS="--locale-provider=libc --locale=en_US.utf8"`. Your `POSTGRES_INITDB_ARGS` now override the image's initdb flags; before, the image's `--locale` overrode yours.
+
 ### Removed
 
 - **Python 3.13, psycopg2 and pg_partman's helper scripts** (`check_unique_constraint.py`, `dump_partition.py`, `vacuum_maintenance.py`): the scripts were the only reason Python was in the image. If you use them, run them against the database from a machine with Python and psycopg2. pg_partman 5.5.0 and its `pg_partman_bgw` background worker are unchanged.

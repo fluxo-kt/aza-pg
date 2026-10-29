@@ -43,7 +43,12 @@ const PHASES: Array<[string, Check[]]> = [
   ],
   [
     "Startup state",
-    [lib.testPreloadedExtensions, lib.testPrecreatedExtensions, lib.testPostgresConfiguration],
+    [
+      lib.testPreloadedExtensions,
+      lib.testPrecreatedExtensions,
+      lib.testPostgresConfiguration,
+      lib.testDefaultCollation,
+    ],
   ],
   ["Extension creation", [lib.testEnabledExtensions, lib.testDisabledExtensionsUnavailable]],
   [

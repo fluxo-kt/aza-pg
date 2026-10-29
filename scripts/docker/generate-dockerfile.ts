@@ -150,7 +150,7 @@ const APT_KEY_DIR = "/usr/share/keyrings/aza-pg";
 
 /**
  * Generate Percona package installation script
- * Percona repository provides pg_stat_monitor and keeps wal2json on the same already-required repo layer.
+ * Percona repository provides pg_stat_monitor.
  * Versions are hardcoded directly from manifest perconaVersion field
  */
 function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): string {
@@ -194,7 +194,7 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
   const soChecks = soFileChecks(enabledPerconaEntries, "Percona", pgMajor);
 
   return `# Percona repository setup and package installation
-# Provides: pg_stat_monitor and wal2json from Percona ppg-${pgMajor}
+# Provides: pg_stat_monitor from Percona ppg-${pgMajor}
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
@@ -381,15 +381,16 @@ function sharedLibrariesCheck(manifest: Manifest, pgMajor: string): string {
 
 /**
  * Generate PGDG tool installation script
- * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
+ * A tool is an executable (pgbackrest, checked by binaryPath) or a server module loaded without
+ * CREATE EXTENSION (wal2json, checked by soFileName) — the same two identities testToolsPresent uses.
  *
  * Every tool must be version-pinned: an unpinned name installs whatever apt resolves on build day,
  * so two builds of one commit can differ. (pgbadger was once left unpinned on the belief that it is
  * a Percona virtual package; with the Percona repo enabled it resolves to the real PGDG package and
  * `pgbadger=<version>` installs fine.)
  */
-function generatePgdgToolsInstall(manifest: Manifest): string {
-  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
+function generatePgdgToolsInstall(manifest: Manifest, pgMajor: string): string {
+  const enabledPgdgTools: Array<{ pin: string; check: string }> = [];
 
   for (const entry of manifest.entries) {
     if (entry.kind === "tool" && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
@@ -398,21 +399,22 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
       if (!entry.pgdgVersion) {
         throw new Error(
           `PGDG tool "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
-            `shown by: apt-cache madison ${entry.name} (run inside postgres:<pgVersion>-trixie)`
+            `shown by: apt-cache madison ${pgdgAptPackageName(entry, pgMajor)} (run inside postgres:<pgVersion>-trixie)`
         );
       }
       validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+      const aptName = pgdgAptPackageName(entry, pgMajor);
+      const pin = `${aptName}=${entry.pgdgVersion}`;
+      validatePackageName(pin, `PGDG tool pin (${entry.name})`);
 
-      const binary = safeAbsolutePath(
-        entry.binaryPath,
-        `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${entry.name})`
-      );
+      const check = entry.soFileName
+        ? soFileChecks([entry], "PGDG tool", pgMajor).join("")
+        : `test -x ${safeAbsolutePath(
+            entry.binaryPath,
+            `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${aptName})`
+          )}`;
 
-      enabledPgdgTools.push({
-        name: entry.name,
-        version: entry.pgdgVersion,
-        binary,
-      });
+      enabledPgdgTools.push({ pin, check });
     }
   }
 
@@ -420,10 +422,8 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     return `RUN echo "No PGDG tools enabled in manifest"`;
   }
 
-  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
-  const binaryVerifications = enabledPgdgTools
-    .map((t) => `test -x ${t.binary}`)
-    .join(" && \\\n    ");
+  const packagesList = enabledPgdgTools.map((t) => t.pin).join(" ");
+  const binaryVerifications = enabledPgdgTools.map((t) => t.check).join(" && \\\n    ");
 
   return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
@@ -431,7 +431,7 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     apt-get update && \\
     echo "Installing PGDG tools: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
-    # Verify tool binaries exist and are executable
+    # Verify each tool's executable or module file exists
     ${binaryVerifications} && \\
     echo "All ${enabledPgdgTools.length} PGDG tool(s) verified" && \\
     apt-get clean && \\
@@ -516,7 +516,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   const timescalePackagesInstall = generateTimescalePackagesInstall(manifest, pgMajor);
 
   info("Generating PGDG tools installation script...");
-  const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
+  const pgdgToolsInstall = generatePgdgToolsInstall(manifest, pgMajor);
 
   // Replace placeholders
   info("Replacing placeholders...");

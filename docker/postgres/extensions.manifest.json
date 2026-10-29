@@ -1120,16 +1120,14 @@
         "tag": "wal2json_2_7",
         "commit": "1fd8720d0145fba505822727c30cf0c5cc96f66f"
       },
-      "install_via": "source",
+      "install_via": "pgdg",
+      "pgdgPackage": "wal2json",
+      "pgdgVersion": "2.7-1.pgdg13+1",
       "soFileName": "wal2json.so",
-      "build": {
-        "type": "pgxs"
-      },
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "Built from source because PGDG and Percona trail the PostgreSQL 18 decoding fixes.",
           "Requires wal_level=logical in postgresql.conf for CDC functionality."
         ]
       },

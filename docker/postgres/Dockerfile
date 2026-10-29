@@ -192,9 +192,9 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 COPY docker/postgres/apt-keys/ /usr/share/keyrings/aza-pg/
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
-# Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
+# Provides pg_stat_monitor
 # Percona repository setup and package installation
-# Provides: pg_stat_monitor and wal2json from Percona ppg-18
+# Provides: pg_stat_monitor from Percona ppg-18
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -241,12 +241,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
-    # Verify tool binaries exist and are executable
+    echo "Installing PGDG tools: pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1 && \
+    # Verify each tool's executable or module file exists
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
-    echo "All 2 PGDG tool(s) verified" && \
+    test -f /usr/lib/postgresql/18/lib/wal2json.so && \
+    echo "All 3 PGDG tool(s) verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

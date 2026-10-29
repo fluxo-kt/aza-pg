@@ -54,7 +54,7 @@ TOOLS (command-line utilities)
   pg_safeupdate                v1.7
   pgbackrest                   v2.60.0
   pgbadger                     v13.2
-  wal2json                     vwal2json_2_7
+  wal2json                     v2.7
 
 ═══════════════════════════════════════════════════════════════
 PRELOADED MODULES (shared_preload_libraries default)

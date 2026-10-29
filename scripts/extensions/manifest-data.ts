@@ -152,8 +152,9 @@ export interface ManifestEntry {
    */
   pgdgVersion?: string;
   /**
-   * PGDG apt name suffix for an extension: installs postgresql-<major>-<pgdgPackage>.
-   * Required when install_via === "pgdg" and kind is "extension" (tools install under their name).
+   * PGDG apt name suffix: installs postgresql-<major>-<pgdgPackage>.
+   * Required when install_via === "pgdg" and kind is "extension"; a tool without it installs under
+   * its own name (pgbackrest), a tool that is a server module sets it (wal2json).
    * Example: "pgvector" for vector, "cron" for pg_cron.
    */
   pgdgPackage?: string;
@@ -1022,17 +1023,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/eulerto/wal2json.git",
       tag: "wal2json_2_7",
     },
-    // Both apt suppliers still ship 2.6; PGXS retains the current PostgreSQL 18 decoding fixes.
-    install_via: "source",
+    install_via: "pgdg",
+    pgdgPackage: "wal2json",
+    pgdgVersion: "2.7-1.pgdg13+1",
     soFileName: "wal2json.so",
-    build: { type: "pgxs" },
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: [
-        "Built from source because PGDG and Percona trail the PostgreSQL 18 decoding fixes.",
-        "Requires wal_level=logical in postgresql.conf for CDC functionality.",
-      ],
+      notes: ["Requires wal_level=logical in postgresql.conf for CDC functionality."],
     },
     sourceUrl: "https://github.com/eulerto/wal2json",
     docsUrl: "https://github.com/eulerto/wal2json#readme",

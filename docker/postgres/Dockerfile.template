@@ -165,7 +165,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 COPY docker/postgres/apt-keys/ /usr/share/keyrings/aza-pg/
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
-# Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
+# Provides pg_stat_monitor
 {{PERCONA_PACKAGES_INSTALL}}
 
 # Pre-compiled extensions from Timescale repository (versions hardcoded at generation time)

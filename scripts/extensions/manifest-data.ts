@@ -480,6 +480,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/supabase/supautils.git",
+      // Version 4 removes constrained extensions; retain 3.x until that operator capability has a migration.
       tag: "v3.4.4",
     },
     build: { type: "pgxs" },

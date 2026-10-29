@@ -2,6 +2,22 @@
 
 Known defects and missing work, most severe first. Each entry says why it matters and what fixing it takes. **Needs a decision** marks an entry that waits on a maintainer choice, not on effort. Remove an entry in the commit that fixes it.
 
+## High
+
+### Build the final image with Nix, not Debian
+
+The image must hold only what PostgreSQL and our extensions need at runtime, at their latest patched versions, with no avoidable language runtime: the goals in Karakuri's `docs/architecture.md` ("Choose responsibilities independently"), which apply to container images. Debian cannot reach that: Perl stays for `debconf`/`adduser` and `postgresql-common`, and the package manager and base userland stay with it, so most code-scanning alerts are unfixed Debian CVEs in packages PostgreSQL never uses. Art chose Nix (2026-10-29); musl (Alpine) is out: its collations differ from glibc's.
+
+Evidence (nixpkgs `31ecbac`, read 2026-10-29): `postgresql_18.withPackages` with the 19 of our components nixpkgs packages has a 69-path, 439 MiB runtime closure with no Perl or Python (Bash only); PGroonga's kytea and mecab dictionaries are 175 MiB of it. Karakuri measured nixpkgs security fixes a median of 1 day after Debian's (`docs/foundation-selection.md`).
+
+Work:
+
+- Package what nixpkgs lacks: index_advisor, supautils, wrappers, supabase_vault, pg_jsonschema, pg_hashids, pgflow, pg_stat_monitor, pg_plan_filter, set_user; TimescaleDB's TSL edition (nixpkgs' free attribute is the Apache edition); override versions nixpkgs trails. `manifest-data.ts` stays the one source of versions.
+- Drop from the image what has no runtime job: pgbadger (Perl; operators run it on exported logs), PGroonga tokenizer data unless a shipped feature needs it, su-exec (run as uid 999).
+- Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
+- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; the CHANGELOG entry states it. Weigh ICU as the default collation provider for new clusters so later glibc moves cannot do this again.
+- Replace Trivy's Debian noise with per-finding judgement (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
+
 ## Medium
 
 ### The `pg_upgrade` path needs an image holding both majors

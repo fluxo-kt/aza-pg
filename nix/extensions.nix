@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest }:
+{ pkgs, lib, postgresql, manifest, inputs }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -35,6 +35,9 @@ let
         # A pinned commit may sit off the default branch (a release branch, a moved tag).
         allRefs = true;
         submodules = true;
+      } // {
+        # Recipes locate their subdirectory as "${src.name}/…" (pgmq); fetchGit's store directory is named "source".
+        name = "source";
       };
       patches = map (p: root + "/docker/postgres/patches/${p}") (e.build.patches or [ ]);
     in
@@ -44,12 +47,23 @@ let
   inputsOf = e: map (n: lib.getAttrFromPath (lib.splitString "." n) pkgs) (e.nix.inputs or [ ]);
 
   # cargo-pgrx must match the pgrx crate the source locks; nixpkgs carries one attribute per pgrx release.
+  # A release nixpkgs lacks comes from the flake input pgrx-<version> (reason in flake.nix), built with nixpkgs'
+  # cargo-pgrx recipe from the pgrx workspace and its Cargo.lock.
   pgrxFor = src:
     let
       lock = builtins.fromTOML (builtins.readFile (src + "/Cargo.lock"));
       pgrx = lib.findFirst (p: p.name == "pgrx") (throw "no pgrx in ${src}/Cargo.lock") lock.package;
+      key = lib.replaceStrings [ "." ] [ "_" ] pgrx.version;
+      input = inputs."pgrx-${key}" or (throw
+        "cargo-pgrx ${pgrx.version} is in neither nixpkgs nor flake.nix: add input pgrx-${key} = { url = \"github:pgcentralfoundation/pgrx/v${pgrx.version}\"; flake = false; };");
     in
-    pkgs."cargo-pgrx_${lib.replaceStrings [ "." ] [ "_" ] pgrx.version}";
+    pkgs."cargo-pgrx_${key}" or (pkgs.cargo-pgrx.overrideAttrs {
+      version = pgrx.version;
+      src = input;
+      cargoDeps = cargoDepsFor input;
+      cargoBuildFlags = [ "-p" "cargo-pgrx" ];
+      doCheck = false;
+    });
 
   cargoDepsFor = src: pkgs.rustPlatform.importCargoLock {
     lockFile = src + "/Cargo.lock";

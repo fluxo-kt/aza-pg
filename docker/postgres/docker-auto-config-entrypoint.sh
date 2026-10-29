@@ -437,7 +437,7 @@ EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
 
 # The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
 # after this script) refuses a non-empty directory. Its failures surface when the server starts.
-PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
+PG_SHAREDIR=$(pg_config --sharedir)
 PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
@@ -576,7 +576,7 @@ as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 # differs from the pristine copy the image keeps beside it.
 readonly PUBLISHED_PGSODIUM_KEY=4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2
 pgsodium_key_file=""
-if cmp -s "/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey" /usr/local/share/aza-pg/pgsodium_getkey; then
+if cmp -s "$PGSODIUM_GETKEY_PATH" /usr/local/share/aza-pg/pgsodium_getkey; then
     image_getkey=true
 elif [ $? -eq 1 ]; then
     image_getkey=false

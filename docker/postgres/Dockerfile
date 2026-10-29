@@ -170,20 +170,19 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
     # Each entry's module file must exist (prevents silent installation failures)
     test -f /usr/lib/postgresql/18/lib/hll.so && \
     test -f /usr/lib/postgresql/18/lib/http.so && \
     test -f /usr/lib/postgresql/18/lib/hypopg.so && \
     test -f /usr/lib/postgresql/18/lib/pg_cron.so && \
-    test -f /usr/lib/postgresql/18/lib/pg_partman_bgw.so && \
     test -f /usr/lib/postgresql/18/lib/pg_repack.so && \
     test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
     test -f /usr/lib/postgresql/18/lib/rum.so && \
     test -f /usr/lib/postgresql/18/lib/set_user.so && \
     test -f /usr/lib/postgresql/18/lib/vector.so && \
-    echo "All 10 PGDG module files verified" && \
+    echo "All 9 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }

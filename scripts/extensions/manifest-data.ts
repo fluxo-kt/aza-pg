@@ -1037,10 +1037,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pg_partman",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "partman",
+    // Source, not PGDG: postgresql-18-partman hard-depends on python3 + psycopg2 for three optional helper scripts,
+    // which pulled Python and its CVEs into the image; the extension and its background worker need no Python.
+    install_via: "source",
     soFileName: "pg_partman_bgw.so",
-    pgdgVersion: "5.5.0-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -1048,13 +1048,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgpartman/pg_partman.git",
       tag: "v5.5.0",
     },
+    build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "PGDG: postgresql-18-partman — ships the pg_partman_bgw background worker",
+        "Source build ships the pg_partman_bgw background worker; the Python helper scripts are not included",
         "Set pg_partman_bgw.dbname, interval and role to enable the background worker; since 5.5.0 role defaults to partman_maintainer, which must exist (upstream advises a non-superuser role)",
       ],
     },

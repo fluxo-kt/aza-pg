@@ -554,25 +554,6 @@ After every execution, reflect and update this command:
 4. What needed manual intervention that could be automated?
 5. Any new edge case or gotcha to encode as a guardrail?
 
-### Accumulated Lessons
-
-- **The release commit names its own tag.** When CI picked the tag from its clock, the commit could not hold its dated heading: `release` and `main` showed shipped entries as unreleased, and dating them later meant splitting shipped from new entries by hand, which agents skipped or got wrong. Dating in Phase 4.4 makes the heading, the tag and the GitHub notes one fact.
-- **`workflow_run` always executes from the default branch, not the triggering branch** — that is `dev` (GitHub security restriction, prevents privilege escalation from untrusted branches). Consequence: the `publish.yml` that runs is `dev`'s; a `publish.yml` change committed only on `release` (hotfix path) is **invisible to CI** until it is also on `dev`. Pushing `release:main` keeps `main` as the release mirror; it no longer affects which workflow runs.
-
-- **CHANGELOG = net-delta log, nothing more.** No SQL verification snippets or tutorials; those belong in tests or docs. An action an operator must take because of a change (an `ALTER EXTENSION … UPDATE`, a renamed setting) is part of that change's entry, stated in one sentence. If a reader would say "why is this here?", remove it.
-- **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
-- **Hotfix/direct-commit releases: Dev-Squash-Tip is absent.** When a release is published via direct commits on `release` (e.g., CVE hotfix requiring multiple iterations), no Dev-Squash-Tip trailer exists in the tag. The anchor merge still works correctly — dev history is preserved as parent-1. The check: list dev commits since last anchor (`git rev-list LAST_ANCHOR_SHA..HEAD --oneline`); verify their content is already captured in the release tree (same fixes done on release). IMPORTANT: the anchor's parent-1 link means ALL those dev commits remain git-accessible forever — nothing is deleted. Their file content in the working tree is superseded by the release tree, which is the correct and expected outcome.
-
-- **RTK proxy `git rev-list --count` output is intermittently corrupted** (observed: returned `1189` for a count that was `91`). The standard `git rev-list ... --count` command passes through RTK but the numeric result can be mangled. Always verify with a second invocation if the count looks implausible. Guardrail #1 mentions truncation but not count corruption — the failure mode is distinct.
-
-- **RTK proxy silently kills `git log --format="%b" | grep` co-author pipelines** — returns empty even when co-author trailers exist. Two reliable workarounds: (a) `for hash in $(git rev-list ANCHOR..refs/heads/dev --no-merges); do git show "$hash" --format="%B" --no-patch; done | command grep -iE "^co-authored-by:"` (slow but reliable), or (b) `git log ... --format="%(trailers:key=Co-Authored-By,valueonly,separator=%x0a)"` (fast but misses trailers that git doesn't parse as formal trailers). Prefer (a) for completeness.
-
-- **`Dev-Squash-Tip` Appendix A lookup used `git log -1` — broken for multi-commit releases** (squash commit + kaizen commit). The tag tip is the LAST commit (kaizen), which has no trailer; the trailer lives in the parent (squash commit). Fix: `git log "$TARGET" -10 --format='%(trailers:...)' | grep -v '^$' | head -1` searches ancestry. Was silently falling through to "inspect manually" on every kaizen release.
-
-- **Validation regexes can false-positive on comment text** — `build-extensions.ts` had a comment `// bare .env({ PATH })` that matched the env-safety checker's `\.env\(\{` pattern. Root fix: add `| grep -Ev ":[0-9]+:[[:space:]]*//"` to exclude comment lines from checker output. Workaround (rephrasing comment) is fragile and breaks the comment's explanatory value.
-
-- **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
-
 → Edit this command file, commit as:
 `docs(skill): improve /release — [lesson learned]`
 
@@ -598,8 +579,6 @@ echo "  4. Then switch back for daily work: git checkout dev"
 ## Appendix A: Anchor Merge (After Push + CI Pass)
 
 Creates a merge commit on dev whose **tree** is forced to match the release branch's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge <branch> --no-ff` produces the WRONG tree when release-time edits diverge from dev.
-
-> **Note**: The anchor merge is a separate operation from the release itself, typically done after CI passes on the pushed release commit.
 
 Once publish has succeeded, run from any branch, with no question to the user:
 
@@ -661,11 +640,6 @@ bun install              # Restore release branch's node_modules
 - `git merge --squash dev`: applies NET diff directly, proper 3-way merge semantics
 - Since anchor merge makes dev's tree match main's, `main..dev` = exactly the new work
 
-**Why this command file persists through squash**:
-The file is committed to the release branch before squash. Since dev doesn't touch it and the merge base is HEAD, `git merge --squash dev` does not delete it. It persists in the index.
-
 **Why `bun install` is mandatory after squash**:
 The squash brings dev's code (including updated `bun.lock`) into the index/working tree, but `node_modules` still reflects release branch's packages. Dev may have updated oxlint, prettier, etc. Without `bun install`, validation uses stale binaries and the pre-commit hook's `bun run generate` uses wrong packages.
 
-**Why Appendix A uses `git commit-tree` instead of `git merge --no-ff`**:
-`git merge $TAG --no-ff` on dev creates a merge commit with dev's parent-1 + tag's parent-2, BUT the tree is the 3-way merge result — so release-time edits (e.g., CHANGELOG changes) would be REVERTED. `commit-tree` forces the tree to be exactly the tag's tree, then `git merge --ff-only` advances dev's pointer to that commit safely.

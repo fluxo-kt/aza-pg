@@ -7,6 +7,11 @@
  * The platform is the host's (an arm64 Mac builds the arm64 image); NIX_PLATFORM=linux/amd64 builds amd64 under
  * emulation, where the kernel rejects Nix's seccomp filter — hence filter-syscalls = false, which guards only builds
  * inside this throwaway container.
+ *
+ * build-dir = /tmp: unsandboxed Nix builds under /nix/var/nix/builds by default. Clang then records debug-info paths
+ * relative to their common prefix /nix ("store/<hash>-…"), which nuke-refs (it matches "/nix/store/<hash>") cannot
+ * strip, so PostgreSQL's JIT bitcode keeps references to compilers and headers and fails its own output check.
+ * Hydra builds in /build, which shares no prefix with the store; so do we, on an anonymous volume that --rm removes (Nix refuses a world-writable build-dir such as /tmp; a tmpfs would hold Rust build trees in RAM).
  */
 
 import path from "node:path";
@@ -32,9 +37,11 @@ const proc = Bun.spawn(
     "--platform",
     platform,
     "-e",
-    "NIX_CONFIG=filter-syscalls = false\nexperimental-features = nix-command flakes\nkeep-outputs = true\nwarn-dirty = false",
+    "NIX_CONFIG=filter-syscalls = false\nbuild-dir = /build\nexperimental-features = nix-command flakes\nkeep-outputs = true\nwarn-dirty = false",
     "-v",
     `aza-pg-nix-${platform.replace("linux/", "")}:/nix`,
+    "-v",
+    "/build",
     // Writable only so `nix flake lock` can write flake.lock; builds write to the store volume.
     "-v",
     `${repo}:/src`,

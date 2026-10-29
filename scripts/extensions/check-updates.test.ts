@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   canUseCandidateTag,
   compareTagVersions,
+  hasSameTagShape,
   isPreReleaseTag,
   parseLsRemoteHeadOutput,
   refsPointToSameCommit,
@@ -42,6 +43,20 @@ describe("pre-release filtering", () => {
     expect(canUseCandidateTag("1.4.2", "2.0.0beta")).toBeFalse();
     expect(canUseCandidateTag("1.4.2", "1.5.0")).toBeTrue();
     expect(canUseCandidateTag("2.0.0-rc1", "2.0.0beta")).toBeTrue();
+  });
+});
+
+describe("registry tag shape", () => {
+  test("accepts releases shaped like the pin", () => {
+    expect(hasSameTagShape("0.35.27", "0.35.28")).toBeTrue();
+    expect(hasSameTagShape("v1.26.1-p0", "v1.27.0-p12")).toBeTrue();
+  });
+
+  // Pipeline Components pushes bare short-commit tags such as 8102820 beside its releases.
+  test("rejects build tags of another shape", () => {
+    expect(hasSameTagShape("0.35.27", "8102820")).toBeFalse();
+    expect(hasSameTagShape("0.35.27", "amd64-0.35.27")).toBeFalse();
+    expect(hasSameTagShape("v1.26.1-p0", "1.22.1-p0")).toBeFalse();
   });
 });
 

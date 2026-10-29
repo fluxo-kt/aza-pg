@@ -78,6 +78,16 @@ export function canUseCandidateTag(currentTag: string, candidateTag: string): bo
   return !isPreReleaseTag(candidateTag);
 }
 
+/**
+ * Whether a registry tag has the pinned tag's shape (digit runs abstracted): `0.35.27` accepts
+ * `0.35.28` but not `8102820` or `amd64-0.35.27`. Registries carry build tags beside releases — a
+ * bare commit tag of digits otherwise parses as a version far above every release.
+ */
+export function hasSameTagShape(currentTag: string, candidateTag: string): boolean {
+  const shape = (tag: string) => tag.replace(/\d+/g, "N");
+  return shape(currentTag) === shape(candidateTag);
+}
+
 function parseTagVersion(tag: string): ParsedTagVersion | null {
   const matches = Array.from(tag.matchAll(/(\d+(?:[._-]\d+)+|\d+)/g));
   if (matches.length === 0) {
@@ -522,6 +532,11 @@ const IMAGE_SOURCES: Record<
   "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
   "hadolint/hadolint": { repository: "https://github.com/hadolint/hadolint" },
   "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
+  // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
+  "pipelinecomponents/yamllint": {
+    repository: "https://gitlab.com/pipeline-components/yamllint",
+    tags: "docker-hub",
+  },
 };
 
 /**
@@ -540,16 +555,23 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
   for (const file of files) {
     const tool = file.startsWith("scripts/") || file.startsWith(".github/");
     for (const line of (await Bun.file(file).text()).split("\n")) {
+      // A digest pin with no tag names no version to compare; it is kept with tag "" so the report
+      // says it could not be checked, instead of the pin going stale without any row.
+      const untagged = tool
+        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
+        : null;
       const m = tool
         ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+):([A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
         : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
             line
           );
-      if (!m) continue;
-      const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
+      const hit = m ?? untagged;
+      if (!hit) continue;
+      const tag = m ? m[2]! : "";
+      const repo = hit[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
       if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
-      const key = `${repo}:${m[2]}`;
-      const known = images.get(key) ?? { repo, tag: m[2]!, files: [] };
+      const key = `${repo}:${tag}`;
+      const known = images.get(key) ?? { repo, tag, files: [] };
       if (!known.files.includes(file)) known.files.push(file);
       images.set(key, known);
     }
@@ -586,7 +608,11 @@ async function checkDockerHubImage(repo: string, current: string): Promise<Updat
       const data = DockerHubTagPage(await response.json());
       if (data instanceof type.errors) return unavailable(data.summary);
       for (const { name } of data.results) {
-        if (!canUseCandidateTag(current, name) || compareTagVersions(current, name) === null)
+        if (
+          !hasSameTagShape(current, name) ||
+          !canUseCandidateTag(current, name) ||
+          compareTagVersions(current, name) === null
+        )
           continue;
         if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
       }
@@ -770,6 +796,21 @@ async function main() {
   for (const image of await pinnedImages()) {
     const upstream = IMAGE_SOURCES[image.repo];
     const pinnedIn = `pinned in ${image.files.join(", ")}`;
+    if (image.tag === "") {
+      results.push({
+        name: image.repo,
+        current: "(digest only)",
+        latest: null,
+        updateAvailable: false,
+        source: image.repo,
+        sourceType: "git",
+        releaseUrl: null,
+        notes: `Could not check: digest pin has no tag; write it as repo:tag@sha256:… (${pinnedIn})`,
+        enabled: true,
+        files: image.files,
+      });
+      continue;
+    }
     if (!upstream) {
       results.push({
         name: image.repo,

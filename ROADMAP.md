@@ -16,12 +16,10 @@ Evidence (nixpkgs `31ecbac`, read 2026-10-29): PostgreSQL 18 built with the 19 o
 
 Work:
 
-- Package what nixpkgs lacks: index_advisor, supautils, wrappers, supabase_vault, pg_jsonschema, pg_hashids, pgflow, pg_stat_monitor, pg_plan_filter, set_user; TimescaleDB's TSL edition (nixpkgs' free attribute is the Apache edition); override versions nixpkgs trails. Versions keep coming from `manifest-data.ts`: generate the Nix expression from it, as the Dockerfile is generated today.
 - Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version. The kernel comes from the host, so this covers userland only.
 - Drop PGroonga tokenizer data (kytea, mecab dictionary) unless a shipped feature needs it.
 - Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
 - Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; say so in the CHANGELOG under Breaking. Clusters created with the builtin collation (the default for new clusters) are unaffected.
-- Ship only the glibc locales in `MANIFEST_METADATA.locales` (`glibcLocales.override`), not all 223 MB of them.
 - Judge each CVE finding instead of uploading every scanner hit (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
 
 ## Medium

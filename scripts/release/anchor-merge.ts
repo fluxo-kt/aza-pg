@@ -13,27 +13,7 @@
  * still points where it was read (update-ref compare-and-swap). Re-running after success does nothing.
  */
 
-export {}; // a module, for top-level await
-
-async function git(...args: string[]): Promise<string> {
-  const proc = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${err.trim()}`);
-  return out.trim();
-}
-const isAncestor = async (a: string, b: string) =>
-  (await Bun.spawn(["git", "merge-base", "--is-ancestor", a, b], {
-    stdout: "ignore",
-    stderr: "ignore",
-  }).exited) === 0;
-function stop(message: string): never {
-  console.error(`❌ ${message}`);
-  process.exit(1);
-}
+import { git, isAncestor, stop } from "./git";
 
 await git("fetch", "--tags", "origin");
 const tag = (await git("tag", "-l", "v*", "--points-at", "origin/release")).split("\n")[0];

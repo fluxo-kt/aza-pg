@@ -150,7 +150,7 @@ CURRENT_HEAD=$(git rev-parse HEAD)
 [[ "$ANCHOR_P2" == "$CURRENT_HEAD" ]] || {
   echo "ABORT: Anchor parent2 ($ANCHOR_P2) ≠ HEAD ($CURRENT_HEAD)."
   echo "       Main/release has moved since the anchor merge was created."
-  echo "       Create a new anchor merge on dev pointing to the current HEAD."
+  echo "       Anchor dev to the current release: bun scripts/release/anchor-merge.ts"
   exit 1
 }
 ```

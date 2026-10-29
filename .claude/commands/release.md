@@ -578,7 +578,7 @@ After every execution, reflect and update this command:
 
 **⚠️ Kaizen commits MUST happen BEFORE creating the Anchor Merge** (Appendix A). The anchor merge captures the release branch tree at that moment — if kaizen edits to this command file happen after the anchor merge, dev and release will drift by exactly those edits. Sequence: Phase 6 kaizen commit → push → CI → Anchor Merge.
 
-A fix that cannot ride in the release (new tooling, anything needing its own tests) waits until the anchor is pushed and Art has checked out `dev`, then lands there as a normal commit. The agent cannot leave `release` itself, since the Bash hook refuses every `git checkout`, so name that one command in the next steps.
+A fix that cannot ride in the release (new tooling, anything needing its own tests) waits until the anchor is pushed and Art has checked out `dev`, then lands there as a normal commit. The agent cannot leave `release` itself, since the Bash hook refuses every `git checkout`; next step 4 asks Art for it.
 
 Once kaizen is committed, output next steps for the user:
 
@@ -589,7 +589,8 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (main mirrors release; workflow_run runs dev's definitions — a publish.yml fix must be on dev):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  3. After publish succeeds: bun scripts/release/anchor-merge.ts (Appendix A)"
+echo "  3. After publish succeeds, the agent runs bun scripts/release/anchor-merge.ts (Appendix A)"
+echo "  4. Then switch back for daily work: git checkout dev"
 ```
 
 ---

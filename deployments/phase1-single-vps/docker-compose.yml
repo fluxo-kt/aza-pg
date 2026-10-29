@@ -130,11 +130,10 @@ services:
     container_name: pgbouncer-exporter
     restart: unless-stopped
     environment:
-      PGBOUNCER_EXPORTER_HOST: pgbouncer
-      PGBOUNCER_EXPORTER_PORT: 6432
-      PGBOUNCER_EXPORTER_USER: ${POSTGRES_USER:-postgres}
-      PGBOUNCER_EXPORTER_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
-      PGBOUNCER_EXPORTER_DATABASE: pgbouncer
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: "postgres://pgbouncer:6432/pgbouncer?sslmode=disable"
+      PGUSER: ${POSTGRES_USER:-postgres}
+      # Keep credentials outside the URI so password punctuation needs no URL encoding.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
     networks:
       - aza-pg-network
     ports:

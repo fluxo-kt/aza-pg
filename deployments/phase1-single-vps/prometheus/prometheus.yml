@@ -31,11 +31,7 @@ scrape_configs:
         labels:
           component: "postgres"
           instance: "primary"
-    metric_relabel_configs:
-      # Drop high-cardinality metrics if needed
-      - source_labels: [__name__]
-        regex: "pg_stat_statements_.*"
-        action: keep
+    # The provisioned dashboard also uses health, activity, database-size and lock metrics.
 
   # PgBouncer metrics
   - job_name: "pgbouncer"

@@ -82,8 +82,11 @@ if (base !== dev) {
   );
 }
 
+// commit-tree ignores commit.gpgSign, so an anchor would go out unsigned where every `git commit` is signed.
+const sign = (await git("config", "--type=bool", "--default=false", "commit.gpgSign")) === "true";
 const anchor = await git(
   "commit-tree",
+  ...(sign ? ["-S"] : []),
   `${tag}^{tree}`,
   "-p",
   dev,

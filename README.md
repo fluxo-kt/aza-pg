@@ -148,7 +148,6 @@ scrape_configs:
 bun run build                                       # Build the image (aza-pg:pg18)
 bun run test:all                                    # Full suite
 bun run validate                                    # Validation only (fast)
-bun scripts/docker/validate-published-image-artifacts.ts  # Validate published image
 ```
 
 **Regression Testing:**

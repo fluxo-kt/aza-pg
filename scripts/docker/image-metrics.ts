@@ -1,8 +1,5 @@
 /**
- * Docker Image Metrics - Shared utilities for extracting image size and layer information
- *
- * Provides functions to query Docker for image metrics without code duplication.
- * Used by both validation scripts and release tooling.
+ * Image size, layer count and base image of a published image, for the GitHub release notes (promote-image.ts).
  */
 
 import { $ } from "bun";

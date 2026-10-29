@@ -101,7 +101,9 @@ let
   generic = e:
     let
       src = sourceOf e;
-      common = { pname = e.name; version = versionOf e; buildInputs = inputsOf e; };
+      # PostgreSQL's server headers include OpenSSL's and GSSAPI's (libpq-be.h, as this server is built with both),
+      # so any extension including them needs their headers; nixpkgs' TimescaleDB recipe lists the same two.
+      common = { pname = e.name; version = versionOf e; buildInputs = [ pkgs.openssl pkgs.libkrb5 ] ++ inputsOf e; };
     in
     if e.build.type == "cargo-pgrx" then
       pkgs.buildPgrxExtension (common // pgrxArgs e src // { inherit src postgresql; })

@@ -1,0 +1,99 @@
+# Every enabled manifest entry, built from the exact commit in docker/postgres/extensions.manifest.json (generated from
+# scripts/extensions/manifest-data.ts), so versions have one source and we, not nixpkgs, decide when they move.
+#
+# An entry with `nix.package` reuses that nixpkgs recipe (its configure flags, inputs and install fixes) with our
+# source swapped in; nixpkgs' own patches are dropped because they target its version, ours (`build.patches`) apply.
+# Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
+# pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
+# own Cargo.lock for the same reason.
+{ pkgs, lib, postgresql, manifest }:
+let
+  ps = postgresql.pkgs;
+  # The PGXS builder exists only inside the extension scope, not as an attribute of it.
+  postgresqlBuildExtension = ps.callPackage ({ postgresqlBuildExtension }: postgresqlBuildExtension) { };
+  root = ../.;
+
+  enabled = builtins.filter
+    (e: (e.enabled or true) && e.kind != "builtin" && e.source.type != "builtin" && !(e ? nix && e.nix ? exclude))
+    manifest.entries;
+
+  # Upstream tags wrap the version in their own prefix ("v0.20.5", "ver_1.5.3", "REL4_2_0", "wal2json_2_7",
+  # "release/2.60.0", "pgflow@0.17.2"): the version is the trailing run of digits, dots and underscores. Recipes
+  # use it in file names (vectorscale-<version>.so), so it must be the real one. An untagged commit has none.
+  versionOf = e:
+    if e.source.type == "git-ref" then "unstable-${builtins.substring 0 7 e.source.commit}"
+    else
+      let m = builtins.match "(.*[^0-9._])?[._]?([0-9][0-9._]*)" e.source.tag;
+      in if m == null then throw "${e.name}: no version in tag ${e.source.tag}"
+      else lib.replaceStrings [ "_" ] [ "." ] (builtins.elemAt m 1);
+
+  sourceOf = e:
+    let
+      fetched = builtins.fetchGit {
+        url = e.source.repository;
+        rev = e.source.commit;
+        # A pinned commit may sit off the default branch (a release branch, a moved tag).
+        allRefs = true;
+        submodules = true;
+      };
+      patches = map (p: root + "/docker/postgres/patches/${p}") (e.build.patches or [ ]);
+    in
+    # Patched before evaluation reads Cargo.lock: vectorscale's patch adds that file.
+    if patches == [ ] then fetched else pkgs.applyPatches { name = "${e.name}-source"; src = fetched; inherit patches; };
+
+  inputsOf = e: map (n: lib.getAttrFromPath (lib.splitString "." n) pkgs) (e.nix.inputs or [ ]);
+
+  # cargo-pgrx must match the pgrx crate the source locks; nixpkgs carries one attribute per pgrx release.
+  pgrxFor = src:
+    let
+      lock = builtins.fromTOML (builtins.readFile (src + "/Cargo.lock"));
+      pgrx = lib.findFirst (p: p.name == "pgrx") (throw "no pgrx in ${src}/Cargo.lock") lock.package;
+    in
+    pkgs."cargo-pgrx_${lib.replaceStrings [ "." ] [ "_" ] pgrx.version}";
+
+  cargoDepsFor = src: pkgs.rustPlatform.importCargoLock {
+    lockFile = src + "/Cargo.lock";
+    allowBuiltinFetchGit = true;
+  };
+
+  pgrxArgs = e: src: {
+    cargo-pgrx = pgrxFor src;
+    cargoDeps = cargoDepsFor src;
+    buildFeatures = e.build.features or [ ];
+    buildNoDefaultFeatures = e.build.noDefaultFeatures or false;
+    doCheck = false;
+  } // lib.optionalAttrs ((e.build or { }) ? subdir) { buildAndTestSubdir = e.build.subdir; };
+
+  fromNixpkgs = e:
+    let
+      src = sourceOf e;
+      base = ps.${e.nix.package} or pkgs.${e.nix.package};
+    in
+    base.overrideAttrs (old: {
+      version = versionOf e;
+      inherit src;
+      patches = [ ];
+      cargoPatches = [ ];
+    } // lib.optionalAttrs (old ? cargoDeps) (pgrxArgs e src));
+
+  generic = e:
+    let
+      src = sourceOf e;
+      common = { pname = e.name; version = versionOf e; buildInputs = inputsOf e; };
+    in
+    if e.build.type == "cargo-pgrx" then
+      pkgs.buildPgrxExtension (common // pgrxArgs e src // { inherit src postgresql; })
+    else if e.build.type == "pgxs" then
+      postgresqlBuildExtension (common // {
+        src = if (e.build or { }) ? subdir then "${src}/${e.build.subdir}" else src;
+        # USE_PGXS selects the out-of-tree build in Makefiles that also support contrib/; OPTFLAGS= drops
+        # -march=native that some upstreams add, so the image runs on any CPU of its architecture.
+        makeFlags = [ "USE_PGXS=1" "OPTFLAGS=" ] ++ (e.build.makeOptions or [ ]);
+      })
+    else
+      throw "${e.name}: build.type ${e.build.type} has no generic Nix build; set nix.package in manifest-data.ts";
+
+  # SQL-only entries (pgflow) have neither a build nor a recipe; the image installs their files from the repo.
+  built = builtins.filter (e: e ? build || (e ? nix && e.nix ? package)) enabled;
+in
+lib.listToAttrs (map (e: lib.nameValuePair e.name (if e ? nix && e.nix ? package then fromNixpkgs e else generic e)) built)

@@ -31,6 +31,9 @@
     },
     {
       "name": "vectorscale",
+      "nix": {
+        "package": "pgvectorscale"
+      },
       "displayName": "pgvectorscale",
       "kind": "extension",
       "soFileName": "vectorscale-0.9.1.so",
@@ -65,6 +68,9 @@
     },
     {
       "name": "wrappers",
+      "nix": {
+        "inputs": ["openssl", "pkg-config"]
+      },
       "displayName": "supabase-wrappers",
       "kind": "extension",
       "category": "integration",

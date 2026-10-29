@@ -57,6 +57,9 @@
     },
     {
       "name": "hll",
+      "nix": {
+        "package": "pg_hll"
+      },
       "displayName": "postgresql-hll",
       "kind": "extension",
       "install_via": "pgdg",
@@ -86,6 +89,9 @@
     },
     {
       "name": "http",
+      "nix": {
+        "package": "pgsql-http"
+      },
       "displayName": "pgsql-http",
       "kind": "extension",
       "install_via": "pgdg",
@@ -119,6 +125,9 @@
     },
     {
       "name": "hypopg",
+      "nix": {
+        "package": "hypopg"
+      },
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "hypopg",
@@ -175,6 +184,9 @@
     },
     {
       "name": "pg_cron",
+      "nix": {
+        "package": "pg_cron"
+      },
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "cron",
@@ -267,6 +279,9 @@
     },
     {
       "name": "pg_net",
+      "nix": {
+        "package": "pg_net"
+      },
       "kind": "extension",
       "category": "integration",
       "description": "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
@@ -298,6 +313,9 @@
     },
     {
       "name": "pg_partman",
+      "nix": {
+        "package": "pg_partman"
+      },
       "kind": "extension",
       "install_via": "source",
       "soFileName": "pg_partman_bgw.so",
@@ -354,6 +372,9 @@
     },
     {
       "name": "pg_repack",
+      "nix": {
+        "package": "pg_repack"
+      },
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "repack",
@@ -387,6 +408,9 @@
     },
     {
       "name": "pg_safeupdate",
+      "nix": {
+        "package": "pg_safeupdate"
+      },
       "kind": "tool",
       "category": "safety",
       "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
@@ -480,6 +504,9 @@
     },
     {
       "name": "pgaudit",
+      "nix": {
+        "package": "pgaudit"
+      },
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "pgaudit",
@@ -509,6 +536,9 @@
     },
     {
       "name": "pgbackrest",
+      "nix": {
+        "package": "pgbackrest"
+      },
       "kind": "tool",
       "install_via": "pgdg",
       "pgdgVersion": "2.60.0-1.pgdg13+1",
@@ -539,6 +569,9 @@
     },
     {
       "name": "pgbadger",
+      "nix": {
+        "exclude": "Perl, and no runtime job: operators run pgBadger on exported logs."
+      },
       "kind": "tool",
       "install_via": "pgdg",
       "pgdgVersion": "13.2-1.pgdg13+1",
@@ -619,6 +652,9 @@
     },
     {
       "name": "pgmq",
+      "nix": {
+        "package": "pgmq"
+      },
       "kind": "extension",
       "category": "queueing",
       "description": "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
@@ -673,6 +709,9 @@
     },
     {
       "name": "pgroonga",
+      "nix": {
+        "package": "pgroonga"
+      },
       "kind": "extension",
       "category": "search",
       "description": "Full-text search powered by Groonga for multilingual workloads.",
@@ -749,6 +788,9 @@
     },
     {
       "name": "pgsodium",
+      "nix": {
+        "package": "pgsodium"
+      },
       "kind": "extension",
       "category": "security",
       "description": "Modern cryptography and envelope encryption with libsodium.",
@@ -800,6 +842,9 @@
     },
     {
       "name": "plpgsql_check",
+      "nix": {
+        "package": "plpgsql_check"
+      },
       "kind": "extension",
       "install_via": "source",
       "soFileName": "plpgsql_check.so",
@@ -873,6 +918,9 @@
     },
     {
       "name": "rum",
+      "nix": {
+        "package": "rum"
+      },
       "kind": "extension",
       "install_via": "pgdg",
       "pgdgPackage": "rum",
@@ -931,6 +979,11 @@
     },
     {
       "name": "supabase_vault",
+      "nix": {
+        "inputs": [
+          "libsodium"
+        ]
+      },
       "displayName": "vault",
       "kind": "extension",
       "category": "security",
@@ -987,6 +1040,9 @@
     },
     {
       "name": "timescaledb",
+      "nix": {
+        "package": "timescaledb"
+      },
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-2-postgresql-18",
@@ -1014,6 +1070,9 @@
     },
     {
       "name": "timescaledb_toolkit",
+      "nix": {
+        "package": "timescaledb_toolkit"
+      },
       "kind": "extension",
       "install_via": "timescale",
       "timescalePackage": "timescaledb-toolkit-postgresql-18",
@@ -1043,6 +1102,9 @@
     },
     {
       "name": "vector",
+      "nix": {
+        "package": "pgvector"
+      },
       "displayName": "pgvector",
       "kind": "extension",
       "install_via": "pgdg",
@@ -1070,6 +1132,9 @@
     },
     {
       "name": "vectorscale",
+      "nix": {
+        "package": "pgvectorscale"
+      },
       "displayName": "pgvectorscale",
       "kind": "extension",
       "soFileName": "vectorscale-0.9.1.so",
@@ -1112,6 +1177,9 @@
     },
     {
       "name": "wal2json",
+      "nix": {
+        "package": "wal2json"
+      },
       "kind": "tool",
       "category": "cdc",
       "description": "Logical decoding output plugin streaming JSON data for CDC.",
@@ -1137,6 +1205,12 @@
     },
     {
       "name": "wrappers",
+      "nix": {
+        "inputs": [
+          "openssl",
+          "pkg-config"
+        ]
+      },
       "displayName": "supabase-wrappers",
       "kind": "extension",
       "category": "integration",
@@ -1190,5 +1264,56 @@
         "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast."
       ]
     }
+  },
+  "metadata": {
+    "pgVersion": "18.6",
+    "baseImageSha": "sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4",
+    "rustToolchain": "1.99.1",
+    "rustImageSha": "sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247",
+    "bunImageSha": "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+    "locales": [
+      "en_US",
+      "en_GB",
+      "en_CA",
+      "en_AU",
+      "en_IN",
+      "de_DE",
+      "de_AT",
+      "de_CH",
+      "fr_FR",
+      "fr_CA",
+      "fr_CH",
+      "it_IT",
+      "es_ES",
+      "es_MX",
+      "es_AR",
+      "pt_PT",
+      "pt_BR",
+      "nl_NL",
+      "pl_PL",
+      "cs_CZ",
+      "sv_SE",
+      "da_DK",
+      "nb_NO",
+      "fi_FI",
+      "ru_RU",
+      "uk_UA",
+      "kk_KZ",
+      "be_BY",
+      "ka_GE",
+      "hy_AM",
+      "tr_TR",
+      "el_GR",
+      "he_IL",
+      "ar_AE",
+      "hi_IN",
+      "zh_CN",
+      "zh_TW",
+      "ja_JP",
+      "ko_KR",
+      "th_TH",
+      "vi_VN",
+      "id_ID"
+    ]
   }
 }

@@ -16,7 +16,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Added
 
-- **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`.
+- **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`. The locales add 45 MB to the image.
 
 ### Removed
 

@@ -393,11 +393,17 @@ function generatePgdgToolsInstall(manifest: Manifest, pgMajor: string): string {
 }
 
 /**
+ * What a builder stage reads. Without `metadata`: each file is COPYed into a builder layer, so carrying
+ * MANIFEST_METADATA would rebuild every extension whenever a locale or an unrelated digest changed.
+ */
+type BuilderManifest = Omit<Manifest, "metadata">;
+
+/**
  * Generate filtered manifest for PGXS-style builds
  * Includes: pgxs, autotools, cmake, meson, make, timescaledb (build type)
  * Excludes: entries with install_via === "pgdg", "percona", or "timescale"
  */
-function generatePgxsManifest(manifest: Manifest): Manifest {
+function generatePgxsManifest(manifest: Manifest): BuilderManifest {
   const pgxsBuildTypes = ["pgxs", "autotools", "cmake", "meson", "make", "timescaledb"];
   const filteredEntries = manifest.entries.filter(
     (entry) =>
@@ -419,7 +425,7 @@ function generatePgxsManifest(manifest: Manifest): Manifest {
  * Includes: cargo-pgrx
  * Excludes: entries with install_via === "pgdg", "percona", or "timescale"
  */
-function generateCargoManifest(manifest: Manifest): Manifest {
+function generateCargoManifest(manifest: Manifest): BuilderManifest {
   const filteredEntries = manifest.entries.filter(
     (entry) =>
       entry.build &&

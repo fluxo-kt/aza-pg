@@ -4,7 +4,11 @@
  */
 
 import { join } from "node:path";
-import type { ManifestEntry, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+import type {
+  MANIFEST_METADATA,
+  ManifestEntry,
+  SOURCE_LIBRARIES,
+} from "../extensions/manifest-data";
 
 /** A tagged source carries the commit its tag resolved to; the build clones that commit, not the tag. */
 export type ResolvedSource =
@@ -22,6 +26,8 @@ export interface Manifest {
   /** Sorted by name. */
   entries: ResolvedEntry[];
   sourceLibraries: typeof SOURCE_LIBRARIES;
+  /** MANIFEST_METADATA, so consumers outside TypeScript (flake.nix) read versions and locales from this file. */
+  metadata: typeof MANIFEST_METADATA;
 }
 
 /**

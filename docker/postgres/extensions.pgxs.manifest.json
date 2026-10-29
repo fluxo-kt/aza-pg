@@ -51,6 +51,9 @@
     },
     {
       "name": "pg_net",
+      "nix": {
+        "package": "pg_net"
+      },
       "kind": "extension",
       "category": "integration",
       "description": "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
@@ -80,6 +83,9 @@
     },
     {
       "name": "pg_partman",
+      "nix": {
+        "package": "pg_partman"
+      },
       "kind": "extension",
       "install_via": "source",
       "soFileName": "pg_partman_bgw.so",
@@ -136,6 +142,9 @@
     },
     {
       "name": "pg_safeupdate",
+      "nix": {
+        "package": "pg_safeupdate"
+      },
       "kind": "tool",
       "category": "safety",
       "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
@@ -164,6 +173,9 @@
     },
     {
       "name": "pgmq",
+      "nix": {
+        "package": "pgmq"
+      },
       "kind": "extension",
       "category": "queueing",
       "description": "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
@@ -216,6 +228,9 @@
     },
     {
       "name": "pgroonga",
+      "nix": {
+        "package": "pgroonga"
+      },
       "kind": "extension",
       "category": "search",
       "description": "Full-text search powered by Groonga for multilingual workloads.",
@@ -254,6 +269,9 @@
     },
     {
       "name": "pgsodium",
+      "nix": {
+        "package": "pgsodium"
+      },
       "kind": "extension",
       "category": "security",
       "description": "Modern cryptography and envelope encryption with libsodium.",
@@ -283,6 +301,9 @@
     },
     {
       "name": "plpgsql_check",
+      "nix": {
+        "package": "plpgsql_check"
+      },
       "kind": "extension",
       "install_via": "source",
       "soFileName": "plpgsql_check.so",
@@ -310,6 +331,9 @@
     },
     {
       "name": "supabase_vault",
+      "nix": {
+        "inputs": ["libsodium"]
+      },
       "displayName": "vault",
       "kind": "extension",
       "category": "security",

@@ -7,7 +7,12 @@
 import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import type { Manifest, ResolvedEntry, ResolvedSource } from "../config-generator/manifest-loader";
-import { MANIFEST_ENTRIES, SOURCE_LIBRARIES, type SourceSpec } from "./manifest-data";
+import {
+  MANIFEST_ENTRIES,
+  MANIFEST_METADATA,
+  SOURCE_LIBRARIES,
+  type SourceSpec,
+} from "./manifest-data";
 
 async function resolveGitCommit(repo: string, tag: string): Promise<string> {
   const maxAttempts = 3;
@@ -110,6 +115,7 @@ async function main() {
   const manifest: Manifest = {
     entries: resolved,
     sourceLibraries: SOURCE_LIBRARIES,
+    metadata: MANIFEST_METADATA,
   };
 
   await Bun.$`mkdir -p ${dirname(outputPath)}`;

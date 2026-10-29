@@ -29,9 +29,12 @@ export const MANIFEST_METADATA = {
   bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
   /**
    * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
-   * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type; collation
-   * does not use them (new clusters use the builtin provider, ICU per column). All of glibc's locales take 223 MB;
-   * this list covers the widely used languages and currencies for a few MB. Add one here when a project formats in it.
+   * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New
+   * clusters do not collate with them (builtin provider, ICU per column). All of glibc's locales take 223 MB; this
+   * list covers the widely used languages and currencies in 49 MB, 45 MB of it glibc collation tables. They stay:
+   * clusters created by earlier images collate with en_US.utf8, and initdb imports every locale as a collation, so
+   * locales without those tables would make their indexes and COLLATE "de_DE.utf8" sort as POSIX without an error.
+   * Add a locale here when a project formats in it.
    */
   locales: [
     "en_US",
@@ -252,6 +255,13 @@ export interface ManifestEntry {
    * Example: "2.24.0~debian13-1801"
    */
   timescaleVersion?: string;
+  /**
+   * How the Nix image (flake.nix) builds this entry, always from `source.commit`, so versions stay ours.
+   * `package`: attribute in nixpkgs' postgresql_<major>.pkgs (or top-level nixpkgs for a tool) whose build recipe is
+   * reused with our source swapped in. Omitted: built from `build.type` with `inputs`, the nixpkgs attributes it
+   * links (the Nix twin of aptPackages). `exclude`: kept out of the Nix image, with the reason.
+   */
+  nix?: { package?: string; inputs?: string[]; exclude?: string };
   enabled?: boolean;
   disabledReason?: string;
   /**
@@ -270,6 +280,7 @@ export interface ManifestEntry {
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "vector",
+    nix: { package: "pgvector" },
     displayName: "pgvector",
     kind: "extension",
     install_via: "pgdg",
@@ -296,6 +307,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_cron",
+    nix: { package: "pg_cron" },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "cron",
@@ -323,6 +335,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgaudit",
+    nix: { package: "pgaudit" },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "pgaudit",
@@ -431,6 +444,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hypopg",
+    nix: { package: "hypopg" },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "hypopg",
@@ -474,6 +488,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "plpgsql_check",
+    nix: { package: "plpgsql_check" },
     kind: "extension",
     // PGDG trails the passive-mode composite-variable fix; use the existing PGXS build path.
     install_via: "source",
@@ -499,6 +514,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_safeupdate",
+    nix: { package: "pg_safeupdate" },
     kind: "tool",
     category: "safety",
     description: "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
@@ -545,6 +561,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "http",
+    nix: { package: "pgsql-http" },
     displayName: "pgsql-http",
     kind: "extension",
     install_via: "pgdg",
@@ -570,6 +587,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_net",
+    nix: { package: "pg_net" },
     kind: "extension",
     category: "integration",
     description: "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
@@ -596,6 +614,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "wrappers",
+    nix: { inputs: ["openssl", "pkg-config"] },
     displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",
@@ -622,6 +641,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgroonga",
+    nix: { package: "pgroonga" },
     kind: "extension",
     category: "search",
     description: "Full-text search powered by Groonga for multilingual workloads.",
@@ -653,6 +673,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "rum",
+    nix: { package: "rum" },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "rum",
@@ -745,6 +766,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgsodium",
+    nix: { package: "pgsodium" },
     kind: "extension",
     category: "security",
     description: "Modern cryptography and envelope encryption with libsodium.",
@@ -772,6 +794,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supabase_vault",
+    nix: { inputs: ["libsodium"] },
     displayName: "vault",
     kind: "extension",
     category: "security",
@@ -850,6 +873,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgmq",
+    nix: { package: "pgmq" },
     kind: "extension",
     category: "queueing",
     description: "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
@@ -937,6 +961,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_repack",
+    nix: { package: "pg_repack" },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "repack",
@@ -1011,6 +1036,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "timescaledb",
+    nix: { package: "timescaledb" },
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-2-postgresql-18",
@@ -1038,6 +1064,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "timescaledb_toolkit",
+    nix: { package: "timescaledb_toolkit" },
     kind: "extension",
     install_via: "timescale",
     timescalePackage: "timescaledb-toolkit-postgresql-18",
@@ -1064,6 +1091,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "wal2json",
+    nix: { package: "wal2json" },
     kind: "tool",
     category: "cdc",
     description: "Logical decoding output plugin streaming JSON data for CDC.",
@@ -1086,6 +1114,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_partman",
+    nix: { package: "pg_partman" },
     kind: "extension",
     // Source, not PGDG: postgresql-18-partman hard-depends on python3 + psycopg2 for three optional helper scripts,
     // which pulled Python and its CVEs into the image; the extension and its background worker need no Python.
@@ -1114,6 +1143,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "vectorscale",
+    nix: { package: "pgvectorscale" },
     displayName: "pgvectorscale",
     kind: "extension",
     soFileName: "vectorscale-0.9.1.so",
@@ -1151,6 +1181,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hll",
+    nix: { package: "pg_hll" },
     displayName: "postgresql-hll",
     kind: "extension",
     install_via: "pgdg",
@@ -1175,6 +1206,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgbackrest",
+    nix: { package: "pgbackrest" },
     kind: "tool",
     // Never below 2.59.3: it fixes weak encryption sub-keys and salts.
     install_via: "pgdg",
@@ -1201,6 +1233,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgbadger",
+    nix: { exclude: "Perl, and no runtime job: operators run pgBadger on exported logs." },
     kind: "tool",
     install_via: "pgdg",
     // A real package in PGDG; percona-pgbadger only Provides the name, so the pin resolves to PGDG

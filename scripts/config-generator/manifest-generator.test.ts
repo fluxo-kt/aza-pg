@@ -14,7 +14,7 @@ import {
   type PreloadCandidate,
   type ResolvedEntry,
 } from "./manifest-loader";
-import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA, SOURCE_LIBRARIES } from "../extensions/manifest-data";
 
 function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry {
   return {
@@ -28,7 +28,7 @@ function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry
 }
 
 function manifest(entries: ResolvedEntry[]): Manifest {
-  return { entries, sourceLibraries: SOURCE_LIBRARIES };
+  return { entries, sourceLibraries: SOURCE_LIBRARIES, metadata: MANIFEST_METADATA };
 }
 
 describe("getDefaultEnabledExtensions", () => {

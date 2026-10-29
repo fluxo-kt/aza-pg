@@ -690,6 +690,7 @@ had the wrong `.so` filename — the dead entry went unnoticed until an explicit
 **Principle**: Update disabled extensions if they're still tested or might be re-enabled. Skip if permanently incompatible.
 
 Extensions still in test suites should stay current. Permanently broken extensions can be skipped.
+An `install_via: "pgdg"` entry, disabled or not, moves only when PGDG serves the new version: its `source.tag` must name the same upstream version as `pgdgVersion` (`apt-cache madison postgresql-18-<pkg>`), so a newer upstream tag waits for the PGDG package.
 
 ### 5.6: Compose Stack Images (Outside Manifest)
 

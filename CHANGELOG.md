@@ -10,6 +10,8 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+## [v18.6-202610291622] - 2026-10-29
+
 ### Breaking
 
 - **supautils 3.4.4 → 4.0.0** (only if you add `supautils` to `POSTGRES_SHARED_PRELOAD_LIBRARIES`): `supautils.constrained_extensions` is removed, so `CREATE EXTENSION` no longer enforces the CPU, memory and disk minimums it set. A leftover value is ignored with a warning at start. If you set `supautils.extension_custom_scripts_path`, an `after-create.sql` at the top of that directory now runs after every `CREATE EXTENSION`. New, unset by default: `supautils.default_extension_install_schema` (superuser only) sends `CREATE EXTENSION` without `SCHEMA` to the schema you name.

@@ -119,18 +119,13 @@ Check:
    Note: `pgdg13` in version strings refers to Debian 13 (Trixie), NOT PostgreSQL 13.
 
 8. **Verify Percona/Timescale pinned versions still exist**: Third-party repos drop old versions
-   without warning. Always confirm currently pinned versions are still in the apt repo:
+   without warning, and ship packaging rebuilds no git tag shows. Check every pin the image installs:
    ```bash
-   docker run --rm -v "$PWD/docker/postgres/apt-keys:/k:ro" postgres:18-trixie bash -c "
-     apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null &&
-     echo 'deb [signed-by=/k/percona.asc] https://repo.percona.com/ppg-18/apt trixie main' > /etc/apt/sources.list.d/p.list &&
-     echo 'deb [signed-by=/k/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main' > /etc/apt/sources.list.d/t.list &&
-     apt-get update -qq --error-on=any &&
-     apt-cache madison percona-pg-stat-monitor18 timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18 timescaledb-toolkit-postgresql-18
-   " 2>&1 | command grep -E "percona-|timescaledb-|NO_PUBKEY|EXPKEYSIG|not signed|^E:"
+   bun scripts/extensions/check-vendor-apt.ts   # 0 = all served and newest, 1 = gone/outdated, 2 = probe failed
    ```
-   If a version is gone, update `perconaVersion` / `timescaleVersion` in `manifest-data.ts` to the new version
-   and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
+   It queries exactly the pins the generator installs (`vendorAptPins`, Timescale loader included). Exit 1
+   names the version to set as `perconaVersion` / `timescaleVersion`; regenerate. **Do NOT skip this — a
+   removed version fails the build.**
    `NO_PUBKEY`/`EXPKEYSIG` means the vendor rotated or expired its key: fetch the new key from the vendor, check
    its fingerprint against the vendor's published value, replace the file in `docker/postgres/apt-keys/` and the
    fingerprint in `APT_KEY_DIR`'s comment (`scripts/docker/generate-dockerfile.ts`).
@@ -139,12 +134,8 @@ Check:
    `timescaledb-2-postgresql-18` (extension SQL+binary) and `timescaledb-2-loader-postgresql-18`
    (preloader). If only the main package is pinned, the loader can jump to a newer version as a
    dependency, causing "no installation script for version X.Y.Z" failures at runtime.
-   **The generator now pins the loader automatically** (via regex replacement in `generate-dockerfile.ts`).
-   When updating timescaledb, verify both packages exist at the target version:
-   ```bash
-   apt-cache madison timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
-   ```
-   Both must show the same `X.Y.Z~debianNN-NNNN` version string.
+   `vendorAptPins` (`scripts/extensions/vendor-apt-pins.ts`) pins the loader at the extension's version,
+   and `check-vendor-apt.ts` checks both, so a version only one of them has fails there.
 
 9. **Pre-plan the changelog obligation** (MANDATORY): if you touch any image-affecting source
    (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`), you MUST update `CHANGELOG.md` in the
@@ -1127,8 +1118,7 @@ bun run test:all
 | **GitHub latest release** | `gh release view --repo OWNER/REPO --json tagName --jq .tagName` |
 | **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| command grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
-| **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
-| **Timescale apt** | `docker run --rm timescale/timescaledb:latest-pg18 bash -c "apt-cache madison postgresql-18-timescaledb"` |
+| **Percona / Timescale apt** | `bun scripts/extensions/check-vendor-apt.ts` (every pinned package, served and newest versions) |
 
 ## Parallel Execution Opportunities
 

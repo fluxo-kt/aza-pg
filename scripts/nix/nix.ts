@@ -40,6 +40,10 @@ const proc = Bun.spawn(
     "NIX_CONFIG=filter-syscalls = false\nbuild-dir = /build\nexperimental-features = nix-command flakes\nkeep-outputs = true\nwarn-dirty = false",
     "-v",
     `aza-pg-nix-${platform.replace("linux/", "")}:/nix`,
+    // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
+    // volume each run re-clones every extension repository before evaluation can finish.
+    "-v",
+    `aza-pg-nix-${platform.replace("linux/", "")}-cache:/root/.cache/nix`,
     "-v",
     "/build",
     // Writable only so `nix flake lock` can write flake.lock; builds write to the store volume.

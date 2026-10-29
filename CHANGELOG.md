@@ -22,9 +22,9 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 ### Security
 
 - **Smaller attack surface**: no setuid or setgid programs (was 11, including `su`, `passwd`, `mount`), no package manager, Perl or Python, and 82 store paths in place of 191 Debian packages. Nothing links PAM, Kerberos, LDAP, systemd, SELinux, liburing or libnuma, and the curl used by `pg_net` and `http` speaks HTTP(S) only (no SCP/SFTP, HTTP/3 or brotli).
-- **Compiler hardening**: `_FORTIFY_SOURCE=3` (was 2) on the server, extensions and libraries; RELRO, immediate binding, PIE, stack protector and stack clash protection as before; return-address signing (PAC) on arm64 kept for the server and extensions. **Lost**: arm64 branch target identification (BTI), which Debian's libraries carried and BTI-capable CPUs (Graviton 3+) enforced, and amd64 CET markings, which glibc does not enforce by default.
+- **Compiler hardening**: `_FORTIFY_SOURCE=3` (was 2) on the server, extensions and libraries; RELRO, immediate binding, PIE, stack protector and stack clash protection as before; return-address signing (PAC) on arm64 kept for the server and extensions. **Lost**: arm64 branch target identification (BTI), which Debian's builds carried and BTI-capable CPUs (Graviton 3+) enforced to make an exploited memory bug harder to turn into code execution, and amd64 CET markings, which glibc does not enforce by default.
 - **Image scanners that read OS package databases (Trivy, Grype) no longer see the C libraries** — the image has none to read — so a clean scan says nothing about glibc, OpenSSL, curl or libxml2. Scan the image's SPDX SBOM attestation instead, which lists every package of the image with its version.
-- **wrappers 0.6.4 builds with rustls-webpki 0.103.13** (was 0.103.10): a malformed certificate revocation list no longer makes an HTTPS foreign data wrapper query fail with a panic (GHSA-82j2-j2ch-gfr8).
+- **wrappers 0.6.4 builds with rustls 0.23.46 and rustls-webpki 0.103.16** (were 0.23.37 and 0.103.10), the TLS of its HTTPS foreign data wrappers: a malformed certificate revocation list no longer makes a query fail with a panic (GHSA-82j2-j2ch-gfr8), TLS 1.3 handshake messages are no longer accepted across encryption levels (GHSA-2mjx-qc3c-rqvc), and debug output no longer prints session secrets (GHSA-c8m5-c952-6cm4).
 
 ### Changed
 

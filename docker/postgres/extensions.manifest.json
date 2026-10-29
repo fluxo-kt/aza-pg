@@ -919,7 +919,7 @@
       "build": {
         "type": "cargo-pgrx",
         "patches": [
-          "timescaledb_toolkit-hashbrown.patch"
+          "timescaledb_toolkit-cargo-lock.patch"
         ]
       },
       "dependencies": [
@@ -1053,7 +1053,7 @@
         "noDefaultFeatures": true,
         "subdir": "wrappers",
         "patches": [
-          "wrappers-rustls-webpki.patch"
+          "wrappers-cargo-lock.patch"
         ]
       },
       "dependencies": [

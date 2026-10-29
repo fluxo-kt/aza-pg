@@ -62,9 +62,10 @@
           # Added to nixpkgs' default hardening (fortify3, stack protector and clash protection, RELRO/BIND_NOW, PIE)
           # for the server and every extension's C code, which parse untrusted SQL and wire input. pacret signs return
           # addresses on arm64 CPUs with pointer authentication (Graviton 3+), as Debian's builds did; elsewhere its
-          # instructions are no-ops. Left out: shadowstack and BTI enforce nothing unless every loaded object carries
-          # them, and nixpkgs' glibc and OpenSSL do not. Both are rebuilt from source anyway, so this costs no rebuild of
-          # its own.
+          # instructions are no-ops. Left out: arm64 BTI, because the linker marks a binary only when every object in
+          # it is marked, and nixpkgs' gcc (crtbegin.o) and glibc (crt1.o) start files are not; getting it means rebuilding
+          # the toolchain, so all of nixpkgs. Also left out: amd64 shadowstack, which glibc enforces only on request. The
+          # server and extensions are rebuilt from source anyway, so pacret costs no rebuild of its own.
           hardeningEnable = [ "pacret" ];
           postgresql = (pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
             inherit llvmPackages;

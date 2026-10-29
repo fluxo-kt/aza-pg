@@ -507,9 +507,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       features: ["pg18"],
       noDefaultFeatures: true,
       subdir: "wrappers",
-      // Cargo.lock bump of rustls-webpki 0.103.10 → 0.103.13 (GHSA-82j2-j2ch-gfr8, HIGH: wrappers' HTTPS FDWs
-      // verify certificates with it). Drop it once a release locks ≥ 0.103.13; a stale one fails the build.
-      patches: ["wrappers-rustls-webpki.patch"],
+      // Cargo.lock moved by `cargo update -p rustls@0.23.37 --precise 0.23.46` at the pinned commit: rustls 0.23.46,
+      // rustls-webpki 0.103.16 and the aws-lc-rs 1.19 / aws-lc-sys 0.47 they require fix GHSA-82j2-j2ch-gfr8 (HIGH),
+      // GHSA-2mjx-qc3c-rqvc and GHSA-c8m5-c952-6cm4 in the TLS that wrappers' HTTPS FDWs use. Regenerate the same way
+      // on a bump; drop it once a release locks these; a stale one fails the build.
+      patches: ["wrappers-cargo-lock.patch"],
     },
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
@@ -883,9 +885,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     build: {
       type: "cargo-pgrx",
-      // Cargo.lock bump of hashbrown 0.15.0 → 0.15.1 (GHSA-wwq9-3cpr-mm53, HIGH, fixed upstream). Drop it once a
-      // release locks ≥ 0.15.1; a stale one fails the build.
-      patches: ["timescaledb_toolkit-hashbrown.patch"],
+      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: hashbrown 0.15.1
+      // (GHSA-wwq9-3cpr-mm53, HIGH) and rand 0.8.8 (GHSA-cq8v-f236-94qc). Regenerate the same way on a bump; drop it
+      // once a release locks these; a stale one fails the build.
+      patches: ["timescaledb_toolkit-cargo-lock.patch"],
     },
     dependencies: ["timescaledb"],
     runtime: {

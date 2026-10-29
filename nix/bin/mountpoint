@@ -1,0 +1,14 @@
+#!/bin/bash
+# mountpoint [-q] PATH, answered from /proc/self/mountinfo (coreutils' method, which also sees bind mounts): exit 0 if
+# PATH is a mount point, 1 if not. The upstream docker-entrypoint.sh asks this on every start; util-linux, whose tool
+# it is, would add a package for one question.
+set -euo pipefail
+quiet=false
+if [ "${1:-}" = "-q" ]; then quiet=true; shift; fi
+path=${1:?usage: mountpoint [-q] PATH}
+if awk -v p="$path" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo; then
+  $quiet || echo "$path is a mountpoint"
+else
+  $quiet || echo "$path is not a mountpoint"
+  exit 1
+fi

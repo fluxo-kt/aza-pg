@@ -132,6 +132,12 @@ let
           done
           rmdir --ignore-fail-on-non-empty "$out/bin"
         fi
+      '' + lib.optionalString (e.name == "pgsodium") ''
+        # pgsodium runs <sharedir>/extension/pgsodium_getkey when pgsodium.getkey_script is unset, as on the
+        # entrypoint's temporary init server. nixpkgs installs upstream's sample there, which writes an unchecked key
+        # into PGDATA, so the default resolves to the image's documented script path, the same file Debian's default is.
+        ln -sf /usr/share/postgresql/${lib.versions.major postgresql.version}/extension/pgsodium_getkey \
+          "$out/share/postgresql/extension/pgsodium_getkey"
       '';
     });
 in

@@ -5,8 +5,8 @@
  * libcurl, still lets CREATE EXTENSION and net.http_* calls succeed — only a collected response
  * proves the request went out.
  *
- * The endpoint is a tiny Perl echo server in a second container from the SAME image (perl-base is
- * part of every Debian image), on a run-scoped Docker network: no internet, no extra image pull.
+ * The endpoint is a tiny Bun echo server in the Bun image the manifest already pins (bunImageSha), on a
+ * run-scoped Docker network: no internet, and nothing assumed about what the image under test contains.
  *
  * Usage: bun scripts/test/test-pg-net-functional.ts [image] [--image=TAG]
  */
@@ -18,34 +18,31 @@ import {
   generateUniqueProjectName,
   waitForPostgres,
 } from "../utils/docker";
+import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { resolveImageTag } from "./image-resolver";
 
 const image = resolveImageTag();
 const network = generateUniqueProjectName("aza-pg-net");
 const db = generateUniqueContainerName("aza-pg-net-db");
 const echo = generateUniqueContainerName("aza-pg-net-echo");
+const BUN_IMAGE = `oven/bun@${MANIFEST_METADATA.bunImageSha}`;
 
 /**
  * Answers every request with plain-text lines: method, request target, the x-aza-test header and
  * the body, so each test can see exactly what pg_net sent.
  */
 const ECHO_SERVER = String.raw`
-use IO::Socket::INET;
-my $s = IO::Socket::INET->new(LocalPort => 8080, Listen => 16, ReuseAddr => 1) or die $!;
-$| = 1; print "listening\n";
-while (my $c = $s->accept) {
-  my $line = <$c>; my ($method, $target) = split / /, $line;
-  my ($len, $hdr) = (0, "");
-  while (my $h = <$c>) {
-    last if $h =~ /^\r?\n$/;
-    $len = $1 if $h =~ /^content-length:\s*(\d+)/i;
-    $hdr = $1 if $h =~ /^x-aza-test:\s*(\S+)/i;
-  }
-  my $body = ""; read($c, $body, $len) if $len;
-  my $out = "method=$method\ntarget=$target\nx-aza-test=$hdr\nbody=$body\n";
-  print $c "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " . length($out) . "\r\nConnection: close\r\n\r\n$out";
-  close $c;
-}`;
+const server = Bun.serve({
+  port: 8080,
+  async fetch(req) {
+    const url = new URL(req.url);
+    const body = await req.text();
+    const out = "method=" + req.method + "\ntarget=" + url.pathname + url.search + "\nx-aza-test=" +
+      (req.headers.get("x-aza-test") ?? "") + "\nbody=" + body + "\n";
+    return new Response(out, { headers: { "content-type": "text/plain" } });
+  },
+});
+console.log("listening", server.port);`;
 
 async function sql(query: string): Promise<string> {
   const r = await $`docker exec ${db} psql -X -v ON_ERROR_STOP=1 -U postgres -tA -c ${query}`
@@ -82,7 +79,7 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 try {
   await $`docker network create ${network}`.quiet();
   await Promise.all([
-    $`docker run -d --name ${echo} ${EPHEMERAL_PGDATA} --network ${network} --entrypoint perl ${image} -e ${ECHO_SERVER}`.quiet(),
+    $`docker run -d --name ${echo} --network ${network} --entrypoint bun ${BUN_IMAGE} -e ${ECHO_SERVER}`.quiet(),
     $`docker run -d --name ${db} ${EPHEMERAL_PGDATA} --network ${network} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
   const echoDeadline = Date.now() + TIMEOUTS.health * 1000;

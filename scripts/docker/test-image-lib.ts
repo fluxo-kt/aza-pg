@@ -560,7 +560,8 @@ export function testHttpRequests(container: string): Promise<TestResult> {
     const result = await psql(container, "SELECT status FROM http_get('http://127.0.0.1:1/')");
     expect(!result.ok, `request to a closed port succeeded: ${result.out}`);
     expect(
-      /Failed to connect to 127\.0\.0\.1 port 1/.test(result.err),
+      // Debian trixie's curl writes "127.0.0.1 port 1"; nixpkgs' newer curl writes "127.0.0.1:1".
+      /Failed to connect to 127\.0\.0\.1( port |:)1\b/.test(result.err),
       `expected a curl connection error, got: ${result.err}`
     );
   });

@@ -9,6 +9,7 @@
 #   findutils             upstream entrypoint (find on PGDATA ownership), xargs in init scripts
 #   diffutils             cmp: is pgsodium_getkey the image's own (entrypoint)
 #   getent                upstream entrypoint (is the running uid in /etc/passwd?)
+#   mountpoint (ours)     upstream entrypoint; nix/bin/mountpoint, instead of util-linux
 #   gzip xz zstd          upstream entrypoint: /docker-entrypoint-initdb.d/*.sql.gz|.xz|.zst
 #   su-exec (as gosu)     `--user root`: upstream and ours drop to postgres with `gosu postgres`
 #   cacert                pg_net and http make HTTPS requests
@@ -39,6 +40,7 @@ let
     install -Dm0755 ${src "docker/postgres/healthcheck.sh"} $out/usr/local/bin/healthcheck.sh
     install -Dm0755 ${src "docker/postgres/pgflow/pgflow-upgrade.sh"} $out/usr/local/bin/pgflow-upgrade
     install -Dm0755 ${src "docker/postgres/pg_repack-wrapper.sh"} $out/usr/local/bin/pg_repack
+    install -Dm0755 ${./bin/mountpoint} $out/usr/local/bin/mountpoint
     ln -s ${pkgs.su-exec}/bin/su-exec $out/usr/local/bin/gosu
     # The documented mount point for an operator's own script (the entrypoint sets pgsodium.getkey_script to it); the
     # second, never-run copy lets the entrypoint tell the image's script from a mounted one.
@@ -72,6 +74,12 @@ let
     printf 'root:x:0:\npostgres:x:999:\n' > $out/etc/group
   '';
 
+  # Directories a tool writes by default (manifest postgresOwnedDirs), created postgres:0750 as on Debian so a named
+  # volume mounted there starts writable by the server's user.
+  ownedDirs = lib.concatMap (e: e.postgresOwnedDirs or [ ])
+    (builtins.filter (e: e.enabled or true) manifest.entries);
+  relative = map (lib.removePrefix "/") ownedDirs;
+
   tools = [
     pkgs.bashNonInteractive
     pkgs.uutils-coreutils-noprefix
@@ -96,7 +104,7 @@ pkgs.dockerTools.streamLayeredImage {
   extraCommands = ''
     # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint
     # and operators use /var/run/postgresql.
-    mkdir -p bin usr/bin tmp run/postgresql var/lib/postgresql backup
+    mkdir -p bin usr/bin tmp run/postgresql var/lib/postgresql backup ${lib.escapeShellArgs relative}
     ln -s ../run var/run
     ln -sf ${pkgs.uutils-coreutils-noprefix}/bin/env usr/bin/env
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
@@ -106,6 +114,9 @@ pkgs.dockerTools.streamLayeredImage {
   fakeRootCommands = ''
     chown -R 999:999 run/postgresql var/lib/postgresql backup
     chmod 2775 run/postgresql
+    # As the official image: initdb as any uid can create PGDATA here, and a tmpfs mounted over it takes this mode.
+    chmod 1777 var/lib/postgresql
+    ${lib.optionalString (relative != [ ]) "chown 999:999 ${lib.escapeShellArgs relative} && chmod 0750 ${lib.escapeShellArgs relative}"}
   '';
   enableFakechroot = false;
   config = {

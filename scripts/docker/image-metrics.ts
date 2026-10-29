@@ -31,14 +31,6 @@ export interface ImageData {
 }
 
 /**
- * Base image information from OCI labels
- */
-export interface BaseImageInfo {
-  name: string; // e.g., "postgres:18.1-trixie"
-  digest: string; // e.g., "sha256:abc..."
-}
-
-/**
  * Complete image metrics
  */
 export interface ImageMetrics {
@@ -47,7 +39,6 @@ export interface ImageMetrics {
   layerCount: number;
   compressedFormatted: string;
   uncompressedFormatted: string;
-  baseImage: BaseImageInfo | null;
 }
 
 /**
@@ -101,25 +92,6 @@ export async function getUncompressedSize(imageTag: string): Promise<number> {
 export function getLayerCount(imageData: ImageData): number {
   const layers = imageData.RootFS?.Layers || [];
   return layers.length;
-}
-
-/**
- * Get base image information from OCI labels
- */
-export function getBaseImageInfo(imageData: ImageData): BaseImageInfo | null {
-  const labels = imageData.Config.Labels || {};
-
-  const baseName = labels["org.opencontainers.image.base.name"];
-  const baseDigest = labels["org.opencontainers.image.base.digest"];
-
-  if (!baseName || !baseDigest) {
-    return null;
-  }
-
-  return {
-    name: baseName,
-    digest: baseDigest,
-  };
 }
 
 /**
@@ -206,7 +178,6 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
   const uncompressedBytes = await getUncompressedSize(imageTag);
   const layerCount = getLayerCount(imageData);
   const compressedBytes = (await getCompressedSize(imageTag, imageData)) || 0;
-  const baseImage = getBaseImageInfo(imageData);
 
   return {
     compressedBytes,
@@ -214,6 +185,5 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
     layerCount,
     compressedFormatted: formatSize(compressedBytes),
     uncompressedFormatted: formatSize(uncompressedBytes),
-    baseImage,
   };
 }

@@ -16,9 +16,7 @@
  *     [--package-version-id=585941799] \
  *     [--compressed-size="247.79 MB"] \
  *     [--uncompressed-size="894.07 MB"] \
- *     [--layer-count=36] \
- *     [--base-image-name="postgres:18.1-trixie"] \
- *     [--base-image-digest="sha256:..."]
+ *     [--layer-count=36]
  *
  * Arguments:
  *   --pg-version          PostgreSQL version (e.g., "18.1")
@@ -30,8 +28,6 @@
  *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
  *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MB")
  *   --layer-count         (Optional) Number of image layers
- *   --base-image-name     (Optional) Base image name (e.g., "postgres:18.1-trixie")
- *   --base-image-digest   (Optional) Base image digest (e.g., "sha256:abc...")
  */
 
 import { join } from "node:path";
@@ -63,8 +59,6 @@ interface Args {
   compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
   uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MB")
   layerCount?: number; // Optional: number of layers
-  baseImageName?: string; // Optional: base image name (e.g., "postgres:18.1-trixie")
-  baseImageDigest?: string; // Optional: base image digest (e.g., "sha256:abc...")
 }
 
 interface CategoryGroup {
@@ -155,8 +149,6 @@ function parseArgs(): Args | null {
   const compressedSize = getArg("compressed-size"); // Optional
   const uncompressedSize = getArg("uncompressed-size"); // Optional
   const layerCount = getArg("layer-count"); // Optional
-  const baseImageName = getArg("base-image-name"); // Optional
-  const baseImageDigest = getArg("base-image-digest"); // Optional
 
   // Validate required args
   if (!pgVersion || !tag || !digest || !catalogEnabled || !output) {
@@ -173,8 +165,6 @@ function parseArgs(): Args | null {
     console.error("    [--compressed-size='247.79 MB']   # Optional: Compressed image size");
     console.error("    [--uncompressed-size='894.07 MB'] # Optional: Uncompressed image size");
     console.error("    [--layer-count=36]                # Optional: Number of layers");
-    console.error("    [--base-image-name='postgres:18.1-trixie']  # Optional: Base image name");
-    console.error("    [--base-image-digest='sha256:...'] # Optional: Base image digest");
     return null;
   }
 
@@ -188,8 +178,6 @@ function parseArgs(): Args | null {
     compressedSize,
     uncompressedSize,
     layerCount: layerCount ? parseInt(layerCount, 10) : undefined,
-    baseImageName,
-    baseImageDigest,
   };
 }
 
@@ -391,30 +379,6 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
   }
 
   return groups;
-}
-
-/**
- * Generate Docker Hub link for base image
- * @param baseImageName - Base image name (e.g., "postgres:18.1-trixie")
- * @param baseImageDigest - Base image digest (e.g., "sha256:abc...")
- * @returns Docker Hub URL or null if parameters invalid
- */
-function getDockerHubLink(baseImageName: string, baseImageDigest: string): string | null {
-  // Extract tag from image name (e.g., "postgres:18.1-trixie" → "18.1-trixie")
-  const parts = baseImageName.split(":");
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const imageName = parts[0]; // "postgres"
-  const tag = parts[1]; // "18.1-trixie"
-
-  // Convert digest format: sha256:abc... → sha256-abc...
-  const digestForUrl = baseImageDigest.replace(":", "-");
-
-  // Build Docker Hub URL
-  // Format: https://hub.docker.com/layers/library/{image}/{tag}/images/{digest}
-  return `https://hub.docker.com/layers/library/${imageName}/${tag}/images/${digestForUrl}`;
 }
 
 /**
@@ -739,18 +703,7 @@ function generateMarkdown(
   lines.push("");
   lines.push(`- **PostgreSQL Version**: ${args.pgVersion}`);
 
-  // Format base image with optional Docker Hub link
-  if (args.baseImageName && args.baseImageDigest) {
-    const dockerHubLink = getDockerHubLink(args.baseImageName, args.baseImageDigest);
-    if (dockerHubLink) {
-      lines.push(`- **Base Image**: [${args.baseImageName}](${dockerHubLink}) (SHA-pinned)`);
-    } else {
-      lines.push(`- **Base Image**: ${args.baseImageName} (SHA-pinned)`);
-    }
-  } else {
-    // Fallback to default format if base image info not provided
-    lines.push(`- **Base Image**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
-  }
+  lines.push("- **Build**: Nix (nixpkgs pinned by flake.lock); no base image");
 
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
   lines.push(`- **Extensions**: ${args.catalogEnabled - toolCount}, plus ${toolCount} tools`);

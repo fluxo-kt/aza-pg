@@ -42,8 +42,6 @@ jobs:
     outputs:
       pg_version_major: ${{ steps.pg-version.outputs.major }}
       pg_version_full: ${{ steps.pg-version.outputs.full }}
-      base_image_name: ${{ steps.pg-version.outputs.base_image_name }}
-      base_image_digest: ${{ steps.pg-version.outputs.base_image_digest }}
       timestamp: ${{ steps.timestamp.outputs.timestamp }}
       version_tag: ${{ steps.tags.outputs.version_tag }}
       image_tag: ${{ steps.tags.outputs.image_tag }}
@@ -112,9 +110,6 @@ jobs:
       - name: Validate manifest and full checks
         run: bun run validate:all
 
-      - name: Validate pinned base image digest is resolvable
-        run: bun scripts/validate-base-image-sha.ts --require-latest-minor
-
       - name: Derive catalog statistics
         id: catalog
         run: |
@@ -127,18 +122,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Catalog: ${CATALOG_ENABLED} enabled (${CATALOG_ENABLED_EXTENSIONS} ext, ${CATALOG_ENABLED_BUILTINS} builtin, ${CATALOG_ENABLED_TOOLS} tools), ${CATALOG_TOTAL} total, ${CATALOG_DISABLED} disabled"
 
-      - name: Extract PostgreSQL version from base image
+      - name: Read the PostgreSQL version
         id: pg-version
-        run: |
-          set -euo pipefail
-          # Extract base image directly from Dockerfile FROM statement
-          # Pattern: FROM postgres:18.1-trixie@sha256:...
-          BASE_IMAGE=$(grep -m1 '^FROM postgres:' docker/postgres/Dockerfile | \
-            awk '{print $2}' | head -1)
-
-          bun scripts/build/extract-pg-version.ts \
-            --image "$BASE_IMAGE" \
-            --github-output
+        run: bun scripts/release/pg-version.ts
 
       - name: Generate build timestamp
         id: timestamp
@@ -179,8 +165,6 @@ jobs:
             org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
             org.opencontainers.image.revision=${{ env.RELEASE_SHA }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
-            org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
             io.fluxo-kt.aza-pg.build.timestamp=${{ steps.tags.outputs.timestamp }}
             io.fluxo-kt.aza-pg.build.type=single-node
@@ -197,8 +181,6 @@ jobs:
             index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
             index,manifest:org.opencontainers.image.licenses=MIT
-            index,manifest:org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
-            index,manifest:org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
             index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
             index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
@@ -217,7 +199,8 @@ jobs:
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     needs: prep
-    timeout-minutes: 100
+    # A cold store compiles PostgreSQL and every extension (Rust ones the longest); setup-nix makes later runs short.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -235,39 +218,45 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
 
-      - name: Set up Docker Buildx
-        uses: ./.github/actions/setup-buildx
+      - name: Set up Bun and dependencies
+        uses: ./.github/actions/setup-bun
+
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
 
       - name: Log in to GitHub Container Registry
         uses: ./.github/actions/ghcr-login
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Labels (version, revision, created) come from the flake, so the same commit builds the same image; the merge
+      # job adds the index annotations. The tag only carries the push: the release refers to the digest.
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        run: |
+          set -euo pipefail
+          ref="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:build-${{ matrix.artifact }}-${{ github.run_id }}"
+          bun scripts/nix/build-image.ts --tag "$ref"
+          docker push --quiet "$ref"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ref" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # Supply chain: an SBOM of the exact runtime closure (sbomnix reads the Nix store, so every component and
+      # version is the one shipped), GitHub's SLSA provenance and Cosign signatures in the release job.
+      - name: Generate SBOM
+        run: |
+          set -euo pipefail
+          system=$([ "${{ matrix.platform }}" = linux/arm64 ] && echo aarch64-linux || echo x86_64-linux)
+          nix run nixpkgs#sbomnix -- "$(nix build ".#packages.${system}.image" --no-link --print-out-paths)" \
+            --spdx "${{ runner.temp }}/sbom.spdx.json"
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
-          context: .
-          file: ./docker/postgres/Dockerfile
-          platforms: ${{ matrix.platform }}
-          labels: ${{ needs.prep.outputs.meta_labels }}
-          annotations: ${{ needs.prep.outputs.meta_annotations }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
-          build-args: |
-            BUILD_DATE=${{ needs.prep.outputs.timestamp }}
-            VCS_REF=${{ env.RELEASE_SHA }}
-          cache-from: |
-            type=gha,scope=aza-pg-${{ matrix.artifact }}
-            type=gha,scope=aza-pg-base
-          cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
-          # BuildKit provenance disabled - using GitHub attestation (SLSA v1.0) instead
-          # GitHub attestation provides superior workflow-level provenance without risk of leaking build args
-          # Supply chain security layers:
-          #   1. SBOM (BuildKit) - software bill of materials
-          #   2. GitHub attestation (actions/attest-build-provenance) - SLSA build provenance
-          #   3. Cosign signatures (keyless OIDC) - image integrity verification
-          provenance: false
-          sbom: true
+          subject-name: ${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/sbom.spdx.json
+          push-to-registry: true
 
       - name: Export digest
         run: |
@@ -379,8 +368,6 @@ jobs:
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
-            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
-            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}" \
             --github-output
@@ -404,8 +391,6 @@ jobs:
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
-            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
-            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}" \
             --verify-source \
@@ -680,8 +665,6 @@ jobs:
       compressed_size: ${{ steps.promote.outputs.compressed_size }}
       uncompressed_size: ${{ steps.promote.outputs.uncompressed_size }}
       layer_count: ${{ steps.promote.outputs.layer_count }}
-      base_image_name: ${{ steps.promote.outputs.base_image_name }}
-      base_image_digest: ${{ steps.promote.outputs.base_image_digest }}
 
     steps:
       - name: Checkout repository
@@ -741,8 +724,6 @@ jobs:
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
             --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
-            --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
-            --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
             --revision "${{ env.RELEASE_SHA }}" \
             --source-url "${{ github.server_url }}/${{ github.repository }}"
 
@@ -771,8 +752,6 @@ jobs:
               --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
               --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
               --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
-              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
-              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
               --revision "${{ env.RELEASE_SHA }}" \
               --source-url "${{ github.server_url }}/${{ github.repository }}"
           done
@@ -813,6 +792,8 @@ jobs:
           echo "✅ All signatures verified successfully"
 
       - name: Verify public SBOM
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bun scripts/release/verify-sbom.ts \
@@ -1063,16 +1044,12 @@ jobs:
             echo "compressed_size=${{ needs.release.outputs.compressed_size }}"
             echo "uncompressed_size=${{ needs.release.outputs.uncompressed_size }}"
             echo "layer_count=${{ needs.release.outputs.layer_count }}"
-            echo "base_image_name=${{ needs.release.outputs.base_image_name }}"
-            echo "base_image_digest=${{ needs.release.outputs.base_image_digest }}"
           } >> "$GITHUB_OUTPUT"
 
           echo "✅ Using metrics from release job:"
           echo "   Compressed: ${{ needs.release.outputs.compressed_size }}"
           echo "   Uncompressed: ${{ needs.release.outputs.uncompressed_size }}"
           echo "   Layers: ${{ needs.release.outputs.layer_count }}"
-          echo "   Base Image: ${{ needs.release.outputs.base_image_name }}"
-          echo "   Base Digest: ${{ needs.release.outputs.base_image_digest }}"
 
       - name: Generate release notes
         run: |
@@ -1086,8 +1063,6 @@ jobs:
             --compressed-size="${{ steps.metrics.outputs.compressed_size }}" \
             --uncompressed-size="${{ steps.metrics.outputs.uncompressed_size }}" \
             --layer-count="${{ steps.metrics.outputs.layer_count }}" \
-            --base-image-name="${{ steps.metrics.outputs.base_image_name }}" \
-            --base-image-digest="${{ steps.metrics.outputs.base_image_digest }}" \
             --output=release-notes.md
 
           echo "✅ Release notes generated"
@@ -1212,8 +1187,6 @@ jobs:
               --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
               --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
               --catalog-total "${{ needs.prep.outputs.catalog_total }}" \
-              --base-image-name "${{ needs.prep.outputs.base_image_name }}" \
-              --base-image-digest "${{ needs.prep.outputs.base_image_digest }}" \
               --revision "${{ env.RELEASE_SHA }}" \
               --source-url "${{ github.server_url }}/${{ github.repository }}"
           done

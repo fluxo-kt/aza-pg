@@ -42,6 +42,7 @@ import {
   loadManifest,
   type Manifest,
 } from "./config-generator/manifest-loader";
+import { newestRelease } from "./release/changelog";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
@@ -448,52 +449,16 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
 }
 
 /**
- * Extract [Unreleased] section from CHANGELOG.md
- * Returns the content between ## [Unreleased] and the next ## heading (or ---)
+ * The notes of the release this commit ships: the newest `## [v…]` CHANGELOG section, the same heading
+ * that named the tag (scripts/release/changelog.ts).
  */
-async function extractUnreleasedChangelog(): Promise<string | null> {
+async function extractReleaseChangelog(): Promise<string | null> {
   const changelogFile = Bun.file(CHANGELOG_PATH);
   if (!(await changelogFile.exists())) {
     warning("CHANGELOG.md not found, skipping changelog section in release notes");
     return null;
   }
-
-  const content = await changelogFile.text();
-  const lines = content.split("\n");
-
-  let inUnreleased = false;
-  const unreleasedLines: string[] = [];
-
-  for (const line of lines) {
-    // Start capturing after ## [Unreleased]
-    if (line.match(/^## \[Unreleased\]/i)) {
-      inUnreleased = true;
-      continue;
-    }
-
-    // Stop at next section (## [...] or ---)
-    if (inUnreleased && (line.match(/^## \[/) || line.match(/^---/))) {
-      break;
-    }
-
-    if (inUnreleased) {
-      unreleasedLines.push(line);
-    }
-  }
-
-  // Trim empty lines from start and end
-  while (unreleasedLines.length > 0 && unreleasedLines[0]?.trim() === "") {
-    unreleasedLines.shift();
-  }
-  while (unreleasedLines.length > 0 && unreleasedLines[unreleasedLines.length - 1]?.trim() === "") {
-    unreleasedLines.pop();
-  }
-
-  if (unreleasedLines.length === 0) {
-    return null;
-  }
-
-  return unreleasedLines.join("\n");
+  return newestRelease(await changelogFile.text())?.notes || null;
 }
 
 /**
@@ -961,8 +926,7 @@ async function main() {
   // Group extensions by category
   const categoryGroups = groupByCategory(manifest);
 
-  // Extract changelog content from [Unreleased] section
-  const changelogContent = await extractUnreleasedChangelog();
+  const changelogContent = await extractReleaseChangelog();
 
   // Generate markdown
   const markdown = generateMarkdown(args, manifest, categoryGroups, changelogContent);

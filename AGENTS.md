@@ -259,7 +259,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 
 1. Track image-affecting changes in `[Unreleased]` section
 2. Focus on: extension updates, base image changes, breaking changes, security fixes
-3. Right after the release's anchor merge, date it on dev: `bun scripts/release/date-changelog.ts <tag>` (`/release` Appendix A runs it). CI builds the GitHub notes from `[Unreleased]` and names the tag only at publish, so dating cannot happen earlier. `validate` fails while the newest merged tag has no `## [<tag>]` section
+3. The release commit dates itself: `/release` runs `bun scripts/release/date-changelog.ts`, which moves `[Unreleased]` under `## [v<pg>-<UTC timestamp>] - <date>`. publish.yml takes the tag name and the GitHub notes from that newest heading, so every branch shows the release dated the moment it ships and the anchor merge brings it to dev
 4. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
 
 **Entry rules** (`[Unreleased]` is read by someone upgrading from the last release):

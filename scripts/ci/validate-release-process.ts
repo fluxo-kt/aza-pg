@@ -191,30 +191,6 @@ async function validateForbiddenBunX(issues: Issue[]): Promise<void> {
   }
 }
 
-// The newest release merged into this branch must have its own CHANGELOG section. Without it its
-// published entries stay under [Unreleased], mixed with later work, and read as unreleased. Only the
-// newest tag is checked: older same-day re-tags were folded into the next section on purpose. A clone
-// without tags (CI's shallow checkout) finds none and skips; the dev pre-commit hook enforces it.
-async function validateNewestReleaseDated(issues: Issue[]): Promise<void> {
-  const proc = Bun.spawn(["git", "tag", "--merged", "HEAD", "--sort=-creatordate", "-l", "v*"], {
-    cwd: REPO_ROOT,
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  const tag = out.split("\n")[0]?.trim();
-  if (!tag) return;
-  const changelog = await readText("CHANGELOG.md");
-  if (!changelog.split("\n").some((line) => line.startsWith(`## [${tag}]`))) {
-    addIssue(
-      issues,
-      "CHANGELOG.md",
-      `release ${tag} has no "## [${tag}]" section, so its shipped entries still sit in [Unreleased]. ` +
-        `Run: bun scripts/release/date-changelog.ts ${tag} — then rewrite each entry it prints as "<version in ${tag}> → current".`
-    );
-  }
-}
-
 async function main(): Promise<void> {
   section("Release Process Validation");
 
@@ -225,7 +201,6 @@ async function main(): Promise<void> {
   await validateManifestCliContract(issues);
   await validateEnvironmentDocs(issues);
   await validateForbiddenBunX(issues);
-  await validateNewestReleaseDated(issues);
 
   if (issues.length > 0) {
     for (const issue of issues) {

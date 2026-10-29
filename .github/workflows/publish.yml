@@ -144,19 +144,10 @@ jobs:
         id: timestamp
         run: |
           set -euo pipefail
-          # Human-readable timestamp for container tags (no special chars)
-          BUILD_TS=$(date -u '+%Y%m%d%H%M')
-
-          # RFC 3339 compliant timestamp for OCI metadata
+          # OCI "created" is the real build time; the tag's timestamp comes from the release commit's
+          # CHANGELOG heading (Generate version tags).
           BUILD_TS_RFC3339=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-
-          # Output both formats
-          {
-            echo "value=${BUILD_TS}"
-            echo "timestamp=${BUILD_TS_RFC3339}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "Build timestamp (human): ${BUILD_TS}"
+          echo "timestamp=${BUILD_TS_RFC3339}" >> "$GITHUB_OUTPUT"
           echo "Build timestamp (RFC 3339): ${BUILD_TS_RFC3339}"
 
       - name: Generate version tags
@@ -165,7 +156,7 @@ jobs:
           set -euo pipefail
           bun scripts/release/generate-version-tags.ts \
             --pg-version="${{ steps.pg-version.outputs.full }}" \
-            --timestamp="${{ steps.timestamp.outputs.value }}" \
+            --release-sha="${{ env.RELEASE_SHA }}" \
             --github-output
 
       - name: Extract metadata for Docker
@@ -191,7 +182,7 @@ jobs:
             org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
             org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
-            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
+            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.tags.outputs.timestamp }}
             io.fluxo-kt.aza-pg.build.type=single-node
             io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
             io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}

@@ -112,7 +112,7 @@ Because `workflow_run` uses workflow definitions from the default branch, releas
 
 - `MM` = PostgreSQL major (18)
 - `mm` = PostgreSQL minor (0)
-- `TS` = build timestamp YYYYMMDDHHmm
+- `TS` = release timestamp YYYYMMDDHHmm (UTC), taken from the newest `## [v…]` heading in the release commit's CHANGELOG.md
 - `TYPE` = image type (single-node)
 
 **Example:** `18.1-202511142330-single-node`

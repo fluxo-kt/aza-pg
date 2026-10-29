@@ -268,7 +268,7 @@ git show refs/heads/dev:CHANGELOG.md
 4. **Development section**: MAX 3 brief lines, no per-file detail
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
-7. **`[Unreleased]` holds only this release.** The previous release was dated on dev right after its anchor merge (Appendix A, `scripts/release/date-changelog.ts`), and `validate` (Release Process Contracts) fails while the newest merged tag has no section. If that check fires, the last run skipped Appendix A: run `bun scripts/release/date-changelog.ts <prev-tag>` on dev and rewrite each entry it prints as "<version in prev-tag> → current" before squashing.
+7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.
 
 Write down the specific CHANGELOG edits needed. You will apply them in Phase 4.4 AFTER the squash.
 
@@ -415,13 +415,14 @@ echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 
 ### 4.4 — Apply CHANGELOG optimisations
 
-Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there. Keep them under `[Unreleased]`: CI builds the GitHub release notes from that section, and the tag name does not exist until publish.
-
-After editing:
+Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there. Then date the release in this commit:
 
 ```bash
+bun scripts/release/date-changelog.ts   # prints the tag, e.g. v18.6-202611101530
 git add -u   # Stage only tracked file modifications — NEVER git add -A
 ```
+
+publish.yml names the tag and builds the GitHub notes from that newest `## [v…]` heading, and refuses a name already tagged on another commit. A redone squash takes dev's CHANGELOG afresh, so run the script again.
 
 ### 4.5 — Apply any other release-time fixes
 
@@ -555,7 +556,7 @@ After every execution, reflect and update this command:
 
 ### Accumulated Lessons
 
-- **A release is dated on dev in the same run, never by the next release.** Nothing renames `[Unreleased]` automatically (`generate-release-notes.ts` only reads it), and dating at the next squash means splitting shipped from new entries by hand, which agents skipped or got wrong, leaving a published tag undated for months. Appendix A's `date-changelog.ts` runs when the tag is known and `[Unreleased]` is still exactly the published text; `validate` fails while the newest merged tag is undated.
+- **The release commit names its own tag.** When CI picked the tag from its clock, the commit could not hold its dated heading: `release` and `main` showed shipped entries as unreleased, and dating them later meant splitting shipped from new entries by hand, which agents skipped or got wrong. Dating in Phase 4.4 makes the heading, the tag and the GitHub notes one fact.
 - **`workflow_run` always executes from the default branch, not the triggering branch** — that is `dev` (GitHub security restriction, prevents privilege escalation from untrusted branches). Consequence: the `publish.yml` that runs is `dev`'s; a `publish.yml` change committed only on `release` (hotfix path) is **invisible to CI** until it is also on `dev`. Pushing `release:main` keeps `main` as the release mirror; it no longer affects which workflow runs.
 
 - **CHANGELOG = net-delta log, nothing more.** No SQL verification snippets or tutorials; those belong in tests or docs. An action an operator must take because of a change (an `ALTER EXTENSION … UPDATE`, a renamed setting) is part of that change's entry, stated in one sentence. If a reader would say "why is this here?", remove it.
@@ -705,12 +706,8 @@ git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only faile
 # The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
 # node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
 bun install
-# Date the release now: the tag exists, and [Unreleased] is exactly the text CI published, so it moves
-# whole under "## [$TARGET] - <date>". validate fails on dev until this commit lands.
-bun scripts/release/date-changelog.ts "$TARGET" || { echo "ABORT: dating $TARGET failed."; exit 1; }
-git commit --only -m "docs(changelog): date $TARGET" -- CHANGELOG.md || { echo "ABORT: dating commit failed."; exit 1; }
 git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
-echo "Anchor merge and dated CHANGELOG pushed. ✓"
+echo "Anchor merge pushed. ✓"
 ```
 
 `git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).

@@ -9,23 +9,14 @@
  */
 
 import path from "path";
-import { isAutoCreated, isPreloadedByDefault } from "../config-generator/manifest-loader";
+import {
+  isAutoCreated,
+  isPreloadedByDefault,
+  loadManifest,
+  type Manifest,
+} from "../config-generator/manifest-loader";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
 import { success, info } from "../utils/logger";
-
-interface ManifestEntry {
-  name: string;
-  kind: "extension" | "tool" | "builtin" | "module";
-  enabled?: boolean;
-  runtime?: {
-    defaultEnable?: boolean;
-    sharedPreload?: boolean;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
 
 /**
  * Workflow configuration derived from manifest
@@ -52,20 +43,6 @@ interface WorkflowConfig {
     preloaded: number;
     autoCreated: number;
   };
-}
-
-async function loadManifest(): Promise<Manifest> {
-  const manifestPath = path.resolve(
-    import.meta.dir,
-    "../../docker/postgres/extensions.manifest.json"
-  );
-  const file = Bun.file(manifestPath);
-
-  if (!(await file.exists())) {
-    throw new Error(`Manifest file not found: ${manifestPath}`);
-  }
-
-  return await file.json();
 }
 
 function deriveConfig(manifest: Manifest): WorkflowConfig {
@@ -103,7 +80,7 @@ function deriveConfig(manifest: Manifest): WorkflowConfig {
 async function main(): Promise<string> {
   info("Generating workflow configuration from manifest...");
 
-  const manifest = await loadManifest();
+  const manifest = await loadManifest(path.resolve(import.meta.dir, "../.."));
   const config = deriveConfig(manifest);
 
   const outputPath = path.resolve(import.meta.dir, "../../.github/workflow-config.json");

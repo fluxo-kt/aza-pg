@@ -72,8 +72,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/wrappers.git",
-        "tag": "v0.6.3",
-        "commit": "44dc1996d859a718be7517212218188ad657858b"
+        "tag": "v0.6.4",
+        "commit": "1f5b3f6905bd5b2c5d0299957c374994297cf373"
       },
       "build": {
         "type": "cargo-pgrx",

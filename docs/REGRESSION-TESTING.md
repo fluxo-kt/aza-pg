@@ -17,15 +17,12 @@ Both suites run only extensions whose manifest entry is enabled; an `enabled: fa
 ## Quick Start
 
 ```bash
-# Both suites in parallel, production mode (CI's regression lane)
+# Both suites in parallel, in production and regression mode (CI's regression lane)
 bun scripts/test-all.ts --group regression
 
 # One suite
 bun scripts/test/test-extension-regression.ts    # Tier 2: extension SQL vs expected output
 bun scripts/test/test-extension-interactions.ts  # Tier 3: extension interactions
-
-# Regression mode (optional preloads added), as the nightly run does
-bun scripts/test-all.ts --group nightly
 ```
 
 Each suite takes `--mode=production|regression`; see [Test Mode Selection](#test-mode-selection).
@@ -54,11 +51,7 @@ bun scripts/test-all.ts --group regression
 
 Adds optional preload libraries to the default list; the set of extensions tested is the same as in production mode. It runs on the release image: the suite starts the server with `POSTGRES_SHARED_PRELOAD_LIBRARIES` set to the longer list.
 
-**Activation:**
-
-```bash
-bun scripts/test-all.ts --group nightly
-```
+**Activation:** the `regression` group runs both suites in this mode too; one suite alone: `bun scripts/test/test-extension-regression.ts --mode=regression`.
 
 ## Test Tiers
 
@@ -114,8 +107,7 @@ bun scripts/test/test-extension-interactions.ts [image] [--mode=production|regre
 
 The runner is `scripts/test-all.ts`, which owns which suites each group holds.
 
-- **`regression` group** (production mode, release image): `ci.yml` on every push and PR, `publish.yml` before every release, and `regression-tests.yml` on demand against any image reference.
-- **`nightly` group** (regression mode, release image): `nightly-regression.yml`, weekly.
+- **`regression` group** (both modes, release image): `ci.yml` on every push and PR, `publish.yml` before every release, and `regression-tests.yml` on demand against any image reference.
 
 ## Test Mode Selection
 

@@ -12,10 +12,11 @@ import {
   getDefaultSharedPreloadLibraries,
   type Manifest,
   type PreloadCandidate,
+  type ResolvedEntry,
 } from "./manifest-loader";
-import { MANIFEST_ENTRIES, type ManifestEntry } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "../extensions/manifest-data";
 
-function entry(name: string, fields: Partial<ManifestEntry> = {}): ManifestEntry {
+function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry {
   return {
     name,
     kind: "extension",
@@ -26,8 +27,8 @@ function entry(name: string, fields: Partial<ManifestEntry> = {}): ManifestEntry
   };
 }
 
-function manifest(entries: ManifestEntry[]): Manifest {
-  return { generatedAt: "2025-01-01T00:00:00Z", entries };
+function manifest(entries: ResolvedEntry[]): Manifest {
+  return { entries, sourceLibraries: SOURCE_LIBRARIES };
 }
 
 describe("getDefaultEnabledExtensions", () => {
@@ -72,11 +73,12 @@ describe("getDefaultSharedPreloadLibraries", () => {
     ...fields,
   });
 
-  test("lists enabled sharedPreload+defaultEnable entries, sorted, comma-joined", () => {
+  test("keeps default preloads enabled and loads Timescale before pgaudit", () => {
     const result = getDefaultSharedPreloadLibraries({
       entries: [
         preload("timescaledb", { enabled: true }),
         preload("auto_explain"), // `enabled` absent counts as enabled
+        preload("pgaudit"),
         preload("disabled", { enabled: false }),
         preload("not_shared", { runtime: { sharedPreload: false, defaultEnable: true } }),
         preload("optional", { runtime: { sharedPreload: true, defaultEnable: false } }),
@@ -84,7 +86,7 @@ describe("getDefaultSharedPreloadLibraries", () => {
         { name: "no_runtime" },
       ],
     });
-    expect(result).toBe("auto_explain,timescaledb");
+    expect(result).toBe("timescaledb,auto_explain,pgaudit");
   });
 
   test("uses preloadLibraryName and sorts by it", () => {

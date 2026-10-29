@@ -16,7 +16,7 @@
 
 import { $ } from "bun";
 import { afterAll, expect, test } from "bun:test";
-import { generateUniqueContainerName } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const IMAGE = resolveImageTag({ argv: [] });
@@ -36,7 +36,7 @@ async function runToExit(
   const envArgs = Object.entries({ POSTGRES_PASSWORD: "negative-test", ...env }).flatMap(
     ([k, v]) => ["-e", `${k}=${v}`]
   );
-  await $`docker run -d --name ${name} ${envArgs} ${IMAGE}`.quiet();
+  await $`docker run -d --name ${name} ${EPHEMERAL_PGDATA} ${envArgs} ${IMAGE}`.quiet();
   const code = Number((await $`docker wait ${name}`.quiet().text()).trim());
   const r = await $`docker logs ${name}`.nothrow().quiet();
   return { code, logs: r.stdout.toString() + r.stderr.toString() };

@@ -10,17 +10,13 @@ Option A in `docs/UPGRADING.md` needs the old and new PostgreSQL binaries, and e
 
 ## Low
 
-### Manual image builds fail on branch names containing `/`
+### Docker suites carry their own psql wrapper
 
-`.github/workflows/build-postgres-image.yml` tags images `dev-${{ github.ref_name }}`; a `/` in the branch name makes an invalid image reference and the run fails at the merge step. Fix: compute one sanitised tag in an early step and use it everywhere.
-
-### Scripts redeclare the manifest shape
-
-Several scripts declare their own `ManifestEntry` instead of importing the one in `scripts/extensions/manifest-data.ts`, so a renamed manifest field still compiles there and reads `undefined`. Several Docker suites likewise carry their own psql wrapper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`.
+Several Docker suites declare their own psql helper although `scripts/docker/test-image-lib.ts` exports `psql` and `sqlOk`, so a fix to one (quoting, session handling, error reporting) misses the others.
 
 ### Unwired scripts
 
-`scripts/ci/generate-oci-annotations.ts`, `scripts/docker/tag-local-image.ts`, `scripts/ci/load-image-artifact.ts`, `scripts/extensions/fetch-latest.ts`, `scripts/release/get-image-metrics.ts`, `scripts/lint-sql-squawk.ts` (described in `docs/TOOLING.md`, run by nothing) and `scripts/lib/common.ts` are called by no workflow, package script or other script. Wire each into the job it was written for, or delete it.
+`scripts/ci/generate-oci-annotations.ts`, `scripts/ci/load-image-artifact.ts`, `scripts/extensions/fetch-latest.ts`, `scripts/release/get-image-metrics.ts`, `scripts/lint-sql-squawk.ts` (described in `docs/TOOLING.md`, run by nothing) and `scripts/lib/common.ts` are called by no workflow, package script or other script. Wire each into the job it was written for, or delete it.
 
 ### pg_partman sits in `public` beside an empty `partman` schema
 

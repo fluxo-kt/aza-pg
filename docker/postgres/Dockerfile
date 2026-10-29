@@ -6,7 +6,7 @@
 
 # PostgreSQL 18.6 with comprehensive extension suite
 
-FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf AS builder-base
+FROM postgres:18.6-trixie@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4 AS builder-base
 
 # Every stage sets ENV before SHELL: hadolint 2.15.1 treats each RUN after an ENV as /bin/sh again (false SC3040).
 # /root/.cargo/bin is filled by the rust image COPY further down.
@@ -46,11 +46,11 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # same trust anchor as the postgres base image: the rustup and bun.sh install scripts used before ran build-day
 # bytes as root unchecked. The rust image holds the same minimal profile (rustc, cargo, rust-std); copied to rustup's
 # default homes so HOME=/root finds it with no extra environment.
-COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/cargo /root/.cargo
-COPY --from=rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 /usr/local/rustup /root/.rustup
+COPY --from=rust:1.99.1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247 /usr/local/cargo /root/.cargo
+COPY --from=rust:1.99.1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247 /usr/local/rustup /root/.rustup
 
 # Bun runs the TypeScript build script; its version is .tool-versions' (the generator reads it)
-COPY --from=oven/bun:1.4.2-debian@sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.4-debian@sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e /usr/local/bin/bun /usr/local/bin/bun
 
 # Copy build script and manifests AFTER expensive tool installations
 # Manifests change frequently (~20% of builds), tools rarely change
@@ -133,7 +133,7 @@ RUN set -euo pipefail && \
     echo "Version info files generated successfully"
 
 # Final runtime stage
-FROM postgres:18.6-trixie@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
+FROM postgres:18.6-trixie@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -170,8 +170,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -rf /var/lib/apt/lists/* && \
     apt-get update && \
     # Install enabled PGDG packages (pre-calculated in TS)
-    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.3-1.pgdg13+2 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-plpgsql-check=2.10.12-1.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
+    echo "Installing PGDG packages: postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends postgresql-18-hll=2.21-1.pgdg13+2 postgresql-18-http=1.7.2-2.pgdg13+2 postgresql-18-hypopg=1.4.4-1.pgdg13+1 postgresql-18-cron=1.6.8-1.pgdg13+2 postgresql-18-partman=5.5.0-1.pgdg13+1 postgresql-18-repack=1.5.3-1.pgdg13+2 postgresql-18-pgaudit=18.0-3.pgdg13+1 postgresql-18-rum=1.3.15-1.pgdg13+1 postgresql-18-set-user=4.2.0-1.pgdg13+2 postgresql-18-pgvector=0.8.7-1.pgdg13+1 && \
     # Each entry's module file must exist (prevents silent installation failures)
     test -f /usr/lib/postgresql/18/lib/hll.so && \
     test -f /usr/lib/postgresql/18/lib/http.so && \
@@ -180,11 +180,10 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     test -f /usr/lib/postgresql/18/lib/pg_partman_bgw.so && \
     test -f /usr/lib/postgresql/18/lib/pg_repack.so && \
     test -f /usr/lib/postgresql/18/lib/pgaudit.so && \
-    test -f /usr/lib/postgresql/18/lib/plpgsql_check.so && \
     test -f /usr/lib/postgresql/18/lib/rum.so && \
     test -f /usr/lib/postgresql/18/lib/set_user.so && \
     test -f /usr/lib/postgresql/18/lib/vector.so && \
-    echo "All 11 PGDG module files verified" && \
+    echo "All 10 PGDG module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
@@ -193,9 +192,9 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 COPY docker/postgres/apt-keys/ /usr/share/keyrings/aza-pg/
 
 # Pre-compiled extensions from Percona repository (versions hardcoded at generation time)
-# Provides pg_stat_monitor and wal2json from the already-required Percona repo layer
+# Provides pg_stat_monitor
 # Percona repository setup and package installation
-# Provides: pg_stat_monitor and wal2json from Percona ppg-18
+# Provides: pg_stat_monitor from Percona ppg-18
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -203,14 +202,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -euo pipefail && \
     echo "deb [signed-by=/usr/share/keyrings/aza-pg/percona.asc] https://repo.percona.com/ppg-18/apt trixie main" > /etc/apt/sources.list.d/percona-ppg-18.list && \
     apt-get update --error-on=any && \
-    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie" && \
-    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.4.0-1.trixie percona-postgresql-18-wal2json=1:2.6-5.trixie && \
-    echo "Installed 2 Percona package(s)" && \
+    echo "Installing Percona packages: percona-pg-stat-monitor18=1:2.4.0-1.trixie" && \
+    apt-get install -y --no-install-recommends percona-pg-stat-monitor18=1:2.4.0-1.trixie && \
+    echo "Installed 1 Percona package(s)" && \
     # Verify .so files exist
     echo "Verifying Percona .so files exist..." && \
     test -f /usr/lib/postgresql/18/lib/pg_stat_monitor.so && \
-    test -f /usr/lib/postgresql/18/lib/wal2json.so && \
-    echo "All 2 Percona module files verified" && \
+    echo "All 1 Percona module files verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     { find /usr/lib/postgresql/18/lib -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true; }
@@ -226,8 +224,8 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -euo pipefail && \
     echo "deb [signed-by=/usr/share/keyrings/aza-pg/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main" > /etc/apt/sources.list.d/timescale.list && \
     apt-get update --error-on=any && \
-    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13" && \
-    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.30.2~debian13-1806 timescaledb-2-loader-postgresql-18=2.30.2~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13 && \
+    echo "Installing Timescale packages: timescaledb-2-postgresql-18=2.31.0~debian13-1806 timescaledb-2-loader-postgresql-18=2.31.0~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13" && \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-18=2.31.0~debian13-1806 timescaledb-2-loader-postgresql-18=2.31.0~debian13-1806 timescaledb-toolkit-postgresql-18=1:1.26.0~debian13 && \
     echo "Installed 3 Timescale package(s)" && \
     # Verify .so files exist
     echo "Verifying Timescale .so files exist..." && \
@@ -243,12 +241,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.59.3-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 && \
-    # Verify tool binaries exist and are executable
+    echo "Installing PGDG tools: pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1 && \
+    # Verify each tool's executable or module file exists
     test -x /usr/bin/pgbackrest && \
     test -x /usr/bin/pgbadger && \
-    echo "All 2 PGDG tool(s) verified" && \
+    test -f /usr/lib/postgresql/18/lib/wal2json.so && \
+    echo "All 3 PGDG tool(s) verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

@@ -154,11 +154,9 @@ bun scripts/docker/validate-published-image-artifacts.ts  # Validate published i
 **Regression Testing:**
 
 ```bash
-# Run all regression tests (extension SQL vs expected output, extension interactions)
+# Run all regression tests (extension SQL vs expected output, extension interactions), each with the default
+# preloads and again with the optional preload libraries added; disabled extensions never run
 bun scripts/test-all.ts --group regression
-
-# Run in regression mode (optional preload libraries added; disabled extensions never run)
-bun scripts/test-all.ts --group nightly
 ```
 
 **Test Tiers:**

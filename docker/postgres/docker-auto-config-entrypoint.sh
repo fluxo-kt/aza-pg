@@ -15,7 +15,7 @@ readonly DEFAULT_RAM_MB=1024
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
 # POSTGRES_SHARED_PRELOAD_LIBRARIES replaces this list (optional ones such as supautils are added that way).
 # Note: pg_stat_monitor and pg_stat_statements can coexist in PG18 via pgsm aggregation
-readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb"
+readonly DEFAULT_SHARED_PRELOAD_LIBRARIES="timescaledb,auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault"
 
 readonly SHARED_BUFFERS_CAP_MB=32768
 readonly MAINTENANCE_WORK_MEM_CAP_MB=2048
@@ -727,4 +727,20 @@ if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; 
     done
 fi
 
-exec /usr/local/bin/docker-entrypoint.sh postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" "${RAISE_ARGS[@]}"
+# Keep the superuser password out of the server's environment. Upstream file_env exports POSTGRES_PASSWORD (or the
+# content of POSTGRES_PASSWORD_FILE) and its final `exec "$@"` hands it to postgres, so the postmaster kept the
+# secret in /proc/<pid>/environ for its whole life, readable by any process running as postgres. The password is needed only while initialising an empty
+# data directory, by functions in the same shell. Upstream supports being sourced (`_is_sourced`), so source it and
+# un-export the variable right after docker_setup_env: init still sees it as a shell variable; exec'd postgres does
+# not inherit it. Root is skipped on purpose: upstream then re-executes itself as postgres via gosu and needs the
+# exported value, so a container started as root keeps upstream behaviour; the image's default user is postgres.
+# Upstream is written for `set -Eeo pipefail`, not nounset: its functions test optional variables bare.
+set +u
+# shellcheck source=/dev/null
+source /usr/local/bin/docker-entrypoint.sh
+eval "upstream_$(declare -f docker_setup_env)"
+docker_setup_env() {
+    upstream_docker_setup_env
+    if [ "$(id -u)" != 0 ]; then export -n POSTGRES_PASSWORD; fi
+}
+_main postgres -c "config_file=${AUTO_CONFIG_FILE}" "${OPERATOR_ARGS[@]}" "${RAISE_ARGS[@]}"

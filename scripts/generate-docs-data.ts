@@ -18,30 +18,12 @@
  */
 
 import { join } from "node:path";
-import { isAutoCreated } from "./config-generator/manifest-loader";
+import { isAutoCreated, loadManifest } from "./config-generator/manifest-loader";
 import { info, success, error } from "./utils/logger";
 
 // Derive project root from current file location (scripts/generate-docs-data.ts)
 const PROJECT_ROOT = join(import.meta.dir, "..");
-const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 const OUTPUT_PATH = join(PROJECT_ROOT, "docs/.generated/docs-data.json");
-
-interface ManifestEntry {
-  name: string;
-  kind: "builtin" | "extension" | "tool";
-  category: string;
-  install_via?: "pgdg" | string;
-  runtime: {
-    sharedPreload: boolean;
-    defaultEnable: boolean;
-    preloadOnly?: boolean;
-  };
-  enabled?: boolean; // Optional, defaults to true
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-}
 
 interface DocsData {
   catalog: {
@@ -74,15 +56,7 @@ interface DocsData {
 async function main() {
   info("Generating documentation data from manifest...");
 
-  // Read manifest
-  const manifestFile = Bun.file(MANIFEST_PATH);
-  if (!(await manifestFile.exists())) {
-    error(`Manifest not found at ${MANIFEST_PATH}`);
-    process.exit(1);
-  }
-
-  const manifest: Manifest = await manifestFile.json();
-  const entries = manifest.entries;
+  const { entries } = await loadManifest(PROJECT_ROOT);
 
   // Separate enabled and disabled entries
   // By default, entries are enabled unless explicitly set to false
@@ -127,13 +101,13 @@ async function main() {
 
   // Preloaded modules (preloadOnly=true, no CREATE EXTENSION)
   const preloadedModules = enabledEntries
-    .filter((e) => e.runtime.sharedPreload && e.runtime.defaultEnable && e.runtime.preloadOnly)
+    .filter((e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && e.runtime?.preloadOnly)
     .map((e) => e.name)
     .toSorted();
 
   // Preloaded extensions (sharedPreload=true, defaultEnable=true, NOT preloadOnly)
   const preloadedExtensions = enabledEntries
-    .filter((e) => e.runtime.sharedPreload && e.runtime.defaultEnable && !e.runtime.preloadOnly)
+    .filter((e) => e.runtime?.sharedPreload && e.runtime?.defaultEnable && !e.runtime?.preloadOnly)
     .map((e) => e.name)
     .toSorted();
 

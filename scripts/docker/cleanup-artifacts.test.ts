@@ -65,7 +65,7 @@ describe("parseVolumeProbeMatches — only positively-marked volumes, correct id
   });
 });
 
-// Regression: named data volumes of a stopped stack are dangling and carry the aza marker, and cleanup deleted them.
+// A stopped stack's named data volumes are dangling and carry the aza marker; listing them would invite their deletion.
 describe("isAnonymousVolume — a named volume is never a cleanup candidate", () => {
   test("named volumes, including the stacks' data volumes, are rejected", () => {
     for (const name of [

@@ -19,13 +19,13 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 ## Pre-Flight: Docker Availability Check (FIRST)
 
-Before launching any parallel checks, confirm Docker is available. Docker-dependent checks (3, 8) cannot be deferred past the first commit if they fail here:
+Before launching Docker checks, confirm Docker is available. Keep unavailable runtime checks open; they block acceptance of the update, not preservation of finished local work:
 
 ```bash
-docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "⚠️ Docker OFFLINE — checks 3 and 8 are BLOCKED; they MUST complete before first commit"
+docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "Docker offline: finish independent work; runtime verification remains open"
 ```
 
-If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but treat them as **BLOCKING** — no commit until they complete.
+If Docker is offline, finish independent discovery and focused commits. Restore Docker and complete every affected runtime check before presenting the update for acceptance.
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
@@ -62,6 +62,7 @@ Check:
      is the **authoritative** PGDG drift detector — it queries apt-madison
      directly. ALWAYS run it in pre-flight and treat any reported version mismatch (including
      pure `-N` revision bumps for unchanged upstream versions) as mandatory update work.
+   - Compare compatible stable tags even when the latest-release endpoint succeeds: release metadata can lag a published tag or container image. Wrapper images can also appear without any matching Git tag: use the registry's complete compatible tag list, then run the pinned binary to verify its component version. A wrapper release name alone proves neither publication nor bundled contents.
 
 2. **Bun dependencies**:
 
@@ -118,18 +119,13 @@ Check:
    Note: `pgdg13` in version strings refers to Debian 13 (Trixie), NOT PostgreSQL 13.
 
 8. **Verify Percona/Timescale pinned versions still exist**: Third-party repos drop old versions
-   without warning. Always confirm currently pinned versions are still in the apt repo:
+   without warning, and ship packaging rebuilds no git tag shows. Check every pin the image installs:
    ```bash
-   docker run --rm -v "$PWD/docker/postgres/apt-keys:/k:ro" postgres:18-trixie bash -c "
-     apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null &&
-     echo 'deb [signed-by=/k/percona.asc] https://repo.percona.com/ppg-18/apt trixie main' > /etc/apt/sources.list.d/p.list &&
-     echo 'deb [signed-by=/k/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main' > /etc/apt/sources.list.d/t.list &&
-     apt-get update -qq --error-on=any &&
-     apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
-   " 2>&1 | command grep -E "percona-|timescaledb-|NO_PUBKEY|EXPKEYSIG|not signed|^E:"
+   bun scripts/extensions/check-vendor-apt.ts   # 0 = all served and newest, 1 = gone/outdated, 2 = probe failed
    ```
-   If a version is gone, update `perconaVersion` / `timescaleVersion` in `manifest-data.ts` to the new version
-   and regenerate. **Do NOT skip this — a removed version causes a silent build failure.**
+   It queries exactly the pins the generator installs (`vendorAptPins`, Timescale loader included). Exit 1
+   names the version to set as `perconaVersion` / `timescaleVersion`; regenerate. **Do NOT skip this — a
+   removed version fails the build.**
    `NO_PUBKEY`/`EXPKEYSIG` means the vendor rotated or expired its key: fetch the new key from the vendor, check
    its fingerprint against the vendor's published value, replace the file in `docker/postgres/apt-keys/` and the
    fingerprint in `APT_KEY_DIR`'s comment (`scripts/docker/generate-dockerfile.ts`).
@@ -138,12 +134,8 @@ Check:
    `timescaledb-2-postgresql-18` (extension SQL+binary) and `timescaledb-2-loader-postgresql-18`
    (preloader). If only the main package is pinned, the loader can jump to a newer version as a
    dependency, causing "no installation script for version X.Y.Z" failures at runtime.
-   **The generator now pins the loader automatically** (via regex replacement in `generate-dockerfile.ts`).
-   When updating timescaledb, verify both packages exist at the target version:
-   ```bash
-   apt-cache madison timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
-   ```
-   Both must show the same `X.Y.Z~debianNN-NNNN` version string.
+   `vendorAptPins` (`scripts/extensions/vendor-apt-pins.ts`) pins the loader at the extension's version,
+   and `check-vendor-apt.ts` checks both, so a version only one of them has fails there.
 
 9. **Pre-plan the changelog obligation** (MANDATORY): if you touch any image-affecting source
    (`scripts/extensions/manifest-data.ts`, `docker/postgres/`, `stacks/*/compose.yml`), you MUST update `CHANGELOG.md` in the
@@ -206,10 +198,7 @@ existing code. Run `bun run validate` immediately and fix issues before proceedi
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
 
-**⚠️ OSV security scanner blocks install (no-TTY)**: the project pins `@bun-security-scanner/osv` in
-`bunfig.toml [install.security]`. When a newly-disclosed CVE lands on a (often transitive) dependency,
-`bun install`/`bun update` aborts with "Security warnings found. Cannot prompt for confirmation (no TTY)"
-and changes NOTHING (atomic — working tree stays clean). Do NOT bypass the scanner. The correct fix is
+**⚠️ OSV security scanner blocks install (no-TTY)**: read the scanner selected by `bunfig.toml [install.security]` and follow AGENTS.md's Bun OSV install gate; do not substitute another scanner or bypass it. Inspect the reported advisory and the working-tree diff after a failed install. The correct fix is
 to force the affected package to a patched version via a package.json `overrides` block, then re-install:
 ```jsonc
 "overrides": { "ws": "^8.20.1", "uuid": "^14.0.0" }  // pin transitive deps to patched versions
@@ -253,7 +242,7 @@ to the latest verified commit for each action's current tag.
 
 ```bash
 # Update all GitHub Actions SHA pins to latest
-actions-up --yes
+actions-up --yes --include-branches --prefer-tags
 ```
 
 This updates the `uses:` SHA in every workflow and composite action. It will report how many
@@ -318,10 +307,7 @@ actively misleading documentation.
 
 ### MANDATORY: Fix Branch-Pinned Reusable Workflow Refs
 
-**`actions-up` has a critical blind spot**: it cannot SHA-pin job-level `uses:` refs for reusable
-workflows (`uses: ORG/REPO/.github/workflows/FILE.yml@main`). It reports them as
-"Skipped N actions pinned to branches" and `--include-branches` does NOT fix them either —
-it only applies to step-level action refs.
+Use the installed `actions-up` to resolve action and reusable-workflow pins, including branches. Inspect its actual update and skip results; do not infer support from an older tool version. `--json` is for the dry-run report and cannot be combined with `--yes`.
 
 After `actions-up`, manually check for any remaining branch-pinned reusable workflow calls:
 
@@ -330,17 +316,7 @@ After `actions-up`, manually check for any remaining branch-pinned reusable work
 command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
 ```
 
-For each found: get the current HEAD SHA and pin it:
-
-```bash
-# Get current HEAD SHA of the branch
-git ls-remote https://github.com/ORG/REPO.git refs/heads/BRANCH
-
-# Then update the workflow file:
-# uses: ORG/REPO/.github/workflows/FILE.yml@BRANCH
-# →
-# uses: ORG/REPO/.github/workflows/FILE.yml@SHA # BRANCH
-```
+For each remaining branch reference, inspect the tool's skip reason and correct its invocation or integration. Every new or updated `uses:` SHA comes from `actions-up`; never resolve or type a replacement by hand.
 
 This is especially important for reusable workflows with broad permissions (`contents: write`,
 `packages: write`, etc.) — a compromised upstream branch would get those permissions on the
@@ -365,6 +341,10 @@ Tool images run by scripts (hadolint, actionlint, yamllint, trivy) are invisible
 rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github   # digest pins
 bun scripts/extensions/check-updates.ts                                           # reports every repo:tag@sha256 tool image in scripts/ and .github/
 ```
+
+A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as `repo:tag@sha256:…`.
+A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
+against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
 
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
 replace the reference everywhere it appears, and run the check that uses it (`bun run validate:all`
@@ -471,13 +451,15 @@ bun run test:all  # Verify runtime compatibility
 
 **Common dependency chains:**
 - `pgvector` → vectorscale
-- `pgsodium` → supabase_vault
+- Vault and pgsodium share the retained root-key getter; neither extension's key-format compatibility follows from a fresh-install pass.
 - `pgmq/pg_net/pg_cron/supabase_vault` → pgflow
 - `hypopg` → index_advisor
 - `postgis` → pgrouting
 - `timescaledb` → timescaledb_toolkit
 
 **If incompatible**: Skip update OR update both together in single commit.
+
+For encryption or key-loading changes, initialize the previous image with a disposable key and encrypted value, stop it, and open the same data with the candidate image and key. Check decryption before and after the documented SQL upgrade, plus restart/restore through the existing recovery suite. A fresh encrypted value cannot expose loss of access to old ciphertext.
 
 ### PGDG Extensions
 
@@ -490,8 +472,9 @@ Nothing else lists PGDG extensions; the generator and `validate-pgdg-versions.ts
 **Proactively hunt promotions** (user often asks for this): for EVERY source-built extension, check
 `apt-cache search postgresql-18 | grep -iE 'EXTNAME'` — a hit at our pinned version is a promotion
 opportunity (faster builds, official packages). Re-run the search to confirm empty results are real,
-not a transient apt glitch. Stale manifest notes like "PGDG package not available for PG18" are prime
-suspects — verify and migrate.
+not a transient apt glitch. Stale manifest notes like "PGDG package not available for PG18" or "apt
+trails upstream" are prime suspects — verify and migrate. Tools count too: a server-module tool
+(wal2json) ships as `postgresql-18-<pkg>`; set `pgdgPackage` and `soFileName` on its entry.
 
 **Source → PGDG migration** (extension now has PGDG package):
 - Remove `install_via: "source"`, add `install_via: "pgdg"` and `pgdgVersion`
@@ -685,7 +668,7 @@ These extensions use Rust pgrx framework for building PostgreSQL extensions in R
 
 ### 5.4: Disabling Unmaintained Extensions
 
-If an extension becomes incompatible (like `pg_plan_filter`):
+Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first; retain the working pin when the newer release removes useful behavior. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
 
 ```typescript
 {
@@ -737,8 +720,9 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
 3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
    `pg_up 1` / `pgbouncer_up 1`.
+   For shipped Prometheus/Grafana examples, also query the metrics through Prometheus and check Grafana's provisioned datasource: a healthy exporter does not prove scrape filters retain what its dashboard needs. Use disposable Compose state and remove it after the check.
 
-## Phase 6: Add Tests for New Functionality
+## Phase 6: Verify Changed Consumer Contracts
 
 ### MANDATORY Pre-Test Checks
 
@@ -756,24 +740,24 @@ command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
 update rounds. Update any hardcoded version strings before running the test suite.
 
-For each extension with new features (from Phase 1 release notes): plan specific tests.
-New APIs, behavior changes — all need test coverage. **ALWAYS verify the actual SQL API** by
+For each changed extension, identify the material consumer failure that existing checks cannot expose. Add a test only when its additional evidence justifies its maintenance and normal-run cost; feature presence and facts already guaranteed by types do not earn tests. **ALWAYS verify the actual SQL API** by
 reading the extension's SQL files or docs before writing tests — planned API signatures are
 frequently wrong (extension may use different function names than expected).
 
-**REQUIRED** when upstream has breaking changes or significant new features.
+Breaking changes need consumer compatibility evidence; reuse the existing functional suite before adding another verifier.
+
+Prefer the shipped dependency's native configuration probe or validation command over replacing it with a stub. For startup scripts, exercise the real upstream entrypoint and process arguments: a replacement shell can accept a configuration production rejects, or fail because its copied function contract went stale.
 
 ### Test Creation Criteria
 
-- **API signature changed** → Add test verifying new signature works
-- **Behavior changed** → Add test verifying new behavior
-- **New feature added** → Add test if relevant to our use case
-- **Breaking change** → Update existing tests to match new behavior
+- **API or behavior changed** → Exercise affected real callers and failure paths; retain a regression only for a meaningful gap in existing guarantees.
+- **New feature added** → Test only a relevant consumer contract with a material failure to distinguish.
+- **Breaking change** → Preserve the promised behavior or document and verify the migration; changing expectations alone is not compatibility evidence.
 
 ### Where Tests Live
 
 Docker suites are `scripts/**/test-*.ts` files listed in `SUITES` in `scripts/test-all.ts`, each with a
-group (`extensions`, `security`, `stacks`, `features`, `regression`, `nightly`); CI runs each group as
+group (`extensions`, `security`, `stacks`, `features`, `regression`); CI runs each group as
 one job. A new suite must be added to `SUITES` (`bun run validate` fails naming any unregistered one).
 Extension behaviour belongs in the suite of group `extensions` that already owns the extension: `rg`
 the extension name in `scripts/` first. Run one group with
@@ -792,7 +776,7 @@ bun run validate
 bun run validate:all
 ```
 
-**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) without building the image. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
+Use affected checks for each focused commit, then run `validate:all` for the completed shell, YAML and Dockerfile changes. It catches ShellCheck, hadolint and yamllint defects that fast validation misses. Commit before long verification; a failed gate gets a follow-up repair commit.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
@@ -817,12 +801,12 @@ image can build cleanly if `set -e` is bypassed by `|| true` patterns.
 
 Common causes:
 - Missing build dependencies → Add to `build.aptPackages` in manifest
-- Version incompatibility → Update pgrx fallback or disable extension
-- ABI break → Disable extension with `disabledReason`
+- Version incompatibility → Check the actual compiler/pgrx constraints and update compatible dependencies together
+- ABI break → Repair compatibility or retain the working pin; capability removal follows Phase 5.4
 
 Resolution options:
 1. Fix (add missing deps, update versions) → regenerate → rebuild
-2. Disable extension (set `enabled: false` + `disabledReason`)
+2. Retain the working pin with its concrete compatibility reason; escalate unresolved capability loss
 3. Patch build (add `build.patches` for sed fixes)
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
@@ -862,9 +846,9 @@ updated before proceeding to Phase 10/12. No exceptions.
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
-## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE EVERY COMMIT — NO EXCEPTIONS)
+## Phase 9.5: Review Each Focused Change Before Commit
 
-**This is a MANDATORY GATE before every commit — not a suggestion, not "when time permits", not something to do when the user asks.** If you are about to call `git commit`, stop and run through this checklist first. Adversarially assume you missed something.
+Review every changed hunk against the requested update and the consumer behavior it affects. Use the relevant checks below; reuse a passing result while its inputs remain unchanged. Preserve finished work in focused commits before long checks. Phase 12 verifies the final committed tree.
 
 **Pre-commit mechanical checklist** (run these commands, check the output):
 ```bash
@@ -881,7 +865,7 @@ command grep -rn -E 'includes\(|startsWith\(' scripts/ | command grep -E '[0-9]+
 command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
 # (non-empty output = action required)
 
-# 5. Verify validate:all passes
+# 5. Run full static validation for the finished affected surface, not again for unchanged inputs
 bun run validate:all
 
 ```
@@ -977,9 +961,7 @@ After every update round, perform a mandatory self-reflection before closing out
 8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
    automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
    section for the exact grep command and what to look for.
-8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
-    `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
-    Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
+8a. **Were branch-pinned reusable workflow refs checked?** Run Phase 2.5's branch-reference search and inspect `actions-up`'s skips; obtain every replacement SHA through that tool.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. A removed pin makes `apt-get install` fail
    the build. **Always verify Percona and Timescale pinned versions still exist in the repo** before
@@ -1059,9 +1041,9 @@ test:all → fail → fix → commit fix → test:all (loop)
 
 ## Phase 13: Reclaim Test Artifacts (MANDATORY — after the gate passes)
 
-`bun run build`/`test:all` leave aza-pg-attributable Docker artifacts that bloat the host over
-successive update rounds: superseded image layers (each rebuild untags the previous aza-pg image),
-the dedicated `aza-pg-builder` buildx cache, and any anonymous PGDATA volumes. Reclaim them:
+`bun run build` removes the image it supersedes, and test containers keep PGDATA on tmpfs or remove
+their volumes, so what remains is images left by a failed build or a pull by digest, and the
+dedicated `aza-pg-builder` buildx cache. Reclaim them:
 
 ```bash
 bun run cleanup:dry   # preview what would be removed (no changes)
@@ -1069,13 +1051,9 @@ bun run cleanup       # reclaim
 ```
 
 **Safe on a shared host**: it removes ONLY artifacts positively attributed to aza-pg by aza-pg's own
-identity markers — images by OCI label `org.opencontainers.image.title` ("aza-pg …"), volumes by the
-`app.aza_pg_custom` marker that `00-aza-pg-settings.sh` writes into PGDATA. It NEVER prunes by type
-(`docker system/volume/image prune` would also delete other projects' orphans).
-
-The anonymous-volume leak is fixed at source (test teardown passes `docker rm -f -v`, enforced by the
-`Subprocess Calls` check in `validate`), so this step now mainly reclaims superseded image
-layers and builder cache — but keep running it: it is the backstop that keeps the host from bloating.
+identity markers — images by OCI label `org.opencontainers.image.title` ("aza-pg …"). It NEVER prunes by type
+(`docker system/volume/image prune` would also delete other projects' orphans). Unattached aza-pg data volumes
+are only listed: the marker in them proves the image made them, not a test, so one may be an operator's database.
 
 ## Recovery Procedure
 
@@ -1140,8 +1118,7 @@ bun run test:all
 | **GitHub latest release** | `gh release view --repo OWNER/REPO --json tagName --jq .tagName` |
 | **GitHub all tags** | `git ls-remote --tags https://github.com/OWNER/REPO \| command grep -v '{}' \| tail -5` |
 | **PGDG apt** | `docker run --rm postgres:18-trixie bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
-| **Percona apt** | `docker run --rm perconalab/percona-distribution-postgresql:18 bash -c "apt-get update -qq && apt-cache madison postgresql-18-EXTNAME"` |
-| **Timescale apt** | `docker run --rm timescale/timescaledb:latest-pg18 bash -c "apt-cache madison postgresql-18-timescaledb"` |
+| **Percona / Timescale apt** | `bun scripts/extensions/check-vendor-apt.ts` (every pinned package, served and newest versions) |
 
 ## Parallel Execution Opportunities
 

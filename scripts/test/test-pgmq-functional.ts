@@ -20,7 +20,7 @@
 
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag, parseContainerName, validateImageTag } from "./image-resolver";
 
 // Parse CLI arguments
@@ -172,7 +172,7 @@ if (isOwnContainer && imageTag) {
 
   try {
     // Start PostgreSQL container
-    await $`docker run -d --name ${CONTAINER} -e POSTGRES_PASSWORD=postgres ${imageTag}`;
+    await $`docker run -d --name ${CONTAINER} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${imageTag}`;
     console.log(`✅ Container started: ${CONTAINER}`);
 
     await waitForPostgres({ container: CONTAINER, timeout: TIMEOUTS.startup });

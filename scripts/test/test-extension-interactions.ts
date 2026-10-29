@@ -16,7 +16,7 @@ import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { detectTestMode, getSharedPreloadLibraries } from "./lib/test-mode";
 import type { TestMode } from "./lib/test-mode";
@@ -54,7 +54,7 @@ try {
   // default differs from it. Regression mode adds the optional preloads, which are what it tests.
   const preloadEnv =
     mode === "production" ? [] : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload}`];
-  await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
+  await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
   await waitForPostgres({ container, timeout: TIMEOUTS.startup });
 
   await psql(`CREATE TABLE ${marker} (id int)`);

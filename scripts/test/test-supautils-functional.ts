@@ -13,7 +13,7 @@
  */
 import { $ } from "bun";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { getSharedPreloadLibraries } from "./lib/test-mode";
 
@@ -69,8 +69,8 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 try {
   const preload = `${getSharedPreloadLibraries("production")},supautils`;
   await Promise.all([
-    $`docker run -d --name ${withSupautils} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${image}`.quiet(),
-    $`docker run -d --name ${withoutSupautils} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
+    $`docker run -d --name ${withSupautils} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres -e POSTGRES_SHARED_PRELOAD_LIBRARIES=${preload} ${image}`.quiet(),
+    $`docker run -d --name ${withoutSupautils} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${image}`.quiet(),
   ]);
   await Promise.all([
     waitForPostgres({ container: withSupautils, timeout: TIMEOUTS.startup }),

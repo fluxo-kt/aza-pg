@@ -4,7 +4,7 @@
  * Validates extensions.manifest.json against expected counts, consistency rules, and cross-references
  */
 
-import { preloadLibraryName } from "../config-generator/manifest-loader";
+import { preloadLibraryName, type Manifest } from "../config-generator/manifest-loader";
 import { join } from "node:path";
 import { validateManifest } from "./manifest-schema";
 import * as logger from "../utils/logger";
@@ -29,38 +29,6 @@ const INIT_SQL_PATH = join(
   "docker/postgres/docker-entrypoint-initdb.d/01-extensions.sql"
 );
 const ENTRYPOINT_PATH = join(PROJECT_ROOT, "docker/postgres/docker-auto-config-entrypoint.sh");
-
-interface RuntimeSpec {
-  sharedPreload: boolean;
-  defaultEnable: boolean;
-  preloadOnly?: boolean;
-  preloadLibraryName?: string;
-  notes?: string[];
-}
-
-type SourceSpec =
-  | { type: "builtin" }
-  | { type: "git"; repository: string; tag: string }
-  | { type: "git-ref"; repository: string; ref: string };
-
-interface ManifestEntry {
-  name: string;
-  displayName?: string;
-  kind: "extension" | "builtin" | "tool";
-  install_via?: "pgdg" | "percona" | "timescale" | "source";
-  soFileName?: string;
-  binaryPath?: string;
-  source?: SourceSpec;
-  runtime?: RuntimeSpec;
-  dependencies?: string[];
-  enabled?: boolean;
-  disabledReason?: string;
-}
-
-interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
-}
 
 const errors: string[] = [];
 const warnings: string[] = [];

@@ -23,59 +23,22 @@
 
 import { join } from "node:path";
 import { MANIFEST_METADATA } from "../extensions/manifest-data";
+import {
+  loadManifest,
+  type Manifest,
+  type ResolvedEntry,
+} from "../config-generator/manifest-loader";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
+import type { VendorRepo } from "../extensions/vendor-apt-pins";
+import { vendorAptPins } from "../extensions/vendor-apt-pins";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
 const REPO_ROOT = join(import.meta.dir, "../..");
 const TEMPLATE_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile.template");
 const OUTPUT_PATH = join(REPO_ROOT, "docker/postgres/Dockerfile");
-const MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.manifest.json");
 const PGXS_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.pgxs.manifest.json");
 const CARGO_MANIFEST_PATH = join(REPO_ROOT, "docker/postgres/extensions.cargo.manifest.json");
-
-interface BuildSpec {
-  type: "pgxs" | "cargo-pgrx" | "timescaledb" | "autotools" | "cmake" | "meson" | "make" | "script";
-  subdir?: string;
-  features?: string[];
-  noDefaultFeatures?: boolean;
-  mesonOptions?: string[];
-  script?: string;
-  patches?: string[];
-}
-
-interface ManifestEntry {
-  name: string;
-  kind?: "extension" | "tool" | "builtin";
-  install_via?: string;
-  pgdgVersion?: string;
-  pgdgPackage?: string;
-  perconaVersion?: string;
-  perconaPackage?: string;
-  /** Timescale repository package name (e.g., timescaledb-2-postgresql-18) */
-  timescalePackage?: string;
-  /** Timescale repository package version (e.g., 2.24.0~debian13-1801) */
-  timescaleVersion?: string;
-  soFileName?: string;
-  binaryPath?: string;
-  postgresOwnedDirs?: string[];
-  enabled?: boolean;
-  build?: BuildSpec;
-  runtime?: {
-    sharedPreload?: boolean;
-    defaultEnable?: boolean;
-    preloadLibraryName?: string;
-  };
-  source: {
-    tag?: string;
-    ref?: string;
-  };
-}
-
-interface Manifest {
-  entries: ManifestEntry[];
-  sourceLibraries?: Record<string, unknown>;
-}
 
 /**
  * Validate package names to ensure they only contain safe characters
@@ -101,7 +64,7 @@ function validatePackageName(packageName: string, context: string): void {
  * library, fails the build instead of the operator's first CREATE EXTENSION. The file name comes from the
  * entry's soFileName and is interpolated into the shell command, hence the strict pattern.
  */
-function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string): string[] {
+function soFileChecks(entries: ResolvedEntry[], source: string, pgMajor: string): string[] {
   return entries.map((entry) => {
     if (!entry.soFileName) {
       throw new Error(
@@ -117,18 +80,6 @@ function soFileChecks(entries: ManifestEntry[], source: string, pgMajor: string)
     }
     return `test -f /usr/lib/postgresql/${pgMajor}/lib/${entry.soFileName}`;
   });
-}
-
-/**
- * Read and parse manifest
- */
-async function readManifest(): Promise<Manifest> {
-  if (!(await Bun.file(MANIFEST_PATH).exists())) {
-    throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
-  }
-
-  const content = Bun.file(MANIFEST_PATH);
-  return (await content.json()) as Manifest;
 }
 
 /**
@@ -200,8 +151,22 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 const APT_KEY_DIR = "/usr/share/keyrings/aza-pg";
 
 /**
+ * `package=version` for one vendor repo's pins (vendorAptPins owns which packages, loader included),
+ * each validated here because it is interpolated into a shell command.
+ */
+function vendorPins(manifest: Manifest, repo: VendorRepo): string[] {
+  return vendorAptPins(manifest.entries)
+    .filter((p) => p.repo === repo)
+    .map((p) => {
+      const pin = `${p.aptPackage}=${p.version}`;
+      validatePackageName(pin, `${repo} package pin (${p.name})`);
+      return pin;
+    });
+}
+
+/**
  * Generate Percona package installation script
- * Percona repository provides pg_stat_monitor and keeps wal2json on the same already-required repo layer.
+ * Percona repository provides pg_stat_monitor.
  * Versions are hardcoded directly from manifest perconaVersion field
  */
 function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): string {
@@ -214,38 +179,13 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
     return `RUN echo "No Percona packages enabled in manifest"`;
   }
 
-  // Validate and build package list
-  const packages: string[] = [];
-
-  for (const entry of enabledPerconaEntries) {
-    if (!entry.perconaPackage) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required perconaPackage field.\n` +
-          `Add perconaPackage: "percona-pkg-name" to manifest entry.`
-      );
-    }
-
-    // Validate package name for shell safety
-    validatePackageName(entry.perconaPackage, `Percona package name (${entry.name})`);
-
-    // perconaVersion is REQUIRED for reproducible builds (same as PGDG pattern)
-    if (!entry.perconaVersion) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required perconaVersion field.\n` +
-          `Add perconaVersion: "X.Y.Z-N.distro" to manifest entry for reproducible builds.`
-      );
-    }
-    validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
-
-    packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
-  }
-
+  const packages = vendorPins(manifest, "percona");
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
   const soChecks = soFileChecks(enabledPerconaEntries, "Percona", pgMajor);
 
   return `# Percona repository setup and package installation
-# Provides: pg_stat_monitor and wal2json from Percona ppg-${pgMajor}
+# Provides: pg_stat_monitor from Percona ppg-${pgMajor}
 # Note: Percona packages are pinned via perconaVersion in manifest for reproducible builds
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
@@ -280,45 +220,7 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     return `RUN echo "No Timescale packages enabled in manifest"`;
   }
 
-  // Validate and build package list
-  const packages: string[] = [];
-
-  for (const entry of enabledTimescaleEntries) {
-    if (!entry.timescalePackage) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required timescalePackage field.\n` +
-          `Add timescalePackage: "timescaledb-2-postgresql-${pgMajor}" to manifest entry.`
-      );
-    }
-
-    // Validate package name for shell safety
-    validatePackageName(entry.timescalePackage, `Timescale package name (${entry.name})`);
-
-    // timescaleVersion is REQUIRED for reproducible builds
-    if (!entry.timescaleVersion) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required timescaleVersion field.\n` +
-          `Add timescaleVersion: "X.Y.Z~debianNN-NNNN" to manifest entry for reproducible builds.`
-      );
-    }
-    validatePackageName(entry.timescaleVersion, `Timescale version (${entry.name})`);
-
-    packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
-
-    // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
-    // The loader is installed as a dependency and its version determines what extension version
-    // PostgreSQL tries to load — a mismatched loader version causes "no installation script for
-    // version X" failures even when the main package is correctly pinned.
-    const loaderPackage = entry.timescalePackage.replace(
-      /^(timescaledb-\d+-)(postgresql-.+)$/,
-      "$1loader-$2"
-    );
-    if (loaderPackage !== entry.timescalePackage) {
-      // Only add loader if the pattern matched (i.e., this is a timescaledb-N-postgresql-M package)
-      packages.push(`${loaderPackage}=${entry.timescaleVersion}`);
-    }
-  }
-
+  const packages = vendorPins(manifest, "timescale");
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
   const soChecks = soFileChecks(enabledTimescaleEntries, "Timescale", pgMajor);
@@ -359,7 +261,7 @@ function safeAbsolutePath(path: string | undefined, context: string): string {
  * binaryPath into the final image (a whole-directory copy of /usr/local/bin once shipped bun and the
  * build scripts), and the final stage fails the build when the binary misses a shared library.
  */
-function sourceTools(manifest: Manifest): ManifestEntry[] {
+function sourceTools(manifest: Manifest): ResolvedEntry[] {
   return manifest.entries.filter(
     (e) =>
       e.kind === "tool" &&
@@ -432,15 +334,16 @@ function sharedLibrariesCheck(manifest: Manifest, pgMajor: string): string {
 
 /**
  * Generate PGDG tool installation script
- * Tools are standalone binaries (no postgresql-XX prefix) installed from PGDG
+ * A tool is an executable (pgbackrest, checked by binaryPath) or a server module loaded without
+ * CREATE EXTENSION (wal2json, checked by soFileName) — the same two identities testToolsPresent uses.
  *
  * Every tool must be version-pinned: an unpinned name installs whatever apt resolves on build day,
  * so two builds of one commit can differ. (pgbadger was once left unpinned on the belief that it is
  * a Percona virtual package; with the Percona repo enabled it resolves to the real PGDG package and
  * `pgbadger=<version>` installs fine.)
  */
-function generatePgdgToolsInstall(manifest: Manifest): string {
-  const enabledPgdgTools: Array<{ name: string; version: string; binary: string }> = [];
+function generatePgdgToolsInstall(manifest: Manifest, pgMajor: string): string {
+  const enabledPgdgTools: Array<{ pin: string; check: string }> = [];
 
   for (const entry of manifest.entries) {
     if (entry.kind === "tool" && entry.install_via === "pgdg" && (entry.enabled ?? true)) {
@@ -449,21 +352,22 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
       if (!entry.pgdgVersion) {
         throw new Error(
           `PGDG tool "${entry.name}" has no pgdgVersion. Pin it in manifest-data.ts to the version ` +
-            `shown by: apt-cache madison ${entry.name} (run inside postgres:<pgVersion>-trixie)`
+            `shown by: apt-cache madison ${pgdgAptPackageName(entry, pgMajor)} (run inside postgres:<pgVersion>-trixie)`
         );
       }
       validatePackageName(entry.pgdgVersion, `PGDG tool version (${entry.name})`);
+      const aptName = pgdgAptPackageName(entry, pgMajor);
+      const pin = `${aptName}=${entry.pgdgVersion}`;
+      validatePackageName(pin, `PGDG tool pin (${entry.name})`);
 
-      const binary = safeAbsolutePath(
-        entry.binaryPath,
-        `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${entry.name})`
-      );
+      const check = entry.soFileName
+        ? soFileChecks([entry], "PGDG tool", pgMajor).join("")
+        : `test -x ${safeAbsolutePath(
+            entry.binaryPath,
+            `PGDG tool "${entry.name}" binaryPath (the executable listed by: dpkg -L ${aptName})`
+          )}`;
 
-      enabledPgdgTools.push({
-        name: entry.name,
-        version: entry.pgdgVersion,
-        binary,
-      });
+      enabledPgdgTools.push({ pin, check });
     }
   }
 
@@ -471,10 +375,8 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     return `RUN echo "No PGDG tools enabled in manifest"`;
   }
 
-  const packagesList = enabledPgdgTools.map((t) => `${t.name}=${t.version}`).join(" ");
-  const binaryVerifications = enabledPgdgTools
-    .map((t) => `test -x ${t.binary}`)
-    .join(" && \\\n    ");
+  const packagesList = enabledPgdgTools.map((t) => t.pin).join(" ");
+  const binaryVerifications = enabledPgdgTools.map((t) => t.check).join(" && \\\n    ");
 
   return `RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \\
     --mount=type=cache,target=/var/cache/apt,sharing=locked \\
@@ -482,7 +384,7 @@ function generatePgdgToolsInstall(manifest: Manifest): string {
     apt-get update && \\
     echo "Installing PGDG tools: ${packagesList}" && \\
     apt-get install -y --no-install-recommends ${packagesList} && \\
-    # Verify tool binaries exist and are executable
+    # Verify each tool's executable or module file exists
     ${binaryVerifications} && \\
     echo "All ${enabledPgdgTools.length} PGDG tool(s) verified" && \\
     apt-get clean && \\
@@ -567,7 +469,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   const timescalePackagesInstall = generateTimescalePackagesInstall(manifest, pgMajor);
 
   info("Generating PGDG tools installation script...");
-  const pgdgToolsInstall = generatePgdgToolsInstall(manifest);
+  const pgdgToolsInstall = generatePgdgToolsInstall(manifest, pgMajor);
 
   // Replace placeholders
   info("Replacing placeholders...");
@@ -622,7 +524,7 @@ async function generateDockerfile(): Promise<void> {
 
   // Read manifest
   info("Reading manifest...");
-  const manifest = await readManifest();
+  const manifest = await loadManifest(REPO_ROOT);
   info(`Manifest loaded: ${manifest.entries.length} total entries`);
 
   // Generate filtered manifests

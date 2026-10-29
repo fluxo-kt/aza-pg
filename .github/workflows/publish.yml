@@ -144,19 +144,10 @@ jobs:
         id: timestamp
         run: |
           set -euo pipefail
-          # Human-readable timestamp for container tags (no special chars)
-          BUILD_TS=$(date -u '+%Y%m%d%H%M')
-
-          # RFC 3339 compliant timestamp for OCI metadata
+          # OCI "created" is the real build time; the tag's timestamp comes from the release commit's
+          # CHANGELOG heading (Generate version tags).
           BUILD_TS_RFC3339=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-
-          # Output both formats
-          {
-            echo "value=${BUILD_TS}"
-            echo "timestamp=${BUILD_TS_RFC3339}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "Build timestamp (human): ${BUILD_TS}"
+          echo "timestamp=${BUILD_TS_RFC3339}" >> "$GITHUB_OUTPUT"
           echo "Build timestamp (RFC 3339): ${BUILD_TS_RFC3339}"
 
       - name: Generate version tags
@@ -165,7 +156,7 @@ jobs:
           set -euo pipefail
           bun scripts/release/generate-version-tags.ts \
             --pg-version="${{ steps.pg-version.outputs.full }}" \
-            --timestamp="${{ steps.timestamp.outputs.value }}" \
+            --release-sha="${{ env.RELEASE_SHA }}" \
             --github-output
 
       - name: Extract metadata for Docker
@@ -191,7 +182,7 @@ jobs:
             org.opencontainers.image.base.name=${{ steps.pg-version.outputs.base_image_name }}
             org.opencontainers.image.base.digest=${{ steps.pg-version.outputs.base_image_digest }}
             io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
-            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.timestamp.outputs.value }}
+            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.tags.outputs.timestamp }}
             io.fluxo-kt.aza-pg.build.type=single-node
             io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
             io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
@@ -287,7 +278,7 @@ jobs:
           echo "Exported digest: ${digest}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digests-${{ matrix.artifact }}
           path: ${{ runner.temp }}/digests/*
@@ -333,7 +324,7 @@ jobs:
           BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE: "86400"
 
       - name: Download digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digests-*
           path: ${{ runner.temp }}/digests
@@ -459,12 +450,12 @@ jobs:
           REQUIRE_DOCKER: "true"
 
   # ==========================================================================
-  # TEST GATE - every routine suite group of scripts/test-all.ts runs against the multi-arch testing image
+  # TEST GATE - every routine suite group of scripts/test-all.ts runs against the multi-arch testing image (amd64; extensions also on arm64)
   # before it is promoted to production tags. scripts/test-all.ts owns which suites a group holds.
   # ==========================================================================
   test:
-    name: Test ${{ matrix.group }}
-    runs-on: ubuntu-26.04
+    name: Test ${{ matrix.group }}${{ matrix.runner && ' (arm64)' || '' }}
+    runs-on: ${{ matrix.runner || 'ubuntu-26.04' }}
     needs: [prep, merge]
     if: needs.merge.result == 'success'
     timeout-minutes: ${{ matrix.timeout }}
@@ -482,6 +473,11 @@ jobs:
             timeout: 6
           - group: regression
             timeout: 5
+          # The arm64 image is built natively but otherwise never started before release; the extensions
+          # group loads every extension and library, so it catches arm-only build or runtime breakage.
+          - group: extensions
+            timeout: 6
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout repository
@@ -594,7 +590,7 @@ jobs:
           skip-files: "usr/local/bin/gosu"
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: "trivy-results.sarif"
@@ -623,7 +619,7 @@ jobs:
           echo "=== Trivy Full Scan (All Severities) ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-full.txt
           docker run --rm \
             -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
+            ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
             --format table \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --skip-files usr/local/bin/gosu \
@@ -634,7 +630,7 @@ jobs:
           echo "=== Trivy JSON Output ===" | tee ${{ runner.temp }}/scan-diagnostics/trivy-results.json
           docker run --rm \
             -v ${{ github.workspace }}/.trivy-cache:/root/.cache/trivy \
-            ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image \
+            ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image \
             --format json \
             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --skip-files usr/local/bin/gosu \
@@ -656,7 +652,7 @@ jobs:
 
       - name: Upload security scan failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: scan-failure-diagnostics-${{ env.RELEASE_SHA }}
           path: ${{ runner.temp }}/scan-diagnostics/*
@@ -965,12 +961,7 @@ jobs:
 
           **Expected output:** Certificate subject matches the GitHub Actions workflow identity.
 
-          **Transparency Log:** All signatures are recorded in the Rekor public transparency log.
-
-          ```bash
-          # Search Rekor for this image
-          rekor-cli search --artifact ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prep.outputs.image_tag }}
-          ```
+          Use cosign 3; cosign 2 needs `--new-bundle-format`, or it reports "no signatures found". `cosign verify` also checks that each signature is recorded in the Rekor transparency log.
 
           ## Supply Chain Verification
 
@@ -985,7 +976,7 @@ jobs:
 
           # Verify with Cosign
           cosign verify-attestation \
-            --type slsaprovenance \
+            --type slsaprovenance1 \
             --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}
@@ -1251,6 +1242,14 @@ jobs:
           gh attestation verify \
             "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" \
             --owner fluxo-kt
+
+          # The cosign route to the same provenance, as docs/PRODUCTION.md and the run summary give it;
+          # running it here keeps the documented --type valid (slsaprovenance, the v0.2 type, matches nothing).
+          cosign verify-attestation \
+            --type slsaprovenance1 \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.image_digest }}" > /dev/null
 
   cleanup:
     name: Cleanup Testing Artifacts

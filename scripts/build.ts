@@ -20,6 +20,7 @@
 //
 
 import { $ } from "bun";
+import { reclaimDanglingAzaImages } from "./docker/cleanup-artifacts";
 import { HADOLINT_IMAGE } from "./validate";
 
 // Get current git commit SHA for image labels
@@ -267,7 +268,7 @@ async function buildImage(config: BuildConfig): Promise<void> {
     }
   } else {
     // CI: Use GitHub Actions cache with unified scope for cross-branch sharing
-    // Scope pattern: aza-pg-{platform} (matches build-postgres-image.yml and publish.yml)
+    // Scope pattern: aza-pg-{platform} (matches publish.yml)
     const platform = platforms.replace("linux/", "").replace(",", "-");
     const cacheScope = `aza-pg-${platform}`;
     console.log(`CI environment: Using GitHub Actions cache (scope=${cacheScope})`);
@@ -362,6 +363,7 @@ async function buildImage(config: BuildConfig): Promise<void> {
     console.log("Status: Pushed to registry");
   } else if (config.load) {
     console.log("Status: Loaded to local Docker daemon");
+    console.log(`Reclaimed: ${await reclaimDanglingAzaImages()}`);
   } else {
     console.log("Status: Built (not loaded to daemon)");
   }

@@ -36,22 +36,22 @@
 
 import { join } from "node:path";
 import type { ManifestEntry } from "./extensions/manifest-data";
-import { isAutoCreated, isPreloadedByDefault } from "./config-generator/manifest-loader";
+import {
+  isAutoCreated,
+  isPreloadedByDefault,
+  loadManifest,
+  type Manifest,
+} from "./config-generator/manifest-loader";
+import { newestRelease } from "./release/changelog";
 import { warning } from "./utils/logger";
 
 const PROJECT_ROOT = join(import.meta.dir, "..");
-const MANIFEST_PATH = join(PROJECT_ROOT, "docker/postgres/extensions.manifest.json");
 const CHANGELOG_PATH = join(PROJECT_ROOT, "CHANGELOG.md");
 
 // GitHub repository info
 const REPO_OWNER = "fluxo-kt";
 const REPO_NAME = "aza-pg";
 const REGISTRY = `ghcr.io/${REPO_OWNER}/${REPO_NAME}`;
-
-interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
-}
 
 interface Args {
   pgVersion: string;
@@ -449,52 +449,16 @@ function getConvenienceTags(fullTag: string, pgVersion: string): string[] {
 }
 
 /**
- * Extract [Unreleased] section from CHANGELOG.md
- * Returns the content between ## [Unreleased] and the next ## heading (or ---)
+ * The notes of the release this commit ships: the newest `## [v…]` CHANGELOG section, the same heading
+ * that named the tag (scripts/release/changelog.ts).
  */
-async function extractUnreleasedChangelog(): Promise<string | null> {
+async function extractReleaseChangelog(): Promise<string | null> {
   const changelogFile = Bun.file(CHANGELOG_PATH);
   if (!(await changelogFile.exists())) {
     warning("CHANGELOG.md not found, skipping changelog section in release notes");
     return null;
   }
-
-  const content = await changelogFile.text();
-  const lines = content.split("\n");
-
-  let inUnreleased = false;
-  const unreleasedLines: string[] = [];
-
-  for (const line of lines) {
-    // Start capturing after ## [Unreleased]
-    if (line.match(/^## \[Unreleased\]/i)) {
-      inUnreleased = true;
-      continue;
-    }
-
-    // Stop at next section (## [...] or ---)
-    if (inUnreleased && (line.match(/^## \[/) || line.match(/^---/))) {
-      break;
-    }
-
-    if (inUnreleased) {
-      unreleasedLines.push(line);
-    }
-  }
-
-  // Trim empty lines from start and end
-  while (unreleasedLines.length > 0 && unreleasedLines[0]?.trim() === "") {
-    unreleasedLines.shift();
-  }
-  while (unreleasedLines.length > 0 && unreleasedLines[unreleasedLines.length - 1]?.trim() === "") {
-    unreleasedLines.pop();
-  }
-
-  if (unreleasedLines.length === 0) {
-    return null;
-  }
-
-  return unreleasedLines.join("\n");
+  return newestRelease(await changelogFile.text())?.notes || null;
 }
 
 /**
@@ -903,7 +867,10 @@ function generateMarkdown(
   lines.push("## ✅ Verification");
   lines.push("");
   lines.push("```bash");
-  lines.push("# Verify Cosign signature (keyless OIDC)");
+  // Signatures use the Sigstore bundle format: cosign 2 finds none without --new-bundle-format.
+  lines.push(
+    "# Verify Cosign signature (keyless OIDC; cosign 3, or cosign 2 with --new-bundle-format)"
+  );
   lines.push("cosign verify \\");
   lines.push(
     `  --certificate-identity-regexp="^https://github.com/${REPO_OWNER}/${REPO_NAME}/" \\`
@@ -954,21 +921,12 @@ async function main() {
     process.exit(1);
   }
 
-  // Read manifest
-  const manifestFile = Bun.file(MANIFEST_PATH);
-  if (!(await manifestFile.exists())) {
-    console.error(`ERROR: Manifest not found at ${MANIFEST_PATH}`);
-    console.error("Run 'bun run generate:manifest' to generate it.");
-    process.exit(1);
-  }
-
-  const manifest: Manifest = await manifestFile.json();
+  const manifest = await loadManifest(PROJECT_ROOT);
 
   // Group extensions by category
   const categoryGroups = groupByCategory(manifest);
 
-  // Extract changelog content from [Unreleased] section
-  const changelogContent = await extractUnreleasedChangelog();
+  const changelogContent = await extractReleaseChangelog();
 
   // Generate markdown
   const markdown = generateMarkdown(args, manifest, categoryGroups, changelogContent);

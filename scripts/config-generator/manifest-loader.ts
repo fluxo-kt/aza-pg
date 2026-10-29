@@ -4,14 +4,24 @@
  */
 
 import { join } from "node:path";
-import type { ManifestEntry } from "../extensions/manifest-data";
+import type { ManifestEntry, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+
+/** A tagged source carries the commit its tag resolved to; the build clones that commit, not the tag. */
+export type ResolvedSource =
+  | { type: "builtin" }
+  | { type: "git"; repository: string; tag: string; commit: string }
+  | { type: "git-ref"; repository: string; ref: string; commit: string };
+
+export type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSource };
 
 /**
- * Manifest structure as stored in JSON file
+ * docker/postgres/extensions.manifest.json as generate-manifest.ts writes it. Readers take this type rather than
+ * declaring their own: a local copy keeps compiling after a manifest field is renamed, then reads `undefined`.
  */
 export interface Manifest {
-  generatedAt: string;
-  entries: ManifestEntry[];
+  /** Sorted by name. */
+  entries: ResolvedEntry[];
+  sourceLibraries: typeof SOURCE_LIBRARIES;
 }
 
 /**
@@ -36,7 +46,7 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
 }
 
 /** The entries initdb creates with CREATE EXTENSION in every new database (see isAutoCreated). */
-export function getDefaultEnabledExtensions(manifest: Manifest): ManifestEntry[] {
+export function getDefaultEnabledExtensions(manifest: Manifest): ResolvedEntry[] {
   return manifest.entries.filter(isAutoCreated);
 }
 
@@ -96,12 +106,16 @@ export function preloadLibraryName(entry: PreloadCandidate): string {
 /**
  * The default shared_preload_libraries value: entries with runtime.sharedPreload AND
  * runtime.defaultEnable that are not disabled, by preloadLibraryName when set (pg_safeupdate loads as
- * safeupdate), sorted so regeneration is stable. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
+ * safeupdate), with Timescale first and the rest sorted. The entrypoint's DEFAULT_SHARED_PRELOAD_LIBRARIES
  * reads this.
  * @throws Error when an entry's preloadLibraryName is empty (see preloadLibraryName)
  */
 export function getDefaultSharedPreloadLibraries(manifest: {
   entries: readonly PreloadCandidate[];
 }): string {
-  return manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort().join(",");
+  // Timescale's loader must precede pgaudit's hooks; alphabetical order can prevent startup.
+  const libraries = manifest.entries.filter(isPreloadedByDefault).map(preloadLibraryName).sort();
+  const timescale = libraries.indexOf("timescaledb");
+  if (timescale >= 0) libraries.unshift(...libraries.splice(timescale, 1));
+  return libraries.join(",");
 }

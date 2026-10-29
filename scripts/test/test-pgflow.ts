@@ -12,7 +12,7 @@
  */
 
 import { resolveImageTag } from "./image-resolver";
-import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 
 const IMAGE = resolveImageTag();
 const CONTAINER = generateUniqueProjectName("aza-pg-pgflow");
@@ -170,7 +170,17 @@ async function removeContainer(): Promise<void> {
 async function main(): Promise<void> {
   console.log(`pgflow image tests — image ${IMAGE}, container ${CONTAINER}`);
   const run = Bun.spawn(
-    ["docker", "run", "-d", "--name", CONTAINER, "-e", "POSTGRES_PASSWORD=test", IMAGE],
+    [
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      CONTAINER,
+      ...EPHEMERAL_PGDATA,
+      "-e",
+      "POSTGRES_PASSWORD=test",
+      IMAGE,
+    ],
     { stdout: "ignore", stderr: "pipe" }
   );
   const [runErr, runCode] = await Promise.all([new Response(run.stderr).text(), run.exited]);

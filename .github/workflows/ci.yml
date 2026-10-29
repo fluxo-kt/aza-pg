@@ -28,11 +28,7 @@
 #   actions/cache only when no entry has that key, so a commit that changes no image input reuses the image
 # - test jobs restore the tarball by the same key (via load-test-image, source: cache)
 #
-# DIFFERENCES FROM build-postgres-image.yml:
-# -----------------------------------------
-# - Automatic on PR/push (not manual)
-# - Single-platform amd64 only (not multi-arch)
-# - No registry push (actions/cache-based sharing)
+# Single-platform amd64 with no registry push; publish.yml builds and tests both platforms before each release.
 #
 # ============================================================================
 

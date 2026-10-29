@@ -17,6 +17,7 @@
  *   2 - Error occurred
  */
 
+import { type } from "arktype";
 import { MANIFEST_ENTRIES, MANIFEST_METADATA, SOURCE_LIBRARIES } from "./manifest-data";
 import type { ManifestEntry } from "./manifest-data";
 
@@ -30,6 +31,7 @@ interface UpdateInfo {
   releaseUrl: string | null;
   notes: string;
   enabled: boolean;
+  files?: string[];
 }
 
 // ANSI colors
@@ -74,6 +76,16 @@ export function canUseCandidateTag(currentTag: string, candidateTag: string): bo
     return true;
   }
   return !isPreReleaseTag(candidateTag);
+}
+
+/**
+ * Whether a registry tag has the pinned tag's shape (digit runs abstracted): `0.35.27` accepts
+ * `0.35.28` but not `8102820` or `amd64-0.35.27`. Registries carry build tags beside releases — a
+ * bare commit tag of digits otherwise parses as a version far above every release.
+ */
+export function hasSameTagShape(currentTag: string, candidateTag: string): boolean {
+  const shape = (tag: string) => tag.replace(/\d+/g, "N");
+  return shape(currentTag) === shape(candidateTag);
 }
 
 function parseTagVersion(tag: string): ParsedTagVersion | null {
@@ -125,6 +137,10 @@ function parseTagVersion(tag: string): ParsedTagVersion | null {
   if (segments.length === 0) {
     return null;
   }
+
+  // Wrapper rebuilds can patch the image without changing its component version.
+  const packagingRevision = /^-p(\d+)$/.exec(tag.slice(index + versionChunk.length))?.[1];
+  if (packagingRevision !== undefined) segments.push(Number.parseInt(packagingRevision, 10));
 
   return {
     prefix: tag.slice(0, index),
@@ -492,12 +508,19 @@ async function checkExtensionUpdates(
  * Container images the stacks and deployments run or tell operators to run. An image's version lives only in the
  * files that pin it, so nothing else would ever report one as outdated; each is checked like an extension against
  * the GitHub repository whose release tags name its versions. Docker image names do not say which repository that
- * is, hence this table. An image missing from it is reported as "could not check", never skipped. `tagPrefix` is
+ * is, hence this table. Wrapper releases can lag published images: `tags` selects the registry in that case.
+ * An image missing from it is reported as "could not check", never skipped. `tagPrefix` is
  * what the repository puts before the image tag: Grafana tags images 13.2.3 but releases v13.2.3, and comparing
  * the bare form picks up Grafana's old unprefixed tags instead.
  */
-const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> = {
-  "edoburu/pgbouncer": { repository: "https://github.com/edoburu/docker-pgbouncer" },
+const IMAGE_SOURCES: Record<
+  string,
+  { repository: string; tagPrefix?: string; tags?: "docker-hub" }
+> = {
+  "edoburu/pgbouncer": {
+    repository: "https://github.com/edoburu/docker-pgbouncer",
+    tags: "docker-hub",
+  },
   "prometheuscommunity/pgbouncer-exporter": {
     repository: "https://github.com/prometheus-community/pgbouncer_exporter",
   },
@@ -509,6 +532,11 @@ const IMAGE_SOURCES: Record<string, { repository: string; tagPrefix?: string }> 
   "rhysd/actionlint": { repository: "https://github.com/rhysd/actionlint", tagPrefix: "v" },
   "hadolint/hadolint": { repository: "https://github.com/hadolint/hadolint" },
   "aquasecurity/trivy": { repository: "https://github.com/aquasecurity/trivy", tagPrefix: "v" },
+  // Hosted on GitLab with no GitHub releases: the registry's tags are the only version list.
+  "pipelinecomponents/yamllint": {
+    repository: "https://gitlab.com/pipeline-components/yamllint",
+    tags: "docker-hub",
+  },
 };
 
 /**
@@ -527,21 +555,87 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
   for (const file of files) {
     const tool = file.startsWith("scripts/") || file.startsWith(".github/");
     for (const line of (await Bun.file(file).text()).split("\n")) {
+      // The tag is optional in both patterns: a reference without one (`repo@sha256:…`, or a compose
+      // `image: repo` that floats on latest) names no version to compare, so it is kept with tag ""
+      // and reported as uncheckable instead of matching nothing and going stale without any row.
       const m = tool
-        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+):([A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
-        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
+        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
+            line
+          )
+        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*)(?::([A-Za-z0-9._-]+))?/.exec(
             line
           );
       if (!m) continue;
+      const tag = m[2] ?? "";
       const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
       if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
-      const key = `${repo}:${m[2]}`;
-      const known = images.get(key) ?? { repo, tag: m[2]!, files: [] };
+      const key = `${repo}:${tag}`;
+      const known = images.get(key) ?? { repo, tag, files: [] };
       if (!known.files.includes(file)) known.files.push(file);
       images.set(key, known);
     }
   }
   return [...images.values()];
+}
+
+const DockerHubTagPage = type({
+  next: "string | null",
+  results: type({ name: "string" }).array(),
+});
+
+async function checkDockerHubImage(repo: string, current: string): Promise<UpdateInfo> {
+  // Registry publication and wrapper releases are independent; only published image tags establish
+  // what operators can pull. Bound requests and refuse partial enumeration rather than report it current.
+  const source = `https://hub.docker.com/v2/repositories/${repo}/tags`;
+  const base = { name: repo, current, source, sourceType: "git" as const, enabled: true };
+  const unavailable = (reason: string): UpdateInfo => ({
+    ...base,
+    latest: null,
+    updateAvailable: false,
+    releaseUrl: null,
+    notes: `Could not check published image tags: ${reason}`,
+  });
+  let latest: string | null = null;
+  let pageUrl = `${source}?page_size=100`;
+  const registryOrigin = new URL(source).origin;
+  try {
+    for (let page = 1; page <= 10; page++) {
+      const response = await fetch(pageUrl, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return unavailable(`registry returned HTTP ${response.status}`);
+      const data = DockerHubTagPage(await response.json());
+      if (data instanceof type.errors) return unavailable(data.summary);
+      for (const { name } of data.results) {
+        if (
+          !hasSameTagShape(current, name) ||
+          !canUseCandidateTag(current, name) ||
+          compareTagVersions(current, name) === null
+        )
+          continue;
+        if (latest === null || (compareTagVersions(latest, name) ?? 0) > 0) latest = name;
+      }
+      if (data.next === null) {
+        if (latest === null) return unavailable(`no tags comparable with ${current}`);
+        return {
+          ...base,
+          latest,
+          updateAvailable: (compareTagVersions(current, latest) ?? 0) > 0,
+          releaseUrl: `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(latest)}`,
+          notes: "Latest compatible published image tag; verify the bundled binary separately",
+        };
+      }
+      const nextPage = new URL(data.next, source);
+      if (nextPage.origin !== registryOrigin)
+        return unavailable("pagination left the registry origin");
+      pageUrl = nextPage.href;
+    }
+    return unavailable(
+      "registry exceeded 1,000 tags; inspect the catalog before raising the bound"
+    );
+  } catch (error) {
+    return unavailable(String(error));
+  }
 }
 
 function printTable(updates: UpdateInfo[]) {
@@ -576,6 +670,7 @@ function printTable(updates: UpdateInfo[]) {
       if (update.releaseUrl) {
         console.log(`    Release:  ${colors.blue}${update.releaseUrl}${colors.reset}`);
       }
+      if (update.files) console.log(`    Pins:     ${update.files.join(", ")}`);
       console.log("");
     }
   }
@@ -635,13 +730,19 @@ function printTable(updates: UpdateInfo[]) {
   if (withUpdates.length > 0) {
     console.log(`${colors.yellow}Action Required:${colors.reset}`);
     console.log(`  1. Review available updates above`);
-    console.log(`  2. Update versions in scripts/extensions/manifest-data.ts`);
+    console.log(
+      `  2. Edit extension versions in scripts/extensions/manifest-data.ts; image pins at the listed paths`
+    );
     console.log(`  3. Run: bun run generate`);
     console.log(`  4. Test and commit changes`);
     console.log("");
-  } else {
+  } else if (errors.length === 0) {
     console.log(`${colors.green}All extensions are up to date!${colors.reset}`);
     console.log("");
+  } else {
+    console.log(
+      `${colors.red}Update checks are incomplete; resolve the reported source errors.${colors.reset}`
+    );
   }
 }
 
@@ -694,6 +795,21 @@ async function main() {
   for (const image of await pinnedImages()) {
     const upstream = IMAGE_SOURCES[image.repo];
     const pinnedIn = `pinned in ${image.files.join(", ")}`;
+    if (image.tag === "") {
+      results.push({
+        name: image.repo,
+        current: "(no tag)",
+        latest: null,
+        updateAvailable: false,
+        source: image.repo,
+        sourceType: "git",
+        releaseUrl: null,
+        notes: `Could not check: image reference has no tag; write it as repo:tag@sha256:… (${pinnedIn})`,
+        enabled: true,
+        files: image.files,
+      });
+      continue;
+    }
     if (!upstream) {
       results.push({
         name: image.repo,
@@ -705,7 +821,13 @@ async function main() {
         releaseUrl: null,
         notes: `Could not check: no upstream repository for this image; add it to IMAGE_SOURCES in scripts/extensions/check-updates.ts (${pinnedIn})`,
         enabled: true,
+        files: image.files,
       });
+      continue;
+    }
+    if (upstream.tags === "docker-hub") {
+      const update = await checkDockerHubImage(image.repo, image.tag);
+      results.push({ ...update, files: image.files, notes: `${update.notes} (${pinnedIn})` });
       continue;
     }
     const prefix = upstream.tagPrefix ?? "";
@@ -715,7 +837,12 @@ async function main() {
       enabled: true,
     });
     if (update)
-      results.push({ ...update, current: image.tag, notes: `${update.notes} (${pinnedIn})` });
+      results.push({
+        ...update,
+        current: image.tag,
+        files: image.files,
+        notes: `${update.notes} (${pinnedIn})`,
+      });
   }
 
   if (args.format === "json") {
@@ -725,6 +852,7 @@ async function main() {
   }
 
   // Exit with 1 if any enabled extensions have updates
+  if (results.some((r) => r.latest === null && r.notes.startsWith("Could not"))) process.exit(2);
   const hasUpdates = results.some((r) => r.updateAvailable && r.enabled);
   process.exit(hasUpdates ? 1 : 0);
 }

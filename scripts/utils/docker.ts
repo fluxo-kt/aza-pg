@@ -365,18 +365,32 @@ export async function dockerRunLive(args: string[]): Promise<number> {
 export const TEST_SCOPE_ENV = "AZA_PG_TEST_SCOPE";
 
 /**
- * `{prefix}-[{scope}-]{stamp}-{pid}`, numbers in base36: unique per process and call, and findable by its test-all
- * scope. `stamp` is the time in ms, moved one past the previous call's when calls share a millisecond (cases started
+ * `{prefix}--{pid}-[{scope}-]{stamp}`, numbers in base36: unique per process and call, findable by its test-all
+ * scope, and owned by `pid` (testResourceOwnerPid). `--` marks the owner because no prefix or human-chosen name uses it,
+ * so the owner is read from any name compose derives (`<root>-<service>-1`, `<root>_<volume>`) without guessing. `stamp` is the time in ms, moved one past the previous call's when calls share a millisecond (cases started
  * together with Promise.all), so it never repeats in a process and never grows the name. Short because suites use
  * container names as hostnames, and Docker's DNS cannot resolve a name longer than one 63-octet DNS label: decimal
  * numbers put the replica suite's primary at 65+ characters, and the replica waited for it forever.
  */
 let lastStamp = 0;
 function scopedName(prefix: string): string {
+  if (!/^aza-pg(-[a-z0-9]+)*$/.test(prefix))
+    throw new Error(
+      `test name prefix "${prefix}" must be aza-pg followed by -word parts (no "--", which marks the owner)`
+    );
   const scope = Bun.env[TEST_SCOPE_ENV];
   lastStamp = Math.max(Date.now(), lastStamp + 1);
-  return `${prefix}-${scope ? `${scope}-` : ""}${lastStamp.toString(36)}-${process.pid.toString(36)}`;
+  return `${prefix}--${process.pid.toString(36)}-${scope ? `${scope}-` : ""}${lastStamp.toString(36)}`;
 }
+
+/**
+ * `docker run` arguments putting PGDATA on tmpfs instead of the anonymous volume the image's `VOLUME` would create.
+ * A test container that never restarts needs no volume: tmpfs vanishes with the container, so nothing can leak or be
+ * mistaken for an operator's data, and initdb's fsyncs cost nothing (several times faster to start on Docker Desktop; no measurable change on CI runners).
+ * Not for a container that is restarted or whose data outlives it (tmpfs is emptied on every start, so the server
+ * re-runs initdb), nor under a `--memory` limit the test depends on (tmpfs pages count against it).
+ */
+export const EPHEMERAL_PGDATA = ["--tmpfs", "/var/lib/postgresql"] as const;
 
 /** Unique container name for test isolation; also the root for volume names derived from it. */
 export function generateUniqueContainerName(prefix: string = "aza-pg-test"): string {
@@ -388,8 +402,44 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
   return scopedName(prefix);
 }
 
+/** The pid that created a test resource (scopedName), or null for any name no test generated. */
+export function testResourceOwnerPid(name: string): number | null {
+  const pid = /^aza-pg(?:-[a-z0-9]+)*--([0-9a-z]+)-/.exec(name)?.[1];
+  return pid ? parseInt(pid, 36) : null;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM: the process exists but belongs to another user.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /**
- * Removes every container, volume and network whose name matches `names` (see TEST_SCOPE_ENV); returns every name it
+ * Removes test containers, volumes and networks whose creating process has exited: a suite run on its own and killed
+ * (Ctrl-C, crash), or a test-all that was itself killed, never reaches its teardown or test-all's per-suite sweep.
+ * A live owner means a run still in progress, perhaps in another worktree, so its resources are left alone; a reused
+ * pid only postpones removal to a later sweep. Liveness is checked on this host: with a Docker daemon shared by several
+ * machines, another machine's live run would look exited. test-all runs this before its suites; `bun run cleanup` too.
+ */
+export function sweepOrphanedTestResources(dryRun = false) {
+  return sweepTestScope(
+    {
+      test: (name) => {
+        const pid = testResourceOwnerPid(name);
+        return pid !== null && !processAlive(pid);
+      },
+    },
+    { dryRun }
+  );
+}
+
+/**
+ * Removes every container, volume and network whose name `names` accepts (see TEST_SCOPE_ENV); `dryRun` only lists
+ * them. Returns every name it
  * found and those still present when it gave up. Containers go first: a volume or network still attached to one
  * cannot be removed.
  *
@@ -402,8 +452,8 @@ export function generateUniqueProjectName(prefix: string = "aza-pg-test"): strin
  * is killed at the deadline, so a hung daemon cannot stall the caller past it.
  */
 export async function sweepTestScope(
-  names: RegExp,
-  deadlineMs = 30_000
+  names: { test(name: string): boolean },
+  { deadlineMs = 30_000, dryRun = false } = {}
 ): Promise<{ found: string[]; remaining: string[] }> {
   const deadline = Date.now() + deadlineMs;
   const untilDeadline = () => Math.max(1, deadline - Date.now());
@@ -445,6 +495,7 @@ export async function sweepTestScope(
     const [{ names: containers }, { names: volumes }, { names: networks }] = listings;
     const failures = listings.flatMap((l) => (l.failure ? [l.failure] : []));
     const present = [...containers, ...volumes, ...networks];
+    if (dryRun) return { found: present, remaining: failures };
     if ((present.length === 0 && failures.length === 0) || Date.now() >= deadline)
       return { found: [...found], remaining: [...present, ...failures] };
     for (const name of present) found.add(name);

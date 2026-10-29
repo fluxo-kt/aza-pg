@@ -15,7 +15,7 @@ services:
       POSTGRES_WORKLOAD_TYPE: ${POSTGRES_WORKLOAD_TYPE:-web}
       POSTGRES_STORAGE_TYPE: ${POSTGRES_STORAGE_TYPE:-ssd}
       # Enable shared_preload_libraries (already configured in aza-pg)
-      # Default: auto_explain,pg_cron,pg_net,pg_stat_monitor,pg_stat_statements,pgaudit,pgsodium,safeupdate,supabase_vault,timescaledb
+      # Overrides replace the image's list; keep timescaledb before pgaudit.
     volumes:
       # PG18 keeps PGDATA at /var/lib/postgresql/18/docker; a .../data mount makes the entrypoint refuse to start
       - postgres_data:/var/lib/postgresql
@@ -43,9 +43,8 @@ services:
 
   # PgBouncer - Connection Pooling
   pgbouncer:
-    # edoburu's image, as in stacks/: PgBouncer 1.26.0 fixes unauthenticated remote crash/hang bugs (CVE-2026-19888,
-    # CVE-2026-6668), and the official pgbouncer/pgbouncer image publishes nothing newer than 1.25.2.
-    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
+    # Keep the stack's wrapper image so its authentication and healthcheck behavior stay aligned.
+    image: edoburu/pgbouncer:v1.26.1-p0@sha256:488422e38cff912895d0d65d8963fcd306e6ac589a724398b6eb8e294e94d624
     container_name: pgbouncer
     restart: unless-stopped
     environment:
@@ -131,11 +130,10 @@ services:
     container_name: pgbouncer-exporter
     restart: unless-stopped
     environment:
-      PGBOUNCER_EXPORTER_HOST: pgbouncer
-      PGBOUNCER_EXPORTER_PORT: 6432
-      PGBOUNCER_EXPORTER_USER: ${POSTGRES_USER:-postgres}
-      PGBOUNCER_EXPORTER_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
-      PGBOUNCER_EXPORTER_DATABASE: pgbouncer
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: "postgres://pgbouncer:6432/pgbouncer?sslmode=disable"
+      PGUSER: ${POSTGRES_USER:-postgres}
+      # Keep credentials outside the URI so password punctuation needs no URL encoding.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
     networks:
       - aza-pg-network
     ports:
@@ -150,7 +148,7 @@ services:
 
   # Prometheus - Metrics Collection
   prometheus:
-    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -178,7 +176,7 @@ services:
 
   # Grafana - Visualization
   grafana:
-    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     container_name: grafana
     restart: unless-stopped
     environment:

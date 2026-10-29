@@ -70,31 +70,6 @@ GitHub Actions workflows handle automated builds:
 
 Runs on every push to main/dev/release and every PR: `bun run validate:all`, an amd64 image build, then one job per routine suite group (`bun scripts/test-all.ts --group <group>`).
 
-#### Manual Testing Workflow (build-postgres-image.yml)
-
-Use for developer testing and pre-release validation:
-
-```bash
-# Trigger manually via GitHub Actions UI or:
-gh workflow run build-postgres-image.yml
-
-# Versions come from scripts/extensions/manifest-data.ts; the only input is push_image:
-gh workflow run build-postgres-image.yml -r main -f push_image=true
-```
-
-**When to use:**
-
-- Testing extension version updates
-- Pre-release validation
-- Debug build issues
-- Manual QA before production release
-
-**Features (`push_image=true`; the default `false` builds amd64 only and loads it locally):**
-
-- Multi-platform builds (linux/amd64, linux/arm64)
-- SBOM generation
-- Pushes to the testing registry, then runs every routine suite group and a Trivy scan
-
 #### Production Releases (publish.yml)
 
 Runs when the `CI` workflow succeeds on the `release` branch (`workflow_run`):
@@ -112,7 +87,7 @@ Because `workflow_run` uses workflow definitions from the default branch, releas
 
 - `MM` = PostgreSQL major (18)
 - `mm` = PostgreSQL minor (0)
-- `TS` = build timestamp YYYYMMDDHHmm
+- `TS` = release timestamp YYYYMMDDHHmm (UTC), taken from the newest `## [v…]` heading in the release commit's CHANGELOG.md
 - `TYPE` = image type (single-node)
 
 **Example:** `18.1-202511142330-single-node`
@@ -185,7 +160,7 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 1. **prep** - Validation and metadata (version, tags, labels, annotations)
 2. **build** - Matrix builds on native runners (amd64 + arm64 in parallel), pushed by digest
 3. **merge** - Multi-arch manifest from platform digests under the `testing-<sha>` tag
-4. **test** - One job per routine suite group (`bun scripts/test-all.ts --group <g>`), amd64 only; **test-complete** gates on all of them
+4. **test** - One job per routine suite group (`bun scripts/test-all.ts --group <g>`) on amd64, plus `extensions` on arm64 so the arm64 image is started before release; **test-complete** gates on all of them
 5. **scan** - Security scanning (Dockle + Trivy)
 6. **release** - Cosign signing, promotion to production tags, SBOM and provenance attestation
 7. **create-release** - GitHub Release with generated notes
@@ -198,13 +173,6 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 - **Platform caching:** Architecture-specific cache scopes
 - **Native ARM64:** `ubuntu-24.04-arm` runner (NO QEMU during build)
 - **Parallel execution:** Both platforms build simultaneously
-
-**build-postgres-image.yml Architecture:**
-
-Adaptive multi-platform builds based on `push_image` input:
-
-- **When push_image=false (default):** Single-platform amd64, local build, no tests or scan
-- **When push_image=true:** Matrix builds with native ARM64, parallel execution, all routine suite groups and a Trivy scan
 
 ### Technical Details
 
@@ -239,7 +207,7 @@ cache-from: type=gha,scope=aza-pg-${{ matrix.artifact }}
 cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
 ```
 
-One scope per platform, shared by `publish.yml` and `build-postgres-image.yml`, so the two architectures never overwrite each other's layers.
+One scope per platform in `publish.yml`, so the two architectures never overwrite each other's layers.
 
 See workflow files in `.github/workflows/` for complete implementation details.
 

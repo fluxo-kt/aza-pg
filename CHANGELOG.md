@@ -5,10 +5,43 @@ All notable changes to the aza-pg Docker image will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Focus**: This changelog tracks changes affecting the **release Docker image** only.
+**Focus**: This changelog tracks operator-visible changes to the release Docker image and shipped Compose companion images.
 Development tooling, test infrastructure, and CI/CD changes are noted briefly if relevant.
 
 ## [Unreleased]
+
+## [v18.6-202610291622] - 2026-10-29
+
+### Breaking
+
+- **supautils 3.4.4 → 4.0.0** (only if you add `supautils` to `POSTGRES_SHARED_PRELOAD_LIBRARIES`): `supautils.constrained_extensions` is removed, so `CREATE EXTENSION` no longer enforces the CPU, memory and disk minimums it set. A leftover value is ignored with a warning at start. If you set `supautils.extension_custom_scripts_path`, an `after-create.sql` at the top of that directory now runs after every `CREATE EXTENSION`. New, unset by default: `supautils.default_extension_install_schema` (superuser only) sends `CREATE EXTENSION` without `SCHEMA` to the schema you name.
+- **TimescaleDB 2.30.2 → 2.31.0**: in your own `shared_preload_libraries`, put `timescaledb` before `pgaudit`, which upstream requires for pgaudit's hooks to work with TimescaleDB; the image's default list now does this. Rename `timescaledb.enable_columnarscan` to `timescaledb.debug_enable_columnarscan` in stored settings. In each database that uses TimescaleDB, run `ALTER EXTENSION timescaledb UPDATE` as the first command of a new session.
+- **pgBackRest 2.59.3 → 2.60.0**: `restore` now stops with an error when a restored file has an invalid page checksum. The cluster is then incomplete and will not start, so rerun the restore. `expire` refuses to run when the oldest retained backup would have checksum errors, which also stops WAL archive expiry in that repository. Set `checksum-page-error=n` to get warnings instead.
+- **pgmq 1.13.0 → 1.13.1**: `pg_monitor` can no longer read message bodies and headers. It keeps what `pgmq.metrics()`, `pgmq.metrics_all()` and `pgmq.list_queues()` need: `pgmq.meta`, the `vt` and `enqueued_at` columns, and the message ID sequences. A role that read messages through `pg_monitor` needs its own grant. pgmq functions now use a fixed `search_path`, so a role that can create objects on another role's `search_path` can no longer run code with that role's rights. Run `ALTER EXTENSION pgmq UPDATE` in existing databases; it logs a warning, not an error, when it cannot revoke an old grant, so check the log.
+- **Phase 1 example (`deployments/phase1-single-vps`): Grafana 13.2.3 → 13.3.0**: rename the `[marketplace]` section of a custom Grafana config to `[plugins_marketplace]`. The release also fixes upstream security issues.
+
+### Security
+
+- **Superuser password removed from the server's environment**: the running server inherited `POSTGRES_PASSWORD` (or the content of `POSTGRES_PASSWORD_FILE`), so any process running as `postgres` could read it from `/proc/<pid>/environ`. The entrypoint now keeps it only for first-start initialisation. How you pass it does not change. A container started as root (`--user root`) still passes it to the server.
+- **Compose stacks and Phase 1 example: PgBouncer 1.26.0 → 1.26.1**: fixes user impersonation through a second SCRAM startup message (CVE-2026-107350), CPU exhaustion from startup options when `ignore_startup_parameters` is set (CVE-2026-107349), and a packet-buffer overflow when `max_packet_size` is set above its default (CVE-2026-107348).
+- **Vault 0.3.1 → 0.3.2**: `vault.create_secret` and `vault.update_secret` put `pg_temp` last in their `search_path`, so a temporary table cannot stand in for a table they use. Run `ALTER EXTENSION supabase_vault UPDATE` in existing databases; the root key and stored secrets stay as they are.
+- **Phase 1 example: Prometheus 3.15.0 → 3.15.1**: fixes Go `net/http`, `crypto/tls` and HTTP/2 vulnerabilities, and the image stops trusting two CA roots after the eMudhra key compromise.
+
+### Changed
+
+- **wal2json 2.6 → 2.7**, now installed from PGDG instead of Percona: supports PostgreSQL 18, including the `output_plugin_libraries` setting added in 18.6. Fixes invalid JSON for schema-qualified quoted type names, an unescaped default expression, an out-of-bounds read in the table and prefix options, a syscache reference leak for domains, and a memory leak on startup errors. Adds the `partition-root` and `include-empty-transaction` options.
+- **plpgsql_check 2.10.12 → 2.10.16**, now built from source because PGDG has only 2.10.15: fixes crashes, false alarms, and reading composite variables in passive mode.
+- **PGroonga 4.0.9 → 4.1.0**: fixes `VACUUM` or `ANALYZE` in another session, run before `CREATE INDEX` commits, removing data the new index needs; searches through such an index fail with "object isn't found" until `REINDEX`. `pgroonga_tuple_is_alive()` in `pgroonga_command()` now accepts `post_filter`, but only with Groonga 16.1.3 or later; the image ships Groonga 15.0.4.
+- **hypopg 1.4.3 → 1.4.4**: fixes hypothetical index names for OIDs ≥ 2^31, a leak of `WITH` options, hypothetical indexes kept after their table or other dependency changed, the `indcollation` and `indclass` columns of `hypopg()`, and a failed `EXPLAIN` affecting later queries.
+- **index_advisor 0.2.0 → 0.2.1**: works when hypopg is installed in a schema other than the default; fixes comment stripping; deallocates only its own prepared statement instead of all of them.
+- **wrappers 0.6.3 → 0.6.4**: DuckDB 1.5.6; fixes the Paddle and Shopify Wasm wrappers.
+
+### Fixed
+
+- **Phase 1 example monitoring**: Prometheus kept only `pg_stat_statements_*` metrics and dropped the health, activity, size and lock metrics the provisioned Grafana dashboard reads; it now keeps all of them. The PgBouncer exporter ignored its `PGBOUNCER_EXPORTER_*` settings and connected to its own localhost; it now uses `PGBOUNCER_EXPORTER_CONNECTION_STRING` with `PGUSER` and `PGPASSWORD`. If you copied the old compose file or `prometheus.yml`, apply both changes.
+- **Image contents files**: `/etc/postgresql/version-info.txt` no longer prints `Manifest Generated: undefined`, and `/IMAGE-CONTENTS.txt` lists pg_hashids at its pinned commit instead of as `builtin`.
+
+## [v18.6-202610062012] - 2026-10-06
 
 ### Breaking
 

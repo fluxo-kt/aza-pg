@@ -11,27 +11,26 @@
  * killed at its timeout never runs its own teardown, and one that passed but left anything behind fails. Suites
  * run in parallel up to the CPU count: each one isolates its containers, volumes, networks and ports, so order and
  * neighbours must not matter (--shuffle proves it). Any failed suite, or a run over the lane's 5 min ceiling, makes
- * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep.
+ * the run exit 1; a failed suite's output ends with its containers' last log lines, read before the sweep. Before the
+ * suites, whatever earlier killed runs left is removed (sweepOrphanedTestResources).
  *
  * Usage: bun scripts/test-all.ts [--group G[,G…]] [--image REF] [--shuffle[=SEED]]
- *   --group    default: every group except "nightly", which reruns the "regression" suites in regression mode
+ *   --group    default: every group
  *   --image    default: POSTGRES_IMAGE, else the local build (aza-pg:pg18)
  *   --shuffle  random suite order; prints the seed so a failing order can be replayed
  */
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { ensureImageAvailable, sweepTestScope, TEST_SCOPE_ENV } from "./utils/docker";
+import {
+  ensureImageAvailable,
+  sweepOrphanedTestResources,
+  sweepTestScope,
+  TEST_SCOPE_ENV,
+} from "./utils/docker";
 import { DEFAULT_TEST_IMAGE } from "./test/image-resolver";
 
-export const GROUPS = [
-  "extensions",
-  "security",
-  "stacks",
-  "features",
-  "regression",
-  "nightly",
-] as const;
+export const GROUPS = ["extensions", "security", "stacks", "features", "regression"] as const;
 export type Group = (typeof GROUPS)[number];
 
 export interface Suite {
@@ -61,18 +60,18 @@ export const SUITES: Suite[] = [
   { path: "scripts/test/test-pg-cron-postgres-db.ts", group: "features" },
   { path: "scripts/test/test-pgflow.ts", group: "features" },
   { path: "scripts/test/test-pgflow-upgrade.ts", group: "features" },
-  // Extension SQL against expected output, and extension interactions; nightly reruns both in regression mode,
-  // which starts the server with the optional preload libraries added to the default ones.
+  // Extension SQL against expected output, and extension interactions, each also in regression mode, which starts the
+  // server with the optional preload libraries added to the default ones.
   { path: "scripts/test/test-extension-regression.ts", group: "regression" },
   { path: "scripts/test/test-extension-interactions.ts", group: "regression" },
   {
     path: "scripts/test/test-extension-regression.ts",
-    group: "nightly",
+    group: "regression",
     args: ["--mode=regression"],
   },
   {
     path: "scripts/test/test-extension-interactions.ts",
-    group: "nightly",
+    group: "regression",
     args: ["--mode=regression"],
   },
 ];
@@ -123,7 +122,7 @@ function shuffle<T>(items: T[], seed: number): T[] {
 }
 
 function parseArgs(argv: string[]): { groups: Group[]; image: string; seed: number | null } {
-  let groups: string[] = GROUPS.filter((g) => g !== "nightly");
+  let groups: string[] = [...GROUPS];
   let image = Bun.env.POSTGRES_IMAGE || DEFAULT_TEST_IMAGE;
   let seed: number | null = null;
   for (let i = 0; i < argv.length; i++) {
@@ -295,6 +294,11 @@ async function main(): Promise<void> {
     `Image ${image}; groups ${groups.join(", ")}; ${queue.length} suites, ${workers} at a time`
   );
   await ensureImageAvailable(image);
+  const orphans = await sweepOrphanedTestResources();
+  if (orphans.found.length > 0)
+    console.log(`Removed what killed earlier test runs left: ${orphans.found.join(", ")}`);
+  if (orphans.remaining.length > 0)
+    console.log(`⚠️  Could not remove earlier runs' leftovers: ${orphans.remaining.join(", ")}`);
 
   const started = performance.now();
   const outcomes: Outcome[] = [];

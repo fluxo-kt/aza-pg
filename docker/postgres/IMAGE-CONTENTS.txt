@@ -11,10 +11,10 @@ EXTENSIONS (CREATE EXTENSION available)
   btree_gist                   builtin        indexing
   hll                          v2.21          analytics
   http                         v1.7.2         integration
-  hypopg                       v1.4.3         performance
-  index_advisor                v0.2.0         performance
+  hypopg                       v1.4.4         performance
+  index_advisor                v0.2.1         performance
   pg_cron                      v1.6.8         operations
-  pg_hashids                   builtin        utilities
+  pg_hashids                   8c404dd8       utilities
   pg_jsonschema                v0.3.4         validation
   pg_net                       v0.20.5        integration
   pg_partman                   v5.5.0         maintenance
@@ -23,19 +23,19 @@ EXTENSIONS (CREATE EXTENSION available)
   pg_stat_statements           builtin        observability
   pg_trgm                      builtin        search
   pgaudit                      v18.0          security
-  pgmq                         v1.13.0        queueing
-  pgroonga                     v4.0.9         search
+  pgmq                         v1.13.1        queueing
+  pgroonga                     v4.1.0         search
   pgsodium                     v3.1.11        security
   plpgsql                      builtin        language
-  plpgsql_check                v2.10.12       quality
+  plpgsql_check                v2.10.16       quality
   rum                          v1.3.15        search
   set_user                     v4.2.0         security
-  supabase_vault               v0.3.1         security
-  timescaledb                  v2.30.2        timeseries
+  supabase_vault               v0.3.2         security
+  timescaledb                  v2.31.0        timeseries
   timescaledb_toolkit          v1.26.0        timeseries
   vector                       v0.8.7         ai
   vectorscale                  v0.9.1         ai
-  wrappers                     v0.6.3         integration
+  wrappers                     v0.6.4         integration
 
 Total: 29 extensions
 
@@ -44,7 +44,7 @@ NON-CREATE-EXTENSION ENTRIES (preload or init managed)
 ═══════════════════════════════════════════════════════════════
 
   pgflow                       v0.17.2        workflow
-  supautils                    v3.4.4         safety
+  supautils                    v4.0.0         safety
 
 ═══════════════════════════════════════════════════════════════
 TOOLS (command-line utilities)
@@ -52,15 +52,15 @@ TOOLS (command-line utilities)
 
   pg_plan_filter               v1.0.0
   pg_safeupdate                v1.7
-  pgbackrest                   v2.59.3
+  pgbackrest                   v2.60.0
   pgbadger                     v13.2
-  wal2json                     vwal2json_2_6
+  wal2json                     v2.7
 
 ═══════════════════════════════════════════════════════════════
 PRELOADED MODULES (shared_preload_libraries default)
 ═══════════════════════════════════════════════════════════════
 
-  auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault, timescaledb
+  timescaledb, auto_explain, pg_cron, pg_net, pg_stat_monitor, pg_stat_statements, pgaudit, pgsodium, safeupdate, supabase_vault
 
   Configure via POSTGRES_SHARED_PRELOAD_LIBRARIES environment variable.
 

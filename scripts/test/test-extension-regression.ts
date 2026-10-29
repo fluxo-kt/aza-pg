@@ -20,7 +20,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { generateUniqueContainerName, waitForPostgres } from "../utils/docker";
+import { EPHEMERAL_PGDATA, generateUniqueContainerName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 import { generateRegressionDiffs, runRegressionTest } from "./lib/regression-runner";
 import type { TestResult } from "./lib/regression-runner";
@@ -89,7 +89,7 @@ async function main(): Promise<number> {
         mode === "production"
           ? []
           : ["-e", `POSTGRES_SHARED_PRELOAD_LIBRARIES=${getSharedPreloadLibraries(mode)}`];
-      await $`docker run -d --name ${container} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
+      await $`docker run -d --name ${container} ${EPHEMERAL_PGDATA} -e POSTGRES_PASSWORD=postgres ${preloadEnv} ${resolveImageTag()}`.quiet();
       await waitForPostgres({ container, timeout: TIMEOUTS.startup });
     }
     const results: TestResult[] = [];

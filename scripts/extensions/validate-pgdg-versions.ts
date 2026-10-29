@@ -11,8 +11,8 @@
  *     ~15 min earlier (no new safety).
  *   - Verifying them here would require setting up the Percona/packagecloud repos inside this check
  *     on every run, injecting third-party-repo network fragility into the `validate` hot path.
- *   - Their version *currency* (a newer revision exists) is surfaced informationally by
- *     check-updates.ts, not gated here (exact-match would red every dev on each vendor release).
+ *   - Their existence and currency (a newer revision exists) are checked by check-vendor-apt.ts in
+ *     the update pre-flight, not gated here (exact-match would red every dev on each vendor release).
  */
 
 import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";

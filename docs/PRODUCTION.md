@@ -341,10 +341,10 @@ Each image is published with multiple tags for convenience:
 
 ```bash
 # Full versioned tag (recommended for production - immutable)
-ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
+ghcr.io/fluxo-kt/aza-pg:<MM.mm-TS>-single-node
 
 # Version-specific convenience tags
-ghcr.io/fluxo-kt/aza-pg:18.1-single-node  # Tracks PostgreSQL 18.1 minor
+ghcr.io/fluxo-kt/aza-pg:<MM.mm>-single-node  # Tracks one PostgreSQL minor
 ghcr.io/fluxo-kt/aza-pg:18-single-node    # Tracks PostgreSQL 18 major
 ghcr.io/fluxo-kt/aza-pg:18.1              # Latest 18.1 build
 ghcr.io/fluxo-kt/aza-pg:18                # Latest 18.x build
@@ -360,13 +360,13 @@ All published images are:
 - **Provenance-enabled**: SLSA attestations included
 - **SBOM-enabled**: Software Bill of Materials included
 
-**Verify image signature:**
+**Verify image signature** (cosign 3; cosign 2 reports "no signatures found" unless you add `--new-bundle-format`, because the images are signed in the Sigstore bundle format):
 
 ```bash
 cosign verify \
   --certificate-identity-regexp="^https://github.com/fluxo-kt/aza-pg/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/fluxo-kt/aza-pg:18.1-202511142330-single-node
+  ghcr.io/fluxo-kt/aza-pg:<tag>-single-node
 ```
 
 **Verify SLSA build provenance attestation:**
@@ -375,9 +375,9 @@ cosign verify \
 # Using GitHub CLI (recommended)
 gh attestation verify oci://ghcr.io/fluxo-kt/aza-pg@sha256:<digest> --owner fluxo-kt
 
-# Using Cosign
+# Using Cosign: the provenance is SLSA v1, so `--type slsaprovenance` (v0.2) matches nothing
 cosign verify-attestation \
-  --type slsaprovenance \
+  --type slsaprovenance1 \
   --certificate-identity-regexp="^https://github.com/fluxo-kt/aza-pg/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/fluxo-kt/aza-pg@sha256:<digest>

@@ -84,10 +84,18 @@ export async function inspectImage(imageTag: string): Promise<ImageData | null> 
 }
 
 /**
- * Get uncompressed image size from image data
+ * Unpacked size of the image's files, counted inside a throwaway container.
+ * `docker image inspect` .Size cannot serve: under the containerd image store (Docker 29's default, as on the CI
+ * runners) it is the compressed content size, so release notes showed uncompressed ≈ compressed. `du` counts the
+ * files whatever the store; root so no unreadable directory is skipped, `-x` so /proc, /sys and /dev are not counted.
  */
-export function getUncompressedSize(imageData: ImageData): number {
-  return imageData.Size;
+export async function getUncompressedSize(imageTag: string): Promise<number> {
+  const out = await $`docker run --rm --network none --user 0 --entrypoint du ${imageTag} -sxb /`
+    .quiet()
+    .text();
+  const bytes = Number.parseInt(out, 10);
+  if (!Number.isFinite(bytes)) throw new Error(`du printed no size for ${imageTag}: ${out}`);
+  return bytes;
 }
 
 /**
@@ -198,7 +206,7 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
   }
 
   // Extract metrics
-  const uncompressedBytes = getUncompressedSize(imageData);
+  const uncompressedBytes = await getUncompressedSize(imageTag);
   const layerCount = getLayerCount(imageData);
   const compressedBytes = (await getCompressedSize(imageTag, imageData)) || 0;
   const baseImage = getBaseImageInfo(imageData);

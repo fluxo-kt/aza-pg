@@ -3,10 +3,10 @@
  * Auto-config in the shipped image: what the entrypoint hands PostgreSQL for given container limits, and whether
  * PostgreSQL accepts it.
  *
- * Dry-run table: each row starts the image with real `--memory`/CPU limits (so detection reads the container's own
- * cgroup files) but with /usr/local/bin/docker-entrypoint.sh replaced by a stub that prints its argv and the generated
- * config file, then exits. Rows assert exact `name = 'value'` lines of that file, the startup log line, and the exit
- * code. CPU counts use --cpu-quota rather than --cpus, because Docker refuses --cpus above the host's CPU count but
+ * Configuration probes use real `--memory`/CPU limits and PostgreSQL's -C against one initialized cluster mounted
+ * read-only. The shipped entrypoints and PostgreSQL parse the generated configuration without starting a server
+ * or allocating the configured shared memory. Rows check the file, effective operator overrides and rejection.
+ * CPU counts use --cpu-quota rather than --cpus, because Docker refuses --cpus above the host's CPU count but
  * accepts any quota — so the 14-core rows also run on hosts with fewer CPUs.
  *
  * Real boots: two containers start PostgreSQL for real (512 MB / 1 CPU, and the largest dw tier); every generated
@@ -15,11 +15,11 @@
  * Usage: bun scripts/test/test-auto-config.ts [image]   (also --image=TAG or POSTGRES_IMAGE; default: the local build)
  */
 
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TIMEOUTS } from "../config/test-timeouts";
-import { EPHEMERAL_PGDATA, generateUniqueProjectName, waitForPostgres } from "../utils/docker";
+import { generateUniqueProjectName, waitForPostgres } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
 
 const IMAGE = resolveImageTag();
@@ -27,7 +27,7 @@ const RUN_ID = generateUniqueProjectName("aza-pg-autoconfig");
 const AUTO_CONFIG_FILE = "/var/run/postgresql/aza-auto-config.conf";
 const BASE_CONFIG = "/etc/postgresql/postgresql-base.conf";
 const IMAGE_ENTRYPOINT = "/usr/local/bin/docker-auto-config-entrypoint.sh";
-const DRY_RUN_CONCURRENCY = 8;
+const PROBE_CONCURRENCY = 8;
 
 interface CaseResult {
   name: string;
@@ -87,7 +87,7 @@ interface Row {
   stdoutLines?: string[];
   stderrLines?: string[];
   settings?: Record<string, string>;
-  argv?: string[];
+  effective?: { setting: string; value: string };
   include?: string;
 }
 
@@ -375,10 +375,10 @@ const ROWS: Row[] = [
   },
   // A value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
   {
-    name: "operator -c max_connections=7 follows the generated config_file and is logged",
+    name: "operator -c max_connections=7 overrides tuning and is logged",
     docker: ["--memory=2g"],
     args: ["postgres", "-c", "max_connections=7"],
-    argv: ["postgres", "-c", `config_file=${AUTO_CONFIG_FILE}`, "-c", "max_connections=7"],
+    effective: { setting: "max_connections", value: "7" },
     stdoutLines: ["[POSTGRES] [AUTO-CONFIG] max_connections: -c 7 overrides auto-tuned 84"],
     include: `${PGDATA}/postgresql.conf`,
   },
@@ -386,22 +386,15 @@ const ROWS: Row[] = [
     name: "operator --config-file is included, not passed as a second config_file",
     docker: ["--memory=2g"],
     args: ["postgres", "--config-file=/x.conf"],
-    argv: ["postgres", "-c", `config_file=${AUTO_CONFIG_FILE}`],
     include: "/x.conf",
   },
 ];
 
-/** Stub for the official entrypoint: prints its argv, then the config file it was told to use. */
-const STUB = [
-  "#!/bin/sh",
-  'for a in "$@"; do printf \'ARGV %s\\n\' "$a"; done',
-  'for a in "$@"; do',
-  '  case "$a" in config_file=*) echo "CONFIG ${a#config_file=}"; cat "${a#config_file=}" ;; esac',
-  "done",
-  "",
-].join("\n");
-
-function checkRow(row: Row, result: { code: number; stdout: string; stderr: string }): string[] {
+function checkRow(
+  row: Row,
+  result: { code: number; stdout: string; stderr: string },
+  config: string | null
+): string[] {
   const failures: string[] = [];
   const expectedExit = row.exit ?? 0;
   if (result.code !== expectedExit) failures.push(`exit ${result.code}, expected ${expectedExit}`);
@@ -425,18 +418,14 @@ function checkRow(row: Row, result: { code: number; stdout: string; stderr: stri
   }
   if (expectedExit !== 0) return failures;
 
-  const argv = stdoutLines.filter((l) => l.startsWith("ARGV ")).map((l) => l.slice(5));
-  if (argv[0] !== "postgres" || argv[1] !== "-c" || argv[2] !== `config_file=${AUTO_CONFIG_FILE}`) {
+  const effective = stdoutLines.findLast((line) => line.trim() !== "");
+  const expected = row.effective?.value ?? AUTO_CONFIG_FILE;
+  if (effective !== expected)
     failures.push(
-      `stub argv does not start with the generated config_file: ${JSON.stringify(argv)}`
+      `postgres -C ${row.effective?.setting ?? "config_file"}: ${effective}, expected ${expected}`
     );
-  }
-  if (row.argv && JSON.stringify(argv) !== JSON.stringify(row.argv)) {
-    failures.push(`argv ${JSON.stringify(argv)}, expected ${JSON.stringify(row.argv)}`);
-  }
-  const confStart = stdoutLines.indexOf(`CONFIG ${AUTO_CONFIG_FILE}`);
-  if (confStart < 0) return [...failures, "stub printed no config file"];
-  const confLines = stdoutLines.slice(confStart + 1);
+  if (config === null) return [...failures, "generated config file was not captured"];
+  const confLines = config.split("\n");
   const includes = confLines.filter((l) => !l.startsWith("#")).slice(0, 2);
   const wantIncludes = [`include '${BASE_CONFIG}'`, `include '${row.include}'`];
   if (row.include && JSON.stringify(includes) !== JSON.stringify(wantIncludes)) {
@@ -453,29 +442,37 @@ function checkRow(row: Row, result: { code: number; stdout: string; stderr: stri
   return failures;
 }
 
-async function dryRun(row: Row, stub: string): Promise<void> {
-  const name = `${RUN_ID}-dry-${ROWS.indexOf(row)}`;
+async function probeConfig(row: Row, seed: string, dir: string): Promise<void> {
+  const name = `${RUN_ID}-probe-${ROWS.indexOf(row)}`;
+  const configFile = join(dir, `${name}.conf`);
   containers.add(name);
   try {
     const env = Object.entries(row.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
     const result = await run([
       "docker",
       "run",
-      "--rm",
       "--name",
       name,
-      // The stub entrypoint never runs initdb, so PGDATA stays empty and the --memory limit is unaffected.
-      ...EPHEMERAL_PGDATA,
+      // Read-only sharing prevents probes from changing one another's cluster; -C allocates no shared buffers.
+      "--volumes-from",
+      `${seed}:ro`,
       "--network",
       "none",
       ...row.docker,
       ...env,
-      "-v",
-      `${stub}:/usr/local/bin/docker-entrypoint.sh:ro`,
+      ...(row.include === "/x.conf" ? ["-v", `${join(dir, "operator.conf")}:/x.conf:ro`] : []),
       IMAGE,
-      ...(row.args ?? []),
+      ...(row.args ?? ["postgres"]),
+      "-C",
+      row.effective?.setting ?? "config_file",
     ]);
-    const failures = checkRow(row, result);
+    let config: string | null = null;
+    if (result.code === 0 && (row.exit ?? 0) === 0) {
+      const copied = await run(["docker", "cp", `${name}:${AUTO_CONFIG_FILE}`, configFile]);
+      if (copied.code !== 0) throw new Error(`cannot capture generated config: ${copied.stderr}`);
+      config = await Bun.file(configFile).text();
+    }
+    const failures = checkRow(row, result, config);
     if (failures.length > 0) {
       throw new Error(
         `${failures.join("\n")}\n--- stdout ---\n${result.stdout}--- stderr ---\n${result.stderr}`
@@ -484,6 +481,7 @@ async function dryRun(row: Row, stub: string): Promise<void> {
   } finally {
     await run(["docker", "rm", "-f", "-v", name]);
     containers.delete(name);
+    await rm(configFile, { force: true });
   }
 }
 
@@ -564,9 +562,7 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void removeAll().then(() => process.exit(130)));
   try {
-    const stub = join(dir, "docker-entrypoint.sh");
-    await Bun.write(stub, STUB);
-    await chmod(stub, 0o755);
+    await Bun.write(join(dir, "operator.conf"), "# Operator-supplied configuration\n");
     // Read from the image, not the repo: the suite judges what ships, and a stale image must fail rather than pass on
     // the repo's newer copy.
     const shipped = await run([
@@ -640,12 +636,34 @@ async function main(): Promise<void> {
         )),
     ]);
 
+    // A fully initialized cluster includes the real extension key. initdb alone leaves -C's preload
+    // hooks trying to create it on the read-only volume. One seed serves every resource-limit probe.
+    const seed = `${RUN_ID}-seed`;
+    containers.add(seed);
+    const initialized = await run([
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      seed,
+      "--memory=512m",
+      ...cpus(1),
+      "-e",
+      `POSTGRES_PASSWORD=autoconfig-${process.pid}`,
+      IMAGE,
+    ]);
+    if (initialized.code !== 0)
+      throw new Error(`cannot initialize probe cluster: ${initialized.stderr}`);
+    await waitForPostgres({ container: seed, timeout: TIMEOUTS.startup });
+    const stopped = await run(["docker", "stop", seed]);
+    if (stopped.code !== 0) throw new Error(`cannot stop probe cluster: ${stopped.stderr}`);
+
     const queue = [...ROWS];
     await Promise.all(
-      Array.from({ length: DRY_RUN_CONCURRENCY }, async () => {
+      Array.from({ length: PROBE_CONCURRENCY }, async () => {
         for (let row = queue.shift(); row; row = queue.shift()) {
           const current = row;
-          await test(`dry run: ${current.name}`, () => dryRun(current, stub));
+          await test(`configuration probe: ${current.name}`, () => probeConfig(current, seed, dir));
         }
       })
     );

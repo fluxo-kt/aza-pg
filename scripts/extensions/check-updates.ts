@@ -555,20 +555,19 @@ async function pinnedImages(): Promise<Array<{ repo: string; tag: string; files:
   for (const file of files) {
     const tool = file.startsWith("scripts/") || file.startsWith(".github/");
     for (const line of (await Bun.file(file).text()).split("\n")) {
-      // A digest pin with no tag names no version to compare; it is kept with tag "" so the report
-      // says it could not be checked, instead of the pin going stale without any row.
-      const untagged = tool
-        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
-        : null;
+      // The tag is optional in both patterns: a reference without one (`repo@sha256:…`, or a compose
+      // `image: repo` that floats on latest) names no version to compare, so it is kept with tag ""
+      // and reported as uncheckable instead of matching nothing and going stale without any row.
       const m = tool
-        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+):([A-Za-z0-9._-]+)@sha256:[0-9a-f]{64}/.exec(line)
-        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*):([A-Za-z0-9._-]+)/.exec(
+        ? /\b([a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+)(?::([A-Za-z0-9._-]+))?@sha256:[0-9a-f]{64}/.exec(
+            line
+          )
+        : /(?:^\s*image:\s*|\$\{[A-Z0-9_]*IMAGE:-)([a-z0-9][a-z0-9./_-]*)(?::([A-Za-z0-9._-]+))?/.exec(
             line
           );
-      const hit = m ?? untagged;
-      if (!hit) continue;
-      const tag = m ? m[2]! : "";
-      const repo = hit[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
+      if (!m) continue;
+      const tag = m[2] ?? "";
+      const repo = m[1]!.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
       if (repo === "fluxo-kt/aza-pg" || repo === "aza-pg") continue;
       const key = `${repo}:${tag}`;
       const known = images.get(key) ?? { repo, tag, files: [] };
@@ -799,13 +798,13 @@ async function main() {
     if (image.tag === "") {
       results.push({
         name: image.repo,
-        current: "(digest only)",
+        current: "(no tag)",
         latest: null,
         updateAvailable: false,
         source: image.repo,
         sourceType: "git",
         releaseUrl: null,
-        notes: `Could not check: digest pin has no tag; write it as repo:tag@sha256:… (${pinnedIn})`,
+        notes: `Could not check: image reference has no tag; write it as repo:tag@sha256:… (${pinnedIn})`,
         enabled: true,
         files: image.files,
       });

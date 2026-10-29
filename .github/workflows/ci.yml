@@ -24,8 +24,9 @@
 #
 # DOCKER IMAGE SHARING:
 # --------------------
-# - build job keys the image by its inputs (scripts/ci/image-input-hash.ts) and builds + saves the tarball to
-#   actions/cache only when no entry has that key, so a commit that changes no image input reuses the image
+# - build job keys the image by the files the flake reads (flake.lock pins nixpkgs, so they are every input) and
+#   builds + saves the tarball to actions/cache only when no entry has that key, so a commit that changes no image
+#   input reuses the image
 # - test jobs restore the tarball by the same key (via load-test-image, source: cache)
 #
 # Single-platform amd64 with no registry push; publish.yml builds and tests both platforms before each release.
@@ -125,12 +126,10 @@ jobs:
       - name: Set up Bun and dependencies
         uses: ./.github/actions/setup-bun
 
+      # The same file set as setup-nix's store key: what the flake reads, nixpkgs included through flake.lock.
       - name: Compute image input key
         id: key
-        run: |
-          set -euo pipefail
-          key=$(bun scripts/ci/image-input-hash.ts)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
+        run: echo "key=ci-image-nix-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}" >> "$GITHUB_OUTPUT"
 
       # lookup-only: on a hit the test jobs restore the tarball; this job needs only to know it exists.
       - name: Look up cached image
@@ -141,27 +140,14 @@ jobs:
           key: ${{ steps.key.outputs.key }}
           lookup-only: true
 
-      - name: Set up Docker Buildx
+      - name: Set up Nix
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        uses: ./.github/actions/setup-nix
 
-      # A reused image keeps the VCS_REF label of the commit that built it; nothing in CI reads that label.
-      - name: Build Docker image with layer caching
+      # A reused image keeps the revision label of the commit that built it; nothing in CI reads that label.
+      - name: Build the Nix image
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: ./docker/postgres/Dockerfile
-          tags: aza-pg-ci:test
-          platforms: linux/amd64
-          load: true
-          build-args: |
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-            VCS_REF=${{ github.sha }}
-          cache-from: type=gha,scope=aza-pg-ci
-          cache-to: type=gha,mode=max,scope=aza-pg-ci
-          sbom: false
-          provenance: false
+        run: bun scripts/nix/build-image.ts --tag aza-pg-ci:test
 
       - name: Monitor cache usage
         if: steps.cache.outputs.cache-hit != 'true'

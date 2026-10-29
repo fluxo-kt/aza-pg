@@ -1,0 +1,26 @@
+name: "Set up Nix"
+description: "Install Nix and restore the store from the Actions cache, so a build compiles only what changed"
+author: "fluxo-kt"
+
+# The image's own derivations (PostgreSQL with our flags, every extension) are in no public binary cache, and
+# compiling them takes far longer than restoring them. The key covers every build input the flake reads, so a hit
+# holds this exact build; on a miss the nearest older store is restored and only changed derivations rebuild.
+# One cache per runner architecture, shared by ci.yml and publish.yml, which build the same derivations.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Nix
+      uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      with:
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+          keep-outputs = true
+
+    - name: Restore the Nix store
+      uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+      with:
+        primary-key: nix-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/**', 'docker/postgres/**', 'scripts/extensions/manifest-data.ts') }}
+        restore-prefixes-first-match: nix-store-${{ runner.os }}-${{ runner.arch }}-
+        # Bounds the saved store: build-only paths of older runs go first, so the cache stays within the repo quota.
+        gc-max-store-size-linux: 6G

@@ -12,6 +12,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Breaking
 
+- **supautils 3.4.4 → 4.0.0** (only when you preload `supautils`): `supautils.constrained_extensions` is removed, so `CREATE EXTENSION` no longer checks CPU, memory or disk minimums; a leftover value is dropped with a warning at start. With `supautils.extension_custom_scripts_path` set, an `after-create.sql` at the top of that directory now runs after every `CREATE EXTENSION`. New: `supautils.default_extension_install_schema` (superuser-only, unset by default) installs schema-less `CREATE EXTENSION`s into the named schema.
 - **TimescaleDB 2.31.0**: custom `shared_preload_libraries` lists must put `timescaledb` before `pgaudit`; the generated default does so. Replace `timescaledb.enable_columnarscan` with `timescaledb.debug_enable_columnarscan` in stored configuration. Run `ALTER EXTENSION timescaledb UPDATE` as the session's first command in each existing database that uses it.
 - **pgBackRest 2.60.0**: restore stops on invalid page checksums and expiration refuses to remove backups when the oldest retained backup has checksum errors. Investigate the damaged backup before retrying; a failed restore may leave a partial data directory.
 - **pgmq 1.13.1**: run `ALTER EXTENSION pgmq UPDATE` in existing databases to apply the security fixes and remove `pg_monitor`'s queue payload-table access; monitoring keeps metadata and the `vt`/`enqueued_at` columns. Use an explicitly authorized application role for message bodies.

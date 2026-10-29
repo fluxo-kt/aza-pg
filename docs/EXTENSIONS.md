@@ -121,7 +121,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 | --------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------ | -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`pg_plan_filter`](https://github.com/pgexperts/pg_plan_filter) | [v1.0.0](https://github.com/pgexperts/pg_plan_filter/releases/tag/v1.0.0) | No                 | Yes            | [Docs](https://github.com/pgexperts/pg_plan_filter#readme) | Block high-cost plans or disallowed operations using planner hooks.  |
 | [`pg_safeupdate`](https://github.com/eradman/pg-safeupdate)     | [1.7](https://github.com/eradman/pg-safeupdate/releases/tag/1.7)          | Yes                | Yes            | [Docs](https://github.com/eradman/pg-safeupdate#readme)    | Guards UPDATE/DELETE without WHERE clause or LIMIT.                  |
-| [`supautils`](https://github.com/supabase/supautils)            | [v3.4.4](https://github.com/supabase/supautils/releases/tag/v3.4.4)       | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
+| [`supautils`](https://github.com/supabase/supautils)            | [v4.0.0](https://github.com/supabase/supautils/releases/tag/v4.0.0)       | No                 | Yes            | [Docs](https://github.com/supabase/supautils#readme)       | Shared superuser guards and hooks for managed Postgres environments. |
 
 ### search
 

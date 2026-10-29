@@ -967,8 +967,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/supabase/supautils.git",
-        "tag": "v3.4.4",
-        "commit": "42d491cd2519d763918527760151f9e6bd5c9f23"
+        "tag": "v4.0.0",
+        "commit": "7a22990746ec17b1a84cf2a097dda411222f8ec7"
       },
       "build": {
         "type": "pgxs"

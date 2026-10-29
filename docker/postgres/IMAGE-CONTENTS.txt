@@ -44,7 +44,7 @@ NON-CREATE-EXTENSION ENTRIES (preload or init managed)
 ═══════════════════════════════════════════════════════════════
 
   pgflow                       v0.17.2        workflow
-  supautils                    v3.4.4         safety
+  supautils                    v4.0.0         safety
 
 ═══════════════════════════════════════════════════════════════
 TOOLS (command-line utilities)

@@ -747,16 +747,31 @@ fi
 #    `ALTER EXTENSION timescaledb UPDATE`, which must be the session's first and needs timescaledb preloaded (hence the
 #    image's config file). VERBOSITY=sqlstate makes "not installed in this database" (42704) exact; it is the last
 #    line, after any connection-time warning, which client_min_messages does not reach.
-# 2. A libc collation's version is glibc's, and glibc changes sort order between versions (2.41 and 2.44 order
-#    en_US.utf8's code points differently), so a text index built under the old glibc can silently miss rows under the
-#    new one. Where a database's own or a named libc collation changed version, REBUILD_FOR_GLIBC rebuilds every index
+# 2. A libc collation's version is glibc's, and glibc can change sort order between versions (2.28 did), so a text
+#    index built under the old glibc can silently miss rows under the new one. en_US.utf8 (every release's default)
+#    between glibc versions measured to sort it the same only records the new version, so the move from Debian's
+#    glibc to the Nix image's costs no rebuild. Any other libc collation version change rebuilds every index
 #    that orders, or filters, by such a collation, then records the new version: correct by construction, at the cost
 #    of startup time. Range partitions and CHECKs that compare text in that order cannot be rebuilt, so they stop the
 #    container naming the fix. One DO per database: all of it lands or none. ICU collations are left alone: their
 #    versions track order changes too, and PostgreSQL warns where one is used.
 IMAGE_MIGRATED_FILE="${DATA_DIR}/aza-pg-image"
 REBUILD_FOR_GLIBC=$(cat <<'SQL'
-DO $$DECLARE colls oid[]; idx regclass[]; i regclass; c regcollation; bad text; BEGIN
+DO $$DECLARE same text[] := '{2.41,2.44}'; colls oid[]; idx regclass[]; i regclass; c regcollation; bad text; BEGIN
+    -- en_US between glibc versions in "same" only records the version; refreshed first, they are no longer stale
+    -- below, so only unmeasured changes are rebuilt. A version joins "same" only on a "same" verdict from
+    -- scripts/nix/compare-en-us-order.ts, which sorts in PostgreSQL itself: any other sorter (coreutils sort, ICU,
+    -- a language runtime) orders differently and measures nothing about these indexes. A wrong entry corrupts silently.
+    FOR c IN SELECT oid FROM pg_collation WHERE collprovider = 'c' AND collcollate LIKE 'en\_US.%'
+        AND collversion <> pg_collation_actual_version(oid) AND collversion = ANY (same)
+        AND pg_collation_actual_version(oid) = ANY (same) LOOP
+        EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
+    END LOOP;
+    IF (SELECT datlocprovider = 'c' AND datcollate LIKE 'en\_US.%' AND datcollversion <> pg_database_collation_actual_version(oid)
+            AND datcollversion = ANY (same) AND pg_database_collation_actual_version(oid) = ANY (same)
+            FROM pg_database WHERE datname = current_database()) THEN
+        EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', current_database());
+    END IF;
     SELECT array_agg(oid) INTO colls FROM pg_collation
         WHERE collprovider = 'c' AND collversion IS DISTINCT FROM pg_collation_actual_version(oid);
     IF (SELECT datlocprovider = 'c' AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)

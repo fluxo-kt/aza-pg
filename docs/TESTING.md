@@ -86,9 +86,8 @@ console.log("PASS: my feature");
 Quick reference:
 
 ```bash
-bun scripts/test-all.ts --group regression           # Both suites, production mode
+bun scripts/test-all.ts --group regression           # Both suites, in production and regression mode
 bun scripts/test/test-extension-regression.ts        # Tier 2: extension SQL vs expected output
-bun scripts/test-all.ts --group nightly              # Regression mode (optional preloads added)
 ```
 
 ---
@@ -113,7 +112,7 @@ tests/regression/extensions/
 └── README.md
 ```
 
-**Which suites run:** every directory whose manifest entry is not `enabled: false` (`selectSuites` in `scripts/test/test-extension-regression.ts`); a directory naming no manifest entry fails the run. `--mode=production` (default) starts the image with its own default preload list, `--mode=regression` (nightly) adds optional preload libraries; neither mode runs a disabled extension.
+**Which suites run:** every directory whose manifest entry is not `enabled: false` (`selectSuites` in `scripts/test/test-extension-regression.ts`); a directory naming no manifest entry fails the run. `--mode=production` (default) starts the image with its own default preload list, `--mode=regression` adds optional preload libraries; neither mode runs a disabled extension.
 
 **Generating Expected Outputs:** from a known-good image, then read the result before committing: an error in the output (an extension missing from the image, say) becomes the expectation.
 
@@ -459,7 +458,7 @@ The extension catalogue is the generated table in [EXTENSIONS.md](EXTENSIONS.md)
 
 ## Running Tests
 
-`SUITES` in `scripts/test-all.ts` is the only list of Docker suites; each suite belongs to one group. CI, publish, nightly and the manual build workflow run suites only as `bun scripts/test-all.ts --group <group> --image <ref>`.
+`SUITES` in `scripts/test-all.ts` is the only list of Docker suites; each suite belongs to one group. CI, publish and the manual build workflow run suites only as `bun scripts/test-all.ts --group <group> --image <ref>`.
 
 ```bash
 bun run test                                  # every routine group against the local build (aza-pg:pg18)
@@ -470,14 +469,13 @@ bun scripts/test-all.ts --shuffle             # random order; prints the seed, r
 bun scripts/test/test-pgflow.ts [image]       # one suite on its own
 ```
 
-| Group        | Proves                                                                               |
-| ------------ | ------------------------------------------------------------------------------------ |
-| `extensions` | every enabled extension and tool works in the image; disabled ones are absent        |
-| `security`   | authentication, roles, pgAudit and network binding defaults                          |
-| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies          |
-| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling |
-| `regression` | each enabled extension's SQL against its expected output, and extension interactions |
-| `nightly`    | the same in regression mode (optional preloads added); weekly workflow only          |
+| Group        | Proves                                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `extensions` | every enabled extension and tool works in the image; disabled ones are absent                                               |
+| `security`   | authentication, roles, pgAudit and network binding defaults                                                                 |
+| `stacks`     | the compose stacks (PgBouncer, exporters, replica) in private staged copies                                                 |
+| `features`   | auto-config, backup/restore, pgflow and its upgrade command, pg_cron, error handling                                        |
+| `regression` | each enabled extension's SQL against its expected output, and extension interactions, also with the optional preloads added |
 
 Suites run in parallel up to the CPU count, each in its own process with its own containers, volumes, networks and ports, so order and neighbours must not matter (`--shuffle` checks that). Each suite's full output is printed when it finishes; any failed suite makes the run exit 1.
 

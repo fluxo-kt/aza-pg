@@ -757,7 +757,7 @@ Prefer the shipped dependency's native configuration probe or validation command
 ### Where Tests Live
 
 Docker suites are `scripts/**/test-*.ts` files listed in `SUITES` in `scripts/test-all.ts`, each with a
-group (`extensions`, `security`, `stacks`, `features`, `regression`, `nightly`); CI runs each group as
+group (`extensions`, `security`, `stacks`, `features`, `regression`); CI runs each group as
 one job. A new suite must be added to `SUITES` (`bun run validate` fails naming any unregistered one).
 Extension behaviour belongs in the suite of group `extensions` that already owns the extension: `rg`
 the extension name in `scripts/` first. Run one group with

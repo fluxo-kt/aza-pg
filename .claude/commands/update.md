@@ -351,6 +351,10 @@ rg -n '"[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}"' scripts .github  
 bun scripts/extensions/check-updates.ts                                           # reports every repo:tag@sha256 tool image in scripts/ and .github/
 ```
 
+A digest pin without a tag gets a "could not check" row (exit 2): rewrite it as `repo:tag@sha256:…`.
+A wrapper image's tag versions the wrapper, not the tool, so also run the pinned binary's `--version`
+against the tool's upstream release: a wrapper that stopped publishing reads as "up to date".
+
 For each, read the latest release, resolve the index digest with `docker buildx imagetools inspect`,
 replace the reference everywhere it appears, and run the check that uses it (`bun run validate:all`
 runs hadolint, actionlint and yamllint).
@@ -477,8 +481,9 @@ Nothing else lists PGDG extensions; the generator and `validate-pgdg-versions.ts
 **Proactively hunt promotions** (user often asks for this): for EVERY source-built extension, check
 `apt-cache search postgresql-18 | grep -iE 'EXTNAME'` — a hit at our pinned version is a promotion
 opportunity (faster builds, official packages). Re-run the search to confirm empty results are real,
-not a transient apt glitch. Stale manifest notes like "PGDG package not available for PG18" are prime
-suspects — verify and migrate.
+not a transient apt glitch. Stale manifest notes like "PGDG package not available for PG18" or "apt
+trails upstream" are prime suspects — verify and migrate. Tools count too: a server-module tool
+(wal2json) ships as `postgresql-18-<pkg>`; set `pgdgPackage` and `soFileName` on its entry.
 
 **Source → PGDG migration** (extension now has PGDG package):
 - Remove `install_via: "source"`, add `install_via: "pgdg"` and `pgdgVersion`

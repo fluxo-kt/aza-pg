@@ -198,12 +198,7 @@ A newer image starts on your existing data volume, but extension upgrades inside
 
    Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). TimescaleDB is not in that list: the image ships only its own TimescaleDB library, so at the first start after an image upgrade the entrypoint updates it in every database before accepting connections, and stops naming the database if an update fails.
 
-   The same first start records the new glibc version for databases sorting by `en_US.utf8` when the old and new glibc are known to sort it identically. If the log names a database whose libc collation may sort differently, its text indexes may be out of order. Rebuild them, then record the new version (in each such database; a database refusing connections, such as `template1`, needs only the second statement, run from another database):
-
-   ```sql
-   REINDEX DATABASE CONCURRENTLY mydb;        -- every index; or REINDEX INDEX CONCURRENTLY … per text index
-   ALTER DATABASE mydb REFRESH COLLATION VERSION;
-   ```
+   **When the image changes glibc, that first start also rebuilds indexes, which can take a while.** glibc versions sort libc collations such as `en_US.utf8` (the default of every cluster created before the builtin collation) differently, so a text index built under the old glibc can silently miss rows. In each database the entrypoint rebuilds every index that orders or filters by a libc collation whose version changed, then records the new version. Clients cannot connect until it is done; the log names each database and its rebuilt index count. Time it on a copy of a large database before upgrading production. Two things cannot be rebuilt and stop the container, which names them: range partitioning on such a text column (rows may now belong in another partition: move them, e.g. detach the partitions and re-insert their rows), and a `CHECK` that compares text with `<`, `<=`, `>` or `>=` (rows may now fail it: fix them, then drop and re-add the constraint). Then start the container again.
 
 3. pgflow keeps its schema version until you run `docker exec <container> pgflow-upgrade` (see [PGFLOW.md](PGFLOW.md)).
 4. If the log warns that pgsodium uses the published key, rotate it: [PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#rotating-the-published-key).

@@ -741,31 +741,64 @@ fi
 #    `ALTER EXTENSION timescaledb UPDATE`, which must be the session's first and needs timescaledb preloaded (hence the
 #    image's config file). VERBOSITY=sqlstate makes "not installed in this database" (42704) exact; it is the last
 #    line, after any connection-time warning, which client_min_messages does not reach.
-# 2. PostgreSQL records glibc's version string per database and libc collation, so after a glibc change every
-#    database warns at each connection and CREATE DATABASE refuses its template. EN_US_SAME_ORDER_GLIBC lists the glibc
-#    versions measured to sort en_US.utf8 (every release's default) identically: every code point plus 490,000
-#    two-character strings hash the same. Between two of them the recorded version is refreshed; any other change of
-#    a database's libc collation version stops the container, since its order may differ and only a REINDEX makes its
-#    indexes right. A glibc bump therefore fails safe until it is measured against the list's versions and added.
-#    ICU collations are left alone: ICU versions do track order changes, and PostgreSQL warns where one is used.
+# 2. A libc collation's version is glibc's, and glibc changes sort order between versions (2.41 and 2.44 order
+#    en_US.utf8's code points differently), so a text index built under the old glibc can silently miss rows under the
+#    new one. Where a database's own or a named libc collation changed version, REBUILD_FOR_GLIBC rebuilds every index
+#    that orders, or filters, by such a collation, then records the new version: correct by construction, at the cost
+#    of startup time. Range partitions and CHECKs that compare text in that order cannot be rebuilt, so they stop the
+#    container naming the fix. One DO per database: all of it lands or none. ICU collations are left alone: their
+#    versions track order changes too, and PostgreSQL warns where one is used.
 IMAGE_MIGRATED_FILE="${DATA_DIR}/aza-pg-image"
-EN_US_SAME_ORDER_GLIBC="'{2.41,2.44}'"
+REBUILD_FOR_GLIBC=$(cat <<'SQL'
+DO $$DECLARE colls oid[]; idx regclass[]; i regclass; c regcollation; bad text; BEGIN
+    SELECT array_agg(oid) INTO colls FROM pg_collation
+        WHERE collprovider = 'c' AND collversion IS DISTINCT FROM pg_collation_actual_version(oid);
+    IF (SELECT datlocprovider = 'c' AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)
+            FROM pg_database WHERE datname = current_database()) THEN
+        colls := colls || 100::oid; -- "default": the collation of the database itself
+    END IF;
+    IF colls IS NULL THEN RETURN; END IF;
+    SELECT string_agg(o, ', ') INTO bad FROM (
+        SELECT format('range partitioning of %s', partrelid::regclass) o FROM pg_partitioned_table
+            WHERE partstrat = 'r' AND partcollation::oid[] && colls
+        UNION ALL
+        SELECT format('CHECK %I on %s', con.conname, con.conrelid::regclass) FROM pg_constraint con
+            WHERE con.contype = 'c' AND EXISTS (SELECT FROM pg_attribute a WHERE a.attrelid = con.conrelid
+                AND a.attnum = ANY (con.conkey) AND a.attcollation = ANY (colls))
+            -- Operators come from the stored expression: pg_depend records none on builtin (pinned) operators.
+            AND EXISTS (SELECT FROM regexp_matches(con.conbin::text, ':opno (\d+)', 'g') m JOIN pg_operator op
+                ON op.oid = m[1]::oid JOIN pg_type t ON t.oid = op.oprleft
+                WHERE op.oprname IN ('<', '<=', '>', '>=') AND t.typcollation <> 0)) s;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'database %: % compare text in a libc collation order that changed with glibc, and no rebuild re-sorts them. Re-create them (docs/UPGRADING.md), then start the container again', current_database(), bad;
+    END IF;
+    -- Key or expression collations, plus every column an index reads (the predicate of a partial index included).
+    SELECT array_agg(DISTINCT x.indexrelid::regclass) INTO idx FROM pg_index x WHERE x.indcollation::oid[] && colls
+        OR EXISTS (SELECT FROM pg_depend d JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+            WHERE d.classid = 'pg_class'::regclass AND d.objid = x.indexrelid AND d.refclassid = 'pg_class'::regclass
+            AND a.attcollation = ANY (colls));
+    PERFORM set_config('client_min_messages', 'notice', true);
+    RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: glibc changed its libc collation order; rebuilt % index(es) that depend on it', current_database(), coalesce(cardinality(idx), 0);
+    FOREACH i IN ARRAY coalesce(idx, '{}') LOOP EXECUTE format('REINDEX INDEX %s', i); END LOOP;
+    FOR c IN SELECT oid FROM pg_collation WHERE oid = ANY (colls) AND oid <> 100 LOOP
+        EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
+    END LOOP;
+    IF 100 = ANY (colls) THEN EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', current_database()); END IF;
+END$$
+SQL
+)
 timescaledb_version=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" "${PG_SHAREDIR}/extension/timescaledb.control" 2>/dev/null || true)
 image_key="$(readlink -f "$(command -v postgres)") ${timescaledb_version}"
 migrate_sql() { # database, then psql arguments; failures are collected, the container stops after the server does
     local db="$1" out
     shift
     out=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -q -h "$update_dir" -d "$db" -v ON_ERROR_STOP=1 "$@" 2>&1) ||
-        [ "${out##*$'\n'}" = "ERROR:  42704" ] || update_failed+="${db}: ${out}"$'\n'
+        { [ "${out##*$'\n'}" = "ERROR:  42704" ] && return; update_failed+="${db}: ${out}"$'\n'; return; }
+    [ -z "$out" ] || printf '%s\n' "${out//NOTICE:  /}" >&2 # REBUILD_FOR_GLIBC's report
 }
 migrate_database() {
     migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
-    migrate_sql "$1" -c "DO \$\$DECLARE c regcollation; BEGIN
-        FOR c IN SELECT oid FROM pg_collation WHERE collprovider = 'c' AND collcollate LIKE 'en\_US.%'
-            AND collversion <> pg_collation_actual_version(oid) AND collversion = ANY (${EN_US_SAME_ORDER_GLIBC})
-            AND pg_collation_actual_version(oid) = ANY (${EN_US_SAME_ORDER_GLIBC}) LOOP
-            EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
-        END LOOP; END\$\$"
+    migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
 }
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
     [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
@@ -775,16 +808,16 @@ if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${D
     as_postgres pg_ctl -D "$DATA_DIR" -w -l "${update_dir}/server.log" -o "-c config_file=${AUTO_CONFIG_FILE} -c listen_addresses= -c unix_socket_directories=${update_dir} -c hba_file=${update_dir}/pg_hba.conf" start >/dev/null ||
         { cat "${update_dir}/server.log" >&2; exit 1; }
     update_failed=""
+    echo "[POSTGRES] [AUTO-CONFIG] first start on this image: updating extensions and rebuilding indexes whose text order changed with glibc; clients wait until it is done" >&2
     # postgres first: until then an older timescaledb there fails the queries below too. A command substitution, not
     # `< <(…)`: a failed listing must stop the container, never read as "no databases". template0 records no version.
     migrate_database postgres
-    migrate_sql postgres -c "DO \$\$DECLARE d record; BEGIN
-        FOR d IN SELECT datname, datcollate, datcollversion AS was, pg_database_collation_actual_version(oid) AS now
-            FROM pg_database WHERE datlocprovider = 'c' AND datcollversion <> pg_database_collation_actual_version(oid) LOOP
-            IF d.datcollate NOT LIKE 'en\_US.%' OR NOT d.was = ANY (${EN_US_SAME_ORDER_GLIBC}) OR NOT d.now = ANY (${EN_US_SAME_ORDER_GLIBC}) THEN
-                RAISE EXCEPTION 'database % sorts text by libc locale % (glibc % then, % now), which no measurement shows sorts the same; its text indexes may be out of order. REINDEX them, then run ALTER DATABASE % REFRESH COLLATION VERSION (docs/UPGRADING.md)', d.datname, d.datcollate, d.was, d.now, d.datname;
-            END IF;
-            EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', d.datname);
+    # A database refusing connections (releases made template1 so) only records the version: no session ever put a
+    # user index in it, and catalog indexes sort by C, which glibc does not change.
+    migrate_sql postgres -c "DO \$\$DECLARE d name; BEGIN
+        FOR d IN SELECT datname FROM pg_database WHERE NOT datallowconn AND datlocprovider = 'c'
+            AND datcollversion <> pg_database_collation_actual_version(oid) LOOP
+            EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', d);
         END LOOP; END\$\$"
     databases=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -h "$update_dir" -d postgres -tA \
         -c "SELECT datname FROM pg_database WHERE datallowconn AND datname <> 'postgres'")

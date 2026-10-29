@@ -289,24 +289,83 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     if (state !== "true|") throw new Error(`timescaledb current, then stale databases: "${state}"`);
   });
 
-  await test("a libc collation version not measured to sort the same stops the first start", async () => {
-    // Refreshing it would leave text indexes possibly out of order with no sign; the refresh must be refused instead.
-    // A volume, not tmpfs: the data directory must survive the restart. The marker removal stands in for a new image.
+  await test("a glibc change rebuilds the text indexes, and stops at a text range partition", async () => {
+    // An index built under another glibc's order can silently miss rows: the ones ordering or filtering by the
+    // collation must be rebuilt (new relfilenode), the integer one left alone. A range partition cannot be rebuilt, so
+    // it must stop the start. A volume, not tmpfs: the data directory must survive the restarts. The faked
+    // datcollversion stands in for another glibc, the marker removal for a new image.
     const name = `${RUN_ID}-glibc`;
     const volume = `${RUN_ID}-vol-glibc`;
     volumes.add(volume);
     await start(name, IMAGE, volume);
+    const db = (sql: string) =>
+      must(
+        [
+          "exec",
+          "-i",
+          name,
+          "psql",
+          "-XqAt",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          "postgres",
+          "-d",
+          "aza_glibc",
+          "-f",
+          "-",
+        ],
+        sql
+      );
+    const restartAsNewImage = async (sql: string) => {
+      await db(
+        `${sql}; UPDATE pg_database SET datcollversion = '2.40' WHERE datname = current_database();`
+      );
+      await must(["exec", name, "sh", "-c", "rm -f /var/lib/postgresql/*/docker/aza-pg-image"]);
+      await must(["restart", name]);
+    };
+    const files = `SELECT string_agg(relname || '=' || relfilenode, ' ' ORDER BY relname) FROM pg_class WHERE relname LIKE 'g\\_%'`;
     await psql(
       name,
-      `CREATE DATABASE aza_glibc TEMPLATE template0 LOCALE_PROVIDER libc LOCALE 'en_US.utf8';
-       UPDATE pg_database SET datcollversion = '2.40' WHERE datname = 'aza_glibc';`
+      "CREATE DATABASE aza_glibc TEMPLATE template0 LOCALE_PROVIDER libc LOCALE 'en_US.utf8'"
     );
-    await must(["exec", name, "rm", "-f", "/var/lib/postgresql/18/docker/aza-pg-image"]);
-    await must(["restart", name]);
+    await db(
+      "CREATE TABLE g(s text, n int); CREATE INDEX g_s ON g(s); CREATE INDEX g_n ON g(n); CREATE INDEX g_p ON g(n) WHERE s > 'm'"
+    );
+    const before = Object.fromEntries(
+      (await db(files))
+        .trim()
+        .split(" ")
+        .map((f) => f.split("="))
+    );
+    await restartAsNewImage("SELECT");
+    await waitForPostgres({ container: name, timeout: 60 });
+    const after = Object.fromEntries(
+      (await db(files))
+        .trim()
+        .split(" ")
+        .map((f) => f.split("="))
+    );
+    const stale = (
+      await db(
+        "SELECT datcollversion <> pg_database_collation_actual_version(oid) FROM pg_database WHERE datname = current_database()"
+      )
+    ).trim();
+    if (
+      after.g_s === before.g_s ||
+      after.g_p === before.g_p ||
+      after.g_n !== before.g_n ||
+      stale !== "f"
+    ) {
+      throw new Error(
+        `relfilenodes ${JSON.stringify(before)} → ${JSON.stringify(after)}, version stale: ${stale}`
+      );
+    }
+    await restartAsNewImage("CREATE TABLE g_r(s text) PARTITION BY RANGE (s)");
     const exited = (await must(["wait", name])).trim();
     const logs = await docker(["logs", "--since", "10s", name]);
     await remove(name);
-    if (exited === "0" || !/aza_glibc.*glibc 2\.40 then/.test(logs.err)) {
+    if (exited === "0" || !/range partitioning of g_r/.test(logs.err)) {
       throw new Error(`exit ${exited}; log:\n${logs.err.slice(-1500)}`);
     }
   });

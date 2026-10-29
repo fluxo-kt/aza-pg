@@ -10,7 +10,7 @@
     pgrx-0_18_1 = { url = "github:pgcentralfoundation/pgrx/v0.18.1"; flake = false; };
     pgrx-0_19_2 = { url = "github:pgcentralfoundation/pgrx/v0.19.2"; flake = false; };
     # The official image's docker-entrypoint.sh (initdb, POSTGRES_* variables, /docker-entrypoint-initdb.d), which
-    # our entrypoint sources; the Debian image gets it from its postgres base image.
+    # our entrypoint sources.
     docker-library-postgres = { url = "github:docker-library/postgres"; flake = false; };
   };
 
@@ -35,6 +35,9 @@
                 groonga = prev.groonga.overrideAttrs (o: {
                   buildInputs = nixpkgs.lib.subtractLists [ prev.kytea prev.mecab ] o.buildInputs;
                   nativeBuildInputs = nixpkgs.lib.remove prev.mecab o.nativeBuildInputs;
+                  # share/groonga/html is the admin UI of Groonga's own HTTP server, which PGroonga never runs; it
+                  # bundles jquery-ui 1.12.1, whose CVEs the image scan would report.
+                  postInstall = (o.postInstall or "") + "\nrm -r $out/share/groonga/html\n";
                 });
               })
             ];

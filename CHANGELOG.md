@@ -17,6 +17,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **TimescaleDB is updated automatically** at the first start after an image upgrade, in every database, before the server accepts connections (was a manual `ALTER EXTENSION timescaledb UPDATE`). If an update fails, the container stops and names the database.
 - **The first start on a new glibc records its version, rebuilding first the indexes whose order it may change** — before clients connect, so databases neither warn at each connection nor refuse `CREATE DATABASE`. `en_US.utf8` (the default of clusters created by earlier releases) between glibc versions measured to sort it the same, as this release's are, only records the version. Any other libc collation change rebuilds each index ordering or filtering by it — expect a longer first start on large databases — since a glibc change of order leaves text indexes silently missing rows. Range partitioning on such a text column and `CHECK`s comparing it with `<`/`>` cannot be rebuilt: they stop the container, named, with the fix in docs/UPGRADING.md.
 
+### Security
+
+- **wrappers 0.6.4 builds with rustls-webpki 0.103.13** (was 0.103.10): a malformed certificate revocation list no longer makes an HTTPS foreign data wrapper query fail with a panic (GHSA-82j2-j2ch-gfr8).
+
 ### Added
 
 - **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`. The locales add 45 MB to the image.

@@ -916,13 +916,18 @@
         "tag": "1.26.0",
         "commit": "4cea9322535c2566d873e5d6c42bb6d3c51c238e"
       },
+      "build": {
+        "type": "cargo-pgrx",
+        "patches": [
+          "timescaledb_toolkit-hashbrown.patch"
+        ]
+      },
       "dependencies": [
         "timescaledb"
       ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": []
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
       "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
@@ -1046,7 +1051,10 @@
           "pg18"
         ],
         "noDefaultFeatures": true,
-        "subdir": "wrappers"
+        "subdir": "wrappers",
+        "patches": [
+          "wrappers-rustls-webpki.patch"
+        ]
       },
       "dependencies": [
         "pg_stat_statements"

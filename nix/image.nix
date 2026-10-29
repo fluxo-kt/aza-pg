@@ -1,5 +1,5 @@
 # The aza-pg container image built from Nix store paths only: PostgreSQL with every manifest entry, the few tools the
-# shell scripts call, and the image's own files at the paths the Debian image and its documentation use, so stacks,
+# shell scripts call, and the image's own files at the paths earlier (Debian-built) releases and the docs use, so stacks,
 # deployments and operators see the same contract. No package manager, no Perl or Python; Bash is the one interpreter.
 #
 # Runtime userland, each with what needs it; a tool nothing here names has no job in the image:
@@ -21,7 +21,7 @@ let
   root = ../.;
   src = p: root + "/${p}";
 
-  # Same command as the Debian image's localedef loop, so both ship the same locales under the same names.
+  # Same localedef loop as earlier (Debian-built) releases, so the locales keep their names.
   locales = pkgs.runCommand "aza-pg-locales" { nativeBuildInputs = [ pkgs.glibc.bin ]; } ''
     export I18NPATH=${pkgs.glibc}/share/i18n
     # localedef writes <prefix><glibc's compiled-in locale dir>/locale-archive and creates no directories.
@@ -53,7 +53,7 @@ let
     chmod +x $out/bin/pg_config
   '';
 
-  # The image's own files, at the Debian image's paths.
+  # The image's own files, at the paths earlier (Debian-built) releases used.
   files = pkgs.runCommand "aza-pg-files" { } ''
     install -Dm0755 ${src "docker/postgres/docker-auto-config-entrypoint.sh"} $out/usr/local/bin/docker-auto-config-entrypoint.sh
     install -Dm0755 ${upstreamEntrypoint} $out/usr/local/bin/docker-entrypoint.sh

@@ -507,6 +507,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       features: ["pg18"],
       noDefaultFeatures: true,
       subdir: "wrappers",
+      // Cargo.lock bump of rustls-webpki 0.103.10 → 0.103.13 (GHSA-82j2-j2ch-gfr8, HIGH: wrappers' HTTPS FDWs
+      // verify certificates with it). Drop it once a release locks ≥ 0.103.13; a stale one fails the build.
+      patches: ["wrappers-rustls-webpki.patch"],
     },
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
@@ -878,11 +881,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
       tag: "1.26.0",
     },
+    build: {
+      type: "cargo-pgrx",
+      // Cargo.lock bump of hashbrown 0.15.0 → 0.15.1 (GHSA-wwq9-3cpr-mm53, HIGH, fixed upstream). Drop it once a
+      // release locks ≥ 0.15.1; a stale one fails the build.
+      patches: ["timescaledb_toolkit-hashbrown.patch"],
+    },
     dependencies: ["timescaledb"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: [],
     },
     sourceUrl: "https://github.com/timescale/timescaledb-toolkit",
     docsUrl: "https://github.com/timescale/timescaledb-toolkit/tree/main/docs",

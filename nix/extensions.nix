@@ -120,8 +120,8 @@ let
   # SQL-only entries (pgflow) have neither a build nor a recipe; the image installs their files from the repo.
   built = builtins.filter (e: e ? build || (e ? nix && e.nix ? package)) enabled;
 
-  # Only the executables an entry names ship (nix.bin, else its binaryPath); the Debian build copies no bin/ at all,
-  # so anything else here would exist only in this image.
+  # Only the executables an entry names ship (nix.bin, else its binaryPath): nothing calls the rest, and they pull in
+  # interpreters (pg_partman's Python helpers).
   pruneBin = e: drv:
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
@@ -135,7 +135,7 @@ let
       '' + lib.optionalString (e.name == "pgsodium") ''
         # pgsodium runs <sharedir>/extension/pgsodium_getkey when pgsodium.getkey_script is unset, as on the
         # entrypoint's temporary init server. nixpkgs installs upstream's sample there, which writes an unchecked key
-        # into PGDATA, so the default resolves to the image's documented script path, the same file Debian's default is.
+        # into PGDATA, so the default resolves to the image's documented getkey script.
         ln -sf /usr/share/postgresql/${lib.versions.major postgresql.version}/extension/pgsodium_getkey \
           "$out/share/postgresql/extension/pgsodium_getkey"
         # Upstream's example getkey scripts (AWS, GCP, Doppler, …): nothing runs them, and they pull in a second Bash.

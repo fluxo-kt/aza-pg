@@ -13,6 +13,7 @@ Evidence (nixpkgs `31ecbac`, read 2026-10-29): `postgresql_18.withPackages` with
 Work:
 
 - Package what nixpkgs lacks: index_advisor, supautils, wrappers, supabase_vault, pg_jsonschema, pg_hashids, pgflow, pg_stat_monitor, pg_plan_filter, set_user; TimescaleDB's TSL edition (nixpkgs' free attribute is the Apache edition); override versions nixpkgs trails. `manifest-data.ts` stays the one source of versions.
+- Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version (newer nixpkgs or our own override where nixpkgs lags); prefer a well-maintained memory-safe equivalent where one exists. The kernel comes from the host, so this covers userland only.
 - Drop from the image what has no runtime job: pgbadger (Perl; operators run it on exported logs), PGroonga tokenizer data unless a shipped feature needs it, su-exec (run as uid 999).
 - Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
 - Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; the CHANGELOG entry states it. Weigh ICU as the default collation provider for new clusters so later glibc moves cannot do this again.

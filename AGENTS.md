@@ -259,9 +259,15 @@ The changelog covers operator-visible changes to the release Docker image and sh
 
 1. Track image-affecting changes in `[Unreleased]` section
 2. Focus on: extension updates, base image changes, breaking changes, security fixes
-3. After successful GitHub CI release: rename `[Unreleased]` → `[release-tag]` (e.g., `[v18.1-202602082259]`)
-4. Start new `[Unreleased]` section for next changes
-5. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
+3. Right after the release's anchor merge, date it on dev: `bun scripts/release/date-changelog.ts <tag>` (`/release` Appendix A runs it). CI builds the GitHub notes from `[Unreleased]` and names the tag only at publish, so dating cannot happen earlier. `validate` fails while the newest merged tag has no `## [<tag>]` section
+4. Non-image changes: 1-2 brief bullets max in `### Development` — omit if trivial
+
+**Entry rules** (`[Unreleased]` is read by someone upgrading from the last release):
+
+- One entry per component: `<name> <version in the last release> → <current>`. Read the old version from the tag (`git show <tag>:docker/postgres/extensions.manifest.json`), never from changelog text. A second bump before release edits that entry
+- A dated `## [<tag>]` section is what shipped: never edit it
+- Every claim comes from the component's own release notes for exactly that range; a feature from an earlier release is not news. Name the concrete fix, never "bug fixes"
+- A change that needs operator action is Breaking; state the action, and the setting that restores old behaviour when upstream offers one
 
 **The ONLY test that matters**: Would the change appear in `docker inspect`, `\dx`, extension behaviour, `psql --version`, or change a shipped Compose service's authentication, settings, metrics or operation? Yes → belongs. No → NEVER belongs.
 

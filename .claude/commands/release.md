@@ -268,20 +268,9 @@ git show refs/heads/dev:CHANGELOG.md
 4. **Development section**: MAX 3 brief lines, no per-file detail
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
-7. **⚠️ MANDATORY: date the PREVIOUS release (lagged dating).** CI does NOT rename `[Unreleased]` — `generate-release-notes.ts` only *reads* it to build GH release notes; the repo CHANGELOG dating is **manual and lagged by one release**. Each release's squash dates the *previously-published* release. **Skipping this is what silently breaks the CHANGELOG** (a published tag with no section, content piling up in `[Unreleased]`).
-   - **Prev tag**: `git tag --points-at "$ANCHOR^2"` (anchor parent2 = the previous release commit).
-   - **Split `[Unreleased]`**: entries added after the anchor (the `+` lines of `git diff $ANCHOR..refs/heads/dev -- CHANGELOG.md`) belong to THIS release → keep in `[Unreleased]`; the manifest diff (rule 5) cannot decide this, because a fix with no version change has none. **Every other entry was shipped under the prev tag** → move it into a new `## [<prev-tag>] - <YYYY-MM-DD>` section inserted directly below `[Unreleased]`. Cross-validate that section against the prev tag's published body: `gh release view "<prev-tag>" --json body --jq .body`.
-   - **Backlog**: if `git tag --points-at "$ANCHOR^2"` is itself undated AND older published tags are also undated (a prior skip), fold all the already-shipped `[Unreleased]` content into the single newest-prev-tag section (its image is cumulative) — do not fabricate granular per-tag sections for superseded same-line re-tags.
-   - Apply in Phase 4.4; verify in Phase 5.5.
-8. **⚠️ Regression expected outputs**: For every extension version change in the manifest diff, check `tests/regression/extensions/EXTNAME/expected/basic.out` for hard-coded version strings. If stale, note which files need updating — you will apply them in Phase 4.4.
+7. **`[Unreleased]` holds only this release.** The previous release was dated on dev right after its anchor merge (Appendix A, `scripts/release/date-changelog.ts`), and `validate` (Release Process Contracts) fails while the newest merged tag has no section. If that check fires, the last run skipped Appendix A: run `bun scripts/release/date-changelog.ts <prev-tag>` on dev and rewrite each entry it prints as "<version in prev-tag> → current" before squashing.
 
-   ```bash
-   # Show all version strings hard-coded in regression expected outputs
-   command grep -n "[0-9]\+\.[0-9]\+\.[0-9]\+" tests/regression/extensions/*/expected/*.out 2>/dev/null | command grep -v "^Binary"
-   # Cross-reference any hit against the manifest diff from Phase 1.2 to find staleness
-   ```
-
-Write down the specific CHANGELOG edits AND regression expected output updates needed. You will apply them all in Phase 4.4 AFTER the squash.
+Write down the specific CHANGELOG edits needed. You will apply them in Phase 4.4 AFTER the squash.
 
 ---
 
@@ -424,13 +413,9 @@ bun install              # Restore release branch's node_modules
 echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
 ```
 
-### 4.4 — Apply CHANGELOG optimisations and regression expected output updates
+### 4.4 — Apply CHANGELOG optimisations
 
-Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there.
-
-Also apply any regression expected output updates identified in Phase 2 audit rule 8 — update `tests/regression/extensions/EXTNAME/expected/basic.out` files with the new version strings.
-
-**MANDATORY — apply the lagged dating (Phase 2 rule 7).** Date the previous release: move the already-shipped `[Unreleased]` entries into a new `## [<prev-tag>] - <date>` section, leaving only THIS release's `anchor..dev` delta under `[Unreleased]`. Skipping this is the exact failure that orphaned `v18.4-202605172147` (published, never dated).
+Re-read `CHANGELOG.md` as it now is in the working tree (dev's version after squash), compare against what you planned in Phase 2, then apply the specific edits identified there. Keep them under `[Unreleased]`: CI builds the GitHub release notes from that section, and the tag name does not exist until publish.
 
 After editing:
 
@@ -556,25 +541,6 @@ git diff refs/heads/dev HEAD --name-only
 echo "=============================="
 ```
 
-### 5.5 — Lagged-dating guard (structural — prevents orphaned releases)
-
-Asserts THIS squash dated its predecessor (Phase 2 rule 7). FAILS loudly if not — this is the check
-that would have caught the `v18.4-202605172147` orphaning at the next release.
-
-```bash
-PREV_TAG=$(git tag --points-at "$ANCHOR^2" | command grep -E '^v' | head -1)
-if [[ -z "$PREV_TAG" ]]; then
-  echo "⚠️  No tag on anchor parent2 ($(git rev-parse --short "$ANCHOR^2")) — hotfix lineage; verify dating manually."
-elif command grep -qF "## [$PREV_TAG]" CHANGELOG.md; then
-  echo "Lagged dating confirmed — '## [$PREV_TAG]' section present. ✓"
-else
-  echo "🚨 ABORT: previous release $PREV_TAG has NO '## [$PREV_TAG]' CHANGELOG section."
-  echo "   The squash did not date its predecessor — its content is still mixed into [Unreleased]"
-  echo "   and would re-ship as phantom notes. Apply Phase 4.4 dating, then re-commit (git commit --amend)."
-  exit 1
-fi
-```
-
 ---
 
 ## Phase 6: Kaizen
@@ -589,10 +555,10 @@ After every execution, reflect and update this command:
 
 ### Accumulated Lessons
 
-- **CHANGELOG dating is MANUAL and lagged by one release — `v18.4-202605172147` was orphaned by the old (wrong) rule 7.** The previous rule 7 claimed "CI/release tagging does the `[Unreleased]` rename." FALSE: `generate-release-notes.ts` only *reads* `[Unreleased]` for GH notes; nothing commits a repo rename. The dating happens in each release's squash commit, dating its *predecessor* (proven by `99f3e44`, which dated `[v18.3-202603040417]`). The 2026-05-17 v18.4 release skipped it, so v18.4's shipped content piled up undated in `[Unreleased]`, conflated with later work. Fix: rule 7 rewritten with the real procedure (prev tag = `git tag --points-at "$ANCHOR^2"`; split `[Unreleased]` by the `anchor..dev` manifest diff), enforced by the **Phase 5.5 guard** that ABORTS if `## [<prev-tag>]` is missing. Cross-validate dated sections against `gh release view <tag> --json body`.
+- **A release is dated on dev in the same run, never by the next release.** Nothing renames `[Unreleased]` automatically (`generate-release-notes.ts` only reads it), and dating at the next squash means splitting shipped from new entries by hand, which agents skipped or got wrong, leaving a published tag undated for months. Appendix A's `date-changelog.ts` runs when the tag is known and `[Unreleased]` is still exactly the published text; `validate` fails while the newest merged tag is undated.
 - **`workflow_run` always executes from the default branch, not the triggering branch** — that is `dev` (GitHub security restriction, prevents privilege escalation from untrusted branches). Consequence: the `publish.yml` that runs is `dev`'s; a `publish.yml` change committed only on `release` (hotfix path) is **invisible to CI** until it is also on `dev`. Pushing `release:main` keeps `main` as the release mirror; it no longer affects which workflow runs.
 
-- **CHANGELOG = net-delta log, nothing more.** Never add SQL verification snippets, upgrade instructions, or tutorial content. That belongs in tests or docs. A changelog is for users tracking what changed between releases — if a reader would say "why is this here?", remove it.
+- **CHANGELOG = net-delta log, nothing more.** No SQL verification snippets or tutorials; those belong in tests or docs. An action an operator must take because of a change (an `ALTER EXTENSION … UPDATE`, a renamed setting) is part of that change's entry, stated in one sentence. If a reader would say "why is this here?", remove it.
 - **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
 - **Hotfix/direct-commit releases: Dev-Squash-Tip is absent.** When a release is published via direct commits on `release` (e.g., CVE hotfix requiring multiple iterations), no Dev-Squash-Tip trailer exists in the tag. The anchor merge still works correctly — dev history is preserved as parent-1. The check: list dev commits since last anchor (`git rev-list LAST_ANCHOR_SHA..HEAD --oneline`); verify their content is already captured in the release tree (same fixes done on release). IMPORTANT: the anchor's parent-1 link means ALL those dev commits remain git-accessible forever — nothing is deleted. Their file content in the working tree is superseded by the release tree, which is the correct and expected outcome.
 
@@ -739,8 +705,12 @@ git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only faile
 # The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
 # node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
 bun install
+# Date the release now: the tag exists, and [Unreleased] is exactly the text CI published, so it moves
+# whole under "## [$TARGET] - <date>". validate fails on dev until this commit lands.
+bun scripts/release/date-changelog.ts "$TARGET" || { echo "ABORT: dating $TARGET failed."; exit 1; }
+git commit --only -m "docs(changelog): date $TARGET" -- CHANGELOG.md || { echo "ABORT: dating commit failed."; exit 1; }
 git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
-echo "Anchor merge pushed. ✓"
+echo "Anchor merge and dated CHANGELOG pushed. ✓"
 ```
 
 `git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).

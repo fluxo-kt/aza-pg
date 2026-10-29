@@ -724,6 +724,7 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
 3. CHANGELOG entry (operators see companion images); removed settings or renamed metrics go under Breaking.
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
    `pg_up 1` / `pgbouncer_up 1`.
+   For shipped Prometheus/Grafana examples, also query the metrics through Prometheus and check Grafana's provisioned datasource: a healthy exporter does not prove scrape filters retain what its dashboard needs. Use disposable Compose state and remove it after the check.
 
 ## Phase 6: Verify Changed Consumer Contracts
 

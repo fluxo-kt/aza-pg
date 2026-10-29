@@ -310,7 +310,7 @@ export function testDefaultCollation(container: string): Promise<TestResult> {
   return check("Default collation (builtin PG_UNICODE_FAST, ICU per column)", async () => {
     const db = await sqlOk(
       container,
-      "SELECT datlocprovider || ' ' || datlocale FROM pg_database WHERE datname = current_database()"
+      "SELECT datlocprovider::text || ' ' || datlocale FROM pg_database WHERE datname = current_database()"
     );
     expect(db === "b PG_UNICODE_FAST", `database collation = ${db}, expected b PG_UNICODE_FAST`);
     const order = await sqlOk(

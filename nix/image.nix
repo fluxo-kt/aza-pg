@@ -33,6 +33,26 @@ let
     mv "$archive/locale-archive" $out/lib/locale/locale-archive
   '';
 
+  # nixpkgs' pg_config sources an env file recording the whole build (CC, CFLAGS, -dev include paths, PERL=…), so
+  # shipping it as is pulled the compiler toolchain, headers and docs (about 2.3 GB) into the image. This copy keeps
+  # every store path the server's own closure already holds (bindir, sharedir, pkglibdir: what the entrypoint, the
+  # pg_repack wrapper and operators ask for) and blanks the rest to Nix's removed-reference form.
+  pgConfig = pkgs.runCommand "pg_config" { closure = pkgs.closureInfo { rootPaths = [ postgresql ]; }; } ''
+    src=${postgresql.pg_config}/bin/pg_config
+    env=$(sed -n 's/^source //p' "$src")
+    mkdir -p $out/bin
+    awk 'NR == FNR { keep[substr($0, 12, 32)] = 1; next }
+      { line = ""
+        while (match($0, /\/nix\/store\/[a-z0-9]{32}-/)) {
+          h = substr($0, RSTART + 11, 32)
+          line = line substr($0, 1, RSTART - 1) "/nix/store/" (h in keep ? h : "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee") "-"
+          $0 = substr($0, RSTART + RLENGTH)
+        }
+        print line $0 }' "$closure/store-paths" "$env" > $out/pg_config.env
+    { echo "#!${pkgs.bashNonInteractive}/bin/bash"; sed "1d; s|^source .*|source $out/pg_config.env|" "$src"; } > $out/bin/pg_config
+    chmod +x $out/bin/pg_config
+  '';
+
   # The image's own files, at the Debian image's paths.
   files = pkgs.runCommand "aza-pg-files" { } ''
     install -Dm0755 ${src "docker/postgres/docker-auto-config-entrypoint.sh"} $out/usr/local/bin/docker-auto-config-entrypoint.sh
@@ -97,9 +117,9 @@ in
 pkgs.dockerTools.streamLayeredImage {
   name = "aza-pg";
   tag = "pg${pgMajor}-nix";
-  # postgresql.pg_config reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
+  # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
   # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
-  contents = [ postgresql postgresql.pg_config files pkgs.cacert ] ++ tools;
+  contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
   extraCommands = ''
     # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint
@@ -127,7 +147,7 @@ pkgs.dockerTools.streamLayeredImage {
     Cmd = [ "postgres" ];
     ExposedPorts."5432/tcp" = { };
     Env = [
-      "PATH=/usr/local/bin:${lib.makeBinPath ([ postgresql postgresql.pg_config ] ++ tools)}"
+      "PATH=/usr/local/bin:${lib.makeBinPath ([ postgresql pgConfig ] ++ tools)}"
       "PG_MAJOR=${pgMajor}"
       "PG_VERSION=${meta.pgVersion}"
       "PGDATA=/var/lib/postgresql/${pgMajor}/docker"

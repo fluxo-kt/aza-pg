@@ -138,6 +138,8 @@ let
         # into PGDATA, so the default resolves to the image's documented script path, the same file Debian's default is.
         ln -sf /usr/share/postgresql/${lib.versions.major postgresql.version}/extension/pgsodium_getkey \
           "$out/share/postgresql/extension/pgsodium_getkey"
+        # Upstream's example getkey scripts (AWS, GCP, Doppler, …): nothing runs them, and they pull in a second Bash.
+        rm -r "$out/share/pgsodium/getkey_scripts"
       '';
     });
 in

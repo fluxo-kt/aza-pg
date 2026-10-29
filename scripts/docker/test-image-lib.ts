@@ -264,6 +264,31 @@ export function testImageMetadataFiles(container: string): Promise<TestResult> {
 }
 
 /**
+ * Nothing build-only reaches the Nix image. One stray reference ships its whole closure: nixpkgs' pg_config once
+ * pulled clang, GCC, Perl, Python and every -dev output (about 2.3 GB) in, and every behaviour check still passed.
+ * Store paths are named by role (-dev, -doc, -man outputs) and package, so a name is enough. LLVM's -lib output is
+ * the JIT's runtime and stays; LLVM's tools do not. The Debian image has no /nix/store and is not checked here.
+ */
+export function testNoBuildOnlyStorePaths(container: string): Promise<TestResult> {
+  return check("No build-only store paths in the image", async () => {
+    const ls = await execCommand(
+      ["sh", "-c", "[ -d /nix/store ] && ls /nix/store || true"],
+      container
+    );
+    expect(ls.ok, `listing /nix/store failed: ${ls.output}`);
+    const buildOnly =
+      // Package names take the exact version form (gcc-16.2.0), so runtime outputs such as gcc-…-lib (libstdc++)
+      // and llvm-…-lib (the JIT) stay allowed; clang's -lib is the compiler's own.
+      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|clang-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
+    const found = ls.output.split("\n").filter((name) => buildOnly.test(name));
+    expect(
+      found.length === 0,
+      `build-only store paths shipped (find what references each with: grep -rlF <hash> /nix/store): ${found.join(", ")}`
+    );
+  });
+}
+
+/**
  * Settings the CDC checks depend on, asserted up front so a wrong value fails with its name instead of
  * as a cryptic slot error later. PostgreSQL 18.6+ refuses logical-decoding plugins missing from
  * output_plugin_libraries (superusers too); splitting into elements also catches the list stored as one

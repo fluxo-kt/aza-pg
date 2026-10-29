@@ -25,6 +25,9 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 - **pgBadger 13.2**: a log analyser written in Perl, the only reason Perl and its modules were in the image, and it never ran inside the container. Run it where your logs are, e.g. `docker run --rm -v "$PWD:/logs" <a pgbadger image> /logs/postgresql.log`, or install it from your distribution.
 - **`/IMAGE-CONTENTS.txt` and `/etc/postgresql/version-info.json`**: `/etc/postgresql/version-info.txt` now holds that same contents listing. Its "preloaded modules" list was wrong before, naming optional libraries (`pg_plan_filter`, `pg_partman`, `supautils`) that are off by default. Read versions programmatically from `/etc/postgresql/extensions.manifest.json`.
 - **Python 3.13, psycopg2 and pg_partman's helper scripts** (`check_unique_constraint.py`, `dump_partition.py`, `vacuum_maintenance.py`): the scripts were the only reason Python was in the image. If you use them, run them against the database from a machine with Python and psycopg2. pg_partman 5.5.0 and its `pg_partman_bgw` background worker are unchanged.
+- **PGroonga's Japanese morphological tokenizers `TokenMecab` and `TokenKytea`** (with their 175 MB of dictionaries and models). The default `TokenBigram` and the other tokenizers remain. An index created with `tokenizer='TokenMecab'` now fails to load, naming the tokenizer; recreate it with another tokenizer.
+- **PAM, Kerberos (GSSAPI) and OAuth authentication**: `pam`, `gss` and `oauth` lines in `pg_hba.conf` now fail to load. Each needed files the image never shipped (PAM modules, a keytab, an OAuth validator library). Use `scram-sha-256`.
+- **`io_method=io_uring`** (the server refused to start with it under Docker's default seccomp profile) and the NUMA views `pg_shmem_allocations_numa` and `pg_buffercache_numa` (a VPS has one memory node). The default `io_method=worker` is unchanged.
 
 ## [v18.6-202610291622] - 2026-10-29
 

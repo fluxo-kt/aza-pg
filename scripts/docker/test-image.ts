@@ -34,7 +34,12 @@ type Check = (container: string) => Promise<TestResult>;
 const PHASES: Array<[string, Check[]]> = [
   [
     "Image contents",
-    [lib.testToolsPresent, lib.testPgBackRestFunctional, lib.testImageMetadataFiles],
+    [
+      lib.testToolsPresent,
+      lib.testPgBackRestFunctional,
+      lib.testImageMetadataFiles,
+      lib.testNoBuildOnlyStorePaths,
+    ],
   ],
   [
     "Startup state",

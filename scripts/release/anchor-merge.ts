@@ -22,14 +22,15 @@ if (!tag)
     "origin/release's tip has no v* tag: publish has not finished or failed. Re-run after it succeeds."
   );
 const dev = await git("rev-parse", "refs/heads/dev");
-if (dev !== (await git("rev-parse", "origin/dev")))
-  stop(
-    "local dev differs from origin/dev. Push or pull dev first, so the anchor is built on the commits everyone has."
-  );
+// Before the origin/dev check: unpushed dev work after the anchor is normal and must not turn a no-op into a refusal.
 if (await isAncestor(tag, dev)) {
   console.log(`✅ dev already contains ${tag}; nothing to do.`);
   process.exit(0);
 }
+if (dev !== (await git("rev-parse", "origin/dev")))
+  stop(
+    "local dev differs from origin/dev. Push or pull dev first, so the anchor is built on the commits everyone has."
+  );
 
 // The squash commit sits below any kaizen commits on the tag, hence the ancestry search.
 const squashTip = (

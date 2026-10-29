@@ -14,6 +14,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **New clusters sort text by Unicode code point** (PostgreSQL's builtin `PG_UNICODE_FAST` collation, was glibc `en_US.utf8`). Existing data directories keep their collation. Now no glibc or ICU upgrade can change the sort order or force a `REINDEX`, and comparisons are faster. `ORDER BY` puts uppercase before lowercase (`'B' < 'a'`) and accented letters after `z`. Where people read the order, use ICU per column or query: `COLLATE "en-US-x-icu"`. For language-aware sorting by default, pass `POSTGRES_INITDB_ARGS="--locale-provider=icu --icu-locale=en-US"`. Your `POSTGRES_INITDB_ARGS` now override the image's initdb flags; before, the image's `--locale` overrode yours.
 - **TimescaleDB is updated automatically** at the first start after an image upgrade, in every database, before the server accepts connections (was a manual `ALTER EXTENSION timescaledb UPDATE`). If an update fails, the container stops and names the database.
+- **The first start on a new glibc records its version** for databases sorting by `en_US.utf8`, when the old and new glibc are measured to sort it identically, so they neither warn at each connection nor refuse `CREATE DATABASE`. A database on another libc collation stops the container with the `REINDEX` steps in docs/UPGRADING.md.
 
 ### Added
 

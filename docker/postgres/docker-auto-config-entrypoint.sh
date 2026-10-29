@@ -735,47 +735,76 @@ if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; 
     done
 fi
 
-# TimescaleDB's loader opens the library of each database's INSTALLED version (timescaledb-<version>.so), and the image
-# ships only its own version, so a database still on an older one fails every statement except
-# `ALTER EXTENSION timescaledb UPDATE`, background workers included. That statement is therefore run in every database,
-# before the server serves clients, whenever the version recorded in the data directory is not the shipped one: once
-# per image upgrade, no cost on other starts. A private socket and a trust-only hba_file keep clients out and need no
-# password whatever pg_hba.conf says. Standbys get the update through WAL from their primary; a restore applies it on
-# the next start once it has finished. The update needs timescaledb preloaded, hence the image's config file.
-# Connections go to database postgres, as pgflow-upgrade's do: template1 can refuse them. Warnings are suppressed (every
-# database initdb'd on another glibc warns of its collation version), and VERBOSITY=sqlstate makes "not installed in
-# this database" (42704) exact.
-TIMESCALEDB_MARKER="${DATA_DIR}/aza-pg-timescaledb-version"
+# The first start on a different image fixes, before the server serves clients, what an image change breaks in an
+# existing data directory. The data directory records the image it last did this for (aza-pg-image); the key is the
+# resolved server binary (in the Nix image a store path, which changes with glibc, ICU or anything else it links) plus
+# TimescaleDB's version (constant paths on Debian), so other starts cost one file read. A private socket and a
+# trust-only hba_file keep clients out and need no password whatever pg_hba.conf says. Standbys get both fixes through
+# WAL from their primary; a restore gets them on the next start once it has finished. Connections go to database
+# postgres, as pgflow-upgrade's do: releases made template1 refuse connections.
+# 1. TimescaleDB's loader opens the library of each database's INSTALLED version (timescaledb-<version>.so) and the
+#    image ships only its own, so a database on an older one fails every statement except
+#    `ALTER EXTENSION timescaledb UPDATE`, which must be the session's first and needs timescaledb preloaded (hence the
+#    image's config file). VERBOSITY=sqlstate makes "not installed in this database" (42704) exact; it is the last
+#    line, after any connection-time warning, which client_min_messages does not reach.
+# 2. PostgreSQL records glibc's version string per database and libc collation, so after a glibc change every
+#    database warns at each connection and CREATE DATABASE refuses its template. EN_US_SAME_ORDER_GLIBC lists the glibc
+#    versions measured to sort en_US.utf8 (every release's default) identically: every code point plus 490,000
+#    two-character strings hash the same. Between two of them the recorded version is refreshed; any other change of
+#    a database's libc collation version stops the container, since its order may differ and only a REINDEX makes its
+#    indexes right. A glibc bump therefore fails safe until it is measured against the list's versions and added.
+#    ICU collations are left alone: ICU versions do track order changes, and PostgreSQL warns where one is used.
+IMAGE_MIGRATED_FILE="${DATA_DIR}/aza-pg-image"
+EN_US_SAME_ORDER_GLIBC="'{2.41,2.44}'"
 timescaledb_version=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" "${PG_SHAREDIR}/extension/timescaledb.control" 2>/dev/null || true)
-timescaledb_update() {
-    local out
-    out=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -q -h "$update_dir" -d "$1" -v VERBOSITY=sqlstate \
-        -c "ALTER EXTENSION timescaledb UPDATE" 2>&1) || [ "$out" = "ERROR:  42704" ] || update_failed+="${1}: ${out}"$'\n'
+image_key="$(readlink -f "$(command -v postgres)") ${timescaledb_version}"
+migrate_sql() { # database, then psql arguments; failures are collected, the container stops after the server does
+    local db="$1" out
+    shift
+    out=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -q -h "$update_dir" -d "$db" -v ON_ERROR_STOP=1 "$@" 2>&1) ||
+        [ "${out##*$'\n'}" = "ERROR:  42704" ] || update_failed+="${db}: ${out}"$'\n'
 }
-if [ "$STARTS_SERVER" = true ] && [ -n "$timescaledb_version" ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
-    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$TIMESCALEDB_MARKER" 2>/dev/null)" != "$timescaledb_version" ]; then
+migrate_database() {
+    migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
+    migrate_sql "$1" -c "DO \$\$DECLARE c regcollation; BEGIN
+        FOR c IN SELECT oid FROM pg_collation WHERE collprovider = 'c' AND collcollate LIKE 'en\_US.%'
+            AND collversion <> pg_collation_actual_version(oid) AND collversion = ANY (${EN_US_SAME_ORDER_GLIBC})
+            AND pg_collation_actual_version(oid) = ANY (${EN_US_SAME_ORDER_GLIBC}) LOOP
+            EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
+        END LOOP; END\$\$"
+}
+if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
+    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
     update_dir=$(as_postgres mktemp -d)
     # shellcheck disable=SC2016 # $1 is the inner sh's argument
     as_postgres sh -c 'printf "local all all trust\n" > "$1/pg_hba.conf"' sh "$update_dir"
     as_postgres pg_ctl -D "$DATA_DIR" -w -l "${update_dir}/server.log" -o "-c config_file=${AUTO_CONFIG_FILE} -c listen_addresses= -c unix_socket_directories=${update_dir} -c hba_file=${update_dir}/pg_hba.conf" start >/dev/null ||
         { cat "${update_dir}/server.log" >&2; exit 1; }
     update_failed=""
-    # postgres first: until then an older timescaledb there fails the listing too. A command substitution, not
-    # `< <(…)`: a failed listing must stop the container, never read as "no databases".
-    timescaledb_update postgres
+    # postgres first: until then an older timescaledb there fails the queries below too. A command substitution, not
+    # `< <(…)`: a failed listing must stop the container, never read as "no databases". template0 records no version.
+    migrate_database postgres
+    migrate_sql postgres -c "DO \$\$DECLARE d record; BEGIN
+        FOR d IN SELECT datname, datcollate, datcollversion AS was, pg_database_collation_actual_version(oid) AS now
+            FROM pg_database WHERE datlocprovider = 'c' AND datcollversion <> pg_database_collation_actual_version(oid) LOOP
+            IF d.datcollate NOT LIKE 'en\_US.%' OR NOT d.was = ANY (${EN_US_SAME_ORDER_GLIBC}) OR NOT d.now = ANY (${EN_US_SAME_ORDER_GLIBC}) THEN
+                RAISE EXCEPTION 'database % sorts text by libc locale % (glibc % then, % now), which no measurement shows sorts the same; its text indexes may be out of order. REINDEX them, then run ALTER DATABASE % REFRESH COLLATION VERSION (docs/UPGRADING.md)', d.datname, d.datcollate, d.was, d.now, d.datname;
+            END IF;
+            EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', d.datname);
+        END LOOP; END\$\$"
     databases=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -h "$update_dir" -d postgres -tA \
         -c "SELECT datname FROM pg_database WHERE datallowconn AND datname <> 'postgres'")
     while IFS= read -r db; do
-        [ -z "$db" ] || timescaledb_update "$db"
+        [ -z "$db" ] || migrate_database "$db"
     done <<<"$databases"
     as_postgres pg_ctl -D "$DATA_DIR" -w -m fast stop >/dev/null
     if [ -n "$update_failed" ]; then
-        printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: ALTER EXTENSION timescaledb UPDATE failed; the server would fail every statement in these databases:" "$update_failed" >&2
+        printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: the first start on this image could not bring these databases up to it, so the server was not started; every step is idempotent and the next start retries them all:" "$update_failed" >&2
         exit 1
     fi
-    # shellcheck disable=SC2016 # $1/$2 are the inner sh's arguments
-    as_postgres sh -c 'printf "%s\n" "$1" > "$2" && rm -rf "$3"' sh "$timescaledb_version" "$TIMESCALEDB_MARKER" "$update_dir"
-    echo "[POSTGRES] [AUTO-CONFIG] timescaledb: every database is on the image's ${timescaledb_version}"
+    # shellcheck disable=SC2016 # $1/$2/$3 are the inner sh's arguments
+    as_postgres sh -c 'printf "%s\n" "$1" > "$2" && rm -rf "$3"' sh "$image_key" "$IMAGE_MIGRATED_FILE" "$update_dir"
+    echo "[POSTGRES] [AUTO-CONFIG] data directory brought up to this image: TimescaleDB ${timescaledb_version:-absent}, en_US collation versions current"
 fi
 
 # Keep the superuser password out of the server's environment. Upstream file_env exports POSTGRES_PASSWORD (or the

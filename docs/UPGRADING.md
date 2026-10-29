@@ -198,6 +198,13 @@ A newer image starts on your existing data volume, but extension upgrades inside
 
    Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). TimescaleDB is not in that list: the image ships only its own TimescaleDB library, so at the first start after an image upgrade the entrypoint updates it in every database before accepting connections, and stops naming the database if an update fails.
 
+   The same first start records the new glibc version for databases sorting by `en_US.utf8` when the old and new glibc are known to sort it identically. If the log names a database whose libc collation may sort differently, its text indexes may be out of order. Rebuild them, then record the new version (in each such database; a database refusing connections, such as `template1`, needs only the second statement, run from another database):
+
+   ```sql
+   REINDEX DATABASE CONCURRENTLY mydb;        -- every index; or REINDEX INDEX CONCURRENTLY … per text index
+   ALTER DATABASE mydb REFRESH COLLATION VERSION;
+   ```
+
 3. pgflow keeps its schema version until you run `docker exec <container> pgflow-upgrade` (see [PGFLOW.md](PGFLOW.md)).
 4. If the log warns that pgsodium uses the published key, rotate it: [PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#rotating-the-published-key).
 

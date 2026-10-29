@@ -274,19 +274,40 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     }
   });
 
-  await test("the release's TimescaleDB is updated to the image's once, before clients connect", async () => {
-    // The image ships only its own timescaledb-<version>.so; a database left on the release's version fails every
-    // statement. The marker is what skips the update on later starts.
-    const [installed, shipped, marker] = (
+  await test("the first start brings the release's data directory up to the image, before clients connect", async () => {
+    // The image ships only its own timescaledb-<version>.so, so a database left on the release's version fails every
+    // statement; a stale glibc collation version makes every connection warn and CREATE DATABASE refuse template1
+    // (which the release made unconnectable, so only a refresh from another database reaches it).
+    const state = (
       await psql(
         container,
-        "SELECT extversion, default_version, pg_read_file('aza-pg-timescaledb-version') FROM pg_available_extensions JOIN pg_extension ON extname = name WHERE name = 'timescaledb'"
+        `SELECT (SELECT extversion = default_version FROM pg_available_extensions JOIN pg_extension ON extname = name WHERE name = 'timescaledb')
+           || '|' || coalesce((SELECT string_agg(datname, ',' ORDER BY datname) FROM pg_database WHERE datcollversion <> pg_database_collation_actual_version(oid)), '');
+         CREATE DATABASE aza_after_upgrade; DROP DATABASE aza_after_upgrade;`
       )
-    )
-      .trim()
-      .split("|");
-    if (installed !== shipped || marker?.trim() !== shipped) {
-      throw new Error(`installed ${installed}, shipped ${shipped}, marker ${marker}`);
+    ).trim();
+    if (state !== "true|") throw new Error(`timescaledb current, then stale databases: "${state}"`);
+  });
+
+  await test("a libc collation version not measured to sort the same stops the first start", async () => {
+    // Refreshing it would leave text indexes possibly out of order with no sign; the refresh must be refused instead.
+    // A volume, not tmpfs: the data directory must survive the restart. The marker removal stands in for a new image.
+    const name = `${RUN_ID}-glibc`;
+    const volume = `${RUN_ID}-vol-glibc`;
+    volumes.add(volume);
+    await start(name, IMAGE, volume);
+    await psql(
+      name,
+      `CREATE DATABASE aza_glibc TEMPLATE template0 LOCALE_PROVIDER libc LOCALE 'en_US.utf8';
+       UPDATE pg_database SET datcollversion = '2.40' WHERE datname = 'aza_glibc';`
+    );
+    await must(["exec", name, "rm", "-f", "/var/lib/postgresql/18/docker/aza-pg-image"]);
+    await must(["restart", name]);
+    const exited = (await must(["wait", name])).trim();
+    const logs = await docker(["logs", "--since", "10s", name]);
+    await remove(name);
+    if (exited === "0" || !/aza_glibc.*glibc 2\.40 then/.test(logs.err)) {
+      throw new Error(`exit ${exited}; log:\n${logs.err.slice(-1500)}`);
     }
   });
 

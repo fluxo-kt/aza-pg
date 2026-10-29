@@ -20,7 +20,7 @@ Work:
 - Replace every script the image runs with one Rust binary of ours, as Karakuri does: subcommands for the entrypoint (auto-config, then the upstream `docker-entrypoint.sh` flow: initdb, `POSTGRES_*` variables, init files), the healthcheck, `pgsodium_getkey`, `pgflow-upgrade`, the `pg_repack` wrapper and the shipped init scripts. One static, optimised executable brings no runtime, and its logic gets unit tests that shell cannot have. bash, coreutils, grep, sed, gawk, findutils, diffutils, getent and su-exec then leave the image. Open before the rewrite: operators' own `*.sh` files in `/docker-entrypoint-initdb.d` need a shell; decide whether the image keeps one for them.
 - Drop PGroonga tokenizer data (kytea, mecab dictionary) unless a shipped feature needs it.
 - Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
-- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; say so in the CHANGELOG under Breaking. Clusters created with the builtin collation (the default for new clusters) are unaffected.
+- Add `flake.lock` to `/update`. A nixpkgs bump that changes glibc makes every existing en_US cluster stop at its first start (the entrypoint's `EN_US_SAME_ORDER_GLIBC`) until the new version is measured to sort en_US.utf8 like the listed ones and added; the measurement (every code point plus two-character pairs, md5 of the order) takes minutes, so it belongs in the update round, not in a test lane.
 - Judge each CVE finding instead of uploading every scanner hit (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
 
 ## Medium

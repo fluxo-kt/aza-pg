@@ -54,7 +54,10 @@
           #   perl, python, tcl  build PL languages the image does not ship (their outputs never reach it)
           # JIT is on: measured 3.9x on a 5M-row GROUP BY with five aggregates and 1.8x on a filtered count, single
           # worker; TimescaleDB-style aggregation is this image's workload.
+          # Newest stable LLVM, not the release nixpkgs pins PostgreSQL to: we own its updates.
+          llvmPackages = pkgs.llvmPackages_latest;
           postgresql = pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
+            inherit llvmPackages;
             jitSupport = true;
             systemdSupport = false;
             pamSupport = false;
@@ -67,7 +70,19 @@
             tclSupport = false;
           };
           extensions = import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs; inherit (pkgs) lib; };
-          server = postgresql.withPackages (_: builtins.attrValues extensions);
+          # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
+          # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
+          # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.
+          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf ]; } ''
+            cp -r --no-preserve=mode ${postgresql.jit} $out
+            mkdir -p $out/llvm
+            cp -L ${llvmPackages.llvm.lib}/lib/libLLVM.so.* $out/llvm/
+            for f in $out/lib/llvmjit.so $out/llvm/libLLVM.so.*; do
+              patchelf --set-rpath "$(patchelf --print-rpath "$f" | sed "s|${llvmPackages.llvm.lib}/lib|$out/llvm|g")" "$f"
+            done
+            if grep -rlF ${builtins.baseNameOf llvmPackages.llvm.lib} $out; then echo "llvm lib output still referenced"; exit 1; fi
+          '';
+          server = postgresql.withPackages (_: [ jit ] ++ builtins.attrValues extensions);
         in
         {
           inherit extensions;

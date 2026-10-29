@@ -69,7 +69,11 @@
             pythonSupport = false;
             tclSupport = false;
           };
-          extensions = import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs; inherit (pkgs) lib; };
+          # The manifest's pgVersion names the release (tags, labels, PG_VERSION); the server is nixpkgs'. A nixpkgs bump
+          # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
+          extensions = assert postgresql.version == manifest.metadata.pgVersion
+            || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
+            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs; inherit (pkgs) lib; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
           # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.
@@ -82,7 +86,11 @@
             done
             if grep -rlF ${builtins.baseNameOf llvmPackages.llvm.lib} $out; then echo "llvm lib output still referenced"; exit 1; fi
           '';
-          server = postgresql.withPackages (_: [ jit ] ++ builtins.attrValues extensions);
+          # withPackages also links postgresql.man for desktop installs; a container has no man reader. The env is
+          # symlinks, so dropping the link drops the store reference (buildEnv keeps `paths` out of overrideAttrs' reach).
+          server = (postgresql.withPackages (_: [ jit ] ++ builtins.attrValues extensions)).overrideAttrs (o: {
+            postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";
+          });
         in
         {
           inherit extensions;
@@ -90,6 +98,7 @@
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
           image = import ./nix/image.nix {
             inherit pkgs manifest;
+            source = inputs.self;
             inherit (pkgs) lib;
             postgresql = server;
             upstreamEntrypoint = "${inputs.docker-library-postgres}/${nixpkgs.lib.versions.major manifest.metadata.pgVersion}/trixie/docker-entrypoint.sh";

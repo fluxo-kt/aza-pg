@@ -14,7 +14,7 @@
 #   su-exec (as gosu)     `--user root`: upstream and ours drop to postgres with `gosu postgres`
 #   cacert                pg_net and http make HTTPS requests
 #   locales               lc_monetary/lc_numeric/lc_time per session (MANIFEST_METADATA.locales)
-{ pkgs, lib, postgresql, manifest, upstreamEntrypoint }:
+{ pkgs, lib, postgresql, manifest, upstreamEntrypoint, source }:
 let
   meta = manifest.metadata;
   pgMajor = lib.versions.major meta.pgVersion;
@@ -168,6 +168,13 @@ pkgs.dockerTools.streamLayeredImage {
       "org.opencontainers.image.vendor" = "fluxo-kt";
       "org.opencontainers.image.title" = "aza-pg PostgreSQL ${meta.pgVersion}";
       "org.opencontainers.image.version" = meta.pgVersion;
+      "org.opencontainers.image.description" = "PostgreSQL ${meta.pgVersion} with curated extension bundle (vector, time-series, search, security, ops)";
+      # From the flake's git metadata, not the build clock, so the same commit builds the same image. A dirty tree
+      # has no rev: such a build is never a release.
+      "org.opencontainers.image.revision" = source.rev or source.dirtyRev or "unknown";
+      "org.opencontainers.image.created" =
+        let d = source.lastModifiedDate; s = lib.substring; in
+        "${s 0 4 d}-${s 4 2 d}-${s 6 2 d}T${s 8 2 d}:${s 10 2 d}:${s 12 2 d}Z";
     };
   };
 }

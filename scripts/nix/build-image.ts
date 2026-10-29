@@ -3,10 +3,13 @@
  * Builds the Nix image and loads it into the host's Docker: `bun scripts/nix/build-image.ts [--tag <ref>]`.
  *
  * flake.nix's `image` is a script that streams the image tarball (dockerTools.streamLayeredImage), so no tarball is
- * ever written to the store or the disk: the script runs in a container on the same store volume, its stdout piped
+ * ever written to the store or the disk: the script runs where nix.ts runs Nix (natively or in its container), its stdout piped
  * straight into `docker load`. The default tag is aza-pg:pg<major>-nix, beside the Debian image's aza-pg:pg<major>;
  * --tag retags it after loading.
  */
+
+import path from "node:path";
+import { nixCommand, nixPlatform } from "./nix";
 
 const tagIndex = Bun.argv.indexOf("--tag");
 const retag = tagIndex === -1 ? undefined : Bun.argv[tagIndex + 1];
@@ -14,14 +17,12 @@ if (tagIndex !== -1 && !retag) {
   console.error("Usage: bun scripts/nix/build-image.ts [--tag <image-ref>]");
   process.exit(64);
 }
-const nix = ["bun", `${import.meta.dir}/nix.ts`];
-const system = (Bun.env.NIX_PLATFORM ?? `linux/${process.arch}`).endsWith("arm64")
-  ? "aarch64-linux"
-  : "x86_64-linux";
+const system = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
 
 const build = Bun.spawn(
-  [...nix, "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"],
+  nixCommand(["nix", "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"]),
   {
+    cwd: path.resolve(import.meta.dir, "../.."),
     stdout: "pipe",
     stderr: "inherit",
   }
@@ -33,21 +34,8 @@ if (buildExit !== 0 || !streamScript.startsWith("/nix/store/")) {
   process.exit(buildExit || 1);
 }
 
-// The stream script is self-contained (its interpreter and inputs are store paths), so any container with the
-// store volume mounted can run it; nix.ts only runs `nix`, hence this direct docker run.
-const stream = Bun.spawn(
-  [
-    "docker",
-    "run",
-    "--rm",
-    "-i",
-    "-v",
-    `aza-pg-nix-${system.startsWith("aarch64") ? "arm64" : "amd64"}:/nix`,
-    "nixos/nix:latest",
-    streamScript,
-  ],
-  { stdout: "pipe", stderr: "inherit" }
-);
+// The stream script is self-contained (its interpreter and inputs are store paths): it runs wherever the store is.
+const stream = Bun.spawn(nixCommand([streamScript]), { stdout: "pipe", stderr: "inherit" });
 const load = Bun.spawn(["docker", "load"], {
   stdin: stream.stdout,
   stdout: "pipe",

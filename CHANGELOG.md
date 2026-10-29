@@ -20,6 +20,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Removed
 
+- **`/IMAGE-CONTENTS.txt` and `/etc/postgresql/version-info.json`**: `/etc/postgresql/version-info.txt` now holds that same contents listing. Its "preloaded modules" list was wrong before, naming optional libraries (`pg_plan_filter`, `pg_partman`, `supautils`) that are off by default. Read versions programmatically from `/etc/postgresql/extensions.manifest.json`.
 - **Python 3.13, psycopg2 and pg_partman's helper scripts** (`check_unique_constraint.py`, `dump_partition.py`, `vacuum_maintenance.py`): the scripts were the only reason Python was in the image. If you use them, run them against the database from a machine with Python and psycopg2. pg_partman 5.5.0 and its `pg_partman_bgw` background worker are unchanged.
 
 ## [v18.6-202610291622] - 2026-10-29

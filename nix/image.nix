@@ -89,7 +89,9 @@ in
 pkgs.dockerTools.streamLayeredImage {
   name = "aza-pg";
   tag = "pg${pgMajor}-nix";
-  contents = [ postgresql files pkgs.cacert ] ++ tools;
+  # postgresql.pg_config reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
+  # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
+  contents = [ postgresql postgresql.pg_config files pkgs.cacert ] ++ tools;
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
   extraCommands = ''
     mkdir -p bin usr/bin tmp var/run/postgresql var/lib/postgresql backup
@@ -109,7 +111,7 @@ pkgs.dockerTools.streamLayeredImage {
     Cmd = [ "postgres" ];
     ExposedPorts."5432/tcp" = { };
     Env = [
-      "PATH=/usr/local/bin:${lib.makeBinPath ([ postgresql ] ++ tools)}"
+      "PATH=/usr/local/bin:${lib.makeBinPath ([ postgresql postgresql.pg_config ] ++ tools)}"
       "PG_MAJOR=${pgMajor}"
       "PG_VERSION=${meta.pgVersion}"
       "PGDATA=/var/lib/postgresql/${pgMajor}/docker"

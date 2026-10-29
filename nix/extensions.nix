@@ -119,5 +119,22 @@ let
 
   # SQL-only entries (pgflow) have neither a build nor a recipe; the image installs their files from the repo.
   built = builtins.filter (e: e ? build || (e ? nix && e.nix ? package)) enabled;
+
+  # Only the executables an entry names ship (nix.bin, else its binaryPath); the Debian build copies no bin/ at all,
+  # so anything else here would exist only in this image.
+  pruneBin = e: drv:
+    let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
+    in drv.overrideAttrs (old: {
+      postInstall = (old.postInstall or "") + ''
+        if [ -d "$out/bin" ]; then
+          for f in "$out"/bin/*; do
+            case " ${lib.concatStringsSep " " keep} " in *" $(basename "$f") "*) ;; *) rm -f "$f" ;; esac
+          done
+          rmdir --ignore-fail-on-non-empty "$out/bin"
+        fi
+      '';
+    });
 in
-lib.listToAttrs (map (e: lib.nameValuePair e.name (if e ? nix && e.nix ? package then fromNixpkgs e else generic e)) built)
+lib.listToAttrs (map
+  (e: lib.nameValuePair e.name (pruneBin e (if e ? nix && e.nix ? package then fromNixpkgs e else generic e)))
+  built)

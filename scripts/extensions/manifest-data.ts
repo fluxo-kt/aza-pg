@@ -260,9 +260,16 @@ export interface ManifestEntry {
    * `package`: attribute in nixpkgs' postgresql_<major>.pkgs (or top-level nixpkgs for a tool) whose build recipe is
    * reused with our source swapped in. Omitted: built from `build.type` with `inputs`, the nixpkgs attributes it
    * links (the Nix twin of aptPackages). `nativeInputs`: build-time tools, never in the image. `mesonFlags`: appended
-   * to the recipe's, last one winning.
+   * to the recipe's, last one winning. `bin`: the executables the entry ships (default: binaryPath's); the rest of
+   * its bin/ goes, as the Debian build copies none (pg_partman's Python helpers, PGroonga's systemd-timer scripts).
    */
-  nix?: { package?: string; inputs?: string[]; nativeInputs?: string[]; mesonFlags?: string[] };
+  nix?: {
+    package?: string;
+    inputs?: string[];
+    nativeInputs?: string[];
+    mesonFlags?: string[];
+    bin?: string[];
+  };
   enabled?: boolean;
   disabledReason?: string;
   /**
@@ -962,7 +969,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_repack",
-    nix: { package: "pg_repack" },
+    // The client the pg_repack wrapper (docker/postgres/pg_repack-wrapper.sh) runs.
+    nix: { package: "pg_repack", bin: ["pg_repack"] },
     kind: "extension",
     install_via: "pgdg",
     pgdgPackage: "repack",

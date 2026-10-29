@@ -145,6 +145,7 @@ export const ManifestEntrySchema = type({
     "inputs?": "string[]",
     "nativeInputs?": "string[]",
     "mesonFlags?": "string[]",
+    "bin?": "string[]",
   },
   "enabled?": "boolean",
 });

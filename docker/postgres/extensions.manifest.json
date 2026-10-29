@@ -373,7 +373,10 @@
     {
       "name": "pg_repack",
       "nix": {
-        "package": "pg_repack"
+        "package": "pg_repack",
+        "bin": [
+          "pg_repack"
+        ]
       },
       "kind": "extension",
       "install_via": "pgdg",

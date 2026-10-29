@@ -543,6 +543,7 @@ DATA_DIR="${PGDATA:-}"
 OPERATOR_CONFIG=""
 declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
 OPERATOR_ARGS=()
+STARTS_SERVER=true # false for postgres options that print and exit (upstream's _pg_want_help list, plus -C)
 while [ "$#" -gt 0 ]; do
     arg="$1"
     shift
@@ -550,6 +551,7 @@ while [ "$#" -gt 0 ]; do
         -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
         -c*) pair="${arg#-c}" ;;
         --*=*) pair="${arg#--}" ;;
+        -C* | -'?' | --help | --describe-config | -V | --version) STARTS_SERVER=false; OPERATOR_ARGS+=("$arg"); continue ;;
         -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
         *) OPERATOR_ARGS+=("$arg"); continue ;;
     esac
@@ -731,6 +733,49 @@ if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; 
             RAISE_ARGS+=(-c "${name}=${primary}")
         fi
     done
+fi
+
+# TimescaleDB's loader opens the library of each database's INSTALLED version (timescaledb-<version>.so), and the image
+# ships only its own version, so a database still on an older one fails every statement except
+# `ALTER EXTENSION timescaledb UPDATE`, background workers included. That statement is therefore run in every database,
+# before the server serves clients, whenever the version recorded in the data directory is not the shipped one: once
+# per image upgrade, no cost on other starts. A private socket and a trust-only hba_file keep clients out and need no
+# password whatever pg_hba.conf says. Standbys get the update through WAL from their primary; a restore applies it on
+# the next start once it has finished. The update needs timescaledb preloaded, hence the image's config file.
+# Connections go to database postgres, as pgflow-upgrade's do: template1 can refuse them. Warnings are suppressed (every
+# database initdb'd on another glibc warns of its collation version), and VERBOSITY=sqlstate makes "not installed in
+# this database" (42704) exact.
+TIMESCALEDB_MARKER="${DATA_DIR}/aza-pg-timescaledb-version"
+timescaledb_version=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" "${PG_SHAREDIR}/extension/timescaledb.control" 2>/dev/null || true)
+timescaledb_update() {
+    local out
+    out=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -q -h "$update_dir" -d "$1" -v VERBOSITY=sqlstate \
+        -c "ALTER EXTENSION timescaledb UPDATE" 2>&1) || [ "$out" = "ERROR:  42704" ] || update_failed+="${1}: ${out}"$'\n'
+}
+if [ "$STARTS_SERVER" = true ] && [ -n "$timescaledb_version" ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
+    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$TIMESCALEDB_MARKER" 2>/dev/null)" != "$timescaledb_version" ]; then
+    update_dir=$(as_postgres mktemp -d)
+    # shellcheck disable=SC2016 # $1 is the inner sh's argument
+    as_postgres sh -c 'printf "local all all trust\n" > "$1/pg_hba.conf"' sh "$update_dir"
+    as_postgres pg_ctl -D "$DATA_DIR" -w -l "${update_dir}/server.log" -o "-c config_file=${AUTO_CONFIG_FILE} -c listen_addresses= -c unix_socket_directories=${update_dir} -c hba_file=${update_dir}/pg_hba.conf" start >/dev/null ||
+        { cat "${update_dir}/server.log" >&2; exit 1; }
+    update_failed=""
+    # postgres first: until then an older timescaledb there fails the listing too. A command substitution, not
+    # `< <(…)`: a failed listing must stop the container, never read as "no databases".
+    timescaledb_update postgres
+    databases=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -h "$update_dir" -d postgres -tA \
+        -c "SELECT datname FROM pg_database WHERE datallowconn AND datname <> 'postgres'")
+    while IFS= read -r db; do
+        [ -z "$db" ] || timescaledb_update "$db"
+    done <<<"$databases"
+    as_postgres pg_ctl -D "$DATA_DIR" -w -m fast stop >/dev/null
+    if [ -n "$update_failed" ]; then
+        printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: ALTER EXTENSION timescaledb UPDATE failed; the server would fail every statement in these databases:" "$update_failed" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC2016 # $1/$2 are the inner sh's arguments
+    as_postgres sh -c 'printf "%s\n" "$1" > "$2" && rm -rf "$3"' sh "$timescaledb_version" "$TIMESCALEDB_MARKER" "$update_dir"
+    echo "[POSTGRES] [AUTO-CONFIG] timescaledb: every database is on the image's ${timescaledb_version}"
 fi
 
 # Keep the superuser password out of the server's environment. Upstream file_env exports POSTGRES_PASSWORD (or the

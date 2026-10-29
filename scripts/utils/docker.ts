@@ -175,14 +175,15 @@ export interface WaitForPostgresOptions {
   container?: string;
 }
 
-async function dockerText(args: string[]): Promise<{ code: number; text: string }> {
+/** `text` joins both streams (docker logs splits the container's across them); `out` is stdout alone. */
+async function dockerText(args: string[]): Promise<{ code: number; text: string; out: string }> {
   const proc = spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" });
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  return { code, text: out + err };
+  return { code, text: out + err, out };
 }
 
 /**
@@ -225,7 +226,8 @@ async function waitForContainerPostgres(
         "-tAc",
         "SELECT 1",
       ]);
-      if (probe.code === 0 && probe.text.trim() === "1") {
+      // stdout only: a server warning (e.g. a collation version mismatch after a glibc change) goes to stderr.
+      if (probe.code === 0 && probe.out.trim() === "1") {
         success(`PostgreSQL in ${container} is ready`);
         return;
       }

@@ -274,6 +274,22 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     }
   });
 
+  await test("the release's TimescaleDB is updated to the image's once, before clients connect", async () => {
+    // The image ships only its own timescaledb-<version>.so; a database left on the release's version fails every
+    // statement. The marker is what skips the update on later starts.
+    const [installed, shipped, marker] = (
+      await psql(
+        container,
+        "SELECT extversion, default_version, pg_read_file('aza-pg-timescaledb-version') FROM pg_available_extensions JOIN pg_extension ON extname = name WHERE name = 'timescaledb'"
+      )
+    )
+      .trim()
+      .split("|");
+    if (installed !== shipped || marker?.trim() !== shipped) {
+      throw new Error(`installed ${installed}, shipped ${shipped}, marker ${marker}`);
+    }
+  });
+
   await test("a failing migration rolls the whole database back", async () => {
     const lastMigration = (
       await must(["exec", container, "tail", "-n", "1", `${UPGRADE_DIR}/versions.tsv`])
@@ -281,7 +297,7 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
       .trim()
       .split("\t")[1];
     const file = `${UPGRADE_DIR}/migrations/${lastMigration}`;
-    const sum = `find ${UPGRADE_DIR} -type f -exec md5sum {} + | sort`;
+    const sum = `find -L ${UPGRADE_DIR} -type f -exec md5sum {} + | sort`;
     const original = await must(["exec", "-u", "root", container, "sh", "-c", sum]);
     // Earlier migrations of the same run have already applied when this statement fails.
     await must([
@@ -291,7 +307,7 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
       container,
       "sh",
       "-c",
-      `cp -a ${UPGRADE_DIR} /tmp/upgrade.orig && echo 'SELECT 1/0;' >> ${file}`,
+      `cp -RLp ${UPGRADE_DIR} /tmp/upgrade.orig && echo 'SELECT 1/0;' >> ${file}`,
     ]);
     try {
       const r = await upgrade(container);

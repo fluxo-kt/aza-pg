@@ -196,7 +196,7 @@ A newer image starts on your existing data volume, but extension upgrades inside
    WHERE e.extversion <> a.default_version;
    ```
 
-   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). Update TimescaleDB first, as the first statement of a new session, because its loader must not have loaded the old library: `psql -X -c "ALTER EXTENSION timescaledb UPDATE;"`.
+   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). TimescaleDB is not in that list: the image ships only its own TimescaleDB library, so at the first start after an image upgrade the entrypoint updates it in every database before accepting connections, and stops naming the database if an update fails.
 
 3. pgflow keeps its schema version until you run `docker exec <container> pgflow-upgrade` (see [PGFLOW.md](PGFLOW.md)).
 4. If the log warns that pgsodium uses the published key, rotate it: [PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#rotating-the-published-key).

@@ -106,6 +106,8 @@ pkgs.dockerTools.streamLayeredImage {
     # and operators use /var/run/postgresql.
     mkdir -p bin usr/bin tmp run/postgresql var/lib/postgresql backup ${lib.escapeShellArgs relative}
     ln -s ../run var/run
+    # initdb names the zone it finds here in each new postgresql.conf (log_timezone, timezone): Etc/UTC, as on Debian.
+    mkdir -p etc && ln -s ${pkgs.tzdata}/share/zoneinfo/Etc/UTC etc/localtime
     ln -sf ${pkgs.uutils-coreutils-noprefix}/bin/env usr/bin/env
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh

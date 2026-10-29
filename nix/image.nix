@@ -4,7 +4,9 @@
 #
 # Runtime userland, each with what needs it; a tool nothing here names has no job in the image:
 #   bash                  docker-auto-config-entrypoint.sh, upstream docker-entrypoint.sh, init scripts
-#   uutils coreutils      cat/chmod/cut/env/id/mktemp/nproc/od/seq/sort/tr…; Rust drop-in for GNU coreutils
+#   coreutils             cat/chmod/cut/env/id/mktemp/nproc/od/seq/sort/tr…. GNU, not uutils: findutils' xargs and
+#                         diffutils' diff hard-reference GNU coreutils, so uutils would ship a second copy; and the
+#                         upstream entrypoint is written against GNU behaviour, which uutils does not fully match
 #   gnugrep gnused gawk   entrypoint parsing; no drop-in Rust replacements exist
 #   findutils             upstream entrypoint (find on PGDATA ownership), xargs in init scripts
 #   diffutils             cmp: is pgsodium_getkey the image's own (entrypoint)
@@ -102,7 +104,7 @@ let
 
   tools = [
     pkgs.bashNonInteractive
-    pkgs.uutils-coreutils-noprefix
+    pkgs.coreutils
     pkgs.gnugrep
     pkgs.gnused
     pkgs.gawk
@@ -128,7 +130,7 @@ pkgs.dockerTools.streamLayeredImage {
     ln -s ../run var/run
     # initdb names the zone it finds here in each new postgresql.conf (log_timezone, timezone): Etc/UTC, as on Debian.
     mkdir -p etc && ln -s ${pkgs.tzdata}/share/zoneinfo/Etc/UTC etc/localtime
-    ln -sf ${pkgs.uutils-coreutils-noprefix}/bin/env usr/bin/env
+    ln -sf ${pkgs.coreutils}/bin/env usr/bin/env
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/bash
     ln -sf ${pkgs.bashNonInteractive}/bin/bash bin/sh
     chmod 1777 tmp

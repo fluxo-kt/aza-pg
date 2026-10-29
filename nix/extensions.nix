@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest, inputs }:
+{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -79,10 +79,16 @@ let
     doCheck = false;
   } // lib.optionalAttrs ((e.build or { }) ? subdir) { buildAndTestSubdir = e.build.subdir; };
 
+  # Replace nixpkgs' default libraries in every recipe that takes them. libpq is the server's own, without nixpkgs'
+  # Kerberos and OAuth client. curl speaks HTTP(S) only: pg_net and http need nothing more, and each protocol left
+  # out (GSSAPI, SCP/SFTP, plus the HTTP/3, brotli and PSL that full curl adds) is parsing code reachable from SQL.
+  libraries = { libpq = postgresql; curl = pkgs.curlMinimal.override { gssSupport = false; scpSupport = false; }; };
+
   fromNixpkgs = e:
     let
       src = sourceOf e;
-      base = ps.${e.nix.package} or pkgs.${e.nix.package};
+      recipe = ps.${e.nix.package} or pkgs.${e.nix.package};
+      base = recipe.override (lib.intersectAttrs (lib.functionArgs recipe.override) libraries);
     in
     base.overrideAttrs (old: {
       version = versionOf e;
@@ -121,10 +127,12 @@ let
   built = builtins.filter (e: e ? build || (e ? nix && e.nix ? package)) enabled;
 
   # Only the executables an entry names ship (nix.bin, else its binaryPath): nothing calls the rest, and they pull in
-  # interpreters (pg_partman's Python helpers).
+  # interpreters (pg_partman's Python helpers). Every entry also passes here, so it takes the server's extra
+  # hardening (flake.nix) too.
   pruneBin = e: drv:
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
+      hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
       postInstall = (old.postInstall or "") + ''
         if [ -d "$out/bin" ]; then
           for f in "$out"/bin/*; do

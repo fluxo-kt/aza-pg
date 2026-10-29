@@ -59,7 +59,14 @@
           # worker; TimescaleDB-style aggregation is this image's workload.
           # Newest stable LLVM, not the release nixpkgs pins PostgreSQL to: we own its updates.
           llvmPackages = pkgs.llvmPackages_latest;
-          postgresql = pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
+          # Added to nixpkgs' default hardening (fortify3, stack protector and clash protection, RELRO/BIND_NOW, PIE)
+          # for the server and every extension's C code, which parse untrusted SQL and wire input. pacret signs return
+          # addresses on arm64 CPUs with pointer authentication (Graviton 3+), as Debian's builds did; elsewhere its
+          # instructions are no-ops. Left out: shadowstack and BTI enforce nothing unless every loaded object carries
+          # them, and nixpkgs' glibc and OpenSSL do not. Both are rebuilt from source anyway, so this costs no rebuild of
+          # its own.
+          hardeningEnable = [ "pacret" ];
+          postgresql = (pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
             inherit llvmPackages;
             jitSupport = true;
             systemdSupport = false;
@@ -71,12 +78,12 @@
             perlSupport = false;
             pythonSupport = false;
             tclSupport = false;
-          };
+          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; });
           # The manifest's pgVersion names the release (tags, labels, PG_VERSION); the server is nixpkgs'. A nixpkgs bump
           # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
           extensions = assert postgresql.version == manifest.metadata.pgVersion
             || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
-            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs; inherit (pkgs) lib; };
+            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable; inherit (pkgs) lib; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
           # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.

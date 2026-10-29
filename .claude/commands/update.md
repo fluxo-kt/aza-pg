@@ -19,13 +19,13 @@ OPTIONAL ADDITIONAL NOTES FROM USER: $ARGUMENTS
 
 ## Pre-Flight: Docker Availability Check (FIRST)
 
-Before launching any parallel checks, confirm Docker is available. Docker-dependent checks (3, 8) cannot be deferred past the first commit if they fail here:
+Before launching Docker checks, confirm Docker is available. Keep unavailable runtime checks open; they block acceptance of the update, not preservation of finished local work:
 
 ```bash
-docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "⚠️ Docker OFFLINE — checks 3 and 8 are BLOCKED; they MUST complete before first commit"
+docker info >/dev/null 2>&1 && echo "Docker: OK" || echo "Docker offline: finish independent work; runtime verification remains open"
 ```
 
-If Docker is offline: run items 1, 2, 4, 5 (non-Docker), defer 3 and 8, but treat them as **BLOCKING** — no commit until they complete.
+If Docker is offline, finish independent discovery and focused commits. Restore Docker and complete every affected runtime check before presenting the update for acceptance.
 
 ## Pre-Flight: Detect Available Updates (RUN IN PARALLEL)
 
@@ -62,6 +62,7 @@ Check:
      is the **authoritative** PGDG drift detector — it queries apt-madison
      directly. ALWAYS run it in pre-flight and treat any reported version mismatch (including
      pure `-N` revision bumps for unchanged upstream versions) as mandatory update work.
+   - Compare compatible stable tags even when the latest-release endpoint succeeds: release metadata can lag a published tag or container image. Wrapper images can also appear without any matching Git tag: use the registry's complete compatible tag list, then run the pinned binary to verify its component version. A wrapper release name alone proves neither publication nor bundled contents.
 
 2. **Bun dependencies**:
 
@@ -206,10 +207,7 @@ existing code. Run `bun run validate` immediately and fix issues before proceedi
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
 
-**⚠️ OSV security scanner blocks install (no-TTY)**: the project pins `@bun-security-scanner/osv` in
-`bunfig.toml [install.security]`. When a newly-disclosed CVE lands on a (often transitive) dependency,
-`bun install`/`bun update` aborts with "Security warnings found. Cannot prompt for confirmation (no TTY)"
-and changes NOTHING (atomic — working tree stays clean). Do NOT bypass the scanner. The correct fix is
+**⚠️ OSV security scanner blocks install (no-TTY)**: read the scanner selected by `bunfig.toml [install.security]` and follow AGENTS.md's Bun OSV install gate; do not substitute another scanner or bypass it. Inspect the reported advisory and the working-tree diff after a failed install. The correct fix is
 to force the affected package to a patched version via a package.json `overrides` block, then re-install:
 ```jsonc
 "overrides": { "ws": "^8.20.1", "uuid": "^14.0.0" }  // pin transitive deps to patched versions
@@ -253,7 +251,7 @@ to the latest verified commit for each action's current tag.
 
 ```bash
 # Update all GitHub Actions SHA pins to latest
-actions-up --yes
+actions-up --yes --include-branches --prefer-tags
 ```
 
 This updates the `uses:` SHA in every workflow and composite action. It will report how many
@@ -318,10 +316,7 @@ actively misleading documentation.
 
 ### MANDATORY: Fix Branch-Pinned Reusable Workflow Refs
 
-**`actions-up` has a critical blind spot**: it cannot SHA-pin job-level `uses:` refs for reusable
-workflows (`uses: ORG/REPO/.github/workflows/FILE.yml@main`). It reports them as
-"Skipped N actions pinned to branches" and `--include-branches` does NOT fix them either —
-it only applies to step-level action refs.
+Use the installed `actions-up` to resolve action and reusable-workflow pins, including branches. Inspect its actual update and skip results; do not infer support from an older tool version. `--json` is for the dry-run report and cannot be combined with `--yes`.
 
 After `actions-up`, manually check for any remaining branch-pinned reusable workflow calls:
 
@@ -330,17 +325,7 @@ After `actions-up`, manually check for any remaining branch-pinned reusable work
 command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
 ```
 
-For each found: get the current HEAD SHA and pin it:
-
-```bash
-# Get current HEAD SHA of the branch
-git ls-remote https://github.com/ORG/REPO.git refs/heads/BRANCH
-
-# Then update the workflow file:
-# uses: ORG/REPO/.github/workflows/FILE.yml@BRANCH
-# →
-# uses: ORG/REPO/.github/workflows/FILE.yml@SHA # BRANCH
-```
+For each remaining branch reference, inspect the tool's skip reason and correct its invocation or integration. Every new or updated `uses:` SHA comes from `actions-up`; never resolve or type a replacement by hand.
 
 This is especially important for reusable workflows with broad permissions (`contents: write`,
 `packages: write`, etc.) — a compromised upstream branch would get those permissions on the
@@ -471,13 +456,15 @@ bun run test:all  # Verify runtime compatibility
 
 **Common dependency chains:**
 - `pgvector` → vectorscale
-- `pgsodium` → supabase_vault
+- Vault and pgsodium share the retained root-key getter; neither extension's key-format compatibility follows from a fresh-install pass.
 - `pgmq/pg_net/pg_cron/supabase_vault` → pgflow
 - `hypopg` → index_advisor
 - `postgis` → pgrouting
 - `timescaledb` → timescaledb_toolkit
 
 **If incompatible**: Skip update OR update both together in single commit.
+
+For encryption or key-loading changes, initialize the previous image with a disposable key and encrypted value, stop it, and open the same data with the candidate image and key. Check decryption before and after the documented SQL upgrade, plus restart/restore through the existing recovery suite. A fresh encrypted value cannot expose loss of access to old ciphertext.
 
 ### PGDG Extensions
 
@@ -685,7 +672,7 @@ These extensions use Rust pgrx framework for building PostgreSQL extensions in R
 
 ### 5.4: Disabling Unmaintained Extensions
 
-If an extension becomes incompatible (like `pg_plan_filter`):
+Incompatibility starts investigation, not permission to remove a shipped capability. Compare a compatible patched release, the existing source-build path and a narrow upstream patch first; retain the working pin when the newer release removes useful behavior. Ask the owner about unresolved capability loss before disabling it. For an approved removal:
 
 ```typescript
 {
@@ -738,7 +725,7 @@ docker buildx imagetools inspect ORG/REPO:TAG --format '{{json .Manifest.Digest}
 4. Run the stack suites (`bun scripts/test-all.ts --group stacks`); each exporter's `/metrics` must show
    `pg_up 1` / `pgbouncer_up 1`.
 
-## Phase 6: Add Tests for New Functionality
+## Phase 6: Verify Changed Consumer Contracts
 
 ### MANDATORY Pre-Test Checks
 
@@ -756,19 +743,19 @@ command grep -rn -E "postgresql/[0-9]+/lib" scripts/ | command grep -v "\.bun/"
 These WILL break tests if not updated alongside the extension — this is the #1 missed item in
 update rounds. Update any hardcoded version strings before running the test suite.
 
-For each extension with new features (from Phase 1 release notes): plan specific tests.
-New APIs, behavior changes — all need test coverage. **ALWAYS verify the actual SQL API** by
+For each changed extension, identify the material consumer failure that existing checks cannot expose. Add a test only when its additional evidence justifies its maintenance and normal-run cost; feature presence and facts already guaranteed by types do not earn tests. **ALWAYS verify the actual SQL API** by
 reading the extension's SQL files or docs before writing tests — planned API signatures are
 frequently wrong (extension may use different function names than expected).
 
-**REQUIRED** when upstream has breaking changes or significant new features.
+Breaking changes need consumer compatibility evidence; reuse the existing functional suite before adding another verifier.
+
+Prefer the shipped dependency's native configuration probe or validation command over replacing it with a stub. For startup scripts, exercise the real upstream entrypoint and process arguments: a replacement shell can accept a configuration production rejects, or fail because its copied function contract went stale.
 
 ### Test Creation Criteria
 
-- **API signature changed** → Add test verifying new signature works
-- **Behavior changed** → Add test verifying new behavior
-- **New feature added** → Add test if relevant to our use case
-- **Breaking change** → Update existing tests to match new behavior
+- **API or behavior changed** → Exercise affected real callers and failure paths; retain a regression only for a meaningful gap in existing guarantees.
+- **New feature added** → Test only a relevant consumer contract with a material failure to distinguish.
+- **Breaking change** → Preserve the promised behavior or document and verify the migration; changing expectations alone is not compatibility evidence.
 
 ### Where Tests Live
 
@@ -792,7 +779,7 @@ bun run validate
 bun run validate:all
 ```
 
-**Both must pass before any commit.** `bun run validate:all` catches shell script errors (shellcheck), Dockerfile issues (hadolint), and YAML syntax (yamllint) without building the image. Skipping `validate:all` in favour of just `validate` is NOT acceptable.
+Use affected checks for each focused commit, then run `validate:all` for the completed shell, YAML and Dockerfile changes. It catches ShellCheck, hadolint and yamllint defects that fast validation misses. Commit before long verification; a failed gate gets a follow-up repair commit.
 
 ## Phase 8: Build & Test (Intermediate Check)
 
@@ -817,12 +804,12 @@ image can build cleanly if `set -e` is bypassed by `|| true` patterns.
 
 Common causes:
 - Missing build dependencies → Add to `build.aptPackages` in manifest
-- Version incompatibility → Update pgrx fallback or disable extension
-- ABI break → Disable extension with `disabledReason`
+- Version incompatibility → Check the actual compiler/pgrx constraints and update compatible dependencies together
+- ABI break → Repair compatibility or retain the working pin; capability removal follows Phase 5.4
 
 Resolution options:
 1. Fix (add missing deps, update versions) → regenerate → rebuild
-2. Disable extension (set `enabled: false` + `disabledReason`)
+2. Retain the working pin with its concrete compatibility reason; escalate unresolved capability loss
 3. Patch build (add `build.patches` for sed fixes)
 
 ## Phase 9: Update CHANGELOG.md (Image Consumer Focus)
@@ -862,9 +849,9 @@ updated before proceeding to Phase 10/12. No exceptions.
 - Updated pgrx to 0.16.1, Rust to 1.88.0
 ```
 
-## Phase 9.5: Mandatory Adversarial Self-Audit (BEFORE EVERY COMMIT — NO EXCEPTIONS)
+## Phase 9.5: Review Each Focused Change Before Commit
 
-**This is a MANDATORY GATE before every commit — not a suggestion, not "when time permits", not something to do when the user asks.** If you are about to call `git commit`, stop and run through this checklist first. Adversarially assume you missed something.
+Review every changed hunk against the requested update and the consumer behavior it affects. Use the relevant checks below; reuse a passing result while its inputs remain unchanged. Preserve finished work in focused commits before long checks. Phase 12 verifies the final committed tree.
 
 **Pre-commit mechanical checklist** (run these commands, check the output):
 ```bash
@@ -881,7 +868,7 @@ command grep -rn -E 'includes\(|startsWith\(' scripts/ | command grep -E '[0-9]+
 command grep -rn "uses:.*\.yml@[a-zA-Z]" .github/workflows/ | command grep -v "@[0-9a-f]\{40\}"
 # (non-empty output = action required)
 
-# 5. Verify validate:all passes
+# 5. Run full static validation for the finished affected surface, not again for unchanged inputs
 bun run validate:all
 
 ```
@@ -977,9 +964,7 @@ After every update round, perform a mandatory self-reflection before closing out
 8. **Were stale prose version comments audited?** `actions-up` updates `uses:` line comments
    automatically — the risk is prose comments *elsewhere* in the file. See Phase 2.5 MANDATORY
    section for the exact grep command and what to look for.
-8a. **Were branch-pinned reusable workflow refs checked?** `actions-up` cannot SHA-pin job-level
-    `uses:` refs (`ORG/REPO/.github/workflows/FILE.yml@branch`). Run the mandatory grep from
-    Phase 2.5 to find any remaining branch-pinned reusable workflows and SHA-pin them manually.
+8a. **Were branch-pinned reusable workflow refs checked?** Run Phase 2.5's branch-reference search and inspect `actions-up`'s skips; obtain every replacement SHA through that tool.
 9. **Were third-party apt repos checked for dropped versions?** Percona (and Timescale) drop old
    package versions from their apt repos without warning. A removed pin makes `apt-get install` fail
    the build. **Always verify Percona and Timescale pinned versions still exist in the repo** before

@@ -416,7 +416,7 @@ Only works if history is perfectly linear (fast-forward). If the push to `main` 
 
 Interrupted before the commit: resume where it stopped; the staged squash is still valid (`git merge --squash` leaves no merge in progress).
 
-To stop instead, the agent does not discard anything (the Bash hook refuses `git checkout`, and discarding is Art's call): report the failure and ask Art to run `! git reset --hard HEAD && bun install`. Nothing else needs undoing: the preflight required a clean tree, so every change present came from the squash, and the squash staged its new files, which the reset removes too.
+To stop instead, report the failure and ask Art to run `! git reset --hard HEAD && bun install`: discarding work is his call, not the agent's. Nothing else needs undoing: the preflight required a clean tree, so every change present came from the squash, and the squash staged its new files, which the reset removes too.
 
 ---
 

@@ -6,18 +6,22 @@ Known defects and missing work, most severe first. Each entry says why it matter
 
 ### Build the final image with Nix, not Debian
 
-The image must hold only what PostgreSQL and our extensions need at runtime, at their latest patched versions, with no avoidable language runtime: the goals in Karakuri's `docs/architecture.md` ("Choose responsibilities independently"), which apply to container images. Debian cannot reach that: Perl stays for `debconf`/`adduser` and `postgresql-common`, and the package manager and base userland stay with it, so most code-scanning alerts are unfixed Debian CVEs in packages PostgreSQL never uses. Art chose Nix (2026-10-29); musl (Alpine) is out: its collations differ from glibc's. We own every component's update: no waiting on a distribution's fix or release cycle. A kept component lagging its upstream's patched release gets our own override from that upstream; a C library or tool gives way to a Rust (or Go) equivalent when that one is well maintained and widely used.
+Goal: the image holds only what PostgreSQL and our extensions need at runtime, each at its latest patched version, with no language runtime we can avoid. These are the goals in Karakuri's `docs/architecture.md` ("Choose responsibilities independently"); they cover container images too.
 
-Evidence (nixpkgs `31ecbac`, read 2026-10-29): `postgresql_18.withPackages` with the 19 of our components nixpkgs packages has a 69-path, 439 MiB runtime closure with no Perl or Python (Bash only); PGroonga's kytea and mecab dictionaries are 175 MiB of it. Karakuri measured nixpkgs security fixes a median of 1 day after Debian's (`docs/foundation-selection.md`).
+Why not Debian: it cannot get there. Perl stays because `debconf`, `adduser` and `postgresql-common` need it, and the package manager and base tools stay with them. Why not musl (Alpine): switching libc changes collations, and with them the sort order of existing text indexes.
+
+We own every component's updates instead of waiting for a distribution. When a kept component lags its upstream's patched release, we override it from that upstream. When a well-maintained, widely used Rust (or Go) tool does the same job as a C one, we take the Rust one.
+
+Evidence (nixpkgs `31ecbac`, read 2026-10-29): PostgreSQL 18 built with the 19 of our components that nixpkgs already packages has a runtime closure of 69 store paths and 439 MiB, with no Perl or Python; Bash is the only interpreter. PGroonga's tokenizer data (kytea, mecab dictionary) is 175 MiB of that. Karakuri measured nixpkgs security fixes a median of 1 day after Debian's (`docs/foundation-selection.md`).
 
 Work:
 
-- Package what nixpkgs lacks: index_advisor, supautils, wrappers, supabase_vault, pg_jsonschema, pg_hashids, pgflow, pg_stat_monitor, pg_plan_filter, set_user; TimescaleDB's TSL edition (nixpkgs' free attribute is the Apache edition); override versions nixpkgs trails. `manifest-data.ts` stays the one source of versions.
-- Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version (newer nixpkgs or our own override where nixpkgs lags); prefer a well-maintained memory-safe equivalent where one exists. The kernel comes from the host, so this covers userland only.
+- Package what nixpkgs lacks: index_advisor, supautils, wrappers, supabase_vault, pg_jsonschema, pg_hashids, pgflow, pg_stat_monitor, pg_plan_filter, set_user; TimescaleDB's TSL edition (nixpkgs' free attribute is the Apache edition); override versions nixpkgs trails. Versions keep coming from `manifest-data.ts`: generate the Nix expression from it, as the Dockerfile is generated today.
+- Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version. The kernel comes from the host, so this covers userland only.
 - Drop from the image what has no runtime job: pgbadger (Perl; operators run it on exported logs), PGroonga tokenizer data unless a shipped feature needs it, su-exec (run as uid 999).
 - Keep the Debian image publishing until the Nix image passes every suite; then switch `publish.yml` and delete the Debian path.
-- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; the CHANGELOG entry states it. Weigh ICU as the default collation provider for new clusters so later glibc moves cannot do this again.
-- Replace Trivy's Debian noise with per-finding judgement (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
+- Breaking for existing databases: glibc 2.41 → 2.44 changes libc collations, so text indexes need `REINDEX` after the upgrade; say so in the CHANGELOG under Breaking. Weigh ICU as the default collation provider for new clusters so later glibc moves cannot do this again.
+- Judge each CVE finding instead of uploading every scanner hit (vulnix, as Karakuri does): fixed upstream ⇒ upgrade; not affected ⇒ whitelist with evidence; no fix ⇒ accept with an expiry date.
 
 ## Medium
 

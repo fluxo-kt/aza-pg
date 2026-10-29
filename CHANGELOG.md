@@ -12,7 +12,7 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Removed
 
-- **Python 3.13 and psycopg2**: pg_partman 5.5.0 is now built from source instead of the PGDG package, which depended on them only for its optional helper scripts. The image no longer contains Python or `check_unique_constraint.py`, `dump_partition.py` and `vacuum_maintenance.py`; run those from a machine with Python and psycopg2 against the database if you use them. The extension and its `pg_partman_bgw` background worker are unchanged.
+- **Python 3.13, psycopg2 and pg_partman's helper scripts** (`check_unique_constraint.py`, `dump_partition.py`, `vacuum_maintenance.py`): the scripts were the only reason Python was in the image. If you use them, run them against the database from a machine with Python and psycopg2. pg_partman 5.5.0 and its `pg_partman_bgw` background worker are unchanged.
 
 ## [v18.6-202610291622] - 2026-10-29
 

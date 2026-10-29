@@ -4,7 +4,7 @@
  *
  * Makes a commit whose tree IS the released tree, with dev's tip and the release tag as parents, and moves dev to it.
  * The next `git merge --squash refs/heads/dev` on release then carries only the work done after this release, and dev
- * holds every release-time edit (the dated CHANGELOG section, kaizen commits). `git merge --no-ff` would 3-way merge
+ * holds every release-time edit (the dated CHANGELOG section, commits made on release after the squash). `git merge --no-ff` would 3-way merge
  * and revert those edits; commit-tree forces the tree.
  *
  * Nothing here needs a person: the release is the v* tag on origin/release's tip (a re-tag or hand-pushed tag

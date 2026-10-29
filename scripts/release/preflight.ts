@@ -9,8 +9,8 @@
  *   moved after the anchor, and `git merge --squash` would re-apply or drop changes;
  * - dev has commits after that anchor.
  * Then prints what Phases 1–4 consume: the anchor, the dev tip for the Dev-Squash-Tip trailer, the work-commit range
- * and the deduplicated co-author trailers. Doing this in one process replaces hand-run pipelines that an output proxy
- * could truncate or rewrite without any error.
+ * and the deduplicated co-author trailers. One process computes them, so no shell pipeline or output proxy can
+ * silently truncate or rewrite a value.
  */
 
 import { git, isAncestor, stop } from "./git";

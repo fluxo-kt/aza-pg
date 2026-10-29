@@ -126,7 +126,7 @@ Check:
      echo 'deb [signed-by=/k/percona.asc] https://repo.percona.com/ppg-18/apt trixie main' > /etc/apt/sources.list.d/p.list &&
      echo 'deb [signed-by=/k/timescale.asc] https://packagecloud.io/timescale/timescaledb/debian/ trixie main' > /etc/apt/sources.list.d/t.list &&
      apt-get update -qq --error-on=any &&
-     apt-cache madison percona-pg-stat-monitor18 percona-postgresql-18-wal2json timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18
+     apt-cache madison percona-pg-stat-monitor18 timescaledb-2-postgresql-18 timescaledb-2-loader-postgresql-18 timescaledb-toolkit-postgresql-18
    " 2>&1 | command grep -E "percona-|timescaledb-|NO_PUBKEY|EXPKEYSIG|not signed|^E:"
    ```
    If a version is gone, update `perconaVersion` / `timescaleVersion` in `manifest-data.ts` to the new version

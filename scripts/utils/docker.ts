@@ -1,6 +1,5 @@
 /**
  * Docker utility functions for test scripts
- * Consolidated from scripts/lib/common.ts and scripts/utils/docker.ts
  *
  * This module provides both boolean-returning and exception-throwing variants:
  * - Boolean variants: Useful for conditional logic, return true/false

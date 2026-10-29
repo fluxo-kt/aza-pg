@@ -95,7 +95,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 **Version**: See `package.json` (`sql-formatter`, `squawk-cli`) + Bun-native linting
 **Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
-**Configuration**: `.sql-formatter.json`, `.squawk.toml` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
+**Configuration**: `.sql-formatter.json`, `.squawk.toml` + `scripts/check-sql.ts`
 **Usage**:
 
 - `bun run validate` - checks SQL formatting and runs both linters with the other fast checks
@@ -118,7 +118,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 - Expression width: 80 chars (optimized for readability)
 - Lines between queries: 2 (better visual separation)
 
-**Squawk Linting Rules** (`scripts/lint-sql-squawk.ts`, configured by `.squawk.toml`): Squawk's default rule set minus the rules that only matter for migrations on live databases (concurrent index creation/deletion, `prefer-bigint-over-int`, `constraint-missing-not-valid`, `require-timeout-settings`, `adding-foreign-key-constraint`). Init scripts run once on an empty database, so those rules only add noise; `.squawk.toml` gives the reason per rule.
+**Squawk Linting Rules** (run by `scripts/check-sql.ts`, configured by `.squawk.toml`): Squawk's default rule set minus the rules that only matter for migrations on live databases (concurrent index creation/deletion, `prefer-bigint-over-int`, `constraint-missing-not-valid`, `require-timeout-settings`, `adding-foreign-key-constraint`). Init scripts run once on an empty database, so those rules only add noise; `.squawk.toml` gives the reason per rule.
 
 **Custom Bun-Native Linting Rules** (`scripts/check-sql.ts` - Complementary Checks):
 
@@ -144,8 +144,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 3. **Validation**: Required check in `scripts/validate.ts` (fast mode)
 4. **Scripts**:
    - `scripts/format-sql.ts` - PostgreSQL formatter
-   - `scripts/check-sql.ts` - Custom validator + linter
-   - `scripts/lint-sql-squawk.ts` - Squawk PostgreSQL linter wrapper
+   - `scripts/check-sql.ts` - Custom validator + Squawk linter
 
 **Scope**: every `*.sql` in the repo. `format-sql.ts` and `check-sql.ts` skip `tests/regression/` (upstream test fixtures); `check-sql.ts` also skips the vendored `tests/fixtures/pgflow/`.
 

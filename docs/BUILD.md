@@ -70,31 +70,6 @@ GitHub Actions workflows handle automated builds:
 
 Runs on every push to main/dev/release and every PR: `bun run validate:all`, an amd64 image build, then one job per routine suite group (`bun scripts/test-all.ts --group <group>`).
 
-#### Manual Testing Workflow (build-postgres-image.yml)
-
-Use for developer testing and pre-release validation:
-
-```bash
-# Trigger manually via GitHub Actions UI or:
-gh workflow run build-postgres-image.yml
-
-# Versions come from scripts/extensions/manifest-data.ts; the only input is push_image:
-gh workflow run build-postgres-image.yml -r main -f push_image=true
-```
-
-**When to use:**
-
-- Testing extension version updates
-- Pre-release validation
-- Debug build issues
-- Manual QA before production release
-
-**Features (`push_image=true`; the default `false` builds amd64 only and loads it locally):**
-
-- Multi-platform builds (linux/amd64, linux/arm64)
-- SBOM generation
-- Pushes to the testing registry, then runs every routine suite group and a Trivy scan
-
 #### Production Releases (publish.yml)
 
 Runs when the `CI` workflow succeeds on the `release` branch (`workflow_run`):
@@ -199,13 +174,6 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 - **Native ARM64:** `ubuntu-24.04-arm` runner (NO QEMU during build)
 - **Parallel execution:** Both platforms build simultaneously
 
-**build-postgres-image.yml Architecture:**
-
-Adaptive multi-platform builds based on `push_image` input:
-
-- **When push_image=false (default):** Single-platform amd64, local build, no tests or scan
-- **When push_image=true:** Matrix builds with native ARM64, parallel execution, all routine suite groups (plus `extensions` on arm64) and a Trivy scan
-
 ### Technical Details
 
 **Matrix Strategy:**
@@ -239,7 +207,7 @@ cache-from: type=gha,scope=aza-pg-${{ matrix.artifact }}
 cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
 ```
 
-One scope per platform, shared by `publish.yml` and `build-postgres-image.yml`, so the two architectures never overwrite each other's layers.
+One scope per platform in `publish.yml`, so the two architectures never overwrite each other's layers.
 
 See workflow files in `.github/workflows/` for complete implementation details.
 

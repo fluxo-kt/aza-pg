@@ -140,7 +140,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 **Hooks**: bun-git-hooks — pre-commit auto-fixes + regenerates if manifest changed, then runs `bun run validate`; a failing check blocks the commit
 
-**CI**: `ci.yml` (PRs) | `build-postgres-image.yml` (manual) | `publish.yml` (releases, Cosign signing)
+**CI**: `ci.yml` (pushes, PRs) | `publish.yml` (releases: amd64+arm64 build, test gate, Cosign signing; a failed gate publishes nothing)
 
 **Tags**: `vMM.mm-TS` (e.g., `v18.1-202602082259`) — NO `latest` from dev builds
 

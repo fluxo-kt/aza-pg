@@ -268,7 +268,7 @@ async function buildImage(config: BuildConfig): Promise<void> {
     }
   } else {
     // CI: Use GitHub Actions cache with unified scope for cross-branch sharing
-    // Scope pattern: aza-pg-{platform} (matches build-postgres-image.yml and publish.yml)
+    // Scope pattern: aza-pg-{platform} (matches publish.yml)
     const platform = platforms.replace("linux/", "").replace(",", "-");
     const cacheScope = `aza-pg-${platform}`;
     console.log(`CI environment: Using GitHub Actions cache (scope=${cacheScope})`);

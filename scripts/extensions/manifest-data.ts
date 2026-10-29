@@ -27,6 +27,56 @@ export const MANIFEST_METADATA = {
   rustImageSha: "sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247",
   /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the builder's Bun; re-resolve on every Bun bump. */
   bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+  /**
+   * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
+   * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type; collation
+   * does not use them (new clusters use the builtin provider, ICU per column). All of glibc's locales take 223 MB;
+   * this list covers the widely used languages and currencies for a few MB. Add one here when a project formats in it.
+   */
+  locales: [
+    "en_US",
+    "en_GB",
+    "en_CA",
+    "en_AU",
+    "en_IN",
+    "de_DE",
+    "de_AT",
+    "de_CH",
+    "fr_FR",
+    "fr_CA",
+    "fr_CH",
+    "it_IT",
+    "es_ES",
+    "es_MX",
+    "es_AR",
+    "pt_PT",
+    "pt_BR",
+    "nl_NL",
+    "pl_PL",
+    "cs_CZ",
+    "sv_SE",
+    "da_DK",
+    "nb_NO",
+    "fi_FI",
+    "ru_RU",
+    "uk_UA",
+    "kk_KZ",
+    "be_BY",
+    "ka_GE",
+    "hy_AM",
+    "tr_TR",
+    "el_GR",
+    "he_IL",
+    "ar_AE",
+    "hi_IN",
+    "zh_CN",
+    "zh_TW",
+    "ja_JP",
+    "ko_KR",
+    "th_TH",
+    "vi_VN",
+    "id_ID",
+  ],
 } as const;
 
 /** A C library compiled from a release tarball because Debian trixie's package is too old. */

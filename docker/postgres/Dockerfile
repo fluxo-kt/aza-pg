@@ -260,6 +260,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/18/lib/bitcode && ldconfig && \
     install -d -o postgres -g postgres -m 0750 /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest
 
+# glibc locales sessions can switch lc_monetary/lc_numeric/lc_time to (list and reason: MANIFEST_METADATA.locales).
+# The base image compiles only en_US; localedef adds the rest to /usr/lib/locale/locale-archive.
+RUN set -euo pipefail && for l in en_US en_GB en_CA en_AU en_IN de_DE de_AT de_CH fr_FR fr_CA fr_CH it_IT es_ES es_MX es_AR pt_PT pt_BR nl_NL pl_PL cs_CZ sv_SE da_DK nb_NO fi_FI ru_RU uk_UA kk_KZ be_BY ka_GE hy_AM tr_TR el_GR he_IL ar_AE hi_IN zh_CN zh_TW ja_JP ko_KR th_TH vi_VN id_ID; do localedef -i "$l" -c -f UTF-8 -A /usr/share/locale/locale.alias "$l.UTF-8"; done
+
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
 # APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
 # by stale cross-stage COPY cache entries.

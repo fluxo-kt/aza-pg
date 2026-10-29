@@ -12,7 +12,11 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ### Breaking
 
-- **New clusters sort text by Unicode code point** (PostgreSQL's builtin `PG_UNICODE_FAST` collation, was glibc `en_US.utf8`). Existing data directories keep their collation. Now no glibc or ICU upgrade can change the sort order or force a `REINDEX`, and comparisons are faster. `ORDER BY` puts uppercase before lowercase (`'B' < 'a'`) and accented letters after `z`. Where people read the order, use ICU per column or query: `COLLATE "en-US-x-icu"`. To get the old default, pass `POSTGRES_INITDB_ARGS="--locale-provider=libc --locale=en_US.utf8"`. Your `POSTGRES_INITDB_ARGS` now override the image's initdb flags; before, the image's `--locale` overrode yours.
+- **New clusters sort text by Unicode code point** (PostgreSQL's builtin `PG_UNICODE_FAST` collation, was glibc `en_US.utf8`). Existing data directories keep their collation. Now no glibc or ICU upgrade can change the sort order or force a `REINDEX`, and comparisons are faster. `ORDER BY` puts uppercase before lowercase (`'B' < 'a'`) and accented letters after `z`. Where people read the order, use ICU per column or query: `COLLATE "en-US-x-icu"`. For language-aware sorting by default, pass `POSTGRES_INITDB_ARGS="--locale-provider=icu --icu-locale=en-US"`. Your `POSTGRES_INITDB_ARGS` now override the image's initdb flags; before, the image's `--locale` overrode yours.
+
+### Added
+
+- **Locales for number, currency and date formatting in 42 languages and regions**, among them `de_DE`, `fr_FR`, `ru_RU`, `uk_UA`, `pt_BR`, `ja_JP` and `zh_CN` (was `en_US` only). A session can `SET lc_monetary = 'de_DE.utf8'` (likewise `lc_numeric`, `lc_time`), and `to_char(1234.5, 'L9G999D99')` then prints `€ 1.234,50`. The server default stays `en_US.utf8`.
 
 ### Removed
 

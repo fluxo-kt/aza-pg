@@ -184,6 +184,10 @@ COPY --from=builder-cargo /opt/ext-out/ /
 # manifest-data.ts): the dynamic loader finds that directory only through its cache.
 RUN set -euo pipefail && rm -rf /usr/lib/postgresql/{{PG_MAJOR}}/lib/bitcode && ldconfig{{TOOLS_RUNTIME_SETUP}}
 
+# glibc locales sessions can switch lc_monetary/lc_numeric/lc_time to (list and reason: MANIFEST_METADATA.locales).
+# The base image compiles only en_US; localedef adds the rest to /usr/lib/locale/locale-archive.
+RUN set -euo pipefail && for l in {{LOCALES}}; do localedef -i "$l" -c -f UTF-8 -A /usr/share/locale/locale.alias "$l.UTF-8"; done
+
 # Replace gosu (Go binary CVE surface) with su-exec (pure C, no Go stdlib).
 # APPROACH: Self-contained final-stage compilation so the replacement layer cannot be bypassed
 # by stale cross-stage COPY cache entries.

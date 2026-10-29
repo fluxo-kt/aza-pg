@@ -48,6 +48,7 @@ const PHASES: Array<[string, Check[]]> = [
       lib.testPrecreatedExtensions,
       lib.testPostgresConfiguration,
       lib.testDefaultCollation,
+      lib.testLocales,
     ],
   ],
   ["Extension creation", [lib.testEnabledExtensions, lib.testDisabledExtensionsUnavailable]],

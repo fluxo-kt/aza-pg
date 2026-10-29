@@ -11,7 +11,7 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
 import type { ManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
 import type { TestResult } from "../utils/logger";
@@ -318,6 +318,27 @@ export function testDefaultCollation(container: string): Promise<TestResult> {
       `SELECT ('B' < 'a')::text || ' ' || ('a' < 'B' COLLATE "en-US-x-icu")::text || ' ' || upper('ß')`
     );
     expect(order === "true true SS", `code-point order, ICU order, case mapping = ${order}`);
+  });
+}
+
+/**
+ * Every locale in MANIFEST_METADATA.locales is installed: set_config raises "invalid value" for a missing one. The
+ * German sample proves the locale's data is used, not just accepted: euro sign, '.' thousands, ',' decimals.
+ */
+export function testLocales(container: string): Promise<TestResult> {
+  return check("glibc locales selectable (MANIFEST_METADATA.locales)", async () => {
+    const values = MANIFEST_METADATA.locales.map(
+      (l) => `set_config('lc_monetary', '${l}.utf8', false)`
+    );
+    await sqlOk(container, `SELECT ${values.join(", ")}`);
+    // One SELECT, so psql prints only its row (multi-statement input also prints each SET's tag). set_config is
+    // volatile, so the planner cannot flatten the subquery: it runs before to_char reads the locale.
+    const de = await sqlOk(
+      container,
+      "SELECT trim(to_char(1234.5, 'L9G999D99')) FROM (SELECT set_config('lc_monetary', 'de_DE.utf8', false), " +
+        "set_config('lc_numeric', 'de_DE.utf8', false)) AS s"
+    );
+    expect(de === "€ 1.234,50", `de_DE to_char = ${de}, expected € 1.234,50`);
   });
 }
 

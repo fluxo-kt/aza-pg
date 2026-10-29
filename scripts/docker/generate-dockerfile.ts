@@ -15,6 +15,7 @@
  * - {{PG_MAJOR}} - PostgreSQL major version (hardcoded, extracted from PG_VERSION, e.g., "18")
  * - {{PG_BASE_IMAGE_SHA}} - Base image SHA256 (hardcoded)
  * - {{RUST_TOOLCHAIN}} - Rust toolchain version (hardcoded)
+ * - {{LOCALES}} - glibc locales compiled into the image (MANIFEST_METADATA.locales)
  * - {{PGDG_PACKAGES_INSTALL}} - Dynamic PGDG package installation (hardcoded versions)
  *
  * Usage:
@@ -479,6 +480,7 @@ async function generateProductionDockerfile(manifest: Manifest, pgMajor: string)
   dockerfile = dockerfile.replace(/\{\{RUST_TOOLCHAIN\}\}/g, MANIFEST_METADATA.rustToolchain);
   dockerfile = dockerfile.replace(/\{\{RUST_IMAGE_SHA\}\}/g, MANIFEST_METADATA.rustImageSha);
   dockerfile = dockerfile.replace(/\{\{BUN_IMAGE_SHA\}\}/g, MANIFEST_METADATA.bunImageSha);
+  dockerfile = dockerfile.replace("{{LOCALES}}", MANIFEST_METADATA.locales.join(" "));
   // .tool-versions is the one Bun version for local runs, CI and this builder; bunImageSha must be re-resolved with it.
   const bunVersion = (await Bun.file(join(REPO_ROOT, ".tool-versions")).text()).match(
     /^bun (\S+)$/m

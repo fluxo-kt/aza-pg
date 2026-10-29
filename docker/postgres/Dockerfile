@@ -114,24 +114,6 @@ RUN set -euo pipefail && \
     rm -rf /opt/ext-out/usr/lib/postgresql/18/lib/bitcode && \
     find /opt/ext-out \( -name '*.a' -o -name '*.la' \) -delete
 
-# Stage for version info generation using standalone TypeScript script
-# This ensures consistency between local testing and Docker builds
-FROM builder-base AS builder-version-info
-
-# Use bash for RUN commands (inherited stages must re-declare SHELL)
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Copy the standalone version info generation script and manifest (script needs to read manifest)
-COPY scripts/generate-version-info.ts /tmp/generate-version-info.ts
-COPY docker/postgres/extensions.manifest.json /tmp/extensions.manifest.json
-
-# Generate version-info files with hardcoded PostgreSQL version
-RUN set -euo pipefail && \
-    echo "Generating version info for PostgreSQL 18.6..." && \
-    bun /tmp/generate-version-info.ts txt --pg-version="18.6" > /tmp/version-info.txt && \
-    bun /tmp/generate-version-info.ts json --pg-version="18.6" > /tmp/version-info.json && \
-    echo "Version info files generated successfully"
-
 # Final runtime stage
 FROM postgres:18.6-trixie@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
 
@@ -339,9 +321,6 @@ COPY docker/postgres/configs/postgresql-base.conf /etc/postgresql/
 # Healthcheck script (stable - rarely modified)
 COPY docker/postgres/healthcheck.sh /usr/local/bin/healthcheck.sh
 
-# Image contents documentation (generated from manifest)
-COPY docker/postgres/IMAGE-CONTENTS.txt /IMAGE-CONTENTS.txt
-
 # Auto-config entrypoint (moderate - occasionally updated for new features)
 COPY docker/postgres/docker-auto-config-entrypoint.sh /usr/local/bin/docker-auto-config-entrypoint.sh
 
@@ -368,12 +347,9 @@ RUN set -euo pipefail && \
     chmod +x /usr/local/bin/pg_repack && \
     chmod +x /docker-entrypoint-initdb.d/*.sh
 
-# Copy runtime metadata files LATE (frequently change with any manifest update)
-# Version info files (stable - only change with manifest updates)
-COPY --from=builder-version-info /tmp/version-info.txt /etc/postgresql/version-info.txt
-COPY --from=builder-version-info /tmp/version-info.json /etc/postgresql/version-info.json
-
-# Extension manifest (volatile - changes frequently)
+# Metadata last: it changes with every manifest edit. version-info.txt is what operators read
+# (`cat /etc/postgresql/version-info.txt`); tools read the manifest copy.
+COPY docker/postgres/IMAGE-CONTENTS.txt /etc/postgresql/version-info.txt
 COPY docker/postgres/extensions.manifest.json /etc/postgresql/extensions.manifest.json
 
 # Switch to postgres user for security (fixes CIS-DI-0001)

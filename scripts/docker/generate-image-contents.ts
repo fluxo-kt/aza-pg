@@ -8,7 +8,7 @@
  * - Tools (pgbackrest, pgbadger, etc.)
  * - Preloaded modules
  *
- * Output is copied into the container at /IMAGE-CONTENTS.txt
+ * The image ships it as /etc/postgresql/version-info.txt, the path the README and release notes give operators.
  *
  * Run: bun scripts/docker/generate-image-contents.ts
  */

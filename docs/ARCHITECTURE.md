@@ -124,7 +124,7 @@ _Final Stage Layer Order:_
 5. Builder artifacts (compiled extensions) - moderate changes
 6. Base PostgreSQL config - rarely modified
 7. Runtime scripts (healthcheck, entrypoint) - occasional changes
-8. Metadata files (manifest, version-info) - frequent changes with manifest updates
+8. Metadata files (manifest copy, version-info.txt from IMAGE-CONTENTS.txt) - change with every manifest edit
 9. USER, LABELs, metadata - always last
 
 _Builder Stage Optimizations (CI/CD focused):_

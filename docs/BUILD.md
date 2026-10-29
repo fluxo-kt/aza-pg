@@ -320,7 +320,6 @@ Custom aza-pg metadata. Image labels and per-platform manifests (`docker/metadat
 - **builder-base** - `postgres:{PG}-trixie` pinned by digest, plus build packages, the Rust toolchain and Bun (build-time only)
 - **builder-pgxs** - builds source extensions using PGXS, autotools, CMake, Meson or make (`docker/postgres/build-extensions.ts` over `extensions.pgxs.manifest.json`) into `/opt/ext-out/`
 - **builder-cargo** - builds Rust (cargo/pgrx) extensions the same way over `extensions.cargo.manifest.json`
-- **builder-version-info** - writes `/etc/postgresql/version-info.{txt,json}`
 - **final** - the same pinned base image; `apt-get upgrade`, runtime packages (`docker/postgres/extensions.runtime-packages.txt`), PGDG/Percona/Timescale packages pinned by version, then copies `/opt/ext-out/` from both builders. No build tools or Bun.
 
 ### Supply Chain Security

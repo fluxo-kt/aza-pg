@@ -239,42 +239,19 @@ export function testDisabledExtensionsUnavailable(container: string): Promise<Te
 }
 
 /**
- * The files operators read to see what an image contains (`cat /etc/postgresql/version-info.txt`, as the
- * release notes instruct) describe the manifest the image was built from: summary counts in both version-info
- * files, and the manifest copy itself.
+ * The files describing what an image contains are the ones generated from the manifest it was built from:
+ * version-info.txt (what operators `cat`, as the README and release notes instruct) is IMAGE-CONTENTS.txt, and
+ * extensions.manifest.json is the repo's copy.
  */
 export function testImageMetadataFiles(container: string): Promise<TestResult> {
   return check("version-info and manifest copy match the manifest", async () => {
-    const enabled = enabledEntries();
-    const counts = {
-      total: MANIFEST_ENTRIES.length,
-      enabled: enabled.length,
-      disabled: MANIFEST_ENTRIES.length - enabled.length,
-      preloaded: enabled.filter((e) => e.runtime?.sharedPreload === true).length,
-    };
     const txt = await execCommand(["cat", "/etc/postgresql/version-info.txt"], container);
     expect(txt.ok, `version-info.txt unreadable: ${txt.output}`);
-    const txtLines = {
-      total: `Total Catalog: ${counts.total}`,
-      enabled: `Enabled: ${counts.enabled}`,
-      disabled: `Disabled: ${counts.disabled}`,
-      preloaded: `Preloaded: ${counts.preloaded}`,
-    };
-    const absent = Object.values(txtLines).filter(
-      (line) => !new RegExp(`^\\s*${line}$`, "m").test(txt.output)
+    const contents = await Bun.file(join(dirname(MANIFEST_JSON_PATH), "IMAGE-CONTENTS.txt")).text();
+    expect(
+      txt.output.trim() === contents.trim(),
+      "/etc/postgresql/version-info.txt differs from docker/postgres/IMAGE-CONTENTS.txt"
     );
-    expect(absent.length === 0, `version-info.txt lacks: ${absent.join("; ")}`);
-
-    const json = await execCommand(["cat", "/etc/postgresql/version-info.json"], container);
-    expect(json.ok, `version-info.json unreadable: ${json.output}`);
-    const shipped = (JSON.parse(json.output) as { extensions?: Record<string, unknown> })
-      .extensions;
-    for (const [key, value] of Object.entries(counts)) {
-      expect(
-        shipped?.[key] === value,
-        `version-info.json extensions.${key} = ${String(shipped?.[key])}, expected ${value}`
-      );
-    }
 
     const copy = await execCommand(["cat", "/etc/postgresql/extensions.manifest.json"], container);
     expect(copy.ok, `extensions.manifest.json unreadable: ${copy.output}`);

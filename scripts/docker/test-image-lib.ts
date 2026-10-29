@@ -375,24 +375,17 @@ export function testPgBackRestFunctional(container: string): Promise<TestResult>
       result.ok && result.output.trim() === want,
       `pgbackrest version: "${result.output.trim()}", want "${want}"`
     );
-    const ldd = await execCommand(["ldd", entry?.binaryPath ?? "/usr/bin/pgbackrest"], container);
+    // What ldd does, without needing ldd in the image: the dynamic loader lists the resolved libraries and exits.
+    const ldd = await execCommand(
+      ["env", "LD_TRACE_LOADED_OBJECTS=1", entry?.binaryPath ?? "/usr/bin/pgbackrest"],
+      container
+    );
     const unlinked = ["libssh2.so.1", "libzstd.so.1"].filter(
       (lib) => !ldd.output.includes(`${lib} =>`)
     );
     expect(
       ldd.ok && unlinked.length === 0,
       `pgbackrest lacks ${unlinked.join(", ")} (sftp repositories, zstd):\n${ldd.output}`
-    );
-  });
-}
-
-/** Runs the Perl script, which loads its modules — a missing Perl dependency fails here. */
-export function testPgBadgerFunctional(container: string): Promise<TestResult> {
-  return check("pgBadger runs", async () => {
-    const result = await execCommand(["pgbadger", "--version"], container);
-    expect(
-      result.ok && result.output.toLowerCase().includes("pgbadger"),
-      `pgbadger --version: ${result.output}`
     );
   });
 }

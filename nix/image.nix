@@ -23,12 +23,13 @@ let
   # Same command as the Debian image's localedef loop, so both ship the same locales under the same names.
   locales = pkgs.runCommand "aza-pg-locales" { nativeBuildInputs = [ pkgs.glibc.bin ]; } ''
     export I18NPATH=${pkgs.glibc}/share/i18n
+    # localedef writes <prefix><glibc's compiled-in locale dir>/locale-archive and creates no directories.
+    archive="$TMPDIR/p${pkgs.glibc}/lib/locale"
+    mkdir -p "$archive" $out/lib/locale
     for l in ${lib.escapeShellArgs meta.locales}; do
       localedef --prefix="$TMPDIR/p" -i "$l" -c -f UTF-8 "$l.UTF-8"
     done
-    mkdir -p $out/lib/locale
-    find "$TMPDIR/p" -name locale-archive -exec mv {} $out/lib/locale/locale-archive \;
-    test -s $out/lib/locale/locale-archive
+    mv "$archive/locale-archive" $out/lib/locale/locale-archive
   '';
 
   # The image's own files, at the Debian image's paths.
@@ -39,6 +40,9 @@ let
     install -Dm0755 ${src "docker/postgres/pgflow/pgflow-upgrade.sh"} $out/usr/local/bin/pgflow-upgrade
     install -Dm0755 ${src "docker/postgres/pg_repack-wrapper.sh"} $out/usr/local/bin/pg_repack
     ln -s ${pkgs.su-exec}/bin/su-exec $out/usr/local/bin/gosu
+    # The documented mount point for an operator's own script (the entrypoint sets pgsodium.getkey_script to it); the
+    # second, never-run copy lets the entrypoint tell the image's script from a mounted one.
+    install -Dm0755 ${src "docker/postgres/pgsodium_getkey.sh"} $out/usr/share/postgresql/${pgMajor}/extension/pgsodium_getkey
     install -Dm0755 ${src "docker/postgres/pgsodium_getkey.sh"} $out/usr/local/share/aza-pg/pgsodium_getkey
 
     install -Dm0644 ${src "docker/postgres/configs/postgresql-base.conf"} $out/etc/postgresql/postgresql-base.conf
@@ -59,7 +63,7 @@ let
     ${lib.concatMapStrings (e: ''
       mkdir -p $out/$(dirname ${e.binaryPath})
       ln -s ${postgresql}/bin/$(basename ${e.binaryPath}) $out${e.binaryPath}
-    '') (builtins.filter (e: (e.enabled or true) && e ? binaryPath && !(e ? nix && e.nix ? exclude)) manifest.entries)}
+    '') (builtins.filter (e: (e.enabled or true) && e ? binaryPath) manifest.entries)}
 
     # PGDG and Debian users carry uid/gid 999, and data directories created by the Debian image are owned by it.
     mkdir -p $out/etc

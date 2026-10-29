@@ -14,7 +14,7 @@ let
   root = ../.;
 
   enabled = builtins.filter
-    (e: (e.enabled or true) && e.kind != "builtin" && e.source.type != "builtin" && !(e ? nix && e.nix ? exclude))
+    (e: (e.enabled or true) && e.kind != "builtin" && e.source.type != "builtin")
     manifest.entries;
 
   # Upstream tags wrap the version in their own prefix ("v0.20.5", "ver_1.5.3", "REL4_2_0", "wal2json_2_7",

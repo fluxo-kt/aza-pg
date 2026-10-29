@@ -114,7 +114,7 @@ export const ExtensionKindSchema = type("'extension'|'tool'|'builtin'");
  * - soFileName: Shared object filename. Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
  * - binaryPath: Absolute path of a CLI tool's executable (each enabled tool declares binaryPath or soFileName)
  * - postgresOwnedDirs: Directories a tool writes by default; created postgres-owned 0750 in the image
- * - nix: how flake.nix builds the entry (nixpkgs package to reuse, link inputs, or exclusion with reason)
+ * - nix: how flake.nix builds the entry (nixpkgs package to reuse, or link inputs for a generic build)
  * - enabled: Whether extension is enabled (defaults to true if not specified)
  */
 export const ManifestEntrySchema = type({
@@ -140,7 +140,7 @@ export const ManifestEntrySchema = type({
   "soFileName?": "string",
   "binaryPath?": "string",
   "postgresOwnedDirs?": "string[]",
-  "nix?": { "package?": "string", "inputs?": "string[]", "exclude?": "string" },
+  "nix?": { "package?": "string", "inputs?": "string[]" },
   "enabled?": "boolean",
 });
 

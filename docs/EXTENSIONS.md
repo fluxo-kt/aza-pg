@@ -15,7 +15,7 @@ Key principles:
 aza-pg classifies bundled functionality into four buckets:
 
 - **Tools**: CLI / hook utilities that do not require `CREATE EXTENSION`
-  - Examples: pgbackrest, pgbadger, wal2json, pg_safeupdate
+  - Examples: pgbackrest, wal2json, pg_safeupdate
   - Ship an executable (manifest `binaryPath`, e.g. `/usr/bin/pgbackrest`) or a library loaded via hooks or logical decoding (`soFileName`)
 
 - **Builtins**: Core PostgreSQL contrib extensions
@@ -83,10 +83,9 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 
 ### observability
 
-| Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                          | Notes                                                           |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.4.0](https://github.com/percona/pg_stat_monitor/releases/tag/2.4.0) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor)       | Enhanced query performance telemetry with bucketed metrics.     |
-| [`pgbadger`](https://github.com/darold/pgbadger)                | [v13.2](https://github.com/darold/pgbadger/releases/tag/v13.2)         | No                 | No             | [Docs](https://pgbadger.darold.net/documentation.html) | High-speed PostgreSQL log analyzer producing HTML/JSON reports. |
+| Extension                                                       | Version                                                                | Enabled by Default | Shared Preload | Documentation                                    | Notes                                                       |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | -------------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| [`pg_stat_monitor`](https://github.com/percona/pg_stat_monitor) | [2.4.0](https://github.com/percona/pg_stat_monitor/releases/tag/2.4.0) | Yes                | Yes            | [Docs](https://docs.percona.com/pg-stat-monitor) | Enhanced query performance telemetry with bucketed metrics. |
 
 ### operations
 
@@ -181,7 +180,7 @@ The tables below are generated from `extensions.manifest.json`. Columns indicate
 - **Time-series** – `timescaledb` is preloaded by default for optimal time-series performance; auto-created during cluster bootstrap. `timescaledb_toolkit` should be created after TimescaleDB and does not require preload.
 - **Distributed** – Citus is not shipped (see Compatibility Exceptions).
 - **Security** – `pgaudit` and `pgsodium` run by default (preloaded). `supautils` is installed but not preloaded by default (can be enabled via `POSTGRES_SHARED_PRELOAD_LIBRARIES`). `vault` (supabase_vault) is preloaded and auto-created by default; it reads its key only when preloaded itself, so keep `supabase_vault` in any custom `POSTGRES_SHARED_PRELOAD_LIBRARIES`.
-- **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest`; configure repositories via environment or volume mounts. `pgbadger` is available at `/usr/bin/pgbadger` for offline log analysis. `pg_repack` inside the container works as shipped; from another machine run it as `PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...`, because the preloaded safeupdate rejects pg_repack's own `DELETE` without `WHERE`.
+- **Operations** – `pgbackrest` binary lives in `/usr/bin/pgbackrest`; configure repositories via environment or volume mounts. `pg_repack` inside the container works as shipped; from another machine run it as `PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...`, because the preloaded safeupdate rejects pg_repack's own `DELETE` without `WHERE`.
 - **Partitioning** – `CREATE EXTENSION pg_partman`. For the optional background worker, add `pg_partman_bgw` to `POSTGRES_SHARED_PRELOAD_LIBRARIES` and set `pg_partman_bgw.dbname`, `pg_partman_bgw.interval` and `pg_partman_bgw.role`; the role defaults to `partman_maintainer`, which must exist.
 
 ## HTTP Extensions Comparison: pg_net vs pgsql-http

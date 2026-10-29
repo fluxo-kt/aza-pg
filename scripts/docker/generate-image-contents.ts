@@ -5,7 +5,7 @@
  * Creates a human-readable file describing what's included in the container:
  * - PostgreSQL version
  * - Enabled extensions with versions
- * - Tools (pgbackrest, pgbadger, etc.)
+ * - Tools (pgbackrest, wal2json, …)
  * - Preloaded modules
  *
  * The image ships it as /etc/postgresql/version-info.txt, the path the README and release notes give operators.

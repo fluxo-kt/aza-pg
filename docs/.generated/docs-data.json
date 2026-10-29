@@ -1,13 +1,13 @@
 {
   "catalog": {
-    "total": 40,
-    "enabled": 37,
+    "total": 39,
+    "enabled": 36,
     "disabled": 3
   },
   "byKind": {
     "builtin": 6,
     "extension": 26,
-    "tool": 5
+    "tool": 4
   },
   "builtins": [
     "auto_explain",
@@ -45,7 +45,7 @@
     "vectorscale",
     "wrappers"
   ],
-  "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "pgbadger", "wal2json"],
+  "tools": ["pg_plan_filter", "pg_safeupdate", "pgbackrest", "wal2json"],
   "disabled": {
     "extensions": ["pgq", "pgrouting", "postgis"],
     "tools": []
@@ -80,7 +80,7 @@
     "vectorscale"
   ],
   "byCategory": {
-    "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements", "pgbadger"],
+    "observability": ["auto_explain", "pg_stat_monitor", "pg_stat_statements"],
     "indexing": ["btree_gin", "btree_gist"],
     "analytics": ["hll"],
     "integration": ["http", "pg_net", "wrappers"],

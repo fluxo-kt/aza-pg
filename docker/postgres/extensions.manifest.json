@@ -568,43 +568,6 @@
       "docsUrl": "https://pgbackrest.org/user-guide.html"
     },
     {
-      "name": "pgbadger",
-      "nix": {
-        "exclude": "Perl, and no runtime job: operators run pgBadger on exported logs."
-      },
-      "kind": "tool",
-      "install_via": "pgdg",
-      "pgdgVersion": "13.2-1.pgdg13+1",
-      "binaryPath": "/usr/bin/pgbadger",
-      "category": "observability",
-      "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/darold/pgbadger.git",
-        "tag": "v13.2",
-        "commit": "4fb2ba0d2bb176c087e25224b4da337dcae0cca7"
-      },
-      "build": {
-        "type": "make"
-      },
-      "aptPackages": [
-        "perl",
-        "libtext-csv-xs-perl",
-        "libjson-xs-perl"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "CLI tool. NOT a PostgreSQL extension.",
-          "Installed from PGDG as pinned pgbadger=<pgdgVersion>; with the Percona repo enabled apt still resolves the PGDG package.",
-          "Binary installed to /usr/bin/pgbadger."
-        ]
-      },
-      "sourceUrl": "https://github.com/darold/pgbadger",
-      "docsUrl": "https://pgbadger.darold.net/documentation.html"
-    },
-    {
       "name": "pgflow",
       "displayName": "pgflow",
       "kind": "extension",

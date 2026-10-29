@@ -222,13 +222,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -euo pipefail && \
     apt-get update && \
-    echo "Installing PGDG tools: pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1" && \
-    apt-get install -y --no-install-recommends pgbackrest=2.60.0-1.pgdg13+1 pgbadger=13.2-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1 && \
+    echo "Installing PGDG tools: pgbackrest=2.60.0-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1" && \
+    apt-get install -y --no-install-recommends pgbackrest=2.60.0-1.pgdg13+1 postgresql-18-wal2json=2.7-1.pgdg13+1 && \
     # Verify each tool's executable or module file exists
     test -x /usr/bin/pgbackrest && \
-    test -x /usr/bin/pgbadger && \
     test -f /usr/lib/postgresql/18/lib/wal2json.so && \
-    echo "All 3 PGDG tool(s) verified" && \
+    echo "All 2 PGDG tool(s) verified" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

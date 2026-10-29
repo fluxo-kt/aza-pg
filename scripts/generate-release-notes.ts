@@ -687,7 +687,7 @@ function generateMarkdown(
   const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
   const preloadedCount = enabledEntries.filter(isPreloadedByDefault).length;
   const autoCreatedCount = enabledEntries.filter(isAutoCreated).length;
-  // catalogEnabled counts tools too (pgbackrest, pgbadger…), which are not extensions.
+  // catalogEnabled counts tools too (pgbackrest, wal2json…), which are not extensions.
   const toolCount = enabledEntries.filter((e) => e.kind === "tool").length;
 
   // Header with improved summary

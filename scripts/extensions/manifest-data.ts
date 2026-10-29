@@ -259,9 +259,9 @@ export interface ManifestEntry {
    * How the Nix image (flake.nix) builds this entry, always from `source.commit`, so versions stay ours.
    * `package`: attribute in nixpkgs' postgresql_<major>.pkgs (or top-level nixpkgs for a tool) whose build recipe is
    * reused with our source swapped in. Omitted: built from `build.type` with `inputs`, the nixpkgs attributes it
-   * links (the Nix twin of aptPackages). `exclude`: kept out of the Nix image, with the reason.
+   * links (the Nix twin of aptPackages).
    */
-  nix?: { package?: string; inputs?: string[]; exclude?: string };
+  nix?: { package?: string; inputs?: string[] };
   enabled?: boolean;
   disabledReason?: string;
   /**
@@ -1230,36 +1230,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     },
     sourceUrl: "https://github.com/pgbackrest/pgbackrest",
     docsUrl: "https://pgbackrest.org/user-guide.html",
-  },
-  {
-    name: "pgbadger",
-    nix: { exclude: "Perl, and no runtime job: operators run pgBadger on exported logs." },
-    kind: "tool",
-    install_via: "pgdg",
-    // A real package in PGDG; percona-pgbadger only Provides the name, so the pin resolves to PGDG
-    // even with the Percona repo enabled.
-    pgdgVersion: "13.2-1.pgdg13+1",
-    binaryPath: "/usr/bin/pgbadger",
-    category: "observability",
-    description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
-    source: {
-      type: "git",
-      repository: "https://github.com/darold/pgbadger.git",
-      tag: "v13.2",
-    },
-    build: { type: "make" },
-    aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
-    runtime: {
-      sharedPreload: false,
-      defaultEnable: false,
-      notes: [
-        "CLI tool. NOT a PostgreSQL extension.",
-        "Installed from PGDG as pinned pgbadger=<pgdgVersion>; with the Percona repo enabled apt still resolves the PGDG package.",
-        "Binary installed to /usr/bin/pgbadger.",
-      ],
-    },
-    sourceUrl: "https://github.com/darold/pgbadger",
-    docsUrl: "https://pgbadger.darold.net/documentation.html",
   },
   {
     name: "set_user",

@@ -269,7 +269,7 @@ async function validateRuntimeSpec(manifest: Manifest): Promise<void> {
     // The image checks find a tool by the file it ships; a tool naming neither is never checked at all.
     if (entry.enabled !== false && !entry.binaryPath && !entry.soFileName) {
       error(
-        `Tool '${entry.name}' names neither binaryPath (the executable it installs, e.g. /usr/bin/pgbadger) nor soFileName (the library it installs); set the one it ships in scripts/extensions/manifest-data.ts`
+        `Tool '${entry.name}' names neither binaryPath (the executable it installs, e.g. /usr/bin/pgbackrest) nor soFileName (the library it installs); set the one it ships in scripts/extensions/manifest-data.ts`
       );
     }
   }

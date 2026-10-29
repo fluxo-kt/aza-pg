@@ -339,9 +339,7 @@ function sharedLibrariesCheck(manifest: Manifest, pgMajor: string): string {
  * CREATE EXTENSION (wal2json, checked by soFileName) — the same two identities testToolsPresent uses.
  *
  * Every tool must be version-pinned: an unpinned name installs whatever apt resolves on build day,
- * so two builds of one commit can differ. (pgbadger was once left unpinned on the belief that it is
- * a Percona virtual package; with the Percona repo enabled it resolves to the real PGDG package and
- * `pgbadger=<version>` installs fine.)
+ * so two builds of one commit can differ.
  */
 function generatePgdgToolsInstall(manifest: Manifest, pgMajor: string): string {
   const enabledPgdgTools: Array<{ pin: string; check: string }> = [];

@@ -627,7 +627,6 @@ Examples:
 | timescaledb_toolkit | https://github.com/timescale/timescaledb-toolkit/releases |
 | vectorscale         | https://github.com/timescale/pgvectorscale/releases       |
 | pgbackrest          | https://github.com/pgbackrest/pgbackrest/releases         |
-| pgbadger            | https://github.com/darold/pgbadger/releases               |
 
 **CLI check:**
 

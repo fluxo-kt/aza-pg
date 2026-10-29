@@ -27,12 +27,7 @@
           };
           postgresql = pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}";
           extensions = import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs; inherit (pkgs) lib; };
-          # pgsodium runs <sharedir>/extension/pgsodium_getkey for its root key; the Nix sharedir is the store path
-          # withPackages assembles, so the script enters it as one more package.
-          pgsodiumGetkey = pkgs.runCommand "pgsodium-getkey" { } ''
-            install -Dm0755 ${./docker/postgres/pgsodium_getkey.sh} $out/share/postgresql/extension/pgsodium_getkey
-          '';
-          server = postgresql.withPackages (_: builtins.attrValues extensions ++ [ pgsodiumGetkey ]);
+          server = postgresql.withPackages (_: builtins.attrValues extensions);
         in
         {
           inherit extensions;

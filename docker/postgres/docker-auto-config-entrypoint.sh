@@ -438,7 +438,9 @@ EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
 # The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
 # after this script) refuses a non-empty directory. Its failures surface when the server starts.
 PG_SHAREDIR=$(pg_config --sharedir)
-PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
+# A fixed path, not ${PG_SHAREDIR}: it is where docs/PGSODIUM-SETUP.md tells operators to mount their own script,
+# and the Nix image's sharedir is a read-only store path. pgsodium.getkey_script below points the server at it.
+PGSODIUM_GETKEY_PATH="/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey"
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)

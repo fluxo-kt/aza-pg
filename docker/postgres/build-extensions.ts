@@ -501,13 +501,6 @@ async function buildMakeGeneric(dir: string): Promise<void> {
   await $`cd ${dir} && make install`;
 }
 
-async function buildPgbadger(dir: string): Promise<void> {
-  log(`Building pgbadger (Perl) in ${dir}`);
-  await $`cd ${dir} && perl Makefile.PL`;
-  await $`cd ${dir} && make -j${NPROC}`;
-  await $`cd ${dir} && make install`;
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Patch Application
 // ────────────────────────────────────────────────────────────────────────────
@@ -635,11 +628,7 @@ async function processEntry(entry: ManifestEntry, manifest: Manifest): Promise<v
       break;
 
     case "make":
-      if (name === "pgbadger") {
-        await buildPgbadger(workdir);
-      } else {
-        await buildMakeGeneric(workdir);
-      }
+      await buildMakeGeneric(workdir);
       break;
 
     case "script":

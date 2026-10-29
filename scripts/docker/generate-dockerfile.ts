@@ -29,6 +29,8 @@ import {
   type ResolvedEntry,
 } from "../config-generator/manifest-loader";
 import { pgdgAptPackageName } from "../extensions/pgdg-package";
+import type { VendorRepo } from "../extensions/vendor-apt-pins";
+import { vendorAptPins } from "../extensions/vendor-apt-pins";
 import { error, info, section, success } from "../utils/logger";
 
 // Paths
@@ -149,6 +151,20 @@ function generatePgdgPackagesInstall(manifest: Manifest, pgMajor: string): strin
 const APT_KEY_DIR = "/usr/share/keyrings/aza-pg";
 
 /**
+ * `package=version` for one vendor repo's pins (vendorAptPins owns which packages, loader included),
+ * each validated here because it is interpolated into a shell command.
+ */
+function vendorPins(manifest: Manifest, repo: VendorRepo): string[] {
+  return vendorAptPins(manifest.entries)
+    .filter((p) => p.repo === repo)
+    .map((p) => {
+      const pin = `${p.aptPackage}=${p.version}`;
+      validatePackageName(pin, `${repo} package pin (${p.name})`);
+      return pin;
+    });
+}
+
+/**
  * Generate Percona package installation script
  * Percona repository provides pg_stat_monitor.
  * Versions are hardcoded directly from manifest perconaVersion field
@@ -163,32 +179,7 @@ function generatePerconaPackagesInstall(manifest: Manifest, pgMajor: string): st
     return `RUN echo "No Percona packages enabled in manifest"`;
   }
 
-  // Validate and build package list
-  const packages: string[] = [];
-
-  for (const entry of enabledPerconaEntries) {
-    if (!entry.perconaPackage) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required perconaPackage field.\n` +
-          `Add perconaPackage: "percona-pkg-name" to manifest entry.`
-      );
-    }
-
-    // Validate package name for shell safety
-    validatePackageName(entry.perconaPackage, `Percona package name (${entry.name})`);
-
-    // perconaVersion is REQUIRED for reproducible builds (same as PGDG pattern)
-    if (!entry.perconaVersion) {
-      throw new Error(
-        `Percona entry "${entry.name}" missing required perconaVersion field.\n` +
-          `Add perconaVersion: "X.Y.Z-N.distro" to manifest entry for reproducible builds.`
-      );
-    }
-    validatePackageName(entry.perconaVersion, `Percona version (${entry.name})`);
-
-    packages.push(`${entry.perconaPackage}=${entry.perconaVersion}`);
-  }
-
+  const packages = vendorPins(manifest, "percona");
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
   const soChecks = soFileChecks(enabledPerconaEntries, "Percona", pgMajor);
@@ -229,45 +220,7 @@ function generateTimescalePackagesInstall(manifest: Manifest, pgMajor: string): 
     return `RUN echo "No Timescale packages enabled in manifest"`;
   }
 
-  // Validate and build package list
-  const packages: string[] = [];
-
-  for (const entry of enabledTimescaleEntries) {
-    if (!entry.timescalePackage) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required timescalePackage field.\n` +
-          `Add timescalePackage: "timescaledb-2-postgresql-${pgMajor}" to manifest entry.`
-      );
-    }
-
-    // Validate package name for shell safety
-    validatePackageName(entry.timescalePackage, `Timescale package name (${entry.name})`);
-
-    // timescaleVersion is REQUIRED for reproducible builds
-    if (!entry.timescaleVersion) {
-      throw new Error(
-        `Timescale entry "${entry.name}" missing required timescaleVersion field.\n` +
-          `Add timescaleVersion: "X.Y.Z~debianNN-NNNN" to manifest entry for reproducible builds.`
-      );
-    }
-    validatePackageName(entry.timescaleVersion, `Timescale version (${entry.name})`);
-
-    packages.push(`${entry.timescalePackage}=${entry.timescaleVersion}`);
-
-    // Also pin the loader package for timescaledb-2-postgresql-N to prevent loader version drift.
-    // The loader is installed as a dependency and its version determines what extension version
-    // PostgreSQL tries to load — a mismatched loader version causes "no installation script for
-    // version X" failures even when the main package is correctly pinned.
-    const loaderPackage = entry.timescalePackage.replace(
-      /^(timescaledb-\d+-)(postgresql-.+)$/,
-      "$1loader-$2"
-    );
-    if (loaderPackage !== entry.timescalePackage) {
-      // Only add loader if the pattern matched (i.e., this is a timescaledb-N-postgresql-M package)
-      packages.push(`${loaderPackage}=${entry.timescaleVersion}`);
-    }
-  }
-
+  const packages = vendorPins(manifest, "timescale");
   const packagesList = packages.join(" ");
   const expectedCount = packages.length;
   const soChecks = soFileChecks(enabledTimescaleEntries, "Timescale", pgMajor);

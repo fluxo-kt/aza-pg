@@ -1005,11 +1005,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgbackrest",
-    // systemd notify has no use in a container; SFTP repositories and zstd are what the image check requires.
-    // Since 2.60 its build script (Python, build-time only) reads YAML.
+    // systemd notify has no use in a container. SFTP repositories are off: no stack or deployment uses one (they
+    // back up to S3), and libssh2 1.11.1, still its newest release, has unfixed CVEs a malicious SSH server can
+    // reach (CVE-2026-66032 double free, CVE-2026-55200 out-of-bounds write); turn it back on with a libssh2
+    // release carrying the fixes. zstd stays for compress-type=zst. Since 2.60 its build script (Python,
+    // build-time only) reads YAML.
     nix: {
       package: "pgbackrest",
-      mesonFlags: ["-Dlibsystemd=disabled", "-Dlibssh2=enabled", "-Dlibzstd=enabled"],
+      mesonFlags: ["-Dlibsystemd=disabled", "-Dlibssh2=disabled", "-Dlibzstd=enabled"],
       nativeInputs: ["python3Packages.pyyaml"],
     },
     kind: "tool",

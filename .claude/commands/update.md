@@ -316,7 +316,10 @@ bun run validate:all  # catches yamllint and workflow syntax issues
 ## Phase 3: nixpkgs (ALWAYS CHECK — Security Patches!)
 
 `flake.lock` pins nixpkgs, which supplies PostgreSQL, glibc and every C library; their security fixes reach the image
-only by bumping it, so every round bumps it unless pre-flight item 3 shows it current.
+only by bumping it, so every round bumps it unless pre-flight item 3 shows it current. After the bump run
+`bun scripts/security/vulnix-gate.ts` (the release gate): a hit means upgrade the package; only a CVE proven not to
+affect the image goes into `scripts/security/vulnix-whitelist.toml`, with its evidence. Entries name a package
+version, so a bumped package's entry no longer matches: re-check its CVEs, then move or delete the entry.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs

@@ -103,7 +103,7 @@
             postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";
           });
         in
-        {
+        rec {
           inherit extensions;
           postgresql = server;
           # A script that streams the image tarball: scripts/nix/build-image.ts pipes it into `docker load`.
@@ -114,9 +114,11 @@
             postgresql = server;
             upstreamEntrypoint = "${inputs.docker-library-postgres}/${nixpkgs.lib.versions.major manifest.metadata.pgVersion}/trixie/docker-entrypoint.sh";
           };
+          # What the image ships, as one store path whose closure scripts/security/vulnix-gate.ts scans.
+          contents = pkgs.linkFarmFromDrvs "aza-pg-contents" image.contents;
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents; } // r.extensions);
     };
 }

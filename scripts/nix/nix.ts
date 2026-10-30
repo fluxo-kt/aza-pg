@@ -21,7 +21,7 @@
 import path from "node:path";
 
 const FLAGS = "experimental-features = nix-command flakes\nkeep-outputs = true\nwarn-dirty = false";
-const native = process.platform === "linux" && Bun.which("nix") !== null;
+export const native = process.platform === "linux" && Bun.which("nix") !== null;
 export const nixPlatform =
   Bun.env.NIX_PLATFORM ?? (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
 

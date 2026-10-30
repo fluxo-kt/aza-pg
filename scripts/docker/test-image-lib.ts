@@ -391,9 +391,8 @@ export function testToolsPresent(container: string): Promise<TestResult> {
 
 /**
  * Runs the binary, which loads its shared libraries — a broken dependency fails here. The version must be
- * the manifest's tag, and libssh2 (sftp repositories) and libzstd must be linked: both are "auto" build
- * options upstream, so a missing -dev package drops them without an error. The built-in help lists every
- * repository type whatever was compiled, so only the linked libraries show what was.
+ * the manifest's tag. Which libraries it links needs no check: the manifest's mesonFlags set each optional
+ * feature to enabled or disabled, and meson fails the build when an enabled one is missing.
  */
 export function testPgBackRestFunctional(container: string): Promise<TestResult> {
   return check("pgBackRest runs", async () => {
@@ -405,18 +404,6 @@ export function testPgBackRestFunctional(container: string): Promise<TestResult>
     expect(
       result.ok && result.output.trim() === want,
       `pgbackrest version: "${result.output.trim()}", want "${want}"`
-    );
-    // What ldd does, without needing ldd in the image: the dynamic loader lists the resolved libraries and exits.
-    const ldd = await execCommand(
-      ["env", "LD_TRACE_LOADED_OBJECTS=1", entry?.binaryPath ?? "/usr/bin/pgbackrest"],
-      container
-    );
-    const unlinked = ["libssh2.so.1", "libzstd.so.1"].filter(
-      (lib) => !ldd.output.includes(`${lib} =>`)
-    );
-    expect(
-      ldd.ok && unlinked.length === 0,
-      `pgbackrest lacks ${unlinked.join(", ")} (sftp repositories, zstd):\n${ldd.output}`
     );
   });
 }

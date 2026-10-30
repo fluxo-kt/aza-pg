@@ -224,6 +224,11 @@ jobs:
       - name: Set up Nix
         uses: ./.github/actions/setup-nix
 
+      # Blocking: Trivy cannot see the C libraries of a Nix image, so this is the only CVE check on them. It runs
+      # before the push, so an image with an untriaged CVE never reaches the registry.
+      - name: CVE gate (vulnix, whole runtime closure)
+        run: bun scripts/security/vulnix-gate.ts
+
       - name: Log in to GitHub Container Registry
         uses: ./.github/actions/ghcr-login
         with:

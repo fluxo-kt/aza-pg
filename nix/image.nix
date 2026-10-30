@@ -115,13 +115,17 @@ let
     pkgs.xz
     pkgs.zstd
   ];
+  # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
+  # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
+  contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
 in
 pkgs.dockerTools.streamLayeredImage {
   name = "aza-pg";
   tag = "pg${pgMajor}";
-  # pgConfig reports the combined installation's paths (sharedir, pkglibdir), which the entrypoint,
-  # the pg_repack wrapper and the image checks read; the server package itself ships no pg_config.
-  contents = [ postgresql pgConfig files pkgs.cacert ] ++ tools;
+  inherit contents;
+  # The runtime closure the CVE scan reads (flake output `contents`); the image's stream script also references
+  # its own Python streamer, which never ships.
+  passthru = { inherit contents; };
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
   extraCommands = ''
     # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint

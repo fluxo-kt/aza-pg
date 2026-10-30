@@ -111,7 +111,9 @@ See workflow files in `.github/workflows/` for complete workflow details.
 
 ## CI/CD Build Design
 
-**1. Trivy Security Scanning**
+**1. Security Scanning**
+
+- vulnix (`scripts/security/vulnix-gate.ts`, build job, before the push) checks every store path of the image against NVD; `scripts/security/vulnix-whitelist.toml` lists the hits that do not affect the image, each with its evidence. It is the only scan of the C libraries: Trivy finds no OS package database in a Nix image
 
 - SARIF upload runs only when the file exists (`hashFiles()` check), so a scan that wrote no SARIF does not fail the upload step
 - The Trivy vulnerability DB is cached between runs (`actions/cache`, `.trivy-cache`)

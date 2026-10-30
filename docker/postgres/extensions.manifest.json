@@ -482,7 +482,7 @@
         "package": "pgbackrest",
         "mesonFlags": [
           "-Dlibsystemd=disabled",
-          "-Dlibssh2=enabled",
+          "-Dlibssh2=disabled",
           "-Dlibzstd=enabled"
         ],
         "nativeInputs": [

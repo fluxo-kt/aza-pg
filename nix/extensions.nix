@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, optimise }:
+{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, targetCpu }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -122,7 +122,7 @@ let
       postgresqlBuildExtension (common // {
         src = if (e.build or { }) ? subdir then "${src}/${e.build.subdir}" else src;
         # USE_PGXS selects the out-of-tree build in Makefiles that also support contrib/; OPTFLAGS= drops
-        # -march=native that some upstreams add, so the image runs on any CPU of its architecture.
+        # -march=native that some upstreams add, so the image runs on any CPU meeting the baseline (flake.nix).
         makeFlags = [ "USE_PGXS=1" "OPTFLAGS=" ] ++ (e.build.makeOptions or [ ]);
       })
     else
@@ -133,20 +133,21 @@ let
 
   # Only the executables an entry names ship (nix.bin, else its binaryPath): nothing calls the rest, and they pull in
   # interpreters (pg_partman's Python helpers). Every entry also passes here, so it takes the server's extra
-  # hardening and -O3 (flake.nix) too.
+  # hardening and CPU baseline (flake.nix) too.
   pruneBin = e: drv:
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
-    } // lib.optionalAttrs (!(old ? cargoDeps)) (optimise old // {
-      # -O3 comes last and outranks an upstream's lower -O, but upstream may lower it on purpose (a compiler-bug
-      # workaround, timing-sensitive code), and a silent override would erase that. So a make build whose own compile
-      # lines end below -O2 (-O0, -O1, -Os, -Og) fails until the entry records the decision: build.makeOptions clears
-      # the variable (pgsodium's PG_CPPFLAGS = -O0, no stated reason). make -n prints the build's flags without the
+    } // lib.optionalAttrs (!(old ? cargoDeps)) (targetCpu old // {
+      # Nothing may compile below upstream's own release level (AGENTS.md), and an upstream that lowers it may do so
+      # on purpose (a compiler-bug workaround, timing-sensitive code) or by accident (pgsodium's PG_CPPFLAGS = -O0, no
+      # stated reason). So a make build whose own compile lines end below -O2 (-O0, -O1, -Os, -Og) fails until the
+      # entry records the decision: build.makeOptions clears the variable. make -n prints the build's flags without the
       # wrapper's. Make and CMake builds are checked; Meson's setup hook sets buildPhase (ninja), so Meson builds are
-      # not. Cargo builds get neither -O3 nor this check: the cc crate already compiles their C at the Rust profile's
-      # level (-O3 for opt-level 3), and a forced last -O3 broke aws-lc-sys, whose jitterentropy must be -O0 (its
-      # entropy is timing jitter that optimisation removes; it #errors otherwise).
+      # not. Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust
+      # profile's level, and some of it must stay lower on purpose (aws-lc-sys builds jitterentropy at -O0, since its
+      # entropy is timing jitter that optimisation removes, and #errors otherwise). Rust's target CPU waits on the Rust
+      # profile measurement.
       preBuild = (old.preBuild or "") + ''
         if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
           planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray

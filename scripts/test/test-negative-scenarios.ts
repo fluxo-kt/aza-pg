@@ -15,6 +15,9 @@
  */
 
 import { $ } from "bun";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, expect, test } from "bun:test";
 import { EPHEMERAL_PGDATA, generateUniqueContainerName } from "../utils/docker";
 import { resolveImageTag } from "./image-resolver";
@@ -29,14 +32,15 @@ afterAll(async () => {
 /** Start the image with `env`, wait for the container to stop, return its exit code and full log. */
 async function runToExit(
   prefix: string,
-  env: Record<string, string>
+  env: Record<string, string>,
+  dockerArgs: string[] = []
 ): Promise<{ code: number; logs: string }> {
   const name = generateUniqueContainerName(`aza-pg-negative-${prefix}`);
   created.push(name);
   const envArgs = Object.entries({ POSTGRES_PASSWORD: "negative-test", ...env }).flatMap(
     ([k, v]) => ["-e", `${k}=${v}`]
   );
-  await $`docker run -d --name ${name} ${EPHEMERAL_PGDATA} ${envArgs} ${IMAGE}`.quiet();
+  await $`docker run -d --name ${name} ${EPHEMERAL_PGDATA} ${dockerArgs} ${envArgs} ${IMAGE}`.quiet();
   const code = Number((await $`docker wait ${name}`.quiet().text()).trim());
   const r = await $`docker logs ${name}`.nothrow().quiet();
   return { code, logs: r.stdout.toString() + r.stderr.toString() };
@@ -48,6 +52,31 @@ test.concurrent(
     const { code, logs } = await runToExit("ram-invalid", { POSTGRES_MEMORY: "2g" });
     expect(code).toBe(1);
     expect(logs).toContain("[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB");
+  },
+  30_000
+);
+
+test.concurrent(
+  "a CPU below the compiled baseline stops the container, naming the missing feature",
+  async () => {
+    // Every feature the entrypoint requires on either architecture except one each (avx2, asimddp), so whichever
+    // architecture runs this, exactly one is missing: the check must find a single gap, not only an empty line.
+    const dir = await mkdtemp(path.join(tmpdir(), "aza-cpuinfo-"));
+    const cpuinfo = path.join(dir, "cpuinfo");
+    await Bun.write(
+      cpuinfo,
+      "processor\t: 0\nflags\t: fpu bmi1 bmi2 fma movbe f16c abm sse4_2 popcnt atomics asimdrdm aes sha2\n"
+    );
+    try {
+      const { code, logs } = await runToExit("cpu-baseline", {}, [
+        "-v",
+        `${cpuinfo}:/proc/cpuinfo:ro`,
+      ]);
+      expect(code).toBe(1);
+      expect(logs).toMatch(/lacks features the image is compiled for: (avx2|asimddp)\./);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   },
   30_000
 );

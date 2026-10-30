@@ -572,7 +572,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
-      tag: "3.6.4",
+      tag: "3.7.0",
     },
     build: { type: "autotools" },
     runtime: {
@@ -593,7 +593,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgRouting/pgrouting.git",
-      tag: "v4.0.1",
+      tag: "v4.0.2",
     },
     build: { type: "cmake" },
     dependencies: ["postgis"],

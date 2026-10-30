@@ -653,8 +653,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgRouting/pgrouting.git",
-        "tag": "v4.0.1",
-        "commit": "8988eebdff0e01327c9d48fe7c80b437dc9bc992"
+        "tag": "v4.0.2",
+        "commit": "b3fd9ef1d81661af0b1084a2646fb87fda12b8c4"
       },
       "build": {
         "type": "cmake"
@@ -758,8 +758,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.4",
-        "commit": "94d984bd083635c1d253db0f87cf80b32548e406"
+        "tag": "3.7.0",
+        "commit": "1fdbb1cbb0e076816be06c401c5a5a2cf2c487f9"
       },
       "build": {
         "type": "autotools"

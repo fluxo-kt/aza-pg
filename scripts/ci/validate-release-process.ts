@@ -152,10 +152,21 @@ async function validateManifestCliContract(issues: Issue[]): Promise<void> {
   }
 }
 
-// A flake ref other than this flake (`nixpkgs#sbomnix`, `github:o/r#x`) resolves through the flake registry or a
-// branch at run time, so the tool changes under a release without any commit: nixpkgs-unstable's sbomnix stopped
-// building mid-release. Pinned forms: `.#<attr>`, or `--inputs-from .`, which resolves names through flake.lock.
-const UNPINNED_FLAKE_REF = /(?:^|[\s"'])(?!\.#)([A-Za-z][\w.:/-]*#[\w.${}-]+)/;
+// A flake ref other than this flake resolves at run time, so the tool changes under a release without any commit
+// (nixpkgs-unstable's sbomnix stopped building mid-release): a URL (`github:o/r`, even at a tag) fetches that ref,
+// and a bare name (`nixpkgs#x`) goes through the flake registry unless `--inputs-from .` maps it to flake.lock.
+// Only the nix arguments count: everything after `--` belongs to the program being run.
+function unpinnedFlakeRef(line: string): string | undefined {
+  const words = line.split(/\s+/).map((w) => w.replace(/^["']+|["']+$/g, ""));
+  const end = words.indexOf("--");
+  const nixArgs = end === -1 ? words : words.slice(0, end);
+  const lockMapped = nixArgs.join(" ").includes("--inputs-from .");
+  return nixArgs.find(
+    (w) =>
+      /^(github|gitlab|sourcehut|git\+\w+|https?|tarball\+\w+|flake):/.test(w) ||
+      (/^[A-Za-z][\w-]*#/.test(w) && !lockMapped)
+  );
+}
 
 async function validateNixRefsPinned(issues: Issue[]): Promise<void> {
   const files = [
@@ -165,8 +176,8 @@ async function validateNixRefsPinned(issues: Issue[]): Promise<void> {
   for (const file of files) {
     for (const runStep of collectRunSteps(await readYaml(file))) {
       for (const line of runStep.split("\n")) {
-        if (!/\bnix\s/.test(line) || line.includes("--inputs-from .")) continue;
-        const ref = UNPINNED_FLAKE_REF.exec(line)?.[1];
+        if (!/\bnix\s/.test(line)) continue;
+        const ref = unpinnedFlakeRef(line);
         if (ref) {
           addIssue(
             issues,

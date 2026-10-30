@@ -131,8 +131,10 @@
             postgresql = server;
             upstreamEntrypoint = "${inputs.docker-library-postgres}/${nixpkgs.lib.versions.major manifest.metadata.pgVersion}/trixie/docker-entrypoint.sh";
           };
-          # What the image ships, as one store path whose closure scripts/security/vulnix-gate.ts scans.
-          contents = pkgs.linkFarmFromDrvs "aza-pg-contents" image.contents;
+          # What the image ships, as one store path whose closure vulnix-gate.ts and publish.yml's SBOM read: the image
+          # config references every layer's store paths, the ones only Env names (the locales) included. `image`
+          # itself is the stream script, whose closure adds the Python streamer that never ships.
+          contents = image.conf;
           # The scanner: vulnix 1.12.5 fails its NVD update when NVD serves only the .json.zip feed; upstream PR 183
           # falls back to it and keeps an older feed from replacing newer cached data. Drop the patch once nixpkgs'
           # vulnix includes commit 4b14b4b.

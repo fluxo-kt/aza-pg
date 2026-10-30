@@ -212,8 +212,8 @@ jobs:
         run: |
           set -euo pipefail
           system=$([ "${{ matrix.platform }}" = linux/arm64 ] && echo aarch64-linux || echo x86_64-linux)
-          nix run --inputs-from . sbomnix -- ".#packages.${system}.image" \
-            --spdx "${{ runner.temp }}/sbom.spdx.json"
+          nix run --inputs-from . sbomnix -- ".#packages.${system}.contents" --spdx "${{ runner.temp }}/sbom.spdx.json" \
+            --cdx "${{ runner.temp }}/sbom.cdx.json" --csv "${{ runner.temp }}/sbom.csv"
 
       - name: Attest SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0

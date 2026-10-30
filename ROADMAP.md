@@ -36,9 +36,9 @@ Several Docker suites declare their own psql helper although `scripts/docker/tes
 
 `docker/postgres/docker-entrypoint-initdb.d/04-pg_partman-init.sh` creates the extension in `public` and also creates an empty `partman` schema; upstream installs into `partman`. **Needs a decision:** moving it breaks operators who call `public.create_parent`, and dropping the empty schema is visible to them too.
 
-### Unmeasured speed: `-O3` per component, Rust profile, slow suites
+### Unmeasured speed: `-O3` per component, Rust CPU baseline, slow suites
 
-Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgbench or own-workload measurement. Rust extensions build at each crate's own profile; measure fat LTO + `codegen-units=1` (build time and speed) before choosing. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
+Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgbench or own-workload measurement. Rust profiles need nothing: pg_jsonschema, timescaledb_toolkit and vectorscale release with fat LTO and `codegen-units=1`, wrappers (network-bound) with 16 units. Rust code still targets the generic CPU; adding it must keep each crate's own `.cargo/config` rustflags (vectorscale's `+avx2,+fma`), which an env `RUSTFLAGS` replaces, and needs a speed measurement to justify the rebuild. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
 
 ### arm64 BTI is off; restore it before running on Armv8.5+ hosts
 

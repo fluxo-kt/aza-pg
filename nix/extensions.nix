@@ -142,17 +142,22 @@ let
       # Nothing may compile below upstream's own release level (AGENTS.md), and an upstream that lowers it may do so
       # on purpose (a compiler-bug workaround, timing-sensitive code) or by accident (pgsodium's PG_CPPFLAGS = -O0, no
       # stated reason). So a make build whose own compile lines end below -O2 (-O0, -O1, -Os, -Og) fails until the
-      # entry records the decision: build.makeOptions clears the variable. make -n prints the build's flags without the
-      # wrapper's. Make and CMake builds are checked; Meson's setup hook sets buildPhase (ninja), so Meson builds are
-      # not. Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust
+      # entry records the decision (build.makeOptions clears a Makefile variable, nix.mesonFlags sets Meson's level).
+      # make -n and ninja -t commands print the build's own flags without the wrapper's, so make, CMake and Meson builds
+      # are all checked; a line with no -O gets fortify's -O2 from the wrapper. Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust
       # profile's level, and some of it must stay lower on purpose (aws-lc-sys builds jitterentropy at -O0, since its
       # entropy is timing jitter that optimisation removes, and #errors otherwise). Rust's target CPU waits on the Rust
       # profile measurement.
       preBuild = (old.preBuild or "") + ''
-        if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
+        plan=()
+        if [ -e build.ninja ]; then plan=(ninja -t commands)
+        elif [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
           planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray
-          if make -n "''${planFlags[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o ~ /^-O(0|1|s|g|z)$/ { print; bad = 1 } END { exit !bad }'; then
-            echo "${e.name}: upstream compiles below -O2 on the lines above; find out why, then clear the Makefile variable with build.makeOptions in manifest-data.ts and record the reason there" >&2
+          plan=(make -n "''${planFlags[@]}")
+        fi
+        if [ ''${#plan[@]} -gt 0 ]; then
+          if "''${plan[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o ~ /^-O(0|1|s|g|z)$/ { print; bad = 1 } END { exit !bad }'; then
+            echo "${e.name}: upstream compiles below -O2 on the lines above; find out why, then override it on the entry in manifest-data.ts (build.makeOptions or nix.mesonFlags) and record the reason there" >&2
             exit 1
           fi
         fi

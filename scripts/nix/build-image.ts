@@ -6,12 +6,12 @@
  * ever written to the store or the disk: the script runs where nix.ts runs Nix (natively or in its container), its stdout piped
  * straight into `docker load`. The default tag is aza-pg:pg<major>, the
  * image the suites test by default; --tag retags it after loading. A rebuilt tag leaves the previous image dangling,
- * so the build removes dangling aza-pg images.
+ * so the build removes dangling aza-pg images, and collects the store volume (reason at storeRoot).
  */
 
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
-import { nixCommand, nixPlatform } from "./nix";
+import { native, nixCommand, nixPlatform } from "./nix";
 
 const tagIndex = Bun.argv.indexOf("--tag");
 const retag = tagIndex === -1 ? undefined : Bun.argv[tagIndex + 1];
@@ -20,9 +20,14 @@ if (tagIndex !== -1 && !retag) {
   process.exit(64);
 }
 const system = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
+// The container's store volume is ours alone and would keep every earlier build's closure forever (tens of GB), so
+// each build roots its image there and collects the rest. keep-outputs (nix.ts) plus Nix's default keep-derivations
+// make that root keep every build input of the current image, so an unchanged rebuild stays cached. A native store
+// is the host's (CI runners are discarded anyway): collecting it would delete the host's own paths.
+const storeRoot = native ? ["--no-link"] : ["--out-link", "/nix/var/nix/gcroots/aza-pg-image"];
 
 const build = Bun.spawn(
-  nixCommand(["nix", "build", `.#packages.${system}.image`, "--no-link", "--print-out-paths"]),
+  nixCommand(["nix", "build", `.#packages.${system}.image`, ...storeRoot, "--print-out-paths"]),
   {
     cwd: path.resolve(import.meta.dir, "../.."),
     stdout: "pipe",
@@ -64,4 +69,13 @@ if (retag) {
   if ((await tag.exited) !== 0) process.exit(1);
 }
 console.error(`Reclaimed ${await reclaimDanglingAzaImages()}`);
+if (!native) {
+  const gc = Bun.spawn(nixCommand(["nix", "store", "gc"]), { stdout: "ignore", stderr: "pipe" });
+  const [gcLog, gcExit] = await Promise.all([new Response(gc.stderr).text(), gc.exited]);
+  if (gcExit !== 0) {
+    console.error(`nix store gc failed (exit ${gcExit}):\n${gcLog}`);
+    process.exit(1);
+  }
+  console.error(gcLog.trim().split("\n").at(-1));
+}
 console.log(retag ?? ref);

@@ -26,7 +26,7 @@
  */
 
 import { dockerRun, isDockerDaemonRunning, sweepOrphanedTestResources } from "../utils/docker";
-import { info, section, success, warning } from "../utils/logger";
+import { formatSize, info, section, success, warning } from "../utils/logger";
 
 const AZA_IMAGE_TITLE_PREFIX = "aza-pg";
 const AZA_VOLUME_MARKER = "app.aza_pg_custom";
@@ -155,11 +155,7 @@ async function removeImages(images: Array<{ id: string }>): Promise<number> {
 export async function reclaimDanglingAzaImages(): Promise<string> {
   const images = await azaDanglingImages();
   const removed = await removeImages(images);
-  return `${removed}/${images.length} superseded aza-pg image(s), ${fmtMB(images.reduce((s, im) => s + im.size, 0))}`;
-}
-
-function fmtMB(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(0)}MB`;
+  return `${removed}/${images.length} superseded aza-pg image(s), ${formatSize(images.reduce((s, im) => s + im.size, 0))}`;
 }
 
 async function main(): Promise<void> {
@@ -184,7 +180,7 @@ async function main(): Promise<void> {
 
   const imageBytes = images.reduce((sum, im) => sum + im.size, 0);
   info(
-    `Found: ${images.length} dangling aza-pg image(s) (${fmtMB(imageBytes)}), ` +
+    `Found: ${images.length} dangling aza-pg image(s) (${formatSize(imageBytes)}), ` +
       `${volumes.length} aza-pg PGDATA volume(s)`
   );
 
@@ -196,14 +192,14 @@ async function main(): Promise<void> {
     );
 
   if (DRY_RUN) {
-    for (const im of images) info(`  would remove image  ${im.id} (${fmtMB(im.size)})`);
+    for (const im of images) info(`  would remove image  ${im.id} (${formatSize(im.size)})`);
     success("Dry-run complete — no changes made");
     return;
   }
 
   const removedImages = await removeImages(images);
 
-  success(`Removed ${removedImages}/${images.length} image(s) (${fmtMB(imageBytes)})`);
+  success(`Removed ${removedImages}/${images.length} image(s) (${formatSize(imageBytes)})`);
 }
 
 // Only run when invoked directly (`bun run cleanup`), not when imported by tests.

@@ -125,18 +125,18 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * Format bytes to human-readable memory size
- * @param bytes - Size in bytes
- * @returns Formatted size string (MB/GB)
+ * The one byte-size formatter. Repo convention: sizes read KB/MB/GB and mean binary units (1 KB = 1024 bytes); never
+ * write KiB/MiB/GiB, and never divide by 1000.
  */
-export function formatMemory(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1024) {
-    return `${mb.toFixed(2)} MB`;
-  } else {
-    const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
+export function formatSize(bytes: number): string {
+  const units = ["KB", "MB", "GB"] as const;
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
   }
+  return `${value.toFixed(2)} ${units[unit]}`;
 }
 
 /**

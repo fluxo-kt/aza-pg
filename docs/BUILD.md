@@ -21,7 +21,7 @@ docker run --rm aza-pg:pg18 postgres --version
 
 **How it works:**
 
-- Runs `nix build` on `flake.nix`: natively on Linux with Nix installed, otherwise in a `nixos/nix` container (`scripts/nix/nix.ts`) whose store persists in the `aza-pg-nix-<arch>` volume, so only changed packages rebuild; each build then deletes the store paths the current image's build does not need
+- Runs `nix build` on `flake.nix`: natively on Linux with Nix installed, otherwise in a `nixos/nix` container (`scripts/nix/nix.ts`) whose store persists in the `aza-pg-nix-<arch>` volume, so only changed packages rebuild; each build then deletes every store path that neither the current image's build nor the flake's inputs need
 - Streams the image straight into `docker load` (no tarball on disk) and removes dangling aza-pg images, such as the tag's previous build
 - Builds for the host architecture only: an amd64 image comes from an amd64 host, as in CI
 

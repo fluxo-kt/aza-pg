@@ -144,10 +144,12 @@ let
       # stated reason). So a build whose own compile lines end below -O2 (bare -O is -O1) fails until the
       # entry records the decision (build.makeOptions clears a Makefile variable, nix.mesonFlags sets Meson's level).
       # make -n and ninja -t commands print the build's own flags without the wrapper's, so make, CMake and Meson builds
-      # are all checked; a line with no -O gets fortify's -O2 from the wrapper. Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust
-      # profile's level, and some of it must stay lower on purpose (aws-lc-sys builds jitterentropy at -O0, since its
-      # entropy is timing jitter that optimisation removes, and #errors otherwise). Rust code keeps the generic target CPU:
-      # an env RUSTFLAGS replaces a crate's own .cargo/config rustflags (vectorscale's +avx2,+fma) instead of adding.
+      # are all checked; a line with no -O gets fortify's -O2 from the wrapper.
+      #
+      # Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust profile's
+      # level, and some of it must stay lower on purpose (aws-lc-sys builds jitterentropy at -O0: its entropy is timing
+      # jitter that optimisation removes, and it #errors otherwise). Rust code keeps the generic target CPU, because an
+      # env RUSTFLAGS replaces a crate's own .cargo/config rustflags (vectorscale's +avx2,+fma) instead of adding to them.
       preBuild = (old.preBuild or "") + ''
         plan=()
         if [ -e build.ninja ]; then plan=(ninja -t commands)

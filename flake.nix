@@ -74,7 +74,8 @@
           # Rome, Milan, Genoa) has it; v4 (AVX-512) does not, Rome and Milan lack it. arm64 Armv8.2-A with dot
           # product, AES and SHA2: Hetzner CAX's Neoverse N1 (Ampere Altra), as on Graviton2 and every newer arm64
           # cloud CPU. Dropped: pre-2013 x86 and Armv8.0 cores (Graviton1, Raspberry Pi 4). The entrypoint checks the
-          # host CPU first, so a missing feature is named instead of crashing with an illegal instruction.
+          # host CPU first, so a missing feature is named instead of crashing with an illegal instruction: changing the
+          # baseline means changing that check's feature list too (docker-auto-config-entrypoint.sh.template).
           baseline = if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64-v3" else "-march=armv8.2-a+dotprod+aes+sha2";
           targetCpu = o: if (o.env or { }) ? NIX_CFLAGS_COMPILE
             then { env = o.env // { NIX_CFLAGS_COMPILE = "${o.env.NIX_CFLAGS_COMPILE} ${baseline}"; }; }

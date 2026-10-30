@@ -42,15 +42,15 @@ export interface ImageMetrics {
 }
 
 /**
- * Format bytes as human-readable size (MB or GB)
+ * Format bytes as human-readable size (MiB or GiB: binary units)
  */
 export function formatSize(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   if (mb < 1024) {
-    return `${mb.toFixed(2)} MB`;
+    return `${mb.toFixed(2)} MiB`;
   } else {
     const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
+    return `${gb.toFixed(2)} GiB`;
   }
 }
 

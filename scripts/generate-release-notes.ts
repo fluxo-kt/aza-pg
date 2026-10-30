@@ -14,8 +14,8 @@
  *     --catalog-enabled=36 \
  *     --output=release-notes.md \
  *     [--package-version-id=585941799] \
- *     [--compressed-size="247.79 MB"] \
- *     [--uncompressed-size="894.07 MB"] \
+ *     [--compressed-size="247.79 MiB"] \
+ *     [--uncompressed-size="894.07 MiB"] \
  *     [--layer-count=36]
  *
  * Arguments:
@@ -25,8 +25,8 @@
  *   --catalog-enabled     Number of enabled extensions
  *   --output              Output markdown file path
  *   --package-version-id  (Optional) GHCR package version ID for package link
- *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
- *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MB")
+ *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MiB")
+ *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MiB")
  *   --layer-count         (Optional) Number of image layers
  */
 
@@ -57,8 +57,8 @@ interface Args {
   catalogEnabled: number;
   output: string;
   packageVersionId?: number; // Optional for backward compatibility
-  compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
-  uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MB")
+  compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MiB")
+  uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MiB")
   layerCount?: number; // Optional: number of layers
 }
 

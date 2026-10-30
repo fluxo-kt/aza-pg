@@ -12,6 +12,10 @@
     # The official image's docker-entrypoint.sh (initdb, POSTGRES_* variables, /docker-entrypoint-initdb.d), which
     # our entrypoint sources.
     docker-library-postgres = { url = "github:docker-library/postgres"; flake = false; };
+    # publish.yml's SBOM generator, at a release tag and with its own lock: nixpkgs' sbomnix breaks whenever one of
+    # its many Python dependencies moves (typepy 2.0 broke it), and upstream tests only its own lock. Build-only:
+    # nothing it brings enters the image. /update bumps the tag to the latest release.
+    sbomnix.url = "github:tiiuae/sbomnix/v1.9.0";
   };
 
   outputs = { nixpkgs, ... }@inputs:

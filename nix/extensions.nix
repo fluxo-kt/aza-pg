@@ -138,13 +138,15 @@ let
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
-    } // optimise old // lib.optionalAttrs (!(old ? cargoDeps)) {
+    } // lib.optionalAttrs (!(old ? cargoDeps)) (optimise old // {
       # -O3 comes last and outranks an upstream's lower -O, but upstream may lower it on purpose (a compiler-bug
       # workaround, timing-sensitive code), and a silent override would erase that. So a make build whose own compile
       # lines end below -O2 (-O0, -O1, -Os, -Og) fails until the entry records the decision: build.makeOptions clears
       # the variable (pgsodium's PG_CPPFLAGS = -O0, no stated reason). make -n prints the build's flags without the
       # wrapper's. Make and CMake builds are checked; Meson's setup hook sets buildPhase (ninja), so Meson builds are
-      # not, and cargo builds (no C compile lines) are excluded.
+      # not. Cargo builds get neither -O3 nor this check: the cc crate already compiles their C at the Rust profile's
+      # level (-O3 for opt-level 3), and a forced last -O3 broke aws-lc-sys, whose jitterentropy must be -O0 (its
+      # entropy is timing jitter that optimisation removes; it #errors otherwise).
       preBuild = (old.preBuild or "") + ''
         if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
           planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray
@@ -154,7 +156,7 @@ let
           fi
         fi
       '';
-    } // {
+    }) // {
       postInstall = (old.postInstall or "") + ''
         if [ -d "$out/bin" ]; then
           for f in "$out"/bin/*; do

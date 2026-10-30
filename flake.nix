@@ -71,9 +71,16 @@
           # never below upstream's release build). The compiler wrapper puts NIX_CFLAGS_COMPILE after the build's own
           # flags and the last -O wins, so this outranks a recipe's -O2 and a Makefile's -O0 alike. A recipe sets the
           # variable either top-level or under env, and nixpkgs refuses a derivation setting both, so append to its form.
+          # The CPU baseline (maintainer ruling: raise it as far as the VPSes we run on, Hetzner first, and other common
+          # clouds all support). amd64 x86-64-v3 (AVX2, BMI2, FMA, MOVBE): every Hetzner x86 line (Skylake Xeon, EPYC
+          # Rome, Milan, Genoa) has it; v4 (AVX-512) does not, Rome and Milan lack it. arm64 Armv8.2-A with dot
+          # product, AES and SHA2: Hetzner CAX's Neoverse N1 (Ampere Altra), as on Graviton2 and every newer arm64
+          # cloud CPU. Dropped: pre-2013 x86 and Armv8.0 cores (Graviton1, Raspberry Pi 4). The entrypoint checks the
+          # host CPU first, so a missing feature is named instead of crashing with an illegal instruction.
+          baseline = if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64-v3" else "-march=armv8.2-a+dotprod+aes+sha2";
           optimise = o: if (o.env or { }) ? NIX_CFLAGS_COMPILE
-            then { env = o.env // { NIX_CFLAGS_COMPILE = "${o.env.NIX_CFLAGS_COMPILE} -O3"; }; }
-            else { NIX_CFLAGS_COMPILE = "${toString (o.NIX_CFLAGS_COMPILE or "")} -O3"; };
+            then { env = o.env // { NIX_CFLAGS_COMPILE = "${o.env.NIX_CFLAGS_COMPILE} -O3 ${baseline}"; }; }
+            else { NIX_CFLAGS_COMPILE = "${toString (o.NIX_CFLAGS_COMPILE or "")} -O3 ${baseline}"; };
           postgresql = (pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
             inherit llvmPackages;
             jitSupport = true;

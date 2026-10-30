@@ -99,7 +99,7 @@ let
       buildInputs = (old.buildInputs or [ ]) ++ inputsOf e;
       nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ attrsOf (e.nix.nativeInputs or [ ]);
       mesonFlags = (old.mesonFlags or [ ]) ++ (e.nix.mesonFlags or [ ]);
-      # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
+      makeFlags = (old.makeFlags or [ ]) ++ (e.build.makeOptions or [ ]);      # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
       # build/config.yaml there); ignored by recipes that do not use Meson.
       mesonBuildDir = "_meson";
       # A newer source than the recipe's can run its own scripts while building (pgBackRest 2.60's build/build.py,
@@ -136,6 +136,20 @@ let
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
+    } // lib.optionalAttrs (!(old ? cargoDeps)) {
+      # The last -O on a compile line wins, so an upstream Makefile's -O0 (pgsodium's PG_CPPFLAGS) silently undoes
+      # PostgreSQL's optimisation and nothing at runtime shows it. Refuse it in every make build, so each unoptimised
+      # build is a recorded decision (build.makeOptions clears the variable). Meson and cargo builds set buildPhase.
+      preBuild = (old.preBuild or "") + ''
+        if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
+          planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray
+          if make -n "''${planFlags[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o == "-O0" { print; bad = 1 } END { exit !bad }'; then
+            echo "${e.name}: compiles without optimisation (-O0, lines above); clear the Makefile variable adding it with build.makeOptions in manifest-data.ts" >&2
+            exit 1
+          fi
+        fi
+      '';
+    } // {
       postInstall = (old.postInstall or "") + ''
         if [ -d "$out/bin" ]; then
           for f in "$out"/bin/*; do

@@ -141,7 +141,7 @@ let
     } // lib.optionalAttrs (!(old ? cargoDeps)) (targetCpu old // {
       # Nothing may compile below upstream's own release level (AGENTS.md), and an upstream that lowers it may do so
       # on purpose (a compiler-bug workaround, timing-sensitive code) or by accident (pgsodium's PG_CPPFLAGS = -O0, no
-      # stated reason). So a make build whose own compile lines end below -O2 (-O0, -O1, -Os, -Og) fails until the
+      # stated reason). So a build whose own compile lines end below -O2 (bare -O is -O1) fails until the
       # entry records the decision (build.makeOptions clears a Makefile variable, nix.mesonFlags sets Meson's level).
       # make -n and ninja -t commands print the build's own flags without the wrapper's, so make, CMake and Meson builds
       # are all checked; a line with no -O gets fortify's -O2 from the wrapper. Cargo builds get neither the CPU baseline nor this check: the cc crate compiles their C at the Rust
@@ -156,7 +156,7 @@ let
           plan=(make -n "''${planFlags[@]}")
         fi
         if [ ''${#plan[@]} -gt 0 ]; then
-          if "''${plan[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o ~ /^-O(0|1|s|g|z)$/ { print; bad = 1 } END { exit !bad }'; then
+          if "''${plan[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o ~ /^-O(0|1|s|g|z)?$/ { print; bad = 1 } END { exit !bad }'; then
             echo "${e.name}: upstream compiles below -O2 on the lines above; find out why, then override it on the entry in manifest-data.ts (build.makeOptions or nix.mesonFlags) and record the reason there" >&2
             exit 1
           fi

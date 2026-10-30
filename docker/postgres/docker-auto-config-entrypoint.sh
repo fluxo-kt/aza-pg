@@ -13,10 +13,11 @@ set -euo pipefail
 # The server and extensions are compiled for a CPU baseline (`baseline` in flake.nix: x86-64-v3, or Armv8.2-A with
 # dot product, AES and SHA2). On an older CPU, or one whose hypervisor hides a feature, they would die with "illegal
 # instruction" mid-query, so check the CPU before anything compiled for it runs. Only Bash builtins run here. These
-# are /proc/cpuinfo's names for the same features; change both together.
-case "$(uname -m)" in
-x86_64) required_cpu_features="avx2 bmi1 bmi2 fma movbe f16c abm sse4_2 popcnt" ;;
-aarch64) required_cpu_features="atomics asimdrdm asimddp aes sha2" ;;
+# are /proc/cpuinfo's names for every feature GCC may emit for that baseline (x86-64-v3 includes v2: pni = SSE3,
+# abm = LZCNT; Armv8.2-A includes 8.1's CRC32, LSE atomics and RDM); change both together.
+case "$HOSTTYPE" in
+x86_64) required_cpu_features="cx16 lahf_lm popcnt pni sse4_1 sse4_2 ssse3 avx avx2 bmi1 bmi2 f16c fma abm movbe" ;;
+aarch64) required_cpu_features="crc32 atomics asimdrdm asimddp aes sha2" ;;
 *) required_cpu_features="" ;;
 esac
 cpu_features=""

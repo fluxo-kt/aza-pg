@@ -65,7 +65,7 @@ test.concurrent(
     const cpuinfo = path.join(dir, "cpuinfo");
     await Bun.write(
       cpuinfo,
-      "processor\t: 0\nflags\t: fpu bmi1 bmi2 fma movbe f16c abm sse4_2 popcnt atomics asimdrdm aes sha2\n"
+      "processor\t: 0\nflags\t: fpu cx16 lahf_lm popcnt pni sse4_1 sse4_2 ssse3 avx bmi1 bmi2 f16c fma abm movbe crc32 atomics asimdrdm aes sha2\n"
     );
     try {
       const { code, logs } = await runToExit("cpu-baseline", {}, [

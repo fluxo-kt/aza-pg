@@ -10,12 +10,11 @@
  *   emulation, where the kernel rejects Nix's seccomp filter — hence filter-syscalls = false, which guards only
  *   builds inside this throwaway container.
  *
- * build-dir = /build in the container: unsandboxed Nix builds under /nix/var/nix/builds by default. Clang then
- * records debug-info paths relative to their common prefix /nix ("store/<hash>-…"), which nuke-refs (it matches
- * "/nix/store/<hash>") cannot strip, so PostgreSQL's JIT bitcode keeps references to compilers and headers and fails
- * its own output check. Hydra's sandbox builds in /build, sharing no prefix with the store; so does the container, on
- * an anonymous volume that --rm removes (Nix refuses a world-writable build-dir such as /tmp; a tmpfs would hold Rust
- * build trees in RAM).
+ * The container builds in Nix's sandbox, as CI and Hydra do (--privileged: Nix needs mount and user namespaces;
+ * SYS_ADMIN alone is not enough). Unsandboxed, a build sees the container's /usr/bin/env and the like, so a source
+ * relying on them passes here and fails in CI (pgBackRest 2.60's "#!/usr/bin/env python3" build script did), and
+ * builds outside /build leave debug-info paths in PostgreSQL's JIT bitcode that its output check rejects.
+ * sandbox-fallback = false: Nix otherwise drops the sandbox silently when namespaces are missing.
  */
 
 import path from "node:path";
@@ -34,21 +33,20 @@ export function nixCommand(command: string[], container = `aza-pg-nix-${process.
     "run",
     "--rm",
     "--init",
+    "--privileged",
     "-i",
     "--name",
     container,
     "--platform",
     nixPlatform,
     "-e",
-    `NIX_CONFIG=filter-syscalls = false\nbuild-dir = /build\n${FLAGS}`,
+    `NIX_CONFIG=filter-syscalls = false\nsandbox = true\nsandbox-fallback = false\n${FLAGS}`,
     "-v",
     `aza-pg-nix-${arch}:/nix`,
     // builtins.fetchGit (every source in nix/extensions.nix) caches its clones here, outside the store; without the
     // volume each run re-clones every extension repository before evaluation can finish.
     "-v",
     `aza-pg-nix-${arch}-cache:/root/.cache/nix`,
-    "-v",
-    "/build",
     // Writable only so `nix flake lock` can write flake.lock; builds write to the store volume.
     "-v",
     `${path.resolve(import.meta.dir, "../..")}:/src`,

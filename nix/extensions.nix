@@ -102,6 +102,9 @@ let
       # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
       # build/config.yaml there); ignored by recipes that do not use Meson.
       mesonBuildDir = "_meson";
+      # A newer source than the recipe's can run its own scripts while building (pgBackRest 2.60's build/build.py,
+      # "#!/usr/bin/env python3"); the build sandbox has no /usr/bin/env, so point their interpreters into the store.
+      postPatch = (old.postPatch or "") + "\npatchShebangs --build .\n";
     } // lib.optionalAttrs (old ? cargoDeps) (pgrxArgs e src));
 
   generic = e:

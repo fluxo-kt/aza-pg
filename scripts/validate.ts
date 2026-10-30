@@ -289,6 +289,13 @@ async function validate(
       required: true,
     },
     {
+      name: "Changelog Coverage",
+      command: ["bun", "scripts/validate/changelog-coverage.ts"],
+      description:
+        "Every component whose pinned commit or patches changed since the newest release is named in [Unreleased]",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly

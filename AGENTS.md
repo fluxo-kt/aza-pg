@@ -263,7 +263,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 
 **Entry rules** (`[Unreleased]` is read by someone upgrading from the last release):
 
-- One entry per component: `<name> <version in the last release> → <current>`. Read the old version from the tag (`git show <tag>:docker/postgres/extensions.manifest.json`), never from changelog text. A second bump before release edits that entry
+- One entry per component: `<name> <version in the last release> → <current>`. Read the old version from the tag (`git show <tag>:docker/postgres/extensions.manifest.json`), never from changelog text. A second bump before release edits that entry. A patch-only change (a lockfile bump for a CVE) moves no version and still needs its entry; `Changelog Coverage` in `validate` refuses any component whose pinned commit or patches changed since the last release and whose manifest name `[Unreleased]` lacks
 - A dated `## [<tag>]` section is what shipped: never edit it
 - Every claim comes from the component's own release notes for exactly that range; a feature from an earlier release is not news. Name the concrete fix, never "bug fixes"
 - A change that needs operator action is Breaking; state the action, and the setting that restores old behaviour when upstream offers one

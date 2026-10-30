@@ -156,7 +156,7 @@ existing code. Run `bun run validate` immediately and fix issues before proceedi
 disable new rules — evaluate each one. If a rule is a false positive, suppress only that specific
 rule with a comment; if legitimate, fix the code.
 
-**⚠️ OSV security scanner blocks install (no-TTY)**: read the scanner selected by `bunfig.toml [install.security]` and follow AGENTS.md's Bun OSV install gate; do not substitute another scanner or bypass it. Inspect the reported advisory and the working-tree diff after a failed install. The correct fix is
+**⚠️ OSV security scanner blocks install (no-TTY)**: read the scanner selected by `bunfig.toml [install.security]` and follow `docs/TOOLING.md#Bun OSV install gate`; do not substitute another scanner or bypass it. Inspect the reported advisory and the working-tree diff after a failed install. The correct fix is
 to force the affected package to a patched version via a package.json `overrides` block, then re-install:
 ```jsonc
 "overrides": { "ws": "^8.20.1", "uuid": "^14.0.0" }  // pin transitive deps to patched versions

@@ -158,6 +158,8 @@ export interface ManifestEntry {
    * links. `nativeInputs`: build-time tools, never in the image. `mesonFlags`: appended
    * to the recipe's, last one winning. `bin`: the executables the entry ships (default: binaryPath's); the rest of
    * its bin/ goes, since nothing uses them (pg_partman's Python helpers, PGroonga's systemd-timer scripts).
+   * `postInstall`: shell run after install with `$out` the entry's output, for fixes to what the recipe installs;
+   * `@pgMajor@` becomes the PostgreSQL major.
    */
   nix?: {
     package?: string;
@@ -165,6 +167,7 @@ export interface ManifestEntry {
     nativeInputs?: string[];
     mesonFlags?: string[];
     bin?: string[];
+    postInstall?: string;
   };
   enabled?: boolean;
   disabledReason?: string;
@@ -603,7 +606,17 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgsodium",
-    nix: { package: "pgsodium" },
+    nix: {
+      package: "pgsodium",
+      // With pgsodium.getkey_script unset, pgsodium runs <sharedir>/extension/pgsodium_getkey. Every server the
+      // image starts sets it (auto-config file), but one an operator starts without that file would run nixpkgs'
+      // sample there, which writes an unchecked key into PGDATA; the link sends it to the image's script, or to the
+      // operator's mounted at that path. Upstream's example getkey scripts (AWS, GCP, Doppler…): nothing runs them,
+      // and they pull in a second Bash.
+      postInstall:
+        "ln -sf /usr/share/postgresql/@pgMajor@/extension/pgsodium_getkey $out/share/postgresql/extension/pgsodium_getkey\n" +
+        "rm -r $out/share/pgsodium/getkey_scripts",
+    },
     kind: "extension",
     category: "security",
     description: "Modern cryptography and envelope encryption with libsodium.",

@@ -126,6 +126,7 @@ export const ManifestEntrySchema = type({
     "nativeInputs?": "string[]",
     "mesonFlags?": "string[]",
     "bin?": "string[]",
+    "postInstall?": "string",
   },
   "enabled?": "boolean",
 });

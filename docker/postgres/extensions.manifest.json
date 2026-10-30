@@ -672,7 +672,8 @@
     {
       "name": "pgsodium",
       "nix": {
-        "package": "pgsodium"
+        "package": "pgsodium",
+        "postInstall": "ln -sf /usr/share/postgresql/@pgMajor@/extension/pgsodium_getkey $out/share/postgresql/extension/pgsodium_getkey\nrm -r $out/share/pgsodium/getkey_scripts"
       },
       "kind": "extension",
       "category": "security",

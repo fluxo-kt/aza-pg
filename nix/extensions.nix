@@ -160,15 +160,7 @@ let
           done
           rmdir --ignore-fail-on-non-empty "$out/bin"
         fi
-      '' + lib.optionalString (e.name == "pgsodium") ''
-        # pgsodium runs <sharedir>/extension/pgsodium_getkey when pgsodium.getkey_script is unset, as on the
-        # entrypoint's temporary init server. nixpkgs installs upstream's sample there, which writes an unchecked key
-        # into PGDATA, so the default resolves to the image's documented getkey script.
-        ln -sf /usr/share/postgresql/${lib.versions.major postgresql.version}/extension/pgsodium_getkey \
-          "$out/share/postgresql/extension/pgsodium_getkey"
-        # Upstream's example getkey scripts (AWS, GCP, Doppler, …): nothing runs them, and they pull in a second Bash.
-        rm -r "$out/share/pgsodium/getkey_scripts"
-      '';
+      '' + lib.replaceStrings [ "@pgMajor@" ] [ (lib.versions.major postgresql.version) ] (e.nix.postInstall or "");
     });
 in
 lib.listToAttrs (map

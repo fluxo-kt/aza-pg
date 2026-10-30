@@ -36,6 +36,10 @@ Several Docker suites declare their own psql helper although `scripts/docker/tes
 
 `docker/postgres/docker-entrypoint-initdb.d/04-pg_partman-init.sh` creates the extension in `public` and also creates an empty `partman` schema; upstream installs into `partman`. **Needs a decision:** moving it breaks operators who call `public.create_parent`, and dropping the empty schema is visible to them too.
 
+### Unmeasured speed: `-O3` per component, Rust profile, slow suites
+
+Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgbench or own-workload measurement. Rust extensions build at each crate's own profile; measure fat LTO + `codegen-units=1` (build time and speed) before choosing. Several Docker suites run past 30 s (backup-restore, pgbouncer-healthcheck and pgflow-upgrade longest), mostly container and stack start-up.
+
 ### arm64 BTI is off; restore it before running on Armv8.5+ hosts
 
 BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which treats `bti` as a no-op), so it waits until a host enforces it (AWS Graviton 3+, Azure Cobalt, Google Axion). The linker marks a binary only if every object in it is marked, and only the C startup files block that. gcc's `crtbegin*.o`/`crtend*.o` have no landing pads at all: forcing the mark (`-z force-bti`) would crash the server at start, since `.init_array` calls them indirectly, so they must be recompiled (compiler-rt's `crtbegin.c`/`crtend.c` with `-mbranch-protection=standard` compile in seconds). glibc's `crt1.o`/`Scrt1.o` already have their landing pads and only lack the mark: `ld -r -z force-bti` adds it. Link the server and C extensions with `-mbranch-protection=standard -B<those files>` and never use `-z force-bti` on final links, which would hide an unmarked static library. Rust extensions stay unmarked (precompiled std), as do nixpkgs' shared libraries; the kernel enforces BTI per object, so they keep working. Prove it on a BTI CPU: the arm64 test lane must first check that `/proc/cpuinfo` lists `bti`.

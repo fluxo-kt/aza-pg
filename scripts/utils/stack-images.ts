@@ -1,7 +1,7 @@
 /**
  * The image each stacks/*\/compose.yml service runs when the operator sets nothing: the default inside its
  * `${VAR:-<ref>}` image line. These defaults are the pins (companion images carry repo:tag@sha256:…, aza-pg's own
- * image its floating major tag, i.e. the latest release), so pin validation and CVE scans read them from here.
+ * image its floating major tag, i.e. the latest release), so pin validation reads them from here.
  */
 import { Glob } from "bun";
 
@@ -15,11 +15,10 @@ export interface StackImage {
   ref: string | null;
 }
 
-/** `root`: the tree to read (cve-scan.ts passes another revision's); `file` stays relative to it. */
-export async function stackDefaultImages(root = "."): Promise<StackImage[]> {
+export async function stackDefaultImages(): Promise<StackImage[]> {
   const images: StackImage[] = [];
-  for await (const file of new Glob("stacks/*/compose.yml").scan(root)) {
-    const compose = Bun.YAML.parse(await Bun.file(`${root}/${file}`).text()) as {
+  for await (const file of new Glob("stacks/*/compose.yml").scan(".")) {
+    const compose = Bun.YAML.parse(await Bun.file(file).text()) as {
       services?: Record<string, { image?: string }>;
     };
     for (const [service, def] of Object.entries(compose.services ?? {})) {

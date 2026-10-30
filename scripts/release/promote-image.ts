@@ -771,8 +771,6 @@ async function promoteImage(options: Options): Promise<void> {
               `compressed_size=${metrics.compressedFormatted}`,
               `uncompressed_size=${metrics.uncompressedFormatted}`,
               `layer_count=${metrics.layerCount}`,
-              `base_image_name=${metrics.baseImage?.name || ""}`,
-              `base_image_digest=${metrics.baseImage?.digest || ""}`,
             ].join("\n");
 
             // Append to GITHUB_OUTPUT file

@@ -6,66 +6,72 @@
  *
  * Edit this file to upgrade/downgrade extensions. Run:
  *   bun run generate
- * to refresh all generated files (Dockerfile, extensions.manifest.json, docs).
+ * to refresh all generated files (extensions.manifest.json, which flake.nix builds from, and the docs).
  */
 
 /**
  * PostgreSQL base configuration - SINGLE SOURCE OF TRUTH
- * Used by: Dockerfile generation, CI workflows, build scripts
+ * Used by: flake.nix (through the generated manifest), CI workflows, release scripts
  */
 export const MANIFEST_METADATA = {
   /** PostgreSQL version (e.g., "18.1") */
   pgVersion: "18.6",
-  /** Base image SHA256 digest for reproducible builds */
-  baseImageSha: "sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4",
-  /**
-   * Rust toolchain for the source-built extensions (pgrx). Pinned rather than `stable` so a rebuild compiles with the
-   * same compiler and a bump changes the Dockerfile (and with it CI's image key); check-updates.ts reports newer ones.
-   */
-  rustToolchain: "1.99.1",
-  /** Multi-arch digest of rust:<rustToolchain>-slim-trixie, the builder's Rust toolchain; re-resolve on every bump. */
-  rustImageSha: "sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247",
-  /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the builder's Bun; re-resolve on every Bun bump. */
+  /** Multi-arch digest of oven/bun:<.tool-versions bun>-debian, the pg_net test's echo server; re-resolve on every Bun bump. */
   bunImageSha: "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+  /**
+   * glibc locales the image ships (UTF-8), so a session can `SET lc_monetary|lc_numeric|lc_time = '<name>.utf8'`.
+   * PostgreSQL reads these from glibc, never from ICU, for to_char's L/D/G/TM patterns and the money type. New
+   * clusters do not collate with them (builtin provider, ICU per column). All of glibc's locales take 223 MB; this
+   * list covers the widely used languages and currencies in 49 MB, 45 MB of it glibc collation tables. They stay:
+   * clusters created by earlier images collate with en_US.utf8, and initdb imports every locale as a collation, so
+   * locales without those tables would make their indexes and COLLATE "de_DE.utf8" sort as POSIX without an error.
+   * Add a locale here when a project formats in it.
+   */
+  locales: [
+    "en_US",
+    "en_GB",
+    "en_CA",
+    "en_AU",
+    "en_IN",
+    "de_DE",
+    "de_AT",
+    "de_CH",
+    "fr_FR",
+    "fr_CA",
+    "fr_CH",
+    "it_IT",
+    "es_ES",
+    "es_MX",
+    "es_AR",
+    "pt_PT",
+    "pt_BR",
+    "nl_NL",
+    "pl_PL",
+    "cs_CZ",
+    "sv_SE",
+    "da_DK",
+    "nb_NO",
+    "fi_FI",
+    "ru_RU",
+    "uk_UA",
+    "kk_KZ",
+    "be_BY",
+    "ka_GE",
+    "hy_AM",
+    "tr_TR",
+    "el_GR",
+    "he_IL",
+    "ar_AE",
+    "hi_IN",
+    "zh_CN",
+    "zh_TW",
+    "ja_JP",
+    "ko_KR",
+    "th_TH",
+    "vi_VN",
+    "id_ID",
+  ],
 } as const;
-
-/** A C library compiled from a release tarball because Debian trixie's package is too old. */
-export interface SourceLibrary {
-  /** GitHub repository and release tag; check-updates.ts compares `tag` with upstream's latest. */
-  source: { type: "git"; repository: string; tag: string };
-  /** Tarball attached to that release. The build downloads <repository>/releases/download/<tag>/<asset>,
-   * so a tag/asset mismatch fails as a 404 and a stale sha256 as a checksum error, never silently. */
-  asset: string;
-  /** SHA-256 of the asset, recorded after verifying the upstream signature (see `notes`). */
-  sha256: string;
-  notes?: string[];
-}
-
-/**
- * Libraries built in the builder stage into /usr/local and shipped in the image, ahead of any
- * extension listing them in `sourceLibraries`. The image then carries ONE copy, which every consumer
- * links: two versions loaded into one backend would cross-bind symbols, because PostgreSQL loads
- * modules with RTLD_GLOBAL. Security updates for these are ours, not Debian's.
- */
-export const SOURCE_LIBRARIES = {
-  libsodium: {
-    asset: "libsodium-1.0.22.tar.gz",
-    sha256: "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
-    source: {
-      type: "git",
-      repository: "https://github.com/jedisct1/libsodium.git",
-      tag: "1.0.22-RELEASE",
-    },
-    notes: [
-      "pgsodium 3.1.11 needs libsodium >= 1.0.21; trixie ships 1.0.18.",
-      "Before changing the pin, verify the tarball: minisign -VP RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 -m <tarball> (key from https://doc.libsodium.org/installation), then record its sha256.",
-      "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast.",
-    ],
-  },
-} satisfies Record<string, SourceLibrary>;
-
-/** Library keys; ManifestEntry.sourceLibraries accepts only these, so a typo fails type checking. */
-export type SourceLibraryName = keyof typeof SOURCE_LIBRARIES;
 
 export type SourceSpec =
   | { type: "builtin" }
@@ -88,19 +94,10 @@ export interface BuildSpec {
   features?: string[];
   noDefaultFeatures?: boolean;
   /**
-   * When type === "meson", pass-through setup options. They follow the build's own --prefix=/usr/local,
-   * and meson keeps the last --prefix given, so an entry can install elsewhere with "--prefix=/usr".
-   */
-  mesonOptions?: string[];
-  /**
    * When type === "pgxs", extra make command-line assignments. Command-line variables override the
    * Makefile's own, so this can undo an upstream setting such as PG_CPPFLAGS = -O0.
    */
   makeOptions?: string[];
-  /**
-   * Optional script identifier for bespoke installers.
-   */
-  script?: string;
   /**
    * Unified-diff file names in docker/postgres/patches/, applied with `git apply` to the fresh clone before
    * building; one that no longer applies fails the build (refresh it on every upstream bump).
@@ -137,45 +134,10 @@ export interface ManifestEntry {
   runtime?: RuntimeSpec;
   dependencies?: string[];
   provides?: string[];
-  aptPackages?: string[];
-  /** Keys of SOURCE_LIBRARIES this module links against; they are built before it. */
-  sourceLibraries?: SourceLibraryName[];
   notes?: string[];
-  install_via?: "pgdg" | "percona" | "timescale" | "source";
   /**
-   * Full PGDG Debian package version string for apt-installable extensions.
-   * Only applicable when install_via === "pgdg".
-   * Example: "2.8.4-1.pgdg13+1" for postgresql-18-plpgsql-check=2.8.4-1.pgdg13+1
-   *
-   * IMPORTANT: This is the SINGLE SOURCE OF TRUTH for PGDG versions.
-   * The semantic version here should match the source.tag (e.g., tag "v2.8.4" → pgdgVersion "2.8.4-...")
-   */
-  pgdgVersion?: string;
-  /**
-   * PGDG apt name suffix: installs postgresql-<major>-<pgdgPackage>.
-   * Required when install_via === "pgdg" and kind is "extension"; a tool without it installs under
-   * its own name (pgbackrest), a tool that is a server module sets it (wal2json).
-   * Example: "pgvector" for vector, "cron" for pg_cron.
-   */
-  pgdgPackage?: string;
-  /**
-   * Full Percona Debian package version string for Percona-installable extensions.
-   * Only applicable when install_via === "percona".
-   * Example: "2.3.1-1.noble" for percona-pg-stat-monitor18=2.3.1-1.noble
-   *
-   * Note: Percona package naming differs from PGDG (e.g., "percona-pg-stat-monitor18" vs "postgresql-18-...")
-   */
-  perconaVersion?: string;
-  /**
-   * Percona package name override. Required when install_via === "percona".
-   * The full package name used by apt-get install.
-   * Example: "percona-pg-stat-monitor18" or "percona-postgresql-18-wal2json"
-   */
-  perconaPackage?: string;
-  /**
-   * Shared object filename for .so file verification.
-   * Required for every enabled extension installed from apt (pgdg, percona, timescale): the Dockerfile fails the build when the file is missing.
-   * Example: "pg_stat_monitor.so" or "timescaledb.so"
+   * Shared object file name when it differs from `<name>.so` (e.g. "timescaledb.so"): the size check measures it,
+   * and a tool that ships a server library names it here instead of binaryPath.
    */
   soFileName?: string;
   /**
@@ -186,22 +148,27 @@ export interface ManifestEntry {
   binaryPath?: string;
   /**
    * Directories a tool writes by default (logs, repository, spool). The image creates them postgres-owned,
-   * mode 0750, whether the tool is built from source or installed from a package whose own setup may
-   * differ, so a named volume mounted on one starts writable by postgres instead of root-owned.
+   * mode 0750, so a named volume mounted on one starts writable by postgres instead of root-owned.
    */
   postgresOwnedDirs?: string[];
   /**
-   * Timescale repository package name for timescale-installable extensions.
-   * Required when install_via === "timescale".
-   * Example: "timescaledb-2-postgresql-18"
+   * How the Nix image (flake.nix) builds this entry, always from `source.commit`, so versions stay ours.
+   * `package`: attribute in nixpkgs' postgresql_<major>.pkgs (or top-level nixpkgs for a tool) whose build recipe is
+   * reused with our source swapped in. Omitted: built from `build.type` with `inputs`, the nixpkgs attributes it
+   * links. `nativeInputs`: build-time tools, never in the image. `mesonFlags`: appended
+   * to the recipe's, last one winning. `bin`: the executables the entry ships (default: binaryPath's); the rest of
+   * its bin/ goes, since nothing uses them (pg_partman's Python helpers, PGroonga's systemd-timer scripts).
+   * `postInstall`: shell run after install with `$out` the entry's output, for fixes to what the recipe installs;
+   * `@pgMajor@` becomes the PostgreSQL major.
    */
-  timescalePackage?: string;
-  /**
-   * Timescale repository package version string.
-   * Required when install_via === "timescale".
-   * Example: "2.24.0~debian13-1801"
-   */
-  timescaleVersion?: string;
+  nix?: {
+    package?: string;
+    inputs?: string[];
+    nativeInputs?: string[];
+    mesonFlags?: string[];
+    bin?: string[];
+    postInstall?: string;
+  };
   enabled?: boolean;
   disabledReason?: string;
   /**
@@ -220,12 +187,10 @@ export interface ManifestEntry {
 export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "vector",
+    nix: { package: "pgvector" },
     displayName: "pgvector",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "pgvector",
     soFileName: "vector.so",
-    pgdgVersion: "0.8.7-1.pgdg13+1",
     category: "ai",
     description: "Vector similarity search with IVF/HNSW indexes and distance operators.",
     source: {
@@ -246,11 +211,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_cron",
+    nix: { package: "pg_cron" },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "cron",
     soFileName: "pg_cron.so",
-    pgdgVersion: "1.6.8-1.pgdg13+2",
     category: "operations",
     description: "Lightweight cron-based job runner inside PostgreSQL.",
     source: {
@@ -263,7 +226,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "PGDG: postgresql-18-cron",
         "Preloaded by default - background worker scheduling enabled",
         "Job scheduling tested in functional test suite",
       ],
@@ -273,11 +235,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pgaudit",
+    nix: { package: "pgaudit" },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "pgaudit",
     soFileName: "pgaudit.so",
-    pgdgVersion: "18.0-3.pgdg13+1",
     category: "security",
     description: "Detailed auditing for DDL/DML activity with class-level granularity.",
     source: {
@@ -289,7 +249,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
-      notes: ["PGDG: postgresql-18-pgaudit", "Tune pgaudit.log to control verbosity."],
+      notes: ["Tune pgaudit.log to control verbosity."],
     },
     sourceUrl: "https://github.com/pgaudit/pgaudit",
     docsUrl: "https://www.pgaudit.org",
@@ -381,11 +341,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hypopg",
+    nix: { package: "hypopg" },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "hypopg",
     soFileName: "hypopg.so",
-    pgdgVersion: "1.4.4-1.pgdg13+1",
     category: "performance",
     description: "Simulate hypothetical indexes for planner what-if analysis.",
     source: {
@@ -397,7 +355,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hypopg"],
     },
     sourceUrl: "https://github.com/HypoPG/hypopg",
     docsUrl: "https://hypopg.readthedocs.io",
@@ -417,16 +374,15 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["NOT in PGDG or Pigsty (Supabase-specific extension)", "Source build required"],
+      notes: ["Supabase-specific extension"],
     },
     sourceUrl: "https://github.com/supabase/index_advisor",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/index_advisor",
   },
   {
     name: "plpgsql_check",
+    nix: { package: "plpgsql_check" },
     kind: "extension",
-    // PGDG trails the passive-mode composite-variable fix; use the existing PGXS build path.
-    install_via: "source",
     soFileName: "plpgsql_check.so",
     category: "quality",
     description: "Static analyzer for PL/pgSQL functions and triggers.",
@@ -440,7 +396,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "Source build includes the passive-mode composite-variable fix ahead of PGDG.",
         "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;",
       ],
     },
@@ -449,6 +404,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_safeupdate",
+    nix: { package: "pg_safeupdate" },
     kind: "tool",
     category: "safety",
     description: "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
@@ -464,10 +420,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: true,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "safeupdate",
-      notes: [
-        "NOT in PGDG.",
-        "Requires shared_preload_libraries to intercept UPDATE/DELETE queries.",
-      ],
+      notes: ["Requires shared_preload_libraries to intercept UPDATE/DELETE queries."],
     },
     sourceUrl: "https://github.com/eradman/pg-safeupdate",
     docsUrl: "https://github.com/eradman/pg-safeupdate#readme",
@@ -495,12 +448,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "http",
+    nix: { package: "pgsql-http" },
     displayName: "pgsql-http",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "http",
     soFileName: "http.so",
-    pgdgVersion: "1.7.2-2.pgdg13+2",
     category: "integration",
     description: "Synchronous HTTP client for PostgreSQL built on libcurl.",
     source: {
@@ -509,17 +460,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v1.7.2",
     },
     build: { type: "pgxs" },
-    aptPackages: ["libcurl4-openssl-dev", "libjson-c-dev"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-http"],
     },
     sourceUrl: "https://github.com/pramsey/pgsql-http",
     docsUrl: "https://github.com/pramsey/pgsql-http#readme",
   },
   {
     name: "pg_net",
+    nix: { package: "pg_net" },
     kind: "extension",
     category: "integration",
     description: "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
@@ -529,12 +479,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v0.20.5",
     },
     build: { type: "pgxs" },
-    aptPackages: ["libcurl4-openssl-dev"],
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG (Supabase-specific). Source build required.",
+        "Supabase-specific.",
         "Requires shared_preload_libraries for background worker",
         "Powers async HTTP webhooks from triggers",
         "Use net.http_post() for outbound API calls",
@@ -546,6 +495,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "wrappers",
+    nix: { inputs: ["openssl", "pkg-config"] },
     displayName: "supabase-wrappers",
     kind: "extension",
     category: "integration",
@@ -560,18 +510,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       features: ["pg18"],
       noDefaultFeatures: true,
       subdir: "wrappers",
+      // Cargo.lock moved by `cargo update -p rustls@0.23.37 --precise 0.23.46` at the pinned commit: rustls 0.23.46,
+      // rustls-webpki 0.103.16 and the aws-lc-rs 1.19 / aws-lc-sys 0.47 they require fix GHSA-82j2-j2ch-gfr8 (HIGH),
+      // GHSA-2mjx-qc3c-rqvc and GHSA-c8m5-c952-6cm4 in the TLS that wrappers' HTTPS FDWs use. Regenerate the same way
+      // on a bump; drop it once a release locks these; a stale one fails the build.
+      patches: ["wrappers-cargo-lock.patch"],
     },
-    aptPackages: ["clang", "llvm", "pkg-config", "make"],
     dependencies: ["pg_stat_statements"],
     runtime: { sharedPreload: false, defaultEnable: false },
-    notes: [
-      "NOT available in PGDG. build-extensions.ts installs the cargo-pgrx version pinned in its Cargo.toml.",
-    ],
     sourceUrl: "https://github.com/supabase/wrappers",
     docsUrl: "https://supabase.com/docs/guides/database/extensions/wrappers/overview",
   },
   {
     name: "pgroonga",
+    nix: { package: "pgroonga" },
     kind: "extension",
     category: "search",
     description: "Full-text search powered by Groonga for multilingual workloads.",
@@ -580,34 +532,20 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgroonga/pgroonga.git",
       tag: "4.1.0",
     },
-    build: { type: "meson", mesonOptions: ["-Dtest=false"] },
-    aptPackages: [
-      "cmake",
-      "meson",
-      "ninja-build",
-      "pkg-config",
-      "libgroonga-dev",
-      "liblz4-dev",
-      "libmecab-dev",
-      "libmsgpack-dev",
-    ],
+    build: { type: "meson" },
     runtime: { sharedPreload: false, defaultEnable: false },
     notes: [
-      "NOT available in PGDG for PostgreSQL 18",
       "Builds with Meson (PGXS Makefile was dropped upstream in 4.0.6).",
       "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
-      "Source build required for PG18",
     ],
     sourceUrl: "https://github.com/pgroonga/pgroonga",
     docsUrl: "https://pgroonga.github.io",
   },
   {
     name: "rum",
+    nix: { package: "rum" },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "rum",
     soFileName: "rum.so",
-    pgdgVersion: "1.3.15-1.pgdg13+1",
     category: "search",
     description: "RUM GiST access method for ranked full-text search.",
     source: {
@@ -619,7 +557,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-rum"],
     },
     sourceUrl: "https://github.com/postgrespro/rum",
     docsUrl: "https://github.com/postgrespro/rum#readme",
@@ -627,9 +564,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "postgis",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "postgis-3",
-    pgdgVersion: "3.6.4+dfsg-2.pgdg13+1",
     category: "gis",
     description: "Spatial types, functions, raster, and topology for PostgreSQL.",
     enabled: false,
@@ -638,30 +572,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/postgis/postgis.git",
-      tag: "3.6.4",
+      tag: "3.7.0",
     },
     build: { type: "autotools" },
-    aptPackages: [
-      "autoconf",
-      "automake",
-      "libtool",
-      "g++",
-      "libgeos-dev",
-      "libproj-dev",
-      "libjson-c-dev",
-      "libprotobuf-c-dev",
-      "protobuf-c-compiler",
-      "libxml2-dev",
-      "libgdal-dev",
-      "liblz4-dev",
-      "libzstd-dev",
-      "bison",
-      "flex",
-    ],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-postgis-3"],
     },
     sourceUrl: "https://github.com/postgis/postgis",
     docsUrl: "https://postgis.net/documentation",
@@ -669,9 +585,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   {
     name: "pgrouting",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "pgrouting",
-    pgdgVersion: "4.0.1-1.pgdg13+1",
     category: "gis",
     description: "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
     enabled: false,
@@ -680,21 +593,30 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     source: {
       type: "git",
       repository: "https://github.com/pgRouting/pgrouting.git",
-      tag: "v4.0.1",
+      tag: "v4.0.2",
     },
     build: { type: "cmake" },
     dependencies: ["postgis"],
-    aptPackages: ["cmake", "libboost-graph-dev"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-pgrouting"],
     },
     sourceUrl: "https://github.com/pgRouting/pgrouting",
     docsUrl: "https://docs.pgrouting.org",
   },
   {
     name: "pgsodium",
+    nix: {
+      package: "pgsodium",
+      // With pgsodium.getkey_script unset, pgsodium runs <sharedir>/extension/pgsodium_getkey. Every server the
+      // image starts sets it (auto-config file), but one an operator starts without that file would run nixpkgs'
+      // sample there, which writes an unchecked key into PGDATA; the link sends it to the image's script, or to the
+      // operator's mounted at that path. Upstream's example getkey scripts (AWS, GCP, Doppler…): nothing runs them,
+      // and they pull in a second Bash.
+      postInstall:
+        "ln -sf /usr/share/postgresql/@pgMajor@/extension/pgsodium_getkey $out/share/postgresql/extension/pgsodium_getkey\n" +
+        "rm -r $out/share/pgsodium/getkey_scripts",
+    },
     kind: "extension",
     category: "security",
     description: "Modern cryptography and envelope encryption with libsodium.",
@@ -706,12 +628,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     // Upstream's Makefile sets PG_CPPFLAGS = -O0 (since 2017, no stated reason), which outranks
     // PostgreSQL's -O2. Secrets are wiped with sodium_memzero, which optimisation cannot remove.
     build: { type: "pgxs", makeOptions: ["PG_CPPFLAGS="] },
-    sourceLibraries: ["libsodium"],
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG.",
         "Preloaded by default for pgflow and supabase_vault support",
         "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
         "Root key: random per data directory ($PGDATA/pgsodium_root.key) or the operator's PGSODIUM_KEY_FILE (docs/PGSODIUM-SETUP.md)",
@@ -722,6 +642,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "supabase_vault",
+    nix: { inputs: ["libsodium"] },
     displayName: "vault",
     kind: "extension",
     category: "security",
@@ -732,17 +653,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "v0.3.2",
     },
     build: { type: "pgxs" },
-    sourceLibraries: ["libsodium"],
     runtime: {
       // Vault reads pgsodium_getkey independently at startup; both extensions need the same retained
       // root key for existing ciphertext to remain readable across restart and restore.
       sharedPreload: true,
       defaultEnable: true,
-      notes: [
-        "NOT in PGDG (Supabase-specific).",
-        "Source build required",
-        "Required for pgflow workflow orchestration",
-      ],
+      notes: ["Supabase-specific.", "Required for pgflow workflow orchestration"],
     },
     sourceUrl: "https://github.com/supabase/vault",
     docsUrl: "https://supabase.com/docs/guides/database/vault",
@@ -762,14 +678,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       features: ["pg18"],
       noDefaultFeatures: true,
     },
-    aptPackages: ["clang", "llvm", "pkg-config", "make"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "NOT in PGDG (Rust pgrx extension).",
+        "Rust pgrx extension.",
         "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
-        "Source build required for latest features",
       ],
     },
     sourceUrl: "https://github.com/supabase/pg_jsonschema",
@@ -789,17 +703,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: [
-        "NOT in PGDG.",
-        "Using v1.3 from master (unreleased, no git tag)",
-        "Source build required",
-      ],
+      notes: ["Using v1.3 from master (unreleased, no git tag)"],
     },
     sourceUrl: "https://github.com/iCyberon/pg_hashids",
     docsUrl: "https://github.com/iCyberon/pg_hashids#readme",
   },
   {
     name: "pgmq",
+    nix: { package: "pgmq" },
     kind: "extension",
     category: "queueing",
     description: "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
@@ -812,7 +723,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: true,
-      notes: ["NOT in PGDG."],
     },
     sourceUrl: "https://github.com/pgmq/pgmq",
     docsUrl: "https://github.com/pgmq/pgmq#readme",
@@ -877,7 +787,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        'PGDG ships postgresql-18-pgq3 but trails the upstream tag; switch to install_via pgdg (pgdgPackage "pgq3") once it matches.',
         "Pure PLpgSQL extension with no external dependencies",
         "Installs into pg_catalog schema (non-relocatable)",
       ],
@@ -887,11 +796,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_repack",
+    // The client the pg_repack wrapper (docker/postgres/pg_repack-wrapper.sh) runs.
+    nix: { package: "pg_repack", bin: ["pg_repack"] },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "repack",
     soFileName: "pg_repack.so",
-    pgdgVersion: "1.5.3-1.pgdg13+2",
     category: "maintenance",
     description: "Online table/index reorganization without long locks.",
     source: {
@@ -900,11 +808,9 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       tag: "ver_1.5.3",
     },
     build: { type: "pgxs" },
-    aptPackages: ["libreadline-dev", "libnuma-dev", "libzstd-dev"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-repack"],
     },
     sourceUrl: "https://github.com/reorg/pg_repack",
     docsUrl: "https://reorg.github.io/pg_repack",
@@ -919,16 +825,12 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/percona/pg_stat_monitor.git",
       tag: "2.4.0",
     },
-    install_via: "percona",
-    perconaPackage: "percona-pg-stat-monitor18",
-    perconaVersion: "1:2.4.0-1.trixie",
     soFileName: "pg_stat_monitor.so",
     build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "NOT in PGDG. Installed via Percona ppg-18 repository",
         "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation.",
       ],
     },
@@ -952,7 +854,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       defaultEnable: false,
       preloadLibraryName: "plan_filter",
       notes: [
-        "NOT in PGDG. Source build required.",
         "Optional: add plan_filter to POSTGRES_SHARED_PRELOAD_LIBRARIES, then set plan_filter.statement_cost_limit (superuser-only GUC).",
       ],
     },
@@ -961,10 +862,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "timescaledb",
+    nix: { package: "timescaledb" },
     kind: "extension",
-    install_via: "timescale",
-    timescalePackage: "timescaledb-2-postgresql-18",
-    timescaleVersion: "2.31.0~debian13-1806",
     soFileName: "timescaledb.so",
     category: "timeseries",
     description:
@@ -978,7 +877,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: true,
       notes: [
-        "Timescale repo: timescaledb-2-postgresql-18 (TSL build). The ~debian13-18NN version suffix names the PostgreSQL minor it was built for, and the package Depends on postgresql-18 >= that minor: bump timescaleVersion together with pgVersion.",
         "Preloaded for optimal hypertable performance",
         "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry.",
       ],
@@ -988,10 +886,8 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "timescaledb_toolkit",
+    nix: { package: "timescaledb_toolkit" },
     kind: "extension",
-    install_via: "timescale",
-    timescalePackage: "timescaledb-toolkit-postgresql-18",
-    timescaleVersion: "1:1.26.0~debian13",
     soFileName: "timescaledb_toolkit-1.26.0.so",
     category: "timeseries",
     description: "Analytical hyperfunctions and sketches extending TimescaleDB.",
@@ -1000,20 +896,24 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/timescale/timescaledb-toolkit.git",
       tag: "1.26.0",
     },
+    build: {
+      type: "cargo-pgrx",
+      // Cargo.lock moved with `cargo update -p <crate> --precise <version>` at the pinned commit: hashbrown 0.15.1
+      // (GHSA-wwq9-3cpr-mm53, HIGH) and rand 0.8.8 (GHSA-cq8v-f236-94qc). Regenerate the same way on a bump; drop it
+      // once a release locks these; a stale one fails the build.
+      patches: ["timescaledb_toolkit-cargo-lock.patch"],
+    },
     dependencies: ["timescaledb"],
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: [
-        "Timescale repo: timescaledb-toolkit-postgresql-18",
-        "Switched from cargo-pgrx source build to Timescale apt (faster install)",
-      ],
     },
     sourceUrl: "https://github.com/timescale/timescaledb-toolkit",
     docsUrl: "https://github.com/timescale/timescaledb-toolkit/tree/main/docs",
   },
   {
     name: "wal2json",
+    nix: { package: "wal2json" },
     kind: "tool",
     category: "cdc",
     description: "Logical decoding output plugin streaming JSON data for CDC.",
@@ -1022,9 +922,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/eulerto/wal2json.git",
       tag: "wal2json_2_7",
     },
-    install_via: "pgdg",
-    pgdgPackage: "wal2json",
-    pgdgVersion: "2.7-1.pgdg13+1",
     soFileName: "wal2json.so",
     runtime: {
       sharedPreload: false,
@@ -1036,11 +933,11 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "pg_partman",
+    nix: { package: "pg_partman" },
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "partman",
+    // Upstream also installs three optional Python helper scripts, which would pull Python and its CVEs into the image;
+    // the image ships none (nix.bin: no binaryPath, so no bin/), since the extension and its background worker need no Python.
     soFileName: "pg_partman_bgw.so",
-    pgdgVersion: "5.5.0-1.pgdg13+1",
     category: "maintenance",
     description: "Declarative partition maintenance with optional background worker.",
     source: {
@@ -1048,13 +945,14 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       repository: "https://github.com/pgpartman/pg_partman.git",
       tag: "v5.5.0",
     },
+    build: { type: "pgxs" },
     runtime: {
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
       preloadLibraryName: "pg_partman_bgw",
       notes: [
-        "PGDG: postgresql-18-partman — ships the pg_partman_bgw background worker",
+        "Ships the pg_partman_bgw background worker; the Python helper scripts are not included",
         "Set pg_partman_bgw.dbname, interval and role to enable the background worker; since 5.5.0 role defaults to partman_maintainer, which must exist (upstream advises a non-superuser role)",
       ],
     },
@@ -1063,6 +961,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "vectorscale",
+    nix: { package: "pgvectorscale" },
     displayName: "pgvectorscale",
     kind: "extension",
     soFileName: "vectorscale-0.9.1.so",
@@ -1091,8 +990,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       notes: [
         "Built from source with runtime CPU dispatch: AVX2/FMA only when the CPU has them",
         "Supports both amd64 and arm64 architectures",
-        "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
-        "Alt: PGDG has no package (Rust pgrx extension)",
       ],
     },
     sourceUrl: "https://github.com/timescale/pgvectorscale",
@@ -1100,12 +997,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
   },
   {
     name: "hll",
+    nix: { package: "pg_hll" },
     displayName: "postgresql-hll",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "hll",
     soFileName: "hll.so",
-    pgdgVersion: "2.21-1.pgdg13+2",
     category: "analytics",
     description: "HyperLogLog probabilistic counting data type.",
     source: {
@@ -1117,17 +1012,32 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     runtime: {
       sharedPreload: false,
       defaultEnable: false,
-      notes: ["PGDG: postgresql-18-hll"],
     },
     sourceUrl: "https://github.com/citusdata/postgresql-hll",
     docsUrl: "https://github.com/citusdata/postgresql-hll#readme",
   },
   {
     name: "pgbackrest",
+    // systemd notify has no use in a container. SFTP repositories are off: no stack or deployment uses one (they
+    // back up to S3), and libssh2 1.11.1, still its newest release, has unfixed CVEs a malicious SSH server can
+    // reach (CVE-2026-66032 double free, CVE-2026-55200 out-of-bounds write); turn it back on with a libssh2
+    // release carrying the fixes. zstd stays for compress-type=zst. Since 2.60 its build script (Python,
+    // build-time only) reads YAML. nixpkgs configures Meson with --buildtype=plain (optimization "plain"), and
+    // upstream's default build type, release, is optimization 3, plus -funroll-loops -ftree-vectorize, which its
+    // meson.build adds only at 2 or 3. optimization=3 is upstream's release build (debug stays off, so DEBUG-only
+    // code stays out).
+    nix: {
+      package: "pgbackrest",
+      mesonFlags: [
+        "-Dlibsystemd=disabled",
+        "-Dlibssh2=disabled",
+        "-Dlibzstd=enabled",
+        "-Doptimization=3",
+      ],
+      nativeInputs: ["python3Packages.pyyaml"],
+    },
     kind: "tool",
     // Never below 2.59.3: it fixes weak encryption sub-keys and salts.
-    install_via: "pgdg",
-    pgdgVersion: "2.60.0-1.pgdg13+1",
     binaryPath: "/usr/bin/pgbackrest",
     postgresOwnedDirs: ["/var/lib/pgbackrest", "/var/log/pgbackrest", "/var/spool/pgbackrest"],
     category: "operations",
@@ -1141,7 +1051,7 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: false,
       defaultEnable: false,
       notes: [
-        "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
+        "CLI tool. NOT a PostgreSQL extension.",
         "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root.",
       ],
     },
@@ -1149,42 +1059,10 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     docsUrl: "https://pgbackrest.org/user-guide.html",
   },
   {
-    name: "pgbadger",
-    kind: "tool",
-    install_via: "pgdg",
-    // A real package in PGDG; percona-pgbadger only Provides the name, so the pin resolves to PGDG
-    // even with the Percona repo enabled.
-    pgdgVersion: "13.2-1.pgdg13+1",
-    binaryPath: "/usr/bin/pgbadger",
-    category: "observability",
-    description: "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
-    source: {
-      type: "git",
-      repository: "https://github.com/darold/pgbadger.git",
-      tag: "v13.2",
-    },
-    build: { type: "make" },
-    aptPackages: ["perl", "libtext-csv-xs-perl", "libjson-xs-perl"],
-    runtime: {
-      sharedPreload: false,
-      defaultEnable: false,
-      notes: [
-        "CLI tool. NOT a PostgreSQL extension.",
-        "Installed from PGDG as pinned pgbadger=<pgdgVersion>; with the Percona repo enabled apt still resolves the PGDG package.",
-        "Binary installed to /usr/bin/pgbadger.",
-      ],
-    },
-    sourceUrl: "https://github.com/darold/pgbadger",
-    docsUrl: "https://pgbadger.darold.net/documentation.html",
-  },
-  {
     name: "set_user",
     displayName: "pgaudit_set_user",
     kind: "extension",
-    install_via: "pgdg",
-    pgdgPackage: "set-user",
     soFileName: "set_user.so",
-    pgdgVersion: "4.2.0-1.pgdg13+2",
     category: "security",
     description: "Audited SET ROLE helper complementing pgaudit.",
     source: {
@@ -1197,7 +1075,6 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
       sharedPreload: true,
       defaultEnable: false,
       preloadInComprehensiveTest: true,
-      notes: ["PGDG: postgresql-18-set-user"],
     },
     sourceUrl: "https://github.com/pgaudit/set_user",
     docsUrl: "https://github.com/pgaudit/set_user#readme",

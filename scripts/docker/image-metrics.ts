@@ -1,8 +1,5 @@
 /**
- * Docker Image Metrics - Shared utilities for extracting image size and layer information
- *
- * Provides functions to query Docker for image metrics without code duplication.
- * Used by both validation scripts and release tooling.
+ * Image size, layer count and base image of a published image, for the GitHub release notes (promote-image.ts).
  */
 
 import { $ } from "bun";
@@ -34,14 +31,6 @@ export interface ImageData {
 }
 
 /**
- * Base image information from OCI labels
- */
-export interface BaseImageInfo {
-  name: string; // e.g., "postgres:18.1-trixie"
-  digest: string; // e.g., "sha256:abc..."
-}
-
-/**
  * Complete image metrics
  */
 export interface ImageMetrics {
@@ -50,7 +39,6 @@ export interface ImageMetrics {
   layerCount: number;
   compressedFormatted: string;
   uncompressedFormatted: string;
-  baseImage: BaseImageInfo | null;
 }
 
 /**
@@ -84,10 +72,18 @@ export async function inspectImage(imageTag: string): Promise<ImageData | null> 
 }
 
 /**
- * Get uncompressed image size from image data
+ * Unpacked size of the image's files, counted inside a throwaway container.
+ * `docker image inspect` .Size cannot serve: under the containerd image store (Docker 29's default, as on the CI
+ * runners) it is the compressed content size, so release notes showed uncompressed ≈ compressed. `du` counts the
+ * files whatever the store; root so no unreadable directory is skipped, `-x` so /proc, /sys and /dev are not counted.
  */
-export function getUncompressedSize(imageData: ImageData): number {
-  return imageData.Size;
+export async function getUncompressedSize(imageTag: string): Promise<number> {
+  const out = await $`docker run --rm --network none --user 0 --entrypoint du ${imageTag} -sxb /`
+    .quiet()
+    .text();
+  const bytes = Number.parseInt(out, 10);
+  if (!Number.isFinite(bytes)) throw new Error(`du printed no size for ${imageTag}: ${out}`);
+  return bytes;
 }
 
 /**
@@ -96,25 +92,6 @@ export function getUncompressedSize(imageData: ImageData): number {
 export function getLayerCount(imageData: ImageData): number {
   const layers = imageData.RootFS?.Layers || [];
   return layers.length;
-}
-
-/**
- * Get base image information from OCI labels
- */
-export function getBaseImageInfo(imageData: ImageData): BaseImageInfo | null {
-  const labels = imageData.Config.Labels || {};
-
-  const baseName = labels["org.opencontainers.image.base.name"];
-  const baseDigest = labels["org.opencontainers.image.base.digest"];
-
-  if (!baseName || !baseDigest) {
-    return null;
-  }
-
-  return {
-    name: baseName,
-    digest: baseDigest,
-  };
 }
 
 /**
@@ -198,10 +175,9 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
   }
 
   // Extract metrics
-  const uncompressedBytes = getUncompressedSize(imageData);
+  const uncompressedBytes = await getUncompressedSize(imageTag);
   const layerCount = getLayerCount(imageData);
   const compressedBytes = (await getCompressedSize(imageTag, imageData)) || 0;
-  const baseImage = getBaseImageInfo(imageData);
 
   return {
     compressedBytes,
@@ -209,6 +185,5 @@ export async function getImageMetrics(imageTag: string): Promise<ImageMetrics> {
     layerCount,
     compressedFormatted: formatSize(compressedBytes),
     uncompressedFormatted: formatSize(uncompressedBytes),
-    baseImage,
   };
 }

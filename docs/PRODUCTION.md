@@ -355,7 +355,7 @@ ghcr.io/fluxo-kt/aza-pg:18                # Latest 18.x build
 All published images are:
 
 - **Cryptographically signed** with Cosign (keyless, OIDC-based)
-- **Scanned for vulnerabilities** with Trivy (CRITICAL/HIGH blocked)
+- **Scanned for vulnerabilities**: vulnix checks every package of the image against NVD (an untriaged CVE blocks the release), and Trivy checks the Rust crates and bundled JavaScript (CRITICAL/HIGH blocked). Trivy alone sees no C library in this image, since a Nix image has no OS package database for it to read
 - **Multi-platform**: linux/amd64 and linux/arm64
 - **Provenance-enabled**: SLSA attestations included
 - **SBOM-enabled**: Software Bill of Materials included

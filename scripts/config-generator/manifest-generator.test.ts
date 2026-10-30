@@ -13,8 +13,9 @@ import {
   type Manifest,
   type PreloadCandidate,
   type ResolvedEntry,
+  tagVersion,
 } from "./manifest-loader";
-import { MANIFEST_ENTRIES, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
 
 function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry {
   return {
@@ -28,7 +29,7 @@ function entry(name: string, fields: Partial<ResolvedEntry> = {}): ResolvedEntry
 }
 
 function manifest(entries: ResolvedEntry[]): Manifest {
-  return { entries, sourceLibraries: SOURCE_LIBRARIES };
+  return { entries, metadata: MANIFEST_METADATA };
 }
 
 describe("getDefaultEnabledExtensions", () => {
@@ -140,5 +141,23 @@ describe("Manifest invariants", () => {
         loadsViaPreload: true,
       });
     }
+  });
+});
+
+describe("tagVersion", () => {
+  test("reads the version out of prefixed, underscored and scoped tags; null when none trails", () => {
+    expect(tagVersion("ver_1.5.3")).toBe("1.5.3");
+    expect(tagVersion("REL4_2_0")).toBe("4.2.0");
+    expect(tagVersion("wal2json_2_7")).toBe("2.7");
+    expect(tagVersion("pgflow@0.17.2")).toBe("0.17.2");
+    expect(tagVersion("1.0.22-RELEASE")).toBeNull();
+  });
+
+  // nix/extensions.nix throws "no version in tag" for these, so the image would not build.
+  test("finds a version in every enabled tagged entry", () => {
+    const missing = MANIFEST_ENTRIES.filter(
+      (e) => e.enabled !== false && e.source.type === "git" && tagVersion(e.source.tag) === null
+    ).map((e) => e.name);
+    expect(missing).toEqual([]);
   });
 });

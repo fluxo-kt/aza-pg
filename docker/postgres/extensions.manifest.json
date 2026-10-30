@@ -57,12 +57,12 @@
     },
     {
       "name": "hll",
+      "nix": {
+        "package": "pg_hll"
+      },
       "displayName": "postgresql-hll",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "hll",
       "soFileName": "hll.so",
-      "pgdgVersion": "2.21-1.pgdg13+2",
       "category": "analytics",
       "description": "HyperLogLog probabilistic counting data type.",
       "source": {
@@ -76,22 +76,19 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-hll"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/citusdata/postgresql-hll",
       "docsUrl": "https://github.com/citusdata/postgresql-hll#readme"
     },
     {
       "name": "http",
+      "nix": {
+        "package": "pgsql-http"
+      },
       "displayName": "pgsql-http",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "http",
       "soFileName": "http.so",
-      "pgdgVersion": "1.7.2-2.pgdg13+2",
       "category": "integration",
       "description": "Synchronous HTTP client for PostgreSQL built on libcurl.",
       "source": {
@@ -103,27 +100,20 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libcurl4-openssl-dev",
-        "libjson-c-dev"
-      ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-http"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/pramsey/pgsql-http",
       "docsUrl": "https://github.com/pramsey/pgsql-http#readme"
     },
     {
       "name": "hypopg",
+      "nix": {
+        "package": "hypopg"
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "hypopg",
       "soFileName": "hypopg.so",
-      "pgdgVersion": "1.4.4-1.pgdg13+1",
       "category": "performance",
       "description": "Simulate hypothetical indexes for planner what-if analysis.",
       "source": {
@@ -137,10 +127,7 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-hypopg"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/HypoPG/hypopg",
       "docsUrl": "https://hypopg.readthedocs.io"
@@ -166,8 +153,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG or Pigsty (Supabase-specific extension)",
-          "Source build required"
+          "Supabase-specific extension"
         ]
       },
       "sourceUrl": "https://github.com/supabase/index_advisor",
@@ -175,11 +161,11 @@
     },
     {
       "name": "pg_cron",
+      "nix": {
+        "package": "pg_cron"
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "cron",
       "soFileName": "pg_cron.so",
-      "pgdgVersion": "1.6.8-1.pgdg13+2",
       "category": "operations",
       "description": "Lightweight cron-based job runner inside PostgreSQL.",
       "source": {
@@ -195,7 +181,6 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "PGDG: postgresql-18-cron",
           "Preloaded by default - background worker scheduling enabled",
           "Job scheduling tested in functional test suite"
         ]
@@ -221,9 +206,7 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG.",
-          "Using v1.3 from master (unreleased, no git tag)",
-          "Source build required"
+          "Using v1.3 from master (unreleased, no git tag)"
         ]
       },
       "sourceUrl": "https://github.com/iCyberon/pg_hashids",
@@ -247,19 +230,12 @@
         ],
         "noDefaultFeatures": true
       },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "NOT in PGDG (Rust pgrx extension).",
-          "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes.",
-          "Source build required for latest features"
+          "Rust pgrx extension.",
+          "Pinned to release tag v0.3.4 instead of a raw commit; HEAD contains unreleased changes."
         ]
       },
       "sourceUrl": "https://github.com/supabase/pg_jsonschema",
@@ -267,6 +243,9 @@
     },
     {
       "name": "pg_net",
+      "nix": {
+        "package": "pg_net"
+      },
       "kind": "extension",
       "category": "integration",
       "description": "Async HTTP/HTTPS requests from PostgreSQL for webhooks and API calls.",
@@ -279,14 +258,11 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libcurl4-openssl-dev"
-      ],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG (Supabase-specific). Source build required.",
+          "Supabase-specific.",
           "Requires shared_preload_libraries for background worker",
           "Powers async HTTP webhooks from triggers",
           "Use net.http_post() for outbound API calls",
@@ -298,11 +274,11 @@
     },
     {
       "name": "pg_partman",
+      "nix": {
+        "package": "pg_partman"
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "partman",
       "soFileName": "pg_partman_bgw.so",
-      "pgdgVersion": "5.5.0-1.pgdg13+1",
       "category": "maintenance",
       "description": "Declarative partition maintenance with optional background worker.",
       "source": {
@@ -311,13 +287,16 @@
         "tag": "v5.5.0",
         "commit": "f7e83b9c441c7e97066d815bbe14e02a9dc5ff94"
       },
+      "build": {
+        "type": "pgxs"
+      },
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
         "preloadInComprehensiveTest": true,
         "preloadLibraryName": "pg_partman_bgw",
         "notes": [
-          "PGDG: postgresql-18-partman — ships the pg_partman_bgw background worker",
+          "Ships the pg_partman_bgw background worker; the Python helper scripts are not included",
           "Set pg_partman_bgw.dbname, interval and role to enable the background worker; since 5.5.0 role defaults to partman_maintainer, which must exist (upstream advises a non-superuser role)"
         ]
       },
@@ -344,7 +323,6 @@
         "defaultEnable": false,
         "preloadLibraryName": "plan_filter",
         "notes": [
-          "NOT in PGDG. Source build required.",
           "Optional: add plan_filter to POSTGRES_SHARED_PRELOAD_LIBRARIES, then set plan_filter.statement_cost_limit (superuser-only GUC)."
         ]
       },
@@ -353,11 +331,14 @@
     },
     {
       "name": "pg_repack",
+      "nix": {
+        "package": "pg_repack",
+        "bin": [
+          "pg_repack"
+        ]
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "repack",
       "soFileName": "pg_repack.so",
-      "pgdgVersion": "1.5.3-1.pgdg13+2",
       "category": "maintenance",
       "description": "Online table/index reorganization without long locks.",
       "source": {
@@ -369,23 +350,18 @@
       "build": {
         "type": "pgxs"
       },
-      "aptPackages": [
-        "libreadline-dev",
-        "libnuma-dev",
-        "libzstd-dev"
-      ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-repack"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/reorg/pg_repack",
       "docsUrl": "https://reorg.github.io/pg_repack"
     },
     {
       "name": "pg_safeupdate",
+      "nix": {
+        "package": "pg_safeupdate"
+      },
       "kind": "tool",
       "category": "safety",
       "description": "Guards UPDATE/DELETE without WHERE clause or LIMIT.",
@@ -405,7 +381,6 @@
         "preloadInComprehensiveTest": true,
         "preloadLibraryName": "safeupdate",
         "notes": [
-          "NOT in PGDG.",
           "Requires shared_preload_libraries to intercept UPDATE/DELETE queries."
         ]
       },
@@ -423,9 +398,6 @@
         "tag": "2.4.0",
         "commit": "2de2db763db9f590cd28159741c36b41f66eb985"
       },
-      "install_via": "percona",
-      "perconaPackage": "percona-pg-stat-monitor18",
-      "perconaVersion": "1:2.4.0-1.trixie",
       "soFileName": "pg_stat_monitor.so",
       "build": {
         "type": "pgxs"
@@ -434,7 +406,6 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG. Installed via Percona ppg-18 repository",
           "Mutually exclusive with pg_stat_statements in older versions—keep both enabled in PG18 using monitor's pgsm aggregation."
         ]
       },
@@ -479,11 +450,11 @@
     },
     {
       "name": "pgaudit",
+      "nix": {
+        "package": "pgaudit"
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "pgaudit",
       "soFileName": "pgaudit.so",
-      "pgdgVersion": "18.0-3.pgdg13+1",
       "category": "security",
       "description": "Detailed auditing for DDL/DML activity with class-level granularity.",
       "source": {
@@ -499,7 +470,6 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "PGDG: postgresql-18-pgaudit",
           "Tune pgaudit.log to control verbosity."
         ]
       },
@@ -508,9 +478,19 @@
     },
     {
       "name": "pgbackrest",
+      "nix": {
+        "package": "pgbackrest",
+        "mesonFlags": [
+          "-Dlibsystemd=disabled",
+          "-Dlibssh2=disabled",
+          "-Dlibzstd=enabled",
+          "-Doptimization=3"
+        ],
+        "nativeInputs": [
+          "python3Packages.pyyaml"
+        ]
+      },
       "kind": "tool",
-      "install_via": "pgdg",
-      "pgdgVersion": "2.60.0-1.pgdg13+1",
       "binaryPath": "/usr/bin/pgbackrest",
       "postgresOwnedDirs": [
         "/var/lib/pgbackrest",
@@ -529,46 +509,12 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "CLI tool installed from PGDG. NOT a PostgreSQL extension.",
+          "CLI tool. NOT a PostgreSQL extension.",
           "Installs /usr/bin/pgbackrest. Since 2.59.0 only restore may run as root: run it as postgres (docker exec -u postgres) or set allow-root."
         ]
       },
       "sourceUrl": "https://github.com/pgbackrest/pgbackrest",
       "docsUrl": "https://pgbackrest.org/user-guide.html"
-    },
-    {
-      "name": "pgbadger",
-      "kind": "tool",
-      "install_via": "pgdg",
-      "pgdgVersion": "13.2-1.pgdg13+1",
-      "binaryPath": "/usr/bin/pgbadger",
-      "category": "observability",
-      "description": "High-speed PostgreSQL log analyzer producing HTML/JSON reports.",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/darold/pgbadger.git",
-        "tag": "v13.2",
-        "commit": "4fb2ba0d2bb176c087e25224b4da337dcae0cca7"
-      },
-      "build": {
-        "type": "make"
-      },
-      "aptPackages": [
-        "perl",
-        "libtext-csv-xs-perl",
-        "libjson-xs-perl"
-      ],
-      "runtime": {
-        "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "CLI tool. NOT a PostgreSQL extension.",
-          "Installed from PGDG as pinned pgbadger=<pgdgVersion>; with the Percona repo enabled apt still resolves the PGDG package.",
-          "Binary installed to /usr/bin/pgbadger."
-        ]
-      },
-      "sourceUrl": "https://github.com/darold/pgbadger",
-      "docsUrl": "https://pgbadger.darold.net/documentation.html"
     },
     {
       "name": "pgflow",
@@ -618,6 +564,9 @@
     },
     {
       "name": "pgmq",
+      "nix": {
+        "package": "pgmq"
+      },
       "kind": "extension",
       "category": "queueing",
       "description": "Lightweight message queue for Postgres leveraging LISTEN/NOTIFY.",
@@ -633,10 +582,7 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": true,
-        "notes": [
-          "NOT in PGDG."
-        ]
+        "defaultEnable": true
       },
       "sourceUrl": "https://github.com/pgmq/pgmq",
       "docsUrl": "https://github.com/pgmq/pgmq#readme"
@@ -662,7 +608,6 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "PGDG ships postgresql-18-pgq3 but trails the upstream tag; switch to install_via pgdg (pgdgPackage \"pgq3\") once it matches.",
           "Pure PLpgSQL extension with no external dependencies",
           "Installs into pg_catalog schema (non-relocatable)"
         ]
@@ -672,6 +617,9 @@
     },
     {
       "name": "pgroonga",
+      "nix": {
+        "package": "pgroonga"
+      },
       "kind": "extension",
       "category": "search",
       "description": "Full-text search powered by Groonga for multilingual workloads.",
@@ -682,30 +630,15 @@
         "commit": "47d0252f76dccbdc2ebeee9ed6cf941dd9552bcc"
       },
       "build": {
-        "type": "meson",
-        "mesonOptions": [
-          "-Dtest=false"
-        ]
+        "type": "meson"
       },
-      "aptPackages": [
-        "cmake",
-        "meson",
-        "ninja-build",
-        "pkg-config",
-        "libgroonga-dev",
-        "liblz4-dev",
-        "libmecab-dev",
-        "libmsgpack-dev"
-      ],
       "runtime": {
         "sharedPreload": false,
         "defaultEnable": false
       },
       "notes": [
-        "NOT available in PGDG for PostgreSQL 18",
         "Builds with Meson (PGXS Makefile was dropped upstream in 4.0.6).",
-        "Meson tests are disabled in the production build; upstream test setup requires Ruby.",
-        "Source build required for PG18"
+        "Meson tests are disabled in the production build; upstream test setup requires Ruby."
       ],
       "sourceUrl": "https://github.com/pgroonga/pgroonga",
       "docsUrl": "https://pgroonga.github.io"
@@ -713,9 +646,6 @@
     {
       "name": "pgrouting",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "pgrouting",
-      "pgdgVersion": "4.0.1-1.pgdg13+1",
       "category": "gis",
       "description": "Routing algorithms (Dijkstra, A*, TSP) on top of PostGIS graphs.",
       "enabled": false,
@@ -723,8 +653,8 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/pgRouting/pgrouting.git",
-        "tag": "v4.0.1",
-        "commit": "8988eebdff0e01327c9d48fe7c80b437dc9bc992"
+        "tag": "v4.0.2",
+        "commit": "b3fd9ef1d81661af0b1084a2646fb87fda12b8c4"
       },
       "build": {
         "type": "cmake"
@@ -732,22 +662,19 @@
       "dependencies": [
         "postgis"
       ],
-      "aptPackages": [
-        "cmake",
-        "libboost-graph-dev"
-      ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-pgrouting"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/pgRouting/pgrouting",
       "docsUrl": "https://docs.pgrouting.org"
     },
     {
       "name": "pgsodium",
+      "nix": {
+        "package": "pgsodium",
+        "postInstall": "ln -sf /usr/share/postgresql/@pgMajor@/extension/pgsodium_getkey $out/share/postgresql/extension/pgsodium_getkey\nrm -r $out/share/pgsodium/getkey_scripts"
+      },
       "kind": "extension",
       "category": "security",
       "description": "Modern cryptography and envelope encryption with libsodium.",
@@ -763,14 +690,10 @@
           "PG_CPPFLAGS="
         ]
       },
-      "sourceLibraries": [
-        "libsodium"
-      ],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG.",
           "Preloaded by default for pgflow and supabase_vault support",
           "Preloading required for event triggers to work (registers pgsodium.enable_event_trigger GUC)",
           "Root key: random per data directory ($PGDATA/pgsodium_root.key) or the operator's PGSODIUM_KEY_FILE (docs/PGSODIUM-SETUP.md)"
@@ -799,8 +722,10 @@
     },
     {
       "name": "plpgsql_check",
+      "nix": {
+        "package": "plpgsql_check"
+      },
       "kind": "extension",
-      "install_via": "source",
       "soFileName": "plpgsql_check.so",
       "category": "quality",
       "description": "Static analyzer for PL/pgSQL functions and triggers.",
@@ -817,7 +742,6 @@
         "sharedPreload": false,
         "defaultEnable": false,
         "notes": [
-          "Source build includes the passive-mode composite-variable fix ahead of PGDG.",
           "2.10 ships no 2.9 -> 2.10 upgrade script: in databases created on an older image the check and report functions error, and ALTER EXTENSION UPDATE fails too, until DROP EXTENSION plpgsql_check; CREATE EXTENSION plpgsql_check;"
         ]
       },
@@ -827,9 +751,6 @@
     {
       "name": "postgis",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "postgis-3",
-      "pgdgVersion": "3.6.4+dfsg-2.pgdg13+1",
       "category": "gis",
       "description": "Spatial types, functions, raster, and topology for PostgreSQL.",
       "enabled": false,
@@ -837,46 +758,26 @@
       "source": {
         "type": "git",
         "repository": "https://github.com/postgis/postgis.git",
-        "tag": "3.6.4",
-        "commit": "94d984bd083635c1d253db0f87cf80b32548e406"
+        "tag": "3.7.0",
+        "commit": "1fdbb1cbb0e076816be06c401c5a5a2cf2c487f9"
       },
       "build": {
         "type": "autotools"
       },
-      "aptPackages": [
-        "autoconf",
-        "automake",
-        "libtool",
-        "g++",
-        "libgeos-dev",
-        "libproj-dev",
-        "libjson-c-dev",
-        "libprotobuf-c-dev",
-        "protobuf-c-compiler",
-        "libxml2-dev",
-        "libgdal-dev",
-        "liblz4-dev",
-        "libzstd-dev",
-        "bison",
-        "flex"
-      ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-postgis-3"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/postgis/postgis",
       "docsUrl": "https://postgis.net/documentation"
     },
     {
       "name": "rum",
+      "nix": {
+        "package": "rum"
+      },
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "rum",
       "soFileName": "rum.so",
-      "pgdgVersion": "1.3.15-1.pgdg13+1",
       "category": "search",
       "description": "RUM GiST access method for ranked full-text search.",
       "source": {
@@ -890,10 +791,7 @@
       },
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "PGDG: postgresql-18-rum"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/postgrespro/rum",
       "docsUrl": "https://github.com/postgrespro/rum#readme"
@@ -902,10 +800,7 @@
       "name": "set_user",
       "displayName": "pgaudit_set_user",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "set-user",
       "soFileName": "set_user.so",
-      "pgdgVersion": "4.2.0-1.pgdg13+2",
       "category": "security",
       "description": "Audited SET ROLE helper complementing pgaudit.",
       "source": {
@@ -920,16 +815,18 @@
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": false,
-        "preloadInComprehensiveTest": true,
-        "notes": [
-          "PGDG: postgresql-18-set-user"
-        ]
+        "preloadInComprehensiveTest": true
       },
       "sourceUrl": "https://github.com/pgaudit/set_user",
       "docsUrl": "https://github.com/pgaudit/set_user#readme"
     },
     {
       "name": "supabase_vault",
+      "nix": {
+        "inputs": [
+          "libsodium"
+        ]
+      },
       "displayName": "vault",
       "kind": "extension",
       "category": "security",
@@ -943,15 +840,11 @@
       "build": {
         "type": "pgxs"
       },
-      "sourceLibraries": [
-        "libsodium"
-      ],
       "runtime": {
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "NOT in PGDG (Supabase-specific).",
-          "Source build required",
+          "Supabase-specific.",
           "Required for pgflow workflow orchestration"
         ]
       },
@@ -986,10 +879,10 @@
     },
     {
       "name": "timescaledb",
+      "nix": {
+        "package": "timescaledb"
+      },
       "kind": "extension",
-      "install_via": "timescale",
-      "timescalePackage": "timescaledb-2-postgresql-18",
-      "timescaleVersion": "2.31.0~debian13-1806",
       "soFileName": "timescaledb.so",
       "category": "timeseries",
       "description": "Hypertables, compression, and continuous aggregates for time-series workloads. Full version, Timescale License (TSL).",
@@ -1003,7 +896,6 @@
         "sharedPreload": true,
         "defaultEnable": true,
         "notes": [
-          "Timescale repo: timescaledb-2-postgresql-18 (TSL build). The ~debian13-18NN version suffix names the PostgreSQL minor it was built for, and the package Depends on postgresql-18 >= that minor: bump timescaleVersion together with pgVersion.",
           "Preloaded for optimal hypertable performance",
           "timescaledb.telemetry_level defaults to 'off' to avoid outbound telemetry."
         ]
@@ -1013,10 +905,10 @@
     },
     {
       "name": "timescaledb_toolkit",
+      "nix": {
+        "package": "timescaledb_toolkit"
+      },
       "kind": "extension",
-      "install_via": "timescale",
-      "timescalePackage": "timescaledb-toolkit-postgresql-18",
-      "timescaleVersion": "1:1.26.0~debian13",
       "soFileName": "timescaledb_toolkit-1.26.0.so",
       "category": "timeseries",
       "description": "Analytical hyperfunctions and sketches extending TimescaleDB.",
@@ -1026,28 +918,30 @@
         "tag": "1.26.0",
         "commit": "4cea9322535c2566d873e5d6c42bb6d3c51c238e"
       },
+      "build": {
+        "type": "cargo-pgrx",
+        "patches": [
+          "timescaledb_toolkit-cargo-lock.patch"
+        ]
+      },
       "dependencies": [
         "timescaledb"
       ],
       "runtime": {
         "sharedPreload": false,
-        "defaultEnable": false,
-        "notes": [
-          "Timescale repo: timescaledb-toolkit-postgresql-18",
-          "Switched from cargo-pgrx source build to Timescale apt (faster install)"
-        ]
+        "defaultEnable": false
       },
       "sourceUrl": "https://github.com/timescale/timescaledb-toolkit",
       "docsUrl": "https://github.com/timescale/timescaledb-toolkit/tree/main/docs"
     },
     {
       "name": "vector",
+      "nix": {
+        "package": "pgvector"
+      },
       "displayName": "pgvector",
       "kind": "extension",
-      "install_via": "pgdg",
-      "pgdgPackage": "pgvector",
       "soFileName": "vector.so",
-      "pgdgVersion": "0.8.7-1.pgdg13+1",
       "category": "ai",
       "description": "Vector similarity search with IVF/HNSW indexes and distance operators.",
       "source": {
@@ -1069,6 +963,9 @@
     },
     {
       "name": "vectorscale",
+      "nix": {
+        "package": "pgvectorscale"
+      },
       "displayName": "pgvectorscale",
       "kind": "extension",
       "soFileName": "vectorscale-0.9.1.so",
@@ -1101,9 +998,7 @@
         "defaultEnable": true,
         "notes": [
           "Built from source with runtime CPU dispatch: AVX2/FMA only when the CPU has them",
-          "Supports both amd64 and arm64 architectures",
-          "Alt: Timescale apt repo has NO Debian Trixie packages (checked 2025-01)",
-          "Alt: PGDG has no package (Rust pgrx extension)"
+          "Supports both amd64 and arm64 architectures"
         ]
       },
       "sourceUrl": "https://github.com/timescale/pgvectorscale",
@@ -1111,6 +1006,9 @@
     },
     {
       "name": "wal2json",
+      "nix": {
+        "package": "wal2json"
+      },
       "kind": "tool",
       "category": "cdc",
       "description": "Logical decoding output plugin streaming JSON data for CDC.",
@@ -1120,9 +1018,6 @@
         "tag": "wal2json_2_7",
         "commit": "1fd8720d0145fba505822727c30cf0c5cc96f66f"
       },
-      "install_via": "pgdg",
-      "pgdgPackage": "wal2json",
-      "pgdgVersion": "2.7-1.pgdg13+1",
       "soFileName": "wal2json.so",
       "runtime": {
         "sharedPreload": false,
@@ -1136,6 +1031,12 @@
     },
     {
       "name": "wrappers",
+      "nix": {
+        "inputs": [
+          "openssl",
+          "pkg-config"
+        ]
+      },
       "displayName": "supabase-wrappers",
       "kind": "extension",
       "category": "integration",
@@ -1152,14 +1053,11 @@
           "pg18"
         ],
         "noDefaultFeatures": true,
-        "subdir": "wrappers"
+        "subdir": "wrappers",
+        "patches": [
+          "wrappers-cargo-lock.patch"
+        ]
       },
-      "aptPackages": [
-        "clang",
-        "llvm",
-        "pkg-config",
-        "make"
-      ],
       "dependencies": [
         "pg_stat_statements"
       ],
@@ -1167,27 +1065,56 @@
         "sharedPreload": false,
         "defaultEnable": false
       },
-      "notes": [
-        "NOT available in PGDG. build-extensions.ts installs the cargo-pgrx version pinned in its Cargo.toml."
-      ],
       "sourceUrl": "https://github.com/supabase/wrappers",
       "docsUrl": "https://supabase.com/docs/guides/database/extensions/wrappers/overview"
     }
   ],
-  "sourceLibraries": {
-    "libsodium": {
-      "asset": "libsodium-1.0.22.tar.gz",
-      "sha256": "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349",
-      "source": {
-        "type": "git",
-        "repository": "https://github.com/jedisct1/libsodium.git",
-        "tag": "1.0.22-RELEASE"
-      },
-      "notes": [
-        "pgsodium 3.1.11 needs libsodium >= 1.0.21; trixie ships 1.0.18.",
-        "Before changing the pin, verify the tarball: minisign -VP RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 -m <tarball> (key from https://doc.libsodium.org/installation), then record its sha256.",
-        "Selects AVX2/AVX-512/AES-NI code paths at runtime, so the default configure (no --enable-opt, which adds -march=native) is both portable and fast."
-      ]
-    }
+  "metadata": {
+    "pgVersion": "18.6",
+    "bunImageSha": "sha256:93d5032fe06d163427822dc1598f420363759bb18155c9cc90eb1be05a64a19e",
+    "locales": [
+      "en_US",
+      "en_GB",
+      "en_CA",
+      "en_AU",
+      "en_IN",
+      "de_DE",
+      "de_AT",
+      "de_CH",
+      "fr_FR",
+      "fr_CA",
+      "fr_CH",
+      "it_IT",
+      "es_ES",
+      "es_MX",
+      "es_AR",
+      "pt_PT",
+      "pt_BR",
+      "nl_NL",
+      "pl_PL",
+      "cs_CZ",
+      "sv_SE",
+      "da_DK",
+      "nb_NO",
+      "fi_FI",
+      "ru_RU",
+      "uk_UA",
+      "kk_KZ",
+      "be_BY",
+      "ka_GE",
+      "hy_AM",
+      "tr_TR",
+      "el_GR",
+      "he_IL",
+      "ar_AE",
+      "hi_IN",
+      "zh_CN",
+      "zh_TW",
+      "ja_JP",
+      "ko_KR",
+      "th_TH",
+      "vi_VN",
+      "id_ID"
+    ]
   }
 }

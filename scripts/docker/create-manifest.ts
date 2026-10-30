@@ -210,8 +210,7 @@ function parseArgs(): Options {
         break;
 
       // OCI metadata flags (--version, --revision, --source-url, --title, --description,
-      // --created, --authors, --url, --documentation, --licenses, --base-image-name,
-      // --base-image-digest, --pg-version, --catalog-enabled, --catalog-total)
+      // --created, --authors, --url, --documentation, --licenses, --pg-version, --catalog-enabled, --catalog-total)
       // are handled by parseOCIMetadataArg() above
 
       case "--github-output":

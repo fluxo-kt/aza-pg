@@ -4,9 +4,9 @@
  */
 
 import { join } from "node:path";
-import type { ManifestEntry, SOURCE_LIBRARIES } from "../extensions/manifest-data";
+import type { MANIFEST_METADATA, ManifestEntry } from "../extensions/manifest-data";
 
-/** A tagged source carries the commit its tag resolved to; the build clones that commit, not the tag. */
+/** A tagged source carries the commit its tag resolved to; the build fetches that commit, not the tag. */
 export type ResolvedSource =
   | { type: "builtin" }
   | { type: "git"; repository: string; tag: string; commit: string }
@@ -21,7 +21,8 @@ export type ResolvedEntry = Omit<ManifestEntry, "source"> & { source: ResolvedSo
 export interface Manifest {
   /** Sorted by name. */
   entries: ResolvedEntry[];
-  sourceLibraries: typeof SOURCE_LIBRARIES;
+  /** MANIFEST_METADATA, so consumers outside TypeScript (flake.nix) read versions and locales from this file. */
+  metadata: typeof MANIFEST_METADATA;
 }
 
 /**
@@ -43,6 +44,17 @@ export async function loadManifest(repoRoot: string): Promise<Manifest> {
     const errorMsg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to load manifest from ${manifestPath}: ${errorMsg}`, { cause: error });
   }
+}
+
+/**
+ * The version an upstream tag names: its trailing run of digits, dots and underscores, underscores read as dots
+ * ("ver_1.5.3" → "1.5.3", "REL4_2_0" → "4.2.0", "wal2json_2_7" → "2.7", "pgflow@0.17.2" → "0.17.2"). Same rule as
+ * versionOf in nix/extensions.nix, which names the built files with it, so displays show the version that ships.
+ * Null when the tag ends in no version.
+ */
+export function tagVersion(tag: string): string | null {
+  const m = tag.match(/^(?:.*[^0-9._])?[._]?([0-9][0-9._]*)$/);
+  return m?.[1] ? m[1].replaceAll("_", ".") : null;
 }
 
 /** The entries initdb creates with CREATE EXTENSION in every new database (see isAutoCreated). */

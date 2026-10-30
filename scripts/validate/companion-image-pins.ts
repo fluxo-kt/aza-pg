@@ -11,9 +11,8 @@
  * Usage: bun scripts/validate/companion-image-pins.ts   (exit 1 lists each drifted file:line with the fix)
  */
 import { Glob } from "bun";
-
-// aza-pg's own image is not a companion: stacks default to its floating major tag on purpose (latest release).
-const OWN_IMAGE = "ghcr.io/fluxo-kt/aza-pg";
+// aza-pg's own image is not a companion (see OWN_IMAGE).
+import { OWN_IMAGE, stackDefaultImages } from "../utils/stack-images";
 const SCANNED = [
   "stacks/*/.env.example",
   ".env.example",
@@ -34,31 +33,24 @@ const problems: string[] = [];
 // Registries hosting the same image name (quay.io mirrors prometheuscommunity) count as the same repository.
 const bareRepo = (repo: string) => repo.replace(/^(docker\.io|quay\.io|ghcr\.io)\//, "");
 
-for await (const file of new Glob("stacks/*/compose.yml").scan(".")) {
-  const compose = Bun.YAML.parse(await Bun.file(file).text()) as {
-    services?: Record<string, { image?: string }>;
-  };
-  for (const [service, def] of Object.entries(compose.services ?? {})) {
-    const image = def.image?.trim();
-    const fallback = image?.match(/^\$\{[A-Z0-9_]+:-(.+)\}$/)?.[1];
-    if (!fallback || fallback.startsWith(OWN_IMAGE)) continue;
-    const m = fallback.match(/^([^:@\s]+):([^@\s]+)@(sha256:[0-9a-f]{64})$/);
-    if (!m) {
-      problems.push(
-        `${file}: service ${service} default image "${fallback}" is not pinned; write repo:tag@sha256:<digest> (docker buildx imagetools inspect repo:tag prints the digest)`
-      );
-      continue;
-    }
-    const repo = bareRepo(m[1]!);
-    const ref = `${m[2]}@${m[3]}`;
-    const known = pins.get(repo);
-    if (known && known.ref !== ref) {
-      problems.push(
-        `${file}: service ${service} pins ${repo}:${ref}, but ${known.source} pins ${repo}:${known.ref}; every stack must pin the same image`
-      );
-    } else if (!known) {
-      pins.set(repo, { ref, source: `${file} (${service})` });
-    }
+for (const { file, service, ref: fallback } of await stackDefaultImages()) {
+  if (!fallback || fallback.startsWith(OWN_IMAGE)) continue;
+  const m = fallback.match(/^([^:@\s]+):([^@\s]+)@(sha256:[0-9a-f]{64})$/);
+  if (!m) {
+    problems.push(
+      `${file}: service ${service} default image "${fallback}" is not pinned; write repo:tag@sha256:<digest> (docker buildx imagetools inspect repo:tag prints the digest)`
+    );
+    continue;
+  }
+  const repo = bareRepo(m[1]!);
+  const ref = `${m[2]}@${m[3]}`;
+  const known = pins.get(repo);
+  if (known && known.ref !== ref) {
+    problems.push(
+      `${file}: service ${service} pins ${repo}:${ref}, but ${known.source} pins ${repo}:${known.ref}; every stack must pin the same image`
+    );
+  } else if (!known) {
+    pins.set(repo, { ref, source: `${file} (${service})` });
   }
 }
 if (pins.size === 0) {

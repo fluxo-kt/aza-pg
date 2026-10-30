@@ -22,192 +22,52 @@ OPTIONAL NOTES / VERSION OVERRIDE: $ARGUMENTS
 
 ## ⚠️ GUARDRAILS — Read Before Every Execution
 
-1. **⚠️ RTK truncation**: `git log` output may be filtered by RTK proxy. Always verify commit counts with `git rev-list ... --count` or `| wc -l`.
-2. **⚠️ Net delta only**: CHANGELOG must show ONLY v_old→v_new (the released-to-released delta). Never show intermediate steps.
-3. **⚠️ Consumer-first ordering**: Consumer outcomes first in commit message/CHANGELOG; internal/infra changes after.
-4. **⚠️ No phantom entries**: Don't claim fixes for things not broken in the LAST RELEASED version.
-5. **⚠️ `pgdg13` = Debian 13 (Trixie)**, NOT PostgreSQL 13.
-6. **⚠️ `bun install` AFTER squash BEFORE validation** — stale node_modules cause false validation failures AND broken pre-commit hook regeneration.
-7. **⚠️ NEVER compare tree hashes after CHANGELOG edits** — trees diverge by design (that's the point).
-8. **⚠️ VERIFY anchor merge**: check parent2 is on main lineage, don't just grep the message.
-9. **⚠️ Use `git add -u` NOT `git add -A`** — never add untracked files (.DS_Store, .env, temp).
-10. **⚠️ NEVER use `--no-verify` or `--no-gpg-sign`** — fix the root cause.
-11. **⚠️ `git fetch origin` before anchor discovery** — local dev might be stale.
-12. **⚠️ Prefer `startsWith()` over `===`** for version assertions — never encode stale absolute versions.
-13. **⚠️ NEVER `git merge dev` (without `--squash`) on main/release** — this creates a merge commit and permanently pollutes the linear history. The ONLY allowed mechanism is `git merge --squash dev`.
-14. **⚠️ Use `refs/heads/dev` for bare git commands** (log, diff, show without `:`). A file/directory named `dev` in the repo root causes "ambiguous argument" errors. Range syntax `$ANCHOR..refs/heads/dev` is safe (git resolves both sides as revisions) but use `refs/heads/dev` consistently for clarity.
-15. **⚠️ RTK proxy rewrites `grep`** — use `command grep` in ALL pipelines to bypass RTK's grep replacement, which has incompatible flag handling (`-iE`, `-c`, etc.).
-16. **⚠️ macOS `awk` lacks `tolower()`** — use `sort -uf` for case-insensitive dedup, not `awk '!seen[tolower($0)]++'`.
+1. **⚠️ Net delta only**: CHANGELOG must show ONLY v_old→v_new (the released-to-released delta). Never show intermediate steps.
+2. **⚠️ Consumer-first ordering**: Consumer outcomes first in commit message/CHANGELOG; internal/infra changes after.
+3. **⚠️ No phantom entries**: Don't claim fixes for things not broken in the LAST RELEASED version.
+4. **⚠️ `pgdg13` = Debian 13 (Trixie)**, NOT PostgreSQL 13: manifests of the Debian-built releases carry it.
+5. **⚠️ `bun install` AFTER squash BEFORE validation** — stale node_modules cause false validation failures AND broken pre-commit hook regeneration.
+6. **⚠️ NEVER compare tree hashes after CHANGELOG edits** — trees diverge by design (that's the point).
+7. **⚠️ Use `git add -u` NOT `git add -A`** — never add untracked files (.DS_Store, .env, temp).
+8. **⚠️ NEVER use `--no-verify` or `--no-gpg-sign`** — fix the root cause.
+9. **⚠️ Prefer `startsWith()` over `===`** for version assertions — never encode stale absolute versions.
+10. **⚠️ NEVER `git merge dev` (without `--squash`) on main/release** — this creates a merge commit and permanently pollutes the linear history. The ONLY allowed mechanism is `git merge --squash dev`.
 
 ---
 
 ## Phase 0: Pre-Flight (All Must Pass — Fail Fast)
 
-Run each check in sequence; abort on first failure.
-
-### 0.0 — Environment detection (run FIRST, before any work)
-
 ```bash
-# Detect environment hazards before any work begins
-if command -v rtk &>/dev/null; then
-  echo "⚠️ RTK proxy detected — use 'command grep' in ALL pipelines (guardrail 15)"
-fi
-if ! echo test | awk '{print tolower($0)}' 2>/dev/null | command grep -q test; then
-  echo "⚠️ macOS awk (no tolower) — use 'sort -uf' for dedup (guardrail 16)"
-fi
-if [[ -e "dev" ]]; then
-  echo "⚠️ File/directory 'dev' exists — use refs/heads/dev in bare git commands (guardrail 14)"
-fi
+bun scripts/release/preflight.ts
 ```
 
-### 0.1 — Branch check
+It refuses (exit 1, naming the fix) unless HEAD is `release` with a clean tree, local `dev` contains `origin/dev`, dev's newest Anchor Merge has the release HEAD as its second parent, and dev has commits after it. Its header gives the reasons. On success it prints `ANCHOR`, `DEV_SQUASH_TIP`, `RANGE`, the commit list and the deduplicated co-author trailers: Phases 1–4 use those values, so keep its output.
 
-```bash
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "Current branch: $BRANCH"
-```
-
-**If `$BRANCH` is `release`**: proceed — correct branch.
-
-**If `$BRANCH` is `main`**: **do not abort** — output this message and wait for the user to confirm:
-
-```text
-Currently on branch: main
-/release must run from 'release', not 'main'. main is kept in sync via push refspec after the release commit.
-Please run:
-  git checkout release
-Then confirm you are on the release branch.
-```
-
-**If `$BRANCH` is anything else**: same message, mutatis mutandis.
-
-Once the user confirms, re-run:
-
-```bash
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "Branch after switch: $BRANCH"
-[[ "$BRANCH" == "release" ]] || \
-  { echo "ABORT: Not on release branch (currently: $BRANCH)."; exit 1; }
-echo "Branch check passed. ✓"
-```
-
-### 0.2 — Clean working tree
-
-```bash
-[[ -z "$(git status --porcelain)" ]] || \
-  { echo "ABORT: Working tree is dirty. Commit or stash changes first."; git status --short; exit 1; }
-```
-
-### 0.3 — Fetch and compare dev (distinguish direction — behind is dangerous)
-
-```bash
-git fetch origin
-LOCAL_DEV=$(git rev-parse refs/heads/dev 2>/dev/null) || \
-  { echo "ABORT: Local 'dev' branch not found. Run: git fetch origin && git checkout -t origin/dev"; exit 1; }
-REMOTE_DEV=$(git rev-parse origin/dev 2>/dev/null || echo "")
-if [[ -n "$REMOTE_DEV" && "$LOCAL_DEV" != "$REMOTE_DEV" ]]; then
-  if git merge-base --is-ancestor origin/dev refs/heads/dev 2>/dev/null; then
-    # local dev has commits not yet pushed (local AHEAD of remote) — normal
-    echo "⚠️  INFO: Local dev is AHEAD of origin/dev (unpushed commits). Proceeding."
-  else
-    # remote dev has commits local doesn't have (local BEHIND or diverged) — DANGEROUS
-    echo "🚨 ABORT: Local dev is BEHIND or diverged from origin/dev — you may be missing commits!"
-    echo "   If BEHIND (no local-only commits): git checkout dev && git pull --ff-only && git checkout $BRANCH"
-    echo "   If DIVERGED (both sides have unique commits): investigate before proceeding — do NOT rebase blindly"
-    echo "   Verify: git log --oneline refs/heads/dev...origin/dev"
-    exit 1
-  fi
-fi
-```
-
-### 0.4 — Find latest anchor merge
-
-```bash
-ANCHOR=$(git log refs/heads/dev --merges --format="%H" --regexp-ignore-case --grep="Anchor Merge" -1)
-[[ -n "$ANCHOR" ]] || { echo "ABORT: No anchor merge found on dev."; exit 1; }
-echo "Anchor merge: $ANCHOR"
-echo "Anchor short: $(git rev-parse --short $ANCHOR)"
-echo "Anchor message: $(git log -1 --format='%s' $ANCHOR)"
-```
-
-### 0.5 — Verify anchor merge parentage (parent2 on main lineage)
-
-```bash
-# $ANCHOR^2 fails if ANCHOR is not a real merge commit (grep may match non-merges)
-ANCHOR_P2=$(git rev-parse "$ANCHOR^2" 2>/dev/null) || \
-  { echo "ABORT: $ANCHOR has no second parent — not a merge commit. Anchor malformed."; exit 1; }
-
-git merge-base --is-ancestor "$ANCHOR_P2" HEAD || \
-  { echo "ABORT: Anchor parent2 ($ANCHOR_P2) is NOT on main/release lineage."; \
-    echo "       The anchor merge may be malformed. Investigate."; exit 1; }
-echo "Anchor parent2 $ANCHOR_P2 confirmed on main lineage. ✓"
-```
-
-### 0.6 — No drift since last release (anchor parent2 = current HEAD)
-
-```bash
-CURRENT_HEAD=$(git rev-parse HEAD)
-[[ "$ANCHOR_P2" == "$CURRENT_HEAD" ]] || {
-  echo "ABORT: Anchor parent2 ($ANCHOR_P2) ≠ HEAD ($CURRENT_HEAD)."
-  echo "       Main/release has moved since the anchor merge was created."
-  echo "       Create a new anchor merge on dev pointing to the current HEAD."
-  exit 1
-}
-```
-
-### 0.7 — Dev has new commits after anchor merge
-
-```bash
-COMMIT_COUNT=$(git rev-list $ANCHOR..refs/heads/dev --count)
-echo "Commits after anchor: $COMMIT_COUNT"
-[[ "$COMMIT_COUNT" -gt 0 ]] || \
-  { echo "ABORT: No commits on dev after anchor merge. Nothing to release."; exit 1; }
-```
+Not on `release`: the agent cannot switch branches, so ask Art to run `! git checkout release`, then re-run.
 
 ### 0.8 — Everything the image ships is current
 
-Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: PGDG, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The base-image and `check-updates` gates alone miss companion images, Bun packages and runtime, Actions pins, PGDG revisions and source builds PGDG now packages. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
-
-**Pre-flight PASSED** — display summary:
-
-```bash
-echo "=== Pre-Flight Summary ==="
-echo "Branch:            $BRANCH"
-echo "HEAD:              $(git rev-parse --short HEAD)"
-echo "Anchor:            $(git rev-parse --short $ANCHOR)"
-echo "Dev tip:           $(git rev-parse --short refs/heads/dev)"
-echo "Commits to squash: $COMMIT_COUNT"
-echo "=========================="
-```
+Run every item of `/update`'s "Pre-Flight: Detect Available Updates" and "Pre-Flight: Additional Checks" now, on `dev`, and record one line per item: what it found, or "current". Results from an earlier session or day do not count: nixpkgs, Docker Hub, GitHub releases and npm change daily, and an update held back by the minimum release age becomes due when the age passes. The `check-updates` gate alone misses companion images, Bun packages and runtime, Actions pins and the nixpkgs revision in `flake.lock`. Anything due ⇒ ABORT the release and run `/update` on `dev` first.
 
 ---
 
 ## Phase 1: Analyse Net Delta
 
-### 1.1 — Enumerate commits (anchor..dev, ALL including merges)
-
-```bash
-# Verify count independently to guard against RTK truncation/corruption
-# ⚠️ RTK can corrupt the numeric result (observed: 91→1189). Re-run if implausible.
-git rev-list $ANCHOR..refs/heads/dev --count  # Should match $COMMIT_COUNT from Phase 0
-
-# List ALL commits including intermediate merges — full picture of what's being squashed
-git log $ANCHOR..refs/heads/dev --oneline
-```
+The commits being squashed are the preflight's commit list; `$ANCHOR` below is its `ANCHOR`.
 
 ### 1.2 — Categorise changes (consumer-visible)
 
 Scan the diff for consumer-visible changes. Look at:
 
 ```bash
-# Manifest changes (extension versions, PG version, base image)
+# Manifest changes (extension versions, PG version)
 git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts
 
 # CHANGELOG unreleased section (before squash — from dev's HEAD; no truncation)
 git show refs/heads/dev:CHANGELOG.md
 
-# Dockerfile changes (if any)
-git diff $ANCHOR..refs/heads/dev -- docker/postgres/Dockerfile.template
+# Nix build changes (nixpkgs revision, build options, image contents)
+git diff $ANCHOR..refs/heads/dev -- flake.nix flake.lock nix/
 
 # Test additions/changes
 git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
@@ -215,40 +75,9 @@ git diff $ANCHOR..refs/heads/dev --stat -- scripts/test/
 
 **Categorise into**:
 - **Consumer-visible** (extensions added/updated/removed, PG version changes, API/behaviour changes, security fixes)
-- **Build/reliability** (Dockerfile improvements, CI fixes, dependency updates — brief if user-impacting)
-- **Infrastructure** (base image, build tools — 1 line if relevant)
+- **Build/reliability** (Nix build improvements, CI fixes, dependency updates — brief if user-impacting)
+- **Infrastructure** (nixpkgs revision, build tools — 1 line if relevant)
 - **Development/tooling** (tests, linting, scripts — 1-line summary)
-
-### 1.3 — Collect unique co-authors
-
-```bash
-# ⚠️ RTK proxy silently kills git log | grep pipelines for co-authors (returns empty).
-# Use per-commit git show iteration — slower but reliable:
-COAUTHORS=$(for hash in $(git rev-list $ANCHOR..refs/heads/dev --no-merges); do
-  git show "$hash" --format="%B" --no-patch
-done | command grep -iE "^co-authored-by:" | sort -uf)
-echo "$COAUTHORS"
-# Sanity check: unique co-author lines must not exceed commit count (more = wrong range or pipeline corruption)
-COAUTHOR_COUNT=$(echo "$COAUTHORS" | command grep -c . || echo 0)
-echo "Unique co-authors: $COAUTHOR_COUNT (from $COMMIT_COUNT commits)"
-[[ "$COAUTHOR_COUNT" -le "$COMMIT_COUNT" ]] || \
-  { echo "ABORT: co-author count ($COAUTHOR_COUNT) exceeds commit count ($COMMIT_COUNT) — pipeline corruption or wrong range. Investigate."; exit 1; }
-```
-
-### 1.4 — Determine hash range (for commit body)
-
-```bash
-# --no-merges for range display: shows the actual work commits, not merge plumbing
-WORK_COMMITS=$(git rev-list $ANCHOR..refs/heads/dev --no-merges)
-if [[ -z "$WORK_COMMITS" ]]; then
-  # All commits are merges (rare but possible) — fall back to full range
-  echo "⚠️ All commits in range are merges — using full range for hash display"
-  WORK_COMMITS=$(git rev-list $ANCHOR..refs/heads/dev)
-fi
-FIRST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | tail -1)")
-LAST_SHORT=$(git rev-parse --short "$(echo "$WORK_COMMITS" | head -1)")
-echo "Range: ${FIRST_SHORT}..${LAST_SHORT}"
-```
 
 ---
 
@@ -269,6 +98,7 @@ git show refs/heads/dev:CHANGELOG.md
 5. **Cross-validation**: Every version change MUST match `git diff $ANCHOR..refs/heads/dev -- scripts/extensions/manifest-data.ts`
 6. **No phantoms**: Don't claim fixes for things not broken in the last released version
 7. **`[Unreleased]` holds only this release.** Each release commit carries its own dated section (Phase 4.4), so everything under `[Unreleased]` on dev is new since the newest `## [v…]` heading.
+8. **Re-measure every number** in `[Unreleased]` (image size, store paths, MB added) on the image being released: each was measured when its entry was written, and any later closure change makes it false in a section that freezes at release.
 
 Write down the specific CHANGELOG edits needed. You will apply them in Phase 4.4 AFTER the squash.
 
@@ -327,23 +157,13 @@ Write the complete message now with ALL actual values filled in (no UPPERCASE pl
 ### 4.1 — Squash dev onto current branch
 
 ```bash
-# NOTE: git merge --squash does NOT set MERGE_HEAD, so git merge --abort does NOT work if this fails.
-# If conflicts occur, recovery is: git reset HEAD && git checkout -- . && git clean -fd && bun install
-if ! git merge --squash refs/heads/dev; then
-  echo "ABORT: Merge conflicts detected. Conflicting files:"
-  git status --short | command grep -E "^(UU|AA|DD|AU|UA|DU|UD)"
-  echo ""
-  echo "Recovering to clean state:"
-  git reset HEAD
-  git checkout -- .
-  git clean -fd          # Remove untracked files introduced by git merge --squash dev
-  bun install
-  echo "Investigate: ensure anchor merge parent2 == HEAD, then fix on dev and re-run /release."
-  exit 1
-fi
+# The preflight's DEV_SQUASH_TIP, not the moving dev ref: the Dev-Squash-Tip trailer then names exactly what was squashed.
+git merge --squash DEV_SQUASH_TIP
 ```
 
-Verify changes were staged (should not be empty after passing Phase 0.7):
+This cannot conflict: the preflight proved release's HEAD is the anchor's second parent, so it is the merge base and the squash stages exactly dev's tree. A conflict means that proof broke: stop and report to Art (see [Stopping a release](#stopping-a-release)).
+
+Verify changes were staged (should not be empty once the preflight passed):
 
 ```bash
 STAGED_STAT=$(git diff --cached --stat)
@@ -397,21 +217,7 @@ bun run validate:all
 
 - CHANGELOG issues → edit directly, then `git add CHANGELOG.md`
 
-**Non-trivial** (ABORT — user fixes on dev, re-runs /release):
-- TypeScript type errors
-- Failed unit tests
-- Missing files or broken imports
-- shellcheck errors in new shell scripts
-
-Abort sequence:
-
-```bash
-git reset HEAD           # Unstage everything (index → HEAD)
-git checkout -- .        # Restore working tree to HEAD
-git clean -fd            # Remove untracked files introduced by git merge --squash dev
-bun install              # Restore release branch's node_modules
-echo "ABORTED: [describe failure]. Fix on dev, re-run /release."
-```
+**Anything else** (type errors, failing tests, broken imports, shellcheck): the staged tree is dev's, so the defect is on dev. Stop the release (below), fix it on dev, then re-run /release.
 
 ### 4.4 — Apply CHANGELOG optimisations
 
@@ -444,21 +250,16 @@ Note: `bun.lock` diff is normal if bun's format changed across versions.
 
 ### 4.7 — Commit
 
-First, capture the exact dev tip that was squashed. This is recorded in the commit message so Appendix A can verify dev hasn't advanced beyond it before anchoring:
+The `Dev-Squash-Tip` trailer records the commit Phase 4.1 squashed, so `anchor-merge.ts` can refuse to anchor over dev commits the release lacks.
 
-```bash
-DEV_SQUASH_TIP=$(git rev-parse refs/heads/dev)
-echo "Dev squash tip: $DEV_SQUASH_TIP"
-```
-
-**IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from Phase 1, 3, and the echo above:
+**IMPORTANT**: The `'COMMIT_EOF'` single-quoted HEREDOC disables variable expansion. You MUST write all values literally. Replace every placeholder with actual values from the preflight and Phase 3:
 - `TYPE` → actual type from Phase 3.1 (e.g., `feat`)
 - `SCOPE` → actual scope (e.g., `postgres`)
 - `title here` → actual title from Phase 3.2 (max 72 chars including `TYPE(SCOPE):` prefix)
 - `change 1`, `change 2` → actual body bullets from Phase 3.2
-- `FIRST_SHORT..LAST_SHORT` → actual hashes from Phase 1.4 (e.g., `6a979fa..b111f5a`)
-- `DEV_SQUASH_TIP` → full hash from the echo above (e.g., `abc1234def5678...`)
-- `Co-Authored-By: Name <email>` → actual co-authors from Phase 1.3 (one line per author)
+- `FIRST_SHORT..LAST_SHORT` → the preflight's `RANGE` (e.g., `6a979fa..b111f5a`)
+- `DEV_SQUASH_TIP` → the preflight's full `DEV_SQUASH_TIP`
+- `Co-Authored-By: Name <email>` → the preflight's co-authors (one line per author)
 
 Name every staged path literally after `--`: the commit guard refuses a commit without a pathspec, and reads paths only from the command line, so `--pathspec-from-file` is refused too. `git diff --cached --name-only --no-renames` lists them, both sides of a rename included.
 
@@ -505,7 +306,7 @@ echo "$DIFF_FILES"
 
 **Expected to differ**: `CHANGELOG.md` (always, by design), `bun.lock` (if bun reformatted), any files edited in Phase 4.5.
 **Flag as unexpected**: source files, scripts, Docker files, generated extension lists — these should be IDENTICAL to dev after squash.
-**Note**: if dev has advanced since the squash (new commits landed after Phase 4.1), those files will also appear here. Appendix A.2's Dev-Squash-Tip check will catch this before the anchor merge.
+**Note**: if dev has advanced since the squash (new commits landed after Phase 4.1), those files will also appear here. `anchor-merge.ts` refuses to anchor over them (Dev-Squash-Tip check).
 
 Do NOT compare tree hashes — trees intentionally diverge after CHANGELOG edits.
 
@@ -519,7 +320,7 @@ if git rev-parse HEAD^2 >/dev/null 2>&1; then
   echo "🚨 ERROR: HEAD is a merge commit! Release squash must produce a regular commit."
   echo "   This means git merge --squash was accidentally replaced with git merge."
   echo "   To undo: git reset --hard HEAD~1"
-  echo "   See guardrail 13. After undoing, re-run /release."
+  echo "   See guardrail 10. After undoing, re-run /release."
   exit 1
 fi
 echo "Linear history confirmed — HEAD is a regular commit. ✓"
@@ -554,29 +355,12 @@ After every execution, reflect and update this command:
 4. What needed manual intervention that could be automated?
 5. Any new edge case or gotcha to encode as a guardrail?
 
-### Accumulated Lessons
-
-- **The release commit names its own tag.** When CI picked the tag from its clock, the commit could not hold its dated heading: `release` and `main` showed shipped entries as unreleased, and dating them later meant splitting shipped from new entries by hand, which agents skipped or got wrong. Dating in Phase 4.4 makes the heading, the tag and the GitHub notes one fact.
-- **`workflow_run` always executes from the default branch, not the triggering branch** — that is `dev` (GitHub security restriction, prevents privilege escalation from untrusted branches). Consequence: the `publish.yml` that runs is `dev`'s; a `publish.yml` change committed only on `release` (hotfix path) is **invisible to CI** until it is also on `dev`. Pushing `release:main` keeps `main` as the release mirror; it no longer affects which workflow runs.
-
-- **CHANGELOG = net-delta log, nothing more.** No SQL verification snippets or tutorials; those belong in tests or docs. An action an operator must take because of a change (an `ALTER EXTENSION … UPDATE`, a renamed setting) is part of that change's entry, stated in one sentence. If a reader would say "why is this here?", remove it.
-- **Pre-commit hook may fail on `git ls-remote` with "no healthy upstream"** on load-balanced proxy environments. `generate-manifest.ts` calls `git ls-remote` sequentially for every git-sourced extension; each call goes through a potentially different upstream. If the hook fails this way, retrying the commit usually works (retry logic is built in). NEVER use `--no-verify`. Root fix: retry logic with exponential backoff is already in `generate-manifest.ts`.
-- **Hotfix/direct-commit releases: Dev-Squash-Tip is absent.** When a release is published via direct commits on `release` (e.g., CVE hotfix requiring multiple iterations), no Dev-Squash-Tip trailer exists in the tag. The anchor merge still works correctly — dev history is preserved as parent-1. The check: list dev commits since last anchor (`git rev-list LAST_ANCHOR_SHA..HEAD --oneline`); verify their content is already captured in the release tree (same fixes done on release). IMPORTANT: the anchor's parent-1 link means ALL those dev commits remain git-accessible forever — nothing is deleted. Their file content in the working tree is superseded by the release tree, which is the correct and expected outcome.
-
-- **RTK proxy `git rev-list --count` output is intermittently corrupted** (observed: returned `1189` for a count that was `91`). The standard `git rev-list ... --count` command passes through RTK but the numeric result can be mangled. Always verify with a second invocation if the count looks implausible. Guardrail #1 mentions truncation but not count corruption — the failure mode is distinct.
-
-- **RTK proxy silently kills `git log --format="%b" | grep` co-author pipelines** — returns empty even when co-author trailers exist. Two reliable workarounds: (a) `for hash in $(git rev-list ANCHOR..refs/heads/dev --no-merges); do git show "$hash" --format="%B" --no-patch; done | command grep -iE "^co-authored-by:"` (slow but reliable), or (b) `git log ... --format="%(trailers:key=Co-Authored-By,valueonly,separator=%x0a)"` (fast but misses trailers that git doesn't parse as formal trailers). Prefer (a) for completeness.
-
-- **`Dev-Squash-Tip` Appendix A lookup used `git log -1` — broken for multi-commit releases** (squash commit + kaizen commit). The tag tip is the LAST commit (kaizen), which has no trailer; the trailer lives in the parent (squash commit). Fix: `git log "$TARGET" -10 --format='%(trailers:...)' | grep -v '^$' | head -1` searches ancestry. Was silently falling through to "inspect manually" on every kaizen release.
-
-- **Validation regexes can false-positive on comment text** — `build-extensions.ts` had a comment `// bare .env({ PATH })` that matched the env-safety checker's `\.env\(\{` pattern. Root fix: add `| grep -Ev ":[0-9]+:[[:space:]]*//"` to exclude comment lines from checker output. Workaround (rephrasing comment) is fragile and breaks the comment's explanatory value.
-
-- **GHCR eventual consistency causes ~50% transient failures in `Create Multi-Platform Manifest`** CI job. Digest-only images pushed by the `build` job are not immediately accessible on all GHCR nodes when the `merge` job runs seconds later — `docker buildx imagetools create` fails with a non-zero exit code, and the error message was previously swallowed (stderr was read after `process.exit(1)`). Fixed with: (1) concurrent `Promise.all([result.exited, stderr, stdout])` reads to prevent pipe deadlock and expose errors; (2) 3-attempt retry with 5s/15s exponential backoff in `scripts/docker/create-manifest.ts`. When any CI job runs `docker buildx imagetools` operations on freshly-pushed digests, add retry logic — this is not optional.
-
 → Edit this command file, commit as:
 `docs(skill): improve /release — [lesson learned]`
 
 **⚠️ Kaizen commits MUST happen BEFORE creating the Anchor Merge** (Appendix A). The anchor merge captures the release branch tree at that moment — if kaizen edits to this command file happen after the anchor merge, dev and release will drift by exactly those edits. Sequence: Phase 6 kaizen commit → push → CI → Anchor Merge.
+
+A fix that cannot ride in the release (new tooling, anything needing its own tests) waits until the anchor is pushed and Art has checked out `dev`, then lands there as a normal commit. The agent cannot leave `release` itself, since the Bash hook refuses every `git checkout`; next step 4 asks Art for it.
 
 Once kaizen is committed, output next steps for the user:
 
@@ -587,7 +371,8 @@ echo "Next steps (all agent work complete):"
 echo "  1. Review commit: git show HEAD"
 echo "  2. Push both branches (main mirrors release; workflow_run runs dev's definitions — a publish.yml fix must be on dev):"
 echo "       git push origin $CURRENT_BRANCH && git push origin $CURRENT_BRANCH:main"
-echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
+echo "  3. After publish succeeds, the agent runs bun scripts/release/anchor-merge.ts (Appendix A)"
+echo "  4. Then switch back for daily work: git checkout dev"
 ```
 
 ---
@@ -596,126 +381,18 @@ echo "  3. After CI passes: create Anchor Merge on dev (see Appendix A)"
 
 Creates a merge commit on dev whose **tree** is forced to match the release branch's (including CHANGELOG optimisations, release-time fixes). Use git plumbing — regular `git merge <branch> --no-ff` produces the WRONG tree when release-time edits diverge from dev.
 
-> **Note**: The anchor merge is a separate operation from the release itself, typically done after CI passes on the pushed release commit.
-
-### A.1 — Ask user to switch to dev
-
-The AI agent cannot switch branches itself. Output this message verbatim and **wait for the user to confirm** before proceeding:
-
-```text
-Please run:
-  git checkout dev
-Then confirm you are on the dev branch (git rev-parse --abbrev-ref HEAD should print "dev").
-```
-
-### A.2 — Once user confirms they are on dev
+Once publish has succeeded, run from any branch, with no question to the user:
 
 ```bash
-[[ "$(git rev-parse --abbrev-ref HEAD)" == "dev" ]] || \
-  { echo "ABORT: Not on dev branch. Ask user to run: git checkout dev"; exit 1; }
-[[ -z "$(git status --porcelain)" ]] || { echo "ABORT: dev is dirty."; exit 1; }
-
-# Fetch tags from origin so TARGET always reflects what CI just published
-git fetch --tags origin
-
-# The tag on origin/release's tip, not the newest tag by date: a re-tag or a tag pushed by hand
-# would otherwise be anchored instead of what was just released.
-TARGET=$(git tag -l 'v*' --points-at origin/release | head -1)
-[[ -n "$TARGET" ]] || { echo "ABORT: origin/release's tip has no v* tag — publish has not finished or failed."; exit 1; }
-echo "TARGET tag: $TARGET  ($(git rev-parse --short "$TARGET"))"
+bun scripts/release/anchor-merge.ts
 ```
 
-**Ask the user to confirm the tag BEFORE proceeding.** Output:
+It picks the v* tag on `origin/release`'s tip, refuses when `dev` holds commits the squash did not contain (the `Dev-Squash-Tip` trailer) or differs from `origin/dev`, builds the anchor with `git commit-tree`, moves `dev` without checking it out, and pushes it. Re-running after success does nothing. Every refusal names its fix; the script's header gives the reasons.
 
-```text
-Detected release tag: <TARGET>
-Is this the correct tag? (yes/no)
-```
-
-If the user says no, abort and ask them to check `git tag -l 'v*' --sort=-creatordate | head -5`.
-
-Once the tag is confirmed, run the safety check:
-
-```bash
-# Safety check: verify dev has not advanced beyond what was squashed.
-# The squash commit embeds the exact dev tip as a Dev-Squash-Tip trailer.
-# If new commits landed on dev AFTER the squash, the anchor merge would force
-# dev's tree to the release tree, silently overwriting their file content.
-# Search up to 10 commits on the tag — kaizen commits sit between the squash commit and the tag tip,
-# so git log -1 only sees the kaizen commit (no trailer). Search ancestry for the squash commit.
-DEV_SQUASH_TIP=$(git log "$TARGET" -10 --format='%(trailers:key=Dev-Squash-Tip,valueonly)' | command grep -v '^$' | head -1)
-if [[ -n "$DEV_SQUASH_TIP" ]]; then
-  # First check DEV_SQUASH_TIP is an ancestor of HEAD — if not, histories have diverged
-  if ! git merge-base --is-ancestor "$DEV_SQUASH_TIP" HEAD 2>/dev/null; then
-    echo "⚠️ DEV_SQUASH_TIP ($DEV_SQUASH_TIP) is NOT an ancestor of dev HEAD."
-    echo "   Histories may have diverged (reset/rebase?). Inspect manually before continuing."
-    exit 1
-  fi
-  NEW_COMMITS=$(git rev-list "$DEV_SQUASH_TIP"..HEAD --oneline)
-  if [[ -n "$NEW_COMMITS" ]]; then
-    echo "🚨 ABORT: dev has commits AFTER the squash whose content would be LOST:"
-    echo "$NEW_COMMITS"
-    echo ""
-    echo "The anchor merge forces dev's tree to the release tree."
-    echo "These commits exist in git history but their file changes would be overwritten."
-    echo ""
-    echo "Options:"
-    echo "  A) Do another squash release to include these commits first, then anchor."
-    echo "  B) Note the hashes above, proceed with anchor merge, then cherry-pick"
-    echo "     them back onto dev afterwards."
-    exit 1
-  fi
-  echo "✓ dev has not advanced since squash (tip: $(git rev-parse --short "$DEV_SQUASH_TIP")). Safe to anchor."
-else
-  # No Dev-Squash-Tip: release was published via direct commits (hotfix path), not via /release squash.
-  # This is valid — anchor still works. But we must verify dev has no NEW commits since last anchor
-  # that aren't represented in the release tree, because their FILE CONTENT will be superseded.
-  # (All commits remain reachable via parent-1 of the anchor — nothing is deleted from history.)
-  echo "⚠️ No Dev-Squash-Tip trailer in $TARGET — release was likely published via direct commits."
-  LAST_ANCHOR=$(git log HEAD --merges --format="%H %s" --regexp-ignore-case --grep="Anchor Merge" -1)
-  if [[ -n "$LAST_ANCHOR" ]]; then
-    LAST_ANCHOR_SHA=$(echo "$LAST_ANCHOR" | awk '{print $1}')
-    NEW_ON_DEV=$(git rev-list "$LAST_ANCHOR_SHA"..HEAD --oneline)
-    echo "Dev commits since last anchor ($(git rev-parse --short "$LAST_ANCHOR_SHA")):"
-    echo "${NEW_ON_DEV:-(none)}"
-    echo ""
-    echo "These commits will persist in history via parent-1 of the anchor merge."
-    echo "Their FILE CONTENT in the working tree will be replaced by the release tree."
-    if [[ -n "$NEW_ON_DEV" ]]; then
-      echo "ABORT: no Dev-Squash-Tip and dev has commits since the last anchor."
-      echo "       Do another squash release first, or get explicit user approval before anchoring over these file changes."
-      exit 1
-    fi
-  else
-    echo "⚠️ No previous anchor merge found. Inspect dev history manually before proceeding."
-    exit 1
-  fi
-fi
-```
-
-Once safety check passes:
-
-```bash
-# Split into two steps so commit-tree failure is detectable before touching dev's ref
-ANCHOR_COMMIT=$(git commit-tree "$TARGET"^{tree} \
-  -p HEAD -p "$TARGET" \
-  -m "Anchor Merge: merging $(git rev-parse --short HEAD) and $TARGET ($(git rev-parse --short "$TARGET"))")
-[[ -n "$ANCHOR_COMMIT" ]] || { echo "ABORT: git commit-tree failed — ANCHOR_COMMIT is empty."; exit 1; }
-
-git merge --ff-only "$ANCHOR_COMMIT" || { echo "ABORT: git merge --ff-only failed."; exit 1; }
-# The anchor fast-forward brings in release tree changes (package.json, bun.lock, etc.)
-# node_modules must be refreshed — validation and pre-commit hook both depend on correct packages.
-bun install
-git push origin refs/heads/dev || { echo "ABORT: git push origin refs/heads/dev failed."; exit 1; }
-echo "Anchor merge pushed. ✓"
-```
-
-`git merge --ff-only` fast-forwards dev to the new anchor commit and fails clearly if that's not possible — safer than `git reset --hard` (no risk of blowing away uncommitted work).
-
-This creates a merge commit on dev with:
-- **Parent 1**: dev HEAD (preserves dev history)
-- **Parent 2**: release branch HEAD (the squash commit)
-- **Tree**: release branch's tree (anchored — hence "anchor merge")
+The anchor commit has:
+- **Parent 1**: dev's tip (preserves dev history)
+- **Parent 2**: the release tag (the squash commit and any kaizen commits)
+- **Tree**: the released tree (anchored — hence "anchor merge")
 
 The anchor merge's tree = release tree = dev's next starting point. Clean slate.
 
@@ -736,23 +413,11 @@ Only works if history is perfectly linear (fast-forward). If the push to `main` 
 
 ---
 
-## Appendix C: Interruption Recovery
+## Stopping a release
 
-If the process is interrupted mid-execution:
+Interrupted before the commit: resume where it stopped; the staged squash is still valid (`git merge --squash` leaves no merge in progress).
 
-```bash
-# Assess state
-git status
-
-# If changes staged but not committed: can resume (edit → stage → commit) or abort
-# git merge --squash does NOT set MERGE_HEAD — no "merge in progress" state
-
-# To abort from any point and return to clean state:
-git reset HEAD           # Unstage everything
-git checkout -- .        # Restore working tree to HEAD
-git clean -fd            # Remove untracked files introduced by git merge --squash dev
-bun install              # Restore release branch's node_modules
-```
+To stop instead, report the failure and ask Art to run `! git reset --hard HEAD && bun install`: discarding work is his call, not the agent's. Nothing else needs undoing: the preflight required a clean tree, so every change present came from the squash, and the squash staged its new files, which the reset removes too.
 
 ---
 
@@ -764,11 +429,6 @@ bun install              # Restore release branch's node_modules
 - `git merge --squash dev`: applies NET diff directly, proper 3-way merge semantics
 - Since anchor merge makes dev's tree match main's, `main..dev` = exactly the new work
 
-**Why this command file persists through squash**:
-The file is committed to the release branch before squash. Since dev doesn't touch it and the merge base is HEAD, `git merge --squash dev` does not delete it. It persists in the index.
-
 **Why `bun install` is mandatory after squash**:
 The squash brings dev's code (including updated `bun.lock`) into the index/working tree, but `node_modules` still reflects release branch's packages. Dev may have updated oxlint, prettier, etc. Without `bun install`, validation uses stale binaries and the pre-commit hook's `bun run generate` uses wrong packages.
 
-**Why Appendix A uses `git commit-tree` instead of `git merge --no-ff`**:
-`git merge $TAG --no-ff` on dev creates a merge commit with dev's parent-1 + tag's parent-2, BUT the tree is the 3-way merge result — so release-time edits (e.g., CHANGELOG changes) would be REVERTED. `commit-tree` forces the tree to be exactly the tag's tree, then `git merge --ff-only` advances dev's pointer to that commit safely.

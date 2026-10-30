@@ -14,7 +14,6 @@ docs
 # Examples and scripts
 examples
 scripts
-!scripts/generate-version-info.ts
 stacks
 
 # Build artifacts

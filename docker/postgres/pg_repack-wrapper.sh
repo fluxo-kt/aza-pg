@@ -9,7 +9,8 @@
 #   PGOPTIONS="-c safeupdate.enabled=off" pg_repack -h <host> ...
 set -euo pipefail
 
-real="/usr/lib/postgresql/${PG_MAJOR:?PG_MAJOR is unset; it comes from the postgres base image}/bin/pg_repack"
+# pg_config names the server's bindir in both images (Debian: /usr/lib/postgresql/<major>/bin; Nix: a store path).
+real="$(pg_config --bindir)/pg_repack"
 if [ ! -x "$real" ]; then
   echo "pg_repack: $real not found; is pg_repack enabled in this image's manifest?" >&2
   exit 127

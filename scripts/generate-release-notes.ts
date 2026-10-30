@@ -16,9 +16,7 @@
  *     [--package-version-id=585941799] \
  *     [--compressed-size="247.79 MB"] \
  *     [--uncompressed-size="894.07 MB"] \
- *     [--layer-count=36] \
- *     [--base-image-name="postgres:18.1-trixie"] \
- *     [--base-image-digest="sha256:..."]
+ *     [--layer-count=36]
  *
  * Arguments:
  *   --pg-version          PostgreSQL version (e.g., "18.1")
@@ -30,11 +28,10 @@
  *   --compressed-size     (Optional) Compressed image size (e.g., "247.79 MB")
  *   --uncompressed-size   (Optional) Uncompressed image size (e.g., "894.07 MB")
  *   --layer-count         (Optional) Number of image layers
- *   --base-image-name     (Optional) Base image name (e.g., "postgres:18.1-trixie")
- *   --base-image-digest   (Optional) Base image digest (e.g., "sha256:abc...")
  */
 
 import { join } from "node:path";
+import { tagVersion } from "./config-generator/manifest-loader";
 import type { ManifestEntry } from "./extensions/manifest-data";
 import {
   isAutoCreated,
@@ -63,8 +60,6 @@ interface Args {
   compressedSize?: string; // Optional: formatted compressed size (e.g., "247.79 MB")
   uncompressedSize?: string; // Optional: formatted uncompressed size (e.g., "894.07 MB")
   layerCount?: number; // Optional: number of layers
-  baseImageName?: string; // Optional: base image name (e.g., "postgres:18.1-trixie")
-  baseImageDigest?: string; // Optional: base image digest (e.g., "sha256:abc...")
 }
 
 interface CategoryGroup {
@@ -84,7 +79,7 @@ interface ExtensionInfo {
   sourceUrl?: string;
   docsUrl?: string;
   source: ManifestEntry["source"];
-  installMethod: "builtin" | "pgdg" | "percona" | "timescale" | "source";
+  installMethod: "builtin" | "source";
 }
 
 // Category merge map: source → target
@@ -155,8 +150,6 @@ function parseArgs(): Args | null {
   const compressedSize = getArg("compressed-size"); // Optional
   const uncompressedSize = getArg("uncompressed-size"); // Optional
   const layerCount = getArg("layer-count"); // Optional
-  const baseImageName = getArg("base-image-name"); // Optional
-  const baseImageDigest = getArg("base-image-digest"); // Optional
 
   // Validate required args
   if (!pgVersion || !tag || !digest || !catalogEnabled || !output) {
@@ -173,8 +166,6 @@ function parseArgs(): Args | null {
     console.error("    [--compressed-size='247.79 MB']   # Optional: Compressed image size");
     console.error("    [--uncompressed-size='894.07 MB'] # Optional: Uncompressed image size");
     console.error("    [--layer-count=36]                # Optional: Number of layers");
-    console.error("    [--base-image-name='postgres:18.1-trixie']  # Optional: Base image name");
-    console.error("    [--base-image-digest='sha256:...'] # Optional: Base image digest");
     return null;
   }
 
@@ -188,8 +179,6 @@ function parseArgs(): Args | null {
     compressedSize,
     uncompressedSize,
     layerCount: layerCount ? parseInt(layerCount, 10) : undefined,
-    baseImageName,
-    baseImageDigest,
   };
 }
 
@@ -202,28 +191,7 @@ function getVersion(entry: ManifestEntry): string {
   }
 
   if (entry.source.type === "git" && entry.source.tag) {
-    let version = entry.source.tag;
-
-    // Remove common tag prefixes (order matters!)
-    // Note: Must check longer prefixes first (ver_ before v)
-    version = version
-      .replace(/^ver_/, "") // ver_1.5.3 -> 1.5.3
-      .replace(/^release\//, "") // release/2.57.0 -> 2.57.0
-      .replace(/^REL/, "") // REL4_2_0 -> 4_2_0
-      .replace(/^v(\d)/, "$1"); // v1.0.0 -> 1.0.0 (only if followed by digit)
-
-    // Handle name_version patterns (e.g., wal2json_2_6 -> 2.6, pgflow@0.7.2 -> 0.7.2)
-    // Extract numeric version from patterns like "name_X_Y" or "name@X.Y.Z"
-    const nameVersionMatch = version.match(/^[a-zA-Z][a-zA-Z0-9]*[_@](.+)$/);
-    if (nameVersionMatch?.[1]) {
-      version = nameVersionMatch[1];
-    }
-
-    // Replace underscores with dots for versioned tags
-    // Examples: 2_6 -> 2.6, 4_2_0 -> 4.2.0
-    version = version.replace(/_/g, ".");
-
-    return version;
+    return tagVersion(entry.source.tag) ?? entry.source.tag;
   }
 
   if (entry.source.type === "git-ref" && entry.source.ref) {
@@ -270,13 +238,9 @@ function getVersionLink(ext: ExtensionInfo): string | null {
 
 // Source installation method emoji badges
 // Note: All emojis use variation selector (U+FE0F) for consistent rendering
-// Pre-compiled packages (pgdg, percona, timescale) all use 📦️
 // Source-built extensions use 🏗️
 const SOURCE_EMOJI: Record<ExtensionInfo["installMethod"], string> = {
   builtin: "⚙️",
-  pgdg: "📦️",
-  percona: "📦️",
-  timescale: "📦️",
   source: "🏗️",
 };
 
@@ -351,10 +315,7 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
       sourceUrl: entry.sourceUrl,
       docsUrl: entry.docsUrl,
       source: entry.source,
-      installMethod:
-        entry.kind === "builtin"
-          ? "builtin"
-          : ((entry.install_via as ExtensionInfo["installMethod"]) ?? "source"),
+      installMethod: entry.kind === "builtin" ? "builtin" : "source",
     };
 
     categoryMap.get(category)!.push(extensionInfo);
@@ -391,30 +352,6 @@ function groupByCategory(manifest: Manifest): CategoryGroup[] {
   }
 
   return groups;
-}
-
-/**
- * Generate Docker Hub link for base image
- * @param baseImageName - Base image name (e.g., "postgres:18.1-trixie")
- * @param baseImageDigest - Base image digest (e.g., "sha256:abc...")
- * @returns Docker Hub URL or null if parameters invalid
- */
-function getDockerHubLink(baseImageName: string, baseImageDigest: string): string | null {
-  // Extract tag from image name (e.g., "postgres:18.1-trixie" → "18.1-trixie")
-  const parts = baseImageName.split(":");
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const imageName = parts[0]; // "postgres"
-  const tag = parts[1]; // "18.1-trixie"
-
-  // Convert digest format: sha256:abc... → sha256-abc...
-  const digestForUrl = baseImageDigest.replace(":", "-");
-
-  // Build Docker Hub URL
-  // Format: https://hub.docker.com/layers/library/{image}/{tag}/images/{digest}
-  return `https://hub.docker.com/layers/library/${imageName}/${tag}/images/${digestForUrl}`;
 }
 
 /**
@@ -687,7 +624,7 @@ function generateMarkdown(
   const enabledEntries = manifest.entries.filter((e) => e.enabled !== false);
   const preloadedCount = enabledEntries.filter(isPreloadedByDefault).length;
   const autoCreatedCount = enabledEntries.filter(isAutoCreated).length;
-  // catalogEnabled counts tools too (pgbackrest, pgbadger…), which are not extensions.
+  // catalogEnabled counts tools too (pgbackrest, wal2json…), which are not extensions.
   const toolCount = enabledEntries.filter((e) => e.kind === "tool").length;
 
   // Header with improved summary
@@ -739,18 +676,7 @@ function generateMarkdown(
   lines.push("");
   lines.push(`- **PostgreSQL Version**: ${args.pgVersion}`);
 
-  // Format base image with optional Docker Hub link
-  if (args.baseImageName && args.baseImageDigest) {
-    const dockerHubLink = getDockerHubLink(args.baseImageName, args.baseImageDigest);
-    if (dockerHubLink) {
-      lines.push(`- **Base Image**: [${args.baseImageName}](${dockerHubLink}) (SHA-pinned)`);
-    } else {
-      lines.push(`- **Base Image**: ${args.baseImageName} (SHA-pinned)`);
-    }
-  } else {
-    // Fallback to default format if base image info not provided
-    lines.push(`- **Base Image**: postgres:${args.pgVersion}-trixie (SHA-pinned)`);
-  }
+  lines.push("- **Build**: Nix (nixpkgs pinned by flake.lock); no base image");
 
   lines.push("- **Platforms**: linux/amd64, linux/arm64 (native builds, no QEMU)");
   lines.push(`- **Extensions**: ${args.catalogEnabled - toolCount}, plus ${toolCount} tools`);
@@ -848,8 +774,7 @@ function generateMarkdown(
   lines.push("");
   lines.push("**Source:**");
   lines.push("- ⚙️ PostgreSQL contrib (bundled with PostgreSQL)");
-  lines.push("- 📦️ Package (pre-compiled from PGDG, Percona, Timescale, or GitHub releases)");
-  lines.push("- 🏗️ Source build (compiled during Docker image build)");
+  lines.push("- 🏗️ Source build (compiled by the Nix image build)");
   lines.push("");
   lines.push("**Status:**");
   lines.push("- ⚡ preloaded: Loaded via `shared_preload_libraries` on startup");

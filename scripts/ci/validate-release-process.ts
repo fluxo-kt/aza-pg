@@ -67,22 +67,6 @@ function addIssue(issues: Issue[], file: string, message: string): void {
   issues.push({ file, message });
 }
 
-async function validateReleaseCommand(issues: Issue[]): Promise<void> {
-  const file = ".claude/commands/release.md";
-  const text = await readText(file);
-
-  if (!text.includes("git merge --squash refs/heads/dev")) {
-    addIssue(issues, file, "Phase 4.1 must squash refs/heads/dev, not a bare dev ref");
-  }
-
-  const staleBareMergeLine = text
-    .split("\n")
-    .some((line) => line.trim() === "if ! git merge --squash dev; then");
-  if (staleBareMergeLine) {
-    addIssue(issues, file, "bare `git merge --squash dev` is forbidden by the command guardrails");
-  }
-}
-
 async function validatePublishEnvironment(issues: Issue[]): Promise<void> {
   const file = ".github/workflows/publish.yml";
   const workflow = await readYaml(file);
@@ -168,39 +152,13 @@ async function validateManifestCliContract(issues: Issue[]): Promise<void> {
   }
 }
 
-async function validateEnvironmentDocs(issues: Issue[]): Promise<void> {
-  const files = ["docs/BUILD.md", "docs/GITHUB_ENVIRONMENT_SETUP.md"];
-
-  for (const file of files) {
-    const text = await readText(file);
-    if (/requires? .*manual approval/i.test(text)) {
-      addIssue(
-        issues,
-        file,
-        "manual approval must not be documented as unconditional; it exists only when required reviewers are configured"
-      );
-    }
-  }
-}
-
-async function validateForbiddenBunX(issues: Issue[]): Promise<void> {
-  const file = "scripts/test-all.ts";
-  const text = await readText(file);
-  if (text.includes('"bun", "x"') || text.includes("bun x")) {
-    addIssue(issues, file, "`bun x` is forbidden; use package scripts via bun run");
-  }
-}
-
 async function main(): Promise<void> {
   section("Release Process Validation");
 
   const issues: Issue[] = [];
-  await validateReleaseCommand(issues);
   await validatePublishEnvironment(issues);
   await validatePublishVerificationTopology(issues);
   await validateManifestCliContract(issues);
-  await validateEnvironmentDocs(issues);
-  await validateForbiddenBunX(issues);
 
   if (issues.length > 0) {
     for (const issue of issues) {

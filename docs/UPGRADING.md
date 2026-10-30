@@ -21,7 +21,7 @@ This guide covers **runtime upgrade procedures** (upgrading a running production
 grep pgVersion scripts/extensions/manifest-data.ts
 ```
 
-**If version needs updating**: See [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md#procedure-1-update-postgresql-base-version) to update version declarations in the codebase, regenerate Dockerfile, and rebuild the image.
+**If version needs updating**: See [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md#procedure-1-update-nixpkgs-and-postgresql) to update version declarations in the codebase, regenerate, and rebuild the image.
 
 **Then return here** to upgrade the running database.
 
@@ -43,14 +43,12 @@ grep pgVersion scripts/extensions/manifest-data.ts
 Edit `scripts/extensions/manifest-data.ts` and update:
 
 ```typescript
-// Update MANIFEST_METADATA for the new PostgreSQL version:
+// flake.nix builds nixpkgs' postgresql_<major of pgVersion> and refuses to build unless
+// pgVersion equals that package's version, so set it to the one nixpkgs (flake.lock) ships:
 export const MANIFEST_METADATA = {
-  pgVersion: "19.0", // Changed from 18.1
-  baseImageSha: "sha256:...", // Updated SHA for postgres:19.0-trixie
-} as const;
-
-// Then update each extension's pgdgVersion in the EXTENSIONS array
-// to match PostgreSQL 19 compatible versions
+  pgVersion: "19.0", // Changed from 18.x
+  ...
+};
 ```
 
 #### Step 2: Verify Extension Compatibility
@@ -63,20 +61,18 @@ Check each extension supports PostgreSQL 19:
 
 Update `scripts/extensions/manifest-data.ts` with compatible versions.
 
-#### Step 3: Regenerate Dockerfile and Build
+#### Step 3: Regenerate and Build
 
 ```bash
-# Regenerate Dockerfile from template with new versions
+# Regenerate the manifest flake.nix reads
 bun run generate
 
-# Build the image (tagged aza-pg:pg18 unless POSTGRES_TAG names another tag)
-POSTGRES_TAG=pg19 bun run build
+# Build the image (tagged aza-pg:pg<major of pgVersion>)
+bun run build
 
 # Verify PostgreSQL version
 docker run --rm aza-pg:pg19 postgres --version
 ```
-
-**Note**: All versions are hardcoded in the generated Dockerfile from `scripts/extensions/manifest-data.ts`. The Dockerfile is auto-generated - never edit it directly.
 
 #### Step 4: Test Locally
 
@@ -196,7 +192,9 @@ A newer image starts on your existing data volume, but extension upgrades inside
    WHERE e.extversion <> a.default_version;
    ```
 
-   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). Update TimescaleDB first, as the first statement of a new session, because its loader must not have loaded the old library: `psql -X -c "ALTER EXTENSION timescaledb UPDATE;"`.
+   Run `ALTER EXTENSION <name> UPDATE;` for each, unless the CHANGELOG says an extension ships no upgrade path (then it names the replacement step). TimescaleDB is not in that list: the image ships only its own TimescaleDB library, so at the first start after an image upgrade the entrypoint updates it in every database before accepting connections, and stops naming the database if an update fails.
+
+   **When the image changes glibc, that first start also rebuilds indexes, which can take a while.** A glibc version can change how libc collations such as `en_US.utf8` (the default of every cluster created before the builtin collation) sort, which leaves text indexes built under the old one silently missing rows. Between glibc versions measured to sort `en_US.utf8` the same (Debian's 2.41 and the Nix image's 2.44 are), the entrypoint only records the new version. For any other change it rebuilds, in each database, every index that orders or filters by such a collation, then records the new version. Clients cannot connect until it is done; the log names each database and its rebuilt index count. Time it on a copy of a large database before upgrading production. Two things cannot be rebuilt and stop the container, which names them: range partitioning on such a text column (rows may now belong in another partition: move them, e.g. detach the partitions and re-insert their rows), and a `CHECK` that compares text with `<`, `<=`, `>` or `>=` (rows may now fail it: fix them, then drop and re-add the constraint). Then start the container again.
 
 3. pgflow keeps its schema version until you run `docker exec <container> pgflow-upgrade` (see [PGFLOW.md](PGFLOW.md)).
 4. If the log warns that pgsodium uses the published key, rotate it: [PGSODIUM-SETUP.md](PGSODIUM-SETUP.md#rotating-the-published-key).
@@ -207,14 +205,13 @@ A newer image starts on your existing data volume, but extension upgrades inside
 >
 > To update the extension **version declared in the codebase** (before building a new image), see:
 >
-> - [VERSION-MANAGEMENT.md - Procedure 2](VERSION-MANAGEMENT.md#procedure-2-update-pgdg-extension-version) for PGDG extensions
-> - [VERSION-MANAGEMENT.md - Procedure 3](VERSION-MANAGEMENT.md#procedure-3-update-source-built-extension-git-tag) for source-built extensions
+> - [VERSION-MANAGEMENT.md - Procedure 2](VERSION-MANAGEMENT.md#procedure-2-update-an-extension-git-tag) (Procedure 3 for cargo-pgrx extensions)
 
 ### Minor Version Updates (e.g., pgvector 0.8.1 → 0.8.2)
 
 #### Steps 1–2: Update the Manifest
 
-Change the version in `scripts/extensions/manifest-data.ts` and run `bun run generate`, following [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md) (Procedure 2 for PGDG packages, Procedure 3 for source-built extensions).
+Change the version in `scripts/extensions/manifest-data.ts` and run `bun run generate`, following [VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md) (Procedure 2; Procedure 3 for cargo-pgrx extensions).
 
 #### Step 3: Rebuild and Test
 

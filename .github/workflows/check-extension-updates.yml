@@ -30,16 +30,6 @@ jobs:
           bun scripts/extensions/check-updates.ts --format=json > updates.json || true
           jq -e 'if type == "array" and length > 0 then true else error("check-updates produced no result rows") end' updates.json > /dev/null
 
-      # Vendor apt pins carry no git tag, so check-updates cannot see them. Exit 1 = a pin is gone or
-      # outdated (reported in the issue); exit 2 = the probe failed, which must turn the job red.
-      - name: Check Percona and Timescale pins
-        run: |
-          set -uo pipefail
-          status=0
-          bun scripts/extensions/check-vendor-apt.ts > vendor.txt 2>&1 || status=$?
-          cat vendor.txt
-          [ "$status" -ne 2 ] || exit 1
-
       # One open issue is the only place this weekly job reports anything, so it must say every outcome: the update
       # list, a failed check (a red scheduled job alone goes unseen, e.g. an install blocked by a new advisory), or
       # nothing pending (closed, so a stale list never reads as current).
@@ -72,7 +62,7 @@ jobs:
               await report(
                 `❌ Dependency check failed - ${date}`,
                 `The weekly dependency check did not finish, so updates are unknown: ${process.env.RUN_URL}\n\n` +
-                  `Fix the failing step (run \`bun scripts/extensions/check-updates.ts\` and \`bun scripts/extensions/check-vendor-apt.ts\` locally), then re-run the workflow.`
+                  `Fix the failing step (run \`bun scripts/extensions/check-updates.ts\` locally), then re-run the workflow.`
               );
               return;
             }
@@ -91,9 +81,6 @@ jobs:
               (u.releaseUrl ? `- [View Release](${u.releaseUrl})\n` : '')
             ).join('\n');
 
-            const vendorProblems = fs.readFileSync('vendor.txt', 'utf8')
-              .split('\n').filter(l => l.startsWith('❌')).join('\n');
-
             const uncheckedList = unchecked.map(u =>
               `- **${u.name}**: \`${u.current}\` — ${u.notes}\n` +
               `  - Source: ${u.source}`
@@ -106,9 +93,6 @@ jobs:
               (unchecked.length
                 ? `## ⚠️ Could Not Check\n\nThe upstream lookup failed for these; check them manually:\n\n${uncheckedList}\n\n`
                 : '') +
-              (vendorProblems
-                ? `## 📦 Percona / Timescale Pins\n\n\`bun scripts/extensions/check-vendor-apt.ts\`:\n\n\`\`\`\n${vendorProblems}\n\`\`\`\n\n`
-                : '') +
               `---\n\n` +
               `### Update Instructions\n\n` +
               `1. Review each update above for compatibility and breaking changes\n` +
@@ -120,7 +104,7 @@ jobs:
               `---\n\n` +
               `*Automated check run: ${new Date().toISOString()}*`;
 
-            const total = withUpdates.length + (vendorProblems ? vendorProblems.split('\n').length : 0);
+            const total = withUpdates.length;
             if (total > 0) {
               await report(`📦 ${total} dependency update(s) available - ${date}`, body);
             } else if (open.length > 0) {

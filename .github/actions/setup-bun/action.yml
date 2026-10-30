@@ -20,7 +20,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Parse .tool-versions directly (bun not installed yet, can't use parse-bun-version.ts)
+        # Parse .tool-versions directly (bun is not installed yet)
         BUN_VERSION=$(grep '^bun ' .tool-versions | awk '{print $2}')
         if [[ -z "${BUN_VERSION}" ]]; then
           echo "❌ ERROR: Could not parse bun version from .tool-versions"

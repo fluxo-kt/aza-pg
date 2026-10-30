@@ -33,7 +33,6 @@ const generators: GeneratorTask[] = [
     script: "scripts/ci/generate-workflow-config.ts",
     dependsOn: ["Manifest"],
   },
-  { name: "Dockerfile", script: "scripts/docker/generate-dockerfile.ts", dependsOn: ["Manifest"] },
   { name: "Entrypoint", script: "scripts/docker/generate-entrypoint.ts", dependsOn: ["Manifest"] },
   {
     name: "Image Contents",

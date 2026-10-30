@@ -34,10 +34,6 @@ export interface OCIMetadataOptions {
   documentation?: string; // org.opencontainers.image.documentation
   licenses?: string; // org.opencontainers.image.licenses (SPDX format)
 
-  // Base image references
-  baseImageName?: string; // org.opencontainers.image.base.name
-  baseImageDigest?: string; // org.opencontainers.image.base.digest
-
   // Custom aza-pg annotations
   pgVersion?: string; // io.fluxo-kt.aza-pg.postgresql.version
   catalogEnabled?: string; // io.fluxo-kt.aza-pg.catalog.enabled
@@ -50,8 +46,7 @@ export interface OCIMetadataOptions {
  *
  * Supported flags:
  * --version, --revision, --source-url, --title, --description, --created,
- * --authors, --url, --documentation, --licenses, --base-image-name,
- * --base-image-digest, --pg-version, --catalog-enabled, --catalog-total
+ * --authors, --url, --documentation, --licenses, --pg-version, --catalog-enabled, --catalog-total
  *
  * @param args - Argument array to parse (will be modified in-place)
  * @param i - Current argument index (will be updated)
@@ -120,15 +115,6 @@ export function parseOCIMetadataArg(
 
     case "--licenses":
       options.licenses = getNextArg("--licenses");
-      return true;
-
-    // Base image references
-    case "--base-image-name":
-      options.baseImageName = getNextArg("--base-image-name");
-      return true;
-
-    case "--base-image-digest":
-      options.baseImageDigest = getNextArg("--base-image-digest");
       return true;
 
     // Custom aza-pg annotations
@@ -208,15 +194,6 @@ export function buildOCIAnnotations(
 
   if (options.licenses) {
     annotations["org.opencontainers.image.licenses"] = options.licenses;
-  }
-
-  // Base image references
-  if (options.baseImageName) {
-    annotations["org.opencontainers.image.base.name"] = options.baseImageName;
-  }
-
-  if (options.baseImageDigest) {
-    annotations["org.opencontainers.image.base.digest"] = options.baseImageDigest;
   }
 
   // Custom aza-pg annotations

@@ -274,6 +274,105 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     }
   });
 
+  await test("the first start brings the release's data directory up to the image, before clients connect", async () => {
+    // The image ships only its own timescaledb-<version>.so, so a database left on the release's version fails every
+    // statement; a stale glibc collation version makes every connection warn and CREATE DATABASE refuse template1
+    // (which the release made unconnectable, so only a refresh from another database reaches it).
+    const state = (
+      await psql(
+        container,
+        `SELECT (SELECT extversion = default_version FROM pg_available_extensions JOIN pg_extension ON extname = name WHERE name = 'timescaledb')
+           || '|' || coalesce((SELECT string_agg(datname, ',' ORDER BY datname) FROM pg_database WHERE datcollversion <> pg_database_collation_actual_version(oid)), '');
+         CREATE DATABASE aza_after_upgrade; DROP DATABASE aza_after_upgrade;`
+      )
+    ).trim();
+    if (state !== "true|") throw new Error(`timescaledb current, then stale databases: "${state}"`);
+  });
+
+  await test("a glibc change rebuilds the text indexes, and stops at a text range partition", async () => {
+    // An index built under another glibc's order can silently miss rows: the ones ordering or filtering by the
+    // collation must be rebuilt (new relfilenode), the integer one left alone. A range partition cannot be rebuilt, so
+    // it must stop the start. A volume, not tmpfs: the data directory must survive the restarts. The faked
+    // datcollversion stands in for another glibc, the marker removal for a new image.
+    const name = `${RUN_ID}-glibc`;
+    const volume = `${RUN_ID}-vol-glibc`;
+    volumes.add(volume);
+    await start(name, IMAGE, volume);
+    const db = (sql: string) =>
+      must(
+        [
+          "exec",
+          "-i",
+          name,
+          "psql",
+          "-XqAt",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          "postgres",
+          "-d",
+          "aza_glibc",
+          "-f",
+          "-",
+        ],
+        sql
+      );
+    const restartAsNewImage = async (sql: string) => {
+      await db(
+        `${sql}; UPDATE pg_database SET datcollversion = '2.40' WHERE datname = current_database();`
+      );
+      await must(["exec", name, "sh", "-c", "rm -f /var/lib/postgresql/*/docker/aza-pg-image"]);
+      await must(["restart", name]);
+    };
+    const files = `SELECT string_agg(relname || '=' || relfilenode, ' ' ORDER BY relname) FROM pg_class WHERE relname LIKE 'g\\_%'`;
+    await psql(
+      name,
+      "CREATE DATABASE aza_glibc TEMPLATE template0 LOCALE_PROVIDER libc LOCALE 'en_US.utf8'"
+    );
+    await db(
+      "CREATE TABLE g(s text, n int); CREATE INDEX g_s ON g(s); CREATE INDEX g_n ON g(n); CREATE INDEX g_p ON g(n) WHERE s > 'm'"
+    );
+    const before = Object.fromEntries(
+      (await db(files))
+        .trim()
+        .split(" ")
+        .map((f) => f.split("="))
+    );
+    await restartAsNewImage("SELECT");
+    await waitForPostgres({ container: name, timeout: 60 });
+    const after = Object.fromEntries(
+      (await db(files))
+        .trim()
+        .split(" ")
+        .map((f) => f.split("="))
+    );
+    const stale = (
+      await db(
+        "SELECT datcollversion <> pg_database_collation_actual_version(oid) FROM pg_database WHERE datname = current_database()"
+      )
+    ).trim();
+    if (
+      after.g_s === before.g_s ||
+      after.g_p === before.g_p ||
+      after.g_n !== before.g_n ||
+      stale !== "f"
+    ) {
+      throw new Error(
+        `relfilenodes ${JSON.stringify(before)} → ${JSON.stringify(after)}, version stale: ${stale}`
+      );
+    }
+    await restartAsNewImage("CREATE TABLE g_r(s text) PARTITION BY RANGE (s)");
+    const exited = (await must(["wait", name])).trim();
+    // Logs of the last start only: a fixed window ("10s") missed the error whenever a loaded host took longer than
+    // that between printing it and exiting.
+    const startedAt = (await must(["inspect", "-f", "{{.State.StartedAt}}", name])).trim();
+    const logs = await docker(["logs", "--since", startedAt, name]);
+    await remove(name);
+    if (exited === "0" || !/range partitioning of g_r/.test(logs.err)) {
+      throw new Error(`exit ${exited}; log:\n${logs.err.slice(-1500)}`);
+    }
+  });
+
   await test("a failing migration rolls the whole database back", async () => {
     const lastMigration = (
       await must(["exec", container, "tail", "-n", "1", `${UPGRADE_DIR}/versions.tsv`])
@@ -281,7 +380,7 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
       .trim()
       .split("\t")[1];
     const file = `${UPGRADE_DIR}/migrations/${lastMigration}`;
-    const sum = `find ${UPGRADE_DIR} -type f -exec md5sum {} + | sort`;
+    const sum = `find -L ${UPGRADE_DIR} -type f -exec md5sum {} + | sort`;
     const original = await must(["exec", "-u", "root", container, "sh", "-c", sum]);
     // Earlier migrations of the same run have already applied when this statement fails.
     await must([
@@ -291,7 +390,7 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
       container,
       "sh",
       "-c",
-      `cp -a ${UPGRADE_DIR} /tmp/upgrade.orig && echo 'SELECT 1/0;' >> ${file}`,
+      `cp -RLp ${UPGRADE_DIR} /tmp/upgrade.orig && echo 'SELECT 1/0;' >> ${file}`,
     ]);
     try {
       const r = await upgrade(container);

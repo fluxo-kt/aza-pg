@@ -27,7 +27,11 @@ All tooling choices follow these principles:
 
 #### Install Security
 
-The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, and each install site sets `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE=86400` (a one-day delay against freshly published malicious releases); AGENTS.md "Bun OSV Install Gate" owns the procedure.
+The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, and each install site sets `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE=86400` (a one-day delay against freshly published malicious releases); "Bun OSV install gate" below owns the procedure.
+
+##### Bun OSV install gate
+
+A newly-published `warn`-level CVE in a transitive (even dev) dep makes the non-TTY install **exit 1**. Inspect the working-tree diff after failure; cancellation does not establish that earlier dependency edits were undone. Remediate **in this order**: (1) **`overrides`** in `package.json` to a patched version (first resort — actually removes the vuln); regenerate `bun.lock` (CI uses `--frozen-lockfile`). (2) Only when **unfixable** (no patched version exists), add to `.bun-osv.json` `{"ignore":[{"advisory":"CVE-…"|"package"+"range","reason":"…","expires":"<future ISO>"}]}` — `reason` + a **future** `expires` are mandatory (scanner treats missing/unparseable `expires` as permanent silent suppression). Every install site needs `BUN_OSV_SHOW_IGNORED="0"` in env (default re-emits ignored advisories as warn → cancels); already wired at `setup-bun`, the inline-install workflows, and `.1code/worktree.json` (non-CI worktree setup — inline `env BUN_OSV_SHOW_IGNORED=0 bun install`, since a JSON command array has no layered env). `scripts/security/validate-bun-osv.ts` (fast `validate` check) enforces: canonical `{ignore:[…]}` shape + reason/future-expires (both `.bun-osv.json` and `package.json#bunOsv.ignore`), scanner pin (bunfig name **and** that it's a declared dep), SHOW_IGNORED wiring at every `bun install` site (CI files by env-precedence resolution, `.1code/worktree.json` by inline prefix), and forbids the `BUN_OSV_IGNORE_FILE`/`OSV_IGNORE_FILE`/`BUN_OSV_IGNORE_PKG`/`BUN_OSV_IGNORE_ADVISORY` env bypass. **Caveat**: the scanner is fail-open (OSV outage → install proceeds unscanned); the per-site `BUN_CONFIG_INSTALL_MINIMUM_RELEASE_AGE=86400` release-age delay is the backstop. The guard encodes scanner-internal behaviour — re-verify it against the scanner source on any `bun-osv-scanner-extended` bump (lockfile-hash-pinned, so a bump is a reviewable diff).
 
 ### TypeScript
 
@@ -95,7 +99,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 **Version**: See `package.json` (`sql-formatter`, `squawk-cli`) + Bun-native linting
 **Why**: Comprehensive SQL quality - formatting AND dual-layer PostgreSQL-specific linting
 **Status**: ✅ LOCKED
-**Configuration**: `.sql-formatter.json`, `.squawk.toml` + `scripts/check-sql.ts` + `scripts/lint-sql-squawk.ts`
+**Configuration**: `.sql-formatter.json`, `.squawk.toml` + `scripts/check-sql.ts`
 **Usage**:
 
 - `bun run validate` - checks SQL formatting and runs both linters with the other fast checks
@@ -118,7 +122,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 - Expression width: 80 chars (optimized for readability)
 - Lines between queries: 2 (better visual separation)
 
-**Squawk Linting Rules** (`scripts/lint-sql-squawk.ts`, configured by `.squawk.toml`): Squawk's default rule set minus the rules that only matter for migrations on live databases (concurrent index creation/deletion, `prefer-bigint-over-int`, `constraint-missing-not-valid`, `require-timeout-settings`, `adding-foreign-key-constraint`). Init scripts run once on an empty database, so those rules only add noise; `.squawk.toml` gives the reason per rule.
+**Squawk Linting Rules** (run by `scripts/check-sql.ts`, configured by `.squawk.toml`): Squawk's default rule set minus the rules that only matter for migrations on live databases (concurrent index creation/deletion, `prefer-bigint-over-int`, `constraint-missing-not-valid`, `require-timeout-settings`, `adding-foreign-key-constraint`). Init scripts run once on an empty database, so those rules only add noise; `.squawk.toml` gives the reason per rule.
 
 **Custom Bun-Native Linting Rules** (`scripts/check-sql.ts` - Complementary Checks):
 
@@ -144,8 +148,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 3. **Validation**: Required check in `scripts/validate.ts` (fast mode)
 4. **Scripts**:
    - `scripts/format-sql.ts` - PostgreSQL formatter
-   - `scripts/check-sql.ts` - Custom validator + linter
-   - `scripts/lint-sql-squawk.ts` - Squawk PostgreSQL linter wrapper
+   - `scripts/check-sql.ts` - Custom validator + Squawk linter
 
 **Scope**: every `*.sql` in the repo. `format-sql.ts` and `check-sql.ts` skip `tests/regression/` (upstream test fixtures); `check-sql.ts` also skips the vendored `tests/fixtures/pgflow/`.
 
@@ -208,7 +211,7 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ### PostgreSQL
 
-**Version**: 18 (official postgres:18-trixie image)
+**Version**: 18, built by nixpkgs (`flake.lock` pins the revision)
 **Why**: Latest stable PostgreSQL with performance improvements
 **Status**: ✅ LOCKED
 
@@ -231,14 +234,14 @@ The root `bunfig.toml` runs `bun-osv-scanner-extended` on every `bun install`, a
 
 ## 🔧 Build Tools
 
-### Docker Buildx
+### Nix
 
-**Why**: Multi-platform Docker builds (amd64 + arm64)
+**Why**: Builds the image from `flake.nix`: every extension from its pinned commit, the closure holding only what ships (`dockerTools.streamLayeredImage`)
 **Status**: ✅ LOCKED
 
 ### Cargo/Rust (for extension compilation)
 
-**Why**: Required for the Rust extensions in `docker/postgres/extensions.cargo.manifest.json` (e.g. pg_jsonschema, wrappers)
+**Why**: Required for the Rust (pgrx) extensions (e.g. pg_jsonschema, wrappers); nixpkgs provides the toolchain
 **Status**: ✅ LOCKED - Build-time only, not in runtime image
 
 ---
@@ -399,14 +402,13 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ### Code Quality & Linting
 
-| Tool                                             | Repository                                        | Documentation                                          | Purpose                                                                  |
-| ------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
-| [Oxlint](https://oxc.rs)                         | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/linter)         | Rust-based fast linter (50-100x faster than ESLint)                      |
-| [Prettier](https://prettier.io)                  | [GitHub](https://github.com/prettier/prettier)    | [Docs](https://prettier.io/docs/)                      | Industry-standard opinionated code formatter                             |
-| [Oxfmt](https://oxc.rs)                          | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/formatter.html) | Fast formatter (planned migration when stable, 45x faster than Prettier) |
-| [shellcheck](https://www.shellcheck.net)         | [GitHub](https://github.com/koalaman/shellcheck)  | [Wiki](https://github.com/koalaman/shellcheck/wiki)    | Static analysis tool for shell scripts                                   |
-| [hadolint](https://hadolint.github.io/hadolint/) | [GitHub](https://github.com/hadolint/hadolint)    | [Docs](https://hadolint.github.io/hadolint/)           | Dockerfile linter with best practices validation                         |
-| [yamllint](https://yamllint.readthedocs.io)      | [GitHub](https://github.com/adrienverge/yamllint) | [Docs](https://yamllint.readthedocs.io)                | YAML linter for syntax and cosmetic checking                             |
+| Tool                                        | Repository                                        | Documentation                                          | Purpose                                                                  |
+| ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| [Oxlint](https://oxc.rs)                    | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/linter)         | Rust-based fast linter (50-100x faster than ESLint)                      |
+| [Prettier](https://prettier.io)             | [GitHub](https://github.com/prettier/prettier)    | [Docs](https://prettier.io/docs/)                      | Industry-standard opinionated code formatter                             |
+| [Oxfmt](https://oxc.rs)                     | [GitHub](https://github.com/oxc-project/oxc)      | [Docs](https://oxc.rs/docs/guide/usage/formatter.html) | Fast formatter (planned migration when stable, 45x faster than Prettier) |
+| [shellcheck](https://www.shellcheck.net)    | [GitHub](https://github.com/koalaman/shellcheck)  | [Wiki](https://github.com/koalaman/shellcheck/wiki)    | Static analysis tool for shell scripts                                   |
+| [yamllint](https://yamllint.readthedocs.io) | [GitHub](https://github.com/adrienverge/yamllint) | [Docs](https://yamllint.readthedocs.io)                | YAML linter for syntax and cosmetic checking                             |
 
 ### Validation & Schema
 
@@ -422,12 +424,12 @@ Comprehensive list of all tools used in this project with links to their documen
 
 ### Docker & Infrastructure
 
-| Tool                                               | Repository                                       | Documentation                                                  | Purpose                                                    |
-| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| [Docker Compose](https://docs.docker.com/compose/) | [GitHub](https://github.com/docker/compose)      | [Docs](https://docs.docker.com/compose/)                       | Multi-container Docker application orchestration           |
-| [Docker Buildx](https://docs.docker.com/build/)    | [GitHub](https://github.com/docker/buildx)       | [Docs](https://docs.docker.com/build/building/multi-platform/) | Multi-platform Docker builds (amd64 + arm64)               |
-| [PostgreSQL](https://www.postgresql.org)           | [GitHub](https://github.com/postgres/postgres)   | [Docs](https://www.postgresql.org/docs/18/)                    | PostgreSQL 18 database (official postgres:18-trixie image) |
-| [PgBouncer](https://www.pgbouncer.org)             | [GitHub](https://github.com/pgbouncer/pgbouncer) | [Docs](https://www.pgbouncer.org/usage.html)                   | Lightweight PostgreSQL connection pooler                   |
+| Tool                                               | Repository                                       | Documentation                                | Purpose                                          |
+| -------------------------------------------------- | ------------------------------------------------ | -------------------------------------------- | ------------------------------------------------ |
+| [Docker Compose](https://docs.docker.com/compose/) | [GitHub](https://github.com/docker/compose)      | [Docs](https://docs.docker.com/compose/)     | Multi-container Docker application orchestration |
+| [Nix](https://nixos.org)                           | [GitHub](https://github.com/NixOS/nix)           | [Docs](https://nix.dev)                      | Builds the image (`flake.nix`)                   |
+| [PostgreSQL](https://www.postgresql.org)           | [GitHub](https://github.com/postgres/postgres)   | [Docs](https://www.postgresql.org/docs/18/)  | PostgreSQL 18 database (nixpkgs build)           |
+| [PgBouncer](https://www.pgbouncer.org)             | [GitHub](https://github.com/pgbouncer/pgbouncer) | [Docs](https://www.pgbouncer.org/usage.html) | Lightweight PostgreSQL connection pooler         |
 
 ### Build Tools
 

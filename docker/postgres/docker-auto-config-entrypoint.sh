@@ -10,6 +10,30 @@
 
 set -euo pipefail
 
+# The server and extensions are compiled for a CPU baseline (`baseline` in flake.nix: x86-64-v3, or Armv8.2-A with
+# dot product, AES and SHA2). On an older CPU, or one whose hypervisor hides a feature, they would die with "illegal
+# instruction" mid-query, so check the CPU before anything compiled for it runs. Only Bash builtins run here. These
+# are /proc/cpuinfo's names for every feature GCC may emit for that baseline (x86-64-v3 includes v2: pni = SSE3,
+# abm = LZCNT; Armv8.2-A includes 8.1's CRC32, LSE atomics and RDM); change both together. Take the list from the
+# compiler, never from memory: `gcc -march=<baseline> -Q --help=target` prints every -m feature the target enables.
+case "$HOSTTYPE" in
+x86_64) required_cpu_features="cx16 lahf_lm popcnt pni sse4_1 sse4_2 ssse3 avx avx2 bmi1 bmi2 f16c fma abm movbe" ;;
+aarch64) required_cpu_features="crc32 atomics asimdrdm asimddp aes sha2" ;;
+*) required_cpu_features="" ;;
+esac
+cpu_features=""
+while IFS= read -r line; do
+    case "$line" in flags* | Features*) cpu_features=" ${line#*:} " && break ;; esac
+done </proc/cpuinfo
+missing_cpu_features=""
+for feature in $required_cpu_features; do
+    case "$cpu_features" in *" $feature "*) ;; *) missing_cpu_features+=" $feature" ;; esac
+done
+if [ -n "$missing_cpu_features" ]; then
+    printf '%s\n' "[POSTGRES] ERROR: this CPU lacks features the image is compiled for:${missing_cpu_features}. It needs x86-64-v3 (Intel Haswell / AMD Zen or newer) or Armv8.2-A with dot product (Neoverse N1, Graviton2 or newer); if the host CPU has them, the hypervisor hides them (set the VM's CPU model to host)." >&2
+    exit 1
+fi
+
 readonly DEFAULT_RAM_MB=1024
 
 # Default preload set auto-generated from manifest (extensions with sharedPreload=true and defaultEnable=true).
@@ -82,15 +106,19 @@ if [ "$1" != "postgres" ]; then
     exec /usr/local/bin/docker-entrypoint.sh "$@"
 fi
 
-# Data checksums are enabled by default via official Debian PostgreSQL package initdb wrapper.
-# Override: Set DISABLE_DATA_CHECKSUMS=true to disable (not recommended - reduces corruption detection).
+# PostgreSQL 18's initdb enables data checksums by default; they detect page corruption and let pg_rewind turn a
+# failed primary into a replica. DISABLE_DATA_CHECKSUMS=true opts out (not recommended).
 if [ "${DISABLE_DATA_CHECKSUMS:-false}" = "true" ]; then
     export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --no-data-checksums"
 fi
 
-# Ensure UTF8 encoding and locale at cluster initialization
-# These settings are immutable after the cluster is created
-export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-} --encoding=UTF8 --locale=en_US.utf8"
+# New clusters sort text with PostgreSQL's builtin provider: code-point order, defined by PostgreSQL itself, so a
+# glibc or ICU upgrade never changes it and never forces a REINDEX. It is also the fastest comparison. PG_UNICODE_FAST
+# gives full Unicode case mapping (upper('ß') = 'SS'). Language-aware order stays available per column or query with
+# an ICU collation, e.g. COLLATE "en-US-x-icu". --locale=C.UTF-8 sets the libc categories to glibc's built-in locale.
+# The operator's POSTGRES_INITDB_ARGS come last so their flags win (initdb takes the last value of a repeated flag).
+# These settings are fixed once the cluster exists.
+export POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale-provider=builtin --builtin-locale=PG_UNICODE_FAST --locale=C.UTF-8 ${POSTGRES_INITDB_ARGS:-}"
 
 detect_ram() {
     local ram_mb=0
@@ -433,8 +461,10 @@ EFFECTIVE_IO_CONCURRENCY=${STORAGE_IO_CONCURRENCY[$STORAGE_TYPE]}
 
 # The getkey script is never run here: on a new data directory it creates the key file, and initdb (which runs
 # after this script) refuses a non-empty directory. Its failures surface when the server starts.
-PG_SHAREDIR=$(pg_config --sharedir 2>/dev/null || echo "/usr/share/postgresql/18")
-PGSODIUM_GETKEY_PATH="${PG_SHAREDIR}/extension/pgsodium_getkey"
+PG_SHAREDIR=$(pg_config --sharedir)
+# A fixed path, not ${PG_SHAREDIR}: it is where docs/PGSODIUM-SETUP.md tells operators to mount their own script,
+# and the Nix image's sharedir is a read-only store path. pgsodium.getkey_script below points the server at it.
+PGSODIUM_GETKEY_PATH="/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey"
 SHARED_PRELOAD_LIBRARIES=${POSTGRES_SHARED_PRELOAD_LIBRARIES:-$DEFAULT_SHARED_PRELOAD_LIBRARIES}
 
 # WAL level configuration (logical for CDC, replica for replication, minimal for single-node)
@@ -537,6 +567,7 @@ DATA_DIR="${PGDATA:-}"
 OPERATOR_CONFIG=""
 declare -A OPERATOR_SET=() # setting name → value the operator passed on the command line
 OPERATOR_ARGS=()
+STARTS_SERVER=true # false for postgres options that print and exit (upstream's _pg_want_help list, plus -C)
 while [ "$#" -gt 0 ]; do
     arg="$1"
     shift
@@ -544,6 +575,7 @@ while [ "$#" -gt 0 ]; do
         -c) pair="${1:-}"; [ "$#" -gt 0 ] && shift ;;
         -c*) pair="${arg#-c}" ;;
         --*=*) pair="${arg#--}" ;;
+        -C* | -'?' | --help | --describe-config | -V | --version) STARTS_SERVER=false; OPERATOR_ARGS+=("$arg"); continue ;;
         -D) DATA_DIR="${1:-}"; OPERATOR_ARGS+=("$arg" "${1:-}"); [ "$#" -gt 0 ] && shift; continue ;;
         *) OPERATOR_ARGS+=("$arg"); continue ;;
     esac
@@ -572,7 +604,7 @@ as_postgres() { if [ "$(id -u)" = 0 ]; then gosu postgres "$@"; else "$@"; fi; }
 # differs from the pristine copy the image keeps beside it.
 readonly PUBLISHED_PGSODIUM_KEY=4670bdf714d653c15779e67e0bb6012f1e229c86edbdf75285f3c592670cece2
 pgsodium_key_file=""
-if cmp -s "/usr/share/postgresql/${PG_MAJOR}/extension/pgsodium_getkey" /usr/local/share/aza-pg/pgsodium_getkey; then
+if cmp -s "$PGSODIUM_GETKEY_PATH" /usr/local/share/aza-pg/pgsodium_getkey; then
     image_getkey=true
 elif [ $? -eq 1 ]; then
     image_getkey=false
@@ -725,6 +757,126 @@ if [ -f "${DATA_DIR}/standby.signal" ] || [ -f "${DATA_DIR}/recovery.signal" ]; 
             RAISE_ARGS+=(-c "${name}=${primary}")
         fi
     done
+fi
+
+# The first start on a different image fixes, before the server serves clients, what an image change breaks in an
+# existing data directory. The data directory records the image it last did this for (aza-pg-image); the key is the
+# resolved server binary (in the Nix image a store path, which changes with glibc, ICU or anything else it links) plus
+# TimescaleDB's version (constant paths on Debian), so other starts cost one file read. A private socket and a
+# trust-only hba_file keep clients out and need no password whatever pg_hba.conf says. Standbys get both fixes through
+# WAL from their primary; a restore gets them on the next start once it has finished. Connections go to database
+# postgres, as pgflow-upgrade's do: releases made template1 refuse connections.
+# 1. TimescaleDB's loader opens the library of each database's INSTALLED version (timescaledb-<version>.so) and the
+#    image ships only its own, so a database on an older one fails every statement except
+#    `ALTER EXTENSION timescaledb UPDATE`, which must be the session's first and needs timescaledb preloaded (hence the
+#    image's config file). VERBOSITY=sqlstate makes "not installed in this database" (42704) exact; it is the last
+#    line, after any connection-time warning, which client_min_messages does not reach.
+# 2. A libc collation's version is glibc's, and glibc can change sort order between versions (2.28 did), so a text
+#    index built under the old glibc can silently miss rows under the new one. en_US.utf8 (every release's default)
+#    between glibc versions measured to sort it the same only records the new version, so the move from Debian's
+#    glibc to the Nix image's costs no rebuild. Any other libc collation version change rebuilds every index
+#    that orders, or filters, by such a collation, then records the new version: correct by construction, at the cost
+#    of startup time. Range partitions and CHECKs that compare text in that order cannot be rebuilt, so they stop the
+#    container naming the fix. One DO per database: all of it lands or none. ICU collations are left alone: their
+#    versions track order changes too, and PostgreSQL warns where one is used.
+IMAGE_MIGRATED_FILE="${DATA_DIR}/aza-pg-image"
+REBUILD_FOR_GLIBC=$(cat <<'SQL'
+DO $$DECLARE same text[] := '{2.41,2.44}'; colls oid[]; idx regclass[]; i regclass; c regcollation; bad text; BEGIN
+    -- en_US between glibc versions in "same" only records the version; refreshed first, they are no longer stale
+    -- below, so only unmeasured changes are rebuilt. A version joins "same" only on a "same" verdict from
+    -- scripts/nix/compare-en-us-order.ts, which sorts in PostgreSQL itself: any other sorter (coreutils sort, ICU,
+    -- a language runtime) orders differently and measures nothing about these indexes. A wrong entry corrupts silently.
+    FOR c IN SELECT oid FROM pg_collation WHERE collprovider = 'c' AND collcollate LIKE 'en\_US.%'
+        AND collversion <> pg_collation_actual_version(oid) AND collversion = ANY (same)
+        AND pg_collation_actual_version(oid) = ANY (same) LOOP
+        EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
+    END LOOP;
+    IF (SELECT datlocprovider = 'c' AND datcollate LIKE 'en\_US.%' AND datcollversion <> pg_database_collation_actual_version(oid)
+            AND datcollversion = ANY (same) AND pg_database_collation_actual_version(oid) = ANY (same)
+            FROM pg_database WHERE datname = current_database()) THEN
+        EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', current_database());
+    END IF;
+    SELECT array_agg(oid) INTO colls FROM pg_collation
+        WHERE collprovider = 'c' AND collversion IS DISTINCT FROM pg_collation_actual_version(oid);
+    IF (SELECT datlocprovider = 'c' AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)
+            FROM pg_database WHERE datname = current_database()) THEN
+        colls := colls || 100::oid; -- "default": the collation of the database itself
+    END IF;
+    IF colls IS NULL THEN RETURN; END IF;
+    SELECT string_agg(o, ', ') INTO bad FROM (
+        SELECT format('range partitioning of %s', partrelid::regclass) o FROM pg_partitioned_table
+            WHERE partstrat = 'r' AND partcollation::oid[] && colls
+        UNION ALL
+        SELECT format('CHECK %I on %s', con.conname, con.conrelid::regclass) FROM pg_constraint con
+            WHERE con.contype = 'c' AND EXISTS (SELECT FROM pg_attribute a WHERE a.attrelid = con.conrelid
+                AND a.attnum = ANY (con.conkey) AND a.attcollation = ANY (colls))
+            -- Operators come from the stored expression: pg_depend records none on builtin (pinned) operators.
+            AND EXISTS (SELECT FROM regexp_matches(con.conbin::text, ':opno (\d+)', 'g') m JOIN pg_operator op
+                ON op.oid = m[1]::oid JOIN pg_type t ON t.oid = op.oprleft
+                WHERE op.oprname IN ('<', '<=', '>', '>=') AND t.typcollation <> 0)) s;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'database %: % compare text in a libc collation order that changed with glibc, and no rebuild re-sorts them. Re-create them (docs/UPGRADING.md), then start the container again', current_database(), bad;
+    END IF;
+    -- Key or expression collations, plus every column an index reads (the predicate of a partial index included).
+    SELECT array_agg(DISTINCT x.indexrelid::regclass) INTO idx FROM pg_index x WHERE x.indcollation::oid[] && colls
+        OR EXISTS (SELECT FROM pg_depend d JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+            WHERE d.classid = 'pg_class'::regclass AND d.objid = x.indexrelid AND d.refclassid = 'pg_class'::regclass
+            AND a.attcollation = ANY (colls));
+    PERFORM set_config('client_min_messages', 'notice', true);
+    RAISE NOTICE '[POSTGRES] [AUTO-CONFIG] database %: glibc changed its libc collation order; rebuilt % index(es) that depend on it', current_database(), coalesce(cardinality(idx), 0);
+    FOREACH i IN ARRAY coalesce(idx, '{}') LOOP EXECUTE format('REINDEX INDEX %s', i); END LOOP;
+    FOR c IN SELECT oid FROM pg_collation WHERE oid = ANY (colls) AND oid <> 100 LOOP
+        EXECUTE format('ALTER COLLATION %s REFRESH VERSION', c);
+    END LOOP;
+    IF 100 = ANY (colls) THEN EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', current_database()); END IF;
+END$$
+SQL
+)
+timescaledb_version=$(sed -n "s/^default_version = '\(.*\)'$/\1/p" "${PG_SHAREDIR}/extension/timescaledb.control" 2>/dev/null || true)
+image_key="$(readlink -f "$(command -v postgres)") ${timescaledb_version}"
+migrate_sql() { # database, then psql arguments; failures are collected, the container stops after the server does
+    local db="$1" out
+    shift
+    out=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -q -h "$update_dir" -d "$db" -v ON_ERROR_STOP=1 "$@" 2>&1) ||
+        { [ "${out##*$'\n'}" = "ERROR:  42704" ] && return; update_failed+="${db}: ${out}"$'\n'; return; }
+    [ -z "$out" ] || printf '%s\n' "${out//NOTICE:  /}" >&2 # REBUILD_FOR_GLIBC's report
+}
+migrate_database() {
+    migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
+    migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
+}
+if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
+    [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
+    update_dir=$(as_postgres mktemp -d)
+    # shellcheck disable=SC2016 # $1 is the inner sh's argument
+    as_postgres sh -c 'printf "local all all trust\n" > "$1/pg_hba.conf"' sh "$update_dir"
+    as_postgres pg_ctl -D "$DATA_DIR" -w -l "${update_dir}/server.log" -o "-c config_file=${AUTO_CONFIG_FILE} -c listen_addresses= -c unix_socket_directories=${update_dir} -c hba_file=${update_dir}/pg_hba.conf" start >/dev/null ||
+        { cat "${update_dir}/server.log" >&2; exit 1; }
+    update_failed=""
+    echo "[POSTGRES] [AUTO-CONFIG] first start on this image: updating extensions and rebuilding indexes whose text order changed with glibc; clients wait until it is done" >&2
+    # postgres first: until then an older timescaledb there fails the queries below too. A command substitution, not
+    # `< <(…)`: a failed listing must stop the container, never read as "no databases". template0 records no version.
+    migrate_database postgres
+    # A database refusing connections (releases made template1 so) only records the version: no session ever put a
+    # user index in it, and catalog indexes sort by C, which glibc does not change.
+    migrate_sql postgres -c "DO \$\$DECLARE d name; BEGIN
+        FOR d IN SELECT datname FROM pg_database WHERE NOT datallowconn AND datlocprovider = 'c'
+            AND datcollversion <> pg_database_collation_actual_version(oid) LOOP
+            EXECUTE format('ALTER DATABASE %I REFRESH COLLATION VERSION', d);
+        END LOOP; END\$\$"
+    databases=$(PGOPTIONS="-c client_min_messages=error" as_postgres psql -X -h "$update_dir" -d postgres -tA \
+        -c "SELECT datname FROM pg_database WHERE datallowconn AND datname <> 'postgres'")
+    while IFS= read -r db; do
+        [ -z "$db" ] || migrate_database "$db"
+    done <<<"$databases"
+    as_postgres pg_ctl -D "$DATA_DIR" -w -m fast stop >/dev/null
+    if [ -n "$update_failed" ]; then
+        printf '%s\n%s' "[POSTGRES] [AUTO-CONFIG] ERROR: the first start on this image could not bring these databases up to it, so the server was not started; every step is idempotent and the next start retries them all:" "$update_failed" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC2016 # $1/$2/$3 are the inner sh's arguments
+    as_postgres sh -c 'printf "%s\n" "$1" > "$2" && rm -rf "$3"' sh "$image_key" "$IMAGE_MIGRATED_FILE" "$update_dir"
+    echo "[POSTGRES] [AUTO-CONFIG] data directory brought up to this image: TimescaleDB ${timescaledb_version:-absent}, en_US collation versions current"
 fi
 
 # Keep the superuser password out of the server's environment. Upstream file_env exports POSTGRES_PASSWORD (or the

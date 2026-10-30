@@ -11,7 +11,7 @@ import { TIMEOUTS } from "../config/test-timeouts";
 import { preloadLibraryName } from "../config-generator/manifest-loader";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { MANIFEST_ENTRIES } from "../extensions/manifest-data";
+import { MANIFEST_ENTRIES, MANIFEST_METADATA } from "../extensions/manifest-data";
 import type { ManifestEntry } from "../extensions/manifest-data";
 import { getErrorMessage } from "../utils/errors";
 import type { TestResult } from "../utils/logger";
@@ -239,42 +239,19 @@ export function testDisabledExtensionsUnavailable(container: string): Promise<Te
 }
 
 /**
- * The files operators read to see what an image contains (`cat /etc/postgresql/version-info.txt`, as the
- * release notes instruct) describe the manifest the image was built from: summary counts in both version-info
- * files, and the manifest copy itself.
+ * The files describing what an image contains are the ones generated from the manifest it was built from:
+ * version-info.txt (what operators `cat`, as the README and release notes instruct) is IMAGE-CONTENTS.txt, and
+ * extensions.manifest.json is the repo's copy.
  */
 export function testImageMetadataFiles(container: string): Promise<TestResult> {
   return check("version-info and manifest copy match the manifest", async () => {
-    const enabled = enabledEntries();
-    const counts = {
-      total: MANIFEST_ENTRIES.length,
-      enabled: enabled.length,
-      disabled: MANIFEST_ENTRIES.length - enabled.length,
-      preloaded: enabled.filter((e) => e.runtime?.sharedPreload === true).length,
-    };
     const txt = await execCommand(["cat", "/etc/postgresql/version-info.txt"], container);
     expect(txt.ok, `version-info.txt unreadable: ${txt.output}`);
-    const txtLines = {
-      total: `Total Catalog: ${counts.total}`,
-      enabled: `Enabled: ${counts.enabled}`,
-      disabled: `Disabled: ${counts.disabled}`,
-      preloaded: `Preloaded: ${counts.preloaded}`,
-    };
-    const absent = Object.values(txtLines).filter(
-      (line) => !new RegExp(`^\\s*${line}$`, "m").test(txt.output)
+    const contents = await Bun.file(join(dirname(MANIFEST_JSON_PATH), "IMAGE-CONTENTS.txt")).text();
+    expect(
+      txt.output.trim() === contents.trim(),
+      "/etc/postgresql/version-info.txt differs from docker/postgres/IMAGE-CONTENTS.txt"
     );
-    expect(absent.length === 0, `version-info.txt lacks: ${absent.join("; ")}`);
-
-    const json = await execCommand(["cat", "/etc/postgresql/version-info.json"], container);
-    expect(json.ok, `version-info.json unreadable: ${json.output}`);
-    const shipped = (JSON.parse(json.output) as { extensions?: Record<string, unknown> })
-      .extensions;
-    for (const [key, value] of Object.entries(counts)) {
-      expect(
-        shipped?.[key] === value,
-        `version-info.json extensions.${key} = ${String(shipped?.[key])}, expected ${value}`
-      );
-    }
 
     const copy = await execCommand(["cat", "/etc/postgresql/extensions.manifest.json"], container);
     expect(copy.ok, `extensions.manifest.json unreadable: ${copy.output}`);
@@ -287,18 +264,89 @@ export function testImageMetadataFiles(container: string): Promise<TestResult> {
 }
 
 /**
+ * Nothing build-only reaches the Nix image. One stray reference ships its whole closure: nixpkgs' pg_config once
+ * pulled clang, GCC, Perl, Python and every -dev output (about 2.3 GB) in, and every behaviour check still passed.
+ * Store paths are named by role (-dev, -doc, -man outputs) and package, so a name is enough. LLVM's -lib output is
+ * the JIT's runtime and stays; LLVM's tools do not. The Debian image has no /nix/store and is not checked here.
+ */
+export function testNoBuildOnlyStorePaths(container: string): Promise<TestResult> {
+  return check("No build-only store paths in the image", async () => {
+    const ls = await execCommand(
+      ["sh", "-c", "[ -d /nix/store ] && ls /nix/store || true"],
+      container
+    );
+    expect(ls.ok, `listing /nix/store failed: ${ls.output}`);
+    const buildOnly =
+      // Package names take the exact version form (gcc-16.2.0), so runtime outputs such as gcc-…-lib (libstdc++)
+      // and llvm-…-lib (the JIT) stay allowed; clang's -lib is the compiler's own.
+      /^[a-z0-9]{32}-(.*-(dev|doc|man|info|static)|(gcc|clang|llvm|lld|binutils|llvm-binutils|isl|mpfr|libmpc|linux-headers|bison|flex|gnum4|cmake|perl|python3|tcl|ruby)-[0-9][0-9.]*|clang-[0-9.]+-lib|compiler-rt-.*|.*-wrapper-[0-9.]+)$/;
+    const found = ls.output.split("\n").filter((name) => buildOnly.test(name));
+    expect(
+      found.length === 0,
+      `build-only store paths shipped (find what references each with: grep -rlF <hash> /nix/store): ${found.join(", ")}`
+    );
+  });
+}
+
+/**
  * Settings the CDC checks depend on, asserted up front so a wrong value fails with its name instead of
  * as a cryptic slot error later. PostgreSQL 18.6+ refuses logical-decoding plugins missing from
  * output_plugin_libraries (superusers too); splitting into elements also catches the list stored as one
  * quoted element, which is what a single-string SET/ALTER SYSTEM produces and which matches no plugin.
+ * Data checksums: pg_rewind (a failed primary rejoining as replica) needs them, and only initdb can set them.
  */
 export function testPostgresConfiguration(container: string): Promise<TestResult> {
-  return check("CDC settings (wal_level, output_plugin_libraries)", async () => {
-    const walLevel = await sqlOk(container, "SELECT current_setting('wal_level')");
-    expect(walLevel === "logical", `wal_level = ${walLevel}, expected logical`);
-    const plugins = await sqlOk(container, "SELECT current_setting('output_plugin_libraries')");
-    const list = plugins.split(",").map((lib) => lib.trim());
-    expect(list.includes("wal2json"), `output_plugin_libraries lacks wal2json: ${plugins}`);
+  return check(
+    "Startup settings (wal_level, output_plugin_libraries, data_checksums)",
+    async () => {
+      const checksums = await sqlOk(container, "SELECT current_setting('data_checksums')");
+      expect(checksums === "on", `data_checksums = ${checksums}, expected on`);
+      const walLevel = await sqlOk(container, "SELECT current_setting('wal_level')");
+      expect(walLevel === "logical", `wal_level = ${walLevel}, expected logical`);
+      const plugins = await sqlOk(container, "SELECT current_setting('output_plugin_libraries')");
+      const list = plugins.split(",").map((lib) => lib.trim());
+      expect(list.includes("wal2json"), `output_plugin_libraries lacks wal2json: ${plugins}`);
+    }
+  );
+}
+
+/**
+ * A new cluster's databases use the builtin PG_UNICODE_FAST collation (reason at the initdb arguments in the
+ * entrypoint), and ICU stays usable for language-aware order: 'B' < 'a' by code point, 'a' < 'B' under ICU.
+ */
+export function testDefaultCollation(container: string): Promise<TestResult> {
+  return check("Default collation (builtin PG_UNICODE_FAST, ICU per column)", async () => {
+    const db = await sqlOk(
+      container,
+      "SELECT datlocprovider::text || ' ' || datlocale FROM pg_database WHERE datname = current_database()"
+    );
+    expect(db === "b PG_UNICODE_FAST", `database collation = ${db}, expected b PG_UNICODE_FAST`);
+    const order = await sqlOk(
+      container,
+      `SELECT ('B' < 'a')::text || ' ' || ('a' < 'B' COLLATE "en-US-x-icu")::text || ' ' || upper('ß')`
+    );
+    expect(order === "true true SS", `code-point order, ICU order, case mapping = ${order}`);
+  });
+}
+
+/**
+ * Every locale in MANIFEST_METADATA.locales is installed: set_config raises "invalid value" for a missing one. The
+ * German sample proves the locale's data is used, not just accepted: euro sign, '.' thousands, ',' decimals.
+ */
+export function testLocales(container: string): Promise<TestResult> {
+  return check("glibc locales selectable (MANIFEST_METADATA.locales)", async () => {
+    const values = MANIFEST_METADATA.locales.map(
+      (l) => `set_config('lc_monetary', '${l}.utf8', false)`
+    );
+    await sqlOk(container, `SELECT ${values.join(", ")}`);
+    // One SELECT, so psql prints only its row (multi-statement input also prints each SET's tag). set_config is
+    // volatile, so the planner cannot flatten the subquery: it runs before to_char reads the locale.
+    const de = await sqlOk(
+      container,
+      "SELECT trim(to_char(1234.5, 'L9G999D99')) FROM (SELECT set_config('lc_monetary', 'de_DE.utf8', false), " +
+        "set_config('lc_numeric', 'de_DE.utf8', false)) AS s"
+    );
+    expect(de === "€ 1.234,50", `de_DE to_char = ${de}, expected € 1.234,50`);
   });
 }
 
@@ -343,9 +391,8 @@ export function testToolsPresent(container: string): Promise<TestResult> {
 
 /**
  * Runs the binary, which loads its shared libraries — a broken dependency fails here. The version must be
- * the manifest's tag, and libssh2 (sftp repositories) and libzstd must be linked: both are "auto" build
- * options upstream, so a missing -dev package drops them without an error. The built-in help lists every
- * repository type whatever was compiled, so only the linked libraries show what was.
+ * the manifest's tag. Which libraries it links needs no check: the manifest's mesonFlags set each optional
+ * feature to enabled or disabled, and meson fails the build when an enabled one is missing.
  */
 export function testPgBackRestFunctional(container: string): Promise<TestResult> {
   return check("pgBackRest runs", async () => {
@@ -357,25 +404,6 @@ export function testPgBackRestFunctional(container: string): Promise<TestResult>
     expect(
       result.ok && result.output.trim() === want,
       `pgbackrest version: "${result.output.trim()}", want "${want}"`
-    );
-    const ldd = await execCommand(["ldd", entry?.binaryPath ?? "/usr/bin/pgbackrest"], container);
-    const unlinked = ["libssh2.so.1", "libzstd.so.1"].filter(
-      (lib) => !ldd.output.includes(`${lib} =>`)
-    );
-    expect(
-      ldd.ok && unlinked.length === 0,
-      `pgbackrest lacks ${unlinked.join(", ")} (sftp repositories, zstd):\n${ldd.output}`
-    );
-  });
-}
-
-/** Runs the Perl script, which loads its modules — a missing Perl dependency fails here. */
-export function testPgBadgerFunctional(container: string): Promise<TestResult> {
-  return check("pgBadger runs", async () => {
-    const result = await execCommand(["pgbadger", "--version"], container);
-    expect(
-      result.ok && result.output.toLowerCase().includes("pgbadger"),
-      `pgbadger --version: ${result.output}`
     );
   });
 }
@@ -550,7 +578,8 @@ export function testHttpRequests(container: string): Promise<TestResult> {
     const result = await psql(container, "SELECT status FROM http_get('http://127.0.0.1:1/')");
     expect(!result.ok, `request to a closed port succeeded: ${result.out}`);
     expect(
-      /Failed to connect to 127\.0\.0\.1 port 1/.test(result.err),
+      // Debian trixie's curl writes "127.0.0.1 port 1"; nixpkgs' newer curl writes "127.0.0.1:1".
+      /Failed to connect to 127\.0\.0\.1( port |:)1\b/.test(result.err),
       `expected a curl connection error, got: ${result.err}`
     );
   });

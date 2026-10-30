@@ -15,52 +15,17 @@ docker run --rm aza-pg:pg18 postgres --version
 
 ## Build Methods
 
-### Local Builds (Recommended)
+### Local Builds
 
-Use the build script with Docker Buildx for fast, optimized builds:
-
-```bash
-# Default: Single-platform with intelligent caching
-bun run build
-
-# Multi-platform build (amd64 + arm64, requires push)
-bun run build -- --multi-arch --push
-
-# Build and push to registry
-bun run build -- --push
-```
+`bun run build` (`scripts/nix/build-image.ts`) builds the image for this machine's architecture and loads it into Docker as `aza-pg:pg<major>`; `--tag <ref>` retags it.
 
 **How it works:**
 
-- Uses Docker Buildx with BuildKit for parallel builds
-- Pulls remote cache from GitHub Container Registry
-- Falls back to local cache if network unavailable
-- Automatically creates buildx builder if needed
+- Runs `nix build` on `flake.nix`: natively on Linux with Nix installed, otherwise in a `nixos/nix` container (`scripts/nix/nix.ts`) whose store persists in the `aza-pg-nix-<arch>` volume, so only changed packages rebuild; each build then deletes every store path that neither the current image's build nor the flake's inputs need
+- Streams the image straight into `docker load` (no tarball on disk) and removes dangling aza-pg images, such as the tag's previous build
+- Builds for the host architecture only: an amd64 image comes from an amd64 host, as in CI
 
-**Requirements:**
-
-- Docker Buildx v0.8+ (bundled with Docker 19.03+)
-- Network access to `ghcr.io` for cache pull (optional but recommended)
-- Registry write access for `--push` (run `docker login ghcr.io`)
-
-### Manual Docker Build
-
-For builds without the helper script:
-
-```bash
-# Build from repo root (important: uses root as build context)
-docker build -f docker/postgres/Dockerfile -t aza-pg:pg18 .
-
-# With buildx and cache
-docker buildx build \
-  --file docker/postgres/Dockerfile \
-  --tag aza-pg:pg18 \
-  --cache-from type=registry,ref=ghcr.io/fluxo-kt/aza-pg:buildcache \
-  --load \
-  .
-```
-
-**Important:** Always use repo root (`.`) as build context, NOT `docker/postgres/`. The Dockerfile references files outside its directory.
+**Requirements:** Docker; nothing else on macOS or a Linux host without Nix.
 
 ### CI/CD Builds
 
@@ -74,8 +39,8 @@ Runs on every push to main/dev/release and every PR: `bun run validate:all`, an 
 
 Runs when the `CI` workflow succeeds on the `release` branch (`workflow_run`):
 
-- Full multi-platform build
-- SBOM and GitHub build-provenance attestation
+- A Nix build per platform on native runners, and an SBOM of each image's exact closure (sbomnix)
+- GitHub build-provenance attestation
 - Pushes to `ghcr.io/fluxo-kt/aza-pg`
 - Tagged with version and convenience tags
 
@@ -146,7 +111,9 @@ See workflow files in `.github/workflows/` for complete workflow details.
 
 ## CI/CD Build Design
 
-**1. Trivy Security Scanning**
+**1. Security Scanning**
+
+- vulnix (`scripts/security/vulnix-gate.ts`, build job, before the push) checks every store path of the image against NVD; `scripts/security/vulnix-whitelist.toml` lists the hits that do not affect the image, each with its evidence. It is the only scan of the C libraries: Trivy finds no OS package database in a Nix image
 
 - SARIF upload runs only when the file exists (`hashFiles()` check), so a scan that wrote no SARIF does not fail the upload step
 - The Trivy vulnerability DB is cached between runs (`actions/cache`, `.trivy-cache`)
@@ -169,8 +136,8 @@ Each platform builds on its own native runner in parallel; no QEMU emulation.
 
 **Key implementation:**
 
-- **Push by digest:** `push-by-digest=true,name-canonical=true,push=true`
-- **Platform caching:** Architecture-specific cache scopes
+- **Push by digest:** each platform image is pushed under a run-scoped tag and recorded by its registry digest
+- **Store cache:** `.github/actions/setup-nix` restores and saves the Nix store per OS and architecture
 - **Native ARM64:** `ubuntu-24.04-arm` runner (NO QEMU during build)
 - **Parallel execution:** Both platforms build simultaneously
 
@@ -200,15 +167,6 @@ Every workflow names its runner image (`ubuntu-26.04`, `ubuntu-24.04-arm`) inste
 3. Merge job downloads digests and creates multi-arch manifest
 4. All subsequent operations use merged manifest digest
 
-**Platform-Specific Caching:**
-
-```yaml
-cache-from: type=gha,scope=aza-pg-${{ matrix.artifact }}
-cache-to: type=gha,mode=max,scope=aza-pg-${{ matrix.artifact }}
-```
-
-One scope per platform in `publish.yml`, so the two architectures never overwrite each other's layers.
-
 See workflow files in `.github/workflows/` for complete implementation details.
 
 ## OCI Annotations for Multi-Arch Manifests
@@ -235,7 +193,7 @@ docker buildx imagetools create \
   -t ghcr.io/fluxo-kt/aza-pg:testing-sha \
   --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
   --annotation "index:org.opencontainers.image.description=PostgreSQL {version} with {count} extensions..." \
-  --annotation "index:org.opencontainers.image.authors=fluxo-kt" \
+  --annotation "index:org.opencontainers.image.authors=Art Shendrik" \
   --annotation "index:org.opencontainers.image.version={version}-{timestamp}-single-node" \
   --annotation "index:org.opencontainers.image.source=https://github.com/fluxo-kt/aza-pg" \
   --annotation "index:org.opencontainers.image.licenses=MIT" \
@@ -273,7 +231,7 @@ Expected output shows both platforms and all annotations:
 {
   "org.opencontainers.image.title": "aza-pg Single-Node PostgreSQL",
   "org.opencontainers.image.description": "PostgreSQL {version} with {count} extensions...",
-  "org.opencontainers.image.authors": "fluxo-kt",
+  "org.opencontainers.image.authors": "Art Shendrik",
   "org.opencontainers.image.source": "https://github.com/fluxo-kt/aza-pg",
   "org.opencontainers.image.licenses": "MIT"
 }
@@ -287,49 +245,43 @@ GHCR shows the metadata of each tag's most recent push. A tag published without 
 
 Standard OCI annotations applied to all published images:
 
-| Annotation                               | Purpose             | Format/Example                                                                                                     |
-| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                                                                                    |
-| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`                                                                  |
-| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt` (image labels and per-platform manifests; the index carries `org.opencontainers.image.authors` instead) |
-| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                                                                               |
-| `org.opencontainers.image.created`       | Build timestamp     | RFC 3339 (`2025-11-14T23:30:00Z`)                                                                                  |
-| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                                                                            |
-| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                                                                               |
-| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                                                                               |
-| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md`                                                           |
-| `org.opencontainers.image.licenses`      | License             | `MIT`                                                                                                              |
-| `org.opencontainers.image.base.name`     | Base image          | `docker.io/library/postgres:{major}-trixie`                                                                        |
-| `org.opencontainers.image.base.digest`   | Base SHA256         | `sha256:{digest}`                                                                                                  |
+| Annotation                               | Purpose             | Format/Example                                                                       |
+| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                                                      |
+| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`                                    |
+| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt` (image labels only; the index carries `org.opencontainers.image.authors`) |
+| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                                                 |
+| `org.opencontainers.image.created`       | Build timestamp     | RFC 3339 (`2025-11-14T23:30:00Z`)                                                    |
+| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                                              |
+| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                                                 |
+| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                                                 |
+| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md`                             |
+| `org.opencontainers.image.licenses`      | License             | `MIT`                                                                                |
 
-Custom aza-pg metadata. Image labels and per-platform manifests (`docker/metadata-action` in the `prep` job) use these keys; the index annotations written by `scripts/utils/oci-metadata.ts` use `io.fluxo-kt.aza-pg.postgresql.version`, `io.fluxo-kt.aza-pg.catalog.enabled` and `io.fluxo-kt.aza-pg.catalog.total` and omit `build.type`:
+Image config labels (what `docker inspect` shows) come from `nix/image.nix`. They carry every standard key above, plus `io.fluxo-kt.aza-pg.postgresql.version`. Two differ from the annotations: `version` is the PostgreSQL version (`18.6`), because the release tag is chosen after the image is built, and `title`/`description` are worded without the extension count. The index annotations, written by `scripts/utils/oci-metadata.ts`, add two custom keys:
 
-| Annotation                              | Purpose                 | Format/Source                                  |
-| --------------------------------------- | ----------------------- | ---------------------------------------------- |
-| `io.fluxo-kt.aza-pg.postgres.version`   | PostgreSQL version      | From base image (`{major}.{minor}`)            |
-| `io.fluxo-kt.aza-pg.build.type`         | Deployment type         | `single-node`                                  |
-| `io.fluxo-kt.aza-pg.extensions.enabled` | Enabled extension count | From manifest (count where `enabled != false`) |
-| `io.fluxo-kt.aza-pg.extensions.total`   | Total extension count   | From manifest (total entries)                  |
+| Annotation                              | Purpose                 | Format/Source                                     |
+| --------------------------------------- | ----------------------- | ------------------------------------------------- |
+| `io.fluxo-kt.aza-pg.postgresql.version` | PostgreSQL version      | `MANIFEST_METADATA.pgVersion` (`{major}.{minor}`) |
+| `io.fluxo-kt.aza-pg.catalog.enabled`    | Enabled extension count | From manifest (count where `enabled != false`)    |
+| `io.fluxo-kt.aza-pg.catalog.total`      | Total extension count   | From manifest (total entries)                     |
 
 ## Build Architecture
 
-### Multi-Stage Build
+### Nix Build
 
-`docker/postgres/Dockerfile` (generated from `Dockerfile.template`) has these stages:
+`flake.nix` defines the image; `nix/extensions.nix` and `nix/image.nix` hold the details:
 
-- **builder-base** - `postgres:{PG}-trixie` pinned by digest, plus build packages, the Rust toolchain and Bun (build-time only)
-- **builder-pgxs** - builds source extensions using PGXS, autotools, CMake, Meson or make (`docker/postgres/build-extensions.ts` over `extensions.pgxs.manifest.json`) into `/opt/ext-out/`
-- **builder-cargo** - builds Rust (cargo/pgrx) extensions the same way over `extensions.cargo.manifest.json`
-- **builder-version-info** - writes `/etc/postgresql/version-info.{txt,json}`
-- **final** - the same pinned base image; `apt-get upgrade`, runtime packages (`docker/postgres/extensions.runtime-packages.txt`), PGDG/Percona/Timescale packages pinned by version, then copies `/opt/ext-out/` from both builders. No build tools or Bun.
+- **server** - nixpkgs' PostgreSQL with JIT (LLVM, only `libLLVM.so` kept) and without features no container uses; the reason for each option sits beside it
+- **extensions** - every enabled manifest entry built from its pinned commit, with a nixpkgs recipe where the entry names one (`nix.package`), else from `build.type`
+- **image** - `dockerTools.streamLayeredImage` over the server, the extensions, the entrypoint scripts and configs, and the few tools the scripts call. Nothing else reaches it: no package manager, compiler or Bun
 
 ### Supply Chain Security
 
 **Pinning:**
 
 - Source-built extensions name a git tag (or ref) in `scripts/extensions/manifest-data.ts`; `bun run generate` resolves it to a commit SHA in `docker/postgres/extensions.manifest.json`, and the build fetches that commit
-- Packaged extensions (`pgdg`, `percona`, `timescale`) are apt version pins written into the Dockerfile at generation time
-- Base, Rust and Bun images are pinned by digest
+- `flake.lock` pins nixpkgs, and with it the server, glibc and every library, to one commit
 
 **Why SHA pinning:**
 
@@ -339,7 +291,7 @@ Custom aza-pg metadata. Image labels and per-platform manifests (`docker/metadat
 
 **Build Attestation:**
 
-- SBOM (Software Bill of Materials) tracks all dependencies
+- SBOM (Software Bill of Materials) of each image's exact Nix closure, generated by sbomnix
 - Provenance proves build authenticity
 - Generated automatically in CI/CD via GitHub Actions
 
@@ -352,8 +304,7 @@ See [EXTENSIONS.md](EXTENSIONS.md) for the complete extension catalog with enabl
 All extension metadata lives in `scripts/extensions/manifest-data.ts`:
 
 - Enabled/disabled state
-- Install method (`install_via`: `pgdg`, `percona`, `timescale`, `source`) or `builtin` kind
-- Git tags/refs for source-built extensions
+- Git tags/refs for every non-builtin entry
 - Dependencies and build flags
 
 **Customizing Extensions:**
@@ -361,7 +312,7 @@ All extension metadata lives in `scripts/extensions/manifest-data.ts`:
 To disable an extension (e.g., reduce image size):
 
 1. Edit `scripts/extensions/manifest-data.ts`: Set `enabled: false` and add `disabledReason`
-2. Regenerate: `bun run generate` (manifest JSON, Dockerfile and the other generated files)
+2. Regenerate: `bun run generate` (manifest JSON and the other generated files)
 3. Rebuild: `bun run build`
 
 **Default preloads:** Disabling an entry that is preloaded by default also drops it from the default `shared_preload_libraries` when `bun run generate` runs (the pre-commit hook does it too); `validate-manifest.ts` only checks that the generated default matches the manifest. Databases that already created the extension can no longer load it.
@@ -387,7 +338,7 @@ Release validation requires both exit code `0` and a final summary with `Failed:
 
 The test suite includes:
 
-- **Validation**: manifest, TypeScript, linting, formatting, docs, shell scripts, Dockerfile, YAML
+- **Validation**: manifest, TypeScript, linting, formatting, docs, shell scripts, YAML
 - **Build**: Docker image build (`bun run build`)
 - **Functional**: the Docker suite groups in `SUITES` of `scripts/test-all.ts` (extensions, security, stacks, features, regression)
 
@@ -409,41 +360,21 @@ bun scripts/extensions/validate-manifest.ts  # Manifest validation
 bun scripts/ci/lint-yaml-tracked.ts  # YAML files (pinned yamllint image; .yamllint, .yamllint-workflows)
 ```
 
-ShellCheck (every tracked `*.sh`) and hadolint (pinned image, `.hadolint.yaml`) run inside `bun run validate:all`; it is the reference invocation for both.
+ShellCheck (every tracked `*.sh`) runs inside `bun run validate:all`; it is the reference invocation.
 
 ## Troubleshooting
 
 ### Build Failures
 
-**COPY path errors:**
-
-```
-ERROR [final 4/8] COPY --from=builder /extensions/*.so /usr/share/postgresql/18/extension/
-```
-
-**Solution:** Use repo root as build context: `docker build -f docker/postgres/Dockerfile .` (NOT `docker build -f Dockerfile .` from `docker/postgres/`)
-
-**Extension compilation timeout:**
-
-**Solution:** Increase Docker build timeout or use cached image:
-
-```bash
-# Use remote cache
-bun run build  # automatically uses cache
-
-# Or manually with buildx
-docker buildx build --build-arg BUILDKIT_INLINE_CACHE=1 \
-  --cache-from type=registry,ref=ghcr.io/fluxo-kt/aza-pg:buildcache \
-  ...
-```
+**`nix build failed`:** the log above it names the derivation that failed and its build output. A patch that no longer applies, a pgrx release Nix lacks, or a `pgVersion` that differs from nixpkgs' server each fail with a message saying what to change ([VERSION-MANAGEMENT.md](VERSION-MANAGEMENT.md)).
 
 **Out of disk space during build:**
 
-**Solution:** Clean up Docker build cache:
+**Solution:** collect Nix store garbage (paths no build roots keep), then reclaim aza-pg Docker leftovers:
 
 ```bash
-docker builder prune -a  # Remove all build cache
-docker system prune -a   # Clean up everything (images, containers, volumes)
+bun scripts/nix/nix.ts store gc
+bun run cleanup
 ```
 
 **SHA verification failed:**
@@ -460,34 +391,6 @@ git ls-remote https://github.com/OWNER/REPO.git 'refs/tags/TAG' 'refs/tags/TAG^{
 
 Fix the tag in `scripts/extensions/manifest-data.ts`, then `bun run generate` to re-resolve the commit.
 
-**Base image SHA validation failed:**
-
-The Dockerfile pins the PostgreSQL base image to a specific SHA for reproducibility. If the SHA becomes stale or invalid:
-
-```bash
-# Check the pinned base image digest (add --require-latest-minor to also catch a newer PG minor)
-bun scripts/validate-base-image-sha.ts
-
-# Get latest SHA from Docker Hub
-docker pull postgres:18-trixie
-docker inspect postgres:18-trixie --format '{{.RepoDigests}}'
-
-# Update MANIFEST_METADATA.baseImageSha (and pgVersion) in scripts/extensions/manifest-data.ts, then: bun run generate
-```
-
-**Why pin base image SHA:**
-
-- Ensures reproducible builds
-- Prevents unexpected base image changes
-- Security: explicit opt-in for base image updates
-- Validates SHA exists before building
-
-**When to update:**
-
-- Monthly security patches from PostgreSQL upstream
-- After verifying new base image in staging
-- When validation script reports staleness
-
 ### CI Workflow Failure Diagnostics
 
 **Test failures:** each `Test <group>` job prints every failed suite's full output (a suite that cannot start PostgreSQL includes the container's last log lines). The job log is the only record: `test-all` removes every container a suite started before it exits, so no step after it could collect their logs.
@@ -500,23 +403,7 @@ Artifacts are kept for 7 days (GitHub Actions run page → Artifacts).
 
 **Slow first build:**
 
-**Expected:** A cold build compiles every source-built extension; later builds reuse the registry and local cache.
-
-**Speed up:**
-
-1. Enable BuildKit: `export DOCKER_BUILDKIT=1`
-2. Use build script (handles caching): `bun run build`
-3. Pull cache first: `docker pull ghcr.io/fluxo-kt/aza-pg:buildcache`
-
-**Multi-platform build very slow:**
-
-**Expected:** Multi-platform builds (amd64 + arm64) are slower due to QEMU emulation for foreign architectures.
-
-**Options:**
-
-- Build single platform for local testing: `bun run build` (default)
-- Use CI/CD for multi-platform releases
-- Use native arm64 builder for arm64 builds (buildx with remote builder)
+**Expected:** A cold store compiles PostgreSQL and every extension (the Rust ones longest); later builds reuse the store and rebuild only what changed.
 
 ## Development Standards
 
@@ -733,7 +620,6 @@ docker exec aza-pg-replica-postgres-replica psql -U postgres -c "SELECT pg_is_in
 
 **Test scripts:**
 
-- `docker buildx` (bundled with Docker Desktop)
 - `psql` / `pg_isready` (for PgBouncer test)
 
 **Tool scripts:**

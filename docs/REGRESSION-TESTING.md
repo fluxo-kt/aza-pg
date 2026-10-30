@@ -55,7 +55,7 @@ Adds optional preload libraries to the default list; the set of extensions teste
 
 ## Test Tiers
 
-PostgreSQL's own regression suite is not run: the image copies PGDG's server binary unchanged, so no image defect could fail it.
+PostgreSQL's own regression suite is not run here: the Nix build already runs it (`make check-world`, nixpkgs' install check) on the exact server the image ships.
 
 ### Tier 2: Extension Regression
 
@@ -181,7 +181,7 @@ docker rm -f -v pg-test
 **Extension not available:**
 
 - Verify extension enabled in manifest
-- Regenerate Dockerfile: `bun run generate`
+- Regenerate and rebuild: `bun run generate`, then `bun run build`
 
 **Output mismatch:**
 
@@ -224,7 +224,7 @@ docker rm -f -v pg-test
 **Rationale:**
 
 - The modes differ only in the preload list, which the suite sets when it starts the container
-- A second Dockerfile copies the build and drifts from it, so it fails on its own defects instead of the release image's
+- A second image definition copies the build and drifts from it, so it fails on its own defects instead of the release image's
 
 ### Dual-Mode Testing
 
@@ -236,4 +236,4 @@ docker rm -f -v pg-test
 
 ### Two Test Tiers
 
-**Decision:** Tier 2 (each extension's SQL against its expected output) and Tier 3 (extension interactions); no Tier 1, because the image copies PGDG's server binary unchanged, so no image defect could fail PostgreSQL's own suite.
+**Decision:** Tier 2 (each extension's SQL against its expected output) and Tier 3 (extension interactions); no Tier 1, because the Nix build already runs PostgreSQL's own suite (`make check-world`) on the server the image ships.

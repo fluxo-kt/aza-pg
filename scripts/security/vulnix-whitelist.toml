@@ -1,0 +1,16 @@
+# CVEs vulnix reports for the image that do not affect it, each with the evidence. vulnix (scripts/security/vulnix-gate.ts)
+# fails on anything not listed here. An entry names one package version and its exact CVEs, so a version bump or a
+# newly published CVE drops it and the finding comes back for review. Fixable ⇒ upgrade instead of listing it;
+# unfixable but reachable ⇒ list it with an `until` date and the reason it is accepted until then.
+
+["gcc-16.2.0"]
+cve = ["CVE-2023-4039"]
+comment = "Disputed AArch64 -fstack-protector gap with dynamically sized locals; fixed in GCC 13.3/14 (2023-09-12, NVD range ends there). vulnix matches the product with no version bound."
+
+["glibc-2.44-57"]
+cve = ["CVE-2026-5435", "CVE-2026-6238"]
+comment = "Deprecated libresolv debug printers ns_sprintrr/ns_sprintrrf/fp_nquery. No file in the image outside glibc references them or links libresolv; glibc's own libnss_dns links libresolv without calling them, as the advisories (GLIBC-SA-2026-0011/0012) state for the resolver path."
+
+["zlib-1.3.2"]
+cve = ["CVE-2023-6992", "CVE-2026-27820"]
+comment = "Product-name collisions: CVE-2023-6992 is Cloudflare's zlib fork (cpe cloudflare:zlib), CVE-2026-27820 the Ruby zlib gem (cpe ruby-lang:zlib). Neither ships."

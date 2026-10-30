@@ -152,6 +152,35 @@ async function validateManifestCliContract(issues: Issue[]): Promise<void> {
   }
 }
 
+// A flake ref other than this flake (`nixpkgs#sbomnix`, `github:o/r#x`) resolves through the flake registry or a
+// branch at run time, so the tool changes under a release without any commit: nixpkgs-unstable's sbomnix stopped
+// building mid-release. Pinned forms: `.#<attr>`, or `--inputs-from .`, which resolves names through flake.lock.
+const UNPINNED_FLAKE_REF = /(?:^|[\s"'])(?!\.#)([A-Za-z][\w.:/-]*#[\w.${}-]+)/;
+
+async function validateNixRefsPinned(issues: Issue[]): Promise<void> {
+  const files = [
+    ...new Bun.Glob(".github/workflows/*.yml").scanSync(REPO_ROOT),
+    ...new Bun.Glob(".github/actions/*/action.yml").scanSync(REPO_ROOT),
+  ];
+  for (const file of files) {
+    for (const runStep of collectRunSteps(await readYaml(file))) {
+      for (const line of runStep.split("\n")) {
+        if (!/\bnix\s/.test(line) || line.includes("--inputs-from .")) continue;
+        const ref = UNPINNED_FLAKE_REF.exec(line)?.[1];
+        if (ref) {
+          addIssue(
+            issues,
+            file,
+            `\`${ref}\` is not pinned by flake.lock, so the tool can change or break between runs with no commit. ` +
+              `Add the tool as a flake.nix input and run it with \`nix run --inputs-from . <input>\`, ` +
+              `or use \`--inputs-from . nixpkgs#<attr>\` for a package from the locked nixpkgs.`
+          );
+        }
+      }
+    }
+  }
+}
+
 async function main(): Promise<void> {
   section("Release Process Validation");
 
@@ -159,6 +188,7 @@ async function main(): Promise<void> {
   await validatePublishEnvironment(issues);
   await validatePublishVerificationTopology(issues);
   await validateManifestCliContract(issues);
+  await validateNixRefsPinned(issues);
 
   if (issues.length > 0) {
     for (const issue of issues) {

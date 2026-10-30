@@ -73,7 +73,9 @@ Check:
 
    The `sbomnix` input (publish.yml's SBOM generator) is pinned to a release tag, which `flake update` never
    moves: due when `gh release view -R tiiuae/sbomnix --json tagName` names a newer tag. Set it in `flake.nix`,
-   run `bun scripts/nix/nix.ts flake lock`, then check `nix run --inputs-from . sbomnix -- --help` still runs.
+   run `bun scripts/nix/nix.ts flake lock`, then run publish.yml's "Generate SBOM" command against
+   `.#packages.<system>.image` (add `--cdx`/`--csv` paths outside the repo; sbomnix writes both to the working
+   directory otherwise). CI never runs that step, so a broken bump would otherwise surface only mid-release.
 
 4. **Companion images** — every container image the repo runs or tells operators to run (not in manifest!).
    `check-updates.ts` (item 1) already reports each image pinned in `stacks/` and `deployments/` against its

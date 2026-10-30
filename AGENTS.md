@@ -20,6 +20,13 @@ Before an update round, read [.claude/commands/update.md](.claude/commands/updat
 - **No Bun in final image** (build-only dependency)
 - **Repository separation**: Production (`aza-pg`) vs Testing/Dev (`aza-pg-testing`) — ⚠️ NEVER use testing images in production
 - **Nothing ships that no shipped feature uses at runtime** (Nix image): every package, plugin, data file and server build option must name the feature and consumer needing it inside a container; anything else is attack surface and size, so remove it. Reasons for each kept or dropped option sit at the option (`flake.nix`, `nix/*.nix`). `testNoBuildOnlyStorePaths` fails when a stray reference drags build-only outputs in (`pg_config` once added 2.3 GB unnoticed). Inspect the closure by size: `docker run --rm --entrypoint sh <image> -c 'du -sk /nix/store/* | sort -rn | head'`
+- **Exactly one published image, ever**: no companion, helper or intermediate images of ours. Whatever the release needs is built into it; upstream companion images the stacks pin are upstream's releases, not ours
+- **Build it ourselves when that is what fixes it**: a shipped component carrying fixable CVEs because upstream has not rebuilt it (e.g. an old Go or crate set) is rebuilt from nixpkgs or source with fixed dependencies, not waited for or ignored. An agent maintains the builds, so ownership cost lies only in what we publish
+- **Latest stable versions everywhere; we own the updates**: never hold a component back for convenience
+- **One implementation per job**: never ship two components doing the same thing (two coreutils, two TLS stacks); duplication is the worst outcome. Choose by consumers' real needs, behaviour compatibility and open CVEs
+- **Choosing or keeping a component includes checking its open CVEs for the exact version** (OSV, NVD, upstream advisories and NEWS), never features or size alone
+- **CVE scope is what we release**: the image and its runtime closure (`bun run security:scan`). Build-only dev tooling gets reasonable updates through `/update` and the install-time OSV gate, nothing more: no extra gates, scans or process for it
+- **Local builds and checks run under CI's conditions** (Nix sandbox in `scripts/nix/nix.ts`): a local pass under looser conditions proves nothing about CI
 - **Release builds use the recipes' release flags** (`-O2`, LTO, stripped, debug info split off); add none without a benchmark showing the gain on this workload. `-march=native` stays forbidden: the image must run on any CPU of its architecture
 - **Data directories made by older images are migrated at the first start on a new image, before clients connect** (entrypoint block above `_main`): an image change must never leave a database failing or silently wrong. Only proven-safe steps run unattended (e.g. a bare collation version refresh only between glibc versions `scripts/nix/compare-en-us-order.ts` measured to sort en_US the same; any other glibc change rebuilds the libc-collated indexes first); anything unrepairable stops the container naming the fix
 - **A check runs in the lane only if it fits the lane's budget and guards something a routine change can break**; evidence for a rare event is gathered in that event's `/update` step, not paid on every run
@@ -260,6 +267,7 @@ The changelog covers operator-visible changes to the release Docker image and sh
 - A dated `## [<tag>]` section is what shipped: never edit it
 - Every claim comes from the component's own release notes for exactly that range; a feature from an earlier release is not news. Name the concrete fix, never "bug fixes"
 - A change that needs operator action is Breaking; state the action, and the setting that restores old behaviour when upstream offers one
+- Every image change is stated with its cost as well as its gain: removed features, lost hardening (e.g. arm64 BTI), changed library versions, size. An operator must never discover a loss the changelog did not name
 
 **The ONLY test that matters**: Would the change appear in `docker inspect`, `\dx`, extension behaviour, `psql --version`, or change a shipped Compose service's authentication, settings, metrics or operation? Yes → belongs. No → NEVER belongs.
 

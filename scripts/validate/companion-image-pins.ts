@@ -11,10 +11,8 @@
  * Usage: bun scripts/validate/companion-image-pins.ts   (exit 1 lists each drifted file:line with the fix)
  */
 import { Glob } from "bun";
-import { stackDefaultImages } from "../utils/stack-images";
-
-// aza-pg's own image is not a companion: stacks default to its floating major tag on purpose (latest release).
-const OWN_IMAGE = "ghcr.io/fluxo-kt/aza-pg";
+// aza-pg's own image is not a companion (see OWN_IMAGE).
+import { OWN_IMAGE, stackDefaultImages } from "../utils/stack-images";
 const SCANNED = [
   "stacks/*/.env.example",
   ".env.example",

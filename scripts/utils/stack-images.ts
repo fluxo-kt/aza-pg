@@ -5,6 +5,9 @@
  */
 import { Glob } from "bun";
 
+/** The released image; the stacks follow its floating major tag on purpose (latest release), so it has no digest pin. */
+export const OWN_IMAGE = "ghcr.io/fluxo-kt/aza-pg";
+
 export interface StackImage {
   file: string;
   service: string;

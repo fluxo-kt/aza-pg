@@ -323,7 +323,7 @@ version, so a bumped package's entry no longer matches: re-check its CVEs, then 
 Judge a hit from the CVE record and the nixpkgs source (applied patches, affected code path), never vulnix's version
 match alone: it reports name collisions and already-patched builds. vulnix sees only CVEs NVD has matched to a package
 name, so also read the security pages of PostgreSQL, OpenSSL and glibc for the shipped versions.
-`bun run security:scan HEAD` re-runs every CVE scanner (C libraries, every stack image, Bun tooling) over a revision.
+`bun run security:scan HEAD` re-runs every CVE scanner (C libraries, the released image, Bun tooling) over a revision.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs

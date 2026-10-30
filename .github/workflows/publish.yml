@@ -200,9 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           ref="${{ env.REGISTRY }}/${{ needs.prep.outputs.testing_image_name }}:build-${{ matrix.artifact }}-${{ github.run_id }}"
-          bun scripts/nix/build-image.ts --tag "$ref"
-          docker push --quiet "$ref"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ref" | cut -d@ -f2)
+          digest=$(bun scripts/nix/build-image.ts --push "$ref")
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       # Supply chain: an SBOM of the exact runtime closure (sbomnix reads the Nix store, so every component and

@@ -132,7 +132,8 @@ export function formatSize(bytes: number): string {
   const units = ["KB", "MB", "GB"] as const;
   let value = bytes / 1024;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  // Compare the value as printed, or 1048575 bytes would read "1024.00 KB".
+  while (Number(value.toFixed(2)) >= 1024 && unit < units.length - 1) {
     value /= 1024;
     unit++;
   }

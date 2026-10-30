@@ -18,10 +18,10 @@ import {
 } from "./check-size-regression";
 
 const baseline: SizeBaseline = { min: 1.0, max: 2.0, description: "test extension" };
-const mib = 1024 * 1024;
+const mb = 1024 * 1024;
 
 function so(name: string, sizeMb: number): SharedObjectFile {
-  return { name, sizeBytes: sizeMb * mib };
+  return { name, sizeBytes: sizeMb * mb };
 }
 
 describe("selectSharedObjectSize", () => {

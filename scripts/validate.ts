@@ -296,6 +296,12 @@ async function validate(
       required: true,
     },
     {
+      name: "Size Units",
+      command: ["bun", "scripts/validate/size-units.ts"],
+      description: "Sizes read KB/MB/GB (1024-based), never KiB/MiB/GiB",
+      required: true,
+    },
+    {
       name: "Oxlint",
       command: fixMode
         ? stagedOnly

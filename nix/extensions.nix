@@ -139,7 +139,8 @@ let
     } // lib.optionalAttrs (!(old ? cargoDeps)) {
       # The last -O on a compile line wins, so an upstream Makefile's -O0 (pgsodium's PG_CPPFLAGS) silently undoes
       # PostgreSQL's optimisation and nothing at runtime shows it. Refuse it in every make build, so each unoptimised
-      # build is a recorded decision (build.makeOptions clears the variable). Meson and cargo builds set buildPhase.
+      # build is a recorded decision (build.makeOptions clears the variable). Make and CMake builds are checked; Meson's
+      # setup hook sets buildPhase (ninja), so Meson builds are not, and cargo builds (no C compile lines) are excluded.
       preBuild = (old.preBuild or "") + ''
         if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
           planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray

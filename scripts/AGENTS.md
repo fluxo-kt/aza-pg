@@ -1,6 +1,6 @@
 # scripts/: Bun TS tooling and test suites
 
-Rules for writing scripts and Docker test checks here. Root `AGENTS.md` still binds.
+Rules for code under `scripts/`. Root `AGENTS.md` applies too.
 
 **Bun APIs (ALWAYS prefer)**:
 
@@ -24,7 +24,7 @@ Rules for writing scripts and Docker test checks here. Root `AGENTS.md` still bi
 - ❌ Naming Docker-dependent tests `*.test.ts` → auto-discovered by unit test glob, runs without Docker, fails → ✅ Docker-dependent tests MUST use `test-*.ts` naming (NOT `*.test.ts`); add it to `SUITES` in `scripts/test-all.ts` with its group (`validate` fails until you do). All `*.test.ts` files are unconditionally unit-test safe.
 - ❌ `$.env({ COMPOSE_PROJECT_NAME: name })` in test files — replaces the ENTIRE subprocess env (strips PATH, HOME, DOCKER_CONFIG), causing `docker-credential-osxkeychain: executable file not found` when Docker pulls uncached images → ✅ ALWAYS use `$.env({ ...Bun.env, COMPOSE_PROJECT_NAME: name })` to inherit the full process environment
 
-**Bun Shell `rm -rf` Fails on Deep Directories**: Bun's shell `$` built-in `rm` fails with "Directory not empty" on deeply nested directories (e.g. pgroonga regression test trees with 7+ levels like `expected/full-text-search/text/single/compatibility/v2`). Do NOT use `$\`rm -rf dir\``for directories that may contain deep trees. Use`import { rm } from "node:fs/promises"; await rm(dir, { recursive: true, force: true })`instead — this is reliable on Linux.
+**Bun Shell `rm -rf` Fails on Deep Directories**: Bun's shell `$` built-in `rm` fails with "Directory not empty" on deeply nested directories (e.g. pgroonga regression test trees with 7+ levels like `expected/full-text-search/text/single/compatibility/v2`). Do NOT use `` $`rm -rf dir` `` for directories that may contain deep trees. Use `import { rm } from "node:fs/promises"; await rm(dir, { recursive: true, force: true })` instead — this is reliable on Linux.
 
 **Tool checks**: `testToolsPresent` finds each enabled tool by its manifest entry's `binaryPath` (executable) or `soFileName` (library under `pg_config --pkglibdir`); `validate-manifest.ts` rejects a tool naming neither, so a new tool cannot ship unchecked. Paths containing the PG major come from the running server (`pg_config`, `SHOW server_version_num`) — NEVER hardcode `postgresql/18/`.
 
@@ -54,4 +54,4 @@ Rules for writing scripts and Docker test checks here. Root `AGENTS.md` still bi
 
 **cleanupTestData Must Cover ALL Failure Paths**: The cleanup function is a safety net — it must drop every resource ANY test can create, regardless of whether tests clean up after themselves on the happy path. Tests that create resources only drop them on the success path (early failure returns skip cleanup). If `cleanupTestData` doesn't also drop them, they accumulate on failed runs. Example: `testPgmqQueue` creates `test_queue`, so `cleanupTestData` drops it too.
 
-**Proving a volume-leak fix**: check the exact anonymous volume each container mounted (`docker inspect <c> --format '{{range .Mounts}}{{.Name}}{{end}}'`) still exists or not, never total volume counts: a step that leaks on purpose shifts the next step's baseline.
+**Proving a volume-leak fix**: get the name of the anonymous volume each container mounted (`docker inspect <c> --format '{{range .Mounts}}{{.Name}}{{end}}'`) and check that exact volume is gone. Never compare total volume counts: a step that leaks on purpose (to show the bug) changes the next step's starting count.

@@ -363,7 +363,10 @@ async function routine(fresh: Promise<string>, hashSql: string): Promise<void> {
     }
     await restartAsNewImage("CREATE TABLE g_r(s text) PARTITION BY RANGE (s)");
     const exited = (await must(["wait", name])).trim();
-    const logs = await docker(["logs", "--since", "10s", name]);
+    // Logs of the last start only: a fixed window ("10s") missed the error whenever a loaded host took longer than
+    // that between printing it and exiting.
+    const startedAt = (await must(["inspect", "-f", "{{.State.StartedAt}}", name])).trim();
+    const logs = await docker(["logs", "--since", startedAt, name]);
     await remove(name);
     if (exited === "0" || !/range partitioning of g_r/.test(logs.err)) {
       throw new Error(`exit ${exited}; log:\n${logs.err.slice(-1500)}`);

@@ -419,6 +419,16 @@ Interrupted before the commit: resume where it stopped; the staged squash is sti
 
 To stop instead, report the failure and ask Art to run `! git reset --hard HEAD && bun install`: discarding work is his call, not the agent's. Nothing else needs undoing: the preflight required a clean tree, so every change present came from the squash, and the squash staged its new files, which the reset removes too.
 
+## Watching publish, and when it fails after the push
+
+publish.yml is a `workflow_run` of CI, so GitHub files it under dev's branch and head SHA, never the release commit: `gh run list --commit <release SHA> --workflow publish.yml` stays empty forever. Find it with `gh run list --workflow publish.yml --limit 1 --json databaseId,createdAt,status,conclusion` and check `createdAt` follows CI's completion on release.
+
+A failed publish tags nothing, so the pushed release commit is fixed in place, never re-squashed (a second `git merge --squash` re-applies the whole release and conflicts on CHANGELOG):
+
+1. Art runs `! git checkout dev`. Fix and commit there, then push dev: publish runs dev's publish.yml, so a workflow fix must be on `origin/dev` before CI on release finishes.
+2. Art runs `! git checkout release`. Apply exactly dev's fix commits: `git cherry-pick --no-commit <first>^..<last>`, then commit them as one, its body ending `Dev-Squash-Tip: <dev tip, full SHA>`. The release then holds everything up to dev's tip, which is what that trailer claims and what `anchor-merge.ts` checks.
+3. Push release and `release:main`; CI and publish run again, then Appendix A as usual.
+
 ---
 
 ## Key Design Decisions (Reference)

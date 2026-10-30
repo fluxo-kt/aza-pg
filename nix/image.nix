@@ -171,9 +171,17 @@ pkgs.dockerTools.streamLayeredImage {
       Retries = 3;
     };
     Labels = {
+      # Same values as the release index annotations (scripts/docker/create-manifest.ts in publish.yml): `docker
+      # inspect` reads these config labels, registries and `docker buildx imagetools inspect` the annotations.
       "org.opencontainers.image.vendor" = "fluxo-kt";
+      "org.opencontainers.image.authors" = "Art Shendrik";
+      "org.opencontainers.image.licenses" = "MIT";
+      "org.opencontainers.image.source" = "https://github.com/fluxo-kt/aza-pg";
+      "org.opencontainers.image.url" = "https://github.com/fluxo-kt/aza-pg";
+      "org.opencontainers.image.documentation" = "https://github.com/fluxo-kt/aza-pg/blob/main/README.md";
       "org.opencontainers.image.title" = "aza-pg PostgreSQL ${meta.pgVersion}";
       "org.opencontainers.image.version" = meta.pgVersion;
+      "io.fluxo-kt.aza-pg.postgresql.version" = meta.pgVersion;
       "org.opencontainers.image.description" = "PostgreSQL ${meta.pgVersion} with curated extension bundle (vector, time-series, search, security, ops)";
       # From the flake's git metadata, not the build clock, so the same commit builds the same image. A dirty tree
       # has no rev: such a build is never a release.

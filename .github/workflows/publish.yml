@@ -23,6 +23,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_AUTHORS: Art Shendrik # also the authors label in nix/image.nix
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
   # Acknowledged-CVE advisories must be omitted from scanner output, else they re-emit as warn and
   # cancel the non-TTY `bun install` in every job below. Workflow-level so all inline installs inherit
@@ -48,8 +49,6 @@ jobs:
       catalog_total: ${{ steps.catalog.outputs.total }}
       catalog_enabled: ${{ steps.catalog.outputs.enabled }}
       catalog_disabled: ${{ steps.catalog.outputs.disabled }}
-      meta_labels: ${{ steps.meta.outputs.labels }}
-      meta_annotations: ${{ steps.meta.outputs.annotations }}
       bun_version: ${{ steps.bun-version.outputs.bun-version }}
       testing_image_name: ${{ steps.config.outputs.testing_image_name }}
 
@@ -144,46 +143,6 @@ jobs:
             --pg-version="${{ steps.pg-version.outputs.full }}" \
             --release-sha="${{ env.RELEASE_SHA }}" \
             --github-output
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ steps.tags.outputs.image_tag }},priority=1000
-            type=raw,value=${{ steps.pg-version.outputs.full }}-single-node,priority=900
-            type=raw,value=${{ steps.pg-version.outputs.major }}-single-node,priority=800
-            type=raw,value=${{ steps.pg-version.outputs.full }},priority=700
-            type=raw,value=${{ steps.pg-version.outputs.major }},priority=600
-          labels: |
-            org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
-            org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} \
-              with ${{ steps.catalog.outputs.total }} extensions - Single-Node
-            org.opencontainers.image.vendor=fluxo-kt
-            org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
-            org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
-            org.opencontainers.image.revision=${{ env.RELEASE_SHA }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
-            io.fluxo-kt.aza-pg.build.timestamp=${{ steps.tags.outputs.timestamp }}
-            io.fluxo-kt.aza-pg.build.type=single-node
-            io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
-            io.fluxo-kt.aza-pg.extensions.total=${{ steps.catalog.outputs.total }}
-          annotations: |
-            index,manifest:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL
-            index,manifest:org.opencontainers.image.description=PostgreSQL ${{ steps.pg-version.outputs.full }} with ${{ steps.catalog.outputs.total }} extensions
-            index,manifest:org.opencontainers.image.vendor=fluxo-kt
-            index,manifest:org.opencontainers.image.version=${{ steps.tags.outputs.image_tag }}
-            index,manifest:org.opencontainers.image.created=${{ steps.timestamp.outputs.timestamp }}
-            index,manifest:org.opencontainers.image.revision=${{ env.RELEASE_SHA }}
-            index,manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            index,manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            index,manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
-            index,manifest:org.opencontainers.image.licenses=MIT
-            index,manifest:io.fluxo-kt.aza-pg.postgres.version=${{ steps.pg-version.outputs.full }}
-            index,manifest:io.fluxo-kt.aza-pg.build.type=single-node
-            index,manifest:io.fluxo-kt.aza-pg.extensions.enabled=${{ steps.catalog.outputs.enabled }}
 
       - name: Document existing tags (for rollback reference)
         continue-on-error: true
@@ -368,7 +327,7 @@ jobs:
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
             --url "${{ github.server_url }}/${{ github.repository }}" \
-            --authors "fluxo-kt" \
+            --authors "${{ env.IMAGE_AUTHORS }}" \
             --version "${{ needs.prep.outputs.image_tag }}" \
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
@@ -391,7 +350,7 @@ jobs:
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
             --url "${{ github.server_url }}/${{ github.repository }}" \
-            --authors "fluxo-kt" \
+            --authors "${{ env.IMAGE_AUTHORS }}" \
             --version "${{ needs.prep.outputs.image_tag }}" \
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
@@ -720,7 +679,7 @@ jobs:
             --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
             --licenses "MIT" \
             --url "${{ github.server_url }}/${{ github.repository }}" \
-            --authors "fluxo-kt" \
+            --authors "${{ env.IMAGE_AUTHORS }}" \
             --version "${{ needs.prep.outputs.image_tag }}" \
             --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
             --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
@@ -748,7 +707,7 @@ jobs:
               --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
               --licenses "MIT" \
               --url "${{ github.server_url }}/${{ github.repository }}" \
-              --authors "fluxo-kt" \
+              --authors "${{ env.IMAGE_AUTHORS }}" \
               --version "${{ needs.prep.outputs.image_tag }}" \
               --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
               --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \
@@ -1183,7 +1142,7 @@ jobs:
               --documentation "${{ github.server_url }}/${{ github.repository }}/blob/main/README.md" \
               --licenses "MIT" \
               --url "${{ github.server_url }}/${{ github.repository }}" \
-              --authors "fluxo-kt" \
+              --authors "${{ env.IMAGE_AUTHORS }}" \
               --version "${{ needs.prep.outputs.image_tag }}" \
               --pg-version "${{ needs.prep.outputs.pg_version_full }}" \
               --catalog-enabled "${{ needs.prep.outputs.catalog_enabled }}" \

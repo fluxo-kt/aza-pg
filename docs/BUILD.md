@@ -193,7 +193,7 @@ docker buildx imagetools create \
   -t ghcr.io/fluxo-kt/aza-pg:testing-sha \
   --annotation "index:org.opencontainers.image.title=aza-pg Single-Node PostgreSQL" \
   --annotation "index:org.opencontainers.image.description=PostgreSQL {version} with {count} extensions..." \
-  --annotation "index:org.opencontainers.image.authors=fluxo-kt" \
+  --annotation "index:org.opencontainers.image.authors=Art Shendrik" \
   --annotation "index:org.opencontainers.image.version={version}-{timestamp}-single-node" \
   --annotation "index:org.opencontainers.image.source=https://github.com/fluxo-kt/aza-pg" \
   --annotation "index:org.opencontainers.image.licenses=MIT" \
@@ -231,7 +231,7 @@ Expected output shows both platforms and all annotations:
 {
   "org.opencontainers.image.title": "aza-pg Single-Node PostgreSQL",
   "org.opencontainers.image.description": "PostgreSQL {version} with {count} extensions...",
-  "org.opencontainers.image.authors": "fluxo-kt",
+  "org.opencontainers.image.authors": "Art Shendrik",
   "org.opencontainers.image.source": "https://github.com/fluxo-kt/aza-pg",
   "org.opencontainers.image.licenses": "MIT"
 }
@@ -245,27 +245,26 @@ GHCR shows the metadata of each tag's most recent push. A tag published without 
 
 Standard OCI annotations applied to all published images:
 
-| Annotation                               | Purpose             | Format/Example                                                                                                     |
-| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                                                                                    |
-| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`                                                                  |
-| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt` (image labels and per-platform manifests; the index carries `org.opencontainers.image.authors` instead) |
-| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                                                                               |
-| `org.opencontainers.image.created`       | Build timestamp     | RFC 3339 (`2025-11-14T23:30:00Z`)                                                                                  |
-| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                                                                            |
-| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                                                                               |
-| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                                                                               |
-| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md`                                                           |
-| `org.opencontainers.image.licenses`      | License             | `MIT`                                                                                                              |
+| Annotation                               | Purpose             | Format/Example                                                                       |
+| ---------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| `org.opencontainers.image.title`         | Display name        | `aza-pg Single-Node PostgreSQL`                                                      |
+| `org.opencontainers.image.description`   | Package description | `PostgreSQL {version} with {count} extensions...`                                    |
+| `org.opencontainers.image.vendor`        | Organization        | `fluxo-kt` (image labels only; the index carries `org.opencontainers.image.authors`) |
+| `org.opencontainers.image.version`       | Full version tag    | `{major}.{minor}-{timestamp}-{type}`                                                 |
+| `org.opencontainers.image.created`       | Build timestamp     | RFC 3339 (`2025-11-14T23:30:00Z`)                                                    |
+| `org.opencontainers.image.revision`      | Git commit SHA      | `{sha}`                                                                              |
+| `org.opencontainers.image.source`        | Repository URL      | `https://github.com/fluxo-kt/aza-pg`                                                 |
+| `org.opencontainers.image.url`           | Homepage URL        | `https://github.com/fluxo-kt/aza-pg`                                                 |
+| `org.opencontainers.image.documentation` | Docs URL            | `https://github.com/fluxo-kt/aza-pg/blob/main/README.md`                             |
+| `org.opencontainers.image.licenses`      | License             | `MIT`                                                                                |
 
-Custom aza-pg metadata. Image labels and per-platform manifests (`docker/metadata-action` in the `prep` job) use these keys; the index annotations written by `scripts/utils/oci-metadata.ts` use `io.fluxo-kt.aza-pg.postgresql.version`, `io.fluxo-kt.aza-pg.catalog.enabled` and `io.fluxo-kt.aza-pg.catalog.total` and omit `build.type`:
+Image config labels (what `docker inspect` shows) come from `nix/image.nix`. They carry every standard key above, plus `io.fluxo-kt.aza-pg.postgresql.version`. Two differ from the annotations: `version` is the PostgreSQL version (`18.6`), because the release tag is chosen after the image is built, and `title`/`description` are worded without the extension count. The index annotations, written by `scripts/utils/oci-metadata.ts`, add two custom keys:
 
 | Annotation                              | Purpose                 | Format/Source                                     |
 | --------------------------------------- | ----------------------- | ------------------------------------------------- |
-| `io.fluxo-kt.aza-pg.postgres.version`   | PostgreSQL version      | `MANIFEST_METADATA.pgVersion` (`{major}.{minor}`) |
-| `io.fluxo-kt.aza-pg.build.type`         | Deployment type         | `single-node`                                     |
-| `io.fluxo-kt.aza-pg.extensions.enabled` | Enabled extension count | From manifest (count where `enabled != false`)    |
-| `io.fluxo-kt.aza-pg.extensions.total`   | Total extension count   | From manifest (total entries)                     |
+| `io.fluxo-kt.aza-pg.postgresql.version` | PostgreSQL version      | `MANIFEST_METADATA.pgVersion` (`{major}.{minor}`) |
+| `io.fluxo-kt.aza-pg.catalog.enabled`    | Enabled extension count | From manifest (count where `enabled != false`)    |
+| `io.fluxo-kt.aza-pg.catalog.total`      | Total extension count   | From manifest (total entries)                     |
 
 ## Build Architecture
 

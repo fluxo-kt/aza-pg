@@ -105,8 +105,8 @@ let
       # A newer source than the recipe's can run its own scripts while building (pgBackRest 2.60's build/build.py,
       # "#!/usr/bin/env python3"); the build sandbox has no /usr/bin/env, so point their interpreters into the store.
       postPatch = (old.postPatch or "") + "\npatchShebangs --build .\n";
-    } // lib.optionalAttrs (old ? cargoDeps) (pgrxArgs e src));
-
+    } // (if old ? cargoDeps then pgrxArgs e src
+    else lib.optionalAttrs ((e.build or { }) ? subdir) { sourceRoot = "source/${e.build.subdir}"; }));
   generic = e:
     let
       src = sourceOf e;

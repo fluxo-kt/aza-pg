@@ -1009,10 +1009,17 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     // back up to S3), and libssh2 1.11.1, still its newest release, has unfixed CVEs a malicious SSH server can
     // reach (CVE-2026-66032 double free, CVE-2026-55200 out-of-bounds write); turn it back on with a libssh2
     // release carrying the fixes. zstd stays for compress-type=zst. Since 2.60 its build script (Python,
-    // build-time only) reads YAML.
+    // build-time only) reads YAML. nixpkgs configures Meson with --buildtype=plain (optimization "plain"), and
+    // upstream's release build adds -funroll-loops -ftree-vectorize only at optimization 2 or 3, so
+    // optimization=2 restores upstream's release flags (debug stays off, so its DEBUG-only code stays out).
     nix: {
       package: "pgbackrest",
-      mesonFlags: ["-Dlibsystemd=disabled", "-Dlibssh2=disabled", "-Dlibzstd=enabled"],
+      mesonFlags: [
+        "-Dlibsystemd=disabled",
+        "-Dlibssh2=disabled",
+        "-Dlibzstd=enabled",
+        "-Doptimization=2",
+      ],
       nativeInputs: ["python3Packages.pyyaml"],
     },
     kind: "tool",

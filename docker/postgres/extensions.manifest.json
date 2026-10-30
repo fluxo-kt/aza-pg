@@ -483,7 +483,8 @@
         "mesonFlags": [
           "-Dlibsystemd=disabled",
           "-Dlibssh2=disabled",
-          "-Dlibzstd=enabled"
+          "-Dlibzstd=enabled",
+          "-Doptimization=2"
         ],
         "nativeInputs": [
           "python3Packages.pyyaml"

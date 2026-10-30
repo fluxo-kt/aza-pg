@@ -141,6 +141,7 @@ Enable/disable: Edit `scripts/extensions/manifest-data.ts` → `bun run generate
 
 - ❌ Using Node.js fs/child_process → ✅ Use Bun.file/Bun.$
 - ❌ Hardcoded counts in docs → ✅ Reference `docs/.generated/docs-data.json`
+- ❌ KiB/MiB/GiB labels, or dividing bytes by 1000 → ✅ sizes read KB/MB/GB and mean 1024-based units, in code, docs and changelog alike; scripts format through `formatSize` (`scripts/utils/logger.ts`); `Size Units` in `validate` refuses IEC labels
 - ❌ Complex bash in YAML → ✅ Extract to TypeScript script
 - ❌ Skip validation → ✅ pre-commit runs `bun run validate`; run `bun run validate:all` (what CI runs) yourself when the change touches a `.sh` or YAML file: ShellCheck (info level) and yamllint run only there
 - ❌ A suite giving a shipped input a value no real deployment writes (bigger memory limits, an explicit default preload list, a mounted getkey) → it hides the defect it works around → ✅ suites run shipped defaults; an override carries the reason inline (e.g. it is the subject under test)

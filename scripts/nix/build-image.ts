@@ -1,22 +1,31 @@
 #!/usr/bin/env bun
 /**
- * Builds the Nix image and loads it into the host's Docker: `bun scripts/nix/build-image.ts [--tag <ref>]`.
+ * Builds the Nix image and loads it into the host's Docker: `bun scripts/nix/build-image.ts [--tag <ref> | --push <ref>]`.
  *
  * flake.nix's `image` is a script that streams the image tarball (dockerTools.streamLayeredImage), so no tarball is
  * ever written to the store or the disk: the script runs where nix.ts runs Nix (natively or in its container), its stdout piped
  * straight into `docker load`. The default tag is aza-pg:pg<major>, the
- * image the suites test by default; --tag retags it after loading. A rebuilt tag leaves the previous image dangling,
- * so the build removes dangling aza-pg images, and collects the store volume (reason at GC_ROOTS).
+ * image the suites test by default; --tag retags it after loading. --push (publish.yml) sends the stream to the
+ * registry instead and prints the pushed digest: `docker load` keeps the tarball's Docker media types, and an index
+ * of Docker manifests is a Docker manifest list, which cannot carry the annotations publish.yml adds, so skopeo (from
+ * the locked nixpkgs) writes OCI ones. It needs native Nix, since the registry login lives on the host.
+ * A rebuilt tag leaves the previous image dangling, so the build removes dangling aza-pg images, and collects the store volume (reason at GC_ROOTS).
  */
 
 import path from "node:path";
 import { reclaimDanglingAzaImages } from "../docker/cleanup-artifacts";
 import { native, nixCommand, nixPlatform } from "./nix";
 
-const tagIndex = Bun.argv.indexOf("--tag");
-const retag = tagIndex === -1 ? undefined : Bun.argv[tagIndex + 1];
-if (tagIndex !== -1 && !retag) {
-  console.error("Usage: bun scripts/nix/build-image.ts [--tag <image-ref>]");
+const flagValue = (flag: string) => {
+  const i = Bun.argv.indexOf(flag);
+  return i === -1 ? undefined : (Bun.argv[i + 1] ?? "");
+};
+const retag = flagValue("--tag");
+const push = flagValue("--push");
+if (retag === "" || push === "" || (retag && push) || (push && !native)) {
+  console.error(
+    "Usage: bun scripts/nix/build-image.ts [--tag <image-ref> | --push <image-ref>] (--push needs native Nix)"
+  );
   process.exit(64);
 }
 const system = nixPlatform.endsWith("arm64") ? "aarch64-linux" : "x86_64-linux";
@@ -35,8 +44,58 @@ if (buildExit !== 0 || !streamScript.startsWith("/nix/store/")) {
   process.exit(buildExit || 1);
 }
 
+if (push) {
+  const digestFile = path.join(Bun.env.RUNNER_TEMP ?? "/tmp", `aza-pg-push-${process.pid}.digest`);
+  // One shell pipeline, because skopeo opens /dev/stdin by path and Bun hands a child's stdin over as a socket,
+  // which cannot be opened. The trust policy vets signatures on the image read, our own stream here, and skopeo
+  // refuses to run without a policy.json, which a runner need not have.
+  const skopeo = [
+    "nix",
+    "run",
+    "--inputs-from",
+    ".",
+    "nixpkgs#skopeo",
+    "--",
+    "--insecure-policy",
+    "copy",
+  ];
+  const copy = Bun.spawn(
+    nixCommand([
+      "bash",
+      "-o",
+      "pipefail",
+      "-c",
+      '"$0" | "$@"',
+      streamScript,
+      ...skopeo,
+      "--format",
+      "oci",
+      "--digestfile",
+      digestFile,
+      "docker-archive:/dev/stdin",
+      `docker://${push}`,
+    ]),
+    { cwd: path.resolve(import.meta.dir, "../.."), stdout: "ignore", stderr: "inherit" }
+  );
+  const copyExit = await copy.exited;
+  if (copyExit !== 0) {
+    console.error(`pushing the image failed (exit ${copyExit})`);
+    process.exit(1);
+  }
+  console.log((await Bun.file(digestFile).text()).trim());
+  await Bun.file(digestFile).delete();
+  process.exit(0);
+}
+
 // The stream script is self-contained (its interpreter and inputs are store paths): it runs wherever the store is.
 const stream = Bun.spawn(nixCommand([streamScript]), { stdout: "pipe", stderr: "inherit" });
+// The stream's pipe stays open in this process, so a reader that dies leaves the stream blocked on a full pipe for
+// ever instead of failing; kill it so the failure surfaces.
+const stopStreamOnFailure = async (reader: { exited: Promise<number> }) => {
+  const code = await reader.exited;
+  if (code !== 0) stream.kill();
+  return code;
+};
 const load = Bun.spawn(["docker", "load"], {
   stdin: stream.stdout,
   stdout: "pipe",
@@ -45,7 +104,7 @@ const load = Bun.spawn(["docker", "load"], {
 const [loaded, streamExit, loadExit] = await Promise.all([
   new Response(load.stdout).text(),
   stream.exited,
-  load.exited,
+  stopStreamOnFailure(load),
 ]);
 if (streamExit !== 0 || loadExit !== 0) {
   console.error(

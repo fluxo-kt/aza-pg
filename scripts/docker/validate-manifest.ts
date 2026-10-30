@@ -66,7 +66,7 @@
  */
 
 import { $ } from "bun";
-import { error, success, info, warning } from "../utils/logger";
+import { error, formatSize, success, info, warning } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import {
   type OCIMetadataOptions,
@@ -584,26 +584,6 @@ function printSummary(manifest: OCIImageIndex, verbose: boolean): void {
 
     console.log("─".repeat(60));
   }
-}
-
-/**
- * Format bytes to human-readable size
- * @param bytes - Size in bytes
- * @returns Formatted size string
- */
-function formatSize(bytes: number): string {
-  const kb = bytes / 1024;
-  if (kb < 1024) {
-    return `${kb.toFixed(2)} KB`;
-  }
-
-  const mb = kb / 1024;
-  if (mb < 1024) {
-    return `${mb.toFixed(2)} MB`;
-  }
-
-  const gb = mb / 1024;
-  return `${gb.toFixed(2)} GB`;
 }
 
 /**

@@ -4,6 +4,7 @@
 
 import { $ } from "bun";
 import { getErrorMessage } from "../utils/errors";
+import { formatSize } from "../utils/logger";
 
 /**
  * Docker image metadata from `docker image inspect`
@@ -39,19 +40,6 @@ export interface ImageMetrics {
   layerCount: number;
   compressedFormatted: string;
   uncompressedFormatted: string;
-}
-
-/**
- * Format bytes as human-readable size (MB or GB)
- */
-export function formatSize(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1024) {
-    return `${mb.toFixed(2)} MB`;
-  } else {
-    const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
-  }
 }
 
 /**

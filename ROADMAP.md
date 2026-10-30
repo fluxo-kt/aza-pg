@@ -16,7 +16,7 @@ Evidence (nixpkgs `31ecbac`, read 2026-10-29): the nixpkgs-built server closure 
 
 Work:
 
-- Review the whole closure as Karakuri's `server:review` does, before the first Nix release and in every update round: each store path, binary, library, interpreter and data file names the shipped feature that needs it or goes; each kept one is on its newest stable version. The kernel comes from the host, so this covers userland only.
+- Trim ncurses' terminfo database (11.6 MB, every terminal type) to the types a container's interactive `psql` meets (xterm*, screen*, tmux*, linux, vt100, dumb): the only data file in the closure without a consumer. Overriding nixpkgs' `ncurses` rebuilds everything above it, so give readline a trimmed copy instead. Every other store path names its consumer (`nix/image.nix`, or the package referencing it); `/update` repeats that review each round.
 - Replace every script the image runs with one Rust binary of ours, as Karakuri does: subcommands for the entrypoint (auto-config, then the upstream `docker-entrypoint.sh` flow: initdb, `POSTGRES_*` variables, init files), the healthcheck, `pgsodium_getkey`, `pgflow-upgrade`, the `pg_repack` wrapper and the shipped init scripts. One static, optimised executable brings no runtime, and its logic gets unit tests that shell cannot have. bash, coreutils, grep, sed, gawk, findutils, diffutils, getent and su-exec then leave the image. Open before the rewrite: operators' own `*.sh` files in `/docker-entrypoint-initdb.d` need a shell; decide whether the image keeps one for them.
 - Prove `ci.yml` and `publish.yml` on GitHub (native amd64/arm64 runners, `.github/actions/setup-nix` store cache, sbomnix SBOM attestation): only a CI run does, and the first one needs Art's push.
 

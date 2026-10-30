@@ -99,14 +99,16 @@ let
       buildInputs = (old.buildInputs or [ ]) ++ inputsOf e;
       nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ attrsOf (e.nix.nativeInputs or [ ]);
       mesonFlags = (old.mesonFlags or [ ]) ++ (e.nix.mesonFlags or [ ]);
-      makeFlags = (old.makeFlags or [ ]) ++ (e.build.makeOptions or [ ]);      # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
+      # nixpkgs' Meson hook builds in ./build, which a source's own build/ directory shadows (pgBackRest 2.60 keeps
       # build/config.yaml there); ignored by recipes that do not use Meson.
       mesonBuildDir = "_meson";
       # A newer source than the recipe's can run its own scripts while building (pgBackRest 2.60's build/build.py,
       # "#!/usr/bin/env python3"); the build sandbox has no /usr/bin/env, so point their interpreters into the store.
       postPatch = (old.postPatch or "") + "\npatchShebangs --build .\n";
     } // (if old ? cargoDeps then pgrxArgs e src
-    else lib.optionalAttrs ((e.build or { }) ? subdir) { sourceRoot = "source/${e.build.subdir}"; }));
+    else lib.optionalAttrs ((e.build or { }) ? subdir) { sourceRoot = "source/${e.build.subdir}"; }
+      # Set only when the entry has options: an added attribute, even empty, changes every recipe's derivation.
+      // lib.optionalAttrs ((e.build or { }) ? makeOptions) { makeFlags = (old.makeFlags or [ ]) ++ e.build.makeOptions; }));
   generic = e:
     let
       src = sourceOf e;

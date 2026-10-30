@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 /**
  * Fails when a CVE that vulnix-whitelist.toml does not clear affects a package the image ships:
- * `bun scripts/security/vulnix-gate.ts` (the host's architecture, or NIX_PLATFORM's).
+ * `bun scripts/security/vulnix-gate.ts [FLAKE]` (the host's architecture, or NIX_PLATFORM's). FLAKE defaults to this
+ * checkout; cve-scan.ts passes `path:<dir>` holding another revision's tree, a path relative to the repo root (the
+ * container sees only the repo).
  *
  * Trivy reads OS package databases, and a Nix image has none, so it sees only Rust crates and bundled JS; glibc,
  * OpenSSL, curl and every other C library would go unscanned. vulnix matches each store path of the image's
- * runtime closure (flake output `contents`) against NVD. vulnix and its NVD mirror come from flake.lock's nixpkgs,
- * so a run checks this revision against today's CVEs. The first run downloads the NVD feeds; later ones update
+ * runtime closure (flake output `contents`) against NVD. vulnix is the flake's `vulnix` output and NVD's feeds
+ * are live, so a run checks the revision against today's CVEs. vulnix sees only CVEs NVD has matched to a package
+ * name: /update still checks PostgreSQL, OpenSSL and glibc against their own security pages. The first run downloads the NVD feeds; later ones update
  * them from vulnix's cache.
  *
  * Exit: 0 clean, 1 a CVE to fix or triage (vulnix names it), 2 the scan itself failed.
@@ -19,7 +22,13 @@ const root = path.resolve(import.meta.dir, "../..");
 const system = nixPlatform === "linux/arm64" ? "aarch64-linux" : "x86_64-linux";
 
 const build = Bun.spawn(
-  nixCommand(["nix", "build", `.#packages.${system}.contents`, "--no-link", "--print-out-paths"]),
+  nixCommand([
+    "nix",
+    "build",
+    `${Bun.argv[2] ?? "."}#packages.${system}.contents`,
+    "--no-link",
+    "--print-out-paths",
+  ]),
   { cwd: root, stdout: "pipe", stderr: "inherit" }
 );
 const [contents, buildExit] = await Promise.all([new Response(build.stdout).text(), build.exited]);
@@ -32,9 +41,8 @@ const scan = Bun.spawn(
   nixCommand([
     "nix",
     "shell",
-    "--inputs-from",
-    ".",
-    "nixpkgs#vulnix",
+    // This checkout's scanner (patched, see flake.nix), whatever revision FLAKE is.
+    `.#packages.${system}.vulnix`,
     "--command",
     "vulnix",
     // In the container only the cache volume outlives the run; natively vulnix's default cache already persists.

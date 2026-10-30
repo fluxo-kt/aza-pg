@@ -116,9 +116,20 @@
           };
           # What the image ships, as one store path whose closure scripts/security/vulnix-gate.ts scans.
           contents = pkgs.linkFarmFromDrvs "aza-pg-contents" image.contents;
+          # The scanner: vulnix 1.12.5 fails its NVD update when NVD serves only the .json.zip feed; upstream PR 183
+          # falls back to it and keeps an older feed from replacing newer cached data. Drop the patch once nixpkgs'
+          # vulnix includes commit 4b14b4b.
+          vulnix = pkgs.vulnix.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [
+              (pkgs.fetchurl {
+                url = "https://github.com/nix-community/vulnix/commit/4b14b4bf3e627946a162ca8ae4a6b406c77a7aa2.patch";
+                hash = "sha256-pN1zFCvTMgHACC0DKkWu98qMu/GpB8ilKUvp5tjyG7Q=";
+              })
+            ];
+          });
         };
     in
     {
-      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents; } // r.extensions);
+      packages = nixpkgs.lib.genAttrs systems (s: let r = perSystem s; in { inherit (r) postgresql image contents vulnix; } // r.extensions);
     };
 }

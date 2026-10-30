@@ -290,7 +290,7 @@ command grep -rn -E ":[Ll]atest\\b" .github/workflows/ .github/actions/ scripts/
 ```
 
 For security scanners, prefer the same pinned container used by local tooling (for example,
-`scripts/security-scan.ts`) so CI diagnostics and local scans use the same scanner family.
+`scripts/security/cve-scan.ts`) so CI diagnostics and local scans use the same scanner family.
 
 Tool images run by scripts (actionlint, yamllint, trivy) are invisible to `actions-up` and
 `bun outdated`, so bump them here. List them:
@@ -320,6 +320,10 @@ only by bumping it, so every round bumps it unless pre-flight item 3 shows it cu
 `bun scripts/security/vulnix-gate.ts` (the release gate): a hit means upgrade the package; only a CVE proven not to
 affect the image goes into `scripts/security/vulnix-whitelist.toml`, with its evidence. Entries name a package
 version, so a bumped package's entry no longer matches: re-check its CVEs, then move or delete the entry.
+Judge a hit from the CVE record and the nixpkgs source (applied patches, affected code path), never vulnix's version
+match alone: it reports name collisions and already-patched builds. vulnix sees only CVEs NVD has matched to a package
+name, so also read the security pages of PostgreSQL, OpenSSL and glibc for the shipped versions.
+`bun run security:scan HEAD` re-runs every CVE scanner (C libraries, every stack image, Bun tooling) over a revision.
 
 ```bash
 bun scripts/nix/nix.ts flake update nixpkgs

@@ -21,7 +21,7 @@
     "build": "bun scripts/nix/build-image.ts",
     "cleanup": "bun scripts/docker/cleanup-artifacts.ts",
     "cleanup:dry": "bun scripts/docker/cleanup-artifacts.ts --dry-run",
-    "security:scan": "bun scripts/security-scan.ts",
+    "security:scan": "bun scripts/security/cve-scan.ts",
     "generate": "bun scripts/generate-all.ts",
     "hooks:install": "bun-git-hooks",
     "postinstall": "bun-git-hooks",

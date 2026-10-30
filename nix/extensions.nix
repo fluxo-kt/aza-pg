@@ -6,7 +6,7 @@
 # Without it the entry is built from `build.type`, linking `nix.inputs`. Sources come from builtins.fetchGit at the
 # pinned commit, which needs no stored hash: the commit is the content address. Rust crates come from the source's
 # own Cargo.lock for the same reason.
-{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable }:
+{ pkgs, lib, postgresql, manifest, inputs, hardeningEnable, optimise }:
 let
   ps = postgresql.pkgs;
   # The PGXS builder exists only inside the extension scope, not as an attribute of it.
@@ -133,21 +133,23 @@ let
 
   # Only the executables an entry names ship (nix.bin, else its binaryPath): nothing calls the rest, and they pull in
   # interpreters (pg_partman's Python helpers). Every entry also passes here, so it takes the server's extra
-  # hardening (flake.nix) too.
+  # hardening and -O3 (flake.nix) too.
   pruneBin = e: drv:
     let keep = e.nix.bin or (lib.optional (e ? binaryPath) (baseNameOf e.binaryPath));
     in drv.overrideAttrs (old: {
       hardeningEnable = (old.hardeningEnable or [ ]) ++ hardeningEnable;
-    } // lib.optionalAttrs (!(old ? cargoDeps)) {
-      # The last -O on a compile line wins, so an upstream Makefile's -O0 (pgsodium's PG_CPPFLAGS) silently undoes
-      # PostgreSQL's optimisation and nothing at runtime shows it. Refuse it in every make build, so each unoptimised
-      # build is a recorded decision (build.makeOptions clears the variable). Make and CMake builds are checked; Meson's
-      # setup hook sets buildPhase (ninja), so Meson builds are not, and cargo builds (no C compile lines) are excluded.
+    } // optimise old // lib.optionalAttrs (!(old ? cargoDeps)) {
+      # -O3 comes last and outranks an upstream's lower -O, but upstream may lower it on purpose (a compiler-bug
+      # workaround, timing-sensitive code), and a silent override would erase that. So a make build whose own compile
+      # lines end below -O2 (-O0, -O1, -Os, -Og) fails until the entry records the decision: build.makeOptions clears
+      # the variable (pgsodium's PG_CPPFLAGS = -O0, no stated reason). make -n prints the build's flags without the
+      # wrapper's. Make and CMake builds are checked; Meson's setup hook sets buildPhase (ninja), so Meson builds are
+      # not, and cargo builds (no C compile lines) are excluded.
       preBuild = (old.preBuild or "") + ''
         if [ -z "''${buildPhase:-}" ] && [ -e Makefile -o -e makefile -o -e GNUmakefile ]; then
           planFlags=(); concatTo planFlags makeFlags makeFlagsArray buildFlags buildFlagsArray
-          if make -n "''${planFlags[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o == "-O0" { print; bad = 1 } END { exit !bad }'; then
-            echo "${e.name}: compiles without optimisation (-O0, lines above); clear the Makefile variable adding it with build.makeOptions in manifest-data.ts" >&2
+          if make -n "''${planFlags[@]}" | awk '{ o = ""; for (i = 1; i <= NF; i++) if ($i ~ /^-O/) o = $i } o ~ /^-O(0|1|s|g|z)$/ { print; bad = 1 } END { exit !bad }'; then
+            echo "${e.name}: upstream compiles below -O2 on the lines above; find out why, then clear the Makefile variable with build.makeOptions in manifest-data.ts and record the reason there" >&2
             exit 1
           fi
         fi

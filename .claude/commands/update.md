@@ -435,9 +435,11 @@ generated manifest and regenerate. Review the `commit` diff of every tag you bum
 `git ls-remote URL 'refs/tags/TAG^{}'` gives the commit).
 
 **Portable, optimised builds**: nixpkgs' compiler wrapper drops `-march/-mtune/-mcpu=native`
-(`NIX_ENFORCE_NO_NATIVE`), which would tie a binary to the build host's CPU. A make build whose compile
-line ends in `-O0` (e.g. upstream's `PG_CPPFLAGS = -O0`) fails (`nix/extensions.nix` preBuild); clear the variable with
-`build.makeOptions` on the entry. Meson and cargo builds are not checked.
+(`NIX_ENFORCE_NO_NATIVE`), which would tie a binary to the build host's CPU. Every C compile of the server and
+extensions ends in `-O3` (`optimise` in `flake.nix`). A make build whose own compile lines end below `-O2` (e.g.
+upstream's `PG_CPPFLAGS = -O0`) fails (`nix/extensions.nix` preBuild): find upstream's reason, then clear the variable
+with `build.makeOptions` on the entry and record why. Meson and cargo builds are not checked. A Meson recipe runs at
+nixpkgs' `--buildtype=plain`: compare upstream's `meson.build` for flags it adds only at release (pgBackRest's).
 
 ### Builtin Extensions
 

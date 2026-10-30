@@ -42,7 +42,7 @@
               })
             ];
           };
-          # nixpkgs' recipe already builds for release (-O2, LTO, stripped binaries, debug info split off). Each feature
+          # nixpkgs' recipe builds for release (LTO, stripped binaries, debug info split off; -O3 comes from optimise). Each feature
           # below is on there; off here because nothing in a container of this image can use it, and each links more
           # libraries into every server process. To restore one, set it to true (and record its consumer here):
           #   systemd  sd_notify needs NOTIFY_SOCKET, which Docker and Podman (conmon notifies) never give PostgreSQL
@@ -67,6 +67,13 @@
           # the toolchain, so all of nixpkgs. Also left out: amd64 shadowstack, which glibc enforces only on request. The
           # server and extensions are rebuilt from source anyway, so pacret costs no rebuild of its own.
           hardeningEnable = [ "pacret" ];
+          # -O3 for every C compile of the server and extensions (AGENTS.md: -O3 unless a recorded reason says lower,
+          # never below upstream's release build). The compiler wrapper puts NIX_CFLAGS_COMPILE after the build's own
+          # flags and the last -O wins, so this outranks a recipe's -O2 and a Makefile's -O0 alike. A recipe sets the
+          # variable either top-level or under env, and nixpkgs refuses a derivation setting both, so append to its form.
+          optimise = o: if (o.env or { }) ? NIX_CFLAGS_COMPILE
+            then { env = o.env // { NIX_CFLAGS_COMPILE = "${o.env.NIX_CFLAGS_COMPILE} -O3"; }; }
+            else { NIX_CFLAGS_COMPILE = "${toString (o.NIX_CFLAGS_COMPILE or "")} -O3"; };
           postgresql = (pkgs."postgresql_${nixpkgs.lib.versions.major manifest.metadata.pgVersion}".override {
             inherit llvmPackages;
             jitSupport = true;
@@ -79,12 +86,12 @@
             perlSupport = false;
             pythonSupport = false;
             tclSupport = false;
-          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; });
+          }).overrideAttrs (o: { hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable; } // optimise o);
           # The manifest's pgVersion names the release (tags, labels, PG_VERSION); the server is nixpkgs'. A nixpkgs bump
           # that moves the minor must update the manifest in the same change, or the image would claim a version it lacks.
           extensions = assert postgresql.version == manifest.metadata.pgVersion
             || throw "nixpkgs ships PostgreSQL ${postgresql.version}, manifest-data.ts says ${manifest.metadata.pgVersion}: set pgVersion to nixpkgs' version";
-            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable; inherit (pkgs) lib; };
+            import ./nix/extensions.nix { inherit pkgs postgresql manifest inputs hardeningEnable optimise; inherit (pkgs) lib; };
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
           # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.

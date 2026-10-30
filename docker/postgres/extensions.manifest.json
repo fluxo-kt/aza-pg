@@ -484,7 +484,7 @@
           "-Dlibsystemd=disabled",
           "-Dlibssh2=disabled",
           "-Dlibzstd=enabled",
-          "-Doptimization=2"
+          "-Doptimization=3"
         ],
         "nativeInputs": [
           "python3Packages.pyyaml"

@@ -1023,15 +1023,16 @@ export const MANIFEST_ENTRIES: ManifestEntry[] = [
     // reach (CVE-2026-66032 double free, CVE-2026-55200 out-of-bounds write); turn it back on with a libssh2
     // release carrying the fixes. zstd stays for compress-type=zst. Since 2.60 its build script (Python,
     // build-time only) reads YAML. nixpkgs configures Meson with --buildtype=plain (optimization "plain"), and
-    // upstream's release build adds -funroll-loops -ftree-vectorize only at optimization 2 or 3, so
-    // optimization=2 restores upstream's release flags (debug stays off, so its DEBUG-only code stays out).
+    // upstream's default build type, release, is optimization 3, plus -funroll-loops -ftree-vectorize, which its
+    // meson.build adds only at 2 or 3. optimization=3 is upstream's release build (debug stays off, so DEBUG-only
+    // code stays out).
     nix: {
       package: "pgbackrest",
       mesonFlags: [
         "-Dlibsystemd=disabled",
         "-Dlibssh2=disabled",
         "-Dlibzstd=enabled",
-        "-Doptimization=2",
+        "-Doptimization=3",
       ],
       nativeInputs: ["python3Packages.pyyaml"],
     },

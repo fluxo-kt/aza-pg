@@ -152,6 +152,46 @@ async function validateManifestCliContract(issues: Issue[]): Promise<void> {
   }
 }
 
+// A flake ref other than this flake resolves at run time, so the tool changes under a release without any commit
+// (nixpkgs-unstable's sbomnix stopped building mid-release): a URL (`github:o/r`, even at a tag) fetches that ref,
+// and a bare name (`nixpkgs#x`) goes through the flake registry unless `--inputs-from .` maps it to flake.lock.
+// Only the nix arguments count: everything after `--` belongs to the program being run.
+function unpinnedFlakeRef(line: string): string | undefined {
+  const words = line.split(/\s+/).map((w) => w.replace(/^["']+|["']+$/g, ""));
+  const end = words.indexOf("--");
+  const nixArgs = end === -1 ? words : words.slice(0, end);
+  const lockMapped = nixArgs.join(" ").includes("--inputs-from .");
+  return nixArgs.find(
+    (w) =>
+      /^(github|gitlab|sourcehut|git\+\w+|https?|tarball\+\w+|flake):/.test(w) ||
+      (/^[A-Za-z][\w-]*#/.test(w) && !lockMapped)
+  );
+}
+
+async function validateNixRefsPinned(issues: Issue[]): Promise<void> {
+  const files = [
+    ...new Bun.Glob(".github/workflows/*.yml").scanSync(REPO_ROOT),
+    ...new Bun.Glob(".github/actions/*/action.yml").scanSync(REPO_ROOT),
+  ];
+  for (const file of files) {
+    for (const runStep of collectRunSteps(await readYaml(file))) {
+      for (const line of runStep.split("\n")) {
+        if (!/\bnix\s/.test(line)) continue;
+        const ref = unpinnedFlakeRef(line);
+        if (ref) {
+          addIssue(
+            issues,
+            file,
+            `\`${ref}\` is not pinned by flake.lock, so the tool can change or break between runs with no commit. ` +
+              `Add the tool as a flake.nix input and run it with \`nix run --inputs-from . <input>\`, ` +
+              `or use \`--inputs-from . nixpkgs#<attr>\` for a package from the locked nixpkgs.`
+          );
+        }
+      }
+    }
+  }
+}
+
 async function main(): Promise<void> {
   section("Release Process Validation");
 
@@ -159,6 +199,7 @@ async function main(): Promise<void> {
   await validatePublishEnvironment(issues);
   await validatePublishVerificationTopology(issues);
   await validateManifestCliContract(issues);
+  await validateNixRefsPinned(issues);
 
   if (issues.length > 0) {
     for (const issue of issues) {

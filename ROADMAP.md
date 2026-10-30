@@ -47,3 +47,11 @@ Speed waits for correctness. Candidates for `-O3` (rule in AGENTS.md) need a pgb
 ### arm64 BTI is off; restore it before running on Armv8.5+ hosts
 
 BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which treats `bti` as a no-op), so it waits until a host enforces it (AWS Graviton 3+, Azure Cobalt, Google Axion). The linker marks a binary only if every object in it is marked, and only the C startup files block that. gcc's `crtbegin*.o`/`crtend*.o` have no landing pads at all: forcing the mark (`-z force-bti`) would crash the server at start, since `.init_array` calls them indirectly, so they must be recompiled (compiler-rt's `crtbegin.c`/`crtend.c` with `-mbranch-protection=standard` compile in seconds). glibc's `crt1.o`/`Scrt1.o` already have their landing pads and only lack the mark: `ld -r -z force-bti` adds it. Link the server and C extensions with `-mbranch-protection=standard -B<those files>` and never use `-z force-bti` on final links, which would hide an unmarked static library. Rust extensions stay unmarked (precompiled std), as do nixpkgs' shared libraries; the kernel enforces BTI per object, so they keep working. Prove it on a BTI CPU: the arm64 test lane must first check that `/proc/cpuinfo` lists `bti`.
+
+### The SBOM lacks licences for packages we build ourselves
+
+sbomnix reads each package's licence from nixpkgs' `meta`, and our own derivations (the server override, extensions built by `nix/extensions.nix`) do not carry it, so they are `NOASSERTION`, `postgresql` among them. Set `meta.license` on each, from the manifest entry so no side table appears.
+
+### Local Nix runs in `nixos/nix:latest`
+
+`scripts/nix/nix.ts` pulls a floating tag on hosts without Linux Nix, so a local build can use another Nix than CI's `install-nix-action`, against the rule that local checks run under CI's conditions. Pin it by digest and have `/update` bump it with the other images.

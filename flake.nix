@@ -12,6 +12,10 @@
     # The official image's docker-entrypoint.sh (initdb, POSTGRES_* variables, /docker-entrypoint-initdb.d), which
     # our entrypoint sources.
     docker-library-postgres = { url = "github:docker-library/postgres"; flake = false; };
+    # publish.yml's SBOM generator, at a release tag and with its own lock: nixpkgs' sbomnix breaks whenever one of
+    # its many Python dependencies moves (typepy 2.0 broke it), and upstream tests only its own lock. Build-only:
+    # nothing it brings enters the image. /update bumps the tag to the latest release.
+    sbomnix.url = "github:tiiuae/sbomnix/v1.9.0";
   };
 
   outputs = { nixpkgs, ... }@inputs:
@@ -127,8 +131,10 @@
             postgresql = server;
             upstreamEntrypoint = "${inputs.docker-library-postgres}/${nixpkgs.lib.versions.major manifest.metadata.pgVersion}/trixie/docker-entrypoint.sh";
           };
-          # What the image ships, as one store path whose closure scripts/security/vulnix-gate.ts scans.
-          contents = pkgs.linkFarmFromDrvs "aza-pg-contents" image.contents;
+          # What the image ships, as one store path whose closure vulnix-gate.ts and publish.yml's SBOM read: the image
+          # config references every layer's store paths, the ones only Env names (the locales) included. `image`
+          # itself is the stream script, whose closure adds the Python streamer that never ships.
+          contents = image.conf;
           # The scanner: vulnix 1.12.5 fails its NVD update when NVD serves only the .json.zip feed; upstream PR 183
           # falls back to it and keeps an older feed from replacing newer cached data. Drop the patch once nixpkgs'
           # vulnix includes commit 4b14b4b.

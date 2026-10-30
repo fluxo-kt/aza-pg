@@ -123,9 +123,6 @@ pkgs.dockerTools.streamLayeredImage {
   name = "aza-pg";
   tag = "pg${pgMajor}";
   inherit contents;
-  # The runtime closure the CVE scan reads (flake output `contents`); the image's stream script also references
-  # its own Python streamer, which never ships.
-  passthru = { inherit contents; };
   # /bin/sh, /bin/bash and /usr/bin/env: script shebangs (ours, operators') and `docker exec … sh -c`.
   extraCommands = ''
     # /var/run is a link to /run as on Debian: Nix's server defaults its socket to /run/postgresql, the entrypoint

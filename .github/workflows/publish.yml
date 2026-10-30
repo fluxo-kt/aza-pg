@@ -206,13 +206,14 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       # Supply chain: an SBOM of the exact runtime closure (sbomnix reads the Nix store, so every component and
-      # version is the one shipped), GitHub's SLSA provenance and Cosign signatures in the release job.
+      # version is the one shipped), GitHub's SLSA provenance and Cosign signatures in the release job. The target is
+      # the flake attribute, not its store path: only then does sbomnix read nixpkgs' meta (licences, CPE versions).
       - name: Generate SBOM
         run: |
           set -euo pipefail
           system=$([ "${{ matrix.platform }}" = linux/arm64 ] && echo aarch64-linux || echo x86_64-linux)
-          nix run nixpkgs#sbomnix -- "$(nix build ".#packages.${system}.image" --no-link --print-out-paths)" \
-            --spdx "${{ runner.temp }}/sbom.spdx.json"
+          nix run --inputs-from . sbomnix -- ".#packages.${system}.contents" --spdx "${{ runner.temp }}/sbom.spdx.json" \
+            --cdx "${{ runner.temp }}/sbom.cdx.json" --csv "${{ runner.temp }}/sbom.csv"
 
       - name: Attest SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0

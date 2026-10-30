@@ -50,7 +50,7 @@ BTI does nothing on current hosts (Hetzner CAX: Ampere Altra, Armv8.2, which tre
 
 ### The SBOM lacks licences for packages we build ourselves
 
-sbomnix reads each package's licence from nixpkgs' `meta`, and our own derivations (the server override, extensions built by `nix/extensions.nix`) do not carry it: on the arm64 image 37 of 86 packages, `postgresql` among them, are `NOASSERTION`. Set `meta.license` on each, from the manifest entry so no side table appears.
+sbomnix reads each package's licence from nixpkgs' `meta`, and our own derivations (the server override, extensions built by `nix/extensions.nix`) do not carry it, so they are `NOASSERTION`, `postgresql` among them. Set `meta.license` on each, from the manifest entry so no side table appears.
 
 ### Local Nix runs in `nixos/nix:latest`
 

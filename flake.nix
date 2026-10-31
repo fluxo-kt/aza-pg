@@ -105,6 +105,10 @@
             tclSupport = false;
           }).overrideAttrs (o: {
             hardeningEnable = (o.hardeningEnable or [ ]) ++ hardeningEnable;
+            # nixpkgs' separateDebugInfo compiles everything with -ggdb for a debug output we never ship; the strip removes
+            # it from ELF files, but the JIT's inlining bitcode (lib/bitcode, not ELF) kept it: 74% of its ~100 MB. llvmjit
+            # never reads it (it is only for gdb stepping into JIT code), and -g does not change generated code.
+            separateDebugInfo = false;
             # llvmjit.so links LLVM's static archives (in nixpkgs' cache, so no LLVM rebuild) instead of libLLVM.so. The
             # linker takes only archive members something references, so of LLVM's code generators only the host's ships;
             # llvmjit emits code only for the CPU it runs on. All archives are passed, not configure's component list:

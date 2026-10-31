@@ -8,7 +8,7 @@
  * image the suites test by default; --tag retags it after loading. --push (publish.yml) sends the stream to the
  * registry instead and prints the pushed digest: `docker load` keeps the tarball's Docker media types, and an index
  * of Docker manifests is a Docker manifest list, which cannot carry the annotations publish.yml adds, so skopeo (from
- * the locked nixpkgs) writes OCI ones, gzip-compressed before the push (reason at the push). It needs native Nix,
+ * the locked nixpkgs) writes OCI ones, zstd-compressed before the push (reason at the push). It needs native Nix,
  * since the registry login lives on the host.
  * A rebuilt tag leaves the previous image dangling, so the build removes dangling aza-pg images, and collects the store volume (reason at GC_ROOTS).
  */
@@ -51,18 +51,21 @@ if (push) {
   const scratch = await mkdtemp(path.join(Bun.env.RUNNER_TEMP ?? tmpdir(), "aza-pg-push-"));
   const digestFile = path.join(scratch, "digest");
   // Two copies, both proven against a registry seeded with raw layer blobs:
-  // 1. stream -> local OCI layout, gzip level 9. The stream's layers are raw tar, and pushing them directly lets skopeo
+  // 1. stream -> local OCI layout, zstd. The stream's layers are raw tar, and pushing them directly lets skopeo
   //    reuse a raw blob the registry already holds under that digest and still declare it
-  //    gzip, so pulls fetch the image uncompressed under a false media type. Compressing first makes every digest a gzip
-  //    one. Level 9 costs push CPU only; gzip decompresses at the same speed at any level.
-  // 2. layout -> registry with gzip forced, which stops skopeo's blob cache swapping a gzip layer for its raw twin.
+  //    compressed, so pulls fetch the image uncompressed under a false media type. Compressing first makes every digest
+  //    a compressed one. zstd, not gzip: 26% smaller layers and faster to unpack (2026-10-31, skopeo from this flake.lock:
+  //    gzip-9 229.7 MB, zstd 169.4 MB), and repeated runs give identical digests, so a pull fetches only changed layers.
+  //    Levels 11, 19 and 20 wrote identical bytes (skopeo's Go encoder tops out there); the level costs push CPU only.
+  //    Pulling zstd layers needs Docker Engine 23+ (containerd 1.5+), below the README's Docker floor.
+  // 2. layout -> registry with zstd forced, which stops skopeo's blob cache swapping a compressed layer for its raw twin.
   // One shell script, because skopeo opens /dev/stdin by path and Bun hands a child's stdin over as a socket, which
   // cannot be opened. --insecure-policy: the trust policy vets signatures on the image read, our own build here, and
   // skopeo refuses to run without a policy.json, which a runner need not have.
   const script = [
     'skopeo() { nix run --inputs-from . nixpkgs#skopeo -- --insecure-policy copy "$@"; }',
-    '"$0" | skopeo --dest-compress-format gzip --dest-compress-level 9 docker-archive:/dev/stdin "oci:$1:image" &&',
-    'skopeo --format oci --dest-compress-format gzip --dest-force-compress-format --digestfile "$2" "oci:$1:image" "docker://$3"',
+    '"$0" | skopeo --dest-compress-format zstd --dest-compress-level 19 docker-archive:/dev/stdin "oci:$1:image" &&',
+    'skopeo --format oci --dest-compress-format zstd --dest-force-compress-format --digestfile "$2" "oci:$1:image" "docker://$3"',
   ].join("\n");
   const copy = Bun.spawn(
     nixCommand([
@@ -86,8 +89,9 @@ if (push) {
     process.exit(1);
   }
   // Read back what the registry now serves: a layer declared compressed whose digest is its own uncompressed diff_id
-  // is raw tar under a false media type (a gzip blob never hashes to its contents' digest), the failure the two
-  // copies above prevent. Checked here, before publish.yml indexes and signs the image.
+  // is raw tar under a false media type (a compressed blob never hashes to its contents' digest), the failure the two
+  // copies above prevent; a layer of any other format means skopeo ignored the forced one. Checked here, before
+  // publish.yml indexes and signs the image.
   const pushed = `docker://${push.replace(/:[^/:]*$/, "")}@${digest}`;
   const inspect = async (flag: string) => {
     const p = Bun.spawn(
@@ -110,9 +114,18 @@ if (push) {
   };
   const [manifest, config] = await Promise.all([inspect("--raw"), inspect("--config")]);
   const diffIds = new Set<string>(config.rootfs.diff_ids);
-  const raw = (manifest.layers as { digest: string; mediaType: string }[]).filter(
-    (l) => !l.mediaType.endsWith(".tar") && diffIds.has(l.digest)
+  const raw = (manifest.layers as { digest: string; mediaType: string }[]).filter((l) =>
+    diffIds.has(l.digest)
   );
+  const notZstd = (manifest.layers as { mediaType: string }[]).filter(
+    (l) => l.mediaType !== "application/vnd.oci.image.layer.v1.tar+zstd"
+  );
+  if (notZstd.length > 0) {
+    console.error(
+      `${pushed}: ${notZstd.length} layer(s) are ${notZstd[0]?.mediaType}, not zstd (format forced above).`
+    );
+    process.exit(1);
+  }
   if (raw.length > 0) {
     console.error(
       `${pushed}: ${raw.length} layer(s) are uncompressed tar declared as ${raw[0]?.mediaType} (digest equals the ` +

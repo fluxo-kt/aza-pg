@@ -10,6 +10,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 ## [Unreleased]
 
+### Changed
+
+- Image layers are zstd-compressed instead of gzip: about 26% less to download, and faster to unpack. Pulling needs Docker Engine 23+ or containerd 1.5+ (the README already requires Docker Engine 24+); older clients cannot pull the image.
+
 ## [v18.6-202610311330] - 2026-10-31
 
 ### Breaking

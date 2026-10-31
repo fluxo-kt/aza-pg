@@ -14,6 +14,10 @@ Development tooling, test infrastructure, and CI/CD changes are noted briefly if
 
 - **New clusters install pg_partman into the `partman` schema** (was `public`, beside an empty `partman` schema), as upstream's docs do. Call `partman.create_parent(…)` and read `partman.part_config`; existing data directories keep pg_partman in `public`.
 
+### Fixed
+
+- The SBOM attestation names the licence of PostgreSQL and of every extension (several read `NOASSERTION`).
+
 ## [v18.6-202610301512] - 2026-10-30
 
 ### Breaking

@@ -105,7 +105,7 @@
           # jit is a separate output (llvmjit.so plus bitcode) that withPackages leaves out; without it jit=on does nothing.
           # llvmjit.so's RPATH names llvm's whole lib output, ~360 MB of it static archives no process loads; this copy
           # points llvmjit.so (and libLLVM's own RPATH) at a store path holding libLLVM.so alone.
-          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf ]; } ''
+          jit = pkgs.runCommand "postgresql-jit-${postgresql.version}" { nativeBuildInputs = [ pkgs.patchelf ]; meta = { inherit (postgresql.meta) license; }; } ''
             cp -r --no-preserve=mode ${postgresql.jit} $out
             mkdir -p $out/llvm
             cp -L ${llvmPackages.llvm.lib}/lib/libLLVM.so.* $out/llvm/
@@ -117,6 +117,8 @@
           # withPackages also links postgresql.man for desktop installs; a container has no man reader. The env is
           # symlinks, so dropping the link drops the store reference (buildEnv keeps `paths` out of overrideAttrs' reach).
           server = (postgresql.withPackages (_: [ jit ] ++ builtins.attrValues extensions)).overrideAttrs (o: {
+            # withPackages' env carries no meta.license, so the SBOM listed postgresql as NOASSERTION.
+            meta = (o.meta or { }) // { inherit (postgresql.meta) license; };
             postBuild = (o.postBuild or "") + "\nrm $out/share/man\n";
           });
         in

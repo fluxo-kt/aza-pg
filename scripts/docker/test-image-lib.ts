@@ -694,25 +694,22 @@ export function testOomKillsBackendsFirst(container: string): Promise<TestResult
 /**
  * A process orphaned in the container is re-parented to PID 1. With the postmaster as PID 1, such an orphan dying by
  * a signal reads as a crashed backend and resets every session; tini as PID 1 (nix/image.nix) reaps it instead.
- * Crash recovery restarts every server process, so a changed checkpointer PID is the reset.
+ * Checked as that state, not by killing an orphan: proving a reset did not happen would need a timed wait, and the
+ * state is what any Entrypoint or exec-chain change breaks.
  */
-export function testOrphanDeathKeepsSessions(container: string): Promise<TestResult> {
-  return check("PID 1 - an orphan dying by a signal does not reset the server", async () => {
-    const checkpointer = "SELECT pid FROM pg_stat_activity WHERE backend_type = 'checkpointer'";
-    const before = await sqlOk(container, checkpointer);
-    // The inner shell outlives its parent, is orphaned, then kills itself with SIGPIPE.
-    const orphan = await execCommand(
-      ["sh", "-c", 'sh -c "sleep 0.5; kill -PIPE \\$\\$" & exit 0'],
+export function testTiniIsPid1(container: string): Promise<TestResult> {
+  return check("PID 1 - tini, not the postmaster, adopts orphans", async () => {
+    const { ok, output } = await execCommand(
+      ["sh", "-c", 'echo "$(cat /proc/1/comm) $(head -1 "$PGDATA/postmaster.pid")"'],
       container
     );
-    expect(orphan.ok, `starting the orphan failed: ${orphan.output}`);
-    await Bun.sleep(2000);
-    const after = await sqlOk(container, checkpointer);
+    expect(ok, `reading PID 1 failed: ${output}`);
+    const [pid1, postmaster] = output.trim().split(" ");
     expect(
-      before === after,
-      `checkpointer ${before} became ${after}: the server reset all sessions`
+      pid1 === "tini" && postmaster !== "1",
+      `PID 1 is ${pid1}, postmaster PID ${postmaster}: an orphan dying by a signal would reset every session`
     );
-    return `checkpointer ${after} kept`;
+    return `postmaster PID ${postmaster} under tini`;
   });
 }
 

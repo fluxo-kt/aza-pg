@@ -17,15 +17,15 @@ Evidence (nixpkgs `31ecbac`, read 2026-10-29): the nixpkgs-built server closure 
 Work:
 
 - Trim ncurses' terminfo database (11.6 MB, every terminal type) to the types a container's interactive `psql` meets (xterm*, screen*, tmux*, linux, vt100, dumb): the only data file in the closure without a consumer. Overriding nixpkgs' `ncurses` rebuilds everything above it, so give readline a trimmed copy instead. Every other store path names its consumer (`nix/image.nix`, or the package referencing it); `/update` repeats that review each round.
-- Replace every script the image runs with one Rust binary of ours, as Karakuri does: subcommands for the entrypoint (auto-config, then the upstream `docker-entrypoint.sh` flow: initdb, `POSTGRES_*` variables, init files), the healthcheck, `pgsodium_getkey`, `pgflow-upgrade`, the `pg_repack` wrapper and the shipped init scripts. One static, optimised executable brings no runtime, and its logic gets unit tests that shell cannot have. bash, coreutils, grep, sed, gawk, findutils, diffutils, getent and su-exec then leave the image. Open before the rewrite: operators' own `*.sh` files in `/docker-entrypoint-initdb.d` need a shell; decide whether the image keeps one for them.
+- Swap a tool the image's scripts call (coreutils, grep, sed, gawk, findutils, diffutils) only for a widely used Rust tool that is a drop-in for how the scripts call it; the scripts stay. Rejected: rewriting the scripts as one Rust binary of ours. It is a large new codebase to own, and bash stays anyway for operators' `*.sh` files in `/docker-entrypoint-initdb.d`.
 
 ## Medium
 
 ### Compress AMD64 registry layers and match their declared format
 
-The published `v18.6-202610301512` AMD64 manifest (`4931145913e0`) declares gzip layers, but its largest blob (`11f479195a2c`) starts with raw tar bytes `2f6e69782f`, not gzip magic `1f8b`. The corresponding ARM64 blob starts with `1f8b`. Registry range reads returned HTTP 206; both architecture pulls succeeded. AMD64 layer payloads total 621,758,994 bytes, ARM64 237,739,751 bytes; these are different builds, not a measured compression ratio.
+The published `v18.6-202610301512` AMD64 manifest (`4931145913e0`) declares gzip layers, but its largest blob (`11f479195a2c`) starts with raw tar bytes `2f6e69782f`, not gzip magic `1f8b`. The corresponding ARM64 blob starts with `1f8b`. Both architectures still pull. AMD64 layer payloads total 621,758,994 bytes, ARM64 237,739,751 bytes; these are different builds, not a measured compression ratio.
 
-Make the `scripts/nix/build-image.ts --push` path explicitly produce compressed layers on both native runners rather than relying on skopeo defaults. Check the pushed payload format against its media type and measure same-architecture transfer size before and after; preserve unpacked contents, signatures and SBOM binding. The release's successful [publish run](https://github.com/fluxo-kt/aza-pg/actions/runs/41145171017) and signed SBOMs do not establish compression correctness.
+Make the `scripts/nix/build-image.ts --push` path explicitly produce compressed layers on both native runners rather than relying on skopeo defaults. Check the pushed payload format against its media type and measure same-architecture transfer size before and after; preserve unpacked contents, signatures and SBOM binding.
 
 ### The `pg_upgrade` path needs an image holding both majors
 

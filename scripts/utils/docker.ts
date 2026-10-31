@@ -385,13 +385,14 @@ function scopedName(prefix: string): string {
 }
 
 /**
- * `docker run` memory limit every test server of the image takes: the primary stack's default `mem_limit`. Without a
- * limit auto-config tunes from the whole Docker VM (shared_buffers 25% of it, 2 GB maintenance_work_mem), which no
- * shipped stack does; a dozen parallel suites each tuned that way exhaust the VM, and the kernel then kills a backend
- * in whichever suite it picks ("the database system is in recovery mode"). Under a limit a test that overruns is
- * killed in its own container.
+ * `docker run` memory limit every test server of the image takes: 1 GB without swap, the low end of what
+ * PostgreSQL gets on the 2 GB VPS most deployments run on, so suites prove the image there. Without a limit
+ * auto-config tunes from the whole Docker VM (shared_buffers 25% of it, 2 GB maintenance_work_mem); a dozen parallel
+ * suites tuned that way exhaust the VM, and the kernel kills a backend in whichever suite it picks ("the database
+ * system is in recovery mode"). Under a limit an overrun stays in its own container. `--memory-swap` equal to
+ * `--memory` turns swap off: `--memory` alone grants as much swap again, hiding an overrun a swapless VPS dies of.
  */
-export const TEST_SERVER_MEMORY = ["--memory", "2g"] as const;
+export const TEST_SERVER_MEMORY = ["--memory", "1g", "--memory-swap", "1g"] as const;
 
 /**
  * `docker run` arguments for a test server that never restarts: TEST_SERVER_MEMORY, and PGDATA on tmpfs instead of

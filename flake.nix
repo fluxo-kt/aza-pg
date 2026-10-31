@@ -67,11 +67,12 @@
           # for the server and every extension's C code, which parse untrusted SQL and wire input. pacret signs return
           # addresses on arm64 CPUs with pointer authentication (Graviton 3+), as Debian's builds did; elsewhere its
           # instructions are no-ops. Left out: arm64 BTI, because the linker marks a binary only when every object in
-          # it is marked, and nixpkgs' gcc (crtbegin.o) and glibc (crt1.o) start files are not; getting it means rebuilding
-          # the toolchain, so all of nixpkgs. Also left out: amd64 shadowstack, which glibc enforces only on request. The
+          # it is marked, and nixpkgs' gcc (crtbegin.o) and glibc (crt1.o) start files are not; getting it needs those few
+          # files rebuilt marked and passed to our links with -B, not a toolchain rebuild. Also left out: amd64 shadowstack, which glibc enforces only on request. The
           # server and extensions are rebuilt from source anyway, so pacret costs no rebuild of its own.
           hardeningEnable = [ "pacret" ];
-          # The -O level stays each upstream's own release level (AGENTS.md); targetCpu adds only the CPU baseline to
+          # The -O level stays each upstream's own release level (AGENTS.md). The server at -O3 measured no faster (arm64,
+          # pgbench -S, TPC-B and a 5M-row GROUP BY, medians of 3 alternating rounds, 2026-10-31). targetCpu adds only the CPU baseline to
           # every C compile of the server and extensions. A recipe sets NIX_CFLAGS_COMPILE either top-level or under env,
           # and nixpkgs refuses a derivation setting both, so it appends to the recipe's form. The CPU baseline must rise
           # as far as the VPSes we run on (Hetzner first) and other common clouds all support. amd64 x86-64-v3 (AVX2, BMI2, FMA, MOVBE): every Hetzner x86 line (Skylake Xeon, EPYC

@@ -999,6 +999,19 @@ migrate_database() {
     migrate_sql "$1" -v VERBOSITY=sqlstate -c "ALTER EXTENSION timescaledb UPDATE"
     migrate_sql "$1" -c "$REBUILD_FOR_GLIBC"
 }
+# A postmaster.pid left by an unclean stop (OOM kill, docker kill, stop timeout) names a PID that a fresh container
+# reuses: tini is PID 1, which older images' postmaster recorded, and later PIDs come back in the same order.
+# PostgreSQL ignores a stale lock only when that PID is its own or its parent's, so the temporary server below (a
+# pg_ctl child) refused to start on every such data directory. Nothing in this container runs postgres yet, and a
+# server in another container is invisible to the lock's PID check anyway, so a lock not naming a live postgres here
+# is stale.
+if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/postmaster.pid" ]; then
+    lock_pid=$(as_postgres head -n 1 "${DATA_DIR}/postmaster.pid" 2>/dev/null || true)
+    if [ "$(cat "/proc/${lock_pid:-0}/comm" 2>/dev/null)" != postgres ]; then
+        as_postgres rm -f "${DATA_DIR}/postmaster.pid"
+        echo "[POSTGRES] [AUTO-CONFIG] removed the stale postmaster.pid an unclean stop left (PID ${lock_pid:-unknown} is not a running server)" >&2
+    fi
+fi
 if [ "$STARTS_SERVER" = true ] && [ -f "${DATA_DIR}/PG_VERSION" ] && [ ! -f "${DATA_DIR}/standby.signal" ] &&
     [ ! -f "${DATA_DIR}/recovery.signal" ] && [ "$(as_postgres cat "$IMAGE_MIGRATED_FILE" 2>/dev/null)" != "$image_key" ]; then
     update_dir=$(as_postgres mktemp -d)

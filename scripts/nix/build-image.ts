@@ -55,7 +55,7 @@ if (push) {
   //    reuse a raw blob the registry already holds under that digest and still declare it
   //    compressed, so pulls fetch the image uncompressed under a false media type. Compressing first makes every digest
   //    a compressed one. zstd, not gzip: 26% smaller layers and faster to unpack (2026-10-31, skopeo from this flake.lock:
-  //    gzip-9 229.7 MB, zstd 169.4 MB), and repeated runs give identical digests, so a pull fetches only changed layers.
+  //    gzip-9 229.7 MB, zstd 169.4 MB), and runs give identical digests (repeated, and at 1 or 14 CPUs), so a pull fetches only changed layers.
   //    Levels 11, 19 and 20 wrote identical bytes (skopeo's Go encoder tops out there); the level costs push CPU only.
   //    Pulling zstd layers needs Docker Engine 23+ (containerd 1.5+), below the README's Docker floor.
   // 2. layout -> registry with zstd forced, which stops skopeo's blob cache swapping a compressed layer for its raw twin.

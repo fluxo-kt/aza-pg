@@ -6,12 +6,13 @@
  * did not ask for or fails later and further from the cause. Every case therefore asserts a non-zero exit AND the
  * message naming the input; exit is observed with `docker wait`, never assumed after a delay.
  * Each case owns its container, so the cases run concurrently: run serially, the suite takes the sum of every case's
- * container lifecycle, and under CPU contention the last full-initdb case can run past its 90 s hang bound.
+ * container lifecycle. A container that never stops is caught by test-all's per-test bound (--timeout, the suite
+ * timeout); tighter per-case bounds failed only on a busy Docker daemon, which can take tens of seconds to create one.
  * RAM below the 512 MB minimum is test-auto-config.ts's "256 MB cgroup is refused" row: the refusal follows detection
  * whatever the RAM source.
  * PgBouncer's entrypoint validation lives in test-pgbouncer-failures.ts.
  *
- * Usage: bun test ./scripts/test/test-negative-scenarios.ts
+ * Usage: bun scripts/test-all.ts scripts/test/test-negative-scenarios.ts
  */
 
 import { $ } from "bun";
@@ -50,15 +51,11 @@ async function runToExit(
   return { code, logs: r.stdout.toString() + r.stderr.toString() };
 }
 
-test.concurrent(
-  "non-numeric POSTGRES_MEMORY stops the container",
-  async () => {
-    const { code, logs } = await runToExit("ram-invalid", { POSTGRES_MEMORY: "2g" });
-    expect(code).toBe(1);
-    expect(logs).toContain("[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB");
-  },
-  30_000
-);
+test.concurrent("non-numeric POSTGRES_MEMORY stops the container", async () => {
+  const { code, logs } = await runToExit("ram-invalid", { POSTGRES_MEMORY: "2g" });
+  expect(code).toBe(1);
+  expect(logs).toContain("[POSTGRES] ERROR: POSTGRES_MEMORY must be an integer value in MB");
+});
 
 test.concurrent(
   "a CPU below the compiled baseline stops the container, naming the missing feature",
@@ -78,22 +75,17 @@ test.concurrent(
     ]);
     expect(code).toBe(1);
     expect(logs).toMatch(/lacks features the image is compiled for: (avx2|asimddp)\./);
-  },
-  30_000
+  }
 );
 
 // The two cases below get through initdb, so the final server is what must refuse the input.
-test.concurrent(
-  "unloadable POSTGRES_SHARED_PRELOAD_LIBRARIES entry stops the server",
-  async () => {
-    const { code, logs } = await runToExit("preload-invalid", {
-      POSTGRES_SHARED_PRELOAD_LIBRARIES: "no_such_library",
-    });
-    expect(code).not.toBe(0);
-    expect(logs).toMatch(/FATAL: +could not access file "no_such_library"/);
-  },
-  90_000
-);
+test.concurrent("unloadable POSTGRES_SHARED_PRELOAD_LIBRARIES entry stops the server", async () => {
+  const { code, logs } = await runToExit("preload-invalid", {
+    POSTGRES_SHARED_PRELOAD_LIBRARIES: "no_such_library",
+  });
+  expect(code).not.toBe(0);
+  expect(logs).toMatch(/FATAL: +could not access file "no_such_library"/);
+});
 
 test.concurrent(
   "invalid POSTGRES_BIND_IP stops the server instead of listening elsewhere",
@@ -104,6 +96,5 @@ test.concurrent(
     expect(code).not.toBe(0);
     expect(logs).toMatch(/could not translate host name "999\.999\.999\.999"/);
     expect(logs).toMatch(/FATAL: +could not create any TCP\/IP sockets/);
-  },
-  90_000
+  }
 );

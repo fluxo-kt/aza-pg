@@ -839,6 +839,14 @@ chmod 0644 "$AUTO_CONFIG_FILE"
 for setting in "${AUTO_SETTINGS[@]}"; do
     name="${setting%%=*}"
     tuned="${setting#*=}"
+    # The memory fit takes an operator's max_connections or work_mem as an input, so no tuned value exists to override.
+    fitted=""
+    [ "$name" = max_connections ] && fitted=$OPERATOR_MAX_CONNECTIONS
+    [ "$name" = work_mem ] && fitted=$OPERATOR_WORK_MEM_KB
+    if [ -n "$fitted" ]; then
+        echo "[POSTGRES] [AUTO-CONFIG] ${name}: operator value ${tuned} used as given; the memory fit sizes the rest around it"
+        continue
+    fi
     if [ -n "${OPERATOR_SET[$name]+set}" ]; then
         echo "[POSTGRES] [AUTO-CONFIG] ${name}: -c ${OPERATOR_SET[$name]} overrides auto-tuned ${tuned}"
         continue

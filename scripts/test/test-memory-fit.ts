@@ -12,8 +12,11 @@
  * and any backend killed by a signal. PGDATA is on a volume: tmpfs would charge the WAL to the limit, which a disk
  * never does. The memory model these cases judge sits in docker-auto-config-entrypoint.sh(.template).
  *
+ * Routine runs (test-all) cover 1 GB only: the floor, where every formula error overruns first, in one parallel batch.
+ * --all adds 1.5 and 3 GB; /update runs it whenever per-backend memory can change (PostgreSQL, nixpkgs or an extension).
+ *
  * Usage: bun scripts/test-all.ts scripts/test/test-memory-fit.ts
- *        bun scripts/test/test-memory-fit.ts [--image=TAG] [--entrypoint=FILE]
+ *        bun scripts/test/test-memory-fit.ts [--all] [--image=TAG] [--entrypoint=FILE]
  * --entrypoint mounts an edited entrypoint over the image's, so a formula change is tried in seconds instead of a
  * rebuild; the gate always runs the image as built.
  */
@@ -44,15 +47,12 @@ const label = (c: Case) =>
   `${c.limitMb} MB ${c.workload}${c.activePercent ? ` ${c.activePercent}% active` : ""}`;
 
 const CASES: Case[] = [
-  ...[1024, 1536, 3072].flatMap((limitMb) =>
+  ...(Bun.argv.includes("--all") ? [1024, 1536, 3072] : [1024]).flatMap((limitMb) =>
     (["mixed", "web", "oltp", "dw"] as const).map((workload) => ({ limitMb, workload }))
   ),
   // The opt-in trade-off: more work_mem per query, sized for a quarter of the connections busy.
   { limitMb: 1024, workload: "mixed", activePercent: 25 },
 ];
-// --case=<label substring> runs only matching cases while iterating, e.g. --case="1024 MB mixed".
-const ONLY = Bun.argv.find((a) => a.startsWith("--case="))?.slice("--case=".length);
-const SELECTED = ONLY ? CASES.filter((c) => label(c).includes(ONLY)) : CASES;
 
 // Every statement uses more than any tuned work_mem: 400k md5 rows are ~30 MB.
 const BUSY_SQL = [
@@ -167,7 +167,7 @@ if (ENTRYPOINT) {
 const failures: string[] = [];
 try {
   // Greedy batches under the memory budget, largest limits first so they do not end up alone.
-  const pending = [...SELECTED].sort((a, b) => b.limitMb - a.limitMb);
+  const pending = [...CASES].sort((a, b) => b.limitMb - a.limitMb);
   while (pending.length > 0) {
     const batch: Case[] = [];
     let used = 0;
@@ -191,4 +191,4 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
-console.log(`\nAll ${SELECTED.length} cases held their memory under full load (${IMAGE})`);
+console.log(`\nAll ${CASES.length} cases held their memory under full load (${IMAGE})`);

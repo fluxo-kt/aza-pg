@@ -645,6 +645,8 @@ bun run test:all
 # Already built? Only the suites: bun run test
 ```
 
+When PostgreSQL, nixpkgs or any extension moved, run `bun scripts/test/test-memory-fit.ts --all` after `test:all` (never beside it): per-session memory may have grown, and the routine lane checks only 1 GB. An overrun means re-measuring the memory constants in the entrypoint (`SESSION_BASE_MB`, `SHARED_OVERHEAD_MB`, …), never raising a limit.
+
 **IMPORTANT**: This is an intermediate check — NOT the final gate. Phases 9–11 add more commits
 (CHANGELOG, skill update). **Phase 12 is the mandatory final gate** after all commits are done.
 

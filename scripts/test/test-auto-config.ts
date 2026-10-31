@@ -114,14 +114,15 @@ if (!PGDATA) throw new Error(`no PGDATA in ${IMAGE}`);
 const ROWS: Row[] = [
   {
     name: "POSTGRES_MEMORY=1536 overrides detection",
-    docker: [],
+    docker: cpus(2),
     env: { POSTGRES_MEMORY: "1536" },
-    // 1536×25% = 384; mixed 120×50% (<2 GB) = 60; cache floor 2×384 = 768; work_mem pool floor 256/240 = 1
+    // 1536×25% = 384; cache floor 2×384 = 768; session pool 1382−384−48−32−96−3×48 = 678 fits 94 > tier 120×50% = 60;
+    // work_mem (678−62×3)×1024/(62×4) = 2031
     settings: {
       shared_buffers: "384MB",
       max_connections: "60",
       effective_cache_size: "768MB",
-      work_mem: "1MB",
+      work_mem: "2031kB",
       maintenance_work_mem: "96MB",
     },
   },
@@ -129,12 +130,13 @@ const ROWS: Row[] = [
     name: "2 GB / 2 CPU cgroup",
     docker: [...memory("2g"), ...cpus(2)],
     detected: "RAM: 2048MB (cgroup-v2), CPU: 2 cores (cgroup-v2), Workload: mixed, Storage: ssd",
-    // 120×70% = 84; <4 cores: workers 2+1 → floor 8, gather 1, maintenance 1
+    // pool 1843−512−48−32−128−3×64 = 931 fits 131 > 120×70% = 84; work_mem (931−86×3)×1024/(86×4) = 2003;
+    // <4 cores: workers 2+1 → floor 8, gather 1, maintenance 1
     settings: {
       shared_buffers: "512MB",
       max_connections: "84",
       effective_cache_size: "1024MB",
-      work_mem: "1MB",
+      work_mem: "2003kB",
       max_worker_processes: "8",
       max_parallel_workers: "2",
       max_parallel_workers_per_gather: "1",
@@ -144,14 +146,15 @@ const ROWS: Row[] = [
   },
   {
     name: "512 MB cgroup is the accepted minimum",
-    docker: [...memory("512m")],
+    docker: [...memory("512m"), ...cpus(1)],
     detected: "RAM: 512MB (cgroup-v2)",
-    // cache: 512−128−512 < 0 → floor 2×128 = 256; wal_buffers 128×3% = 3
+    // cache: 512−128−512 < 0 → floor 2×128 = 256; wal_buffers 128×3% = 3; pool 460−128−48−32−32−3×16 = 172
+    // fits (172×1024−7168)/7168 = 23 < tier 60; work_mem (172−24×3)×1024/(24×4) = 1066
     settings: {
       shared_buffers: "128MB",
-      max_connections: "60",
+      max_connections: "23",
       effective_cache_size: "256MB",
-      work_mem: "1MB",
+      work_mem: "1066kB",
       maintenance_work_mem: "32MB",
       wal_buffers: "3MB",
     },
@@ -166,11 +169,10 @@ const ROWS: Row[] = [
     name: "POSTGRES_MEMORY=65536 (15% shared_buffers tier)",
     docker: [],
     env: { POSTGRES_MEMORY: "65536" },
-    // 65536×15% = 9830; pool 65536−9830−1200−512 = 53994 / 480 = 112 (mixed cap 256)
+    // 65536×15% = 9830; the session pool fits far more than the tier (work_mem follows the host's CPU count here)
     settings: {
       shared_buffers: "9830MB",
       max_connections: "120",
-      work_mem: "112MB",
       effective_cache_size: "29819MB",
       maintenance_work_mem: "2048MB",
     },
@@ -179,11 +181,10 @@ const ROWS: Row[] = [
     name: "4 GB cgroup",
     docker: [...memory("4g")],
     detected: "RAM: 4096MB (cgroup-v2)",
-    // 120×85% = 102; pool 4096−1024−1020−512 = 1540 / 408 = 3; cache floor 2×1024
+    // 120×85% = 102 (pool 3686−1024−48−32−256−3×128 = 1942 fits more); cache floor 2×1024
     settings: {
       shared_buffers: "1024MB",
       max_connections: "102",
-      work_mem: "3MB",
       effective_cache_size: "2048MB",
       checkpoint_completion_target: "0.9",
     },
@@ -192,11 +193,10 @@ const ROWS: Row[] = [
     name: "8 GB cgroup, default workload and storage",
     docker: [...memory("8g")],
     detected: "RAM: 8192MB (cgroup-v2)",
-    // pool 8192−2048−1200−512 = 4432 / 480 = 9; wal_buffers 2048×3% = 61 → cap 16
+    // wal_buffers 2048×3% = 61 → cap 16
     settings: {
       shared_buffers: "2048MB",
       max_connections: "120",
-      work_mem: "9MB",
       effective_cache_size: "4096MB",
       wal_buffers: "16MB",
       min_wal_size: "1024MB",
@@ -210,11 +210,10 @@ const ROWS: Row[] = [
   {
     name: "16 GB cgroup (20% shared_buffers tier)",
     docker: [...memory("16g")],
-    // 16384×20% = 3276; pool 16384−3276−1200−512 = 11396 / 480 = 23; cache (16384−3276−3276)×70% = 6882
+    // 16384×20% = 3276; cache (16384−3276−3276)×70% = 6882
     settings: {
       shared_buffers: "3276MB",
       max_connections: "120",
-      work_mem: "23MB",
       effective_cache_size: "6882MB",
     },
   },
@@ -222,9 +221,11 @@ const ROWS: Row[] = [
     name: "1 GB / 1 CPU",
     docker: [...memory("1g"), ...cpus(1)],
     detected: "RAM: 1024MB (cgroup-v2), CPU: 1 cores (cgroup-v2)",
+    // pool 921−256−48−32−64−3×32 = 425 fits (425×1024−7168)/7168 = 59 < tier 60; work_mem (425−60×3)×1024/(60×4) = 1045
     settings: {
       shared_buffers: "256MB",
-      max_connections: "60",
+      max_connections: "59",
+      work_mem: "1045kB",
       max_worker_processes: "8",
       max_parallel_workers: "1",
       max_parallel_workers_per_gather: "1",
@@ -235,8 +236,8 @@ const ROWS: Row[] = [
   {
     name: "3 GB / 2 CPU",
     docker: [...memory("3g"), ...cpus(2)],
-    // pool 3072−768−840−512 = 952 / 336 = 2
-    settings: { shared_buffers: "768MB", max_connections: "84", work_mem: "2MB" },
+    // pool 2764−768−48−32−192−3×96 = 1436 fits 203 > tier 84; work_mem (1436−86×3)×1024/(86×4) = 3506
+    settings: { shared_buffers: "768MB", max_connections: "84", work_mem: "3506kB" },
   },
   {
     name: "6 GB / 4 CPU (parallel workers threshold)",
@@ -255,10 +256,11 @@ const ROWS: Row[] = [
     docker: cpus(14),
     env: { POSTGRES_MEMORY: "32768", POSTGRES_WORKLOAD_TYPE: "dw" },
     detected: "RAM: 32768MB (manual), CPU: 14 cores (cgroup-v2), Workload: dw, Storage: ssd",
-    // pool 32768−6553−1000−512 = 24703 / 400 = 61 (dw cap 256); 32768/8 → cap 2048; workers 14+7 = 21
+    // 32768/8 → cap 2048; pool 29491−6553−48−32−2048−3×256 = 20042; work_mem (20042−114×3)×1024/(114×4) = 44238
+    // (dw cap 256 MB); workers 14+7 = 21
     settings: {
       max_connections: "100",
-      work_mem: "61MB",
+      work_mem: "44238kB",
       maintenance_work_mem: "2048MB",
       default_statistics_target: "500",
       min_wal_size: "4096MB",
@@ -274,10 +276,8 @@ const ROWS: Row[] = [
     name: "8 GB web",
     docker: [...memory("8g")],
     env: { POSTGRES_WORKLOAD_TYPE: "web" },
-    // pool 8192−2048−2000−512 = 3632 / 800 = 4 (web cap 32)
     settings: {
       max_connections: "200",
-      work_mem: "4MB",
       default_statistics_target: "100",
       min_wal_size: "1024MB",
       max_wal_size: "4096MB",
@@ -359,10 +359,10 @@ const ROWS: Row[] = [
   },
   {
     name: "512 MB + hdd + web",
-    docker: [...memory("512m")],
+    docker: [...memory("512m"), ...cpus(1)],
     env: { POSTGRES_STORAGE_TYPE: "hdd", POSTGRES_WORKLOAD_TYPE: "web" },
-    // web 200×50% = 100
-    settings: { shared_buffers: "128MB", random_page_cost: "4.0", max_connections: "100" },
+    // web 200×50% = 100 cut to the 23 the pool fits (same 1 MB target as mixed, see the 512 MB row)
+    settings: { shared_buffers: "128MB", random_page_cost: "4.0", max_connections: "23" },
   },
   {
     name: "6 GB + oltp + san + 4 CPU",
@@ -378,11 +378,14 @@ const ROWS: Row[] = [
   },
   // A value the operator sets with -c or ALTER SYSTEM overrides auto-tuning; the log names each override.
   {
-    name: "operator -c max_connections=7 overrides tuning and is logged",
+    name: "operator -c values win and are logged; max_connections is fitted around, not overridden",
     docker: [...memory("2g")],
-    args: ["postgres", "-c", "max_connections=7"],
+    args: ["postgres", "-c", "max_connections=7", "-c", "random_page_cost=2"],
     effective: { setting: "max_connections", value: "7" },
-    stdoutLines: ["[POSTGRES] [AUTO-CONFIG] max_connections: -c 7 overrides auto-tuned 84"],
+    stdoutLines: [
+      "[POSTGRES] [AUTO-CONFIG] max_connections: operator value 7 used as given; the memory fit sizes the rest around it",
+      "[POSTGRES] [AUTO-CONFIG] random_page_cost: -c 2 overrides auto-tuned 1.1",
+    ],
     include: `${PGDATA}/postgresql.conf`,
   },
   {
